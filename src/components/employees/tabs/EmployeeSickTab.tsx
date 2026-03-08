@@ -50,6 +50,12 @@ const EmployeeSickTab = ({ employeeId, employee }: { employeeId: string; employe
       qc.invalidateQueries({ queryKey: ['sick-reports', employeeId] });
       qc.invalidateQueries({ queryKey: ['employee', employeeId] });
       qc.invalidateQueries({ queryKey: ['employees'] });
+      logAudit({
+        action: 'create',
+        tableName: 'sick_reports',
+        recordId: employeeId,
+        newValues: form,
+      });
       setAdding(false);
       setForm({ expected_return_date: '', notes: '' });
       toast.success('Ziekmelding geregistreerd');
