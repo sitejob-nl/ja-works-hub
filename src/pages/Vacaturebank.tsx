@@ -17,7 +17,9 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Separator } from '@/components/ui/separator';
 import TagInput from '@/components/ui/tag-input';
 import { toast } from 'sonner';
-import { Search, Download, ExternalLink, Globe, Building2, Briefcase, MapPin, Loader2, Plus, ChevronDown } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Search, Download, ExternalLink, Globe, Building2, Briefcase, MapPin, Loader2, Plus, ChevronDown, X, DollarSign, Clock, Users, Tag } from 'lucide-react';
 import { format } from 'date-fns';
 import { nl } from 'date-fns/locale';
 
