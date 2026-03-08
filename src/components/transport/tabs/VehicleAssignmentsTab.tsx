@@ -68,7 +68,14 @@ const VehicleAssignmentsTab = ({ vehicle }: { vehicle: any }) => {
       setAssignOpen(false);
       setEmployeeId(''); setAssignedDate('');
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => {
+      const msg = e.message || '';
+      if (msg.includes('rijbewijs') || msg.includes('license')) {
+        toast.error(`Toewijzing geblokkeerd: ${msg}`);
+      } else {
+        toast.error(msg);
+      }
+    },
   });
 
   const returnMutation = useMutation({

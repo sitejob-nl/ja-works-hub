@@ -250,6 +250,9 @@ const Settings = () => {
 
           {/* Exact Online */}
           <ExactOnlineSettings />
+
+          {/* Data Export */}
+          <DataExport />
         </div>
 
         {/* Right column */}
