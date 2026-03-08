@@ -22,11 +22,11 @@ Deno.serve(async (req) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const apifyToken = Deno.env.get("APIFY_API_TOKEN");
+    const apifyToken = Deno.env.get("APIFY_API_KEY");
 
     if (!apifyToken) {
       return new Response(
-        JSON.stringify({ error: "APIFY_API_TOKEN is not configured" }),
+        JSON.stringify({ error: "APIFY_API_KEY is not configured" }),
         {
           status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
