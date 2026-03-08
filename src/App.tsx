@@ -36,6 +36,7 @@ import Vacaturebank from "@/pages/Vacaturebank";
 import KandidatenZoeken from "@/pages/KandidatenZoeken";
 import Communications from "@/pages/Communications";
 import KnowledgeBasePage from "@/pages/KnowledgeBase";
+import WhatsAppPage from "@/pages/WhatsApp";
 
 
 const queryClient = new QueryClient();
