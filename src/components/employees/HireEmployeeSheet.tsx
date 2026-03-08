@@ -57,7 +57,7 @@ const HireEmployeeSheet = ({ open, onOpenChange }: Props) => {
 
   const hire = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.from('employees').insert({
+      const { data: emp, error } = await supabase.from('employees').insert({
         organization_id: orgId,
         candidate_id: selectedCandidate.id,
         employee_number: form.employee_number || null,
@@ -66,24 +66,42 @@ const HireEmployeeSheet = ({ open, onOpenChange }: Props) => {
         contract_hours: form.contract_hours ? Number(form.contract_hours) : null,
         notes: form.notes || null,
         status: 'onboarding' as const,
-      });
+      }).select('id').single();
       if (error) throw error;
 
       const { error: updateErr } = await supabase.from('candidates')
         .update({ status: 'geplaatst' as const })
         .eq('id', selectedCandidate.id);
       if (updateErr) throw updateErr;
+
+      // Generate onboarding token
+      const { data: tokenData } = await supabase.from('onboarding_tokens').insert({
+        employee_id: emp.id,
+        organization_id: orgId,
+      } as any).select('token').single();
+
+      return { employeeId: emp.id, token: tokenData?.token };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ['employees'] });
       qc.invalidateQueries({ queryKey: ['candidates'] });
       logAudit({
         action: 'create',
         tableName: 'employees',
-        recordId: selectedCandidate.id,
+        recordId: result?.employeeId ?? selectedCandidate.id,
         newValues: { ...form, candidate: `${selectedCandidate.first_name} ${selectedCandidate.last_name}` },
       });
-      toast.success('Medewerker aangemaakt');
+
+      if (result?.token) {
+        const link = `${window.location.origin}/onboarding/${result.token}`;
+        navigator.clipboard.writeText(link).then(() => {
+          toast.success('Medewerker aangemaakt! Onboarding link gekopieerd naar klembord.');
+        }).catch(() => {
+          toast.success(`Medewerker aangemaakt! Onboarding link: ${link}`);
+        });
+      } else {
+        toast.success('Medewerker aangemaakt');
+      }
       resetAndClose();
     },
     onError: (e: any) => toast.error(e.message),
