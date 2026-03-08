@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { ChevronRight, Edit } from 'lucide-react';
+import { ChevronRight, Edit, UserSearch } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -31,6 +31,7 @@ const urgencyBadge = (u: number | null) => {
 const VacancyDetail = () => {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [editOpen, setEditOpen] = useState(false);
 
   const { data: vacancy, isLoading } = useQuery({
@@ -91,6 +92,20 @@ const VacancyDetail = () => {
           </div>
         </div>
         <div className="flex gap-2">
+          <Button
+            size="sm"
+            className="gap-1"
+            onClick={() => {
+              const parts = [vacancy.title];
+              if (vacancy.required_skills?.length) parts.push(`met ${vacancy.required_skills.join(', ')} ervaring`);
+              if (vacancy.location) parts.push(`in ${vacancy.location}`);
+              if (vacancy.required_certifications?.length) parts.push(`met ${vacancy.required_certifications.join(', ')} certificering`);
+              const q = parts.join(' ');
+              navigate(`/kandidaten-zoeken?query=${encodeURIComponent(q)}`);
+            }}
+          >
+            <UserSearch className="h-4 w-4" /> Zoek kandidaten
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setEditOpen(true)} className="gap-1">
             <Edit className="h-4 w-4" /> Bewerken
           </Button>

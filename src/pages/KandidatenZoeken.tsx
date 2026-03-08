@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -39,12 +39,14 @@ const KandidatenZoeken = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
-  const [query, setQuery] = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [query, setQuery] = useState(searchParams.get('query') || '');
   const [userLocation, setUserLocation] = useState('NL');
   const [numResults, setNumResults] = useState('10');
   const [includeText, setIncludeText] = useState(false);
   const [highlightsQuery, setHighlightsQuery] = useState('');
   const [convertDialog, setConvertDialog] = useState<ConvertDialogData | null>(null);
+  const autoSearchDone = useRef(false);
 
   // Saved results
   const { data: savedResults } = useQuery({
@@ -60,6 +62,17 @@ const KandidatenZoeken = () => {
       return data;
     },
   });
+  // Auto-search when navigated from vacancy page with query param
+  useEffect(() => {
+    const urlQuery = searchParams.get('query');
+    if (urlQuery && !autoSearchDone.current) {
+      autoSearchDone.current = true;
+      // Clear the search params to avoid re-triggering
+      setSearchParams({}, { replace: true });
+      // Trigger search on next tick after state is set
+      setTimeout(() => searchMutation.mutate(), 100);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const searchMutation = useMutation({
     mutationFn: async () => {
