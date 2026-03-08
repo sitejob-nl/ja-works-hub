@@ -104,6 +104,7 @@ const KandidatenZoeken = () => {
   const [numSentences, setNumSentences] = useState('3');
   const [highlightsPerUrl, setHighlightsPerUrl] = useState('3');
   const [convertDialog, setConvertDialog] = useState<ConvertDialogData | null>(null);
+  const [detailResult, setDetailResult] = useState<Record<string, unknown> | null>(null);
   const autoSearchDone = useRef(false);
 
   // Build query from structured fields
