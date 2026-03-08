@@ -1,0 +1,122 @@
+import { useState } from 'react';
+import { useParams, Link } from 'react-router-dom';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { ChevronRight, MoreHorizontal, Pencil } from 'lucide-react';
+import { toast } from 'sonner';
+import PropertySlideOver from '@/components/housing/PropertySlideOver';
+import UnitsTab from '@/components/housing/tabs/UnitsTab';
+import ResidentsTab from '@/components/housing/tabs/ResidentsTab';
+import CostsTab from '@/components/housing/tabs/CostsTab';
+import KeysTab from '@/components/housing/tabs/KeysTab';
+import InspectionsTab from '@/components/housing/tabs/InspectionsTab';
+
+const PropertyDetail = () => {
+  const { id } = useParams<{ id: string }>();
+  const qc = useQueryClient();
+  const [editOpen, setEditOpen] = useState(false);
+
+  const { data: property, isLoading } = useQuery({
+    queryKey: ['property', id],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('properties').select(`
+        *,
+        units!units_property_id_fkey(
+          id, name, capacity, status, floor, monthly_cost, deposit_amount, notes,
+          housing_assignments!housing_assignments_unit_id_fkey(
+            id, status, check_in_date, check_out_date, monthly_deduction, deposit_paid, rent_paid_until,
+            employees!housing_assignments_employee_id_fkey(
+              id, employee_number,
+              candidates!employees_candidate_id_fkey(first_name, last_name)
+            )
+          )
+        )
+      `).eq('id', id!).single();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!id,
+  });
+
+  const deactivate = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from('properties').update({ is_active: false }).eq('id', id!);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['property', id] });
+      qc.invalidateQueries({ queryKey: ['properties'] });
+      toast.success('Pand gedeactiveerd');
+    },
+  });
+
+  if (isLoading) return <div className="p-8 text-muted-foreground">Laden...</div>;
+  if (!property) return <div className="p-8 text-muted-foreground">Niet gevonden</div>;
+
+  const units = property.units ?? [];
+  const totalCapacity = units.reduce((s: number, u: any) => s + (u.capacity ?? 0), 0);
+  const currentOccupancy = units.reduce((s: number, u: any) =>
+    s + ((u.housing_assignments ?? []).filter((a: any) => a.status === 'ingecheckt').length), 0);
+  const pct = totalCapacity > 0 ? Math.round((currentOccupancy / totalCapacity) * 100) : 0;
+  const barColor = pct >= 90 ? 'bg-red-500' : pct >= 70 ? 'bg-orange-500' : 'bg-stat-green';
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-1 text-sm text-muted-foreground">
+        <Link to="/huisvesting" className="hover:text-foreground transition-colors">Huisvesting</Link>
+        <ChevronRight className="h-3 w-3" />
+        <span className="text-foreground">{property.name}</span>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <div className="flex-1">
+          <h1 className="text-2xl font-semibold">{property.name}</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {[property.address_street, property.address_postal, property.address_city].filter(Boolean).join(', ')}
+          </p>
+          <div className="flex items-center gap-3 mt-3 max-w-sm">
+            <div className="relative h-2 rounded-full bg-muted overflow-hidden flex-1">
+              <div className={`absolute inset-y-0 left-0 rounded-full ${barColor}`} style={{ width: `${pct}%` }} />
+            </div>
+            <span className="text-sm font-medium">{pct}%</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setEditOpen(true)} className="gap-2">
+            <Pencil className="h-3.5 w-3.5" /> Bewerken
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => deactivate.mutate()} className="text-destructive">Deactiveren</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+
+      <Tabs defaultValue="kamers">
+        <TabsList className="flex-wrap">
+          <TabsTrigger value="kamers">Kamers</TabsTrigger>
+          <TabsTrigger value="bewoners">Bewoners</TabsTrigger>
+          <TabsTrigger value="kosten">Kosten</TabsTrigger>
+          <TabsTrigger value="sleutels">Sleutels</TabsTrigger>
+          <TabsTrigger value="inspecties">Inspecties</TabsTrigger>
+        </TabsList>
+        <TabsContent value="kamers"><UnitsTab property={property} /></TabsContent>
+        <TabsContent value="bewoners"><ResidentsTab property={property} /></TabsContent>
+        <TabsContent value="kosten"><CostsTab property={property} /></TabsContent>
+        <TabsContent value="sleutels"><KeysTab propertyId={id!} /></TabsContent>
+        <TabsContent value="inspecties"><InspectionsTab propertyId={id!} /></TabsContent>
+      </Tabs>
+
+      <PropertySlideOver open={editOpen} onOpenChange={setEditOpen} property={property} />
+    </div>
+  );
+};
+
+export default PropertyDetail;
