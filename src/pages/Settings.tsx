@@ -242,6 +242,9 @@ const Settings = () => {
               </div>
             </CardContent>
           </Card>
+
+          {/* WhatsApp */}
+          <WhatsAppSettings />
         </div>
 
         {/* Right column */}
