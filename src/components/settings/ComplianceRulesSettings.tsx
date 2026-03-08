@@ -73,9 +73,9 @@ const ComplianceRulesSettings = () => {
   const { data: rules = [], isLoading } = useQuery({
     queryKey: ['compliance-rules', orgId],
     queryFn: async () => {
-      const { data, error } = await supabase.from('compliance_rules').select('*').order('created_at');
+      const { data, error } = await supabase.from('compliance_rules' as any).select('*').order('created_at');
       if (error) throw error;
-      return data;
+      return data as any[];
     },
   });
 
