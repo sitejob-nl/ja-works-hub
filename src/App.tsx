@@ -17,6 +17,8 @@ import Employees from "@/pages/Employees";
 import EmployeeDetail from "@/pages/EmployeeDetail";
 import Housing from "@/pages/Housing";
 import PropertyDetail from "@/pages/PropertyDetail";
+import Vacancies from "@/pages/Vacancies";
+import VacancyDetail from "@/pages/VacancyDetail";
 import {
   Building2, Users, UserCheck, Home, Briefcase,
   Calendar, Clock, Car, MessageSquare, BookOpen, Settings,
