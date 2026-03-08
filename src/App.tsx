@@ -37,6 +37,7 @@ import KandidatenZoeken from "@/pages/KandidatenZoeken";
 import Communications from "@/pages/Communications";
 import KnowledgeBasePage from "@/pages/KnowledgeBase";
 import WhatsAppPage from "@/pages/WhatsApp";
+import ExactOnlinePage from "@/pages/ExactOnline";
 
 
 const queryClient = new QueryClient();
