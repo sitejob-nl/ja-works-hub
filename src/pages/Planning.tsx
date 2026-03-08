@@ -513,6 +513,7 @@ const NewPlacementSheet = ({ open, onClose, orgId, userId }: { open: boolean; on
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
   return (
+    <>
     <Sheet open={open} onOpenChange={(o) => !o && resetAndClose()}>
       <SheetContent className="sm:max-w-md overflow-y-auto">
         <SheetHeader>
