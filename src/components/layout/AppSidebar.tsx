@@ -1,14 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { supabase } from '@/integrations/supabase/client';
+import { useQuery } from '@tanstack/react-query';
 import {
   LayoutDashboard, Building2, Users, UserCheck, Home, Briefcase,
   Calendar, Clock, Car, MessageSquare, BookOpen, Settings,
   ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useEffect } from 'react';
 
 const navItems = [
   { label: 'Dashboard', icon: LayoutDashboard, path: '/' },
@@ -28,32 +30,35 @@ const AppSidebar = () => {
   const [collapsed, setCollapsed] = useState(false);
   const { profile } = useAuth();
   const location = useLocation();
-  const [org, setOrg] = useState<{ name: string; logo_url: string | null; settings: Record<string, string> | null } | null>(null);
 
   const firstName = profile?.full_name?.split(' ')[0] ?? '';
   const roleLabel = profile?.role ?? '';
 
+  const { data: org } = useQuery({
+    queryKey: ['organization', profile?.organization_id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('organizations')
+        .select('name, logo_url, settings')
+        .eq('id', profile!.organization_id)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!profile?.organization_id,
+  });
+
+  // Apply accent color from settings whenever org data changes
   useEffect(() => {
-    if (!profile?.organization_id) return;
-    supabase
-      .from('organizations')
-      .select('name, logo_url, settings')
-      .eq('id', profile.organization_id)
-      .single()
-      .then(({ data }) => {
-        if (data) {
-          setOrg(data as typeof org);
-          // Apply accent color from settings
-          const s = (data.settings as Record<string, string> | null) ?? {};
-          if (s.accent_color) {
-            document.documentElement.style.setProperty('--primary', s.accent_color);
-            document.documentElement.style.setProperty('--ring', s.accent_color);
-            document.documentElement.style.setProperty('--accent-blue', s.accent_color);
-            document.documentElement.style.setProperty('--stat-blue', s.accent_color);
-          }
-        }
-      });
-  }, [profile?.organization_id]);
+    if (!org) return;
+    const s = (org.settings as Record<string, string> | null) ?? {};
+    if (s.accent_color) {
+      document.documentElement.style.setProperty('--primary', s.accent_color);
+      document.documentElement.style.setProperty('--ring', s.accent_color);
+      document.documentElement.style.setProperty('--accent-blue', s.accent_color);
+      document.documentElement.style.setProperty('--stat-blue', s.accent_color);
+    }
+  }, [org]);
 
   const orgInitials = (org?.name ?? 'JA').slice(0, 2).toUpperCase();
 
