@@ -6,7 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   LayoutDashboard, Building2, Users, UserCheck, Home, Briefcase,
   Calendar, Clock, Car, MessageSquare, BookOpen, Settings,
-  ChevronLeft, ChevronRight,
+  ChevronLeft, ChevronRight, Search,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useEffect } from 'react';
@@ -23,6 +23,7 @@ const allNavItems = [
   { label: 'Transport', icon: Car, path: '/transport', moduleKey: 'transport' },
   { label: 'Communicatie', icon: MessageSquare, path: '/communicatie', moduleKey: 'communicatie' },
   { label: 'Kennisbank', icon: BookOpen, path: '/kennisbank', moduleKey: 'kennisbank' },
+  { label: 'Vacaturebank', icon: Search, path: '/vacaturebank', moduleKey: 'vacaturebank' },
 ];
 
 const AppSidebar = () => {

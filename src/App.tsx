@@ -32,6 +32,7 @@ import VacancyDetail from "@/pages/VacancyDetail";
 import Timesheets from "@/pages/Timesheets";
 import Transport from "@/pages/Transport";
 import VehicleDetail from "@/pages/VehicleDetail";
+import Vacaturebank from "@/pages/Vacaturebank";
 import {
   Calendar, MessageSquare, BookOpen,
 } from "lucide-react";
@@ -85,6 +86,7 @@ const App = () => (
               <Route path="/uren" element={<Timesheets />} />
               <Route path="/transport" element={<Transport />} />
               <Route path="/transport/:id" element={<VehicleDetail />} />
+              <Route path="/vacaturebank" element={<Vacaturebank />} />
               <Route path="/communicatie" element={<ShellPage title="Communicatie" subtitle="Berichten en communicatiehistorie" icon={MessageSquare} />} />
               <Route path="/kennisbank" element={<ShellPage title="Kennisbank" subtitle="Interne kennisbank en documentatie" icon={BookOpen} />} />
               <Route path="/instellingen" element={<SettingsPage />} />

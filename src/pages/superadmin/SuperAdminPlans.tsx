@@ -13,7 +13,7 @@ import { Plus, Package } from 'lucide-react';
 
 const ALL_MODULES = [
   'opdrachtgevers', 'kandidaten', 'medewerkers', 'vacatures', 'planning',
-  'uren', 'huisvesting', 'transport', 'communicatie', 'kennisbank',
+  'uren', 'huisvesting', 'transport', 'communicatie', 'kennisbank', 'vacaturebank',
 ];
 
 const SuperAdminPlans = () => {
