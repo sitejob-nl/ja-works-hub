@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -9,8 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Search, Loader2, ExternalLink, UserSearch, Globe, Bookmark } from 'lucide-react';
+import { Search, Loader2, ExternalLink, UserSearch, Globe, Bookmark, UserPlus } from 'lucide-react';
 
 const COUNTRY_OPTIONS = [
   { code: 'NL', label: 'Nederland' },
@@ -23,15 +25,26 @@ const COUNTRY_OPTIONS = [
   { code: 'US', label: 'Verenigde Staten' },
 ];
 
+interface ConvertDialogData {
+  external_id: string;
+  name: string;
+  title: string;
+  url: string;
+  firstName: string;
+  lastName: string;
+}
+
 const KandidatenZoeken = () => {
   const organizationId = useOrganizationId();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const [query, setQuery] = useState('');
   const [userLocation, setUserLocation] = useState('NL');
   const [numResults, setNumResults] = useState('10');
   const [includeText, setIncludeText] = useState(false);
   const [highlightsQuery, setHighlightsQuery] = useState('');
+  const [convertDialog, setConvertDialog] = useState<ConvertDialogData | null>(null);
 
   // Saved results
   const { data: savedResults } = useQuery({
@@ -70,6 +83,53 @@ const KandidatenZoeken = () => {
       toast.error(`Zoekfout: ${err.message}`);
     },
   });
+
+  const convertMutation = useMutation({
+    mutationFn: async (data: ConvertDialogData) => {
+      const { data: candidate, error } = await supabase
+        .from('candidates')
+        .insert({
+          organization_id: organizationId,
+          first_name: data.firstName,
+          last_name: data.lastName,
+          source: 'Exa People Search',
+          notes: [
+            data.title && `Titel: ${data.title}`,
+            data.url && `Profiel: ${data.url}`,
+          ].filter(Boolean).join('\n'),
+          external_id: data.external_id,
+        })
+        .select('id')
+        .single();
+      if (error) throw error;
+      return candidate;
+    },
+    onSuccess: (candidate) => {
+      toast.success('Kandidaat aangemaakt');
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      setConvertDialog(null);
+      navigate(`/kandidaten/${candidate.id}`);
+    },
+    onError: (err: Error) => {
+      toast.error(`Fout: ${err.message}`);
+    },
+  });
+
+  const openConvertDialog = (result: Record<string, unknown>) => {
+    const fullName = (result.name as string) || '';
+    const parts = fullName.split(' ').filter(Boolean);
+    const firstName = parts[0] || '';
+    const lastName = parts.slice(1).join(' ') || '';
+
+    setConvertDialog({
+      external_id: (result.external_id as string) || '',
+      name: fullName,
+      title: (result.title as string) || '',
+      url: (result.url as string) || '',
+      firstName,
+      lastName,
+    });
+  };
 
   const liveResults = searchMutation.data?.results || [];
   const displayResults = liveResults.length > 0 ? liveResults : (savedResults || []);
@@ -218,17 +278,29 @@ const KandidatenZoeken = () => {
                 </p>
               )}
 
-              {result.url && (
-                <a
-                  href={result.url as string}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+              <div className="flex items-center gap-2 pt-1">
+                {result.url && (
+                  <a
+                    href={result.url as string}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    Profiel
+                  </a>
+                )}
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="ml-auto text-xs h-7"
+                  onClick={() => openConvertDialog(result)}
                 >
-                  <ExternalLink className="h-3 w-3" />
-                  Profiel bekijken
-                </a>
-              )}
+                  <UserPlus className="h-3 w-3 mr-1" />
+                  Kandidaat maken
+                </Button>
+              </div>
 
               {result.search_query && (
                 <Badge variant="outline" className="text-[10px]">
@@ -246,6 +318,58 @@ const KandidatenZoeken = () => {
           <p>Voer een zoekopdracht in om kandidaten te vinden</p>
         </div>
       )}
+
+      {/* Convert to Candidate Dialog */}
+      <Dialog open={!!convertDialog} onOpenChange={(open) => !open && setConvertDialog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Omzetten naar kandidaat</DialogTitle>
+          </DialogHeader>
+          {convertDialog && (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                {convertDialog.title}
+              </p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Voornaam</Label>
+                  <Input
+                    value={convertDialog.firstName}
+                    onChange={(e) => setConvertDialog({ ...convertDialog, firstName: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Achternaam</Label>
+                  <Input
+                    value={convertDialog.lastName}
+                    onChange={(e) => setConvertDialog({ ...convertDialog, lastName: e.target.value })}
+                  />
+                </div>
+              </div>
+              {convertDialog.url && (
+                <p className="text-xs text-muted-foreground">
+                  LinkedIn: {convertDialog.url}
+                </p>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConvertDialog(null)}>
+              Annuleren
+            </Button>
+            <Button
+              onClick={() => convertDialog && convertMutation.mutate(convertDialog)}
+              disabled={convertMutation.isPending || !convertDialog?.firstName || !convertDialog?.lastName}
+            >
+              {convertMutation.isPending ? (
+                <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Aanmaken...</>
+              ) : (
+                <><UserPlus className="h-4 w-4 mr-2" /> Kandidaat aanmaken</>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
