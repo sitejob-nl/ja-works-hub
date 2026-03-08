@@ -11,6 +11,7 @@ import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { Settings as SettingsIcon, Upload, Palette, Building2, User, LogOut, Trash2 } from 'lucide-react';
 import WhatsAppSettings from '@/components/settings/WhatsAppSettings';
+import ExactOnlineSettings from '@/components/settings/ExactOnlineSettings';
 
 const ACCENT_PRESETS = [
   { name: 'Blauw (standaard)', hsl: '197 100% 60%', hex: '#32C5FF' },
