@@ -244,27 +244,40 @@ const Vacaturebank = () => {
     onError: (e: any) => toast.error(e.message || 'Import mislukt'),
   });
 
-  // Convert to vacancies mutation
+  // Convert to vacancies mutation — auto-match company by organization_name
   const convertMutation = useMutation({
     mutationFn: async () => {
       const selectedJobs = jobs.filter(j => selectedIds.has(j.id));
-      const payloads = selectedJobs.map(job => ({
-        organization_id: organizationId,
-        company_id: convertCompanyId,
-        title: job.title,
-        description: job.description_text || null,
-        location: [job.city, job.country].filter(Boolean).join(', ') || null,
-        required_skills: job.ai_key_skills?.length ? job.ai_key_skills : null,
-        required_count: 1,
-        urgency: 3,
-        notes: [
-          job.organization_name && `Bron bedrijf: ${job.organization_name}`,
-          job.url && `Originele vacature: ${job.url}`,
-          job.source && `ATS: ${job.source}`,
-          job.work_arrangement && `Werkmodel: ${job.work_arrangement}`,
-        ].filter(Boolean).join('\n'),
-        created_by: user?.id ?? null,
-      }));
+
+      // Group by organization_name, match to existing companies or use fallback
+      const companyNameToId: Record<string, string> = {};
+      for (const c of companies ?? []) {
+        companyNameToId[c.name.toLowerCase()] = c.id;
+      }
+
+      const payloads = selectedJobs.map(job => {
+        const orgName = (job.organization_name || '').toLowerCase();
+        const matchedCompanyId = companyNameToId[orgName] || convertCompanyId;
+        if (!matchedCompanyId) throw new Error(`Geen opdrachtgever gevonden voor "${job.organization_name}". Selecteer een standaard opdrachtgever.`);
+
+        return {
+          organization_id: organizationId,
+          company_id: matchedCompanyId,
+          title: job.title,
+          description: job.description_text || null,
+          location: [job.city, job.country].filter(Boolean).join(', ') || null,
+          required_skills: job.ai_key_skills?.length ? job.ai_key_skills : null,
+          required_count: 1,
+          urgency: 3,
+          notes: [
+            job.organization_name && `Bron bedrijf: ${job.organization_name}`,
+            job.url && `Originele vacature: ${job.url}`,
+            job.source && `ATS: ${job.source}`,
+            job.work_arrangement && `Werkmodel: ${job.work_arrangement}`,
+          ].filter(Boolean).join('\n'),
+          created_by: user?.id ?? null,
+        };
+      });
 
       const { error } = await supabase.from('vacancies').insert(payloads);
       if (error) throw error;
@@ -279,6 +292,14 @@ const Vacaturebank = () => {
     },
     onError: (e: any) => toast.error(e.message || 'Fout bij aanmaken'),
   });
+
+  // Check how many selected jobs have a matching company
+  const selectedJobsList = useMemo(() => jobs.filter(j => selectedIds.has(j.id)), [jobs, selectedIds]);
+  const unmatchedJobs = useMemo(() => {
+    if (!companies) return selectedJobsList;
+    const companyNames = new Set((companies ?? []).map(c => c.name.toLowerCase()));
+    return selectedJobsList.filter(j => !j.organization_name || !companyNames.has(j.organization_name.toLowerCase()));
+  }, [selectedJobsList, companies]);
 
   const toggleArray = (arr: string[], val: string) =>
     arr.includes(val) ? arr.filter(v => v !== val) : [...arr, val];
