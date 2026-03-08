@@ -6,7 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   LayoutDashboard, Building2, Users, UserCheck, Home, Briefcase,
   Calendar, Clock, Car, MessageSquare, BookOpen, Settings,
-  ChevronLeft, ChevronRight, Search, UserSearch,
+  ChevronLeft, ChevronRight, Search, UserSearch, Calculator,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useEffect } from 'react';
