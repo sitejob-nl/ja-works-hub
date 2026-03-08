@@ -2,15 +2,18 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
-import { Search, Download, ExternalLink, Globe, Building2, Briefcase, MapPin, Loader2 } from 'lucide-react';
+import { Search, Download, ExternalLink, Globe, Building2, Briefcase, MapPin, Loader2, Plus } from 'lucide-react';
 import { format } from 'date-fns';
 import { nl } from 'date-fns/locale';
 
@@ -33,6 +36,7 @@ const PAGE_SIZE = 25;
 
 const Vacaturebank = () => {
   const organizationId = useOrganizationId();
+  const { user } = useAuth();
   const queryClient = useQueryClient();
 
   // Import sheet state
@@ -52,6 +56,11 @@ const Vacaturebank = () => {
   const [filterTaxonomy, setFilterTaxonomy] = useState('');
   const [page, setPage] = useState(0);
 
+  // Selection state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [convertOpen, setConvertOpen] = useState(false);
+  const [convertCompanyId, setConvertCompanyId] = useState('');
+
   // Fetch jobs
   const { data: jobs = [], isLoading } = useQuery({
     queryKey: ['job-listings', organizationId],
@@ -64,6 +73,16 @@ const Vacaturebank = () => {
       return data as any[];
     },
     enabled: !!organizationId,
+  });
+
+  // Fetch companies for convert dialog
+  const { data: companies } = useQuery({
+    queryKey: ['companies-active'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('companies').select('id, name').eq('is_active', true).order('name');
+      if (error) throw error;
+      return data ?? [];
+    },
   });
 
   // Derived filter options
@@ -97,6 +116,34 @@ const Vacaturebank = () => {
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
+  // Selection helpers
+  const allPageSelected = paged.length > 0 && paged.every(j => selectedIds.has(j.id));
+  const someSelected = selectedIds.size > 0;
+
+  const toggleOne = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const togglePage = () => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (allPageSelected) {
+        paged.forEach(j => next.delete(j.id));
+      } else {
+        paged.forEach(j => next.add(j.id));
+      }
+      return next;
+    });
+  };
+
+  const selectAllFiltered = () => {
+    setSelectedIds(new Set(filtered.map(j => j.id)));
+  };
+
   // Import mutation
   const importMutation = useMutation({
     mutationFn: async () => {
@@ -119,6 +166,42 @@ const Vacaturebank = () => {
       setImportOpen(false);
     },
     onError: (e: any) => toast.error(e.message || 'Import mislukt'),
+  });
+
+  // Convert to vacancies mutation
+  const convertMutation = useMutation({
+    mutationFn: async () => {
+      const selectedJobs = jobs.filter(j => selectedIds.has(j.id));
+      const payloads = selectedJobs.map(job => ({
+        organization_id: organizationId,
+        company_id: convertCompanyId,
+        title: job.title,
+        description: job.description_text || null,
+        location: [job.city, job.country].filter(Boolean).join(', ') || null,
+        required_skills: job.ai_key_skills?.length ? job.ai_key_skills : null,
+        required_count: 1,
+        urgency: 3,
+        notes: [
+          job.organization_name && `Bron bedrijf: ${job.organization_name}`,
+          job.url && `Originele vacature: ${job.url}`,
+          job.source && `ATS: ${job.source}`,
+          job.work_arrangement && `Werkmodel: ${job.work_arrangement}`,
+        ].filter(Boolean).join('\n'),
+        created_by: user?.id ?? null,
+      }));
+
+      const { error } = await supabase.from('vacancies').insert(payloads);
+      if (error) throw error;
+      return payloads.length;
+    },
+    onSuccess: (count) => {
+      toast.success(`${count} vacature${count !== 1 ? 's' : ''} aangemaakt`);
+      queryClient.invalidateQueries({ queryKey: ['vacancies'] });
+      setSelectedIds(new Set());
+      setConvertOpen(false);
+      setConvertCompanyId('');
+    },
+    onError: (e: any) => toast.error(e.message || 'Fout bij aanmaken'),
   });
 
   const toggleArray = (arr: string[], val: string) =>
@@ -307,11 +390,40 @@ const Vacaturebank = () => {
         </Select>
       </div>
 
+      {/* Floating action bar */}
+      {someSelected && (
+        <div className="sticky top-0 z-10 flex items-center gap-3 rounded-lg border bg-card p-3 shadow-md">
+          <span className="text-sm font-medium text-foreground">
+            {selectedIds.size} geselecteerd
+          </span>
+          {selectedIds.size < filtered.length && (
+            <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={selectAllFiltered}>
+              Selecteer alle {filtered.length}
+            </Button>
+          )}
+          <Button variant="ghost" size="sm" className="text-xs" onClick={() => setSelectedIds(new Set())}>
+            Deselecteren
+          </Button>
+          <div className="ml-auto">
+            <Button size="sm" onClick={() => setConvertOpen(true)}>
+              <Plus className="h-4 w-4 mr-1" />
+              Toevoegen aan vacatures
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Table */}
       <div className="rounded-lg border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10">
+                <Checkbox
+                  checked={allPageSelected && paged.length > 0}
+                  onCheckedChange={togglePage}
+                />
+              </TableHead>
               <TableHead>Titel</TableHead>
               <TableHead>Bedrijf</TableHead>
               <TableHead>Locatie</TableHead>
@@ -325,13 +437,13 @@ const Vacaturebank = () => {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                   Laden...
                 </TableCell>
               </TableRow>
             ) : paged.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                   {jobs.length === 0
                     ? 'Nog geen vacatures geïmporteerd. Klik op "Importeren" om te beginnen.'
                     : 'Geen vacatures gevonden met deze filters.'}
@@ -339,7 +451,16 @@ const Vacaturebank = () => {
               </TableRow>
             ) : (
               paged.map(job => (
-                <TableRow key={job.id}>
+                <TableRow
+                  key={job.id}
+                  className={selectedIds.has(job.id) ? 'bg-primary/5' : ''}
+                >
+                  <TableCell>
+                    <Checkbox
+                      checked={selectedIds.has(job.id)}
+                      onCheckedChange={() => toggleOne(job.id)}
+                    />
+                  </TableCell>
                   <TableCell className="font-medium max-w-[250px] truncate">{job.title}</TableCell>
                   <TableCell className="max-w-[150px] truncate">{job.organization_name || '—'}</TableCell>
                   <TableCell className="text-sm">
@@ -397,6 +518,57 @@ const Vacaturebank = () => {
           </div>
         </div>
       )}
+
+      {/* Convert to Vacancies Dialog */}
+      <Dialog open={convertOpen} onOpenChange={setConvertOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Toevoegen aan vacatures</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              {selectedIds.size} vacature{selectedIds.size !== 1 ? 's' : ''} worden aangemaakt onder de geselecteerde opdrachtgever.
+            </p>
+            <div className="space-y-2">
+              <Label>Opdrachtgever *</Label>
+              <Select value={convertCompanyId} onValueChange={setConvertCompanyId}>
+                <SelectTrigger><SelectValue placeholder="Selecteer opdrachtgever" /></SelectTrigger>
+                <SelectContent>
+                  {(companies ?? []).map(c => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="rounded-lg border bg-muted/50 p-3 max-h-48 overflow-y-auto">
+              <p className="text-xs font-medium text-muted-foreground mb-2">Geselecteerde vacatures:</p>
+              <ul className="space-y-1">
+                {jobs.filter(j => selectedIds.has(j.id)).slice(0, 20).map(j => (
+                  <li key={j.id} className="text-sm text-foreground truncate">
+                    • {j.title} {j.organization_name ? `(${j.organization_name})` : ''}
+                  </li>
+                ))}
+                {selectedIds.size > 20 && (
+                  <li className="text-xs text-muted-foreground">...en {selectedIds.size - 20} meer</li>
+                )}
+              </ul>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConvertOpen(false)}>Annuleren</Button>
+            <Button
+              onClick={() => convertMutation.mutate()}
+              disabled={!convertCompanyId || convertMutation.isPending}
+            >
+              {convertMutation.isPending ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Aanmaken...</>
+              ) : (
+                <><Plus className="h-4 w-4 mr-2" /> {selectedIds.size} vacature{selectedIds.size !== 1 ? 's' : ''} aanmaken</>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
