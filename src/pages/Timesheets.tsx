@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from '@/components/ui/table';
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
 import { toast } from 'sonner';
+import { logAudit } from '@/lib/audit';
 import { formatDate } from '@/lib/format';
 import TimesheetEntrySheet from '@/components/timesheets/TimesheetEntrySheet';
 import TimesheetCsvImport from '@/components/timesheets/TimesheetCsvImport';
@@ -136,6 +137,9 @@ const Timesheets = () => {
     onSuccess: (_, { ids, status }) => {
       qc.invalidateQueries({ queryKey: ['timesheets'] });
       setSelected(new Set());
+      for (const id of ids) {
+        logAudit({ action: 'status_change', tableName: 'timesheets', recordId: id, newValues: { status } });
+      }
       toast.success(`${ids.length} uren ${status === 'goedgekeurd' ? 'goedgekeurd' : status === 'afgekeurd' ? 'afgekeurd' : 'bijgewerkt'}`);
     },
     onError: (e: any) => toast.error(e.message),

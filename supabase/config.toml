@@ -29,3 +29,6 @@ verify_jwt = false
 
 [functions.exact-api]
 verify_jwt = false
+
+[functions.check-document-expiry]
+verify_jwt = false

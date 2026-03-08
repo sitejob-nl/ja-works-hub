@@ -1,8 +1,17 @@
 import { useEffect, useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
-import { UserCheck, Briefcase, Home, Clock, CheckCircle2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import {
+  UserCheck, Briefcase, Home, Clock, CheckCircle2,
+  FileWarning, UserX, AlertTriangle, Plus, Pencil, Trash2, RefreshCw,
+} from 'lucide-react';
 import { startOfWeek, endOfWeek, format } from 'date-fns';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { formatDate, formatRelativeTime } from '@/lib/format';
+import { toast } from 'sonner';
 
 interface StatCardProps {
   icon: React.ElementType;
@@ -24,8 +33,36 @@ const StatCard = ({ icon: Icon, label, value, colorClass, bgClass }: StatCardPro
   </div>
 );
 
+// ─── Alert types ───
+interface AlertItem {
+  id: string;
+  severity: 'red' | 'orange';
+  icon: React.ElementType;
+  description: string;
+  category: string;
+  link: string;
+}
+
+const TABLE_LABELS: Record<string, string> = {
+  companies: 'opdrachtgever', candidates: 'kandidaat', employees: 'medewerker',
+  properties: 'pand', units: 'kamer', vacancies: 'vacature', matches: 'match',
+  placements: 'plaatsing', timesheets: 'urenregistratie', vehicles: 'voertuig',
+  housing_assignments: 'huisvesting', communications: 'communicatie',
+  knowledge_base: 'artikel', sick_reports: 'ziekmelding', documents: 'document',
+};
+const ACTION_LABELS: Record<string, string> = {
+  create: 'aangemaakt', update: 'bijgewerkt', delete: 'verwijderd',
+  status_change: 'status gewijzigd', export: 'geëxporteerd', override: 'override uitgevoerd',
+};
+const ACTION_ICONS: Record<string, React.ElementType> = {
+  create: Plus, update: Pencil, delete: Trash2, status_change: RefreshCw,
+  export: RefreshCw, override: AlertTriangle,
+};
+
 const Dashboard = () => {
   const { profile } = useAuth();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [stats, setStats] = useState({
     activeEmployees: 0,
     openVacancies: 0,
@@ -54,7 +91,6 @@ const Dashboard = () => {
       const totalCap = unitRes.data?.reduce((s, u) => s + (u.capacity ?? 0), 0) ?? 0;
       const totalOcc = unitRes.data?.reduce((s, u) => s + (Number(u.current_occupancy) ?? 0), 0) ?? 0;
       const occ = totalCap > 0 ? Math.round((totalOcc / totalCap) * 100) : 0;
-
       const weekHours = tsRes.data?.reduce((s, t) => s + (Number(t.hours) ?? 0), 0) ?? 0;
 
       setStats({
@@ -64,9 +100,183 @@ const Dashboard = () => {
         weeklyHours: Math.round(weekHours),
       });
     };
-
     fetchStats();
   }, []);
+
+  // ─── Signaleringen queries ───
+  const { data: expiringDocs = [] } = useQuery({
+    queryKey: ['alerts-expiring-docs'],
+    queryFn: async () => {
+      const thirtyDaysFromNow = new Date();
+      thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+      const { data, error } = await supabase
+        .from('documents')
+        .select(`id, name, type, status, expiry_date, candidates!documents_candidate_id_fkey(id, first_name, last_name)`)
+        .not('expiry_date', 'is', null)
+        .lte('expiry_date', thirtyDaysFromNow.toISOString().split('T')[0])
+        .in('status', ['geldig', 'verloopt_binnenkort', 'verlopen'] as any[])
+        .order('expiry_date')
+        .limit(10);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const { data: incompleteOnboarding = [] } = useQuery({
+    queryKey: ['alerts-incomplete-onboarding'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('employees')
+        .select(`id, candidates!employees_candidate_id_fkey(first_name, last_name), onboarding_completed, start_date`)
+        .eq('status', 'onboarding' as any)
+        .eq('onboarding_completed', false)
+        .order('start_date')
+        .limit(10);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const { data: overdueRent = [] } = useQuery({
+    queryKey: ['alerts-overdue-rent'],
+    queryFn: async () => {
+      const today = new Date().toISOString().split('T')[0];
+      const { data, error } = await supabase
+        .from('housing_assignments')
+        .select(`
+          id, rent_paid_until,
+          employees!housing_assignments_employee_id_fkey(
+            id,
+            candidates!employees_candidate_id_fkey(first_name, last_name)
+          ),
+          units!housing_assignments_unit_id_fkey(
+            name,
+            properties!units_property_id_fkey(id, name)
+          )
+        `)
+        .eq('status', 'ingecheckt' as any)
+        .not('rent_paid_until', 'is', null)
+        .lt('rent_paid_until', today)
+        .limit(10);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const { data: attentionTimesheets = [] } = useQuery({
+    queryKey: ['alerts-attention-timesheets'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('timesheets')
+        .select(`
+          id, work_date, hours, status,
+          employees!timesheets_employee_id_fkey(
+            candidates!employees_candidate_id_fkey(first_name, last_name)
+          )
+        `)
+        .in('status', ['oranje', 'rood'] as any[])
+        .order('work_date', { ascending: false })
+        .limit(10);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  // ─── Recent activity ───
+  const { data: recentActivity = [] } = useQuery({
+    queryKey: ['recent-activity'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('audit_log')
+        .select(`id, action, table_name, record_id, created_at, profiles!audit_log_user_id_fkey(full_name)`)
+        .order('created_at', { ascending: false })
+        .limit(10);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  // ─── Check expiry mutation ───
+  const checkExpiry = useMutation({
+    mutationFn: async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/check-document-expiry`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session?.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) throw new Error('Controle mislukt');
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['alerts-expiring-docs'] });
+      toast.success(`Controle voltooid: ${data.expired} verlopen, ${data.expiring} bijna verlopen`);
+    },
+    onError: () => toast.error('Verloopdata controle mislukt'),
+  });
+
+  // ─── Build alert list ───
+  const alerts: AlertItem[] = [];
+
+  for (const doc of expiringDocs) {
+    const cand = doc.candidates as any;
+    const isExpired = doc.expiry_date && new Date(doc.expiry_date) < new Date();
+    alerts.push({
+      id: `doc-${doc.id}`,
+      severity: isExpired ? 'red' : 'orange',
+      icon: FileWarning,
+      description: `${doc.name} van ${cand?.first_name} ${cand?.last_name} ${isExpired ? 'is verlopen op' : 'verloopt op'} ${formatDate(doc.expiry_date)}`,
+      category: 'Document',
+      link: `/kandidaten/${cand?.id}`,
+    });
+  }
+
+  for (const emp of incompleteOnboarding) {
+    const cand = (emp as any).candidates;
+    alerts.push({
+      id: `onb-${emp.id}`,
+      severity: 'orange',
+      icon: UserX,
+      description: `${cand?.first_name} ${cand?.last_name} — onboarding niet afgerond (gestart ${formatDate(emp.start_date)})`,
+      category: 'Onboarding',
+      link: `/medewerkers/${emp.id}`,
+    });
+  }
+
+  for (const ha of overdueRent) {
+    const emp = (ha as any).employees;
+    const cand = emp?.candidates;
+    const unit = (ha as any).units;
+    const prop = unit?.properties;
+    alerts.push({
+      id: `rent-${ha.id}`,
+      severity: 'red',
+      icon: Home,
+      description: `${cand?.first_name} ${cand?.last_name} — huur achterstallig voor ${unit?.name ?? '?'} in ${prop?.name ?? '?'} (betaald tot ${formatDate(ha.rent_paid_until)})`,
+      category: 'Huisvesting',
+      link: `/huisvesting/${prop?.id}`,
+    });
+  }
+
+  for (const ts of attentionTimesheets) {
+    const emp = (ts as any).employees;
+    const cand = emp?.candidates;
+    alerts.push({
+      id: `ts-${ts.id}`,
+      severity: ts.status === 'rood' ? 'red' : 'orange',
+      icon: AlertTriangle,
+      description: `${cand?.first_name} ${cand?.last_name} — ${Number(ts.hours).toFixed(1)}u op ${formatDate(ts.work_date)} vereist controle (${ts.status})`,
+      category: 'Uren',
+      link: '/uren',
+    });
+  }
+
+  // Sort: red first, then orange
+  alerts.sort((a, b) => (a.severity === 'red' && b.severity !== 'red' ? -1 : a.severity !== 'red' && b.severity === 'red' ? 1 : 0));
+  const visibleAlerts = alerts.slice(0, 15);
 
   return (
     <div>
@@ -75,50 +285,98 @@ const Dashboard = () => {
 
       {/* Stat cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <StatCard
-          icon={UserCheck}
-          label="Actieve medewerkers"
-          value={stats.activeEmployees}
-          colorClass="text-stat-blue"
-          bgClass="bg-stat-blue/10"
-        />
-        <StatCard
-          icon={Briefcase}
-          label="Openstaande vacatures"
-          value={stats.openVacancies}
-          colorClass="text-stat-orange"
-          bgClass="bg-stat-orange/10"
-        />
-        <StatCard
-          icon={Home}
-          label="Bezettingsgraad"
-          value={stats.occupancyRate}
-          colorClass="text-stat-green"
-          bgClass="bg-stat-green/10"
-        />
-        <StatCard
-          icon={Clock}
-          label="Uren deze week"
-          value={stats.weeklyHours}
-          colorClass="text-stat-purple"
-          bgClass="bg-stat-purple/10"
-        />
+        <StatCard icon={UserCheck} label="Actieve medewerkers" value={stats.activeEmployees} colorClass="text-stat-blue" bgClass="bg-stat-blue/10" />
+        <StatCard icon={Briefcase} label="Openstaande vacatures" value={stats.openVacancies} colorClass="text-stat-orange" bgClass="bg-stat-orange/10" />
+        <StatCard icon={Home} label="Bezettingsgraad" value={stats.occupancyRate} colorClass="text-stat-green" bgClass="bg-stat-green/10" />
+        <StatCard icon={Clock} label="Uren deze week" value={stats.weeklyHours} colorClass="text-stat-purple" bgClass="bg-stat-purple/10" />
       </div>
 
       {/* Two columns */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Aandacht vereist */}
         <div className="bg-card rounded-lg p-5 shadow-sm border border-border">
-          <h2 className="text-sm font-semibold mb-4">Aandacht vereist</h2>
-          <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-            <CheckCircle2 className="h-8 w-8 mb-2 text-stat-green" />
-            <p className="text-sm">Geen openstaande acties</p>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-semibold">Aandacht vereist</h2>
+              {alerts.length > 0 && (
+                <Badge variant="destructive" className="text-xs">{alerts.length}</Badge>
+              )}
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => checkExpiry.mutate()}
+              disabled={checkExpiry.isPending}
+              className="text-xs gap-1"
+            >
+              <RefreshCw className={`h-3 w-3 ${checkExpiry.isPending ? 'animate-spin' : ''}`} />
+              Verloopdata controleren
+            </Button>
           </div>
+
+          {visibleAlerts.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+              <CheckCircle2 className="h-8 w-8 mb-2 text-stat-green" />
+              <p className="text-sm">Geen openstaande acties</p>
+            </div>
+          ) : (
+            <div className="space-y-2 max-h-[400px] overflow-y-auto">
+              {visibleAlerts.map((alert) => {
+                const IconComp = alert.icon;
+                const isRed = alert.severity === 'red';
+                return (
+                  <button
+                    key={alert.id}
+                    onClick={() => navigate(alert.link)}
+                    className="w-full flex items-start gap-3 p-3 rounded-lg hover:bg-muted/50 transition-colors text-left"
+                  >
+                    <div className={`h-8 w-8 rounded-lg flex items-center justify-center shrink-0 ${isRed ? 'bg-destructive/10' : 'bg-orange-100'}`}>
+                      <IconComp className={`h-4 w-4 ${isRed ? 'text-destructive' : 'text-orange-600'}`} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm leading-tight">{alert.description}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{alert.category}</p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
+
+        {/* Recente activiteit */}
         <div className="bg-card rounded-lg p-5 shadow-sm border border-border">
           <h2 className="text-sm font-semibold mb-4">Recente activiteit</h2>
-          <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-            <p className="text-sm">Nog geen activiteit</p>
-          </div>
+          {recentActivity.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+              <p className="text-sm">Nog geen activiteit</p>
+            </div>
+          ) : (
+            <div className="space-y-2 max-h-[400px] overflow-y-auto">
+              {recentActivity.map((entry: any) => {
+                const ActionIcon = ACTION_ICONS[entry.action] ?? RefreshCw;
+                const tableName = TABLE_LABELS[entry.table_name] ?? entry.table_name;
+                const actionLabel = ACTION_LABELS[entry.action] ?? entry.action;
+                const userName = entry.profiles?.full_name ?? 'Systeem';
+
+                return (
+                  <div key={entry.id} className="flex items-start gap-3 p-3 rounded-lg">
+                    <div className="h-8 w-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                      <ActionIcon className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm leading-tight">
+                        <span className="font-medium">{userName}</span> heeft een {tableName} {actionLabel}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {formatRelativeTime(entry.created_at)}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -19,6 +19,9 @@ import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { formatDate, formatEUR } from '@/lib/format';
 import { useNavigate } from 'react-router-dom';
+import { logAudit } from '@/lib/audit';
+import { checkCompliance } from '@/hooks/useComplianceCheck';
+import ComplianceWarningDialog from '@/components/ComplianceWarningDialog';
 
 const PAGE_SIZE = 20;
 
@@ -404,11 +407,13 @@ const NewPlacementSheet = ({ open, onClose, orgId, userId }: { open: boolean; on
   const [selectedEmployee, setSelectedEmployee] = useState<any>(null);
   const [empSearch, setEmpSearch] = useState('');
   const [form, setForm] = useState({ company_id: '', function_name: '', start_date: '', end_date: '', hourly_rate: '', overtime_rate: '' });
+  const [complianceIssues, setComplianceIssues] = useState<string[]>([]);
+  const [showComplianceWarning, setShowComplianceWarning] = useState(false);
 
   const { data: employees } = useQuery({
     queryKey: ['employees-active-planning'],
     queryFn: async () => {
-      const { data, error } = await supabase.from('employees').select('id, status, candidates!employees_candidate_id_fkey(first_name, last_name)').eq('status', 'actief' as any).order('created_at', { ascending: false });
+      const { data, error } = await supabase.from('employees').select('id, candidate_id, status, candidates!employees_candidate_id_fkey(first_name, last_name)').eq('status', 'actief' as any).order('created_at', { ascending: false });
       if (error) throw error;
       return data ?? [];
     },
@@ -435,26 +440,63 @@ const NewPlacementSheet = ({ open, onClose, orgId, userId }: { open: boolean; on
     });
   }, [employees, empSearch]);
 
+  const executePlacement = async (isOverride: boolean) => {
+    const candidateId = selectedEmployee.candidate_id;
+    const compliance = await checkCompliance(candidateId);
+
+    if (!compliance.passed && !isOverride) {
+      setComplianceIssues(compliance.issues);
+      setShowComplianceWarning(true);
+      return;
+    }
+
+    const { data: placement, error } = await supabase.from('placements').insert({
+      organization_id: orgId,
+      employee_id: selectedEmployee.id,
+      company_id: form.company_id,
+      function_name: form.function_name,
+      start_date: form.start_date,
+      end_date: form.end_date || null,
+      hourly_rate: parseFloat(form.hourly_rate),
+      overtime_rate: form.overtime_rate ? parseFloat(form.overtime_rate) : null,
+      status: 'actief' as any,
+      created_by: userId ?? null,
+      compliance_check_passed: compliance.passed,
+      compliance_check_at: new Date().toISOString(),
+      compliance_override: isOverride,
+      compliance_override_by: isOverride ? userId ?? null : null,
+      compliance_override_reason: isOverride ? compliance.issues.join(', ') : null,
+    }).select('id').single();
+    if (error) throw error;
+
+    logAudit({
+      action: isOverride ? 'override' : 'create',
+      tableName: 'placements',
+      recordId: placement?.id ?? 'unknown',
+      newValues: { ...form, compliance_passed: compliance.passed, override: isOverride },
+      reason: isOverride ? `Compliance override: ${compliance.issues.join(', ')}` : undefined,
+    });
+  };
+
   const mutation = useMutation({
-    mutationFn: async () => {
-      const { error } = await supabase.from('placements').insert({
-        organization_id: orgId,
-        employee_id: selectedEmployee.id,
-        company_id: form.company_id,
-        function_name: form.function_name,
-        start_date: form.start_date,
-        end_date: form.end_date || null,
-        hourly_rate: parseFloat(form.hourly_rate),
-        overtime_rate: form.overtime_rate ? parseFloat(form.overtime_rate) : null,
-        status: 'actief' as any,
-        created_by: userId ?? null,
-      });
-      if (error) throw error;
-    },
+    mutationFn: () => executePlacement(false),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['planning-placements'] });
       qc.invalidateQueries({ queryKey: ['placements'] });
       toast.success('Plaatsing aangemaakt');
+      resetAndClose();
+    },
+    onError: (e: any) => {
+      if (!showComplianceWarning) toast.error(e.message);
+    },
+  });
+
+  const overrideMutation = useMutation({
+    mutationFn: () => executePlacement(true),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['planning-placements'] });
+      qc.invalidateQueries({ queryKey: ['placements'] });
+      toast.success('Plaatsing aangemaakt (compliance override)');
       resetAndClose();
     },
     onError: (e: any) => toast.error(e.message),
@@ -471,6 +513,7 @@ const NewPlacementSheet = ({ open, onClose, orgId, userId }: { open: boolean; on
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
   return (
+    <>
     <Sheet open={open} onOpenChange={(o) => !o && resetAndClose()}>
       <SheetContent className="sm:max-w-md overflow-y-auto">
         <SheetHeader>
@@ -531,6 +574,14 @@ const NewPlacementSheet = ({ open, onClose, orgId, userId }: { open: boolean; on
         </div>
       </SheetContent>
     </Sheet>
+
+    <ComplianceWarningDialog
+      open={showComplianceWarning}
+      onOpenChange={setShowComplianceWarning}
+      issues={complianceIssues}
+      onOverride={() => overrideMutation.mutate()}
+    />
+    </>
   );
 };
 

@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
+import { logAudit } from '@/lib/audit';
 
 interface Props {
   open: boolean;
@@ -47,6 +48,12 @@ const CompanySlideOver = ({ open, onOpenChange, company }: Props) => {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['companies'] });
+      logAudit({
+        action: isEdit ? 'update' : 'create',
+        tableName: 'companies',
+        recordId: company?.id ?? 'new',
+        newValues: form,
+      });
       toast.success(isEdit ? 'Opdrachtgever bijgewerkt' : 'Opdrachtgever aangemaakt');
       onOpenChange(false);
     },

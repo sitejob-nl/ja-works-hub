@@ -12,6 +12,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Plus, Check, X, Search } from 'lucide-react';
 import { formatDate, formatEUR } from '@/lib/format';
 import { toast } from 'sonner';
+import { logAudit } from '@/lib/audit';
 
 const ResidentsTab = ({ property }: { property: any }) => {
   const orgId = useOrganizationId();
@@ -79,6 +80,12 @@ const ResidentsTab = ({ property }: { property: any }) => {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['property', property.id] });
+      logAudit({
+        action: 'create',
+        tableName: 'housing_assignments',
+        recordId: selectedEmployee?.id ?? 'new',
+        newValues: { unit: selectedUnit?.name, employee: `${selectedEmployee?.candidates?.first_name} ${selectedEmployee?.candidates?.last_name}`, ...form },
+      });
       toast.success('Bewoner toegewezen');
       resetAssign();
     },
@@ -92,8 +99,14 @@ const ResidentsTab = ({ property }: { property: any }) => {
       const { error } = await supabase.from('housing_assignments').update(update).eq('id', assignmentId);
       if (error) throw error;
     },
-    onSuccess: () => {
+    onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ['property', property.id] });
+      logAudit({
+        action: 'status_change',
+        tableName: 'housing_assignments',
+        recordId: vars.assignmentId,
+        newValues: { status: vars.status },
+      });
       toast.success('Status bijgewerkt');
     },
     onError: (e: any) => toast.error(e.message),

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { formatDate } from '@/lib/format';
 import { toast } from 'sonner';
+import { logAudit } from '@/lib/audit';
 
 interface CheckItem {
   label: string;
@@ -79,6 +80,12 @@ const EmployeeOnboardingTab = ({ employee }: { employee: any }) => {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['employee', employee.id] });
       qc.invalidateQueries({ queryKey: ['employees'] });
+      logAudit({
+        action: 'status_change',
+        tableName: 'employees',
+        recordId: employee.id,
+        newValues: { onboarding_completed: true, status: 'actief' },
+      });
       toast.success('Onboarding afgerond');
     },
   });

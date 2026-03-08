@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Search } from 'lucide-react';
 import { toast } from 'sonner';
+import { logAudit } from '@/lib/audit';
 
 const complianceBadge: Record<string, string> = {
   compleet: 'bg-stat-green/10 text-stat-green border-0',
@@ -76,6 +77,12 @@ const HireEmployeeSheet = ({ open, onOpenChange }: Props) => {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['employees'] });
       qc.invalidateQueries({ queryKey: ['candidates'] });
+      logAudit({
+        action: 'create',
+        tableName: 'employees',
+        recordId: selectedCandidate.id,
+        newValues: { ...form, candidate: `${selectedCandidate.first_name} ${selectedCandidate.last_name}` },
+      });
       toast.success('Medewerker aangemaakt');
       resetAndClose();
     },

@@ -12,6 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Plus } from 'lucide-react';
 import { formatDate } from '@/lib/format';
 import { toast } from 'sonner';
+import { logAudit } from '@/lib/audit';
 
 const EmployeeSickTab = ({ employeeId, employee }: { employeeId: string; employee: any }) => {
   const orgId = useOrganizationId();
@@ -49,6 +50,12 @@ const EmployeeSickTab = ({ employeeId, employee }: { employeeId: string; employe
       qc.invalidateQueries({ queryKey: ['sick-reports', employeeId] });
       qc.invalidateQueries({ queryKey: ['employee', employeeId] });
       qc.invalidateQueries({ queryKey: ['employees'] });
+      logAudit({
+        action: 'create',
+        tableName: 'sick_reports',
+        recordId: employeeId,
+        newValues: form,
+      });
       setAdding(false);
       setForm({ expected_return_date: '', notes: '' });
       toast.success('Ziekmelding geregistreerd');
@@ -65,10 +72,16 @@ const EmployeeSickTab = ({ employeeId, employee }: { employeeId: string; employe
       const { error: e2 } = await supabase.from('employees').update({ status: 'actief' as const }).eq('id', employeeId);
       if (e2) throw e2;
     },
-    onSuccess: () => {
+    onSuccess: (_, reportId) => {
       qc.invalidateQueries({ queryKey: ['sick-reports', employeeId] });
       qc.invalidateQueries({ queryKey: ['employee', employeeId] });
       qc.invalidateQueries({ queryKey: ['employees'] });
+      logAudit({
+        action: 'status_change',
+        tableName: 'sick_reports',
+        recordId: reportId,
+        newValues: { actual_return_date: new Date().toISOString().split('T')[0], status: 'actief' },
+      });
       toast.success('Herstelmelding verwerkt');
     },
   });

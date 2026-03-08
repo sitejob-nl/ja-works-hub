@@ -11,6 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import TagInput from '@/components/ui/tag-input';
 import { toast } from 'sonner';
+import { logAudit } from '@/lib/audit';
 
 interface Props {
   open: boolean;
@@ -97,6 +98,12 @@ const CandidateSlideOver = ({ open, onOpenChange, candidate }: Props) => {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['candidates'] });
       if (isEdit) qc.invalidateQueries({ queryKey: ['candidate', candidate.id] });
+      logAudit({
+        action: isEdit ? 'update' : 'create',
+        tableName: 'candidates',
+        recordId: candidate?.id ?? 'new',
+        newValues: form,
+      });
       toast.success(isEdit ? 'Kandidaat bijgewerkt' : 'Kandidaat aangemaakt');
       onOpenChange(false);
     },
