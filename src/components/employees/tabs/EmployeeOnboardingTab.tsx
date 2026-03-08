@@ -80,6 +80,12 @@ const EmployeeOnboardingTab = ({ employee }: { employee: any }) => {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['employee', employee.id] });
       qc.invalidateQueries({ queryKey: ['employees'] });
+      logAudit({
+        action: 'status_change',
+        tableName: 'employees',
+        recordId: employee.id,
+        newValues: { onboarding_completed: true, status: 'actief' },
+      });
       toast.success('Onboarding afgerond');
     },
   });

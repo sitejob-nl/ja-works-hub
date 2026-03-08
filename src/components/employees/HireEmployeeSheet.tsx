@@ -77,6 +77,12 @@ const HireEmployeeSheet = ({ open, onOpenChange }: Props) => {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['employees'] });
       qc.invalidateQueries({ queryKey: ['candidates'] });
+      logAudit({
+        action: 'create',
+        tableName: 'employees',
+        recordId: selectedCandidate.id,
+        newValues: { ...form, candidate: `${selectedCandidate.first_name} ${selectedCandidate.last_name}` },
+      });
       toast.success('Medewerker aangemaakt');
       resetAndClose();
     },

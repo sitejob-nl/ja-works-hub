@@ -72,10 +72,16 @@ const EmployeeSickTab = ({ employeeId, employee }: { employeeId: string; employe
       const { error: e2 } = await supabase.from('employees').update({ status: 'actief' as const }).eq('id', employeeId);
       if (e2) throw e2;
     },
-    onSuccess: () => {
+    onSuccess: (_, reportId) => {
       qc.invalidateQueries({ queryKey: ['sick-reports', employeeId] });
       qc.invalidateQueries({ queryKey: ['employee', employeeId] });
       qc.invalidateQueries({ queryKey: ['employees'] });
+      logAudit({
+        action: 'status_change',
+        tableName: 'sick_reports',
+        recordId: reportId,
+        newValues: { actual_return_date: new Date().toISOString().split('T')[0], status: 'actief' },
+      });
       toast.success('Herstelmelding verwerkt');
     },
   });

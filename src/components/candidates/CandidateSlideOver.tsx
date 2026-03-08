@@ -98,6 +98,12 @@ const CandidateSlideOver = ({ open, onOpenChange, candidate }: Props) => {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['candidates'] });
       if (isEdit) qc.invalidateQueries({ queryKey: ['candidate', candidate.id] });
+      logAudit({
+        action: isEdit ? 'update' : 'create',
+        tableName: 'candidates',
+        recordId: candidate?.id ?? 'new',
+        newValues: form,
+      });
       toast.success(isEdit ? 'Kandidaat bijgewerkt' : 'Kandidaat aangemaakt');
       onOpenChange(false);
     },

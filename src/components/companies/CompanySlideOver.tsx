@@ -48,6 +48,12 @@ const CompanySlideOver = ({ open, onOpenChange, company }: Props) => {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['companies'] });
+      logAudit({
+        action: isEdit ? 'update' : 'create',
+        tableName: 'companies',
+        recordId: company?.id ?? 'new',
+        newValues: form,
+      });
       toast.success(isEdit ? 'Opdrachtgever bijgewerkt' : 'Opdrachtgever aangemaakt');
       onOpenChange(false);
     },
