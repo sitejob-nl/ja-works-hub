@@ -50,7 +50,6 @@ Deno.serve(async (req) => {
 
     const userId = claimsData.claims.sub;
 
-    // Get organization_id from profile
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("organization_id")
@@ -72,29 +71,88 @@ Deno.serve(async (req) => {
     const {
       timeRange = "7d",
       limit = 100,
+      // Search arrays
+      titleSearch,
+      titleExclusionSearch,
       locationSearch,
-      aiTaxonomiesFilter,
+      locationExclusionSearch,
+      descriptionSearch,
+      descriptionExclusionSearch,
+      organizationSearch,
+      organizationExclusionSearch,
+      // Domain filters
+      domainFilter,
+      domainExclusionFilter,
+      // ATS
       ats,
+      atsExclusionFilter,
+      // AI filters
+      aiTaxonomiesFilter,
+      aiTaxonomiesPrimaryFilter,
+      aiTaxonomiesExclusionFilter,
       aiWorkArrangementFilter,
+      aiEmploymentTypeFilter,
+      aiExperienceLevelFilter,
+      aiHasSalary,
+      aiVisaSponsorshipFilter,
+      // LinkedIn filters
+      liIndustryFilter,
+      liOrganizationEmployeesLte,
+      liOrganizationEmployeesGte,
+      // Other
+      removeAgency,
+      includeAi = true,
+      includeLinkedIn = true,
     } = body;
 
     // Build Apify input
     const apifyInput: Record<string, unknown> = {
       timeRange,
       limit: Math.min(Math.max(limit, 10), 5000),
-      includeAi: true,
-      includeLinkedIn: true,
+      includeAi,
+      includeLinkedIn,
       descriptionType: "text",
       populateAiRemoteLocation: false,
       populateAiRemoteLocationDerived: false,
     };
 
-    if (locationSearch?.length) apifyInput.locationSearch = locationSearch;
-    if (aiTaxonomiesFilter?.length)
-      apifyInput.aiTaxonomiesFilter = aiTaxonomiesFilter;
-    if (ats?.length) apifyInput.ats = ats;
-    if (aiWorkArrangementFilter?.length)
-      apifyInput.aiWorkArrangementFilter = aiWorkArrangementFilter;
+    // Array filters — only add if non-empty
+    const arrayFields: [string, unknown][] = [
+      ["titleSearch", titleSearch],
+      ["titleExclusionSearch", titleExclusionSearch],
+      ["locationSearch", locationSearch],
+      ["locationExclusionSearch", locationExclusionSearch],
+      ["descriptionSearch", descriptionSearch],
+      ["descriptionExclusionSearch", descriptionExclusionSearch],
+      ["organizationSearch", organizationSearch],
+      ["organizationExclusionSearch", organizationExclusionSearch],
+      ["domainFilter", domainFilter],
+      ["domainExclusionFilter", domainExclusionFilter],
+      ["ats", ats],
+      ["atsExclusionFilter", atsExclusionFilter],
+      ["aiTaxonomiesFilter", aiTaxonomiesFilter],
+      ["aiTaxonomiesPrimaryFilter", aiTaxonomiesPrimaryFilter],
+      ["aiTaxonomiesExclusionFilter", aiTaxonomiesExclusionFilter],
+      ["aiWorkArrangementFilter", aiWorkArrangementFilter],
+      ["aiEmploymentTypeFilter", aiEmploymentTypeFilter],
+      ["aiExperienceLevelFilter", aiExperienceLevelFilter],
+      ["liIndustryFilter", liIndustryFilter],
+    ];
+
+    for (const [key, value] of arrayFields) {
+      if (Array.isArray(value) && value.length > 0) {
+        apifyInput[key] = value;
+      }
+    }
+
+    // Boolean filters
+    if (typeof aiHasSalary === "boolean") apifyInput.aiHasSalary = aiHasSalary;
+    if (typeof aiVisaSponsorshipFilter === "boolean") apifyInput.aiVisaSponsorshipFilter = aiVisaSponsorshipFilter;
+    if (typeof removeAgency === "boolean") apifyInput.removeAgency = removeAgency;
+
+    // LinkedIn company size
+    if (typeof liOrganizationEmployeesLte === "number") apifyInput.liOrganizationEmployeesLte = liOrganizationEmployeesLte;
+    if (typeof liOrganizationEmployeesGte === "number") apifyInput.liOrganizationEmployeesGte = liOrganizationEmployeesGte;
 
     // Call Apify API
     const apifyUrl = `https://api.apify.com/v2/acts/fantastic-jobs~career-site-job-listing-api/run-sync-get-dataset-items?token=${apifyToken}`;
@@ -137,7 +195,6 @@ Deno.serve(async (req) => {
 
     let newCount = 0;
 
-    // Upsert jobs in batches of 50
     for (let i = 0; i < jobs.length; i += 50) {
       const batch = jobs.slice(i, i + 50);
       const rows = batch.map((job: Record<string, unknown>) => ({
@@ -185,7 +242,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Log the import
     await adminClient.from("job_import_logs").insert({
       organization_id: organizationId,
       total_jobs: jobs.length,
