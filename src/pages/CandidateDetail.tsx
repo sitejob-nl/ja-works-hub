@@ -44,6 +44,7 @@ const allStatuses: CandidateStatus[] = ['nieuw', 'in_behandeling', 'beschikbaar'
 const CandidateDetail = () => {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [editOpen, setEditOpen] = useState(false);
 
   const { data: candidate, isLoading } = useQuery({
