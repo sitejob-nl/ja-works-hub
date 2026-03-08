@@ -26,7 +26,7 @@ Deno.serve(async (req) => {
 
     if (!apifyToken) {
       return new Response(
-        JSON.stringify({ error: "APIFY_API_TOKEN is not configured" }),
+        JSON.stringify({ error: "APIFY_API_KEY is not configured" }),
         {
           status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
