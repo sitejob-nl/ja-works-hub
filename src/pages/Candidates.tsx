@@ -52,8 +52,8 @@ const Candidates = () => {
       if (search) {
         query = query.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,address_city.ilike.%${search}%,email.ilike.%${search}%`);
       }
-      if (statusFilter !== 'all') query = query.eq('status', statusFilter);
-      if (complianceFilter !== 'all') query = query.eq('compliance_status', complianceFilter);
+      if (statusFilter !== 'all') query = query.eq('status', statusFilter as any);
+      if (complianceFilter !== 'all') query = query.eq('compliance_status', complianceFilter as any);
 
       query = query.order('created_at', { ascending: false }).range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
 
