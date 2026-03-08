@@ -36,7 +36,7 @@ import Vacaturebank from "@/pages/Vacaturebank";
 import KandidatenZoeken from "@/pages/KandidatenZoeken";
 import Communications from "@/pages/Communications";
 import KnowledgeBasePage from "@/pages/KnowledgeBase";
-import { Calendar } from "lucide-react";
+
 
 const queryClient = new QueryClient();
 
