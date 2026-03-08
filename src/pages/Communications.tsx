@@ -14,8 +14,10 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Plus, MessageSquare, Mail, Phone, StickyNote, MessageCircle, Search, Loader2 } from 'lucide-react';
+import { Plus, MessageSquare, Mail, Phone, StickyNote, MessageCircle, Search, Loader2, Send } from 'lucide-react';
 import type { Database } from '@/integrations/supabase/types';
+
+const VITE_SUPABASE_PROJECT_ID = import.meta.env.VITE_SUPABASE_PROJECT_ID;
 
 type CommunicationChannel = Database['public']['Enums']['communication_channel'];
 
