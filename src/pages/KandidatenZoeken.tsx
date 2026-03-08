@@ -471,7 +471,11 @@ const KandidatenZoeken = () => {
       {/* Results */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {displayResults.map((result: Record<string, unknown>, i: number) => (
-          <Card key={(result.external_id as string) || i} className="overflow-hidden">
+          <Card
+            key={(result.external_id as string) || i}
+            className="overflow-hidden cursor-pointer hover:shadow-md transition-shadow"
+            onClick={() => setDetailResult(result)}
+          >
             <CardContent className="p-4 space-y-3">
               <div className="flex items-start gap-3">
                 {result.image_url ? (
@@ -518,6 +522,7 @@ const KandidatenZoeken = () => {
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                    onClick={(e) => e.stopPropagation()}
                   >
                     <ExternalLink className="h-3 w-3" />
                     Profiel
@@ -528,7 +533,7 @@ const KandidatenZoeken = () => {
                   variant="outline"
                   size="sm"
                   className="ml-auto text-xs h-7"
-                  onClick={() => openConvertDialog(result)}
+                  onClick={(e) => { e.stopPropagation(); openConvertDialog(result); }}
                 >
                   <UserPlus className="h-3 w-3 mr-1" />
                   Kandidaat maken
