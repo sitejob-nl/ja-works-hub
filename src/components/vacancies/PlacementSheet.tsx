@@ -220,14 +220,11 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
   const overrideMutation = useMutation({
     mutationFn: () => executePlacement(true),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['vacancy-matches'] });
-      qc.invalidateQueries({ queryKey: ['vacancy-placements'] });
-      qc.invalidateQueries({ queryKey: ['vacancy', vacancy.id] });
-      qc.invalidateQueries({ queryKey: ['vacancies'] });
-      qc.invalidateQueries({ queryKey: ['employees'] });
-      qc.invalidateQueries({ queryKey: ['candidates'] });
-      toast.success('Plaatsing aangemaakt (compliance override)');
-      onClose();
+      invalidateAll();
+      if (!placementDone) {
+        toast.success('Plaatsing aangemaakt (compliance override)');
+        onClose();
+      }
     },
     onError: (e: any) => toast.error(e.message),
   });
