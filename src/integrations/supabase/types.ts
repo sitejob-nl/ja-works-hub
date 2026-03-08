@@ -169,6 +169,56 @@ export type Database = {
           },
         ]
       }
+      client_errors: {
+        Row: {
+          component_stack: string | null
+          created_at: string | null
+          error_message: string
+          id: string
+          metadata: Json | null
+          organization_id: string | null
+          stack_trace: string | null
+          url: string | null
+          user_agent: string | null
+          user_email: string | null
+          user_id: string | null
+        }
+        Insert: {
+          component_stack?: string | null
+          created_at?: string | null
+          error_message: string
+          id?: string
+          metadata?: Json | null
+          organization_id?: string | null
+          stack_trace?: string | null
+          url?: string | null
+          user_agent?: string | null
+          user_email?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          component_stack?: string | null
+          created_at?: string | null
+          error_message?: string
+          id?: string
+          metadata?: Json | null
+          organization_id?: string | null
+          stack_trace?: string | null
+          url?: string | null
+          user_agent?: string | null
+          user_email?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_errors_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       communications: {
         Row: {
           body: string | null
@@ -1033,6 +1083,35 @@ export type Database = {
           },
         ]
       }
+      organization_modules: {
+        Row: {
+          enabled: boolean | null
+          id: string
+          module_name: string
+          organization_id: string
+        }
+        Insert: {
+          enabled?: boolean | null
+          id?: string
+          module_name: string
+          organization_id: string
+        }
+        Update: {
+          enabled?: boolean | null
+          id?: string
+          module_name?: string
+          organization_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organization_modules_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organizations: {
         Row: {
           address_city: string | null
@@ -1047,6 +1126,7 @@ export type Database = {
           logo_url: string | null
           name: string
           phone: string | null
+          plan_id: string | null
           settings: Json | null
           slug: string
           updated_at: string
@@ -1065,6 +1145,7 @@ export type Database = {
           logo_url?: string | null
           name: string
           phone?: string | null
+          plan_id?: string | null
           settings?: Json | null
           slug: string
           updated_at?: string
@@ -1083,12 +1164,21 @@ export type Database = {
           logo_url?: string | null
           name?: string
           phone?: string | null
+          plan_id?: string | null
           settings?: Json | null
           slug?: string
           updated_at?: string
           website?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "organizations_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "subscription_plans"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       placements: {
         Row: {
@@ -1489,6 +1579,54 @@ export type Database = {
             referencedColumns: ["placement_id"]
           },
         ]
+      }
+      subscription_plans: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          is_default: boolean | null
+          modules: string[]
+          name: string
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_default?: boolean | null
+          modules?: string[]
+          name: string
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_default?: boolean | null
+          modules?: string[]
+          name?: string
+        }
+        Relationships: []
+      }
+      superadmins: {
+        Row: {
+          created_at: string | null
+          email: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          email: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          email?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       timesheets: {
         Row: {
@@ -2036,6 +2174,79 @@ export type Database = {
       get_user_role: {
         Args: never
         Returns: Database["public"]["Enums"]["user_role"]
+      }
+      is_superadmin: { Args: never; Returns: boolean }
+      sa_get_audit_log: {
+        Args: { p_limit?: number; p_offset?: number }
+        Returns: {
+          action: Database["public"]["Enums"]["audit_action"]
+          created_at: string
+          id: string
+          ip_address: string
+          new_values: Json
+          old_values: Json
+          organization_id: string
+          reason: string
+          record_id: string
+          table_name: string
+          user_id: string
+        }[]
+      }
+      sa_get_org_stats: {
+        Args: { org_uuid: string }
+        Returns: {
+          candidates_count: number
+          companies_count: number
+          employees_count: number
+          placements_count: number
+          properties_count: number
+          vehicles_count: number
+        }[]
+      }
+      sa_get_organizations: {
+        Args: never
+        Returns: {
+          address_city: string
+          address_postal: string
+          address_street: string
+          btw_number: string
+          created_at: string
+          email: string
+          id: string
+          is_active: boolean
+          kvk_number: string
+          logo_url: string
+          name: string
+          phone: string
+          plan_id: string
+          settings: Json
+          slug: string
+          updated_at: string
+          website: string
+        }[]
+      }
+      sa_get_profiles: {
+        Args: never
+        Returns: {
+          avatar_url: string
+          created_at: string
+          email: string
+          full_name: string
+          id: string
+          is_active: boolean
+          organization_id: string
+          phone: string
+          role: Database["public"]["Enums"]["user_role"]
+          updated_at: string
+        }[]
+      }
+      sa_update_org_active: {
+        Args: { active: boolean; org_uuid: string }
+        Returns: undefined
+      }
+      sa_update_org_plan: {
+        Args: { new_plan_id: string; org_uuid: string }
+        Returns: undefined
       }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }

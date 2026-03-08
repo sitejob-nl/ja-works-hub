@@ -3,9 +3,18 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { SuperAdminProvider } from "@/contexts/SuperAdminContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import AppLayout from "@/components/layout/AppLayout";
+import SuperAdminLayout from "@/components/layout/SuperAdminLayout";
 import Login from "@/pages/Login";
+import SuperAdminLogin from "@/pages/SuperAdminLogin";
+import SuperAdminDashboard from "@/pages/superadmin/SuperAdminDashboard";
+import SuperAdminOrganizations from "@/pages/superadmin/SuperAdminOrganizations";
+import SuperAdminUsers from "@/pages/superadmin/SuperAdminUsers";
+import SuperAdminPlans from "@/pages/superadmin/SuperAdminPlans";
+import SuperAdminErrors from "@/pages/superadmin/SuperAdminErrors";
 import Dashboard from "@/pages/Dashboard";
 import NotFound from "./pages/NotFound";
 import ShellPage from "@/components/ShellPage";
@@ -24,27 +33,43 @@ import Timesheets from "@/pages/Timesheets";
 import Transport from "@/pages/Transport";
 import VehicleDetail from "@/pages/VehicleDetail";
 import {
-  Building2, Users, UserCheck, Home, Briefcase,
-  Calendar, Clock, Car, MessageSquare, BookOpen, Settings,
+  Calendar, MessageSquare, BookOpen,
 } from "lucide-react";
 
 const queryClient = new QueryClient();
 
 const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <BrowserRouter>
-        <AuthProvider>
+  <ErrorBoundary>
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <Toaster />
+        <BrowserRouter>
           <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route
-              element={
+            {/* Superadmin routes */}
+            <Route path="/superadmin/login" element={
+              <SuperAdminProvider><SuperAdminLogin /></SuperAdminProvider>
+            } />
+            <Route path="/superadmin" element={
+              <SuperAdminProvider><SuperAdminLayout /></SuperAdminProvider>
+            }>
+              <Route index element={<SuperAdminDashboard />} />
+              <Route path="organisaties" element={<SuperAdminOrganizations />} />
+              <Route path="gebruikers" element={<SuperAdminUsers />} />
+              <Route path="abonnementen" element={<SuperAdminPlans />} />
+              <Route path="errors" element={<SuperAdminErrors />} />
+            </Route>
+
+            {/* Normal app routes */}
+            <Route path="/login" element={
+              <AuthProvider><Login /></AuthProvider>
+            } />
+            <Route element={
+              <AuthProvider>
                 <ProtectedRoute>
                   <AppLayout />
                 </ProtectedRoute>
-              }
-            >
+              </AuthProvider>
+            }>
               <Route path="/" element={<Dashboard />} />
               <Route path="/opdrachtgevers" element={<Companies />} />
               <Route path="/opdrachtgevers/:id" element={<CompanyDetail />} />
@@ -66,10 +91,10 @@ const App = () => (
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
-        </AuthProvider>
-      </BrowserRouter>
-    </TooltipProvider>
-  </QueryClientProvider>
+        </BrowserRouter>
+      </TooltipProvider>
+    </QueryClientProvider>
+  </ErrorBoundary>
 );
 
 export default App;
