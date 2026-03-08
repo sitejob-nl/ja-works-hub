@@ -54,10 +54,12 @@ Deno.serve(async (req) => {
     const {
       query,
       userLocation = "NL",
-      numResults = 10,
+      numResults = 20,
       includeText = false,
       highlightsQuery,
       maxCharacters = 2000,
+      numSentences = 3,
+      highlightsPerUrl = 3,
     } = await req.json();
 
     if (!query || typeof query !== "string") {
@@ -80,7 +82,7 @@ Deno.serve(async (req) => {
       query,
       type: "neural",
       category: "person",
-      numResults: Math.min(Math.max(numResults, 1), 100),
+      numResults: Math.min(Math.max(numResults, 5), 100),
       useAutoprompt: true,
     };
 
@@ -89,13 +91,13 @@ Deno.serve(async (req) => {
     // Contents config
     const contents: Record<string, unknown> = {};
     if (includeText) {
-      contents.text = { maxCharacters };
+      contents.text = { maxCharacters: Math.min(Math.max(maxCharacters, 100), 10000) };
     }
     if (highlightsQuery) {
       contents.highlights = {
         query: highlightsQuery,
-        numSentences: 3,
-        highlightsPerUrl: 3,
+        numSentences: Math.min(Math.max(numSentences, 1), 10),
+        highlightsPerUrl: Math.min(Math.max(highlightsPerUrl, 1), 10),
       };
     }
     if (Object.keys(contents).length > 0) {
