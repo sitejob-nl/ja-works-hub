@@ -332,7 +332,7 @@ const KandidatenZoeken = () => {
               <Select value={numResults} onValueChange={setNumResults}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {['10', '25', '50', '100'].map((n) => (
+                  {['10', '20', '25', '50', '100'].map((n) => (
                     <SelectItem key={n} value={n}>{n}</SelectItem>
                   ))}
                 </SelectContent>
@@ -343,6 +343,57 @@ const KandidatenZoeken = () => {
               <Switch checked={includeText} onCheckedChange={setIncludeText} />
               <Label className="text-sm">Profieltekst ophalen</Label>
             </div>
+
+            {includeText && (
+              <div className="space-y-2">
+                <Label>Max tekens per profiel</Label>
+                <Input
+                  type="number"
+                  min={100}
+                  max={10000}
+                  value={maxCharacters}
+                  onChange={(e) => setMaxCharacters(e.target.value)}
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Highlights settings */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label>Highlights query</Label>
+              <Input
+                placeholder="bijv. machine learning"
+                value={highlightsQuery}
+                onChange={(e) => setHighlightsQuery(e.target.value)}
+              />
+            </div>
+            {highlightsQuery.trim() && (
+              <>
+                <div className="space-y-2">
+                  <Label>Zinnen per highlight</Label>
+                  <Select value={numSentences} onValueChange={setNumSentences}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {['1', '2', '3', '5', '10'].map((n) => (
+                        <SelectItem key={n} value={n}>{n}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Highlights per resultaat</Label>
+                  <Select value={highlightsPerUrl} onValueChange={setHighlightsPerUrl}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {['1', '2', '3', '5', '10'].map((n) => (
+                        <SelectItem key={n} value={n}>{n}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Advanced: show generated query */}
