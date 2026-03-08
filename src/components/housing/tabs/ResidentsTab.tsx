@@ -12,6 +12,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Plus, Check, X, Search } from 'lucide-react';
 import { formatDate, formatEUR } from '@/lib/format';
 import { toast } from 'sonner';
+import { logAudit } from '@/lib/audit';
 
 const ResidentsTab = ({ property }: { property: any }) => {
   const orgId = useOrganizationId();
