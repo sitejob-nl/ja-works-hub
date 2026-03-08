@@ -249,11 +249,26 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
               <div><Label>Einddatum</Label><Input type="date" value={form.end_date} onChange={(e) => set('end_date', e.target.value)} /></div>
               <div><Label>Uurtarief (€) *</Label><Input type="number" step="0.01" value={form.hourly_rate} onChange={(e) => set('hourly_rate', e.target.value)} /></div>
               <div><Label>Overwerktarief (€)</Label><Input type="number" step="0.01" value={form.overtime_rate} onChange={(e) => set('overtime_rate', e.target.value)} /></div>
+              {placementDone && housingSuggestions.length > 0 && lastPlacementData && (
+                <HousingSuggestionsCard
+                  suggestions={housingSuggestions}
+                  employeeId={lastPlacementData.employeeId}
+                  startDate={form.start_date}
+                  onAssigned={() => {
+                    qc.invalidateQueries({ queryKey: ['housing'] });
+                  }}
+                />
+              )}
+
               <div className="flex justify-end gap-3 pt-4">
-                <Button variant="ghost" onClick={onClose}>Annuleren</Button>
-                <Button onClick={() => mutation.mutate()} disabled={!form.function_name || !form.start_date || !form.hourly_rate || mutation.isPending}>
-                  {mutation.isPending ? 'Aanmaken...' : 'Plaatsing aanmaken'}
+                <Button variant="ghost" onClick={onClose}>
+                  {placementDone ? 'Sluiten' : 'Annuleren'}
                 </Button>
+                {!placementDone && (
+                  <Button onClick={() => mutation.mutate()} disabled={!form.function_name || !form.start_date || !form.hourly_rate || mutation.isPending}>
+                    {mutation.isPending ? 'Aanmaken...' : 'Plaatsing aanmaken'}
+                  </Button>
+                )}
               </div>
             </div>
           )}
