@@ -1,7 +1,10 @@
 import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
+
+type AuditAction = Database['public']['Enums']['audit_action'];
 
 export const logAudit = async (params: {
-  action: 'create' | 'update' | 'delete' | 'status_change' | 'override';
+  action: AuditAction;
   tableName: string;
   recordId: string;
   oldValues?: Record<string, unknown>;
@@ -21,11 +24,11 @@ export const logAudit = async (params: {
     await supabase.from('audit_log').insert({
       organization_id: profile.organization_id,
       user_id: session?.user?.id ?? null,
-      action: params.action as any,
+      action: params.action,
       table_name: params.tableName,
       record_id: params.recordId,
-      old_values: params.oldValues ?? null,
-      new_values: params.newValues ?? null,
+      old_values: (params.oldValues as any) ?? null,
+      new_values: (params.newValues as any) ?? null,
       reason: params.reason ?? null,
     });
   } catch {
