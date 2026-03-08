@@ -126,7 +126,12 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-4">
       <div className="lg:col-span-2 space-y-4">
-        <h3 className="font-semibold">Match pipeline</h3>
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold">Match pipeline</h3>
+          <Button variant="outline" size="sm" onClick={() => rescoreMutation.mutate()} disabled={rescoreMutation.isPending || !(matches?.length)}>
+            <Sparkles className="h-3 w-3 mr-1" /> {rescoreMutation.isPending ? 'Berekenen...' : 'Herbereken scores'}
+          </Button>
+        </div>
         {Object.entries(grouped).map(([status, items]) => (
           <Card key={status}>
             <CardHeader className="py-3 px-4">
