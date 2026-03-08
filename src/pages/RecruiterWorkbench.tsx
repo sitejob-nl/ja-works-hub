@@ -267,7 +267,7 @@ const RecruiterWorkbench = () => {
               <div
                 key={task.id}
                 className={`bg-card rounded-lg border p-4 flex items-start gap-3 transition-colors ${
-                  task.status === 'in_progress' ? 'border-primary/40 bg-primary/5' : ''
+                  task.status === 'in_progress' ? 'border-primary/40 bg-primary/[0.05]' : ''
                 }`}
               >
                 {/* Priority icon */}
