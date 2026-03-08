@@ -77,9 +77,17 @@ const Candidates = () => {
           <h1 className="text-2xl font-semibold">Kandidaten</h1>
           <p className="text-muted-foreground text-sm mt-1">Overzicht van alle kandidaten</p>
         </div>
-        <Button onClick={() => setSlideOverOpen(true)} className="gap-2">
-          <Plus className="h-4 w-4" /> Nieuwe kandidaat
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => { setImportPreset(null); setImportOpen(true); }} className="gap-2">
+            <Upload className="h-4 w-4" /> Importeren
+          </Button>
+          <Button variant="outline" onClick={() => { setImportPreset('buddy'); setImportOpen(true); }} className="gap-2">
+            <Upload className="h-4 w-4" /> Buddy import
+          </Button>
+          <Button onClick={() => setSlideOverOpen(true)} className="gap-2">
+            <Plus className="h-4 w-4" /> Nieuwe kandidaat
+          </Button>
+        </div>
       </div>
 
       <div className="flex items-center gap-3 flex-wrap">
