@@ -91,6 +91,7 @@ const App = () => (
               <Route path="/vacaturebank" element={<Vacaturebank />} />
               <Route path="/kandidaten-zoeken" element={<KandidatenZoeken />} />
               <Route path="/communicatie" element={<Communications />} />
+              <Route path="/whatsapp" element={<WhatsAppPage />} />
               <Route path="/kennisbank" element={<KnowledgeBasePage />} />
               <Route path="/instellingen" element={<SettingsPage />} />
             </Route>
