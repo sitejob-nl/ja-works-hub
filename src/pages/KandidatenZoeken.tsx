@@ -557,7 +557,128 @@ const KandidatenZoeken = () => {
         </div>
       )}
 
-      {/* Convert to Candidate Dialog */}
+      {/* Detail Slide-Over */}
+      <Sheet open={!!detailResult} onOpenChange={(open) => { if (!open) setDetailResult(null); }}>
+        <SheetContent className="overflow-y-auto sm:max-w-lg">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-3">
+              {detailResult?.image_url ? (
+                <img src={detailResult.image_url as string} alt="" className="h-10 w-10 rounded-full object-cover shrink-0" />
+              ) : (
+                <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center shrink-0">
+                  <UserSearch className="h-5 w-5 text-muted-foreground" />
+                </div>
+              )}
+              <span>{(detailResult?.name as string) || 'Onbekend'}</span>
+            </SheetTitle>
+          </SheetHeader>
+          {detailResult && (
+            <div className="space-y-6 mt-6">
+              {/* Title / Headline */}
+              {detailResult.title && (
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground mb-1">Titel</p>
+                  <p className="text-sm text-foreground">{detailResult.title as string}</p>
+                </div>
+              )}
+
+              {/* Profile link */}
+              {detailResult.url && (
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground mb-1">Profiel</p>
+                  <a
+                    href={detailResult.url as string}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline break-all"
+                  >
+                    <Link className="h-3.5 w-3.5 shrink-0" />
+                    {detailResult.url as string}
+                  </a>
+                </div>
+              )}
+
+              <Separator />
+
+              {/* Published date */}
+              {detailResult.published_date && (
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground mb-1">Profiel bijgewerkt</p>
+                  <p className="text-sm text-foreground flex items-center gap-1.5">
+                    <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                    {formatDate(detailResult.published_date as string)}
+                  </p>
+                </div>
+              )}
+
+              {/* Search query */}
+              {detailResult.search_query && (
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground mb-1">Gevonden met zoekopdracht</p>
+                  <Badge variant="secondary">{detailResult.search_query as string}</Badge>
+                </div>
+              )}
+
+              {/* Highlights */}
+              {detailResult.highlights && (detailResult.highlights as string[]).length > 0 && (
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground mb-2">Highlights</p>
+                  <div className="space-y-2">
+                    {(detailResult.highlights as string[]).map((h, j) => {
+                      const scores = detailResult.highlight_scores as number[] | null;
+                      const score = scores?.[j];
+                      return (
+                        <div key={j} className="bg-muted/50 rounded-md p-3 text-sm text-foreground">
+                          <p>{h}</p>
+                          {score != null && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Relevantie: {(score * 100).toFixed(0)}%
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Full text content */}
+              {detailResult.text_content && (
+                <div>
+                  <Separator className="mb-4" />
+                  <p className="text-sm font-medium text-muted-foreground mb-2">Profieltekst</p>
+                  <div className="text-sm text-foreground whitespace-pre-wrap bg-muted/30 rounded-md p-4 max-h-[400px] overflow-y-auto">
+                    {detailResult.text_content as string}
+                  </div>
+                </div>
+              )}
+
+              <Separator />
+
+              {/* Actions */}
+              <div className="flex gap-2">
+                {detailResult.url && (
+                  <Button variant="outline" size="sm" asChild>
+                    <a href={detailResult.url as string} target="_blank" rel="noopener noreferrer">
+                      <ExternalLink className="h-4 w-4 mr-1.5" />
+                      Open profiel
+                    </a>
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  onClick={() => { openConvertDialog(detailResult); setDetailResult(null); }}
+                >
+                  <UserPlus className="h-4 w-4 mr-1.5" />
+                  Kandidaat maken
+                </Button>
+              </div>
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
+
+
       <Dialog open={!!convertDialog} onOpenChange={(open) => !open && setConvertDialog(null)}>
         <DialogContent>
           <DialogHeader>
