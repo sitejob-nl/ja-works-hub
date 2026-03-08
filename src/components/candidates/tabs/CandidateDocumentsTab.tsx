@@ -1,0 +1,150 @@
+import { useState, useRef } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { useOrganizationId } from '@/hooks/useOrganizationId';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Plus, CreditCard, Car, Award, FileText, FileCheck, File } from 'lucide-react';
+import { formatDate } from '@/lib/format';
+import { toast } from 'sonner';
+import type { Database } from '@/integrations/supabase/types';
+
+type DocType = Database['public']['Enums']['document_type'];
+
+const typeIcons: Record<DocType, any> = {
+  id_bewijs: CreditCard, rijbewijs: Car, certificaat: Award,
+  contract: FileText, reglement: FileCheck, overig: File,
+};
+
+const typeLabels: Record<DocType, string> = {
+  id_bewijs: 'ID Bewijs', rijbewijs: 'Rijbewijs', certificaat: 'Certificaat',
+  contract: 'Contract', reglement: 'Reglement', overig: 'Overig',
+};
+
+const statusBadge: Record<string, string> = {
+  geldig: 'bg-stat-green/10 text-stat-green border-0',
+  verloopt_binnenkort: 'bg-orange-100 text-orange-600 border-0',
+  verlopen: 'bg-red-100 text-red-600 border-0',
+  ongeldig: 'bg-muted text-muted-foreground border-0',
+};
+
+const CandidateDocumentsTab = ({ candidateId }: { candidateId: string }) => {
+  const orgId = useOrganizationId();
+  const qc = useQueryClient();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [adding, setAdding] = useState(false);
+  const [form, setForm] = useState({ type: 'overig' as DocType, name: '', issued_date: '', expiry_date: '', notes: '' });
+  const [file, setFile] = useState<File | null>(null);
+
+  const { data: docs = [] } = useQuery({
+    queryKey: ['documents', candidateId],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('documents').select('*').eq('candidate_id', candidateId).order('created_at', { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const add = useMutation({
+    mutationFn: async () => {
+      let filePath: string | null = null;
+      if (file) {
+        const ext = file.name.split('.').pop();
+        const path = `${orgId}/${candidateId}/${crypto.randomUUID()}.${ext}`;
+        const { error: uploadErr } = await supabase.storage.from('documents').upload(path, file);
+        if (uploadErr) throw uploadErr;
+        filePath = path;
+      }
+      const { error } = await supabase.from('documents').insert({
+        organization_id: orgId,
+        candidate_id: candidateId,
+        type: form.type,
+        name: form.name,
+        issued_date: form.issued_date || null,
+        expiry_date: form.expiry_date || null,
+        notes: form.notes || null,
+        file_path: filePath,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['documents', candidateId] });
+      setAdding(false);
+      setForm({ type: 'overig', name: '', issued_date: '', expiry_date: '', notes: '' });
+      setFile(null);
+      toast.success('Document geüpload');
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-between items-center">
+        <h3 className="font-medium">Documenten</h3>
+        <Button size="sm" variant="outline" onClick={() => setAdding(true)} className="gap-1"><Plus className="h-3.5 w-3.5" />Nieuw document</Button>
+      </div>
+
+      <Sheet open={adding} onOpenChange={setAdding}>
+        <SheetContent className="sm:max-w-md overflow-y-auto">
+          <SheetHeader><SheetTitle>Nieuw document</SheetTitle></SheetHeader>
+          <div className="space-y-4 mt-6">
+            <div>
+              <Label>Type</Label>
+              <Select value={form.type} onValueChange={(v) => setForm(f => ({ ...f, type: v as DocType }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {(Object.keys(typeLabels) as DocType[]).map(t => <SelectItem key={t} value={t}>{typeLabels[t]}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div><Label>Naam</Label><Input value={form.name} onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))} /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>Uitgiftedatum</Label><Input type="date" value={form.issued_date} onChange={(e) => setForm(f => ({ ...f, issued_date: e.target.value }))} /></div>
+              <div><Label>Verloopdatum</Label><Input type="date" value={form.expiry_date} onChange={(e) => setForm(f => ({ ...f, expiry_date: e.target.value }))} /></div>
+            </div>
+            <div>
+              <Label>Bestand</Label>
+              <Input ref={fileRef} type="file" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+            </div>
+            <div><Label>Notities</Label><Textarea value={form.notes} onChange={(e) => setForm(f => ({ ...f, notes: e.target.value }))} rows={3} /></div>
+            <div className="flex justify-end gap-3 pt-4">
+              <Button variant="ghost" onClick={() => setAdding(false)}>Annuleren</Button>
+              <Button onClick={() => add.mutate()} disabled={!form.name || add.isPending}>{add.isPending ? 'Uploaden...' : 'Opslaan'}</Button>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {docs.map((d: any) => {
+          const Icon = typeIcons[d.type as DocType] ?? File;
+          return (
+            <div key={d.id} className="bg-card rounded-lg border p-4 flex gap-3">
+              <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                <Icon className="h-5 w-5 text-muted-foreground" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium">{d.name}</p>
+                <p className="text-xs text-muted-foreground">{typeLabels[d.type as DocType] ?? d.type}</p>
+                <div className="flex items-center gap-2 mt-1.5">
+                  <Badge variant="secondary" className={`text-xs ${statusBadge[d.status] ?? ''}`}>{d.status}</Badge>
+                  {d.ai_verification_result && <Badge variant="outline" className="text-xs">AI geverifieerd</Badge>}
+                </div>
+                {d.expiry_date && <p className="text-xs text-muted-foreground mt-1">Verloopt: {formatDate(d.expiry_date)}</p>}
+                <p className="text-xs text-muted-foreground">Geüpload: {formatDate(d.created_at)}</p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {docs.length === 0 && <p className="text-center text-muted-foreground py-8">Nog geen documenten</p>}
+    </div>
+  );
+};
+
+export default CandidateDocumentsTab;
