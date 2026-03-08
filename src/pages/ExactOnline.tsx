@@ -329,7 +329,10 @@ function CreateItemDialog({ open, onOpenChange, onSuccess }: { open: boolean; on
 // ─── Main Page ───
 export default function ExactOnlinePage() {
   return (
-    <ShellPage title="Exact Online" description="Beheer relaties, facturen en artikelen">
+    <div>
+      <h1 className="text-2xl font-semibold mb-1">Exact Online</h1>
+      <p className="text-sm text-muted-foreground mb-6">Beheer relaties, facturen en artikelen</p>
+
       <Tabs defaultValue="accounts" className="space-y-4">
         <TabsList>
           <TabsTrigger value="accounts" className="gap-1.5">
@@ -347,6 +350,6 @@ export default function ExactOnlinePage() {
         <TabsContent value="invoices"><InvoicesTab /></TabsContent>
         <TabsContent value="items"><ItemsTab /></TabsContent>
       </Tabs>
-    </ShellPage>
+    </div>
   );
 }
