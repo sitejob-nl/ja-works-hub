@@ -33,6 +33,7 @@ import Timesheets from "@/pages/Timesheets";
 import Transport from "@/pages/Transport";
 import VehicleDetail from "@/pages/VehicleDetail";
 import Vacaturebank from "@/pages/Vacaturebank";
+import KandidatenZoeken from "@/pages/KandidatenZoeken";
 import {
   Calendar, MessageSquare, BookOpen,
 } from "lucide-react";
