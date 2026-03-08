@@ -145,6 +145,49 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
       newValues: { ...form, compliance_passed: compliance.passed, override: isOverride },
       reason: isOverride ? `Compliance override: ${compliance.issues.join(', ')}` : undefined,
     });
+
+    // === POST-PLACEMENT TRIGGERS ===
+    const candidate = match?.candidates as any;
+
+    // 1. Generate timesheet templates
+    try {
+      const count = await generateTimesheetTemplates({
+        placementId: placement.id,
+        employeeId,
+        companyId,
+        organizationId: orgId,
+        startDate: form.start_date,
+        functionName: form.function_name,
+        hourlyRate: parseFloat(form.hourly_rate),
+      });
+      if (count > 0) toast.info(`${count} uren-templates aangemaakt`);
+    } catch { /* non-blocking */ }
+
+    // 2. Get housing suggestions
+    try {
+      const suggestions = await getHousingSuggestions(orgId, companyId);
+      if (suggestions.length > 0) {
+        setHousingSuggestions(suggestions);
+        setLastPlacementData({ employeeId, placementId: placement.id });
+        setPlacementDone(true);
+        return; // Keep sheet open to show housing suggestions
+      }
+    } catch { /* non-blocking */ }
+
+    // 3. Send WhatsApp confirmation
+    try {
+      await sendPlacementWhatsApp({
+        placementId: placement.id,
+        employeeId,
+        companyId,
+        organizationId: orgId,
+        startDate: form.start_date,
+        functionName: form.function_name,
+        hourlyRate: parseFloat(form.hourly_rate),
+        candidatePhone: candidate?.phone,
+        candidateName: candidate?.first_name,
+      });
+    } catch { /* non-blocking */ }
   };
 
   const mutation = useMutation({
