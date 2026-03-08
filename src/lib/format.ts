@@ -1,4 +1,4 @@
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, formatDistanceToNow } from 'date-fns';
 import { nl } from 'date-fns/locale';
 
 export const formatDate = (date: string | null | undefined): string => {
@@ -14,6 +14,15 @@ export const formatDateTime = (date: string | null | undefined): string => {
   if (!date) return '—';
   try {
     return format(parseISO(date), 'dd-MM-yyyy HH:mm', { locale: nl });
+  } catch {
+    return '—';
+  }
+};
+
+export const formatRelativeTime = (date: string | null | undefined): string => {
+  if (!date) return '—';
+  try {
+    return formatDistanceToNow(parseISO(date), { addSuffix: true, locale: nl });
   } catch {
     return '—';
   }
