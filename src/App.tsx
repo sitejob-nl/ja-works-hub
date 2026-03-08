@@ -50,7 +50,8 @@ const App = () => (
               <Route path="/medewerkers/:id" element={<EmployeeDetail />} />
               <Route path="/huisvesting" element={<Housing />} />
               <Route path="/huisvesting/:id" element={<PropertyDetail />} />
-              <Route path="/vacatures" element={<ShellPage title="Vacatures" subtitle="Openstaande en vervulde vacatures" icon={Briefcase} />} />
+              <Route path="/vacatures" element={<Vacancies />} />
+              <Route path="/vacatures/:id" element={<VacancyDetail />} />
               <Route path="/planning" element={<ShellPage title="Planning" subtitle="Plan en beheer de inzet van medewerkers" icon={Calendar} />} />
               <Route path="/uren" element={<ShellPage title="Uren" subtitle="Urenregistratie en goedkeuring" icon={Clock} />} />
               <Route path="/transport" element={<ShellPage title="Transport" subtitle="Voertuigen, toewijzingen en kilometerregistratie" icon={Car} />} />
