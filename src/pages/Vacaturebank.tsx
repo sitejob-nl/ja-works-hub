@@ -8,12 +8,16 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Separator } from '@/components/ui/separator';
+import TagInput from '@/components/ui/tag-input';
 import { toast } from 'sonner';
-import { Search, Download, ExternalLink, Globe, Building2, Briefcase, MapPin, Loader2, Plus } from 'lucide-react';
+import { Search, Download, ExternalLink, Globe, Building2, Briefcase, MapPin, Loader2, Plus, ChevronDown } from 'lucide-react';
 import { format } from 'date-fns';
 import { nl } from 'date-fns/locale';
 
@@ -32,6 +36,10 @@ const TAXONOMY_OPTIONS = [
 
 const WORK_ARRANGEMENTS = ['On-site', 'Hybrid', 'Remote OK', 'Remote Solely'];
 
+const EMPLOYMENT_TYPES = ['Full-time', 'Part-time', 'Contract', 'Internship', 'Temporary'];
+
+const EXPERIENCE_LEVELS = ['Internship', 'Entry level', 'Associate', 'Mid-Senior level', 'Director', 'Executive'];
+
 const PAGE_SIZE = 25;
 
 const Vacaturebank = () => {
@@ -43,10 +51,43 @@ const Vacaturebank = () => {
   const [importOpen, setImportOpen] = useState(false);
   const [importTimeRange, setImportTimeRange] = useState('7d');
   const [importLimit, setImportLimit] = useState('100');
-  const [importLocation, setImportLocation] = useState('');
+
+  // Search filters
+  const [importTitleSearch, setImportTitleSearch] = useState<string[]>([]);
+  const [importTitleExclusion, setImportTitleExclusion] = useState<string[]>([]);
+  const [importLocationSearch, setImportLocationSearch] = useState<string[]>([]);
+  const [importLocationExclusion, setImportLocationExclusion] = useState<string[]>([]);
+  const [importDescriptionSearch, setImportDescriptionSearch] = useState<string[]>([]);
+  const [importDescriptionExclusion, setImportDescriptionExclusion] = useState<string[]>([]);
+  const [importOrgSearch, setImportOrgSearch] = useState<string[]>([]);
+  const [importOrgExclusion, setImportOrgExclusion] = useState<string[]>([]);
+  const [importDomainFilter, setImportDomainFilter] = useState<string[]>([]);
+  const [importDomainExclusion, setImportDomainExclusion] = useState<string[]>([]);
+
+  // ATS
   const [importAts, setImportAts] = useState<string[]>([]);
+  const [importAtsExclusion, setImportAtsExclusion] = useState<string[]>([]);
+
+  // AI filters
   const [importTaxonomy, setImportTaxonomy] = useState<string[]>([]);
+  const [importTaxonomyPrimary, setImportTaxonomyPrimary] = useState<string[]>([]);
+  const [importTaxonomyExclusion, setImportTaxonomyExclusion] = useState<string[]>([]);
   const [importWorkArr, setImportWorkArr] = useState<string[]>([]);
+  const [importEmploymentType, setImportEmploymentType] = useState<string[]>([]);
+  const [importExperienceLevel, setImportExperienceLevel] = useState<string[]>([]);
+  const [importHasSalary, setImportHasSalary] = useState(false);
+  const [importVisaSponsorship, setImportVisaSponsorship] = useState(false);
+
+  // LinkedIn filters
+  const [importLinkedInIndustry, setImportLinkedInIndustry] = useState<string[]>([]);
+  const [importMinEmployees, setImportMinEmployees] = useState('');
+  const [importMaxEmployees, setImportMaxEmployees] = useState('');
+
+  // Other
+  const [importRemoveAgency, setImportRemoveAgency] = useState(false);
+
+  // Advanced sections
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Filter state
   const [search, setSearch] = useState('');
@@ -151,10 +192,40 @@ const Vacaturebank = () => {
         timeRange: importTimeRange,
         limit: parseInt(importLimit) || 100,
       };
-      if (importLocation.trim()) body.locationSearch = importLocation.split(',').map(s => s.trim());
+
+      // Search arrays
+      if (importTitleSearch.length) body.titleSearch = importTitleSearch;
+      if (importTitleExclusion.length) body.titleExclusionSearch = importTitleExclusion;
+      if (importLocationSearch.length) body.locationSearch = importLocationSearch;
+      if (importLocationExclusion.length) body.locationExclusionSearch = importLocationExclusion;
+      if (importDescriptionSearch.length) body.descriptionSearch = importDescriptionSearch;
+      if (importDescriptionExclusion.length) body.descriptionExclusionSearch = importDescriptionExclusion;
+      if (importOrgSearch.length) body.organizationSearch = importOrgSearch;
+      if (importOrgExclusion.length) body.organizationExclusionSearch = importOrgExclusion;
+      if (importDomainFilter.length) body.domainFilter = importDomainFilter;
+      if (importDomainExclusion.length) body.domainExclusionFilter = importDomainExclusion;
+
+      // ATS
       if (importAts.length) body.ats = importAts;
+      if (importAtsExclusion.length) body.atsExclusionFilter = importAtsExclusion;
+
+      // AI filters
       if (importTaxonomy.length) body.aiTaxonomiesFilter = importTaxonomy;
+      if (importTaxonomyPrimary.length) body.aiTaxonomiesPrimaryFilter = importTaxonomyPrimary;
+      if (importTaxonomyExclusion.length) body.aiTaxonomiesExclusionFilter = importTaxonomyExclusion;
       if (importWorkArr.length) body.aiWorkArrangementFilter = importWorkArr;
+      if (importEmploymentType.length) body.aiEmploymentTypeFilter = importEmploymentType;
+      if (importExperienceLevel.length) body.aiExperienceLevelFilter = importExperienceLevel;
+      if (importHasSalary) body.aiHasSalary = true;
+      if (importVisaSponsorship) body.aiVisaSponsorshipFilter = true;
+
+      // LinkedIn
+      if (importLinkedInIndustry.length) body.liIndustryFilter = importLinkedInIndustry;
+      if (importMinEmployees) body.liOrganizationEmployeesGte = parseInt(importMinEmployees);
+      if (importMaxEmployees) body.liOrganizationEmployeesLte = parseInt(importMaxEmployees);
+
+      // Other
+      if (importRemoveAgency) body.removeAgency = true;
 
       const { data, error } = await supabase.functions.invoke('apify-job-import', { body });
       if (error) throw error;
@@ -219,44 +290,60 @@ const Vacaturebank = () => {
           <SheetTrigger asChild>
             <Button><Download className="h-4 w-4 mr-2" /> Importeren</Button>
           </SheetTrigger>
-          <SheetContent className="overflow-y-auto">
+          <SheetContent className="overflow-y-auto sm:max-w-lg">
             <SheetHeader>
               <SheetTitle>Vacatures importeren</SheetTitle>
             </SheetHeader>
             <div className="mt-6 space-y-5">
-              <div>
-                <Label>Tijdsperiode</Label>
-                <Select value={importTimeRange} onValueChange={setImportTimeRange}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1h">Laatste uur</SelectItem>
-                    <SelectItem value="24h">Laatste 24 uur</SelectItem>
-                    <SelectItem value="7d">Laatste 7 dagen</SelectItem>
-                    <SelectItem value="6m">Backfill (6 maanden)</SelectItem>
-                  </SelectContent>
-                </Select>
+              {/* Basic settings */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Tijdsperiode</Label>
+                  <Select value={importTimeRange} onValueChange={setImportTimeRange}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1h">Laatste uur</SelectItem>
+                      <SelectItem value="24h">Laatste 24 uur</SelectItem>
+                      <SelectItem value="7d">Laatste 7 dagen</SelectItem>
+                      <SelectItem value="6m">Backfill (6 maanden)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Max vacatures</Label>
+                  <Input
+                    type="number"
+                    min={10}
+                    max={5000}
+                    value={importLimit}
+                    onChange={e => setImportLimit(e.target.value)}
+                  />
+                </div>
               </div>
 
+              {/* Title search */}
               <div>
-                <Label>Max aantal vacatures</Label>
-                <Input
-                  type="number"
-                  min={10}
-                  max={5000}
-                  value={importLimit}
-                  onChange={e => setImportLimit(e.target.value)}
+                <Label>Titel zoeken</Label>
+                <TagInput
+                  value={importTitleSearch}
+                  onChange={setImportTitleSearch}
+                  placeholder="bijv. Software Engineer + Enter"
                 />
+                <p className="text-[10px] text-muted-foreground mt-1">Gebruik :* voor prefix matching (bijv. Soft:*)</p>
               </div>
 
+              {/* Location search */}
               <div>
-                <Label>Locatie zoeken (kommagescheiden)</Label>
-                <Input
-                  placeholder="Netherlands, Germany, Belgium"
-                  value={importLocation}
-                  onChange={e => setImportLocation(e.target.value)}
+                <Label>Locatie zoeken</Label>
+                <TagInput
+                  value={importLocationSearch}
+                  onChange={setImportLocationSearch}
+                  placeholder="bijv. Netherlands, Amsterdam + Enter"
                 />
+                <p className="text-[10px] text-muted-foreground mt-1">Gebruik Engels: Netherlands, Germany, Belgium. Formaat: City, State, Country</p>
               </div>
 
+              {/* ATS */}
               <div>
                 <Label className="mb-2 block">ATS Platform</Label>
                 <div className="flex flex-wrap gap-1.5">
@@ -264,7 +351,7 @@ const Vacaturebank = () => {
                     <Badge
                       key={a}
                       variant={importAts.includes(a) ? 'default' : 'outline'}
-                      className="cursor-pointer capitalize"
+                      className="cursor-pointer capitalize text-xs"
                       onClick={() => setImportAts(prev => toggleArray(prev, a))}
                     >
                       {a}
@@ -273,6 +360,7 @@ const Vacaturebank = () => {
                 </div>
               </div>
 
+              {/* Branche */}
               <div>
                 <Label className="mb-2 block">Branche / Taxonomie</Label>
                 <div className="flex flex-wrap gap-1.5">
@@ -280,7 +368,7 @@ const Vacaturebank = () => {
                     <Badge
                       key={t}
                       variant={importTaxonomy.includes(t) ? 'default' : 'outline'}
-                      className="cursor-pointer"
+                      className="cursor-pointer text-xs"
                       onClick={() => setImportTaxonomy(prev => toggleArray(prev, t))}
                     >
                       {t}
@@ -289,6 +377,7 @@ const Vacaturebank = () => {
                 </div>
               </div>
 
+              {/* Work arrangement */}
               <div>
                 <Label className="mb-2 block">Werkarrangement</Label>
                 <div className="flex flex-wrap gap-1.5">
@@ -296,7 +385,7 @@ const Vacaturebank = () => {
                     <Badge
                       key={w}
                       variant={importWorkArr.includes(w) ? 'default' : 'outline'}
-                      className="cursor-pointer"
+                      className="cursor-pointer text-xs"
                       onClick={() => setImportWorkArr(prev => toggleArray(prev, w))}
                     >
                       {w}
@@ -304,6 +393,177 @@ const Vacaturebank = () => {
                   ))}
                 </div>
               </div>
+
+              {/* Employment type */}
+              <div>
+                <Label className="mb-2 block">Dienstverband</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {EMPLOYMENT_TYPES.map(t => (
+                    <Badge
+                      key={t}
+                      variant={importEmploymentType.includes(t) ? 'default' : 'outline'}
+                      className="cursor-pointer text-xs"
+                      onClick={() => setImportEmploymentType(prev => toggleArray(prev, t))}
+                    >
+                      {t}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+
+              {/* Experience level */}
+              <div>
+                <Label className="mb-2 block">Ervaringsniveau</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {EXPERIENCE_LEVELS.map(l => (
+                    <Badge
+                      key={l}
+                      variant={importExperienceLevel.includes(l) ? 'default' : 'outline'}
+                      className="cursor-pointer text-xs"
+                      onClick={() => setImportExperienceLevel(prev => toggleArray(prev, l))}
+                    >
+                      {l}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+
+              {/* Toggle filters */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm">Alleen met salarisinformatie</Label>
+                  <Switch checked={importHasSalary} onCheckedChange={setImportHasSalary} />
+                </div>
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm">Visum sponsoring</Label>
+                  <Switch checked={importVisaSponsorship} onCheckedChange={setImportVisaSponsorship} />
+                </div>
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm">Uitzendbureaus uitsluiten</Label>
+                  <Switch checked={importRemoveAgency} onCheckedChange={setImportRemoveAgency} />
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Advanced / Exclusion filters */}
+              <Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>
+                <CollapsibleTrigger asChild>
+                  <Button variant="ghost" size="sm" className="gap-1 w-full justify-between text-muted-foreground">
+                    Geavanceerde filters
+                    <ChevronDown className={`h-4 w-4 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} />
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="space-y-4 pt-3">
+                  <div>
+                    <Label>Titel uitsluiten</Label>
+                    <TagInput value={importTitleExclusion} onChange={setImportTitleExclusion} placeholder="Titels uitsluiten..." />
+                  </div>
+
+                  <div>
+                    <Label>Locatie uitsluiten</Label>
+                    <TagInput value={importLocationExclusion} onChange={setImportLocationExclusion} placeholder="Locaties uitsluiten..." />
+                  </div>
+
+                  <div>
+                    <Label>Beschrijving zoeken</Label>
+                    <TagInput value={importDescriptionSearch} onChange={setImportDescriptionSearch} placeholder="Zoektermen in beschrijving..." />
+                    <p className="text-[10px] text-muted-foreground mt-1">Wees specifiek, combineer met titelzoeken</p>
+                  </div>
+
+                  <div>
+                    <Label>Beschrijving uitsluiten</Label>
+                    <TagInput value={importDescriptionExclusion} onChange={setImportDescriptionExclusion} placeholder="Termen uitsluiten uit beschrijving..." />
+                  </div>
+
+                  <div>
+                    <Label>Organisatie zoeken</Label>
+                    <TagInput value={importOrgSearch} onChange={setImportOrgSearch} placeholder="bijv. Google, Microsoft + Enter" />
+                  </div>
+
+                  <div>
+                    <Label>Organisatie uitsluiten</Label>
+                    <TagInput value={importOrgExclusion} onChange={setImportOrgExclusion} placeholder="Organisaties uitsluiten..." />
+                  </div>
+
+                  <div>
+                    <Label>Domein filter</Label>
+                    <TagInput value={importDomainFilter} onChange={setImportDomainFilter} placeholder="bijv. google.com + Enter" />
+                  </div>
+
+                  <div>
+                    <Label>Domein uitsluiten</Label>
+                    <TagInput value={importDomainExclusion} onChange={setImportDomainExclusion} placeholder="Domeinen uitsluiten..." />
+                  </div>
+
+                  <div>
+                    <Label className="mb-2 block">ATS uitsluiten</Label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {ATS_OPTIONS.map(a => (
+                        <Badge
+                          key={a}
+                          variant={importAtsExclusion.includes(a) ? 'destructive' : 'outline'}
+                          className="cursor-pointer capitalize text-xs"
+                          onClick={() => setImportAtsExclusion(prev => toggleArray(prev, a))}
+                        >
+                          {a}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label className="mb-2 block">Primaire branche filter</Label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {TAXONOMY_OPTIONS.map(t => (
+                        <Badge
+                          key={t}
+                          variant={importTaxonomyPrimary.includes(t) ? 'default' : 'outline'}
+                          className="cursor-pointer text-xs"
+                          onClick={() => setImportTaxonomyPrimary(prev => toggleArray(prev, t))}
+                        >
+                          {t}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label className="mb-2 block">Branche uitsluiten</Label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {TAXONOMY_OPTIONS.map(t => (
+                        <Badge
+                          key={t}
+                          variant={importTaxonomyExclusion.includes(t) ? 'destructive' : 'outline'}
+                          className="cursor-pointer text-xs"
+                          onClick={() => setImportTaxonomyExclusion(prev => toggleArray(prev, t))}
+                        >
+                          {t}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+
+                  <Separator />
+                  <p className="text-xs font-medium text-muted-foreground">LinkedIn bedrijfsdata</p>
+
+                  <div>
+                    <Label>LinkedIn industrie</Label>
+                    <TagInput value={importLinkedInIndustry} onChange={setImportLinkedInIndustry} placeholder="bijv. Information Technology + Enter" />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label>Min. werknemers</Label>
+                      <Input type="number" min={0} value={importMinEmployees} onChange={e => setImportMinEmployees(e.target.value)} placeholder="bijv. 50" />
+                    </div>
+                    <div>
+                      <Label>Max. werknemers</Label>
+                      <Input type="number" min={0} value={importMaxEmployees} onChange={e => setImportMaxEmployees(e.target.value)} placeholder="bijv. 500" />
+                    </div>
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
 
               <Button
                 onClick={() => importMutation.mutate()}
