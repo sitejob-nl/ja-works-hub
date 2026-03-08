@@ -44,6 +44,8 @@ const Candidates = () => {
   const [complianceFilter, setComplianceFilter] = useState('all');
   const [page, setPage] = useState(0);
   const [slideOverOpen, setSlideOverOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importPreset, setImportPreset] = useState<'carerix' | 'buddy' | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['candidates', search, statusFilter, complianceFilter, page],
