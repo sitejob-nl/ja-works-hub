@@ -1908,6 +1908,78 @@ export type Database = {
           },
         ]
       }
+      recruiter_tasks: {
+        Row: {
+          ai_generated: boolean
+          ai_reasoning: string | null
+          assigned_to: string | null
+          category: string | null
+          completed_at: string | null
+          created_at: string
+          description: string | null
+          due_date: string | null
+          id: string
+          organization_id: string
+          priority: string
+          related_entity_id: string | null
+          related_entity_type: string | null
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          ai_generated?: boolean
+          ai_reasoning?: string | null
+          assigned_to?: string | null
+          category?: string | null
+          completed_at?: string | null
+          created_at?: string
+          description?: string | null
+          due_date?: string | null
+          id?: string
+          organization_id: string
+          priority?: string
+          related_entity_id?: string | null
+          related_entity_type?: string | null
+          status?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          ai_generated?: boolean
+          ai_reasoning?: string | null
+          assigned_to?: string | null
+          category?: string | null
+          completed_at?: string | null
+          created_at?: string
+          description?: string | null
+          due_date?: string | null
+          id?: string
+          organization_id?: string
+          priority?: string
+          related_entity_id?: string | null
+          related_entity_type?: string | null
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recruiter_tasks_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recruiter_tasks_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sick_reports: {
         Row: {
           actual_return_date: string | null
