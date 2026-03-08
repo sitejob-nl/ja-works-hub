@@ -40,6 +40,7 @@ import WhatsAppPage from "@/pages/WhatsApp";
 import ExactOnlinePage from "@/pages/ExactOnline";
 import Onboarding from "@/pages/Onboarding";
 import CvTool from "@/pages/CvTool";
+import RecruiterWorkbench from "@/pages/RecruiterWorkbench";
 
 
 const queryClient = new QueryClient();
@@ -77,6 +78,7 @@ const App = () => (
               </AuthProvider>
             }>
               <Route path="/" element={<Dashboard />} />
+              <Route path="/workbench" element={<RecruiterWorkbench />} />
               <Route path="/opdrachtgevers" element={<Companies />} />
               <Route path="/opdrachtgevers/:id" element={<CompanyDetail />} />
               <Route path="/kandidaten" element={<Candidates />} />

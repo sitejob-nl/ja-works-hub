@@ -44,3 +44,6 @@ verify_jwt = false
 
 [functions.cv-rewrite]
 verify_jwt = false
+
+[functions.recruiter-priorities]
+verify_jwt = false
