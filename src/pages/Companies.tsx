@@ -58,9 +58,14 @@ const Companies = () => {
           <h1 className="text-2xl font-semibold">Opdrachtgevers</h1>
           <p className="text-muted-foreground text-sm mt-1">Beheer je opdrachtgevers en contactpersonen</p>
         </div>
-        <Button onClick={() => setSlideOverOpen(true)} className="gap-2">
-          <Plus className="h-4 w-4" /> Nieuwe opdrachtgever
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setImportOpen(true)} className="gap-2">
+            <Upload className="h-4 w-4" /> Importeren
+          </Button>
+          <Button onClick={() => setSlideOverOpen(true)} className="gap-2">
+            <Plus className="h-4 w-4" /> Nieuwe opdrachtgever
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
