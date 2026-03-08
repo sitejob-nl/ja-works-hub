@@ -21,6 +21,8 @@ const ALL_MODULES = [
   { key: 'transport', label: 'Transport' },
   { key: 'communicatie', label: 'Communicatie' },
   { key: 'kennisbank', label: 'Kennisbank' },
+  { key: 'vacaturebank', label: 'Vacaturebank' },
+  { key: 'kandidaten-zoeken', label: 'Kandidaten zoeken' },
 ];
 
 const SuperAdminOrganizations = () => {
