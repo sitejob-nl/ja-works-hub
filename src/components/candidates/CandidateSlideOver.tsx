@@ -11,6 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import TagInput from '@/components/ui/tag-input';
 import { toast } from 'sonner';
+import { logAudit } from '@/lib/audit';
 
 interface Props {
   open: boolean;
