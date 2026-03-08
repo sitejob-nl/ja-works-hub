@@ -147,6 +147,28 @@ const Timesheets = () => {
 
   const handleAction = (id: string, status: string) => statusMutation.mutate({ ids: [id], status });
 
+  const aiValidation = useMutation({
+    mutationFn: async () => {
+      const ids = selected.size > 0 ? Array.from(selected) : timesheets.map((t: any) => t.id);
+      if (ids.length === 0) throw new Error('Geen uren om te valideren');
+      const { data, error } = await supabase.functions.invoke('validate-timesheets', {
+        body: { timesheet_ids: ids },
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['timesheets'] });
+      setSelected(new Set());
+      const results = data?.results ?? [];
+      const red = results.filter((r: any) => r.status === 'rood').length;
+      const orange = results.filter((r: any) => r.status === 'oranje').length;
+      const green = results.filter((r: any) => r.status === 'groen').length;
+      toast.success(`AI Validatie: ${green} groen, ${orange} oranje, ${red} rood`);
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
