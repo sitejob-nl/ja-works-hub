@@ -63,7 +63,6 @@ const Vacaturebank = () => {
       if (error) throw error;
       return data as any[];
     },
-    },
     enabled: !!organizationId,
   });
 
