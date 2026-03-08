@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from '@/components/ui/table';
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
 import { toast } from 'sonner';
+import { logAudit } from '@/lib/audit';
 import { formatDate } from '@/lib/format';
 import TimesheetEntrySheet from '@/components/timesheets/TimesheetEntrySheet';
 import TimesheetCsvImport from '@/components/timesheets/TimesheetCsvImport';
