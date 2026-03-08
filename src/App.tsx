@@ -20,6 +20,8 @@ import PropertyDetail from "@/pages/PropertyDetail";
 import Vacancies from "@/pages/Vacancies";
 import VacancyDetail from "@/pages/VacancyDetail";
 import Timesheets from "@/pages/Timesheets";
+import Transport from "@/pages/Transport";
+import VehicleDetail from "@/pages/VehicleDetail";
 import {
   Building2, Users, UserCheck, Home, Briefcase,
   Calendar, Clock, Car, MessageSquare, BookOpen, Settings,
