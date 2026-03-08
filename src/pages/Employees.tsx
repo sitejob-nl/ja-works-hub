@@ -1,0 +1,187 @@
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { Link } from 'react-router-dom';
+import { UserCheck, UserPlus, Search, Check, X } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
+import { formatDate } from '@/lib/format';
+import HireEmployeeSheet from '@/components/employees/HireEmployeeSheet';
+
+const PAGE_SIZE = 10;
+
+const statusBadge: Record<string, string> = {
+  onboarding: 'bg-yellow-100 text-yellow-700 border-0',
+  actief: 'bg-stat-green/10 text-stat-green border-0',
+  ziek: 'bg-orange-100 text-orange-600 border-0',
+  uit_dienst: 'bg-muted text-muted-foreground border-0',
+};
+
+const statusLabel: Record<string, string> = {
+  onboarding: 'Onboarding',
+  actief: 'Actief',
+  ziek: 'Ziek',
+  uit_dienst: 'Uit dienst',
+};
+
+const complianceBadge: Record<string, string> = {
+  compleet: 'bg-stat-green/10 text-stat-green border-0',
+  incompleet: 'bg-yellow-100 text-yellow-700 border-0',
+  verlopen: 'bg-red-100 text-red-600 border-0',
+};
+
+const Employees = () => {
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [page, setPage] = useState(0);
+  const [sheetOpen, setSheetOpen] = useState(false);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['employees', search, statusFilter, page],
+    queryFn: async () => {
+      let query = supabase.from('employees').select(`
+        *,
+        candidates!employees_candidate_id_fkey(first_name, last_name, compliance_status, phone, email),
+        housing_assignments!housing_assignments_employee_id_fkey(id, status),
+        placements!placements_employee_id_fkey(id, status, company_id, companies!placements_company_id_fkey(name))
+      `, { count: 'exact' });
+
+      if (statusFilter !== 'all') query = query.eq('status', statusFilter as any);
+
+      query = query.order('created_at', { ascending: false }).range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+
+      const { data, count, error } = await query;
+      if (error) throw error;
+
+      let results = data ?? [];
+      if (search) {
+        const s = search.toLowerCase();
+        results = results.filter((e: any) => {
+          const c = e.candidates;
+          if (!c) return false;
+          return `${c.first_name} ${c.last_name}`.toLowerCase().includes(s);
+        });
+      }
+
+      return { employees: results, total: search ? results.length : (count ?? 0) };
+    },
+  });
+
+  const employees = data?.employees ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">Medewerkers</h1>
+          <p className="text-muted-foreground text-sm mt-1">Beheer actieve medewerkers</p>
+        </div>
+        <Button onClick={() => setSheetOpen(true)} className="gap-2 bg-primary text-primary-foreground">
+          <UserPlus className="h-4 w-4" /> Kandidaat in dienst nemen
+        </Button>
+      </div>
+
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input placeholder="Zoek op naam..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} className="pl-9" />
+        </div>
+        <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(0); }}>
+          <SelectTrigger className="w-40"><SelectValue placeholder="Status" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Alle statussen</SelectItem>
+            {Object.entries(statusLabel).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <span className="text-sm text-muted-foreground">{total} medewerkers</span>
+      </div>
+
+      {!isLoading && employees.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <UserCheck className="h-12 w-12 text-muted-foreground/40 mb-4" />
+          <p className="text-lg font-medium text-muted-foreground">Nog geen medewerkers</p>
+          <Button onClick={() => setSheetOpen(true)} variant="outline" className="mt-4 gap-2">
+            <UserPlus className="h-4 w-4" /> Neem een kandidaat in dienst
+          </Button>
+        </div>
+      ) : (
+        <>
+          <div className="bg-card rounded-lg border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Naam</TableHead>
+                  <TableHead>Medewerkernr.</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Compliance</TableHead>
+                  <TableHead>Startdatum</TableHead>
+                  <TableHead>Huisvesting</TableHead>
+                  <TableHead>Actieve plaatsing</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {employees.map((e: any, i: number) => {
+                  const c = e.candidates;
+                  const hasHousing = (e.housing_assignments ?? []).some((h: any) => h.status === 'ingecheckt');
+                  const activePlacement = (e.placements ?? []).find((p: any) => p.status === 'actief');
+                  const companyName = activePlacement?.companies?.name;
+                  return (
+                    <TableRow key={e.id} className={i % 2 === 1 ? 'bg-background' : ''}>
+                      <TableCell>
+                        <Link to={`/medewerkers/${e.id}`} className="font-medium text-foreground hover:text-primary transition-colors">
+                          {c?.first_name} {c?.last_name}
+                        </Link>
+                      </TableCell>
+                      <TableCell>{e.employee_number ?? '—'}</TableCell>
+                      <TableCell>
+                        <Badge variant="secondary" className={statusBadge[e.status] ?? ''}>{statusLabel[e.status] ?? e.status}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="secondary" className={complianceBadge[c?.compliance_status] ?? ''}>{c?.compliance_status ?? '—'}</Badge>
+                      </TableCell>
+                      <TableCell>{formatDate(e.start_date)}</TableCell>
+                      <TableCell>
+                        {hasHousing
+                          ? <Check className="h-4 w-4 text-stat-green" />
+                          : <X className="h-4 w-4 text-red-500" />}
+                      </TableCell>
+                      <TableCell>{companyName ?? '—'}</TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+
+          {totalPages > 1 && (
+            <Pagination>
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious onClick={() => setPage(Math.max(0, page - 1))} className={page === 0 ? 'pointer-events-none opacity-50' : 'cursor-pointer'} />
+                </PaginationItem>
+                {Array.from({ length: totalPages }, (_, i) => (
+                  <PaginationItem key={i}>
+                    <PaginationLink isActive={i === page} onClick={() => setPage(i)} className="cursor-pointer">{i + 1}</PaginationLink>
+                  </PaginationItem>
+                ))}
+                <PaginationItem>
+                  <PaginationNext onClick={() => setPage(Math.min(totalPages - 1, page + 1))} className={page >= totalPages - 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'} />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
+          )}
+        </>
+      )}
+
+      <HireEmployeeSheet open={sheetOpen} onOpenChange={setSheetOpen} />
+    </div>
+  );
+};
+
+export default Employees;
