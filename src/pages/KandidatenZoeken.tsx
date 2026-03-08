@@ -12,9 +12,12 @@ import { Switch } from '@/components/ui/switch';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Separator } from '@/components/ui/separator';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { toast } from 'sonner';
-import { Search, Loader2, ExternalLink, UserSearch, Globe, Bookmark, UserPlus, ChevronDown, Eye } from 'lucide-react';
+import { Search, Loader2, ExternalLink, UserSearch, Globe, Bookmark, UserPlus, ChevronDown, Eye, Calendar, Link } from 'lucide-react';
+import { formatDate } from '@/lib/format';
 import TagInput from '@/components/ui/tag-input';
 
 const COUNTRY_OPTIONS = [
@@ -101,6 +104,7 @@ const KandidatenZoeken = () => {
   const [numSentences, setNumSentences] = useState('3');
   const [highlightsPerUrl, setHighlightsPerUrl] = useState('3');
   const [convertDialog, setConvertDialog] = useState<ConvertDialogData | null>(null);
+  const [detailResult, setDetailResult] = useState<Record<string, unknown> | null>(null);
   const autoSearchDone = useRef(false);
 
   // Build query from structured fields
@@ -467,7 +471,11 @@ const KandidatenZoeken = () => {
       {/* Results */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {displayResults.map((result: Record<string, unknown>, i: number) => (
-          <Card key={(result.external_id as string) || i} className="overflow-hidden">
+          <Card
+            key={(result.external_id as string) || i}
+            className="overflow-hidden cursor-pointer hover:shadow-md transition-shadow"
+            onClick={() => setDetailResult(result)}
+          >
             <CardContent className="p-4 space-y-3">
               <div className="flex items-start gap-3">
                 {result.image_url ? (
@@ -514,6 +522,7 @@ const KandidatenZoeken = () => {
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                    onClick={(e) => e.stopPropagation()}
                   >
                     <ExternalLink className="h-3 w-3" />
                     Profiel
@@ -524,7 +533,7 @@ const KandidatenZoeken = () => {
                   variant="outline"
                   size="sm"
                   className="ml-auto text-xs h-7"
-                  onClick={() => openConvertDialog(result)}
+                  onClick={(e) => { e.stopPropagation(); openConvertDialog(result); }}
                 >
                   <UserPlus className="h-3 w-3 mr-1" />
                   Kandidaat maken
@@ -548,7 +557,128 @@ const KandidatenZoeken = () => {
         </div>
       )}
 
-      {/* Convert to Candidate Dialog */}
+      {/* Detail Slide-Over */}
+      <Sheet open={!!detailResult} onOpenChange={(open) => { if (!open) setDetailResult(null); }}>
+        <SheetContent className="overflow-y-auto sm:max-w-lg">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-3">
+              {detailResult?.image_url ? (
+                <img src={detailResult.image_url as string} alt="" className="h-10 w-10 rounded-full object-cover shrink-0" />
+              ) : (
+                <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center shrink-0">
+                  <UserSearch className="h-5 w-5 text-muted-foreground" />
+                </div>
+              )}
+              <span>{(detailResult?.name as string) || 'Onbekend'}</span>
+            </SheetTitle>
+          </SheetHeader>
+          {detailResult && (
+            <div className="space-y-6 mt-6">
+              {/* Title / Headline */}
+              {detailResult.title && (
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground mb-1">Titel</p>
+                  <p className="text-sm text-foreground">{detailResult.title as string}</p>
+                </div>
+              )}
+
+              {/* Profile link */}
+              {detailResult.url && (
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground mb-1">Profiel</p>
+                  <a
+                    href={detailResult.url as string}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline break-all"
+                  >
+                    <Link className="h-3.5 w-3.5 shrink-0" />
+                    {detailResult.url as string}
+                  </a>
+                </div>
+              )}
+
+              <Separator />
+
+              {/* Published date */}
+              {detailResult.published_date && (
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground mb-1">Profiel bijgewerkt</p>
+                  <p className="text-sm text-foreground flex items-center gap-1.5">
+                    <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                    {formatDate(detailResult.published_date as string)}
+                  </p>
+                </div>
+              )}
+
+              {/* Search query */}
+              {detailResult.search_query && (
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground mb-1">Gevonden met zoekopdracht</p>
+                  <Badge variant="secondary">{detailResult.search_query as string}</Badge>
+                </div>
+              )}
+
+              {/* Highlights */}
+              {detailResult.highlights && (detailResult.highlights as string[]).length > 0 && (
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground mb-2">Highlights</p>
+                  <div className="space-y-2">
+                    {(detailResult.highlights as string[]).map((h, j) => {
+                      const scores = detailResult.highlight_scores as number[] | null;
+                      const score = scores?.[j];
+                      return (
+                        <div key={j} className="bg-muted/50 rounded-md p-3 text-sm text-foreground">
+                          <p>{h}</p>
+                          {score != null && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Relevantie: {(score * 100).toFixed(0)}%
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Full text content */}
+              {detailResult.text_content && (
+                <div>
+                  <Separator className="mb-4" />
+                  <p className="text-sm font-medium text-muted-foreground mb-2">Profieltekst</p>
+                  <div className="text-sm text-foreground whitespace-pre-wrap bg-muted/30 rounded-md p-4 max-h-[400px] overflow-y-auto">
+                    {detailResult.text_content as string}
+                  </div>
+                </div>
+              )}
+
+              <Separator />
+
+              {/* Actions */}
+              <div className="flex gap-2">
+                {detailResult.url && (
+                  <Button variant="outline" size="sm" asChild>
+                    <a href={detailResult.url as string} target="_blank" rel="noopener noreferrer">
+                      <ExternalLink className="h-4 w-4 mr-1.5" />
+                      Open profiel
+                    </a>
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  onClick={() => { openConvertDialog(detailResult); setDetailResult(null); }}
+                >
+                  <UserPlus className="h-4 w-4 mr-1.5" />
+                  Kandidaat maken
+                </Button>
+              </div>
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
+
+
       <Dialog open={!!convertDialog} onOpenChange={(open) => !open && setConvertDialog(null)}>
         <DialogContent>
           <DialogHeader>
