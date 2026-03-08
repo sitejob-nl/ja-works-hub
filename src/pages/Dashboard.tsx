@@ -293,7 +293,7 @@ const Dashboard = () => {
       </div>
 
       {/* KPI Dashboard for management */}
-      {(profile?.role === 'admin' || profile?.role === 'directie') && (
+      {profile?.role === 'admin' && (
         <KpiDashboard />
       )}
 
