@@ -26,6 +26,7 @@ const allNavItems = [
   { label: 'Kennisbank', icon: BookOpen, path: '/kennisbank', moduleKey: 'kennisbank' },
   { label: 'Vacaturebank', icon: Search, path: '/vacaturebank', moduleKey: 'vacaturebank' },
   { label: 'Kandidaten zoeken', icon: UserSearch, path: '/kandidaten-zoeken', moduleKey: 'kandidaten-zoeken' },
+  { label: 'Exact Online', icon: Calculator, path: '/exact-online', moduleKey: 'exact-online' },
 ];
 
 const AppSidebar = () => {
