@@ -9,6 +9,7 @@ import Login from "@/pages/Login";
 import Dashboard from "@/pages/Dashboard";
 import NotFound from "./pages/NotFound";
 import ShellPage from "@/components/ShellPage";
+import SettingsPage from "@/pages/Settings";
 import Companies from "@/pages/Companies";
 import CompanyDetail from "@/pages/CompanyDetail";
 import Candidates from "@/pages/Candidates";
