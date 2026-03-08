@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { useOrganizationId } from '@/hooks/useOrganizationId';
+import { supabase } from '@/integrations/supabase/client';
 import {
   LayoutDashboard, Building2, Users, UserCheck, Home, Briefcase,
   Calendar, Clock, Car, MessageSquare, BookOpen, Settings,
@@ -26,9 +28,34 @@ const AppSidebar = () => {
   const [collapsed, setCollapsed] = useState(false);
   const { profile } = useAuth();
   const location = useLocation();
+  const [org, setOrg] = useState<{ name: string; logo_url: string | null; settings: Record<string, string> | null } | null>(null);
 
   const firstName = profile?.full_name?.split(' ')[0] ?? '';
   const roleLabel = profile?.role ?? '';
+
+  useEffect(() => {
+    if (!profile?.organization_id) return;
+    supabase
+      .from('organizations')
+      .select('name, logo_url, settings')
+      .eq('id', profile.organization_id)
+      .single()
+      .then(({ data }) => {
+        if (data) {
+          setOrg(data as typeof org);
+          // Apply accent color from settings
+          const s = (data.settings as Record<string, string> | null) ?? {};
+          if (s.accent_color) {
+            document.documentElement.style.setProperty('--primary', s.accent_color);
+            document.documentElement.style.setProperty('--ring', s.accent_color);
+            document.documentElement.style.setProperty('--accent-blue', s.accent_color);
+            document.documentElement.style.setProperty('--stat-blue', s.accent_color);
+          }
+        }
+      });
+  }, [profile?.organization_id]);
+
+  const orgInitials = (org?.name ?? 'JA').slice(0, 2).toUpperCase();
 
   return (
     <aside
@@ -39,10 +66,14 @@ const AppSidebar = () => {
     >
       {/* Logo */}
       <div className="flex items-center gap-2 px-4 h-14 border-b border-sidebar-border">
-        <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
-          <span className="text-primary-foreground font-bold text-xs">JA</span>
+        <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center shrink-0 overflow-hidden">
+          {org?.logo_url ? (
+            <img src={org.logo_url} alt="Logo" className="h-full w-full object-contain" />
+          ) : (
+            <span className="text-primary-foreground font-bold text-xs">{orgInitials}</span>
+          )}
         </div>
-        {!collapsed && <span className="text-sidebar-active font-semibold text-sm">JA Werkt</span>}
+        {!collapsed && <span className="text-sidebar-active font-semibold text-sm">{org?.name ?? 'JA Werkt'}</span>}
       </div>
 
       {/* Nav */}

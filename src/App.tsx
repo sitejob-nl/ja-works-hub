@@ -9,6 +9,7 @@ import Login from "@/pages/Login";
 import Dashboard from "@/pages/Dashboard";
 import NotFound from "./pages/NotFound";
 import ShellPage from "@/components/ShellPage";
+import SettingsPage from "@/pages/Settings";
 import Companies from "@/pages/Companies";
 import CompanyDetail from "@/pages/CompanyDetail";
 import Candidates from "@/pages/Candidates";
@@ -61,7 +62,7 @@ const App = () => (
               <Route path="/transport/:id" element={<VehicleDetail />} />
               <Route path="/communicatie" element={<ShellPage title="Communicatie" subtitle="Berichten en communicatiehistorie" icon={MessageSquare} />} />
               <Route path="/kennisbank" element={<ShellPage title="Kennisbank" subtitle="Interne kennisbank en documentatie" icon={BookOpen} />} />
-              <Route path="/instellingen" element={<ShellPage title="Instellingen" subtitle="Organisatie- en gebruikersinstellingen" icon={Settings} />} />
+              <Route path="/instellingen" element={<SettingsPage />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
