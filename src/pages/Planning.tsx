@@ -573,6 +573,14 @@ const NewPlacementSheet = ({ open, onClose, orgId, userId }: { open: boolean; on
         </div>
       </SheetContent>
     </Sheet>
+
+    <ComplianceWarningDialog
+      open={showComplianceWarning}
+      onOpenChange={setShowComplianceWarning}
+      issues={complianceIssues}
+      onOverride={() => overrideMutation.mutate()}
+    />
+    </>
   );
 };
 
