@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -12,18 +11,18 @@ import {
 import { cn } from '@/lib/utils';
 import { useEffect } from 'react';
 
-const navItems = [
-  { label: 'Dashboard', icon: LayoutDashboard, path: '/' },
-  { label: 'Opdrachtgevers', icon: Building2, path: '/opdrachtgevers' },
-  { label: 'Kandidaten', icon: Users, path: '/kandidaten' },
-  { label: 'Medewerkers', icon: UserCheck, path: '/medewerkers' },
-  { label: 'Huisvesting', icon: Home, path: '/huisvesting' },
-  { label: 'Vacatures', icon: Briefcase, path: '/vacatures' },
-  { label: 'Planning', icon: Calendar, path: '/planning' },
-  { label: 'Uren', icon: Clock, path: '/uren' },
-  { label: 'Transport', icon: Car, path: '/transport' },
-  { label: 'Communicatie', icon: MessageSquare, path: '/communicatie' },
-  { label: 'Kennisbank', icon: BookOpen, path: '/kennisbank' },
+const allNavItems = [
+  { label: 'Dashboard', icon: LayoutDashboard, path: '/', moduleKey: null },
+  { label: 'Opdrachtgevers', icon: Building2, path: '/opdrachtgevers', moduleKey: 'opdrachtgevers' },
+  { label: 'Kandidaten', icon: Users, path: '/kandidaten', moduleKey: 'kandidaten' },
+  { label: 'Medewerkers', icon: UserCheck, path: '/medewerkers', moduleKey: 'medewerkers' },
+  { label: 'Huisvesting', icon: Home, path: '/huisvesting', moduleKey: 'huisvesting' },
+  { label: 'Vacatures', icon: Briefcase, path: '/vacatures', moduleKey: 'vacatures' },
+  { label: 'Planning', icon: Calendar, path: '/planning', moduleKey: 'planning' },
+  { label: 'Uren', icon: Clock, path: '/uren', moduleKey: 'uren' },
+  { label: 'Transport', icon: Car, path: '/transport', moduleKey: 'transport' },
+  { label: 'Communicatie', icon: MessageSquare, path: '/communicatie', moduleKey: 'communicatie' },
+  { label: 'Kennisbank', icon: BookOpen, path: '/kennisbank', moduleKey: 'kennisbank' },
 ];
 
 const AppSidebar = () => {
@@ -39,7 +38,7 @@ const AppSidebar = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('organizations')
-        .select('name, logo_url, settings')
+        .select('name, logo_url, settings, plan_id')
         .eq('id', profile!.organization_id)
         .single();
       if (error) throw error;
@@ -48,7 +47,49 @@ const AppSidebar = () => {
     enabled: !!profile?.organization_id,
   });
 
-  // Apply accent color from settings whenever org data changes
+  // Fetch module overrides for this org
+  const { data: moduleOverrides } = useQuery({
+    queryKey: ['org-modules', profile?.organization_id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('organization_modules')
+        .select('module_name, enabled')
+        .eq('organization_id', profile!.organization_id);
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!profile?.organization_id,
+  });
+
+  // Fetch plan modules
+  const { data: plan } = useQuery({
+    queryKey: ['subscription-plan', org?.plan_id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('subscription_plans')
+        .select('modules')
+        .eq('id', org!.plan_id!)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!org?.plan_id,
+  });
+
+  const isModuleEnabled = (moduleKey: string | null): boolean => {
+    if (!moduleKey) return true; // Dashboard always visible
+    // Check override first
+    const override = moduleOverrides?.find(m => m.module_name === moduleKey);
+    if (override) return override.enabled;
+    // Fall back to plan
+    if (plan?.modules) return plan.modules.includes(moduleKey);
+    // Default: show all
+    return true;
+  };
+
+  const navItems = allNavItems.filter(item => isModuleEnabled(item.moduleKey));
+
+  // Apply accent color from settings
   useEffect(() => {
     if (!org) return;
     const s = (org.settings as Record<string, string> | null) ?? {};
