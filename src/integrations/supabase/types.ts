@@ -818,6 +818,139 @@ export type Database = {
           },
         ]
       }
+      job_import_logs: {
+        Row: {
+          filters_used: Json | null
+          id: string
+          imported_at: string
+          new_jobs: number
+          organization_id: string
+          status: string
+          total_jobs: number
+        }
+        Insert: {
+          filters_used?: Json | null
+          id?: string
+          imported_at?: string
+          new_jobs?: number
+          organization_id: string
+          status?: string
+          total_jobs?: number
+        }
+        Update: {
+          filters_used?: Json | null
+          id?: string
+          imported_at?: string
+          new_jobs?: number
+          organization_id?: string
+          status?: string
+          total_jobs?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_import_logs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      job_listings: {
+        Row: {
+          ai_key_skills: string[] | null
+          ai_salary_currency: string | null
+          ai_salary_max: number | null
+          ai_salary_min: number | null
+          ai_salary_unit: string | null
+          ai_taxonomies: string[] | null
+          city: string | null
+          country: string | null
+          date_imported: string
+          date_posted: string | null
+          description_text: string | null
+          employment_type: string[] | null
+          external_id: string
+          id: string
+          linkedin_org_employees: number | null
+          linkedin_org_industry: string | null
+          locations_derived: Json | null
+          organization_id: string
+          organization_logo: string | null
+          organization_name: string | null
+          organization_url: string | null
+          raw_data: Json | null
+          source: string | null
+          title: string
+          url: string | null
+          work_arrangement: string | null
+        }
+        Insert: {
+          ai_key_skills?: string[] | null
+          ai_salary_currency?: string | null
+          ai_salary_max?: number | null
+          ai_salary_min?: number | null
+          ai_salary_unit?: string | null
+          ai_taxonomies?: string[] | null
+          city?: string | null
+          country?: string | null
+          date_imported?: string
+          date_posted?: string | null
+          description_text?: string | null
+          employment_type?: string[] | null
+          external_id: string
+          id?: string
+          linkedin_org_employees?: number | null
+          linkedin_org_industry?: string | null
+          locations_derived?: Json | null
+          organization_id: string
+          organization_logo?: string | null
+          organization_name?: string | null
+          organization_url?: string | null
+          raw_data?: Json | null
+          source?: string | null
+          title: string
+          url?: string | null
+          work_arrangement?: string | null
+        }
+        Update: {
+          ai_key_skills?: string[] | null
+          ai_salary_currency?: string | null
+          ai_salary_max?: number | null
+          ai_salary_min?: number | null
+          ai_salary_unit?: string | null
+          ai_taxonomies?: string[] | null
+          city?: string | null
+          country?: string | null
+          date_imported?: string
+          date_posted?: string | null
+          description_text?: string | null
+          employment_type?: string[] | null
+          external_id?: string
+          id?: string
+          linkedin_org_employees?: number | null
+          linkedin_org_industry?: string | null
+          locations_derived?: Json | null
+          organization_id?: string
+          organization_logo?: string | null
+          organization_name?: string | null
+          organization_url?: string | null
+          raw_data?: Json | null
+          source?: string | null
+          title?: string
+          url?: string | null
+          work_arrangement?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_listings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       key_registrations: {
         Row: {
           employee_id: string
