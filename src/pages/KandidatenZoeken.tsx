@@ -279,7 +279,7 @@ const KandidatenZoeken = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Branche</Label>
               <Select value={industry} onValueChange={setIndustry}>
@@ -301,14 +301,6 @@ const KandidatenZoeken = () => {
                 placeholder="bijv. 3"
                 value={experienceYears}
                 onChange={(e) => setExperienceYears(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Highlights query</Label>
-              <Input
-                placeholder="bijv. machine learning"
-                value={highlightsQuery}
-                onChange={(e) => setHighlightsQuery(e.target.value)}
               />
             </div>
           </div>
