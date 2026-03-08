@@ -23,6 +23,7 @@ const allNavItems = [
   { label: 'Transport', icon: Car, path: '/transport', moduleKey: 'transport' },
   { label: 'Communicatie', icon: MessageSquare, path: '/communicatie', moduleKey: 'communicatie' },
   { label: 'Kennisbank', icon: BookOpen, path: '/kennisbank', moduleKey: 'kennisbank' },
+  { label: 'Vacaturebank', icon: Search, path: '/vacaturebank', moduleKey: 'vacaturebank' },
 ];
 
 const AppSidebar = () => {

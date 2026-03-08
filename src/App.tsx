@@ -86,6 +86,7 @@ const App = () => (
               <Route path="/uren" element={<Timesheets />} />
               <Route path="/transport" element={<Transport />} />
               <Route path="/transport/:id" element={<VehicleDetail />} />
+              <Route path="/vacaturebank" element={<Vacaturebank />} />
               <Route path="/communicatie" element={<ShellPage title="Communicatie" subtitle="Berichten en communicatiehistorie" icon={MessageSquare} />} />
               <Route path="/kennisbank" element={<ShellPage title="Kennisbank" subtitle="Interne kennisbank en documentatie" icon={BookOpen} />} />
               <Route path="/instellingen" element={<SettingsPage />} />
