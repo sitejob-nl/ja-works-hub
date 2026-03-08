@@ -177,6 +177,9 @@ const Timesheets = () => {
           <p className="text-muted-foreground text-sm mt-1">Urenregistratie en goedkeuring</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={() => aiValidation.mutate()} disabled={aiValidation.isPending} className="gap-2">
+            <Sparkles className="h-4 w-4" /> {aiValidation.isPending ? 'Valideren...' : 'AI Validatie'}
+          </Button>
           <Button variant="outline" onClick={() => setCsvOpen(true)} className="gap-2">
             <Upload className="h-4 w-4" /> CSV importeren
           </Button>
