@@ -35,6 +35,9 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
 
   const [complianceIssues, setComplianceIssues] = useState<string[]>([]);
   const [showComplianceWarning, setShowComplianceWarning] = useState(false);
+  const [housingSuggestions, setHousingSuggestions] = useState<HousingSuggestion[]>([]);
+  const [placementDone, setPlacementDone] = useState(false);
+  const [lastPlacementData, setLastPlacementData] = useState<{ employeeId: string; placementId: string } | null>(null);
 
   useEffect(() => {
     if (match && vacancy) {
