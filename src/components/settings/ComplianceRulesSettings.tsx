@@ -92,10 +92,10 @@ const ComplianceRulesSettings = () => {
         is_active: f.is_active,
       };
       if (f.id) {
-        const { error } = await supabase.from('compliance_rules').update(payload).eq('id', f.id);
+        const { error } = await supabase.from('compliance_rules' as any).update(payload).eq('id', f.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('compliance_rules').insert(payload);
+        const { error } = await supabase.from('compliance_rules' as any).insert(payload);
         if (error) throw error;
       }
     },
