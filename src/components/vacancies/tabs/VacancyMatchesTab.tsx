@@ -63,19 +63,42 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
 
   const proposeMutation = useMutation({
     mutationFn: async (candidateId: string) => {
-      const { error } = await supabase.from('matches').insert({
+      const { data: match, error } = await supabase.from('matches').insert({
         organization_id: orgId,
         vacancy_id: vacancy.id,
         candidate_id: candidateId,
         proposed_by: user?.id ?? null,
         status: 'voorgesteld' as any,
-      });
+      }).select('id').single();
       if (error) throw error;
+
+      // Trigger AI match scoring
+      try {
+        await supabase.functions.invoke('calculate-match', {
+          body: { match_id: match.id, candidate_id: candidateId, vacancy_id: vacancy.id },
+        });
+      } catch { /* non-blocking */ }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['vacancy-matches', vacancy.id] });
       qc.invalidateQueries({ queryKey: ['available-candidates-for-vacancy'] });
-      toast.success('Kandidaat voorgedragen');
+      toast.success('Kandidaat voorgedragen (AI score wordt berekend)');
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const rescoreMutation = useMutation({
+    mutationFn: async () => {
+      const allMatches = matches ?? [];
+      for (const m of allMatches) {
+        await supabase.functions.invoke('calculate-match', {
+          body: { match_id: (m as any).id, candidate_id: (m as any).candidate_id, vacancy_id: vacancy.id },
+        });
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['vacancy-matches', vacancy.id] });
+      toast.success('Alle match scores herberekend');
     },
     onError: (e: any) => toast.error(e.message),
   });
