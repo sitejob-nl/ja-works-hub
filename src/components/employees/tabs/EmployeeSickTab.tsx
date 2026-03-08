@@ -12,6 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Plus } from 'lucide-react';
 import { formatDate } from '@/lib/format';
 import { toast } from 'sonner';
+import { logAudit } from '@/lib/audit';
 
 const EmployeeSickTab = ({ employeeId, employee }: { employeeId: string; employee: any }) => {
   const orgId = useOrganizationId();
