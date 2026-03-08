@@ -858,85 +858,157 @@ export type Database = {
       }
       job_listings: {
         Row: {
+          ai_benefits: string[] | null
+          ai_core_responsibilities: string | null
+          ai_education_requirements: string[] | null
+          ai_employment_type: string[] | null
+          ai_experience_level: string | null
+          ai_hiring_manager_email: string | null
+          ai_hiring_manager_name: string | null
           ai_key_skills: string[] | null
+          ai_keywords: string[] | null
+          ai_requirements_summary: string | null
           ai_salary_currency: string | null
           ai_salary_max: number | null
           ai_salary_min: number | null
           ai_salary_unit: string | null
           ai_taxonomies: string[] | null
+          ai_visa_sponsorship: boolean | null
+          ai_working_hours: number | null
           city: string | null
           country: string | null
           date_imported: string
           date_posted: string | null
           description_text: string | null
+          domain_derived: string | null
           employment_type: string[] | null
           external_id: string
           id: string
+          linkedin_org_description: string | null
           linkedin_org_employees: number | null
+          linkedin_org_followers: number | null
+          linkedin_org_founded_date: string | null
+          linkedin_org_headquarters: string | null
           linkedin_org_industry: string | null
+          linkedin_org_recruitment_agency: boolean | null
+          linkedin_org_size: string | null
+          linkedin_org_slug: string | null
+          linkedin_org_specialties: string[] | null
+          linkedin_org_type: string | null
+          linkedin_org_url: string | null
           locations_derived: Json | null
           organization_id: string
           organization_logo: string | null
           organization_name: string | null
           organization_url: string | null
           raw_data: Json | null
+          remote_derived: boolean | null
           source: string | null
+          source_type: string | null
           title: string
           url: string | null
           work_arrangement: string | null
         }
         Insert: {
+          ai_benefits?: string[] | null
+          ai_core_responsibilities?: string | null
+          ai_education_requirements?: string[] | null
+          ai_employment_type?: string[] | null
+          ai_experience_level?: string | null
+          ai_hiring_manager_email?: string | null
+          ai_hiring_manager_name?: string | null
           ai_key_skills?: string[] | null
+          ai_keywords?: string[] | null
+          ai_requirements_summary?: string | null
           ai_salary_currency?: string | null
           ai_salary_max?: number | null
           ai_salary_min?: number | null
           ai_salary_unit?: string | null
           ai_taxonomies?: string[] | null
+          ai_visa_sponsorship?: boolean | null
+          ai_working_hours?: number | null
           city?: string | null
           country?: string | null
           date_imported?: string
           date_posted?: string | null
           description_text?: string | null
+          domain_derived?: string | null
           employment_type?: string[] | null
           external_id: string
           id?: string
+          linkedin_org_description?: string | null
           linkedin_org_employees?: number | null
+          linkedin_org_followers?: number | null
+          linkedin_org_founded_date?: string | null
+          linkedin_org_headquarters?: string | null
           linkedin_org_industry?: string | null
+          linkedin_org_recruitment_agency?: boolean | null
+          linkedin_org_size?: string | null
+          linkedin_org_slug?: string | null
+          linkedin_org_specialties?: string[] | null
+          linkedin_org_type?: string | null
+          linkedin_org_url?: string | null
           locations_derived?: Json | null
           organization_id: string
           organization_logo?: string | null
           organization_name?: string | null
           organization_url?: string | null
           raw_data?: Json | null
+          remote_derived?: boolean | null
           source?: string | null
+          source_type?: string | null
           title: string
           url?: string | null
           work_arrangement?: string | null
         }
         Update: {
+          ai_benefits?: string[] | null
+          ai_core_responsibilities?: string | null
+          ai_education_requirements?: string[] | null
+          ai_employment_type?: string[] | null
+          ai_experience_level?: string | null
+          ai_hiring_manager_email?: string | null
+          ai_hiring_manager_name?: string | null
           ai_key_skills?: string[] | null
+          ai_keywords?: string[] | null
+          ai_requirements_summary?: string | null
           ai_salary_currency?: string | null
           ai_salary_max?: number | null
           ai_salary_min?: number | null
           ai_salary_unit?: string | null
           ai_taxonomies?: string[] | null
+          ai_visa_sponsorship?: boolean | null
+          ai_working_hours?: number | null
           city?: string | null
           country?: string | null
           date_imported?: string
           date_posted?: string | null
           description_text?: string | null
+          domain_derived?: string | null
           employment_type?: string[] | null
           external_id?: string
           id?: string
+          linkedin_org_description?: string | null
           linkedin_org_employees?: number | null
+          linkedin_org_followers?: number | null
+          linkedin_org_founded_date?: string | null
+          linkedin_org_headquarters?: string | null
           linkedin_org_industry?: string | null
+          linkedin_org_recruitment_agency?: boolean | null
+          linkedin_org_size?: string | null
+          linkedin_org_slug?: string | null
+          linkedin_org_specialties?: string[] | null
+          linkedin_org_type?: string | null
+          linkedin_org_url?: string | null
           locations_derived?: Json | null
           organization_id?: string
           organization_logo?: string | null
           organization_name?: string | null
           organization_url?: string | null
           raw_data?: Json | null
+          remote_derived?: boolean | null
           source?: string | null
+          source_type?: string | null
           title?: string
           url?: string | null
           work_arrangement?: string | null
