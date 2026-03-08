@@ -11,6 +11,8 @@ import { toast } from 'sonner';
 import { checkCompliance } from '@/hooks/useComplianceCheck';
 import ComplianceWarningDialog from '@/components/ComplianceWarningDialog';
 import { logAudit } from '@/lib/audit';
+import { generateTimesheetTemplates, getHousingSuggestions, sendPlacementWhatsApp, type HousingSuggestion } from '@/components/placement/PlacementTriggers';
+import HousingSuggestionsCard from '@/components/placement/HousingSuggestionsCard';
 
 interface Props {
   match: any | null;
