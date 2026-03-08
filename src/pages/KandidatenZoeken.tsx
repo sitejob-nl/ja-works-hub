@@ -166,7 +166,10 @@ const KandidatenZoeken = () => {
       return data;
     },
     onSuccess: (data) => {
-      toast.success(`${data.total} resultaten gevonden, ${data.new_count} opgeslagen`);
+      const filterMsg = data.filtered_count > 0
+        ? `, ${data.filtered_count} vacatures gefilterd`
+        : '';
+      toast.success(`${data.total} kandidaten gevonden${filterMsg}, ${data.new_count} opgeslagen`);
       queryClient.invalidateQueries({ queryKey: ['people-search-results'] });
     },
     onError: (err: Error) => {
@@ -233,7 +236,7 @@ const KandidatenZoeken = () => {
           Kandidaten zoeken
         </h1>
         <p className="text-muted-foreground mt-1">
-          Zoek professionals met AI-powered search
+          Zoek professionals met AI-powered search · <span className="text-xs">vacature-links worden automatisch gefilterd</span>
         </p>
       </div>
 

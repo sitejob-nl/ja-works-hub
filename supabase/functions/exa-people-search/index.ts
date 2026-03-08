@@ -6,6 +6,66 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+// URL patterns that indicate a vacancy/job listing rather than a person profile
+const VACANCY_URL_PATTERNS = [
+  "indeed.com", "indeed.nl", "indeed.de", "indeed.be",
+  "linkedin.com/jobs",
+  "glassdoor.com/job", "glassdoor.nl",
+  "jigler.nl/vacature", "jigler.nl/baan",
+  "werkzoeken.nl", "nationalevacaturebank.nl",
+  "jobbird.com", "jobbird.nl",
+  "monsterboard.nl", "monster.com",
+  "randstad.nl/vacature", "randstad.com/jobs",
+  "tempo-team.nl/vacature",
+  "yacht.nl/vacature",
+  "hays.nl/vacature", "hays.com/job",
+  "brunel.nl/vacature", "brunel.net/job",
+  "manpower.nl/vacature",
+  "werk.nl/vacature",
+  "intermediair.nl/vacature",
+  "techniekwerkt.nl/vacature",
+  "uitzendbureau.nl",
+  "staffinggroup.nl/vacature",
+  "olympia.nl/vacature",
+  "adecco.nl/vacature",
+  "unique.nl/vacature",
+  "start-people.nl/vacature",
+  "leerwerk.nl/vacature",
+  "technischebanen.nl",
+  "productiebanen.nl",
+  "logistiekebanen.nl",
+  "/vacature/", "/vacatures/",
+  "/job-opening/", "/job-listings/",
+  "/careers/", "/career/",
+  "/jobs/", "/baan/", "/banen/",
+];
+
+// Title patterns that indicate a vacancy
+const VACANCY_TITLE_PATTERNS = [
+  "vacature", "vacancy", "job opening", "solliciteer",
+  "we're hiring", "we are hiring", "now hiring",
+  "gezocht", "wanted", "apply now", "solliciteren",
+  "werken bij", "werk bij", "medewerker gezocht",
+  "zoekt een", "zoekt medewerker",
+];
+
+function isVacancyResult(result: Record<string, unknown>): boolean {
+  const url = ((result.url as string) || "").toLowerCase();
+  const title = ((result.title as string) || "").toLowerCase();
+
+  // Check URL patterns
+  for (const pattern of VACANCY_URL_PATTERNS) {
+    if (url.includes(pattern)) return true;
+  }
+
+  // Check title patterns
+  for (const pattern of VACANCY_TITLE_PATTERNS) {
+    if (title.includes(pattern)) return true;
+  }
+
+  return false;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -77,12 +137,16 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Request 1.5x results to compensate for vacancy filtering
+    const requestedResults = Math.min(Math.max(numResults, 5), 100);
+    const overFetchResults = Math.min(Math.ceil(requestedResults * 1.5), 100);
+
     // Build Exa request
     const exaBody: Record<string, unknown> = {
       query,
       type: "neural",
       category: "person",
-      numResults: Math.min(Math.max(numResults, 5), 100),
+      numResults: overFetchResults,
       useAutoprompt: true,
     };
 
@@ -125,7 +189,16 @@ Deno.serve(async (req) => {
     }
 
     const exaData = await exaRes.json();
-    const results = exaData.results || [];
+    const allResults = exaData.results || [];
+
+    // Filter out vacancy results
+    const filteredResults = allResults.filter((r: Record<string, unknown>) => !isVacancyResult(r));
+    const filteredCount = allResults.length - filteredResults.length;
+
+    // Trim to requested number
+    const results = filteredResults.slice(0, requestedResults);
+
+    console.log(`Exa returned ${allResults.length} results, filtered ${filteredCount} vacancies, keeping ${results.length}`);
 
     // Use service role for upserts
     const adminClient = createClient(
@@ -168,6 +241,8 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         total: results.length,
+        total_before_filter: allResults.length,
+        filtered_count: filteredCount,
         new_count: newCount,
         results: mappedResults,
         cost: exaData.costDollars || null,
