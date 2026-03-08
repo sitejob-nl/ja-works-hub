@@ -183,6 +183,35 @@ const Communications = () => {
     setFormSubject('');
     setFormBody('');
     setFormDuration('');
+    setFormPhone('');
+  };
+
+  const handleSendWhatsApp = async () => {
+    if (!formPhone || !formBody) {
+      toast.error('Vul telefoonnummer en bericht in');
+      return;
+    }
+    setSendingWhatsApp(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('whatsapp-send', {
+        body: {
+          to: formPhone,
+          message: formBody,
+          candidate_id: formType === 'candidate' && formCandidateId ? formCandidateId : undefined,
+          company_id: formType === 'company' && formCompanyId ? formCompanyId : undefined,
+        },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      toast.success('WhatsApp bericht verstuurd');
+      queryClient.invalidateQueries({ queryKey: ['communications'] });
+      resetForm();
+      setSheetOpen(false);
+    } catch (err: any) {
+      toast.error('Versturen mislukt: ' + (err.message || 'Onbekende fout'));
+    } finally {
+      setSendingWhatsApp(false);
+    }
   };
 
   const items = data?.items || [];
