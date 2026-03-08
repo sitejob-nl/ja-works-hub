@@ -153,8 +153,13 @@ const KandidatenZoeken = () => {
         userLocation,
         numResults: parseInt(numResults),
         includeText,
+        maxCharacters: parseInt(maxCharacters),
       };
-      if (highlightsQuery.trim()) body.highlightsQuery = highlightsQuery;
+      if (highlightsQuery.trim()) {
+        body.highlightsQuery = highlightsQuery;
+        body.numSentences = parseInt(numSentences);
+        body.highlightsPerUrl = parseInt(highlightsPerUrl);
+      }
 
       const { data, error } = await supabase.functions.invoke('exa-people-search', { body });
       if (error) throw error;
