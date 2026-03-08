@@ -739,9 +739,10 @@ const Vacaturebank = () => {
               paged.map(job => (
                 <TableRow
                   key={job.id}
-                  className={selectedIds.has(job.id) ? 'bg-primary/5' : ''}
+                  className={`cursor-pointer ${selectedIds.has(job.id) ? 'bg-primary/5' : 'hover:bg-muted/50'}`}
+                  onClick={() => setDetailJob(job)}
                 >
-                  <TableCell>
+                  <TableCell onClick={e => e.stopPropagation()}>
                     <Checkbox
                       checked={selectedIds.has(job.id)}
                       onCheckedChange={() => toggleOne(job.id)}
@@ -764,7 +765,7 @@ const Vacaturebank = () => {
                       ? format(new Date(job.date_posted), 'd MMM', { locale: nl })
                       : '—'}
                   </TableCell>
-                  <TableCell>
+                  <TableCell onClick={e => e.stopPropagation()}>
                     {job.url && (
                       <a href={job.url} target="_blank" rel="noopener noreferrer">
                         <ExternalLink className="h-4 w-4 text-muted-foreground hover:text-foreground" />
