@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
@@ -6,13 +6,16 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { toast } from 'sonner';
-import { Search, Loader2, ExternalLink, UserSearch, Globe, Bookmark, UserPlus } from 'lucide-react';
+import { Search, Loader2, ExternalLink, UserSearch, Globe, Bookmark, UserPlus, ChevronDown, Eye } from 'lucide-react';
+import TagInput from '@/components/ui/tag-input';
 
 const COUNTRY_OPTIONS = [
   { code: 'NL', label: 'Nederland' },
@@ -25,6 +28,20 @@ const COUNTRY_OPTIONS = [
   { code: 'US', label: 'Verenigde Staten' },
 ];
 
+const INDUSTRY_OPTIONS = [
+  { value: '', label: 'Alle branches' },
+  { value: 'technology', label: 'Technology / IT' },
+  { value: 'manufacturing', label: 'Productie / Industrie' },
+  { value: 'logistics', label: 'Logistiek / Transport' },
+  { value: 'construction', label: 'Bouw' },
+  { value: 'healthcare', label: 'Gezondheidszorg' },
+  { value: 'agriculture', label: 'Agrarisch / Food' },
+  { value: 'hospitality', label: 'Horeca' },
+  { value: 'retail', label: 'Retail' },
+  { value: 'finance', label: 'Finance' },
+  { value: 'engineering', label: 'Engineering' },
+];
+
 interface ConvertDialogData {
   external_id: string;
   name: string;
@@ -34,19 +51,69 @@ interface ConvertDialogData {
   lastName: string;
 }
 
+function buildQuery(
+  jobTitle: string,
+  skills: string[],
+  certifications: string[],
+  city: string,
+  industry: string,
+  experienceYears: string,
+): string {
+  const parts: string[] = [];
+  if (jobTitle.trim()) parts.push(jobTitle.trim());
+  if (skills.length > 0) parts.push(`met ${skills.join(', ')} ervaring`);
+  if (city.trim()) parts.push(`in ${city.trim()}`);
+  if (industry) {
+    const label = INDUSTRY_OPTIONS.find((i) => i.value === industry)?.label;
+    if (label) parts.push(label);
+  }
+  if (certifications.length > 0) parts.push(`met ${certifications.join(', ')} certificering`);
+  if (experienceYears.trim()) parts.push(`minimaal ${experienceYears} jaar ervaring`);
+  return parts.join(' ');
+}
+
 const KandidatenZoeken = () => {
   const organizationId = useOrganizationId();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
   const [searchParams, setSearchParams] = useSearchParams();
-  const [query, setQuery] = useState(searchParams.get('query') || '');
+
+  // Structured fields
+  const [jobTitle, setJobTitle] = useState('');
+  const [skills, setSkills] = useState<string[]>([]);
+  const [certifications, setCertifications] = useState<string[]>([]);
+  const [city, setCity] = useState('');
+  const [industry, setIndustry] = useState('');
+  const [experienceYears, setExperienceYears] = useState('');
+
+  // Advanced: manual query override
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [manualQuery, setManualQuery] = useState('');
+  const [useManualQuery, setUseManualQuery] = useState(false);
+
+  // Options
   const [userLocation, setUserLocation] = useState('NL');
   const [numResults, setNumResults] = useState('10');
   const [includeText, setIncludeText] = useState(false);
   const [highlightsQuery, setHighlightsQuery] = useState('');
   const [convertDialog, setConvertDialog] = useState<ConvertDialogData | null>(null);
   const autoSearchDone = useRef(false);
+
+  // Build query from structured fields
+  const generatedQuery = useMemo(
+    () => buildQuery(jobTitle, skills, certifications, city, industry, experienceYears),
+    [jobTitle, skills, certifications, city, industry, experienceYears],
+  );
+
+  // Keep manual query in sync when not overriding
+  useEffect(() => {
+    if (!useManualQuery) {
+      setManualQuery(generatedQuery);
+    }
+  }, [generatedQuery, useManualQuery]);
+
+  const effectiveQuery = useManualQuery ? manualQuery : generatedQuery;
 
   // Saved results
   const { data: savedResults } = useQuery({
@@ -62,14 +129,16 @@ const KandidatenZoeken = () => {
       return data;
     },
   });
+
   // Auto-search when navigated from vacancy page with query param
   useEffect(() => {
     const urlQuery = searchParams.get('query');
     if (urlQuery && !autoSearchDone.current) {
       autoSearchDone.current = true;
-      // Clear the search params to avoid re-triggering
+      setManualQuery(urlQuery);
+      setUseManualQuery(true);
+      setShowAdvanced(true);
       setSearchParams({}, { replace: true });
-      // Trigger search on next tick after state is set
       setTimeout(() => searchMutation.mutate(), 100);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -77,7 +146,7 @@ const KandidatenZoeken = () => {
   const searchMutation = useMutation({
     mutationFn: async () => {
       const body: Record<string, unknown> = {
-        query,
+        query: effectiveQuery,
         userLocation,
         numResults: parseInt(numResults),
         includeText,
@@ -156,24 +225,88 @@ const KandidatenZoeken = () => {
           Kandidaten zoeken
         </h1>
         <p className="text-muted-foreground mt-1">
-          Zoek professionals met AI-powered natural language search
+          Zoek professionals met AI-powered search
         </p>
       </div>
 
       {/* Search form */}
       <Card>
         <CardContent className="pt-6 space-y-4">
-          <div className="space-y-2">
-            <Label>Zoekquery (natural language)</Label>
-            <Input
-              placeholder="bijv. Senior software engineers met React ervaring in Amsterdam"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && query.trim() && searchMutation.mutate()}
-            />
+          {/* Main structured fields */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Functietitel</Label>
+              <Input
+                placeholder="bijv. Lasser, Software engineer, Heftruck chauffeur"
+                value={jobTitle}
+                onChange={(e) => setJobTitle(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Stad / Regio</Label>
+              <Input
+                placeholder="bijv. Rotterdam, Noord-Holland"
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+              />
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Vaardigheden</Label>
+              <TagInput
+                value={skills}
+                onChange={setSkills}
+                placeholder="Typ vaardigheid en druk Enter..."
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Certificeringen</Label>
+              <TagInput
+                value={certifications}
+                onChange={setCertifications}
+                placeholder="Typ certificering en druk Enter..."
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label>Branche</Label>
+              <Select value={industry} onValueChange={setIndustry}>
+                <SelectTrigger><SelectValue placeholder="Alle branches" /></SelectTrigger>
+                <SelectContent>
+                  {INDUSTRY_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value || '_all'} value={opt.value || '_all'}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Min. jaren ervaring</Label>
+              <Input
+                type="number"
+                min="0"
+                placeholder="bijv. 3"
+                value={experienceYears}
+                onChange={(e) => setExperienceYears(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Highlights query</Label>
+              <Input
+                placeholder="bijv. machine learning"
+                value={highlightsQuery}
+                onChange={(e) => setHighlightsQuery(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* Options row */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
             <div className="space-y-2">
               <Label>Land</Label>
               <Select value={userLocation} onValueChange={setUserLocation}>
@@ -198,26 +331,55 @@ const KandidatenZoeken = () => {
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label>Highlights query</Label>
-              <Input
-                placeholder="bijv. machine learning"
-                value={highlightsQuery}
-                onChange={(e) => setHighlightsQuery(e.target.value)}
-              />
-            </div>
-
-            <div className="flex items-end gap-2">
-              <div className="flex items-center gap-2">
-                <Switch checked={includeText} onCheckedChange={setIncludeText} />
-                <Label className="text-sm">Profieltekst</Label>
-              </div>
+            <div className="flex items-center gap-2 pb-1">
+              <Switch checked={includeText} onCheckedChange={setIncludeText} />
+              <Label className="text-sm">Profieltekst ophalen</Label>
             </div>
           </div>
 
+          {/* Advanced: show generated query */}
+          <Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="sm" className="gap-1 text-muted-foreground">
+                <Eye className="h-4 w-4" />
+                Toon query
+                <ChevronDown className={`h-3 w-3 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} />
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-2 space-y-2">
+              <div className="flex items-center gap-2">
+                <Switch checked={useManualQuery} onCheckedChange={setUseManualQuery} />
+                <Label className="text-sm">Handmatig aanpassen</Label>
+              </div>
+              <Textarea
+                value={useManualQuery ? manualQuery : generatedQuery}
+                onChange={(e) => {
+                  setUseManualQuery(true);
+                  setManualQuery(e.target.value);
+                }}
+                placeholder="De samengestelde zoekquery..."
+                className="min-h-[60px] text-sm"
+                readOnly={!useManualQuery}
+              />
+              {useManualQuery && (
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="h-auto p-0 text-xs"
+                  onClick={() => {
+                    setUseManualQuery(false);
+                    setManualQuery(generatedQuery);
+                  }}
+                >
+                  Reset naar velden
+                </Button>
+              )}
+            </CollapsibleContent>
+          </Collapsible>
+
           <Button
             onClick={() => searchMutation.mutate()}
-            disabled={!query.trim() || searchMutation.isPending}
+            disabled={!effectiveQuery.trim() || searchMutation.isPending}
           >
             {searchMutation.isPending ? (
               <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Zoeken...</>
