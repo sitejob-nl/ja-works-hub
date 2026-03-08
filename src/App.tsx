@@ -97,6 +97,7 @@ const App = () => (
               <Route path="/whatsapp" element={<WhatsAppPage />} />
               <Route path="/kennisbank" element={<KnowledgeBasePage />} />
               <Route path="/exact-online" element={<ExactOnlinePage />} />
+              <Route path="/cv-tool/:candidateId" element={<CvTool />} />
               <Route path="/instellingen" element={<SettingsPage />} />
             </Route>
             {/* Public onboarding route */}

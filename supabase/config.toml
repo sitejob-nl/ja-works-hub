@@ -41,3 +41,6 @@ verify_jwt = false
 
 [functions.onboarding-submit]
 verify_jwt = false
+
+[functions.cv-rewrite]
+verify_jwt = false

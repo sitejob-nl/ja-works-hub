@@ -254,6 +254,9 @@ const Settings = () => {
 
           {/* Data Export */}
           <DataExport />
+
+          {/* Compliance Rules */}
+          <ComplianceRulesSettings />
         </div>
 
         {/* Right column */}

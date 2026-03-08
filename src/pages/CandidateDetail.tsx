@@ -87,6 +87,9 @@ const CandidateDetail = () => {
           <Badge variant="secondary" className={complianceBadge[candidate.compliance_status] ?? ''}>{candidate.compliance_status}</Badge>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => navigate(`/cv-tool/${id}`)} className="gap-2">
+            <FileText className="h-3.5 w-3.5" /> CV Genereren
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setEditOpen(true)} className="gap-2">
             <Pencil className="h-3.5 w-3.5" /> Bewerken
           </Button>
