@@ -56,12 +56,13 @@ const Vacaturebank = () => {
   const { data: jobs = [], isLoading } = useQuery({
     queryKey: ['job-listings', organizationId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('job_listings')
         .select('*')
         .order('date_posted', { ascending: false });
       if (error) throw error;
-      return data;
+      return data as any[];
+    },
     },
     enabled: !!organizationId,
   });
