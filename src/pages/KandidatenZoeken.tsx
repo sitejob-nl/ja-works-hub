@@ -166,7 +166,10 @@ const KandidatenZoeken = () => {
       return data;
     },
     onSuccess: (data) => {
-      toast.success(`${data.total} resultaten gevonden, ${data.new_count} opgeslagen`);
+      const filterMsg = data.filtered_count > 0
+        ? `, ${data.filtered_count} vacatures gefilterd`
+        : '';
+      toast.success(`${data.total} kandidaten gevonden${filterMsg}, ${data.new_count} opgeslagen`);
       queryClient.invalidateQueries({ queryKey: ['people-search-results'] });
     },
     onError: (err: Error) => {
