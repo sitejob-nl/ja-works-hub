@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { useAuth } from '@/contexts/AuthContext';
 import { Link } from 'react-router-dom';
-import { Search, UserPlus } from 'lucide-react';
+import { Search, UserPlus, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -63,19 +63,42 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
 
   const proposeMutation = useMutation({
     mutationFn: async (candidateId: string) => {
-      const { error } = await supabase.from('matches').insert({
+      const { data: match, error } = await supabase.from('matches').insert({
         organization_id: orgId,
         vacancy_id: vacancy.id,
         candidate_id: candidateId,
         proposed_by: user?.id ?? null,
         status: 'voorgesteld' as any,
-      });
+      }).select('id').single();
       if (error) throw error;
+
+      // Trigger AI match scoring
+      try {
+        await supabase.functions.invoke('calculate-match', {
+          body: { match_id: match.id, candidate_id: candidateId, vacancy_id: vacancy.id },
+        });
+      } catch { /* non-blocking */ }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['vacancy-matches', vacancy.id] });
       qc.invalidateQueries({ queryKey: ['available-candidates-for-vacancy'] });
-      toast.success('Kandidaat voorgedragen');
+      toast.success('Kandidaat voorgedragen (AI score wordt berekend)');
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const rescoreMutation = useMutation({
+    mutationFn: async () => {
+      const allMatches = matches ?? [];
+      for (const m of allMatches) {
+        await supabase.functions.invoke('calculate-match', {
+          body: { match_id: (m as any).id, candidate_id: (m as any).candidate_id, vacancy_id: vacancy.id },
+        });
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['vacancy-matches', vacancy.id] });
+      toast.success('Alle match scores herberekend');
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -103,7 +126,12 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-4">
       <div className="lg:col-span-2 space-y-4">
-        <h3 className="font-semibold">Match pipeline</h3>
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold">Match pipeline</h3>
+          <Button variant="outline" size="sm" onClick={() => rescoreMutation.mutate()} disabled={rescoreMutation.isPending || !(matches?.length)}>
+            <Sparkles className="h-3 w-3 mr-1" /> {rescoreMutation.isPending ? 'Berekenen...' : 'Herbereken scores'}
+          </Button>
+        </div>
         {Object.entries(grouped).map(([status, items]) => (
           <Card key={status}>
             <CardHeader className="py-3 px-4">
@@ -124,7 +152,14 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
                             <Link to={`/kandidaten/${c.id}`} className="font-medium hover:text-primary">{c.first_name} {c.last_name}</Link>
                           </TableCell>
                           <TableCell>
-                            {m.match_score != null && <Badge variant="outline" className="text-xs">{m.match_score}%</Badge>}
+                            {m.match_score != null && (
+                              <div className="flex items-center gap-1">
+                                <Badge variant="outline" className="text-xs">{m.match_score}%</Badge>
+                                {m.match_reasoning && (
+                                  <span className="text-xs text-muted-foreground truncate max-w-[150px]" title={m.match_reasoning}>{m.match_reasoning}</span>
+                                )}
+                              </div>
+                            )}
                           </TableCell>
                           <TableCell className="text-xs text-muted-foreground">{formatDate(m.proposed_at)}</TableCell>
                           <TableCell className="text-right">

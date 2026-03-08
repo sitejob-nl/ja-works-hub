@@ -1344,6 +1344,58 @@ export type Database = {
           },
         ]
       }
+      onboarding_tokens: {
+        Row: {
+          created_at: string
+          employee_id: string
+          expires_at: string
+          id: string
+          organization_id: string
+          token: string
+          used_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          employee_id: string
+          expires_at?: string
+          id?: string
+          organization_id: string
+          token?: string
+          used_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          employee_id?: string
+          expires_at?: string
+          id?: string
+          organization_id?: string
+          token?: string
+          used_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "onboarding_tokens_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_tokens_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_employee_compliance"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "onboarding_tokens_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organization_modules: {
         Row: {
           enabled: boolean | null
@@ -2143,6 +2195,7 @@ export type Database = {
           required_count: number
           required_skills: string[] | null
           requires_drivers_license: boolean | null
+          skills_required: string[] | null
           start_date: string | null
           status: Database["public"]["Enums"]["vacancy_status"]
           title: string
@@ -2165,6 +2218,7 @@ export type Database = {
           required_count?: number
           required_skills?: string[] | null
           requires_drivers_license?: boolean | null
+          skills_required?: string[] | null
           start_date?: string | null
           status?: Database["public"]["Enums"]["vacancy_status"]
           title: string
@@ -2187,6 +2241,7 @@ export type Database = {
           required_count?: number
           required_skills?: string[] | null
           requires_drivers_license?: boolean | null
+          skills_required?: string[] | null
           start_date?: string | null
           status?: Database["public"]["Enums"]["vacancy_status"]
           title?: string

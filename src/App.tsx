@@ -38,6 +38,7 @@ import Communications from "@/pages/Communications";
 import KnowledgeBasePage from "@/pages/KnowledgeBase";
 import WhatsAppPage from "@/pages/WhatsApp";
 import ExactOnlinePage from "@/pages/ExactOnline";
+import Onboarding from "@/pages/Onboarding";
 
 
 const queryClient = new QueryClient();
@@ -97,6 +98,8 @@ const App = () => (
               <Route path="/exact-online" element={<ExactOnlinePage />} />
               <Route path="/instellingen" element={<SettingsPage />} />
             </Route>
+            {/* Public onboarding route */}
+            <Route path="/onboarding/:token" element={<Onboarding />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

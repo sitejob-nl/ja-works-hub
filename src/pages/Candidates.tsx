@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Link } from 'react-router-dom';
-import { Users, Plus, Search } from 'lucide-react';
+import { Users, Plus, Search, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
 import CandidateSlideOver from '@/components/candidates/CandidateSlideOver';
+import ImportWizard from '@/components/import/ImportWizard';
 
 const PAGE_SIZE = 10;
 
@@ -43,6 +44,8 @@ const Candidates = () => {
   const [complianceFilter, setComplianceFilter] = useState('all');
   const [page, setPage] = useState(0);
   const [slideOverOpen, setSlideOverOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importPreset, setImportPreset] = useState<'carerix' | 'buddy' | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['candidates', search, statusFilter, complianceFilter, page],
@@ -74,9 +77,17 @@ const Candidates = () => {
           <h1 className="text-2xl font-semibold">Kandidaten</h1>
           <p className="text-muted-foreground text-sm mt-1">Overzicht van alle kandidaten</p>
         </div>
-        <Button onClick={() => setSlideOverOpen(true)} className="gap-2">
-          <Plus className="h-4 w-4" /> Nieuwe kandidaat
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => { setImportPreset(null); setImportOpen(true); }} className="gap-2">
+            <Upload className="h-4 w-4" /> Importeren
+          </Button>
+          <Button variant="outline" onClick={() => { setImportPreset('buddy'); setImportOpen(true); }} className="gap-2">
+            <Upload className="h-4 w-4" /> Buddy import
+          </Button>
+          <Button onClick={() => setSlideOverOpen(true)} className="gap-2">
+            <Plus className="h-4 w-4" /> Nieuwe kandidaat
+          </Button>
+        </div>
       </div>
 
       <div className="flex items-center gap-3 flex-wrap">
@@ -183,6 +194,7 @@ const Candidates = () => {
       )}
 
       <CandidateSlideOver open={slideOverOpen} onOpenChange={setSlideOverOpen} />
+      <ImportWizard open={importOpen} onOpenChange={setImportOpen} target="candidates" preset={importPreset} />
     </div>
   );
 };

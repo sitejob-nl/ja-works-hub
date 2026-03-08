@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Link } from 'react-router-dom';
-import { Building2, Plus, Search } from 'lucide-react';
+import { Building2, Plus, Search, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
 import CompanySlideOver from '@/components/companies/CompanySlideOver';
+import ImportWizard from '@/components/import/ImportWizard';
 
 const PAGE_SIZE = 10;
 
@@ -18,6 +19,7 @@ const Companies = () => {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [page, setPage] = useState(0);
   const [slideOverOpen, setSlideOverOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['companies', search, statusFilter, page],
@@ -56,9 +58,14 @@ const Companies = () => {
           <h1 className="text-2xl font-semibold">Opdrachtgevers</h1>
           <p className="text-muted-foreground text-sm mt-1">Beheer je opdrachtgevers en contactpersonen</p>
         </div>
-        <Button onClick={() => setSlideOverOpen(true)} className="gap-2">
-          <Plus className="h-4 w-4" /> Nieuwe opdrachtgever
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setImportOpen(true)} className="gap-2">
+            <Upload className="h-4 w-4" /> Importeren
+          </Button>
+          <Button onClick={() => setSlideOverOpen(true)} className="gap-2">
+            <Plus className="h-4 w-4" /> Nieuwe opdrachtgever
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -156,6 +163,7 @@ const Companies = () => {
       )}
 
       <CompanySlideOver open={slideOverOpen} onOpenChange={setSlideOverOpen} />
+      <ImportWizard open={importOpen} onOpenChange={setImportOpen} target="companies" />
     </div>
   );
 };
