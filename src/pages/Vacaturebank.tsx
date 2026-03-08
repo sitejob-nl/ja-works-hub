@@ -104,6 +104,9 @@ const Vacaturebank = () => {
   const [convertOpen, setConvertOpen] = useState(false);
   const [convertCompanyId, setConvertCompanyId] = useState('');
 
+  // Detail slide-over
+  const [detailJob, setDetailJob] = useState<any | null>(null);
+
   // Fetch jobs
   const { data: jobs = [], isLoading } = useQuery({
     queryKey: ['job-listings', organizationId],
