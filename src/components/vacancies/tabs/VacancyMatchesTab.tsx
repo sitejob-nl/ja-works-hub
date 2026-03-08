@@ -152,7 +152,14 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
                             <Link to={`/kandidaten/${c.id}`} className="font-medium hover:text-primary">{c.first_name} {c.last_name}</Link>
                           </TableCell>
                           <TableCell>
-                            {m.match_score != null && <Badge variant="outline" className="text-xs">{m.match_score}%</Badge>}
+                            {m.match_score != null && (
+                              <div className="flex items-center gap-1">
+                                <Badge variant="outline" className="text-xs">{m.match_score}%</Badge>
+                                {m.match_reasoning && (
+                                  <span className="text-xs text-muted-foreground truncate max-w-[150px]" title={m.match_reasoning}>{m.match_reasoning}</span>
+                                )}
+                              </div>
+                            )}
                           </TableCell>
                           <TableCell className="text-xs text-muted-foreground">{formatDate(m.proposed_at)}</TableCell>
                           <TableCell className="text-right">
