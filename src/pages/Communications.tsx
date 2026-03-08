@@ -531,14 +531,40 @@ const Communications = () => {
               </div>
             )}
 
-            <Button
-              className="w-full"
-              onClick={() => createMutation.mutate()}
-              disabled={createMutation.isPending}
-            >
-              {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-              Opslaan
-            </Button>
+            {formChannel === 'whatsapp' && formDirection === 'outbound' && (
+              <div className="space-y-2">
+                <Label>Telefoonnummer ontvanger</Label>
+                <Input
+                  value={formPhone}
+                  onChange={(e) => setFormPhone(e.target.value)}
+                  placeholder="bijv. 31612345678"
+                />
+                <p className="text-xs text-muted-foreground">Internationaal formaat zonder + teken</p>
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              {formChannel === 'whatsapp' && formDirection === 'outbound' && (
+                <Button
+                  className="flex-1 gap-2"
+                  variant="default"
+                  onClick={handleSendWhatsApp}
+                  disabled={sendingWhatsApp}
+                >
+                  {sendingWhatsApp ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  Verstuur via WhatsApp
+                </Button>
+              )}
+              <Button
+                className="flex-1"
+                variant={formChannel === 'whatsapp' && formDirection === 'outbound' ? 'outline' : 'default'}
+                onClick={() => createMutation.mutate()}
+                disabled={createMutation.isPending}
+              >
+                {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                {formChannel === 'whatsapp' && formDirection === 'outbound' ? 'Alleen loggen' : 'Opslaan'}
+              </Button>
+            </div>
           </div>
         </SheetContent>
       </Sheet>
