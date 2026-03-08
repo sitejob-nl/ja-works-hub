@@ -6,6 +6,64 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+function mapJobToRow(job: Record<string, unknown>, organizationId: string, index: number) {
+  return {
+    organization_id: organizationId,
+    external_id: String(job.id || job.url || `${index}-${Math.random()}`),
+    title: job.title || "Untitled",
+    organization_name: job.organization || null,
+    organization_url: job.organization_url || null,
+    organization_logo: job.organization_logo || null,
+    url: job.url || null,
+    locations_derived: job.locations_derived || null,
+    country:
+      (job.countries_derived as Array<{ country?: string }>)?.[0]?.country || null,
+    city:
+      (job.cities_derived as Array<{ city?: string }>)?.[0]?.city || null,
+    description_text: job.description_text || null,
+    source: job.source || null,
+    source_type: job.source_type || null,
+    employment_type: job.employment_type || null,
+    work_arrangement: job.ai_work_arrangement || null,
+    ai_taxonomies: job.ai_taxonomies_a || null,
+    ai_key_skills: job.ai_key_skills || null,
+    ai_salary_currency: job.ai_salary_currency || null,
+    ai_salary_min: job.ai_salary_minvalue || null,
+    ai_salary_max: job.ai_salary_maxvalue || null,
+    ai_salary_unit: job.ai_salary_unit || null,
+    date_posted: job.date_posted || null,
+    // AI fields
+    ai_experience_level: job.ai_experience_level || null,
+    ai_employment_type: job.ai_employment_type || null,
+    ai_benefits: job.ai_benefits || null,
+    ai_core_responsibilities: job.ai_core_responsibilities || null,
+    ai_requirements_summary: job.ai_requirements_summary || null,
+    ai_education_requirements: job.ai_education_requirements || null,
+    ai_keywords: job.ai_keywords || null,
+    ai_visa_sponsorship: typeof job.ai_visa_sponsorship === "boolean" ? job.ai_visa_sponsorship : null,
+    ai_hiring_manager_name: job.ai_hiring_manager_name || null,
+    ai_hiring_manager_email: job.ai_hiring_manager_email_address || null,
+    ai_working_hours: typeof job.ai_working_hours === "number" ? job.ai_working_hours : null,
+    // Derived fields
+    domain_derived: job.domain_derived || null,
+    remote_derived: typeof job.remote_derived === "boolean" ? job.remote_derived : null,
+    // LinkedIn fields
+    linkedin_org_industry: job.linkedin_org_industry || null,
+    linkedin_org_employees: typeof job.linkedin_org_employees === "number" ? job.linkedin_org_employees : null,
+    linkedin_org_url: job.linkedin_org_url || null,
+    linkedin_org_type: job.linkedin_org_type || null,
+    linkedin_org_headquarters: job.linkedin_org_headquarters || null,
+    linkedin_org_description: job.linkedin_org_description || null,
+    linkedin_org_specialties: job.linkedin_org_specialties || null,
+    linkedin_org_founded_date: job.linkedin_org_foundeddate || null,
+    linkedin_org_slug: job.linkedin_org_slug || null,
+    linkedin_org_followers: typeof job.linkedin_org_followers === "number" ? job.linkedin_org_followers : null,
+    linkedin_org_size: job.linkedin_org_size || null,
+    linkedin_org_recruitment_agency: typeof job.linkedin_org_recruitment_agency_derived === "boolean" ? job.linkedin_org_recruitment_agency_derived : null,
+    raw_data: job,
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -27,10 +85,7 @@ Deno.serve(async (req) => {
     if (!apifyToken) {
       return new Response(
         JSON.stringify({ error: "APIFY_API_KEY is not configured" }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -39,8 +94,7 @@ Deno.serve(async (req) => {
     });
 
     const token = authHeader.replace("Bearer ", "");
-    const { data: claimsData, error: claimsError } =
-      await supabase.auth.getClaims(token);
+    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
     if (claimsError || !claimsData?.claims) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
@@ -49,7 +103,6 @@ Deno.serve(async (req) => {
     }
 
     const userId = claimsData.claims.sub;
-
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("organization_id")
@@ -57,13 +110,10 @@ Deno.serve(async (req) => {
       .single();
 
     if (profileError || !profile) {
-      return new Response(
-        JSON.stringify({ error: "Profile not found" }),
-        {
-          status: 403,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
+      return new Response(JSON.stringify({ error: "Profile not found" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const organizationId = profile.organization_id;
@@ -71,41 +121,21 @@ Deno.serve(async (req) => {
     const {
       timeRange = "7d",
       limit = 100,
-      // Search arrays
-      titleSearch,
-      titleExclusionSearch,
-      locationSearch,
-      locationExclusionSearch,
-      descriptionSearch,
-      descriptionExclusionSearch,
-      organizationSearch,
-      organizationExclusionSearch,
-      // Domain filters
-      domainFilter,
-      domainExclusionFilter,
-      // ATS
-      ats,
-      atsExclusionFilter,
-      // AI filters
-      aiTaxonomiesFilter,
-      aiTaxonomiesPrimaryFilter,
-      aiTaxonomiesExclusionFilter,
-      aiWorkArrangementFilter,
-      aiEmploymentTypeFilter,
-      aiExperienceLevelFilter,
-      aiHasSalary,
-      aiVisaSponsorshipFilter,
-      // LinkedIn filters
-      liIndustryFilter,
-      liOrganizationEmployeesLte,
-      liOrganizationEmployeesGte,
-      // Other
+      titleSearch, titleExclusionSearch,
+      locationSearch, locationExclusionSearch,
+      descriptionSearch, descriptionExclusionSearch,
+      organizationSearch, organizationExclusionSearch,
+      domainFilter, domainExclusionFilter,
+      ats, atsExclusionFilter,
+      aiTaxonomiesFilter, aiTaxonomiesPrimaryFilter, aiTaxonomiesExclusionFilter,
+      aiWorkArrangementFilter, aiEmploymentTypeFilter, aiExperienceLevelFilter,
+      aiHasSalary, aiVisaSponsorshipFilter,
+      liIndustryFilter, liOrganizationEmployeesLte, liOrganizationEmployeesGte,
       removeAgency,
       includeAi = true,
       includeLinkedIn = true,
     } = body;
 
-    // Build Apify input
     const apifyInput: Record<string, unknown> = {
       timeRange,
       limit: Math.min(Math.max(limit, 10), 5000),
@@ -116,7 +146,6 @@ Deno.serve(async (req) => {
       populateAiRemoteLocationDerived: false,
     };
 
-    // Array filters — only add if non-empty
     const arrayFields: [string, unknown][] = [
       ["titleSearch", titleSearch],
       ["titleExclusionSearch", titleExclusionSearch],
@@ -145,16 +174,12 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Boolean filters
     if (typeof aiHasSalary === "boolean") apifyInput.aiHasSalary = aiHasSalary;
     if (typeof aiVisaSponsorshipFilter === "boolean") apifyInput.aiVisaSponsorshipFilter = aiVisaSponsorshipFilter;
     if (typeof removeAgency === "boolean") apifyInput.removeAgency = removeAgency;
-
-    // LinkedIn company size
     if (typeof liOrganizationEmployeesLte === "number") apifyInput.liOrganizationEmployeesLte = liOrganizationEmployeesLte;
     if (typeof liOrganizationEmployeesGte === "number") apifyInput.liOrganizationEmployeesGte = liOrganizationEmployeesGte;
 
-    // Call Apify API
     const apifyUrl = `https://api.apify.com/v2/acts/fantastic-jobs~career-site-job-listing-api/run-sync-get-dataset-items?token=${apifyToken}`;
 
     const apifyResponse = await fetch(apifyUrl, {
@@ -166,14 +191,8 @@ Deno.serve(async (req) => {
     if (!apifyResponse.ok) {
       const errText = await apifyResponse.text();
       return new Response(
-        JSON.stringify({
-          error: "Apify API error",
-          details: errText,
-        }),
-        {
-          status: 502,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
+        JSON.stringify({ error: "Apify API error", details: errText }),
+        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -182,14 +201,10 @@ Deno.serve(async (req) => {
     if (!Array.isArray(jobs)) {
       return new Response(
         JSON.stringify({ error: "Unexpected Apify response format" }),
-        {
-          status: 502,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
+        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Use service role for upserts to bypass RLS
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
 
@@ -197,35 +212,9 @@ Deno.serve(async (req) => {
 
     for (let i = 0; i < jobs.length; i += 50) {
       const batch = jobs.slice(i, i + 50);
-      const rows = batch.map((job: Record<string, unknown>) => ({
-        organization_id: organizationId,
-        external_id: String(job.id || job.url || `${i}-${Math.random()}`),
-        title: job.title || "Untitled",
-        organization_name: job.organization || null,
-        organization_url: job.organization_url || null,
-        organization_logo: job.organization_logo || null,
-        url: job.url || null,
-        locations_derived: job.locations_derived || null,
-        country:
-          (job.countries_derived as Array<{ country?: string }>)?.[0]?.country ||
-          null,
-        city:
-          (job.cities_derived as Array<{ city?: string }>)?.[0]?.city || null,
-        description_text: job.description_text || null,
-        source: job.source || null,
-        employment_type: job.employment_type || null,
-        work_arrangement: job.ai_work_arrangement || null,
-        ai_taxonomies: job.ai_taxonomies_a || null,
-        ai_key_skills: job.ai_key_skills || null,
-        ai_salary_currency: job.ai_salary_currency || null,
-        ai_salary_min: job.ai_salary_minvalue || null,
-        ai_salary_max: job.ai_salary_maxvalue || null,
-        ai_salary_unit: job.ai_salary_unit || null,
-        date_posted: job.date_posted || null,
-        linkedin_org_industry: job.linkedin_org_industry || null,
-        linkedin_org_employees: job.linkedin_org_employees || null,
-        raw_data: job,
-      }));
+      const rows = batch.map((job: Record<string, unknown>, idx: number) =>
+        mapJobToRow(job, organizationId, i + idx)
+      );
 
       const { data: upserted, error: upsertError } = await adminClient
         .from("job_listings")
@@ -252,19 +241,13 @@ Deno.serve(async (req) => {
 
     return new Response(
       JSON.stringify({ total: jobs.length, new_count: newCount }),
-      {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
     console.error("Edge function error:", err);
     return new Response(
       JSON.stringify({ error: err.message || "Internal server error" }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
