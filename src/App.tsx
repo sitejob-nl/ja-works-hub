@@ -36,6 +36,7 @@ import Vacaturebank from "@/pages/Vacaturebank";
 import KandidatenZoeken from "@/pages/KandidatenZoeken";
 import Communications from "@/pages/Communications";
 import KnowledgeBasePage from "@/pages/KnowledgeBase";
+import WhatsAppPage from "@/pages/WhatsApp";
 
 
 const queryClient = new QueryClient();
@@ -90,6 +91,7 @@ const App = () => (
               <Route path="/vacaturebank" element={<Vacaturebank />} />
               <Route path="/kandidaten-zoeken" element={<KandidatenZoeken />} />
               <Route path="/communicatie" element={<Communications />} />
+              <Route path="/whatsapp" element={<WhatsAppPage />} />
               <Route path="/kennisbank" element={<KnowledgeBasePage />} />
               <Route path="/instellingen" element={<SettingsPage />} />
             </Route>
