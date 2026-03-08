@@ -19,6 +19,7 @@ const Companies = () => {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [page, setPage] = useState(0);
   const [slideOverOpen, setSlideOverOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['companies', search, statusFilter, page],
