@@ -22,7 +22,7 @@ Deno.serve(async (req) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const apifyToken = Deno.env.get("APIFY_API_TOKEN");
+    const apifyToken = Deno.env.get("APIFY_API_KEY");
 
     if (!apifyToken) {
       return new Response(
