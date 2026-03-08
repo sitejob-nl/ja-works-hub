@@ -39,6 +39,7 @@ import KnowledgeBasePage from "@/pages/KnowledgeBase";
 import WhatsAppPage from "@/pages/WhatsApp";
 import ExactOnlinePage from "@/pages/ExactOnline";
 import Onboarding from "@/pages/Onboarding";
+import CvTool from "@/pages/CvTool";
 
 
 const queryClient = new QueryClient();
