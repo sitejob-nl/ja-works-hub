@@ -40,6 +40,7 @@ import WhatsAppPage from "@/pages/WhatsApp";
 import ExactOnlinePage from "@/pages/ExactOnline";
 import Onboarding from "@/pages/Onboarding";
 import CvTool from "@/pages/CvTool";
+import RecruiterWorkbench from "@/pages/RecruiterWorkbench";
 
 
 const queryClient = new QueryClient();
