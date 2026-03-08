@@ -13,6 +13,7 @@ import { useEffect } from 'react';
 
 const allNavItems = [
   { label: 'Dashboard', icon: LayoutDashboard, path: '/', moduleKey: null },
+  { label: 'Workbench', icon: ClipboardList, path: '/workbench', moduleKey: null },
   { label: 'Opdrachtgevers', icon: Building2, path: '/opdrachtgevers', moduleKey: 'opdrachtgevers' },
   { label: 'Kandidaten', icon: Users, path: '/kandidaten', moduleKey: 'kandidaten' },
   { label: 'Medewerkers', icon: UserCheck, path: '/medewerkers', moduleKey: 'medewerkers' },
