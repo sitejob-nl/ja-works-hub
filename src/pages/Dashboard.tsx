@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { formatDate, formatRelativeTime } from '@/lib/format';
 import { toast } from 'sonner';
+import KpiDashboard from '@/components/dashboard/KpiDashboard';
 
 interface StatCardProps {
   icon: React.ElementType;
@@ -291,7 +292,13 @@ const Dashboard = () => {
         <StatCard icon={Clock} label="Uren deze week" value={stats.weeklyHours} colorClass="text-stat-purple" bgClass="bg-stat-purple/10" />
       </div>
 
-      {/* Two columns */}
+      {/* KPI Dashboard for management */}
+      {profile?.role === 'admin' && (
+        <KpiDashboard />
+      )}
+
+      {/* Divider */}
+      <div className="mb-8" />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Aandacht vereist */}
         <div className="bg-card rounded-lg p-5 shadow-sm border border-border">

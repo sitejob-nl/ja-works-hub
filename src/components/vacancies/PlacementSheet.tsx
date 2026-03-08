@@ -11,6 +11,8 @@ import { toast } from 'sonner';
 import { checkCompliance } from '@/hooks/useComplianceCheck';
 import ComplianceWarningDialog from '@/components/ComplianceWarningDialog';
 import { logAudit } from '@/lib/audit';
+import { generateTimesheetTemplates, getHousingSuggestions, sendPlacementWhatsApp, type HousingSuggestion } from '@/components/placement/PlacementTriggers';
+import HousingSuggestionsCard from '@/components/placement/HousingSuggestionsCard';
 
 interface Props {
   match: any | null;
@@ -33,6 +35,9 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
 
   const [complianceIssues, setComplianceIssues] = useState<string[]>([]);
   const [showComplianceWarning, setShowComplianceWarning] = useState(false);
+  const [housingSuggestions, setHousingSuggestions] = useState<HousingSuggestion[]>([]);
+  const [placementDone, setPlacementDone] = useState(false);
+  const [lastPlacementData, setLastPlacementData] = useState<{ employeeId: string; placementId: string } | null>(null);
 
   useEffect(() => {
     if (match && vacancy) {
@@ -140,19 +145,69 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
       newValues: { ...form, compliance_passed: compliance.passed, override: isOverride },
       reason: isOverride ? `Compliance override: ${compliance.issues.join(', ')}` : undefined,
     });
+
+    // === POST-PLACEMENT TRIGGERS ===
+    const candidate = match?.candidates as any;
+
+    // 1. Generate timesheet templates
+    try {
+      const count = await generateTimesheetTemplates({
+        placementId: placement.id,
+        employeeId,
+        companyId,
+        organizationId: orgId,
+        startDate: form.start_date,
+        functionName: form.function_name,
+        hourlyRate: parseFloat(form.hourly_rate),
+      });
+      if (count > 0) toast.info(`${count} uren-templates aangemaakt`);
+    } catch { /* non-blocking */ }
+
+    // 2. Get housing suggestions
+    try {
+      const suggestions = await getHousingSuggestions(orgId, companyId);
+      if (suggestions.length > 0) {
+        setHousingSuggestions(suggestions);
+        setLastPlacementData({ employeeId, placementId: placement.id });
+        setPlacementDone(true);
+        return; // Keep sheet open to show housing suggestions
+      }
+    } catch { /* non-blocking */ }
+
+    // 3. Send WhatsApp confirmation
+    try {
+      await sendPlacementWhatsApp({
+        placementId: placement.id,
+        employeeId,
+        companyId,
+        organizationId: orgId,
+        startDate: form.start_date,
+        functionName: form.function_name,
+        hourlyRate: parseFloat(form.hourly_rate),
+        candidatePhone: candidate?.phone,
+        candidateName: candidate?.first_name,
+      });
+    } catch { /* non-blocking */ }
+  };
+
+  const invalidateAll = () => {
+    qc.invalidateQueries({ queryKey: ['vacancy-matches'] });
+    qc.invalidateQueries({ queryKey: ['vacancy-placements'] });
+    qc.invalidateQueries({ queryKey: ['vacancy', vacancy.id] });
+    qc.invalidateQueries({ queryKey: ['vacancies'] });
+    qc.invalidateQueries({ queryKey: ['employees'] });
+    qc.invalidateQueries({ queryKey: ['candidates'] });
+    qc.invalidateQueries({ queryKey: ['timesheets'] });
   };
 
   const mutation = useMutation({
     mutationFn: () => executePlacement(false),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['vacancy-matches'] });
-      qc.invalidateQueries({ queryKey: ['vacancy-placements'] });
-      qc.invalidateQueries({ queryKey: ['vacancy', vacancy.id] });
-      qc.invalidateQueries({ queryKey: ['vacancies'] });
-      qc.invalidateQueries({ queryKey: ['employees'] });
-      qc.invalidateQueries({ queryKey: ['candidates'] });
-      toast.success('Plaatsing aangemaakt');
-      onClose();
+      invalidateAll();
+      if (!placementDone) {
+        toast.success('Plaatsing aangemaakt');
+        onClose();
+      }
     },
     onError: (e: any) => {
       // Don't show error if compliance dialog is being shown
@@ -165,14 +220,11 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
   const overrideMutation = useMutation({
     mutationFn: () => executePlacement(true),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['vacancy-matches'] });
-      qc.invalidateQueries({ queryKey: ['vacancy-placements'] });
-      qc.invalidateQueries({ queryKey: ['vacancy', vacancy.id] });
-      qc.invalidateQueries({ queryKey: ['vacancies'] });
-      qc.invalidateQueries({ queryKey: ['employees'] });
-      qc.invalidateQueries({ queryKey: ['candidates'] });
-      toast.success('Plaatsing aangemaakt (compliance override)');
-      onClose();
+      invalidateAll();
+      if (!placementDone) {
+        toast.success('Plaatsing aangemaakt (compliance override)');
+        onClose();
+      }
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -197,11 +249,26 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
               <div><Label>Einddatum</Label><Input type="date" value={form.end_date} onChange={(e) => set('end_date', e.target.value)} /></div>
               <div><Label>Uurtarief (€) *</Label><Input type="number" step="0.01" value={form.hourly_rate} onChange={(e) => set('hourly_rate', e.target.value)} /></div>
               <div><Label>Overwerktarief (€)</Label><Input type="number" step="0.01" value={form.overtime_rate} onChange={(e) => set('overtime_rate', e.target.value)} /></div>
+              {placementDone && housingSuggestions.length > 0 && lastPlacementData && (
+                <HousingSuggestionsCard
+                  suggestions={housingSuggestions}
+                  employeeId={lastPlacementData.employeeId}
+                  startDate={form.start_date}
+                  onAssigned={() => {
+                    qc.invalidateQueries({ queryKey: ['housing'] });
+                  }}
+                />
+              )}
+
               <div className="flex justify-end gap-3 pt-4">
-                <Button variant="ghost" onClick={onClose}>Annuleren</Button>
-                <Button onClick={() => mutation.mutate()} disabled={!form.function_name || !form.start_date || !form.hourly_rate || mutation.isPending}>
-                  {mutation.isPending ? 'Aanmaken...' : 'Plaatsing aanmaken'}
+                <Button variant="ghost" onClick={onClose}>
+                  {placementDone ? 'Sluiten' : 'Annuleren'}
                 </Button>
+                {!placementDone && (
+                  <Button onClick={() => mutation.mutate()} disabled={!form.function_name || !form.start_date || !form.hourly_rate || mutation.isPending}>
+                    {mutation.isPending ? 'Aanmaken...' : 'Plaatsing aanmaken'}
+                  </Button>
+                )}
               </div>
             </div>
           )}
