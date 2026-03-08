@@ -62,6 +62,8 @@ const Communications = () => {
   const [formSubject, setFormSubject] = useState('');
   const [formBody, setFormBody] = useState('');
   const [formDuration, setFormDuration] = useState('');
+  const [formPhone, setFormPhone] = useState('');
+  const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['communications', organizationId, search, channelFilter, directionFilter, typeFilter, page],
