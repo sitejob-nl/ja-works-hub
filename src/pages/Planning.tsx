@@ -19,6 +19,9 @@ import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { formatDate, formatEUR } from '@/lib/format';
 import { useNavigate } from 'react-router-dom';
+import { logAudit } from '@/lib/audit';
+import { checkCompliance } from '@/hooks/useComplianceCheck';
+import ComplianceWarningDialog from '@/components/ComplianceWarningDialog';
 
 const PAGE_SIZE = 20;
 
