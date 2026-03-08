@@ -37,6 +37,7 @@ import KandidatenZoeken from "@/pages/KandidatenZoeken";
 import Communications from "@/pages/Communications";
 import KnowledgeBasePage from "@/pages/KnowledgeBase";
 import WhatsAppPage from "@/pages/WhatsApp";
+import ExactOnlinePage from "@/pages/ExactOnline";
 
 
 const queryClient = new QueryClient();
@@ -93,6 +94,7 @@ const App = () => (
               <Route path="/communicatie" element={<Communications />} />
               <Route path="/whatsapp" element={<WhatsAppPage />} />
               <Route path="/kennisbank" element={<KnowledgeBasePage />} />
+              <Route path="/exact-online" element={<ExactOnlinePage />} />
               <Route path="/instellingen" element={<SettingsPage />} />
             </Route>
             <Route path="*" element={<NotFound />} />
