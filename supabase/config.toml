@@ -2,3 +2,6 @@ project_id = "noaupcteygfvlyymqtew"
 
 [functions.apify-job-import]
 verify_jwt = false
+
+[functions.exa-people-search]
+verify_jwt = false
