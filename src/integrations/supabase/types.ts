@@ -1313,6 +1313,65 @@ export type Database = {
           },
         ]
       }
+      people_search_results: {
+        Row: {
+          date_imported: string
+          external_id: string
+          highlight_scores: number[] | null
+          highlights: string[] | null
+          id: string
+          image_url: string | null
+          name: string | null
+          organization_id: string
+          published_date: string | null
+          raw_data: Json | null
+          search_query: string | null
+          text_content: string | null
+          title: string | null
+          url: string | null
+        }
+        Insert: {
+          date_imported?: string
+          external_id: string
+          highlight_scores?: number[] | null
+          highlights?: string[] | null
+          id?: string
+          image_url?: string | null
+          name?: string | null
+          organization_id: string
+          published_date?: string | null
+          raw_data?: Json | null
+          search_query?: string | null
+          text_content?: string | null
+          title?: string | null
+          url?: string | null
+        }
+        Update: {
+          date_imported?: string
+          external_id?: string
+          highlight_scores?: number[] | null
+          highlights?: string[] | null
+          id?: string
+          image_url?: string | null
+          name?: string | null
+          organization_id?: string
+          published_date?: string | null
+          raw_data?: Json | null
+          search_query?: string | null
+          text_content?: string | null
+          title?: string | null
+          url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "people_search_results_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       placements: {
         Row: {
           company_id: string
