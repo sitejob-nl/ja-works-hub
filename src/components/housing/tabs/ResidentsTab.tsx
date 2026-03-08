@@ -80,6 +80,12 @@ const ResidentsTab = ({ property }: { property: any }) => {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['property', property.id] });
+      logAudit({
+        action: 'create',
+        tableName: 'housing_assignments',
+        recordId: selectedEmployee?.id ?? 'new',
+        newValues: { unit: selectedUnit?.name, employee: `${selectedEmployee?.candidates?.first_name} ${selectedEmployee?.candidates?.last_name}`, ...form },
+      });
       toast.success('Bewoner toegewezen');
       resetAssign();
     },
