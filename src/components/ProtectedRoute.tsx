@@ -2,7 +2,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Navigate } from 'react-router-dom';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const { session, profile, loading } = useAuth();
+  const { session, profile, loading, signOut } = useAuth();
 
   if (loading) {
     return (
@@ -28,7 +28,7 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
             Er is geen profiel gekoppeld aan je account. Neem contact op met je beheerder.
           </p>
           <button
-            onClick={() => { const { signOut } = useAuth(); signOut(); }}
+            onClick={signOut}
             className="text-sm text-primary hover:underline"
           >
             Uitloggen
