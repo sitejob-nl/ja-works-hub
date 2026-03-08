@@ -16,7 +16,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Separator } from '@/components/ui/separator';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { toast } from 'sonner';
-import { Search, Loader2, ExternalLink, UserSearch, Globe, Bookmark, UserPlus, ChevronDown, Eye } from 'lucide-react';
+import { Search, Loader2, ExternalLink, UserSearch, Globe, Bookmark, UserPlus, ChevronDown, Eye, Calendar, Link } from 'lucide-react';
+import { formatDate } from '@/lib/format';
 import TagInput from '@/components/ui/tag-input';
 
 const COUNTRY_OPTIONS = [
