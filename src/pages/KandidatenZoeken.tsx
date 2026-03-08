@@ -62,6 +62,17 @@ const KandidatenZoeken = () => {
       return data;
     },
   });
+  // Auto-search when navigated from vacancy page with query param
+  useEffect(() => {
+    const urlQuery = searchParams.get('query');
+    if (urlQuery && !autoSearchDone.current) {
+      autoSearchDone.current = true;
+      // Clear the search params to avoid re-triggering
+      setSearchParams({}, { replace: true });
+      // Trigger search on next tick after state is set
+      setTimeout(() => searchMutation.mutate(), 100);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const searchMutation = useMutation({
     mutationFn: async () => {
