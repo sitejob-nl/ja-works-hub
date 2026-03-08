@@ -34,8 +34,10 @@ import Transport from "@/pages/Transport";
 import VehicleDetail from "@/pages/VehicleDetail";
 import Vacaturebank from "@/pages/Vacaturebank";
 import KandidatenZoeken from "@/pages/KandidatenZoeken";
+import Communications from "@/pages/Communications";
+import KnowledgeBasePage from "@/pages/KnowledgeBase";
 import {
-  Calendar, MessageSquare, BookOpen,
+  Calendar,
 } from "lucide-react";
 
 const queryClient = new QueryClient();

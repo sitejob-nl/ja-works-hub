@@ -81,7 +81,7 @@ const Communications = () => {
         query = query.or(`subject.ilike.%${search}%,body.ilike.%${search}%`);
       }
       if (channelFilter !== 'all') {
-        query = query.eq('channel', channelFilter);
+        query = query.eq('channel', channelFilter as CommunicationChannel);
       }
       if (directionFilter !== 'all') {
         query = query.eq('direction', directionFilter);
