@@ -194,6 +194,7 @@ const Candidates = () => {
       )}
 
       <CandidateSlideOver open={slideOverOpen} onOpenChange={setSlideOverOpen} />
+      <ImportWizard open={importOpen} onOpenChange={setImportOpen} target="candidates" preset={importPreset} />
     </div>
   );
 };

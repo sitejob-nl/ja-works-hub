@@ -163,6 +163,7 @@ const Companies = () => {
       )}
 
       <CompanySlideOver open={slideOverOpen} onOpenChange={setSlideOverOpen} />
+      <ImportWizard open={importOpen} onOpenChange={setImportOpen} target="companies" />
     </div>
   );
 };
