@@ -236,7 +236,7 @@ const KandidatenZoeken = () => {
           Kandidaten zoeken
         </h1>
         <p className="text-muted-foreground mt-1">
-          Zoek professionals met AI-powered search
+          Zoek professionals met AI-powered search · <span className="text-xs">vacature-links worden automatisch gefilterd</span>
         </p>
       </div>
 
