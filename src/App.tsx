@@ -38,6 +38,7 @@ import Communications from "@/pages/Communications";
 import KnowledgeBasePage from "@/pages/KnowledgeBase";
 import WhatsAppPage from "@/pages/WhatsApp";
 import ExactOnlinePage from "@/pages/ExactOnline";
+import Onboarding from "@/pages/Onboarding";
 
 
 const queryClient = new QueryClient();
