@@ -17,8 +17,8 @@ import SuperAdminPlans from "@/pages/superadmin/SuperAdminPlans";
 import SuperAdminErrors from "@/pages/superadmin/SuperAdminErrors";
 import Dashboard from "@/pages/Dashboard";
 import NotFound from "./pages/NotFound";
-import ShellPage from "@/components/ShellPage";
 import SettingsPage from "@/pages/Settings";
+import Planning from "@/pages/Planning";
 import Companies from "@/pages/Companies";
 import CompanyDetail from "@/pages/CompanyDetail";
 import Candidates from "@/pages/Candidates";
@@ -36,7 +36,7 @@ import Vacaturebank from "@/pages/Vacaturebank";
 import KandidatenZoeken from "@/pages/KandidatenZoeken";
 import Communications from "@/pages/Communications";
 import KnowledgeBasePage from "@/pages/KnowledgeBase";
-import { Calendar } from "lucide-react";
+
 
 const queryClient = new QueryClient();
 
@@ -83,7 +83,7 @@ const App = () => (
               <Route path="/huisvesting/:id" element={<PropertyDetail />} />
               <Route path="/vacatures" element={<Vacancies />} />
               <Route path="/vacatures/:id" element={<VacancyDetail />} />
-              <Route path="/planning" element={<ShellPage title="Planning" subtitle="Plan en beheer de inzet van medewerkers" icon={Calendar} />} />
+              <Route path="/planning" element={<Planning />} />
               <Route path="/uren" element={<Timesheets />} />
               <Route path="/transport" element={<Transport />} />
               <Route path="/transport/:id" element={<VehicleDetail />} />
