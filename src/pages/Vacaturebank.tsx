@@ -17,7 +17,9 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Separator } from '@/components/ui/separator';
 import TagInput from '@/components/ui/tag-input';
 import { toast } from 'sonner';
-import { Search, Download, ExternalLink, Globe, Building2, Briefcase, MapPin, Loader2, Plus, ChevronDown } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Search, Download, ExternalLink, Globe, Building2, Briefcase, MapPin, Loader2, Plus, ChevronDown, X, DollarSign, Clock, Users, Tag } from 'lucide-react';
 import { format } from 'date-fns';
 import { nl } from 'date-fns/locale';
 
@@ -101,6 +103,9 @@ const Vacaturebank = () => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [convertOpen, setConvertOpen] = useState(false);
   const [convertCompanyId, setConvertCompanyId] = useState('');
+
+  // Detail slide-over
+  const [detailJob, setDetailJob] = useState<any | null>(null);
 
   // Fetch jobs
   const { data: jobs = [], isLoading } = useQuery({
@@ -239,27 +244,40 @@ const Vacaturebank = () => {
     onError: (e: any) => toast.error(e.message || 'Import mislukt'),
   });
 
-  // Convert to vacancies mutation
+  // Convert to vacancies mutation — auto-match company by organization_name
   const convertMutation = useMutation({
     mutationFn: async () => {
       const selectedJobs = jobs.filter(j => selectedIds.has(j.id));
-      const payloads = selectedJobs.map(job => ({
-        organization_id: organizationId,
-        company_id: convertCompanyId,
-        title: job.title,
-        description: job.description_text || null,
-        location: [job.city, job.country].filter(Boolean).join(', ') || null,
-        required_skills: job.ai_key_skills?.length ? job.ai_key_skills : null,
-        required_count: 1,
-        urgency: 3,
-        notes: [
-          job.organization_name && `Bron bedrijf: ${job.organization_name}`,
-          job.url && `Originele vacature: ${job.url}`,
-          job.source && `ATS: ${job.source}`,
-          job.work_arrangement && `Werkmodel: ${job.work_arrangement}`,
-        ].filter(Boolean).join('\n'),
-        created_by: user?.id ?? null,
-      }));
+
+      // Group by organization_name, match to existing companies or use fallback
+      const companyNameToId: Record<string, string> = {};
+      for (const c of companies ?? []) {
+        companyNameToId[c.name.toLowerCase()] = c.id;
+      }
+
+      const payloads = selectedJobs.map(job => {
+        const orgName = (job.organization_name || '').toLowerCase();
+        const matchedCompanyId = companyNameToId[orgName] || convertCompanyId;
+        if (!matchedCompanyId) throw new Error(`Geen opdrachtgever gevonden voor "${job.organization_name}". Selecteer een standaard opdrachtgever.`);
+
+        return {
+          organization_id: organizationId,
+          company_id: matchedCompanyId,
+          title: job.title,
+          description: job.description_text || null,
+          location: [job.city, job.country].filter(Boolean).join(', ') || null,
+          required_skills: job.ai_key_skills?.length ? job.ai_key_skills : null,
+          required_count: 1,
+          urgency: 3,
+          notes: [
+            job.organization_name && `Bron bedrijf: ${job.organization_name}`,
+            job.url && `Originele vacature: ${job.url}`,
+            job.source && `ATS: ${job.source}`,
+            job.work_arrangement && `Werkmodel: ${job.work_arrangement}`,
+          ].filter(Boolean).join('\n'),
+          created_by: user?.id ?? null,
+        };
+      });
 
       const { error } = await supabase.from('vacancies').insert(payloads);
       if (error) throw error;
@@ -274,6 +292,14 @@ const Vacaturebank = () => {
     },
     onError: (e: any) => toast.error(e.message || 'Fout bij aanmaken'),
   });
+
+  // Check how many selected jobs have a matching company
+  const selectedJobsList = useMemo(() => jobs.filter(j => selectedIds.has(j.id)), [jobs, selectedIds]);
+  const unmatchedJobs = useMemo(() => {
+    if (!companies) return selectedJobsList;
+    const companyNames = new Set((companies ?? []).map(c => c.name.toLowerCase()));
+    return selectedJobsList.filter(j => !j.organization_name || !companyNames.has(j.organization_name.toLowerCase()));
+  }, [selectedJobsList, companies]);
 
   const toggleArray = (arr: string[], val: string) =>
     arr.includes(val) ? arr.filter(v => v !== val) : [...arr, val];
@@ -713,9 +739,10 @@ const Vacaturebank = () => {
               paged.map(job => (
                 <TableRow
                   key={job.id}
-                  className={selectedIds.has(job.id) ? 'bg-primary/5' : ''}
+                  className={`cursor-pointer ${selectedIds.has(job.id) ? 'bg-primary/5' : 'hover:bg-muted/50'}`}
+                  onClick={() => setDetailJob(job)}
                 >
-                  <TableCell>
+                  <TableCell onClick={e => e.stopPropagation()}>
                     <Checkbox
                       checked={selectedIds.has(job.id)}
                       onCheckedChange={() => toggleOne(job.id)}
@@ -738,7 +765,7 @@ const Vacaturebank = () => {
                       ? format(new Date(job.date_posted), 'd MMM', { locale: nl })
                       : '—'}
                   </TableCell>
-                  <TableCell>
+                  <TableCell onClick={e => e.stopPropagation()}>
                     {job.url && (
                       <a href={job.url} target="_blank" rel="noopener noreferrer">
                         <ExternalLink className="h-4 w-4 text-muted-foreground hover:text-foreground" />
@@ -779,7 +806,6 @@ const Vacaturebank = () => {
         </div>
       )}
 
-      {/* Convert to Vacancies Dialog */}
       <Dialog open={convertOpen} onOpenChange={setConvertOpen}>
         <DialogContent>
           <DialogHeader>
@@ -787,23 +813,37 @@ const Vacaturebank = () => {
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              {selectedIds.size} vacature{selectedIds.size !== 1 ? 's' : ''} worden aangemaakt onder de geselecteerde opdrachtgever.
+              {selectedIds.size} vacature{selectedIds.size !== 1 ? 's' : ''} worden aangemaakt.
+              Vacatures worden automatisch gekoppeld aan de opdrachtgever op basis van bedrijfsnaam.
             </p>
-            <div className="space-y-2">
-              <Label>Opdrachtgever *</Label>
-              <Select value={convertCompanyId} onValueChange={setConvertCompanyId}>
-                <SelectTrigger><SelectValue placeholder="Selecteer opdrachtgever" /></SelectTrigger>
-                <SelectContent>
-                  {(companies ?? []).map(c => (
-                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+
+            {unmatchedJobs.length > 0 && (
+              <div className="space-y-2">
+                <Label>Standaard opdrachtgever *</Label>
+                <p className="text-xs text-muted-foreground">
+                  {unmatchedJobs.length} vacature{unmatchedJobs.length !== 1 ? 's' : ''} hebben geen matching bedrijf. Selecteer een standaard opdrachtgever.
+                </p>
+                <Select value={convertCompanyId} onValueChange={setConvertCompanyId}>
+                  <SelectTrigger><SelectValue placeholder="Selecteer opdrachtgever" /></SelectTrigger>
+                  <SelectContent>
+                    {(companies ?? []).map(c => (
+                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {unmatchedJobs.length === 0 && (
+              <div className="rounded-lg border border-stat-green/30 bg-stat-green/5 p-3">
+                <p className="text-sm text-stat-green">✓ Alle vacatures worden automatisch aan de juiste opdrachtgever gekoppeld.</p>
+              </div>
+            )}
+
             <div className="rounded-lg border bg-muted/50 p-3 max-h-48 overflow-y-auto">
               <p className="text-xs font-medium text-muted-foreground mb-2">Geselecteerde vacatures:</p>
               <ul className="space-y-1">
-                {jobs.filter(j => selectedIds.has(j.id)).slice(0, 20).map(j => (
+                {selectedJobsList.slice(0, 20).map(j => (
                   <li key={j.id} className="text-sm text-foreground truncate">
                     • {j.title} {j.organization_name ? `(${j.organization_name})` : ''}
                   </li>
@@ -818,7 +858,7 @@ const Vacaturebank = () => {
             <Button variant="outline" onClick={() => setConvertOpen(false)}>Annuleren</Button>
             <Button
               onClick={() => convertMutation.mutate()}
-              disabled={!convertCompanyId || convertMutation.isPending}
+              disabled={(unmatchedJobs.length > 0 && !convertCompanyId) || convertMutation.isPending}
             >
               {convertMutation.isPending ? (
                 <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Aanmaken...</>
@@ -829,6 +869,196 @@ const Vacaturebank = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Job Detail Slide-over */}
+      <Sheet open={!!detailJob} onOpenChange={open => { if (!open) setDetailJob(null); }}>
+        <SheetContent className="sm:max-w-2xl p-0 overflow-hidden">
+          {detailJob && (
+            <ScrollArea className="h-full">
+              <div className="p-6 space-y-6">
+                <SheetHeader>
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <SheetTitle className="text-xl">{detailJob.title}</SheetTitle>
+                      <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
+                        {detailJob.organization_name && (
+                          <span className="flex items-center gap-1">
+                            <Building2 className="h-3.5 w-3.5" />
+                            {detailJob.organization_name}
+                          </span>
+                        )}
+                        {detailJob.city && (
+                          <span className="flex items-center gap-1">
+                            <MapPin className="h-3.5 w-3.5" />
+                            {[detailJob.city, detailJob.country].filter(Boolean).join(', ')}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </SheetHeader>
+
+                {/* Quick badges */}
+                <div className="flex flex-wrap gap-2">
+                  {detailJob.work_arrangement && <Badge variant="secondary">{detailJob.work_arrangement}</Badge>}
+                  {detailJob.employment_type?.map((t: string) => <Badge key={t} variant="outline">{t}</Badge>)}
+                  {detailJob.source && <Badge variant="outline" className="capitalize">{detailJob.source}</Badge>}
+                  {detailJob.date_posted && (
+                    <Badge variant="outline" className="gap-1">
+                      <Clock className="h-3 w-3" />
+                      {format(new Date(detailJob.date_posted), 'd MMM yyyy', { locale: nl })}
+                    </Badge>
+                  )}
+                </div>
+
+                {/* Salary info */}
+                {(detailJob.ai_salary_min || detailJob.ai_salary_max) && (
+                  <Card>
+                    <CardContent className="p-4 flex items-center gap-3">
+                      <DollarSign className="h-5 w-5 text-muted-foreground" />
+                      <div>
+                        <p className="text-sm font-medium">
+                          {detailJob.ai_salary_currency || '€'}{' '}
+                          {detailJob.ai_salary_min?.toLocaleString() || '?'} – {detailJob.ai_salary_max?.toLocaleString() || '?'}
+                          {detailJob.ai_salary_unit && ` / ${detailJob.ai_salary_unit}`}
+                        </p>
+                        <p className="text-xs text-muted-foreground">Geschat salaris (AI)</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Skills */}
+                {detailJob.ai_key_skills?.length > 0 && (
+                  <Card>
+                    <CardHeader className="pb-2"><CardTitle className="text-sm">Vaardigheden (AI)</CardTitle></CardHeader>
+                    <CardContent className="flex flex-wrap gap-1.5">
+                      {detailJob.ai_key_skills.map((s: string) => (
+                        <Badge key={s} variant="secondary" className="text-xs">{s}</Badge>
+                      ))}
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Taxonomies */}
+                {detailJob.ai_taxonomies?.length > 0 && (
+                  <Card>
+                    <CardHeader className="pb-2"><CardTitle className="text-sm">Branches (AI)</CardTitle></CardHeader>
+                    <CardContent className="flex flex-wrap gap-1.5">
+                      {detailJob.ai_taxonomies.map((t: string) => (
+                        <Badge key={t} variant="outline" className="text-xs">{t}</Badge>
+                      ))}
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Company info */}
+                <Card>
+                  <CardHeader className="pb-2"><CardTitle className="text-sm">Bedrijfsinformatie</CardTitle></CardHeader>
+                  <CardContent className="space-y-2 text-sm">
+                    {detailJob.organization_name && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Bedrijf</span>
+                        <span className="flex items-center gap-2">
+                          {detailJob.organization_logo && (
+                            <img src={detailJob.organization_logo} alt="" className="h-5 w-5 rounded object-contain" />
+                          )}
+                          {detailJob.organization_name}
+                        </span>
+                      </div>
+                    )}
+                    {detailJob.organization_url && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Website</span>
+                        <a href={detailJob.organization_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline truncate max-w-[200px]">
+                          {detailJob.organization_url}
+                        </a>
+                      </div>
+                    )}
+                    {detailJob.linkedin_org_industry && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Industrie (LinkedIn)</span>
+                        <span>{detailJob.linkedin_org_industry}</span>
+                      </div>
+                    )}
+                    {detailJob.linkedin_org_employees && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Werknemers (LinkedIn)</span>
+                        <span>{detailJob.linkedin_org_employees.toLocaleString()}</span>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Location details */}
+                {detailJob.locations_derived && (
+                  <Card>
+                    <CardHeader className="pb-2"><CardTitle className="text-sm">Locatie details</CardTitle></CardHeader>
+                    <CardContent className="text-sm">
+                      <pre className="whitespace-pre-wrap text-xs text-muted-foreground bg-muted/50 rounded p-2">
+                        {JSON.stringify(detailJob.locations_derived, null, 2)}
+                      </pre>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Description */}
+                {detailJob.description_text && (
+                  <Card>
+                    <CardHeader className="pb-2"><CardTitle className="text-sm">Beschrijving</CardTitle></CardHeader>
+                    <CardContent>
+                      <div className="text-sm whitespace-pre-wrap text-muted-foreground leading-relaxed max-h-[500px] overflow-y-auto">
+                        {detailJob.description_text}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Meta */}
+                <Card>
+                  <CardHeader className="pb-2"><CardTitle className="text-sm">Meta</CardTitle></CardHeader>
+                  <CardContent className="space-y-2 text-sm">
+                    <div className="flex justify-between"><span className="text-muted-foreground">External ID</span><span className="font-mono text-xs">{detailJob.external_id}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Bron</span><span className="capitalize">{detailJob.source || '—'}</span></div>
+                    {detailJob.date_imported && (
+                      <div className="flex justify-between"><span className="text-muted-foreground">Geïmporteerd op</span><span>{format(new Date(detailJob.date_imported), 'd MMM yyyy HH:mm', { locale: nl })}</span></div>
+                    )}
+                    {detailJob.url && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-muted-foreground">Originele URL</span>
+                        <a href={detailJob.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline flex items-center gap-1 text-xs">
+                          Openen <ExternalLink className="h-3 w-3" />
+                        </a>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Action buttons */}
+                <div className="flex gap-2 pb-4">
+                  <Button
+                    className="flex-1"
+                    onClick={() => {
+                      setSelectedIds(new Set([detailJob.id]));
+                      setDetailJob(null);
+                      setConvertOpen(true);
+                    }}
+                  >
+                    <Plus className="h-4 w-4 mr-2" /> Toevoegen aan vacatures
+                  </Button>
+                  {detailJob.url && (
+                    <Button variant="outline" asChild>
+                      <a href={detailJob.url} target="_blank" rel="noopener noreferrer">
+                        <ExternalLink className="h-4 w-4 mr-2" /> Website
+                      </a>
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </ScrollArea>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 };
