@@ -10,6 +10,8 @@ import Login from "@/pages/Login";
 import Dashboard from "@/pages/Dashboard";
 import NotFound from "./pages/NotFound";
 import ShellPage from "@/components/ShellPage";
+import Companies from "@/pages/Companies";
+import CompanyDetail from "@/pages/CompanyDetail";
 import {
   Building2, Users, UserCheck, Home, Briefcase,
   Calendar, Clock, Car, MessageSquare, BookOpen, Settings,
