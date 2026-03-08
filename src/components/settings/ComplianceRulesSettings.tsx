@@ -109,7 +109,7 @@ const ComplianceRulesSettings = () => {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('compliance_rules').delete().eq('id', id);
+      const { error } = await supabase.from('compliance_rules' as any).delete().eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => {
