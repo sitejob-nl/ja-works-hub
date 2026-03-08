@@ -137,6 +137,9 @@ const Timesheets = () => {
     onSuccess: (_, { ids, status }) => {
       qc.invalidateQueries({ queryKey: ['timesheets'] });
       setSelected(new Set());
+      for (const id of ids) {
+        logAudit({ action: 'status_change', tableName: 'timesheets', recordId: id, newValues: { status } });
+      }
       toast.success(`${ids.length} uren ${status === 'goedgekeurd' ? 'goedgekeurd' : status === 'afgekeurd' ? 'afgekeurd' : 'bijgewerkt'}`);
     },
     onError: (e: any) => toast.error(e.message),

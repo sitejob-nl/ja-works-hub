@@ -99,8 +99,14 @@ const ResidentsTab = ({ property }: { property: any }) => {
       const { error } = await supabase.from('housing_assignments').update(update).eq('id', assignmentId);
       if (error) throw error;
     },
-    onSuccess: () => {
+    onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ['property', property.id] });
+      logAudit({
+        action: 'status_change',
+        tableName: 'housing_assignments',
+        recordId: vars.assignmentId,
+        newValues: { status: vars.status },
+      });
       toast.success('Status bijgewerkt');
     },
     onError: (e: any) => toast.error(e.message),
