@@ -98,6 +98,8 @@ const App = () => (
               <Route path="/exact-online" element={<ExactOnlinePage />} />
               <Route path="/instellingen" element={<SettingsPage />} />
             </Route>
+            {/* Public onboarding route */}
+            <Route path="/onboarding/:token" element={<Onboarding />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

@@ -32,3 +32,12 @@ verify_jwt = false
 
 [functions.check-document-expiry]
 verify_jwt = false
+
+[functions.validate-timesheets]
+verify_jwt = false
+
+[functions.calculate-match]
+verify_jwt = false
+
+[functions.onboarding-submit]
+verify_jwt = false
