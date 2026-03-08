@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Search } from 'lucide-react';
 import { toast } from 'sonner';
+import { logAudit } from '@/lib/audit';
 
 const complianceBadge: Record<string, string> = {
   compleet: 'bg-stat-green/10 text-stat-green border-0',
