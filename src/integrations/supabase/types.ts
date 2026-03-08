@@ -236,6 +236,8 @@ export type Database = {
           sent_by: string | null
           subject: string | null
           transcription: string | null
+          whatsapp_message_id: string | null
+          whatsapp_status: string | null
         }
         Insert: {
           body?: string | null
@@ -253,6 +255,8 @@ export type Database = {
           sent_by?: string | null
           subject?: string | null
           transcription?: string | null
+          whatsapp_message_id?: string | null
+          whatsapp_status?: string | null
         }
         Update: {
           body?: string | null
@@ -270,6 +274,8 @@ export type Database = {
           sent_by?: string | null
           subject?: string | null
           transcription?: string | null
+          whatsapp_message_id?: string | null
+          whatsapp_status?: string | null
         }
         Relationships: [
           {
@@ -2351,6 +2357,56 @@ export type Database = {
             foreignKeyName: "vehicles_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_config: {
+        Row: {
+          access_token: string | null
+          created_at: string
+          display_phone: string | null
+          id: string
+          is_active: boolean
+          organization_id: string
+          phone_number_id: string | null
+          tenant_id: string | null
+          updated_at: string
+          waba_id: string | null
+          webhook_secret: string | null
+        }
+        Insert: {
+          access_token?: string | null
+          created_at?: string
+          display_phone?: string | null
+          id?: string
+          is_active?: boolean
+          organization_id: string
+          phone_number_id?: string | null
+          tenant_id?: string | null
+          updated_at?: string
+          waba_id?: string | null
+          webhook_secret?: string | null
+        }
+        Update: {
+          access_token?: string | null
+          created_at?: string
+          display_phone?: string | null
+          id?: string
+          is_active?: boolean
+          organization_id?: string
+          phone_number_id?: string | null
+          tenant_id?: string | null
+          updated_at?: string
+          waba_id?: string | null
+          webhook_secret?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_config_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
