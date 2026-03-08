@@ -190,17 +190,24 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
     } catch { /* non-blocking */ }
   };
 
+  const invalidateAll = () => {
+    qc.invalidateQueries({ queryKey: ['vacancy-matches'] });
+    qc.invalidateQueries({ queryKey: ['vacancy-placements'] });
+    qc.invalidateQueries({ queryKey: ['vacancy', vacancy.id] });
+    qc.invalidateQueries({ queryKey: ['vacancies'] });
+    qc.invalidateQueries({ queryKey: ['employees'] });
+    qc.invalidateQueries({ queryKey: ['candidates'] });
+    qc.invalidateQueries({ queryKey: ['timesheets'] });
+  };
+
   const mutation = useMutation({
     mutationFn: () => executePlacement(false),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['vacancy-matches'] });
-      qc.invalidateQueries({ queryKey: ['vacancy-placements'] });
-      qc.invalidateQueries({ queryKey: ['vacancy', vacancy.id] });
-      qc.invalidateQueries({ queryKey: ['vacancies'] });
-      qc.invalidateQueries({ queryKey: ['employees'] });
-      qc.invalidateQueries({ queryKey: ['candidates'] });
-      toast.success('Plaatsing aangemaakt');
-      onClose();
+      invalidateAll();
+      if (!placementDone) {
+        toast.success('Plaatsing aangemaakt');
+        onClose();
+      }
     },
     onError: (e: any) => {
       // Don't show error if compliance dialog is being shown
