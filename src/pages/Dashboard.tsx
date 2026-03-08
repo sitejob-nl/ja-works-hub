@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { formatDate, formatRelativeTime } from '@/lib/format';
 import { toast } from 'sonner';
+import KpiDashboard from '@/components/dashboard/KpiDashboard';
 
 interface StatCardProps {
   icon: React.ElementType;
