@@ -79,7 +79,7 @@ export const checkCompliance = async (
         const hasValidId = (docs ?? []).some(d => d.type === 'id_bewijs' && d.status !== 'verlopen');
         if (!hasValidId) issues.push(`Geen geldig ${DOC_LABELS[docType] || docType}`);
       } else {
-        if (!docTypes.includes(docType)) issues.push(`${DOC_LABELS[docType] || docType} ontbreekt`);
+        if (!docTypes.includes(docType as any)) issues.push(`${DOC_LABELS[docType] || docType} ontbreekt`);
       }
     }
 
