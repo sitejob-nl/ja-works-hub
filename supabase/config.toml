@@ -17,3 +17,15 @@ verify_jwt = false
 
 [functions.whatsapp-send]
 verify_jwt = false
+
+[functions.exact-register]
+verify_jwt = false
+
+[functions.exact-config]
+verify_jwt = false
+
+[functions.exact-webhook]
+verify_jwt = false
+
+[functions.exact-api]
+verify_jwt = false

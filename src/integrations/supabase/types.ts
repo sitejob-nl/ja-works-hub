@@ -618,6 +618,56 @@ export type Database = {
           },
         ]
       }
+      exact_config: {
+        Row: {
+          base_url: string | null
+          company_name: string | null
+          created_at: string
+          division: number | null
+          id: string
+          is_active: boolean
+          organization_id: string
+          region: string | null
+          tenant_id: string | null
+          updated_at: string
+          webhook_secret: string | null
+        }
+        Insert: {
+          base_url?: string | null
+          company_name?: string | null
+          created_at?: string
+          division?: number | null
+          id?: string
+          is_active?: boolean
+          organization_id: string
+          region?: string | null
+          tenant_id?: string | null
+          updated_at?: string
+          webhook_secret?: string | null
+        }
+        Update: {
+          base_url?: string | null
+          company_name?: string | null
+          created_at?: string
+          division?: number | null
+          id?: string
+          is_active?: boolean
+          organization_id?: string
+          region?: string | null
+          tenant_id?: string | null
+          updated_at?: string
+          webhook_secret?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "exact_config_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       external_mappings: {
         Row: {
           created_at: string
