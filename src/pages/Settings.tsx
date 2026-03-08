@@ -246,6 +246,9 @@ const Settings = () => {
 
           {/* WhatsApp */}
           <WhatsAppSettings />
+
+          {/* Exact Online */}
+          <ExactOnlineSettings />
         </div>
 
         {/* Right column */}
