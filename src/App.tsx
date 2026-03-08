@@ -39,6 +39,7 @@ import KnowledgeBasePage from "@/pages/KnowledgeBase";
 import WhatsAppPage from "@/pages/WhatsApp";
 import ExactOnlinePage from "@/pages/ExactOnline";
 import Onboarding from "@/pages/Onboarding";
+import CvTool from "@/pages/CvTool";
 
 
 const queryClient = new QueryClient();
@@ -96,6 +97,7 @@ const App = () => (
               <Route path="/whatsapp" element={<WhatsAppPage />} />
               <Route path="/kennisbank" element={<KnowledgeBasePage />} />
               <Route path="/exact-online" element={<ExactOnlinePage />} />
+              <Route path="/cv-tool/:candidateId" element={<CvTool />} />
               <Route path="/instellingen" element={<SettingsPage />} />
             </Route>
             {/* Public onboarding route */}

@@ -476,6 +476,53 @@ export type Database = {
           },
         ]
       }
+      compliance_rules: {
+        Row: {
+          contract_type: string | null
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          name: string
+          organization_id: string
+          required_documents: string[]
+          required_fields: string[]
+          sector: string | null
+        }
+        Insert: {
+          contract_type?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          organization_id: string
+          required_documents?: string[]
+          required_fields?: string[]
+          sector?: string | null
+        }
+        Update: {
+          contract_type?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          organization_id?: string
+          required_documents?: string[]
+          required_fields?: string[]
+          sector?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "compliance_rules_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       documents: {
         Row: {
           ai_verification_result: Json | null

@@ -6,7 +6,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { ChevronRight, MoreHorizontal, Pencil } from 'lucide-react';
+import { ChevronRight, MoreHorizontal, Pencil, FileText } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import CandidateSlideOver from '@/components/candidates/CandidateSlideOver';
 import CandidateProfileTab from '@/components/candidates/tabs/CandidateProfileTab';
@@ -43,6 +44,7 @@ const allStatuses: CandidateStatus[] = ['nieuw', 'in_behandeling', 'beschikbaar'
 const CandidateDetail = () => {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [editOpen, setEditOpen] = useState(false);
 
   const { data: candidate, isLoading } = useQuery({
@@ -85,6 +87,9 @@ const CandidateDetail = () => {
           <Badge variant="secondary" className={complianceBadge[candidate.compliance_status] ?? ''}>{candidate.compliance_status}</Badge>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => navigate(`/cv-tool/${id}`)} className="gap-2">
+            <FileText className="h-3.5 w-3.5" /> CV Genereren
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setEditOpen(true)} className="gap-2">
             <Pencil className="h-3.5 w-3.5" /> Bewerken
           </Button>
