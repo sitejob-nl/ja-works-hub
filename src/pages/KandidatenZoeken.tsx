@@ -94,9 +94,12 @@ const KandidatenZoeken = () => {
 
   // Options
   const [userLocation, setUserLocation] = useState('NL');
-  const [numResults, setNumResults] = useState('10');
+  const [numResults, setNumResults] = useState('20');
   const [includeText, setIncludeText] = useState(false);
+  const [maxCharacters, setMaxCharacters] = useState('2000');
   const [highlightsQuery, setHighlightsQuery] = useState('');
+  const [numSentences, setNumSentences] = useState('3');
+  const [highlightsPerUrl, setHighlightsPerUrl] = useState('3');
   const [convertDialog, setConvertDialog] = useState<ConvertDialogData | null>(null);
   const autoSearchDone = useRef(false);
 
