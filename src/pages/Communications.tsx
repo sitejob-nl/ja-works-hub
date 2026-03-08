@@ -14,8 +14,10 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Plus, MessageSquare, Mail, Phone, StickyNote, MessageCircle, Search, Loader2 } from 'lucide-react';
+import { Plus, MessageSquare, Mail, Phone, StickyNote, MessageCircle, Search, Loader2, Send } from 'lucide-react';
 import type { Database } from '@/integrations/supabase/types';
+
+const VITE_SUPABASE_PROJECT_ID = import.meta.env.VITE_SUPABASE_PROJECT_ID;
 
 type CommunicationChannel = Database['public']['Enums']['communication_channel'];
 
@@ -60,6 +62,8 @@ const Communications = () => {
   const [formSubject, setFormSubject] = useState('');
   const [formBody, setFormBody] = useState('');
   const [formDuration, setFormDuration] = useState('');
+  const [formPhone, setFormPhone] = useState('');
+  const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['communications', organizationId, search, channelFilter, directionFilter, typeFilter, page],
@@ -179,6 +183,35 @@ const Communications = () => {
     setFormSubject('');
     setFormBody('');
     setFormDuration('');
+    setFormPhone('');
+  };
+
+  const handleSendWhatsApp = async () => {
+    if (!formPhone || !formBody) {
+      toast.error('Vul telefoonnummer en bericht in');
+      return;
+    }
+    setSendingWhatsApp(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('whatsapp-send', {
+        body: {
+          to: formPhone,
+          message: formBody,
+          candidate_id: formType === 'candidate' && formCandidateId ? formCandidateId : undefined,
+          company_id: formType === 'company' && formCompanyId ? formCompanyId : undefined,
+        },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      toast.success('WhatsApp bericht verstuurd');
+      queryClient.invalidateQueries({ queryKey: ['communications'] });
+      resetForm();
+      setSheetOpen(false);
+    } catch (err: any) {
+      toast.error('Versturen mislukt: ' + (err.message || 'Onbekende fout'));
+    } finally {
+      setSendingWhatsApp(false);
+    }
   };
 
   const items = data?.items || [];
@@ -498,14 +531,40 @@ const Communications = () => {
               </div>
             )}
 
-            <Button
-              className="w-full"
-              onClick={() => createMutation.mutate()}
-              disabled={createMutation.isPending}
-            >
-              {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-              Opslaan
-            </Button>
+            {formChannel === 'whatsapp' && formDirection === 'outbound' && (
+              <div className="space-y-2">
+                <Label>Telefoonnummer ontvanger</Label>
+                <Input
+                  value={formPhone}
+                  onChange={(e) => setFormPhone(e.target.value)}
+                  placeholder="bijv. 31612345678"
+                />
+                <p className="text-xs text-muted-foreground">Internationaal formaat zonder + teken</p>
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              {formChannel === 'whatsapp' && formDirection === 'outbound' && (
+                <Button
+                  className="flex-1 gap-2"
+                  variant="default"
+                  onClick={handleSendWhatsApp}
+                  disabled={sendingWhatsApp}
+                >
+                  {sendingWhatsApp ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  Verstuur via WhatsApp
+                </Button>
+              )}
+              <Button
+                className="flex-1"
+                variant={formChannel === 'whatsapp' && formDirection === 'outbound' ? 'outline' : 'default'}
+                onClick={() => createMutation.mutate()}
+                disabled={createMutation.isPending}
+              >
+                {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                {formChannel === 'whatsapp' && formDirection === 'outbound' ? 'Alleen loggen' : 'Opslaan'}
+              </Button>
+            </div>
           </div>
         </SheetContent>
       </Sheet>
