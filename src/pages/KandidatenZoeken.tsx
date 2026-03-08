@@ -39,12 +39,14 @@ const KandidatenZoeken = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
-  const [query, setQuery] = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [query, setQuery] = useState(searchParams.get('query') || '');
   const [userLocation, setUserLocation] = useState('NL');
   const [numResults, setNumResults] = useState('10');
   const [includeText, setIncludeText] = useState(false);
   const [highlightsQuery, setHighlightsQuery] = useState('');
   const [convertDialog, setConvertDialog] = useState<ConvertDialogData | null>(null);
+  const autoSearchDone = useRef(false);
 
   // Saved results
   const { data: savedResults } = useQuery({

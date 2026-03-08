@@ -92,6 +92,20 @@ const VacancyDetail = () => {
           </div>
         </div>
         <div className="flex gap-2">
+          <Button
+            size="sm"
+            className="gap-1"
+            onClick={() => {
+              const parts = [vacancy.title];
+              if (vacancy.required_skills?.length) parts.push(`met ${vacancy.required_skills.join(', ')} ervaring`);
+              if (vacancy.location) parts.push(`in ${vacancy.location}`);
+              if (vacancy.required_certifications?.length) parts.push(`met ${vacancy.required_certifications.join(', ')} certificering`);
+              const q = parts.join(' ');
+              navigate(`/kandidaten-zoeken?query=${encodeURIComponent(q)}`);
+            }}
+          >
+            <UserSearch className="h-4 w-4" /> Zoek kandidaten
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setEditOpen(true)} className="gap-1">
             <Edit className="h-4 w-4" /> Bewerken
           </Button>
