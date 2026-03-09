@@ -135,6 +135,11 @@ Deno.serve(async (req) => {
             }
           }
 
+          // Check for opt-out keywords
+          const optOutKeywords = ["stop", "afmelden", "unsubscribe", "uitschrijven", "stoppen"];
+          const messageText = bodyText.toLowerCase().trim();
+          const isOptOut = optOutKeywords.some(keyword => messageText === keyword || messageText.startsWith(keyword + " "));
+
           // Insert communication
           const { error: insertError } = await serviceClient
             .from("communications")
@@ -153,6 +158,30 @@ Deno.serve(async (req) => {
             console.error("Insert error:", insertError);
           } else {
             console.log("Inbound message stored:", msg.id, "candidate:", candidateId);
+          }
+
+          // Handle opt-out if detected and candidate found
+          if (isOptOut && candidateId) {
+            console.log("Opt-out keyword detected, processing opt-out for:", candidateId);
+            
+            try {
+              const optOutUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/opt-out-handler`;
+              await fetch(optOutUrl, {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${Deno.env.get("SUPABASE_ANON_KEY")}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  candidate_id: candidateId,
+                  channel: "whatsapp",
+                }),
+              });
+              
+              console.log("Opt-out processed for:", candidateId);
+            } catch (optOutError) {
+              console.error("Failed to process opt-out:", optOutError);
+            }
           }
         }
       }
