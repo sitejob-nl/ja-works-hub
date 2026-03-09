@@ -261,6 +261,12 @@ const Settings = () => {
           {/* Compliance Rules */}
           <ComplianceRulesSettings />
 
+          {/* Reglementen */}
+          <RegulationsSettings />
+
+          {/* Contracttemplates */}
+          <ContractTemplatesSettings />
+
           {/* Data Import */}
           <Card>
             <CardHeader>

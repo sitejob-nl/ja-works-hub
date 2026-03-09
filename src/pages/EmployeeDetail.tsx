@@ -133,6 +133,8 @@ const EmployeeDetail = () => {
         <TabsContent value="uren"><EmployeeTimesheetsTab employeeId={id!} /></TabsContent>
         <TabsContent value="transport"><EmployeeTransportTab employeeId={id!} /></TabsContent>
         <TabsContent value="ziekte"><EmployeeSickTab employeeId={id!} employee={employee} /></TabsContent>
+        <TabsContent value="reglementen"><EmployeeRegulationsTab employeeId={id!} /></TabsContent>
+        <TabsContent value="contracten"><EmployeeContractsTab employeeId={id!} employee={employee} /></TabsContent>
       </Tabs>
     </div>
   );
