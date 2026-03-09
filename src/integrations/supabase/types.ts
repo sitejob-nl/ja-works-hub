@@ -71,6 +71,152 @@ export type Database = {
           },
         ]
       }
+      bulk_campaigns: {
+        Row: {
+          channel: Database["public"]["Enums"]["communication_channel"]
+          completed_at: string | null
+          created_at: string
+          created_by: string | null
+          failed_count: number
+          id: string
+          message_template: string
+          name: string
+          opted_out_count: number
+          organization_id: string
+          rate_limit_per_hour: number
+          rate_limit_per_minute: number
+          scheduled_at: string | null
+          segment_filter: Json | null
+          sent_count: number
+          started_at: string | null
+          status: Database["public"]["Enums"]["campaign_status"]
+          total_recipients: number
+          updated_at: string
+        }
+        Insert: {
+          channel?: Database["public"]["Enums"]["communication_channel"]
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          failed_count?: number
+          id?: string
+          message_template: string
+          name: string
+          opted_out_count?: number
+          organization_id: string
+          rate_limit_per_hour?: number
+          rate_limit_per_minute?: number
+          scheduled_at?: string | null
+          segment_filter?: Json | null
+          sent_count?: number
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["campaign_status"]
+          total_recipients?: number
+          updated_at?: string
+        }
+        Update: {
+          channel?: Database["public"]["Enums"]["communication_channel"]
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          failed_count?: number
+          id?: string
+          message_template?: string
+          name?: string
+          opted_out_count?: number
+          organization_id?: string
+          rate_limit_per_hour?: number
+          rate_limit_per_minute?: number
+          scheduled_at?: string | null
+          segment_filter?: Json | null
+          sent_count?: number
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["campaign_status"]
+          total_recipients?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bulk_campaigns_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bulk_campaigns_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      campaign_recipients: {
+        Row: {
+          campaign_id: string
+          candidate_id: string
+          communication_id: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          organization_id: string
+          sent_at: string | null
+          status: Database["public"]["Enums"]["campaign_recipient_status"]
+        }
+        Insert: {
+          campaign_id: string
+          candidate_id: string
+          communication_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          organization_id: string
+          sent_at?: string | null
+          status?: Database["public"]["Enums"]["campaign_recipient_status"]
+        }
+        Update: {
+          campaign_id?: string
+          candidate_id?: string
+          communication_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          organization_id?: string
+          sent_at?: string | null
+          status?: Database["public"]["Enums"]["campaign_recipient_status"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_recipients_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "bulk_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaign_recipients_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaign_recipients_communication_id_fkey"
+            columns: ["communication_id"]
+            isOneToOne: false
+            referencedRelation: "communications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaign_recipients_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       candidates: {
         Row: {
           address_city: string | null
@@ -212,6 +358,57 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "client_errors_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      communication_preferences: {
+        Row: {
+          candidate_id: string
+          channel: Database["public"]["Enums"]["communication_channel"]
+          created_at: string
+          id: string
+          opted_out: boolean
+          opted_out_at: string | null
+          opted_out_reason: string | null
+          organization_id: string
+          updated_at: string
+        }
+        Insert: {
+          candidate_id: string
+          channel: Database["public"]["Enums"]["communication_channel"]
+          created_at?: string
+          id?: string
+          opted_out?: boolean
+          opted_out_at?: string | null
+          opted_out_reason?: string | null
+          organization_id: string
+          updated_at?: string
+        }
+        Update: {
+          candidate_id?: string
+          channel?: Database["public"]["Enums"]["communication_channel"]
+          created_at?: string
+          id?: string
+          opted_out?: boolean
+          opted_out_at?: string | null
+          opted_out_reason?: string | null
+          organization_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "communication_preferences_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "communication_preferences_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
@@ -1908,6 +2105,44 @@ export type Database = {
           },
         ]
       }
+      rate_limit_tracking: {
+        Row: {
+          channel: Database["public"]["Enums"]["communication_channel"]
+          created_at: string
+          id: string
+          messages_sent: number
+          organization_id: string
+          window_start: string
+          window_type: Database["public"]["Enums"]["rate_limit_window"]
+        }
+        Insert: {
+          channel: Database["public"]["Enums"]["communication_channel"]
+          created_at?: string
+          id?: string
+          messages_sent?: number
+          organization_id: string
+          window_start: string
+          window_type: Database["public"]["Enums"]["rate_limit_window"]
+        }
+        Update: {
+          channel?: Database["public"]["Enums"]["communication_channel"]
+          created_at?: string
+          id?: string
+          messages_sent?: number
+          organization_id?: string
+          window_start?: string
+          window_type?: Database["public"]["Enums"]["rate_limit_window"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rate_limit_tracking_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       recruiter_tasks: {
         Row: {
           ai_generated: boolean
@@ -2714,12 +2949,40 @@ export type Database = {
       }
     }
     Functions: {
+      check_rate_limit: {
+        Args: {
+          p_channel: Database["public"]["Enums"]["communication_channel"]
+          p_org_id: string
+          p_window_type: Database["public"]["Enums"]["rate_limit_window"]
+        }
+        Returns: boolean
+      }
+      get_campaign_candidates: {
+        Args: {
+          p_channel: Database["public"]["Enums"]["communication_channel"]
+          p_filter: Json
+          p_org_id: string
+        }
+        Returns: {
+          candidate_id: string
+          first_name: string
+          last_name: string
+          phone: string
+        }[]
+      }
       get_user_org_id: { Args: never; Returns: string }
       get_user_role: {
         Args: never
         Returns: Database["public"]["Enums"]["user_role"]
       }
       is_superadmin: { Args: never; Returns: boolean }
+      record_rate_limit: {
+        Args: {
+          p_channel: Database["public"]["Enums"]["communication_channel"]
+          p_org_id: string
+        }
+        Returns: undefined
+      }
       sa_get_audit_log: {
         Args: { p_limit?: number; p_offset?: number }
         Returns: {
@@ -2804,6 +3067,14 @@ export type Database = {
         | "login"
         | "export"
         | "override"
+      campaign_recipient_status: "pending" | "sent" | "failed" | "opted_out"
+      campaign_status:
+        | "draft"
+        | "scheduled"
+        | "running"
+        | "paused"
+        | "completed"
+        | "cancelled"
       candidate_status:
         | "nieuw"
         | "in_behandeling"
@@ -2838,6 +3109,7 @@ export type Database = {
         | "actief"
         | "afgerond"
         | "voortijdig_beeindigd"
+      rate_limit_window: "minute" | "hour"
       timesheet_source:
         | "handmatig"
         | "klantportaal"
@@ -2991,6 +3263,15 @@ export const Constants = {
         "export",
         "override",
       ],
+      campaign_recipient_status: ["pending", "sent", "failed", "opted_out"],
+      campaign_status: [
+        "draft",
+        "scheduled",
+        "running",
+        "paused",
+        "completed",
+        "cancelled",
+      ],
       candidate_status: [
         "nieuw",
         "in_behandeling",
@@ -3030,6 +3311,7 @@ export const Constants = {
         "afgerond",
         "voortijdig_beeindigd",
       ],
+      rate_limit_window: ["minute", "hour"],
       timesheet_source: [
         "handmatig",
         "klantportaal",
