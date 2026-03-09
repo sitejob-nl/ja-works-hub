@@ -43,6 +43,7 @@ import CvTool from "@/pages/CvTool";
 import RecruiterWorkbench from "@/pages/RecruiterWorkbench";
 import BulkCampaigns from "@/pages/BulkCampaigns";
 import BulkCampaignDetail from "@/pages/BulkCampaignDetail";
+import ImportData from "@/pages/ImportData";
 
 
 const queryClient = new QueryClient();
