@@ -286,6 +286,21 @@ const Dashboard = () => {
     });
   }
 
+  for (const ha of unpaidDeposits) {
+    const emp = (ha as any).employees;
+    const cand = emp?.candidates;
+    const unit = (ha as any).units;
+    const prop = unit?.properties;
+    alerts.push({
+      id: `dep-${ha.id}`,
+      severity: 'orange',
+      icon: Home,
+      description: `${cand?.first_name} ${cand?.last_name} — borg niet betaald voor ${unit?.name ?? '?'} in ${prop?.name ?? '?'}`,
+      category: 'Huisvesting',
+      link: `/huisvesting/${prop?.id}`,
+    });
+  }
+
   for (const ts of attentionTimesheets) {
     const emp = (ts as any).employees;
     const cand = emp?.candidates;
