@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import { Building2, Search, Settings2 } from 'lucide-react';
 
 const ALL_MODULES = [
+  { key: 'workbench', label: 'Workbench' },
   { key: 'opdrachtgevers', label: 'Opdrachtgevers' },
   { key: 'kandidaten', label: 'Kandidaten' },
   { key: 'medewerkers', label: 'Medewerkers' },
@@ -20,9 +21,12 @@ const ALL_MODULES = [
   { key: 'huisvesting', label: 'Huisvesting' },
   { key: 'transport', label: 'Transport' },
   { key: 'communicatie', label: 'Communicatie' },
+  { key: 'whatsapp', label: 'WhatsApp' },
   { key: 'kennisbank', label: 'Kennisbank' },
   { key: 'vacaturebank', label: 'Vacaturebank' },
   { key: 'kandidaten-zoeken', label: 'Kandidaten zoeken' },
+  { key: 'exact-online', label: 'Exact Online' },
+  { key: 'importeren', label: 'Importeren' },
 ];
 
 const SuperAdminOrganizations = () => {
