@@ -244,12 +244,17 @@ const EmployeeContractsTab = ({ employeeId, employee }: { employeeId: string; em
                   <TableCell className="text-sm text-muted-foreground">{formatDate(c.signed_at)}</TableCell>
                   <TableCell>
                     <div className="flex gap-1">
-                      <Button size="icon" variant="ghost" onClick={() => setViewContract(c)}>
+                      <Button size="icon" variant="ghost" onClick={() => setViewContract(c)} title="Bekijken">
                         <Eye className="h-3.5 w-3.5" />
                       </Button>
+                      {c.sign_token && c.status !== 'getekend' && (
+                        <Button size="sm" variant="outline" onClick={() => copySignLink(c)} className="gap-1">
+                          <Link2 className="h-3.5 w-3.5" /> Tekenlink
+                        </Button>
+                      )}
                       {c.status === 'concept' && (
                         <Button size="sm" variant="outline" onClick={() => markSent.mutate(c.id)}>
-                          <Send className="h-3.5 w-3.5 mr-1" /> Verzenden
+                          <Send className="h-3.5 w-3.5 mr-1" /> Verzonden
                         </Button>
                       )}
                       {c.status === 'verzonden' && (
