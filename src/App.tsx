@@ -45,7 +45,7 @@ import BulkCampaigns from "@/pages/BulkCampaigns";
 import BulkCampaignDetail from "@/pages/BulkCampaignDetail";
 import ImportData from "@/pages/ImportData";
 import Installeren from "@/pages/Installeren";
-
+import ContractSign from "@/pages/ContractSign";
 
 const queryClient = new QueryClient();
 
@@ -111,6 +111,7 @@ const App = () => (
             </Route>
             {/* Public routes */}
             <Route path="/onboarding/:token" element={<Onboarding />} />
+            <Route path="/contract/sign/:token" element={<ContractSign />} />
             <Route path="/installeren" element={<Installeren />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
