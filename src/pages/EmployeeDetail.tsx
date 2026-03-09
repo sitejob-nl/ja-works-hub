@@ -122,6 +122,8 @@ const EmployeeDetail = () => {
           <TabsTrigger value="uren">Uren</TabsTrigger>
           <TabsTrigger value="transport">Transport</TabsTrigger>
           <TabsTrigger value="ziekte">Ziekte</TabsTrigger>
+          <TabsTrigger value="reglementen">Reglementen</TabsTrigger>
+          <TabsTrigger value="contracten">Contracten</TabsTrigger>
         </TabsList>
         <TabsContent value="profiel"><EmployeeProfileTab employee={employee} /></TabsContent>
         <TabsContent value="onboarding"><EmployeeOnboardingTab employee={employee} /></TabsContent>
