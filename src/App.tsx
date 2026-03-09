@@ -44,6 +44,7 @@ import RecruiterWorkbench from "@/pages/RecruiterWorkbench";
 import BulkCampaigns from "@/pages/BulkCampaigns";
 import BulkCampaignDetail from "@/pages/BulkCampaignDetail";
 import ImportData from "@/pages/ImportData";
+import Installeren from "@/pages/Installeren";
 
 
 const queryClient = new QueryClient();
@@ -108,8 +109,9 @@ const App = () => (
               <Route path="/importeren" element={<ImportData />} />
               <Route path="/instellingen" element={<SettingsPage />} />
             </Route>
-            {/* Public onboarding route */}
+            {/* Public routes */}
             <Route path="/onboarding/:token" element={<Onboarding />} />
+            <Route path="/installeren" element={<Installeren />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
