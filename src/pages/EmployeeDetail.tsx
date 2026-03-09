@@ -18,6 +18,8 @@ import EmployeePlacementsTab from '@/components/employees/tabs/EmployeePlacement
 import EmployeeTimesheetsTab from '@/components/employees/tabs/EmployeeTimesheetsTab';
 import EmployeeTransportTab from '@/components/employees/tabs/EmployeeTransportTab';
 import EmployeeSickTab from '@/components/employees/tabs/EmployeeSickTab';
+import EmployeeRegulationsTab from '@/components/employees/tabs/EmployeeRegulationsTab';
+import EmployeeContractsTab from '@/components/employees/tabs/EmployeeContractsTab';
 
 type EmployeeStatus = Database['public']['Enums']['employee_status'];
 
