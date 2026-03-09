@@ -9,7 +9,8 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
-import { Settings as SettingsIcon, Upload, Palette, Building2, User, LogOut, Trash2 } from 'lucide-react';
+import { Settings as SettingsIcon, Upload, Palette, Building2, User, LogOut, Trash2, FileSpreadsheet } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import WhatsAppSettings from '@/components/settings/WhatsAppSettings';
 import ExactOnlineSettings from '@/components/settings/ExactOnlineSettings';
 import DataExport from '@/components/settings/DataExport';
@@ -257,6 +258,21 @@ const Settings = () => {
 
           {/* Compliance Rules */}
           <ComplianceRulesSettings />
+
+          {/* Data Import */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <FileSpreadsheet className="h-4 w-4" /> Data importeren
+              </CardTitle>
+              <CardDescription>Importeer kandidaten en opdrachtgevers vanuit Excel of CSV</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button asChild>
+                <Link to="/importeren">Naar import wizard</Link>
+              </Button>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Right column */}

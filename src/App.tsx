@@ -43,6 +43,7 @@ import CvTool from "@/pages/CvTool";
 import RecruiterWorkbench from "@/pages/RecruiterWorkbench";
 import BulkCampaigns from "@/pages/BulkCampaigns";
 import BulkCampaignDetail from "@/pages/BulkCampaignDetail";
+import ImportData from "@/pages/ImportData";
 
 
 const queryClient = new QueryClient();
@@ -104,6 +105,7 @@ const App = () => (
               <Route path="/kennisbank" element={<KnowledgeBasePage />} />
               <Route path="/exact-online" element={<ExactOnlinePage />} />
               <Route path="/cv-tool/:candidateId" element={<CvTool />} />
+              <Route path="/importeren" element={<ImportData />} />
               <Route path="/instellingen" element={<SettingsPage />} />
             </Route>
             {/* Public onboarding route */}
