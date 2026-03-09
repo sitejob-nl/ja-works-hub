@@ -160,8 +160,14 @@ Deno.serve(async (req) => {
 
     const waMessageId = metaBody.messages?.[0]?.id;
 
+    // Record rate limit usage
+    await serviceClient.rpc("record_rate_limit", {
+      p_org_id: orgId,
+      p_channel: "whatsapp",
+    });
+
     // Store outbound message in communications
-    await serviceClient.from("communications").insert({
+    const { data: comm } = await serviceClient.from("communications").insert({
       organization_id: orgId,
       channel: "whatsapp",
       direction: "outbound",
@@ -172,10 +178,10 @@ Deno.serve(async (req) => {
       company_id: company_id || null,
       whatsapp_message_id: waMessageId || null,
       whatsapp_status: "sent",
-    });
+    }).select("id").single();
 
     return new Response(
-      JSON.stringify({ success: true, message_id: waMessageId }),
+      JSON.stringify({ success: true, message_id: waMessageId, communication_id: comm?.id }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
