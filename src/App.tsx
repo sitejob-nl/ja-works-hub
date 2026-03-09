@@ -41,6 +41,8 @@ import ExactOnlinePage from "@/pages/ExactOnline";
 import Onboarding from "@/pages/Onboarding";
 import CvTool from "@/pages/CvTool";
 import RecruiterWorkbench from "@/pages/RecruiterWorkbench";
+import BulkCampaigns from "@/pages/BulkCampaigns";
+import BulkCampaignDetail from "@/pages/BulkCampaignDetail";
 
 
 const queryClient = new QueryClient();
