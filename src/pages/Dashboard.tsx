@@ -164,6 +164,30 @@ const Dashboard = () => {
     },
   });
 
+  const { data: unpaidDeposits = [] } = useQuery({
+    queryKey: ['alerts-unpaid-deposits'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('housing_assignments')
+        .select(`
+          id,
+          employees!housing_assignments_employee_id_fkey(
+            id,
+            candidates!employees_candidate_id_fkey(first_name, last_name)
+          ),
+          units!housing_assignments_unit_id_fkey(
+            name,
+            properties!units_property_id_fkey(id, name)
+          )
+        `)
+        .eq('status', 'ingecheckt' as any)
+        .eq('deposit_paid', false)
+        .limit(10);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
   const { data: attentionTimesheets = [] } = useQuery({
     queryKey: ['alerts-attention-timesheets'],
     queryFn: async () => {
