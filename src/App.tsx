@@ -105,6 +105,7 @@ const App = () => (
               <Route path="/kennisbank" element={<KnowledgeBasePage />} />
               <Route path="/exact-online" element={<ExactOnlinePage />} />
               <Route path="/cv-tool/:candidateId" element={<CvTool />} />
+              <Route path="/importeren" element={<ImportData />} />
               <Route path="/instellingen" element={<SettingsPage />} />
             </Route>
             {/* Public onboarding route */}

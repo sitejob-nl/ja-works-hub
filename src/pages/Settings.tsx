@@ -258,6 +258,21 @@ const Settings = () => {
 
           {/* Compliance Rules */}
           <ComplianceRulesSettings />
+
+          {/* Data Import */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <FileSpreadsheet className="h-4 w-4" /> Data importeren
+              </CardTitle>
+              <CardDescription>Importeer kandidaten en opdrachtgevers vanuit Excel of CSV</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button asChild>
+                <Link to="/importeren">Naar import wizard</Link>
+              </Button>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Right column */}
