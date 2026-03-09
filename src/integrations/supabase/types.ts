@@ -720,6 +720,141 @@ export type Database = {
           },
         ]
       }
+      contract_templates: {
+        Row: {
+          content: string
+          created_at: string
+          created_by: string | null
+          id: string
+          is_active: boolean
+          name: string
+          organization_id: string
+          updated_at: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          organization_id: string
+          updated_at?: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          organization_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contract_templates_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_templates_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contracts: {
+        Row: {
+          content: string
+          created_at: string
+          created_by: string | null
+          employee_id: string
+          id: string
+          organization_id: string
+          pdf_url: string | null
+          sent_at: string | null
+          sign_token: string | null
+          signed_at: string | null
+          status: Database["public"]["Enums"]["contract_status"]
+          template_id: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          created_by?: string | null
+          employee_id: string
+          id?: string
+          organization_id: string
+          pdf_url?: string | null
+          sent_at?: string | null
+          sign_token?: string | null
+          signed_at?: string | null
+          status?: Database["public"]["Enums"]["contract_status"]
+          template_id?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          created_by?: string | null
+          employee_id?: string
+          id?: string
+          organization_id?: string
+          pdf_url?: string | null
+          sent_at?: string | null
+          sign_token?: string | null
+          signed_at?: string | null
+          status?: Database["public"]["Enums"]["contract_status"]
+          template_id?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contracts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contracts_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contracts_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_employee_compliance"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "contracts_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contracts_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "contract_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       documents: {
         Row: {
           ai_verification_result: Json | null
@@ -2215,6 +2350,116 @@ export type Database = {
           },
         ]
       }
+      regulation_acknowledgements: {
+        Row: {
+          employee_id: string
+          id: string
+          ip_address: string | null
+          organization_id: string
+          regulation_id: string
+          signed_at: string
+        }
+        Insert: {
+          employee_id: string
+          id?: string
+          ip_address?: string | null
+          organization_id: string
+          regulation_id: string
+          signed_at?: string
+        }
+        Update: {
+          employee_id?: string
+          id?: string
+          ip_address?: string | null
+          organization_id?: string
+          regulation_id?: string
+          signed_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "regulation_acknowledgements_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "regulation_acknowledgements_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_employee_compliance"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "regulation_acknowledgements_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "regulation_acknowledgements_regulation_id_fkey"
+            columns: ["regulation_id"]
+            isOneToOne: false
+            referencedRelation: "regulations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      regulations: {
+        Row: {
+          content: string
+          created_at: string
+          created_by: string | null
+          id: string
+          is_active: boolean
+          organization_id: string
+          published_at: string | null
+          title: string
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          organization_id: string
+          published_at?: string | null
+          title: string
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          organization_id?: string
+          published_at?: string | null
+          title?: string
+          updated_at?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "regulations_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "regulations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sick_reports: {
         Row: {
           actual_return_date: string | null
@@ -3084,6 +3329,7 @@ export type Database = {
         | "afgewezen"
       communication_channel: "whatsapp" | "email" | "voip" | "notitie" | "sms"
       compliance_status: "incompleet" | "compleet" | "verlopen"
+      contract_status: "concept" | "verzonden" | "getekend" | "verlopen"
       document_status:
         | "geldig"
         | "verloopt_binnenkort"
@@ -3282,6 +3528,7 @@ export const Constants = {
       ],
       communication_channel: ["whatsapp", "email", "voip", "notitie", "sms"],
       compliance_status: ["incompleet", "compleet", "verlopen"],
+      contract_status: ["concept", "verzonden", "getekend", "verlopen"],
       document_status: [
         "geldig",
         "verloopt_binnenkort",

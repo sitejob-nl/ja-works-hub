@@ -18,6 +18,8 @@ import EmployeePlacementsTab from '@/components/employees/tabs/EmployeePlacement
 import EmployeeTimesheetsTab from '@/components/employees/tabs/EmployeeTimesheetsTab';
 import EmployeeTransportTab from '@/components/employees/tabs/EmployeeTransportTab';
 import EmployeeSickTab from '@/components/employees/tabs/EmployeeSickTab';
+import EmployeeRegulationsTab from '@/components/employees/tabs/EmployeeRegulationsTab';
+import EmployeeContractsTab from '@/components/employees/tabs/EmployeeContractsTab';
 
 type EmployeeStatus = Database['public']['Enums']['employee_status'];
 
@@ -120,6 +122,8 @@ const EmployeeDetail = () => {
           <TabsTrigger value="uren">Uren</TabsTrigger>
           <TabsTrigger value="transport">Transport</TabsTrigger>
           <TabsTrigger value="ziekte">Ziekte</TabsTrigger>
+          <TabsTrigger value="reglementen">Reglementen</TabsTrigger>
+          <TabsTrigger value="contracten">Contracten</TabsTrigger>
         </TabsList>
         <TabsContent value="profiel"><EmployeeProfileTab employee={employee} /></TabsContent>
         <TabsContent value="onboarding"><EmployeeOnboardingTab employee={employee} /></TabsContent>
@@ -129,6 +133,8 @@ const EmployeeDetail = () => {
         <TabsContent value="uren"><EmployeeTimesheetsTab employeeId={id!} /></TabsContent>
         <TabsContent value="transport"><EmployeeTransportTab employeeId={id!} /></TabsContent>
         <TabsContent value="ziekte"><EmployeeSickTab employeeId={id!} employee={employee} /></TabsContent>
+        <TabsContent value="reglementen"><EmployeeRegulationsTab employeeId={id!} /></TabsContent>
+        <TabsContent value="contracten"><EmployeeContractsTab employeeId={id!} employee={employee} /></TabsContent>
       </Tabs>
     </div>
   );

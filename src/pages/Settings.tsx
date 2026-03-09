@@ -15,6 +15,8 @@ import WhatsAppSettings from '@/components/settings/WhatsAppSettings';
 import ExactOnlineSettings from '@/components/settings/ExactOnlineSettings';
 import DataExport from '@/components/settings/DataExport';
 import ComplianceRulesSettings from '@/components/settings/ComplianceRulesSettings';
+import RegulationsSettings from '@/components/settings/RegulationsSettings';
+import ContractTemplatesSettings from '@/components/settings/ContractTemplatesSettings';
 
 const ACCENT_PRESETS = [
   { name: 'Blauw (standaard)', hsl: '197 100% 60%', hex: '#32C5FF' },
@@ -258,6 +260,12 @@ const Settings = () => {
 
           {/* Compliance Rules */}
           <ComplianceRulesSettings />
+
+          {/* Reglementen */}
+          <RegulationsSettings />
+
+          {/* Contracttemplates */}
+          <ContractTemplatesSettings />
 
           {/* Data Import */}
           <Card>
