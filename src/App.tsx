@@ -99,6 +99,8 @@ const App = () => (
               <Route path="/kandidaten-zoeken" element={<KandidatenZoeken />} />
               <Route path="/communicatie" element={<Communications />} />
               <Route path="/whatsapp" element={<WhatsAppPage />} />
+              <Route path="/bulk-campaigns" element={<BulkCampaigns />} />
+              <Route path="/bulk-campaigns/:id" element={<BulkCampaignDetail />} />
               <Route path="/kennisbank" element={<KnowledgeBasePage />} />
               <Route path="/exact-online" element={<ExactOnlinePage />} />
               <Route path="/cv-tool/:candidateId" element={<CvTool />} />
