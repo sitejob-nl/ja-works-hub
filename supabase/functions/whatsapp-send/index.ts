@@ -81,6 +81,51 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Pre-send check: opt-out status
+    if (candidate_id) {
+      const { data: optOut } = await serviceClient
+        .from("communication_preferences")
+        .select("opted_out")
+        .eq("organization_id", orgId)
+        .eq("candidate_id", candidate_id)
+        .eq("channel", "whatsapp")
+        .single();
+
+      if (optOut?.opted_out) {
+        return new Response(
+          JSON.stringify({ error: "Candidate has opted out of WhatsApp messages" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
+    // Pre-send check: rate limit
+    const { data: canSendMinute } = await serviceClient.rpc("check_rate_limit", {
+      p_org_id: orgId,
+      p_channel: "whatsapp",
+      p_window_type: "minute",
+    });
+
+    if (!canSendMinute) {
+      return new Response(
+        JSON.stringify({ error: "Rate limit exceeded (per minute)" }),
+        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const { data: canSendHour } = await serviceClient.rpc("check_rate_limit", {
+      p_org_id: orgId,
+      p_channel: "whatsapp",
+      p_window_type: "hour",
+    });
+
+    if (!canSendHour) {
+      return new Response(
+        JSON.stringify({ error: "Rate limit exceeded (per hour)" }),
+        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Clean phone number (remove spaces, dashes, leading +)
     const cleanPhone = to.replace(/[\s\-\+]/g, "");
 
@@ -115,8 +160,14 @@ Deno.serve(async (req) => {
 
     const waMessageId = metaBody.messages?.[0]?.id;
 
+    // Record rate limit usage
+    await serviceClient.rpc("record_rate_limit", {
+      p_org_id: orgId,
+      p_channel: "whatsapp",
+    });
+
     // Store outbound message in communications
-    await serviceClient.from("communications").insert({
+    const { data: comm } = await serviceClient.from("communications").insert({
       organization_id: orgId,
       channel: "whatsapp",
       direction: "outbound",
@@ -127,10 +178,10 @@ Deno.serve(async (req) => {
       company_id: company_id || null,
       whatsapp_message_id: waMessageId || null,
       whatsapp_status: "sent",
-    });
+    }).select("id").single();
 
     return new Response(
-      JSON.stringify({ success: true, message_id: waMessageId }),
+      JSON.stringify({ success: true, message_id: waMessageId, communication_id: comm?.id }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {

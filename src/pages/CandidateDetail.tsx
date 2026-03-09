@@ -15,6 +15,7 @@ import CandidateDocumentsTab from '@/components/candidates/tabs/CandidateDocumen
 import CandidateCommunicationTab from '@/components/candidates/tabs/CandidateCommunicationTab';
 import CandidateMatchesTab from '@/components/candidates/tabs/CandidateMatchesTab';
 import CandidatePlacementsTab from '@/components/candidates/tabs/CandidatePlacementsTab';
+import { CandidatePreferencesTab } from '@/components/candidates/tabs/CandidatePreferencesTab';
 import type { Database } from '@/integrations/supabase/types';
 
 type CandidateStatus = Database['public']['Enums']['candidate_status'];
@@ -120,12 +121,14 @@ const CandidateDetail = () => {
           <TabsTrigger value="communicatie">Communicatie</TabsTrigger>
           <TabsTrigger value="matches">Matches</TabsTrigger>
           <TabsTrigger value="plaatsingen">Plaatsingen</TabsTrigger>
+          <TabsTrigger value="voorkeuren">Voorkeuren</TabsTrigger>
         </TabsList>
         <TabsContent value="profiel"><CandidateProfileTab candidate={candidate} /></TabsContent>
         <TabsContent value="documenten"><CandidateDocumentsTab candidateId={id!} /></TabsContent>
         <TabsContent value="communicatie"><CandidateCommunicationTab candidateId={id!} /></TabsContent>
         <TabsContent value="matches"><CandidateMatchesTab candidateId={id!} /></TabsContent>
         <TabsContent value="plaatsingen"><CandidatePlacementsTab candidateId={id!} /></TabsContent>
+        <TabsContent value="voorkeuren"><CandidatePreferencesTab candidateId={id!} /></TabsContent>
       </Tabs>
 
       <CandidateSlideOver open={editOpen} onOpenChange={setEditOpen} candidate={candidate} />

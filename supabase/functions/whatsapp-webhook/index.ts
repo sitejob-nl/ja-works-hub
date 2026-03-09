@@ -135,6 +135,11 @@ Deno.serve(async (req) => {
             }
           }
 
+          // Check for opt-out keywords
+          const optOutKeywords = ["stop", "afmelden", "unsubscribe", "uitschrijven", "stoppen"];
+          const messageText = bodyText.toLowerCase().trim();
+          const isOptOut = optOutKeywords.some(keyword => messageText === keyword || messageText.startsWith(keyword + " "));
+
           // Insert communication
           const { error: insertError } = await serviceClient
             .from("communications")
@@ -153,6 +158,40 @@ Deno.serve(async (req) => {
             console.error("Insert error:", insertError);
           } else {
             console.log("Inbound message stored:", msg.id, "candidate:", candidateId);
+          }
+
+          // Handle opt-out if detected and candidate found
+          if (isOptOut && candidateId) {
+            console.log("Opt-out keyword detected, processing opt-out for:", candidateId);
+            
+            try {
+              // Upsert communication preference directly
+              await serviceClient
+                .from("communication_preferences")
+                .upsert(
+                  {
+                    organization_id: orgId,
+                    candidate_id: candidateId,
+                    channel: "whatsapp",
+                    opted_out: true,
+                    opted_out_at: new Date().toISOString(),
+                    opted_out_reason: "Auto opt-out via keyword: " + messageText,
+                  },
+                  { onConflict: "organization_id,candidate_id,channel" }
+                );
+
+              // Update pending campaign recipients
+              await serviceClient
+                .from("campaign_recipients")
+                .update({ status: "opted_out" })
+                .eq("organization_id", orgId)
+                .eq("candidate_id", candidateId)
+                .eq("status", "pending");
+
+              console.log("Opt-out processed for:", candidateId);
+            } catch (optOutError) {
+              console.error("Failed to process opt-out:", optOutError);
+            }
           }
         }
       }
