@@ -45,6 +45,63 @@ const EmployeeSickTab = ({ employeeId, employee }: { employeeId: string; employe
       if (error) throw error;
       const { error: e2 } = await supabase.from('employees').update({ status: 'ziek' as const }).eq('id', employeeId);
       if (e2) throw e2;
+
+      // Auto-notify client via WhatsApp
+      try {
+        const { data: placements } = await supabase
+          .from('placements')
+          .select('company_id, companies!placements_company_id_fkey(name)')
+          .eq('employee_id', employeeId)
+          .eq('status', 'actief' as any)
+          .limit(1);
+
+        const placement = placements?.[0] as any;
+        if (placement?.company_id) {
+          const { data: contacts } = await supabase
+            .from('company_contacts')
+            .select('full_name, phone')
+            .eq('company_id', placement.company_id)
+            .eq('is_primary', true)
+            .limit(1);
+
+          const contact = contacts?.[0];
+          if (contact?.phone) {
+            const empName = `${employee?.first_name ?? ''} ${employee?.last_name ?? ''}`.trim();
+            const companyName = placement.companies?.name ?? '';
+            const msg = `Beste ${contact.full_name}, hierbij informeren wij u dat ${empName} zich ziek heeft gemeld${form.expected_return_date ? `. Verwachte terugkeer: ${form.expected_return_date}` : ''}. Wij houden u op de hoogte. Met vriendelijke groet.`;
+
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.access_token) {
+              await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-send`, {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${session.access_token}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  to: contact.phone,
+                  message: msg,
+                  company_id: placement.company_id,
+                }),
+              });
+              // Mark client_notified on the sick report
+              const { data: latestReport } = await supabase
+                .from('sick_reports')
+                .select('id')
+                .eq('employee_id', employeeId)
+                .order('reported_at', { ascending: false })
+                .limit(1);
+              if (latestReport?.[0]) {
+                await supabase.from('sick_reports')
+                  .update({ client_notified: true })
+                  .eq('id', latestReport[0].id);
+              }
+            }
+          }
+        }
+      } catch (notifyErr) {
+        console.warn('Kon opdrachtgever niet automatisch informeren:', notifyErr);
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['sick-reports', employeeId] });
