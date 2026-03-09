@@ -109,8 +109,9 @@ const App = () => (
               <Route path="/importeren" element={<ImportData />} />
               <Route path="/instellingen" element={<SettingsPage />} />
             </Route>
-            {/* Public onboarding route */}
+            {/* Public routes */}
             <Route path="/onboarding/:token" element={<Onboarding />} />
+            <Route path="/installeren" element={<Installeren />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
