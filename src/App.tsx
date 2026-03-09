@@ -45,7 +45,7 @@ import BulkCampaigns from "@/pages/BulkCampaigns";
 import BulkCampaignDetail from "@/pages/BulkCampaignDetail";
 import ImportData from "@/pages/ImportData";
 import Installeren from "@/pages/Installeren";
-
+import ContractSign from "@/pages/ContractSign";
 
 const queryClient = new QueryClient();
 
