@@ -137,6 +137,12 @@ const EmployeeContractsTab = ({ employeeId, employee }: { employeeId: string; em
     onError: (e: any) => toast.error(e.message),
   });
 
+  const copySignLink = (contract: any) => {
+    const url = `${window.location.origin}/contract/sign/${contract.sign_token}`;
+    navigator.clipboard.writeText(url);
+    toast.success('Tekenlink gekopieerd naar klembord');
+  };
+
   const markSent = useMutation({
     mutationFn: async (contractId: string) => {
       const { error } = await supabase.from('contracts')
