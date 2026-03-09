@@ -220,9 +220,9 @@ const SuperAdminOrganizations = () => {
           <SheetHeader>
             <SheetTitle className="text-white">Modules — {selectedOrg?.name}</SheetTitle>
           </SheetHeader>
-          <div className="mt-6 space-y-4">
+          <div className="mt-6 space-y-4 overflow-y-auto max-h-[calc(100vh-8rem)]">
             <p className="text-zinc-400 text-sm">Schakel modules in of uit voor deze organisatie. Overrides hebben voorrang op het abonnement.</p>
-            <div className="space-y-3">
+            <div className="space-y-3 pb-4">
               {ALL_MODULES.map((mod) => (
                 <div key={mod.key} className="flex items-center justify-between py-2 px-3 bg-zinc-800 rounded-lg">
                   <span className="text-sm text-white">{mod.label}</span>
