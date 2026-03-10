@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { formatDate, formatRelativeTime } from '@/lib/format';
 import { toast } from 'sonner';
 import KpiDashboard from '@/components/dashboard/KpiDashboard';
+import OnboardingWizard from '@/components/onboarding/OnboardingWizard';
 
 interface StatCardProps {
   icon: React.ElementType;
