@@ -20,7 +20,8 @@ const fuelTypes = ['benzine', 'diesel', 'elektrisch', 'hybride', 'lpg'];
 
 const emptyForm = {
   license_plate: '', brand: '', model: '', year: '', fuel_type: '',
-  current_mileage: '', status: 'beschikbaar', notes: '',
+  current_mileage: '', tank_capacity_liters: '', fuel_card_reference: '',
+  avg_consumption_per_100km: '', status: 'beschikbaar', notes: '',
 };
 
 const VehicleSlideOver = ({ open, onOpenChange, vehicle }: Props) => {
