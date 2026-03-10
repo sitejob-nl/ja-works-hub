@@ -28,7 +28,7 @@ const statusLabel: Record<string, string> = {
 const EmployeeProfileTab = ({ employee }: { employee: any }) => {
   const [sheetOpen, setSheetOpen] = useState(false);
   const c = employee.candidates;
-  const maskedBsn = c?.bsn ? `****${c.bsn.slice(-4)}` : '—';
+  const { data: sensitive, isLoading: sensitiveLoading } = useDecryptedCandidate(c?.id);
   const address = [c?.address_street, c?.address_postal, c?.address_city].filter(Boolean).join(', ') || null;
   const portalEnabled = employee.portal_enabled === true;
 
