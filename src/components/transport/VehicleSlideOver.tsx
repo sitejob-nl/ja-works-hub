@@ -39,6 +39,9 @@ const VehicleSlideOver = ({ open, onOpenChange, vehicle }: Props) => {
         year: vehicle.year?.toString() ?? '',
         fuel_type: vehicle.fuel_type ?? '',
         current_mileage: vehicle.current_mileage?.toString() ?? '',
+        tank_capacity_liters: vehicle.tank_capacity_liters?.toString() ?? '',
+        fuel_card_reference: vehicle.fuel_card_reference ?? '',
+        avg_consumption_per_100km: vehicle.avg_consumption_per_100km?.toString() ?? '',
         status: vehicle.status ?? 'beschikbaar',
         notes: vehicle.notes ?? '',
       });
