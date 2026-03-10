@@ -22,9 +22,11 @@ import Planning from "@/pages/Planning";
 import Companies from "@/pages/Companies";
 import CompanyNew from "@/pages/CompanyNew";
 import CompanyDetail from "@/pages/CompanyDetail";
+import CompanyEdit from "@/pages/CompanyEdit";
 import Candidates from "@/pages/Candidates";
 import CandidateNew from "@/pages/CandidateNew";
 import CandidateDetail from "@/pages/CandidateDetail";
+import CandidateEdit from "@/pages/CandidateEdit";
 import Employees from "@/pages/Employees";
 import EmployeeNew from "@/pages/EmployeeNew";
 import EmployeeDetail from "@/pages/EmployeeDetail";
@@ -33,10 +35,12 @@ import PropertyDetail from "@/pages/PropertyDetail";
 import Vacancies from "@/pages/Vacancies";
 import VacancyNew from "@/pages/VacancyNew";
 import VacancyDetail from "@/pages/VacancyDetail";
+import VacancyEdit from "@/pages/VacancyEdit";
 import Timesheets from "@/pages/Timesheets";
 import Transport from "@/pages/Transport";
 import VehicleNew from "@/pages/VehicleNew";
 import VehicleDetail from "@/pages/VehicleDetail";
+import VehicleEdit from "@/pages/VehicleEdit";
 import Vacaturebank from "@/pages/Vacaturebank";
 import KandidatenZoeken from "@/pages/KandidatenZoeken";
 import Communications from "@/pages/Communications";
@@ -105,9 +109,11 @@ const App = () => (
               <Route path="/opdrachtgevers" element={<Companies />} />
               <Route path="/opdrachtgevers/new" element={<CompanyNew />} />
               <Route path="/opdrachtgevers/:id" element={<CompanyDetail />} />
+              <Route path="/opdrachtgevers/:id/bewerken" element={<CompanyEdit />} />
               <Route path="/kandidaten" element={<Candidates />} />
               <Route path="/kandidaten/new" element={<CandidateNew />} />
               <Route path="/kandidaten/:id" element={<CandidateDetail />} />
+              <Route path="/kandidaten/:id/bewerken" element={<CandidateEdit />} />
               <Route path="/medewerkers" element={<Employees />} />
               <Route path="/medewerkers/new" element={<EmployeeNew />} />
               <Route path="/medewerkers/:id" element={<EmployeeDetail />} />
@@ -116,11 +122,13 @@ const App = () => (
               <Route path="/vacatures" element={<Vacancies />} />
               <Route path="/vacatures/new" element={<VacancyNew />} />
               <Route path="/vacatures/:id" element={<VacancyDetail />} />
+              <Route path="/vacatures/:id/bewerken" element={<VacancyEdit />} />
               <Route path="/planning" element={<Planning />} />
               <Route path="/uren" element={<Timesheets />} />
               <Route path="/transport" element={<Transport />} />
               <Route path="/transport/new" element={<VehicleNew />} />
               <Route path="/transport/:id" element={<VehicleDetail />} />
+              <Route path="/transport/:id/bewerken" element={<VehicleEdit />} />
               <Route path="/tankpas-analyse" element={<FuelCardAnalysis />} />
               <Route path="/vacaturebank" element={<Vacaturebank />} />
               <Route path="/kandidaten-zoeken" element={<KandidatenZoeken />} />
