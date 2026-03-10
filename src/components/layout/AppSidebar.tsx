@@ -160,23 +160,36 @@ const AppSidebar = () => {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 py-3 px-2 space-y-0.5 overflow-y-auto">
-        {navItems.map((item) => {
-          const isActive = location.pathname === item.path;
+      <nav className="flex-1 py-3 px-2 overflow-y-auto">
+        {filteredGroups.map((group, gi) => {
           return (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              className={cn(
-                'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors',
-                isActive
-                  ? 'bg-sidebar-hover text-sidebar-active'
-                  : 'text-sidebar-foreground hover:bg-sidebar-hover hover:text-sidebar-active'
+            <div key={gi} className={cn(group.label && 'mt-4')}>
+              {group.label && !collapsed && (
+                <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/50">
+                  {group.label}
+                </p>
               )}
-            >
-              <item.icon className="h-4 w-4 shrink-0" />
-              {!collapsed && <span>{item.label}</span>}
-            </NavLink>
+              <div className="space-y-0.5">
+                {group.items.map((item) => {
+                  const isActive = location.pathname === item.path;
+                  return (
+                    <NavLink
+                      key={item.path}
+                      to={item.path}
+                      className={cn(
+                        'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors',
+                        isActive
+                          ? 'bg-sidebar-hover text-sidebar-active'
+                          : 'text-sidebar-foreground hover:bg-sidebar-hover hover:text-sidebar-active'
+                      )}
+                    >
+                      <item.icon className="h-4 w-4 shrink-0" />
+                      {!collapsed && <span>{item.label}</span>}
+                    </NavLink>
+                  );
+                })}
+              </div>
+            </div>
           );
         })}
       </nav>
