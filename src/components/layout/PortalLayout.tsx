@@ -4,6 +4,7 @@ import { Home, Clock, FileText, Building, MoreHorizontal, LogOut, Globe } from '
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/integrations/supabase/client';
 
 const mainTabs = [
   { label: 'Dashboard', icon: Home, path: '/portaal' },
@@ -27,9 +28,6 @@ const PortalLayout = () => {
   const toggleLanguage = async () => {
     if (!employee) return;
     const newLang = employee.portal_language === 'en' ? 'nl' : 'en';
-    // This is a simple client-side toggle; persisted via employee update
-    // For now just reload - in future this would update context
-    const { supabase } = await import('@/integrations/supabase/client');
     await supabase.from('employees').update({ portal_language: newLang }).eq('id', employee.id);
     window.location.reload();
   };
