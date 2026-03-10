@@ -55,6 +55,7 @@ import BulkCampaignDetail from "@/pages/BulkCampaignDetail";
 import ImportData from "@/pages/ImportData";
 import Installeren from "@/pages/Installeren";
 import ContractSign from "@/pages/ContractSign";
+import CandidateProfile from "@/pages/CandidateProfile";
 import Register from "@/pages/Register";
 import PortalActivate from "@/pages/PortalActivate";
 import FuelCardAnalysis from "@/pages/FuelCardAnalysis";
