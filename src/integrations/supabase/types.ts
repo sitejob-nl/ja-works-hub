@@ -223,11 +223,21 @@ export type Database = {
           address_country: string | null
           address_postal: string | null
           address_street: string | null
+          ai_analysis: Json | null
+          ai_analyzed_at: string | null
+          ai_classification: string | null
+          ai_function_group: string | null
+          ai_interview_questions: string[] | null
+          ai_reliability_score: number | null
+          ai_risk_factors: string[] | null
+          ai_summary: string | null
           availability_notes: string | null
           bsn: string | null
           certifications: string[] | null
           compliance_status: Database["public"]["Enums"]["compliance_status"]
           created_at: string
+          cv_file_url: string | null
+          cv_raw_text: string | null
           date_of_birth: string | null
           drivers_license_expiry: string | null
           email: string | null
@@ -252,11 +262,21 @@ export type Database = {
           address_country?: string | null
           address_postal?: string | null
           address_street?: string | null
+          ai_analysis?: Json | null
+          ai_analyzed_at?: string | null
+          ai_classification?: string | null
+          ai_function_group?: string | null
+          ai_interview_questions?: string[] | null
+          ai_reliability_score?: number | null
+          ai_risk_factors?: string[] | null
+          ai_summary?: string | null
           availability_notes?: string | null
           bsn?: string | null
           certifications?: string[] | null
           compliance_status?: Database["public"]["Enums"]["compliance_status"]
           created_at?: string
+          cv_file_url?: string | null
+          cv_raw_text?: string | null
           date_of_birth?: string | null
           drivers_license_expiry?: string | null
           email?: string | null
@@ -281,11 +301,21 @@ export type Database = {
           address_country?: string | null
           address_postal?: string | null
           address_street?: string | null
+          ai_analysis?: Json | null
+          ai_analyzed_at?: string | null
+          ai_classification?: string | null
+          ai_function_group?: string | null
+          ai_interview_questions?: string[] | null
+          ai_reliability_score?: number | null
+          ai_risk_factors?: string[] | null
+          ai_summary?: string | null
           availability_notes?: string | null
           bsn?: string | null
           certifications?: string[] | null
           compliance_status?: Database["public"]["Enums"]["compliance_status"]
           created_at?: string
+          cv_file_url?: string | null
+          cv_raw_text?: string | null
           date_of_birth?: string | null
           drivers_license_expiry?: string | null
           email?: string | null
@@ -1088,6 +1118,117 @@ export type Database = {
           },
         ]
       }
+      fuel_card_transactions: {
+        Row: {
+          amount_eur: number
+          created_at: string
+          employee_id: string | null
+          flag_excessive_consumption: boolean | null
+          flag_multiple_same_day: boolean | null
+          flag_notes: string | null
+          flag_over_capacity: boolean | null
+          fuel_card_reference: string
+          id: string
+          import_batch_id: string | null
+          license_plate: string | null
+          liters: number
+          organization_id: string
+          price_per_liter: number | null
+          raw_data: Json | null
+          reviewed: boolean | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          station_location: string | null
+          station_name: string | null
+          transaction_date: string
+          vehicle_id: string | null
+        }
+        Insert: {
+          amount_eur: number
+          created_at?: string
+          employee_id?: string | null
+          flag_excessive_consumption?: boolean | null
+          flag_multiple_same_day?: boolean | null
+          flag_notes?: string | null
+          flag_over_capacity?: boolean | null
+          fuel_card_reference: string
+          id?: string
+          import_batch_id?: string | null
+          license_plate?: string | null
+          liters: number
+          organization_id: string
+          price_per_liter?: number | null
+          raw_data?: Json | null
+          reviewed?: boolean | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          station_location?: string | null
+          station_name?: string | null
+          transaction_date: string
+          vehicle_id?: string | null
+        }
+        Update: {
+          amount_eur?: number
+          created_at?: string
+          employee_id?: string | null
+          flag_excessive_consumption?: boolean | null
+          flag_multiple_same_day?: boolean | null
+          flag_notes?: string | null
+          flag_over_capacity?: boolean | null
+          fuel_card_reference?: string
+          id?: string
+          import_batch_id?: string | null
+          license_plate?: string | null
+          liters?: number
+          organization_id?: string
+          price_per_liter?: number | null
+          raw_data?: Json | null
+          reviewed?: boolean | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          station_location?: string | null
+          station_name?: string | null
+          transaction_date?: string
+          vehicle_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fuel_card_transactions_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fuel_card_transactions_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_employee_compliance"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "fuel_card_transactions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fuel_card_transactions_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fuel_card_transactions_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       housing_assignments: {
         Row: {
           check_in_date: string
@@ -1174,13 +1315,24 @@ export type Database = {
       }
       housing_inspections: {
         Row: {
+          condition_notes: string | null
+          condition_rating: number | null
+          confirmed_at: string | null
+          confirmed_by_resident: boolean | null
           created_at: string
           description: string
+          housing_assignment_id: string | null
           id: string
           inspected_by: string | null
           inspection_date: string
+          inspection_type: Database["public"]["Enums"]["inspection_type"] | null
           notes: string | null
           organization_id: string
+          photo_bathroom: string | null
+          photo_damage: string | null
+          photo_kitchen: string | null
+          photo_mattress: string | null
+          photo_room_overview: string | null
           photos: string[] | null
           property_id: string | null
           resolved: boolean
@@ -1188,13 +1340,26 @@ export type Database = {
           unit_id: string | null
         }
         Insert: {
+          condition_notes?: string | null
+          condition_rating?: number | null
+          confirmed_at?: string | null
+          confirmed_by_resident?: boolean | null
           created_at?: string
           description: string
+          housing_assignment_id?: string | null
           id?: string
           inspected_by?: string | null
           inspection_date: string
+          inspection_type?:
+            | Database["public"]["Enums"]["inspection_type"]
+            | null
           notes?: string | null
           organization_id: string
+          photo_bathroom?: string | null
+          photo_damage?: string | null
+          photo_kitchen?: string | null
+          photo_mattress?: string | null
+          photo_room_overview?: string | null
           photos?: string[] | null
           property_id?: string | null
           resolved?: boolean
@@ -1202,13 +1367,26 @@ export type Database = {
           unit_id?: string | null
         }
         Update: {
+          condition_notes?: string | null
+          condition_rating?: number | null
+          confirmed_at?: string | null
+          confirmed_by_resident?: boolean | null
           created_at?: string
           description?: string
+          housing_assignment_id?: string | null
           id?: string
           inspected_by?: string | null
           inspection_date?: string
+          inspection_type?:
+            | Database["public"]["Enums"]["inspection_type"]
+            | null
           notes?: string | null
           organization_id?: string
+          photo_bathroom?: string | null
+          photo_damage?: string | null
+          photo_kitchen?: string | null
+          photo_mattress?: string | null
+          photo_room_overview?: string | null
           photos?: string[] | null
           property_id?: string | null
           resolved?: boolean
@@ -1216,6 +1394,13 @@ export type Database = {
           unit_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "housing_inspections_housing_assignment_id_fkey"
+            columns: ["housing_assignment_id"]
+            isOneToOne: false
+            referencedRelation: "housing_assignments"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "housing_inspections_inspected_by_fkey"
             columns: ["inspected_by"]
@@ -2132,15 +2317,35 @@ export type Database = {
           address_city: string
           address_postal: string
           address_street: string
+          cost_electra: number | null
+          cost_gas: number | null
+          cost_municipal_tax: number | null
+          cost_other: number | null
           cost_price: number | null
+          cost_water: number | null
           created_at: string
+          energy_wizard_id: string | null
+          energy_wizard_linked: boolean | null
+          has_rental_permit: boolean | null
+          has_snf_certificate: boolean | null
           id: string
           is_active: boolean
+          max_persons_permit: number | null
           monthly_rent: number | null
           name: string
           notes: string | null
           organization_id: string
+          owner_contact_person: string | null
+          owner_email: string | null
           owner_name: string | null
+          owner_notes: string | null
+          owner_phone: string | null
+          ownership_type: string | null
+          rental_contract_url: string | null
+          rental_permit_expiry: string | null
+          rental_permit_number: string | null
+          snf_certificate_expiry: string | null
+          snf_certificate_number: string | null
           total_capacity: number
           updated_at: string
         }
@@ -2148,15 +2353,35 @@ export type Database = {
           address_city: string
           address_postal: string
           address_street: string
+          cost_electra?: number | null
+          cost_gas?: number | null
+          cost_municipal_tax?: number | null
+          cost_other?: number | null
           cost_price?: number | null
+          cost_water?: number | null
           created_at?: string
+          energy_wizard_id?: string | null
+          energy_wizard_linked?: boolean | null
+          has_rental_permit?: boolean | null
+          has_snf_certificate?: boolean | null
           id?: string
           is_active?: boolean
+          max_persons_permit?: number | null
           monthly_rent?: number | null
           name: string
           notes?: string | null
           organization_id: string
+          owner_contact_person?: string | null
+          owner_email?: string | null
           owner_name?: string | null
+          owner_notes?: string | null
+          owner_phone?: string | null
+          ownership_type?: string | null
+          rental_contract_url?: string | null
+          rental_permit_expiry?: string | null
+          rental_permit_number?: string | null
+          snf_certificate_expiry?: string | null
+          snf_certificate_number?: string | null
           total_capacity?: number
           updated_at?: string
         }
@@ -2164,15 +2389,35 @@ export type Database = {
           address_city?: string
           address_postal?: string
           address_street?: string
+          cost_electra?: number | null
+          cost_gas?: number | null
+          cost_municipal_tax?: number | null
+          cost_other?: number | null
           cost_price?: number | null
+          cost_water?: number | null
           created_at?: string
+          energy_wizard_id?: string | null
+          energy_wizard_linked?: boolean | null
+          has_rental_permit?: boolean | null
+          has_snf_certificate?: boolean | null
           id?: string
           is_active?: boolean
+          max_persons_permit?: number | null
           monthly_rent?: number | null
           name?: string
           notes?: string | null
           organization_id?: string
+          owner_contact_person?: string | null
+          owner_email?: string | null
           owner_name?: string | null
+          owner_notes?: string | null
+          owner_phone?: string | null
+          ownership_type?: string | null
+          rental_contract_url?: string | null
+          rental_permit_expiry?: string | null
+          rental_permit_number?: string | null
+          snf_certificate_expiry?: string | null
+          snf_certificate_number?: string | null
           total_capacity?: number
           updated_at?: string
         }
@@ -2939,6 +3184,95 @@ export type Database = {
           },
         ]
       }
+      vehicle_damage_reports: {
+        Row: {
+          cost_estimate: number | null
+          created_at: string
+          damage_type: string
+          description: string | null
+          employee_id: string
+          garage_email: string | null
+          garage_notified: boolean | null
+          garage_notified_at: string | null
+          id: string
+          organization_id: string
+          photos: string[] | null
+          reported_at: string
+          resolution_notes: string | null
+          resolved: boolean | null
+          resolved_at: string | null
+          updated_at: string
+          vehicle_id: string
+        }
+        Insert: {
+          cost_estimate?: number | null
+          created_at?: string
+          damage_type: string
+          description?: string | null
+          employee_id: string
+          garage_email?: string | null
+          garage_notified?: boolean | null
+          garage_notified_at?: string | null
+          id?: string
+          organization_id: string
+          photos?: string[] | null
+          reported_at?: string
+          resolution_notes?: string | null
+          resolved?: boolean | null
+          resolved_at?: string | null
+          updated_at?: string
+          vehicle_id: string
+        }
+        Update: {
+          cost_estimate?: number | null
+          created_at?: string
+          damage_type?: string
+          description?: string | null
+          employee_id?: string
+          garage_email?: string | null
+          garage_notified?: boolean | null
+          garage_notified_at?: string | null
+          id?: string
+          organization_id?: string
+          photos?: string[] | null
+          reported_at?: string
+          resolution_notes?: string | null
+          resolved?: boolean | null
+          resolved_at?: string | null
+          updated_at?: string
+          vehicle_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vehicle_damage_reports_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_damage_reports_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_employee_compliance"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "vehicle_damage_reports_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_damage_reports_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       vehicle_fines: {
         Row: {
           amount: number
@@ -3015,9 +3349,11 @@ export type Database = {
       }
       vehicles: {
         Row: {
+          avg_consumption_per_100km: number | null
           brand: string | null
           created_at: string
           current_mileage: number | null
+          fuel_card_reference: string | null
           fuel_type: string | null
           id: string
           license_plate: string
@@ -3025,13 +3361,16 @@ export type Database = {
           notes: string | null
           organization_id: string
           status: Database["public"]["Enums"]["vehicle_status"]
+          tank_capacity_liters: number | null
           updated_at: string
           year: number | null
         }
         Insert: {
+          avg_consumption_per_100km?: number | null
           brand?: string | null
           created_at?: string
           current_mileage?: number | null
+          fuel_card_reference?: string | null
           fuel_type?: string | null
           id?: string
           license_plate: string
@@ -3039,13 +3378,16 @@ export type Database = {
           notes?: string | null
           organization_id: string
           status?: Database["public"]["Enums"]["vehicle_status"]
+          tank_capacity_liters?: number | null
           updated_at?: string
           year?: number | null
         }
         Update: {
+          avg_consumption_per_100km?: number | null
           brand?: string | null
           created_at?: string
           current_mileage?: number | null
+          fuel_card_reference?: string | null
           fuel_type?: string | null
           id?: string
           license_plate?: string
@@ -3053,6 +3395,7 @@ export type Database = {
           notes?: string | null
           organization_id?: string
           status?: Database["public"]["Enums"]["vehicle_status"]
+          tank_capacity_liters?: number | null
           updated_at?: string
           year?: number | null
         }
@@ -3344,6 +3687,12 @@ export type Database = {
         | "overig"
       employee_status: "onboarding" | "actief" | "ziek" | "uit_dienst"
       housing_assignment_status: "gereserveerd" | "ingecheckt" | "uitgecheckt"
+      inspection_type:
+        | "check_in"
+        | "check_out"
+        | "periodiek"
+        | "onderhoud"
+        | "klacht"
       match_status:
         | "voorgesteld"
         | "in_gesprek"
@@ -3545,6 +3894,13 @@ export const Constants = {
       ],
       employee_status: ["onboarding", "actief", "ziek", "uit_dienst"],
       housing_assignment_status: ["gereserveerd", "ingecheckt", "uitgecheckt"],
+      inspection_type: [
+        "check_in",
+        "check_out",
+        "periodiek",
+        "onderhoud",
+        "klacht",
+      ],
       match_status: [
         "voorgesteld",
         "in_gesprek",
