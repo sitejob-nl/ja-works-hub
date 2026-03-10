@@ -336,6 +336,7 @@ const Dashboard = () => {
 
   return (
     <div>
+      <OnboardingWizard open={showOnboarding} onComplete={handleOnboardingComplete} userName={firstName} />
       <h1 className="text-2xl font-semibold mb-1">{getGreeting()}, {firstName}</h1>
       <p className="text-sm text-muted-foreground mb-6">Hier is een overzicht van vandaag.</p>
 
