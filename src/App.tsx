@@ -133,6 +133,9 @@ const App = () => (
             }>
               <Route index element={<PortalDashboard />} />
               <Route path="uren" element={<PortalTimesheets />} />
+              <Route path="documenten" element={<PortalDocuments />} />
+              <Route path="profiel" element={<PortalProfile />} />
+              <Route path="ziekmelding" element={<PortalSickReport />} />
             </Route>
             <Route path="/installeren" element={<Installeren />} />
             <Route path="*" element={<NotFound />} />
