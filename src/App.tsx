@@ -57,6 +57,8 @@ import PortalTimesheets from "@/pages/portal/PortalTimesheets";
 import PortalDocuments from "@/pages/portal/PortalDocuments";
 import PortalProfile from "@/pages/portal/PortalProfile";
 import PortalSickReport from "@/pages/portal/PortalSickReport";
+import PortalHousing from "@/pages/portal/PortalHousing";
+import PortalVehicle from "@/pages/portal/PortalVehicle";
 
 const queryClient = new QueryClient();
 
@@ -136,6 +138,8 @@ const App = () => (
               <Route path="documenten" element={<PortalDocuments />} />
               <Route path="profiel" element={<PortalProfile />} />
               <Route path="ziekmelding" element={<PortalSickReport />} />
+              <Route path="huisvesting" element={<PortalHousing />} />
+              <Route path="voertuig" element={<PortalVehicle />} />
             </Route>
             <Route path="/installeren" element={<Installeren />} />
             <Route path="*" element={<NotFound />} />
