@@ -74,18 +74,22 @@ const CandidateProfile = () => {
         );
         const data = await res.json();
 
-        if (data.status === 'invalid') { setState('invalid'); return; }
-        if (data.status === 'expired') { setState('expired'); return; }
-        if (data.status === 'used') {
-          setUsedFirstName(data.first_name ?? '');
-          setState('used');
+        if (!data.valid) {
+          if (data.reason === 'already_used') {
+            setUsedFirstName(data.first_name ?? '');
+            setState('used');
+          } else if (data.reason === 'expired') {
+            setState('expired');
+          } else {
+            setState('invalid');
+          }
           return;
         }
 
         // Valid — populate form
-        setOrgName(data.organization_name ?? '');
-        setCandidateId(data.candidate_id);
-        setOrganizationId(data.organization_id);
+        setOrgName(data.organization?.name ?? '');
+        setCandidateId(data.candidate?.id ?? '');
+        setOrganizationId(data.candidate?.id ? '' : '');
 
         const c = data.candidate;
         setForm({
