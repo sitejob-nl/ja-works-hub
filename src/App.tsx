@@ -46,6 +46,7 @@ import BulkCampaignDetail from "@/pages/BulkCampaignDetail";
 import ImportData from "@/pages/ImportData";
 import Installeren from "@/pages/Installeren";
 import ContractSign from "@/pages/ContractSign";
+import Register from "@/pages/Register";
 
 const queryClient = new QueryClient();
 
@@ -74,6 +75,7 @@ const App = () => (
             <Route path="/login" element={
               <AuthProvider><Login /></AuthProvider>
             } />
+            <Route path="/registreren" element={<Register />} />
             <Route element={
               <AuthProvider>
                 <ProtectedRoute>

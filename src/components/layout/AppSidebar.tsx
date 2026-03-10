@@ -125,7 +125,7 @@ const AppSidebar = () => {
             <span className="text-primary-foreground font-bold text-xs">{orgInitials}</span>
           )}
         </div>
-        {!collapsed && <span className="text-sidebar-active font-semibold text-sm">{org?.name ?? 'JA Werkt'}</span>}
+        {!collapsed && <span className="text-sidebar-active font-semibold text-sm">{org?.name ?? 'SiteJob'}</span>}
       </div>
 
       {/* Nav */}
