@@ -57,6 +57,8 @@ import PortalTimesheets from "@/pages/portal/PortalTimesheets";
 import PortalDocuments from "@/pages/portal/PortalDocuments";
 import PortalProfile from "@/pages/portal/PortalProfile";
 import PortalSickReport from "@/pages/portal/PortalSickReport";
+import PortalHousing from "@/pages/portal/PortalHousing";
+import PortalVehicle from "@/pages/portal/PortalVehicle";
 
 const queryClient = new QueryClient();
 
