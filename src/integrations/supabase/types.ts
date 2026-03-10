@@ -217,6 +217,74 @@ export type Database = {
           },
         ]
       }
+      candidate_signup_links: {
+        Row: {
+          created_at: string
+          current_signups: number | null
+          description: string | null
+          expires_at: string | null
+          id: string
+          is_active: boolean | null
+          max_signups: number | null
+          organization_id: string
+          show_availability: boolean | null
+          show_cv_upload: boolean | null
+          show_drivers_license: boolean | null
+          show_languages: boolean | null
+          show_nationality: boolean | null
+          slug: string
+          source_tag: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          current_signups?: number | null
+          description?: string | null
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          max_signups?: number | null
+          organization_id: string
+          show_availability?: boolean | null
+          show_cv_upload?: boolean | null
+          show_drivers_license?: boolean | null
+          show_languages?: boolean | null
+          show_nationality?: boolean | null
+          slug: string
+          source_tag?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          current_signups?: number | null
+          description?: string | null
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          max_signups?: number | null
+          organization_id?: string
+          show_availability?: boolean | null
+          show_cv_upload?: boolean | null
+          show_drivers_license?: boolean | null
+          show_languages?: boolean | null
+          show_nationality?: boolean | null
+          slug?: string
+          source_tag?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "candidate_signup_links_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       candidates: {
         Row: {
           address_city: string | null
@@ -252,6 +320,7 @@ export type Database = {
           notes: string | null
           organization_id: string
           phone: string | null
+          signup_link_id: string | null
           skills: string[] | null
           source: string | null
           status: Database["public"]["Enums"]["candidate_status"]
@@ -291,6 +360,7 @@ export type Database = {
           notes?: string | null
           organization_id: string
           phone?: string | null
+          signup_link_id?: string | null
           skills?: string[] | null
           source?: string | null
           status?: Database["public"]["Enums"]["candidate_status"]
@@ -330,6 +400,7 @@ export type Database = {
           notes?: string | null
           organization_id?: string
           phone?: string | null
+          signup_link_id?: string | null
           skills?: string[] | null
           source?: string | null
           status?: Database["public"]["Enums"]["candidate_status"]
@@ -341,6 +412,13 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "candidates_signup_link_id_fkey"
+            columns: ["signup_link_id"]
+            isOneToOne: false
+            referencedRelation: "candidate_signup_links"
             referencedColumns: ["id"]
           },
         ]
