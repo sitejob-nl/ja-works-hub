@@ -127,12 +127,14 @@ const PropertyDetail = () => {
           <TabsTrigger value="kosten">Kosten</TabsTrigger>
           <TabsTrigger value="sleutels">Sleutels</TabsTrigger>
           <TabsTrigger value="inspecties">Inspecties</TabsTrigger>
+          <TabsTrigger value="eigenaar">Eigenaar</TabsTrigger>
         </TabsList>
         <TabsContent value="kamers"><UnitsTab property={property} /></TabsContent>
         <TabsContent value="bewoners"><ResidentsTab property={property} /></TabsContent>
         <TabsContent value="kosten"><CostsTab property={property} /></TabsContent>
         <TabsContent value="sleutels"><KeysTab propertyId={id!} /></TabsContent>
         <TabsContent value="inspecties"><InspectionsTab propertyId={id!} /></TabsContent>
+        <TabsContent value="eigenaar"><OwnerTab property={property} /></TabsContent>
       </Tabs>
 
       <PropertySlideOver open={editOpen} onOpenChange={setEditOpen} property={property} />
