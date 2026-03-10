@@ -35,6 +35,7 @@ import PropertyDetail from "@/pages/PropertyDetail";
 import Vacancies from "@/pages/Vacancies";
 import VacancyNew from "@/pages/VacancyNew";
 import VacancyDetail from "@/pages/VacancyDetail";
+import VacancyEdit from "@/pages/VacancyEdit";
 import Timesheets from "@/pages/Timesheets";
 import Transport from "@/pages/Transport";
 import VehicleNew from "@/pages/VehicleNew";
