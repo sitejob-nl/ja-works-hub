@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { FileText, CheckCircle2, AlertTriangle } from 'lucide-react';
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
 const ContractSign = () => {
   const { token } = useParams<{ token: string }>();
@@ -19,11 +21,14 @@ const ContractSign = () => {
     queryKey: ['contract-sign', token],
     queryFn: async () => {
       if (!token) throw new Error('Geen token');
-      const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-      const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
       const res = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/contract-sign?token=${encodeURIComponent(token)}`,
-        { method: 'GET', headers: { 'Content-Type': 'application/json', 'apikey': anonKey, 'Authorization': `Bearer ${anonKey}` } }
+        `${SUPABASE_URL}/functions/v1/contract-sign?token=${encodeURIComponent(token)}`,
+        {
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          },
+        }
       );
       const body = await res.json();
       if (!res.ok) throw new Error(body.error || 'Contract niet gevonden');
@@ -36,17 +41,22 @@ const ContractSign = () => {
   const signContract = useMutation({
     mutationFn: async () => {
       if (!contract || !token) throw new Error('Geen contract');
-      const { data, error } = await supabase.functions.invoke('contract-sign', {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/contract-sign`, {
         method: 'POST',
-        body: { token, full_name: fullName.trim() },
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({ token, full_name: fullName.trim() }),
       });
-      if (error) throw error;
-      if (data?.error) {
+      const data = await res.json();
+      if (!res.ok) {
         if (data.already_signed) {
           setSigned(true);
           return data;
         }
-        throw new Error(data.error);
+        throw new Error(data.error || 'Ondertekenen mislukt');
       }
       return data;
     },
