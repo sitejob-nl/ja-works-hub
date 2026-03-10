@@ -6,7 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   LayoutDashboard, Building2, Users, UserCheck, Home, Briefcase,
   Calendar, Clock, Car, MessageSquare, BookOpen, Settings,
-  ChevronLeft, ChevronRight, Search, UserSearch, Calculator, ClipboardList,
+  ChevronLeft, ChevronRight, Search, UserSearch, Calculator, ClipboardList, Fuel,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useEffect } from 'react';
@@ -22,6 +22,7 @@ const allNavItems = [
   { label: 'Planning', icon: Calendar, path: '/planning', moduleKey: 'planning' },
   { label: 'Uren', icon: Clock, path: '/uren', moduleKey: 'uren' },
   { label: 'Transport', icon: Car, path: '/transport', moduleKey: 'transport' },
+  { label: 'Tankpas analyse', icon: Fuel, path: '/tankpas-analyse', moduleKey: 'transport' },
   { label: 'Communicatie', icon: MessageSquare, path: '/communicatie', moduleKey: 'communicatie' },
   { label: 'WhatsApp', icon: MessageSquare, path: '/whatsapp', moduleKey: 'whatsapp' },
   { label: 'Bulk Campagnes', icon: Users, path: '/bulk-campaigns', moduleKey: 'whatsapp' },
