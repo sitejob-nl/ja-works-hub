@@ -38,17 +38,22 @@ const ContractSign = () => {
   const signContract = useMutation({
     mutationFn: async () => {
       if (!contract || !token) throw new Error('Geen contract');
-      const { data, error } = await supabase.functions.invoke('contract-sign', {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/contract-sign`, {
         method: 'POST',
-        body: { token, full_name: fullName.trim() },
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({ token, full_name: fullName.trim() }),
       });
-      if (error) throw error;
-      if (data?.error) {
+      const data = await res.json();
+      if (!res.ok) {
         if (data.already_signed) {
           setSigned(true);
           return data;
         }
-        throw new Error(data.error);
+        throw new Error(data.error || 'Ondertekenen mislukt');
       }
       return data;
     },
