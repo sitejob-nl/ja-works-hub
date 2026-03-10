@@ -6,6 +6,12 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -17,47 +23,31 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // GET: validate token and return candidate data
+    // ─── GET: validate token & return candidate + org data ───
     if (req.method === "GET") {
       const url = new URL(req.url);
       const token = url.searchParams.get("token");
-      if (!token) {
-        return new Response(
-          JSON.stringify({ error: "Token ontbreekt" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
+      if (!token) return json({ valid: false, reason: "no_token" }, 400);
 
+      // Fetch token row with candidate and organization
       const { data: tokenRow, error: tokenErr } = await supabase
         .from("candidate_profile_tokens")
-        .select("*, candidates(*), organizations:organization_id(name)")
+        .select("*, candidates(*)")
         .eq("token", token)
         .maybeSingle();
 
       if (tokenErr || !tokenRow) {
-        return new Response(
-          JSON.stringify({ status: "invalid" }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        return json({ valid: false, reason: "not_found" }, 404);
       }
 
-      // Check if already used
+      // Already used
       if (tokenRow.used_at) {
-        return new Response(
-          JSON.stringify({
-            status: "used",
-            first_name: tokenRow.candidates?.first_name,
-          }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        return json({ valid: false, reason: "already_used" });
       }
 
-      // Check expiry
+      // Expired
       if (new Date(tokenRow.expires_at) < new Date()) {
-        return new Response(
-          JSON.stringify({ status: "expired" }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        return json({ valid: false, reason: "expired" }, 404);
       }
 
       // Update last_accessed_at
@@ -66,47 +56,50 @@ Deno.serve(async (req) => {
         .update({ last_accessed_at: new Date().toISOString() })
         .eq("id", tokenRow.id);
 
-      const candidate = tokenRow.candidates;
-      return new Response(
-        JSON.stringify({
-          status: "valid",
-          organization_name: (tokenRow as any).organizations?.name ?? "",
-          candidate_id: tokenRow.candidate_id,
-          organization_id: tokenRow.organization_id,
-          candidate: {
-            first_name: candidate?.first_name,
-            last_name: candidate?.last_name,
-            phone: candidate?.phone,
-            email: candidate?.email,
-            date_of_birth: candidate?.date_of_birth,
-            nationality: candidate?.nationality,
-            languages: candidate?.languages,
-            address_street: candidate?.address_street,
-            address_postal: candidate?.address_postal,
-            address_city: candidate?.address_city,
-            address_country: candidate?.address_country,
-            skills: candidate?.skills,
-            certifications: candidate?.certifications,
-            has_drivers_license: candidate?.has_drivers_license,
-            drivers_license_expiry: candidate?.drivers_license_expiry,
-            availability_notes: candidate?.availability_notes,
-          },
-        }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      // Fetch organization
+      const { data: org } = await supabase
+        .from("organizations")
+        .select("name, logo_url")
+        .eq("id", tokenRow.organization_id)
+        .single();
+
+      const c = tokenRow.candidates;
+
+      return json({
+        valid: true,
+        candidate: {
+          id: c?.id,
+          first_name: c?.first_name,
+          last_name: c?.last_name,
+          phone: c?.phone,
+          email: c?.email,
+          date_of_birth: c?.date_of_birth,
+          nationality: c?.nationality,
+          languages: c?.languages,
+          address_street: c?.address_street,
+          address_postal: c?.address_postal,
+          address_city: c?.address_city,
+          address_country: c?.address_country,
+          skills: c?.skills,
+          certifications: c?.certifications,
+          has_drivers_license: c?.has_drivers_license,
+          drivers_license_expiry: c?.drivers_license_expiry,
+          availability_notes: c?.availability_notes,
+          cv_file_url: c?.cv_file_url,
+        },
+        organization: {
+          name: org?.name ?? "",
+          logo_url: org?.logo_url ?? null,
+        },
+      });
     }
 
-    // POST: submit profile data
+    // ─── POST: save profile data ───
     if (req.method === "POST") {
       const body = await req.json();
-      const { token, profile, cv_file_url, photo_file_url } = body;
+      const { token, candidate_data, documents } = body;
 
-      if (!token || !profile) {
-        return new Response(
-          JSON.stringify({ error: "Ongeldige data" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
+      if (!token) return json({ error: "Token ontbreekt" }, 400);
 
       // Validate token
       const { data: tokenRow, error: tokenErr } = await supabase
@@ -115,54 +108,91 @@ Deno.serve(async (req) => {
         .eq("token", token)
         .maybeSingle();
 
-      if (tokenErr || !tokenRow || tokenRow.used_at || new Date(tokenRow.expires_at) < new Date()) {
-        return new Response(
-          JSON.stringify({ error: "Token ongeldig of verlopen" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+      if (tokenErr || !tokenRow) {
+        return json({ error: "Token niet gevonden" }, 404);
+      }
+      if (tokenRow.used_at) {
+        return json({ error: "Token is al gebruikt" }, 400);
+      }
+      if (new Date(tokenRow.expires_at) < new Date()) {
+        return json({ error: "Token is verlopen" }, 400);
       }
 
-      // Update candidate
-      const candidateUpdate: Record<string, unknown> = {};
-      const fields = [
-        "phone", "email", "date_of_birth", "nationality", "languages",
-        "address_street", "address_postal", "address_city", "address_country",
-        "skills", "certifications", "has_drivers_license", "drivers_license_expiry",
-        "availability_notes",
-      ];
+      const candidateId = tokenRow.candidate_id;
+      const organizationId = tokenRow.organization_id;
 
-      for (const f of fields) {
-        if (profile[f] !== undefined) {
-          candidateUpdate[f] = profile[f] === "" ? null : profile[f];
+      // Build update payload — COALESCE logic: only update non-empty values
+      if (candidate_data && typeof candidate_data === "object") {
+        const allowedFields = [
+          "phone", "email", "date_of_birth", "nationality", "languages",
+          "skills", "certifications", "address_street", "address_postal",
+          "address_city", "address_country", "has_drivers_license",
+          "drivers_license_expiry", "availability_notes",
+          "cv_file_url", "profile_photo_url",
+        ];
+
+        const updatePayload: Record<string, unknown> = {};
+
+        for (const field of allowedFields) {
+          const value = candidate_data[field];
+          // Skip undefined/null — don't overwrite existing data
+          if (value === undefined || value === null) continue;
+          // Skip empty strings — treat as "not filled in"
+          if (typeof value === "string" && value.trim() === "") continue;
+          // Skip empty arrays
+          if (Array.isArray(value) && value.length === 0) continue;
+
+          updatePayload[field] = value;
+        }
+
+        // Update status from 'nieuw' to 'in_behandeling'
+        // Only if currently 'nieuw' to avoid overwriting more advanced statuses
+        const { data: currentCandidate } = await supabase
+          .from("candidates")
+          .select("status")
+          .eq("id", candidateId)
+          .single();
+
+        if (currentCandidate?.status === "nieuw") {
+          updatePayload.status = "in_behandeling";
+        }
+
+        if (Object.keys(updatePayload).length > 0) {
+          const { error: updateErr } = await supabase
+            .from("candidates")
+            .update(updatePayload)
+            .eq("id", candidateId);
+
+          if (updateErr) {
+            return json({ error: updateErr.message }, 500);
+          }
         }
       }
 
-      if (cv_file_url) {
-        candidateUpdate.cv_file_url = cv_file_url;
-      }
+      // Insert documents if provided
+      if (Array.isArray(documents) && documents.length > 0) {
+        const docRows = documents
+          .filter((d: any) => d.file_path && d.name && d.type)
+          .map((d: any) => ({
+            candidate_id: candidateId,
+            organization_id: organizationId,
+            type: d.type,
+            name: d.name,
+            file_path: d.file_path,
+            expiry_date: d.expiry_date || null,
+            status: "geldig" as const,
+          }));
 
-      const { error: updateErr } = await supabase
-        .from("candidates")
-        .update(candidateUpdate)
-        .eq("id", tokenRow.candidate_id);
+        if (docRows.length > 0) {
+          const { error: docErr } = await supabase
+            .from("documents")
+            .insert(docRows);
 
-      if (updateErr) {
-        return new Response(
-          JSON.stringify({ error: updateErr.message }),
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      // If CV was uploaded, create document record
-      if (cv_file_url) {
-        await supabase.from("documents").insert({
-          candidate_id: tokenRow.candidate_id,
-          organization_id: tokenRow.organization_id,
-          name: "CV (zelf geüpload)",
-          type: "cv",
-          file_path: cv_file_url,
-          status: "geldig",
-        });
+          if (docErr) {
+            console.error("Document insert error:", docErr);
+            // Don't fail the whole request for document errors
+          }
+        }
       }
 
       // Mark token as used
@@ -171,17 +201,12 @@ Deno.serve(async (req) => {
         .update({ used_at: new Date().toISOString() })
         .eq("id", tokenRow.id);
 
-      return new Response(
-        JSON.stringify({ success: true }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return json({ success: true });
     }
 
     return new Response("Method not allowed", { status: 405, headers: corsHeaders });
   } catch (err) {
-    return new Response(
-      JSON.stringify({ error: (err as Error).message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    console.error("candidate-profile error:", err);
+    return json({ error: (err as Error).message }, 500);
   }
 });
