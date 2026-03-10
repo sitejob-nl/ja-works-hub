@@ -11,25 +11,55 @@ import {
 import { cn } from '@/lib/utils';
 import { useEffect } from 'react';
 
-const allNavItems = [
-  { label: 'Dashboard', icon: LayoutDashboard, path: '/', moduleKey: null },
-  { label: 'Workbench', icon: ClipboardList, path: '/workbench', moduleKey: 'workbench' },
-  { label: 'Opdrachtgevers', icon: Building2, path: '/opdrachtgevers', moduleKey: 'opdrachtgevers' },
-  { label: 'Kandidaten', icon: Users, path: '/kandidaten', moduleKey: 'kandidaten' },
-  { label: 'Medewerkers', icon: UserCheck, path: '/medewerkers', moduleKey: 'medewerkers' },
-  { label: 'Huisvesting', icon: Home, path: '/huisvesting', moduleKey: 'huisvesting' },
-  { label: 'Vacatures', icon: Briefcase, path: '/vacatures', moduleKey: 'vacatures' },
-  { label: 'Planning', icon: Calendar, path: '/planning', moduleKey: 'planning' },
-  { label: 'Uren', icon: Clock, path: '/uren', moduleKey: 'uren' },
-  { label: 'Transport', icon: Car, path: '/transport', moduleKey: 'transport' },
-  { label: 'Tankpas analyse', icon: Fuel, path: '/tankpas-analyse', moduleKey: 'transport' },
-  { label: 'Communicatie', icon: MessageSquare, path: '/communicatie', moduleKey: 'communicatie' },
-  { label: 'WhatsApp', icon: MessageSquare, path: '/whatsapp', moduleKey: 'whatsapp' },
-  { label: 'Bulk Campagnes', icon: Users, path: '/bulk-campaigns', moduleKey: 'whatsapp' },
-  { label: 'Kennisbank', icon: BookOpen, path: '/kennisbank', moduleKey: 'kennisbank' },
-  { label: 'Vacaturebank', icon: Search, path: '/vacaturebank', moduleKey: 'vacaturebank' },
-  { label: 'Kandidaten zoeken', icon: UserSearch, path: '/kandidaten-zoeken', moduleKey: 'kandidaten-zoeken' },
-  { label: 'Exact Online', icon: Calculator, path: '/exact-online', moduleKey: 'exact-online' },
+const navGroups = [
+  {
+    label: null,
+    items: [
+      { label: 'Dashboard', icon: LayoutDashboard, path: '/', moduleKey: null },
+      { label: 'Workbench', icon: ClipboardList, path: '/workbench', moduleKey: 'workbench' },
+    ],
+  },
+  {
+    label: 'Relaties',
+    items: [
+      { label: 'Opdrachtgevers', icon: Building2, path: '/opdrachtgevers', moduleKey: 'opdrachtgevers' },
+      { label: 'Kandidaten', icon: Users, path: '/kandidaten', moduleKey: 'kandidaten' },
+      { label: 'Medewerkers', icon: UserCheck, path: '/medewerkers', moduleKey: 'medewerkers' },
+    ],
+  },
+  {
+    label: 'Werk',
+    items: [
+      { label: 'Vacatures', icon: Briefcase, path: '/vacatures', moduleKey: 'vacatures' },
+      { label: 'Planning', icon: Calendar, path: '/planning', moduleKey: 'planning' },
+      { label: 'Uren', icon: Clock, path: '/uren', moduleKey: 'uren' },
+    ],
+  },
+  {
+    label: 'Vastgoed & Fleet',
+    items: [
+      { label: 'Huisvesting', icon: Home, path: '/huisvesting', moduleKey: 'huisvesting' },
+      { label: 'Transport', icon: Car, path: '/transport', moduleKey: 'transport' },
+      { label: 'Tankpas analyse', icon: Fuel, path: '/tankpas-analyse', moduleKey: 'transport' },
+    ],
+  },
+  {
+    label: 'Communicatie',
+    items: [
+      { label: 'Communicatie', icon: MessageSquare, path: '/communicatie', moduleKey: 'communicatie' },
+      { label: 'WhatsApp', icon: MessageSquare, path: '/whatsapp', moduleKey: 'whatsapp' },
+      { label: 'Bulk Campagnes', icon: Users, path: '/bulk-campaigns', moduleKey: 'whatsapp' },
+    ],
+  },
+  {
+    label: 'Tools',
+    items: [
+      { label: 'Kennisbank', icon: BookOpen, path: '/kennisbank', moduleKey: 'kennisbank' },
+      { label: 'Vacaturebank', icon: Search, path: '/vacaturebank', moduleKey: 'vacaturebank' },
+      { label: 'Kandidaten zoeken', icon: UserSearch, path: '/kandidaten-zoeken', moduleKey: 'kandidaten-zoeken' },
+      { label: 'Exact Online', icon: Calculator, path: '/exact-online', moduleKey: 'exact-online' },
+    ],
+  },
 ];
 
 const AppSidebar = () => {
@@ -54,7 +84,6 @@ const AppSidebar = () => {
     enabled: !!profile?.organization_id,
   });
 
-  // Fetch module overrides for this org
   const { data: moduleOverrides } = useQuery({
     queryKey: ['org-modules', profile?.organization_id],
     queryFn: async () => {
@@ -68,7 +97,6 @@ const AppSidebar = () => {
     enabled: !!profile?.organization_id,
   });
 
-  // Fetch plan modules
   const { data: plan } = useQuery({
     queryKey: ['subscription-plan', org?.plan_id],
     queryFn: async () => {
@@ -84,17 +112,19 @@ const AppSidebar = () => {
   });
 
   const isModuleEnabled = (moduleKey: string | null): boolean => {
-    if (!moduleKey) return true; // Dashboard always visible
-    // Check override first
+    if (!moduleKey) return true;
     const override = moduleOverrides?.find(m => m.module_name === moduleKey);
     if (override) return override.enabled;
-    // Fall back to plan
     if (plan?.modules) return plan.modules.includes(moduleKey);
-    // Default: show all
     return true;
   };
 
-  const navItems = allNavItems.filter(item => isModuleEnabled(item.moduleKey));
+  const filteredGroups = navGroups
+    .map(group => ({
+      ...group,
+      items: group.items.filter(item => isModuleEnabled(item.moduleKey)),
+    }))
+    .filter(group => group.items.length > 0);
 
   // Apply accent color from settings
   useEffect(() => {
@@ -130,23 +160,36 @@ const AppSidebar = () => {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 py-3 px-2 space-y-0.5 overflow-y-auto">
-        {navItems.map((item) => {
-          const isActive = location.pathname === item.path;
+      <nav className="flex-1 py-3 px-2 overflow-y-auto">
+        {filteredGroups.map((group, gi) => {
           return (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              className={cn(
-                'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors',
-                isActive
-                  ? 'bg-sidebar-hover text-sidebar-active'
-                  : 'text-sidebar-foreground hover:bg-sidebar-hover hover:text-sidebar-active'
+            <div key={gi} className={cn(group.label && 'mt-4')}>
+              {group.label && !collapsed && (
+                <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/50">
+                  {group.label}
+                </p>
               )}
-            >
-              <item.icon className="h-4 w-4 shrink-0" />
-              {!collapsed && <span>{item.label}</span>}
-            </NavLink>
+              <div className="space-y-0.5">
+                {group.items.map((item) => {
+                  const isActive = location.pathname === item.path;
+                  return (
+                    <NavLink
+                      key={item.path}
+                      to={item.path}
+                      className={cn(
+                        'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors',
+                        isActive
+                          ? 'bg-sidebar-hover text-sidebar-active'
+                          : 'text-sidebar-foreground hover:bg-sidebar-hover hover:text-sidebar-active'
+                      )}
+                    >
+                      <item.icon className="h-4 w-4 shrink-0" />
+                      {!collapsed && <span>{item.label}</span>}
+                    </NavLink>
+                  );
+                })}
+              </div>
+            </div>
           );
         })}
       </nav>
