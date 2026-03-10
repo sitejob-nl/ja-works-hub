@@ -74,18 +74,22 @@ const CandidateProfile = () => {
         );
         const data = await res.json();
 
-        if (data.status === 'invalid') { setState('invalid'); return; }
-        if (data.status === 'expired') { setState('expired'); return; }
-        if (data.status === 'used') {
-          setUsedFirstName(data.first_name ?? '');
-          setState('used');
+        if (!data.valid) {
+          if (data.reason === 'already_used') {
+            setUsedFirstName(data.first_name ?? '');
+            setState('used');
+          } else if (data.reason === 'expired') {
+            setState('expired');
+          } else {
+            setState('invalid');
+          }
           return;
         }
 
         // Valid — populate form
-        setOrgName(data.organization_name ?? '');
-        setCandidateId(data.candidate_id);
-        setOrganizationId(data.organization_id);
+        setOrgName(data.organization?.name ?? '');
+        setCandidateId(data.candidate?.id ?? '');
+        setOrganizationId(data.organization_id ?? '');
 
         const c = data.candidate;
         setForm({
@@ -163,24 +167,27 @@ const CandidateProfile = () => {
           },
           body: JSON.stringify({
             token,
-            profile: {
-              phone: form.phone || null,
-              email: form.email || null,
-              date_of_birth: form.date_of_birth || null,
-              nationality: nationality || null,
-              languages: form.languages.length ? form.languages : null,
-              address_street: form.address_street || null,
-              address_postal: form.address_postal || null,
-              address_city: form.address_city || null,
-              address_country: form.address_country || null,
-              skills: form.skills.length ? form.skills : null,
-              certifications: form.certifications.length ? form.certifications : null,
+            candidate_data: {
+              phone: form.phone || undefined,
+              email: form.email || undefined,
+              date_of_birth: form.date_of_birth || undefined,
+              nationality: nationality || undefined,
+              languages: form.languages.length ? form.languages : undefined,
+              address_street: form.address_street || undefined,
+              address_postal: form.address_postal || undefined,
+              address_city: form.address_city || undefined,
+              address_country: form.address_country || undefined,
+              skills: form.skills.length ? form.skills : undefined,
+              certifications: form.certifications.length ? form.certifications : undefined,
               has_drivers_license: form.has_drivers_license,
-              drivers_license_expiry: form.has_drivers_license && form.drivers_license_expiry ? form.drivers_license_expiry : null,
-              availability_notes: form.availability_notes || null,
+              drivers_license_expiry: form.has_drivers_license && form.drivers_license_expiry ? form.drivers_license_expiry : undefined,
+              availability_notes: form.availability_notes || undefined,
+              cv_file_url: cv_file_url || undefined,
+              profile_photo_url: photo_file_url || undefined,
             },
-            cv_file_url,
-            photo_file_url,
+            documents: [
+              ...(cv_file_url ? [{ type: 'cv' as const, file_path: cv_file_url, name: 'CV (zelf geüpload)' }] : []),
+            ],
           }),
         }
       );
