@@ -32,10 +32,10 @@ const Login = () => {
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
           <div className="inline-flex items-center gap-2 mb-2">
-            <div className="h-9 w-9 rounded-lg bg-primary flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-sm">JA</span>
+             <div className="h-9 w-9 rounded-lg bg-primary flex items-center justify-center">
+              <span className="text-primary-foreground font-bold text-sm">SJ</span>
             </div>
-            <span className="text-xl font-semibold text-heading">JA Werkt</span>
+            <span className="text-xl font-semibold text-heading">SiteJob</span>
           </div>
           <p className="text-sm text-muted-foreground">Log in om verder te gaan</p>
         </div>
