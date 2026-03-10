@@ -67,6 +67,7 @@ Deno.serve(async (req) => {
 
       return json({
         valid: true,
+        organization_id: tokenRow.organization_id,
         candidate: {
           id: c?.id,
           first_name: c?.first_name,

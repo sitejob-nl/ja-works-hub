@@ -89,7 +89,7 @@ const CandidateProfile = () => {
         // Valid — populate form
         setOrgName(data.organization?.name ?? '');
         setCandidateId(data.candidate?.id ?? '');
-        setOrganizationId(data.candidate?.id ? '' : '');
+        setOrganizationId(data.organization_id ?? '');
 
         const c = data.candidate;
         setForm({
