@@ -122,9 +122,10 @@ const Employees = () => {
                   <TableHead>Compliance</TableHead>
                   <TableHead>Startdatum</TableHead>
                   <TableHead>Huisvesting</TableHead>
-                  <TableHead>Actieve plaatsing</TableHead>
-                </TableRow>
-              </TableHeader>
+                   <TableHead>Portaal</TableHead>
+                   <TableHead>Actieve plaatsing</TableHead>
+                 </TableRow>
+               </TableHeader>
               <TableBody>
                 {employees.map((e: any, i: number) => {
                   const c = e.candidates;
