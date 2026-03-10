@@ -19,7 +19,7 @@ import PlacementsTab from '@/components/companies/tabs/PlacementsTab';
 const CompanyDetail = () => {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
-  const [editOpen, setEditOpen] = useState(false);
+  const navigate = useNavigate();
 
   const { data: company, isLoading } = useQuery({
     queryKey: ['company', id],
