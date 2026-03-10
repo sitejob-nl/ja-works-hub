@@ -343,10 +343,10 @@ const Dashboard = () => {
       </div>
 
       {/* Stat cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <StatCard icon={UserCheck} label="Actieve medewerkers" value={stats.activeEmployees} colorClass="text-stat-blue" bgClass="bg-stat-blue/10" />
-        <StatCard icon={Briefcase} label="Openstaande vacatures" value={stats.openVacancies} colorClass="text-stat-orange" bgClass="bg-stat-orange/10" />
-        <StatCard icon={Home} label="Bezettingsgraad" value={stats.occupancyRate} colorClass="text-stat-green" bgClass="bg-stat-green/10" />
+        <StatCard icon={Briefcase} label="Open vacatures" value={stats.openVacancies} colorClass="text-stat-orange" bgClass="bg-stat-orange/10" />
+        <StatCard icon={Home} label="Bezetting" value={stats.occupancyRate} colorClass="text-stat-green" bgClass="bg-stat-green/10" />
         <StatCard icon={Clock} label="Uren deze week" value={stats.weeklyHours} colorClass="text-stat-purple" bgClass="bg-stat-purple/10" />
       </div>
 
