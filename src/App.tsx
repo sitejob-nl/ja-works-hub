@@ -53,6 +53,7 @@ import PortalLogin from "@/pages/portal/PortalLogin";
 import PortalDashboard from "@/pages/portal/PortalDashboard";
 import PortalLayout from "@/components/layout/PortalLayout";
 import { PortalProvider } from "@/contexts/PortalContext";
+import PortalTimesheets from "@/pages/portal/PortalTimesheets";
 
 const queryClient = new QueryClient();
 
@@ -128,6 +129,7 @@ const App = () => (
               <PortalProvider><PortalLayout /></PortalProvider>
             }>
               <Route index element={<PortalDashboard />} />
+              <Route path="uren" element={<PortalTimesheets />} />
             </Route>
             <Route path="/installeren" element={<Installeren />} />
             <Route path="*" element={<NotFound />} />
