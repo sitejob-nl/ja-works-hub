@@ -135,7 +135,7 @@ export async function sendPlacementWhatsApp(
     const { error } = await supabase.functions.invoke('whatsapp-send', {
       body: {
         to: input.candidatePhone,
-        message: `Hoi ${input.candidateName ?? ''},\n\nJe plaatsing als ${input.functionName} is bevestigd. Je start op ${input.startDate}.\n\nSucces! 🎉\n\n— JA Werkt`,
+        message: `Hoi ${input.candidateName ?? ''},\n\nJe plaatsing als ${input.functionName} is bevestigd. Je start op ${input.startDate}.\n\nSucces! 🎉\n\n— SiteJob`,
       },
     });
     if (error) return false;
