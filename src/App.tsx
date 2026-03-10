@@ -146,6 +146,7 @@ const App = () => (
             {/* Public routes */}
             <Route path="/onboarding/:token" element={<Onboarding />} />
             <Route path="/contract/sign/:token" element={<ContractSign />} />
+            <Route path="/profiel/:token" element={<CandidateProfile />} />
             <Route path="/portaal/activeren/:token" element={<PortalActivate />} />
             <Route path="/portaal/login" element={<PortalLogin />} />
             {/* Portal (medewerker) routes */}
