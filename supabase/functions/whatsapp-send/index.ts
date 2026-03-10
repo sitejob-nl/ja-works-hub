@@ -51,20 +51,29 @@ Deno.serve(async (req) => {
 
     const orgId = profile.organization_id;
 
-    // Get WhatsApp config using service role
+    // Service client for decryption and other operations
     const serviceClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    const { data: config } = await serviceClient
-      .from("whatsapp_config")
-      .select("*")
-      .eq("organization_id", orgId)
-      .eq("is_active", true)
-      .single();
+    // Get WhatsApp config with decrypted tokens
+    const { data: decryptedConfig, error: configError } = await serviceClient.rpc('get_whatsapp_token', {
+      p_org_id: orgId,
+    });
 
-    if (!config || !config.access_token || !config.phone_number_id) {
+    if (configError || !decryptedConfig || decryptedConfig.length === 0) {
+      return new Response(JSON.stringify({ error: "WhatsApp niet geconfigureerd" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const waConfig = decryptedConfig[0];
+    const accessToken = waConfig.decrypted_access_token;
+    const phoneNumberId = waConfig.phone_number_id;
+
+    if (!accessToken || !phoneNumberId) {
       return new Response(JSON.stringify({ error: "WhatsApp niet geconfigureerd" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -131,11 +140,11 @@ Deno.serve(async (req) => {
 
     // Send via Meta API
     const metaRes = await fetch(
-      `https://graph.facebook.com/v25.0/${config.phone_number_id}/messages`,
+      `https://graph.facebook.com/v25.0/${phoneNumberId}/messages`,
       {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${config.access_token}`,
+          Authorization: `Bearer ${accessToken}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({

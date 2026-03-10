@@ -23,19 +23,34 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Find config by webhook secret — we don't know the tenant yet
-    // Since webhook_secret is unique per tenant, use it for lookup
+    // Find config by webhook secret — need to decrypt and compare
+    // First get all active configs, then decrypt and match
     const { data: configs, error: findError } = await serviceClient
       .from("whatsapp_config")
       .select("*")
-      .eq("webhook_secret", webhookSecret);
+      .eq("is_active", true);
 
     if (findError || !configs || configs.length === 0) {
-      console.error("No config found for webhook secret");
-      return new Response("OK", { status: 200 }); // Always return 200
+      console.error("No active configs found");
+      return new Response("OK", { status: 200 });
     }
 
-    const config = configs[0];
+    // Decrypt webhook_secret for each config and find match
+    let config = null;
+    for (const c of configs) {
+      const { data: decrypted } = await serviceClient.rpc('get_whatsapp_token', {
+        p_org_id: c.organization_id,
+      });
+      if (decrypted?.[0]?.decrypted_webhook_secret === webhookSecret) {
+        config = c;
+        break;
+      }
+    }
+
+    if (!config) {
+      console.error("No config found for webhook secret");
+      return new Response("OK", { status: 200 });
+    }
     const orgId = config.organization_id;
 
     // Process changes

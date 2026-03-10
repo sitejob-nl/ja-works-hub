@@ -4060,6 +4060,8 @@ export type Database = {
         }
         Returns: boolean
       }
+      decrypt_sensitive: { Args: { ciphertext: string }; Returns: string }
+      encrypt_sensitive: { Args: { plaintext: string }; Returns: string }
       get_campaign_candidates: {
         Args: {
           p_channel: Database["public"]["Enums"]["communication_channel"]
@@ -4073,11 +4075,34 @@ export type Database = {
           phone: string
         }[]
       }
+      get_candidate_decrypted: {
+        Args: { p_candidate_id: string }
+        Returns: {
+          decrypted_bsn: string
+          decrypted_iban: string
+        }[]
+      }
       get_employee_id: { Args: never; Returns: string }
+      get_my_sensitive_data: {
+        Args: never
+        Returns: {
+          decrypted_bsn: string
+          decrypted_iban: string
+        }[]
+      }
       get_user_org_id: { Args: never; Returns: string }
       get_user_role: {
         Args: never
         Returns: Database["public"]["Enums"]["user_role"]
+      }
+      get_whatsapp_token: {
+        Args: { p_org_id: string }
+        Returns: {
+          decrypted_access_token: string
+          decrypted_webhook_secret: string
+          phone_number_id: string
+          waba_id: string
+        }[]
       }
       is_employee_user: { Args: never; Returns: boolean }
       is_superadmin: { Args: never; Returns: boolean }

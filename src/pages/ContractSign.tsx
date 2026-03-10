@@ -20,9 +20,10 @@ const ContractSign = () => {
     queryFn: async () => {
       if (!token) throw new Error('Geen token');
       const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+      const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
       const res = await fetch(
         `https://${projectId}.supabase.co/functions/v1/contract-sign?token=${encodeURIComponent(token)}`,
-        { method: 'GET', headers: { 'Content-Type': 'application/json' } }
+        { method: 'GET', headers: { 'Content-Type': 'application/json', 'apikey': anonKey, 'Authorization': `Bearer ${anonKey}` } }
       );
       const body = await res.json();
       if (!res.ok) throw new Error(body.error || 'Contract niet gevonden');
