@@ -103,18 +103,23 @@ const App = () => (
               <Route path="/" element={<Dashboard />} />
               <Route path="/workbench" element={<RecruiterWorkbench />} />
               <Route path="/opdrachtgevers" element={<Companies />} />
+              <Route path="/opdrachtgevers/new" element={<CompanyNew />} />
               <Route path="/opdrachtgevers/:id" element={<CompanyDetail />} />
               <Route path="/kandidaten" element={<Candidates />} />
+              <Route path="/kandidaten/new" element={<CandidateNew />} />
               <Route path="/kandidaten/:id" element={<CandidateDetail />} />
               <Route path="/medewerkers" element={<Employees />} />
+              <Route path="/medewerkers/new" element={<EmployeeNew />} />
               <Route path="/medewerkers/:id" element={<EmployeeDetail />} />
               <Route path="/huisvesting" element={<Housing />} />
               <Route path="/huisvesting/:id" element={<PropertyDetail />} />
               <Route path="/vacatures" element={<Vacancies />} />
+              <Route path="/vacatures/new" element={<VacancyNew />} />
               <Route path="/vacatures/:id" element={<VacancyDetail />} />
               <Route path="/planning" element={<Planning />} />
               <Route path="/uren" element={<Timesheets />} />
               <Route path="/transport" element={<Transport />} />
+              <Route path="/transport/new" element={<VehicleNew />} />
               <Route path="/transport/:id" element={<VehicleDetail />} />
               <Route path="/tankpas-analyse" element={<FuelCardAnalysis />} />
               <Route path="/vacaturebank" element={<Vacaturebank />} />
