@@ -17,6 +17,7 @@ import DataExport from '@/components/settings/DataExport';
 import ComplianceRulesSettings from '@/components/settings/ComplianceRulesSettings';
 import RegulationsSettings from '@/components/settings/RegulationsSettings';
 import ContractTemplatesSettings from '@/components/settings/ContractTemplatesSettings';
+import OnboardingFormSettings from '@/components/settings/OnboardingFormSettings';
 
 const ACCENT_PRESETS = [
   { name: 'Blauw (standaard)', hsl: '197 100% 60%', hex: '#32C5FF' },
