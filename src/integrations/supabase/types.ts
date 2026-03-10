@@ -963,6 +963,7 @@ export type Database = {
       }
       employees: {
         Row: {
+          auth_user_id: string | null
           candidate_id: string
           contract_hours: number | null
           contract_type: string | null
@@ -974,11 +975,16 @@ export type Database = {
           onboarding_completed: boolean
           onboarding_completed_at: string | null
           organization_id: string
+          portal_activated_at: string | null
+          portal_enabled: boolean | null
+          portal_language: string | null
+          portal_last_login: string | null
           start_date: string
           status: Database["public"]["Enums"]["employee_status"]
           updated_at: string
         }
         Insert: {
+          auth_user_id?: string | null
           candidate_id: string
           contract_hours?: number | null
           contract_type?: string | null
@@ -990,11 +996,16 @@ export type Database = {
           onboarding_completed?: boolean
           onboarding_completed_at?: string | null
           organization_id: string
+          portal_activated_at?: string | null
+          portal_enabled?: boolean | null
+          portal_language?: string | null
+          portal_last_login?: string | null
           start_date: string
           status?: Database["public"]["Enums"]["employee_status"]
           updated_at?: string
         }
         Update: {
+          auth_user_id?: string | null
           candidate_id?: string
           contract_hours?: number | null
           contract_type?: string | null
@@ -1006,6 +1017,10 @@ export type Database = {
           onboarding_completed?: boolean
           onboarding_completed_at?: string | null
           organization_id?: string
+          portal_activated_at?: string | null
+          portal_enabled?: boolean | null
+          portal_language?: string | null
+          portal_last_login?: string | null
           start_date?: string
           status?: Database["public"]["Enums"]["employee_status"]
           updated_at?: string
@@ -2261,6 +2276,61 @@ export type Database = {
             columns: ["vacancy_id"]
             isOneToOne: false
             referencedRelation: "vacancies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      portal_invites: {
+        Row: {
+          created_at: string
+          email: string
+          employee_id: string
+          expires_at: string
+          id: string
+          organization_id: string
+          token: string
+          used_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          employee_id: string
+          expires_at?: string
+          id?: string
+          organization_id: string
+          token?: string
+          used_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          employee_id?: string
+          expires_at?: string
+          id?: string
+          organization_id?: string
+          token?: string
+          used_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "portal_invites_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "portal_invites_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_employee_compliance"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "portal_invites_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -3558,11 +3628,13 @@ export type Database = {
           phone: string
         }[]
       }
+      get_employee_id: { Args: never; Returns: string }
       get_user_org_id: { Args: never; Returns: string }
       get_user_role: {
         Args: never
         Returns: Database["public"]["Enums"]["user_role"]
       }
+      is_employee_user: { Args: never; Returns: boolean }
       is_superadmin: { Args: never; Returns: boolean }
       record_rate_limit: {
         Args: {
@@ -3719,7 +3791,12 @@ export type Database = {
         | "goedgekeurd"
         | "afgekeurd"
       unit_status: "beschikbaar" | "bezet" | "onderhoud" | "geblokkeerd"
-      user_role: "admin" | "intercedent" | "backoffice" | "finance"
+      user_role:
+        | "admin"
+        | "intercedent"
+        | "backoffice"
+        | "finance"
+        | "medewerker"
       vacancy_status: "open" | "on_hold" | "vervuld" | "gesloten"
       vehicle_status: "beschikbaar" | "toegewezen" | "onderhoud" | "uit_dienst"
     }
@@ -3931,7 +4008,13 @@ export const Constants = {
         "afgekeurd",
       ],
       unit_status: ["beschikbaar", "bezet", "onderhoud", "geblokkeerd"],
-      user_role: ["admin", "intercedent", "backoffice", "finance"],
+      user_role: [
+        "admin",
+        "intercedent",
+        "backoffice",
+        "finance",
+        "medewerker",
+      ],
       vacancy_status: ["open", "on_hold", "vervuld", "gesloten"],
       vehicle_status: ["beschikbaar", "toegewezen", "onderhoud", "uit_dienst"],
     },
