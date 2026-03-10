@@ -268,6 +268,9 @@ const Settings = () => {
           {/* Contracttemplates */}
           <ContractTemplatesSettings />
 
+          {/* Onboarding formulieren */}
+          <OnboardingFormSettings />
+
           {/* Data Import */}
           <Card>
             <CardHeader>
