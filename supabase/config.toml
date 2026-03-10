@@ -22,15 +22,6 @@ verify_jwt = false
 [functions.register-organization]
 verify_jwt = false
 
-[functions.candidate-profile]
-verify_jwt = false
-
-[functions.portal-activate]
-verify_jwt = false
-
-[functions.contract-sign]
-verify_jwt = false
-
 # ============================================================
 # BESCHERMDE ENDPOINTS (JWT verplicht)
 # ============================================================
