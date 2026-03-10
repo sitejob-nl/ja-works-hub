@@ -93,6 +93,17 @@ const PropertyDetail = () => {
             </div>
             <span className="text-sm font-medium">{pct}%</span>
           </div>
+          <div className="flex items-center gap-4 mt-2 flex-wrap">
+            {property.owner_name && (
+              <span className="text-xs text-muted-foreground">Eigenaar: <span className="text-foreground font-medium">{property.owner_name}</span></span>
+            )}
+            {property.ownership_type && (
+              <Badge variant="secondary" className="text-xs">{ownershipLabels[property.ownership_type] ?? property.ownership_type}</Badge>
+            )}
+            {totalMaandlasten > 0 && (
+              <span className="text-xs text-muted-foreground">Maandlasten: <span className="text-foreground font-medium">{formatEUR(totalMaandlasten)}</span></span>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => setEditOpen(true)} className="gap-2">
