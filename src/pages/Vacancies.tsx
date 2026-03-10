@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Briefcase, Plus, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,7 +9,6 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
-import VacancySlideOver from '@/components/vacancies/VacancySlideOver';
 import { formatDate } from '@/lib/format';
 
 const PAGE_SIZE = 10;
@@ -22,10 +21,7 @@ const statusBadge: Record<string, string> = {
 };
 
 const statusLabel: Record<string, string> = {
-  open: 'Open',
-  on_hold: 'On hold',
-  vervuld: 'Vervuld',
-  gesloten: 'Gesloten',
+  open: 'Open', on_hold: 'On hold', vervuld: 'Vervuld', gesloten: 'Gesloten',
 };
 
 const urgencyBadge = (u: number | null) => {
@@ -36,28 +32,20 @@ const urgencyBadge = (u: number | null) => {
 };
 
 const Vacancies = () => {
+  const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [urgencyFilter, setUrgencyFilter] = useState('all');
   const [page, setPage] = useState(0);
-  const [slideOverOpen, setSlideOverOpen] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['vacancies', search, statusFilter, urgencyFilter, page],
     queryFn: async () => {
-      let query = supabase.from('vacancies').select(`
-        *,
-        companies!vacancies_company_id_fkey(name)
-      `, { count: 'exact' });
-
-      if (search) {
-        query = query.or(`title.ilike.%${search}%,location.ilike.%${search}%`);
-      }
+      let query = supabase.from('vacancies').select(`*, companies!vacancies_company_id_fkey(name)`, { count: 'exact' });
+      if (search) query = query.or(`title.ilike.%${search}%,location.ilike.%${search}%`);
       if (statusFilter !== 'all') query = query.eq('status', statusFilter as any);
       if (urgencyFilter !== 'all') query = query.eq('urgency', parseInt(urgencyFilter));
-
       query = query.order('created_at', { ascending: false }).range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
-
       const { data, count, error } = await query;
       if (error) throw error;
       return { vacancies: data ?? [], total: count ?? 0 };
@@ -75,7 +63,7 @@ const Vacancies = () => {
           <h1 className="text-2xl font-semibold">Vacatures</h1>
           <p className="text-muted-foreground text-sm mt-1">Openstaande en vervulde vacatures</p>
         </div>
-        <Button onClick={() => setSlideOverOpen(true)} className="gap-2">
+        <Button onClick={() => navigate('/vacatures/new')} className="gap-2">
           <Plus className="h-4 w-4" /> Nieuwe vacature
         </Button>
       </div>
@@ -110,7 +98,7 @@ const Vacancies = () => {
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <Briefcase className="h-12 w-12 text-muted-foreground/40 mb-4" />
           <p className="text-lg font-medium text-muted-foreground">Nog geen vacatures</p>
-          <Button onClick={() => setSlideOverOpen(true)} variant="outline" className="mt-4 gap-2">
+          <Button onClick={() => navigate('/vacatures/new')} variant="outline" className="mt-4 gap-2">
             <Plus className="h-4 w-4" /> Voeg je eerste vacature toe
           </Button>
         </div>
@@ -172,8 +160,6 @@ const Vacancies = () => {
           )}
         </>
       )}
-
-      <VacancySlideOver open={slideOverOpen} onOpenChange={setSlideOverOpen} />
     </div>
   );
 };
