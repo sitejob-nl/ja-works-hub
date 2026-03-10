@@ -4,6 +4,8 @@ import { Button } from '@/components/ui/button';
 import { formatDate } from '@/lib/format';
 import { Send } from 'lucide-react';
 import PortalActivateSheet from '@/components/employees/PortalActivateSheet';
+import { useDecryptedCandidate } from '@/hooks/useDecryptedCandidate';
+import SensitiveField from '@/components/ui/sensitive-field';
 
 const Field = ({ label, value }: { label: string; value: string | null | undefined }) => (
   <div>
