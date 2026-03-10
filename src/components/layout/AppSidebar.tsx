@@ -163,14 +163,48 @@ const AppSidebar = () => {
       {/* Nav */}
       <nav className="flex-1 py-3 px-2 overflow-y-auto">
         {filteredGroups.map((group, gi) => {
+          const hasActiveItem = group.items.some(item => location.pathname === item.path);
+
+          if (!group.label || collapsed) {
+            // No label or collapsed: render flat
+            return (
+              <div key={gi} className={cn(group.label && 'mt-4')}>
+                {group.label && collapsed && (
+                  <div className="mx-auto my-2 w-6 border-t border-sidebar-border" />
+                )}
+                <div className="space-y-0.5">
+                  {group.items.map((item) => {
+                    const isActive = location.pathname === item.path;
+                    return (
+                      <NavLink
+                        key={item.path}
+                        to={item.path}
+                        className={cn(
+                          'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors',
+                          isActive
+                            ? 'bg-sidebar-hover text-sidebar-active'
+                            : 'text-sidebar-foreground hover:bg-sidebar-hover hover:text-sidebar-active'
+                        )}
+                      >
+                        <item.icon className="h-4 w-4 shrink-0" />
+                        {!collapsed && <span>{item.label}</span>}
+                      </NavLink>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          }
+
           return (
-            <div key={gi} className={cn(group.label && 'mt-4')}>
-              {group.label && !collapsed && (
-                <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/50">
+            <Collapsible key={gi} defaultOpen={hasActiveItem || gi <= 2} className="mt-3">
+              <CollapsibleTrigger className="flex items-center justify-between w-full px-3 py-1 group cursor-pointer">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/50 group-hover:text-sidebar-foreground/70 transition-colors">
                   {group.label}
-                </p>
-              )}
-              <div className="space-y-0.5">
+                </span>
+                <ChevronDown className="h-3 w-3 text-sidebar-foreground/40 transition-transform duration-200 group-data-[state=closed]:-rotate-90" />
+              </CollapsibleTrigger>
+              <CollapsibleContent className="space-y-0.5 mt-0.5">
                 {group.items.map((item) => {
                   const isActive = location.pathname === item.path;
                   return (
@@ -185,12 +219,12 @@ const AppSidebar = () => {
                       )}
                     >
                       <item.icon className="h-4 w-4 shrink-0" />
-                      {!collapsed && <span>{item.label}</span>}
+                      <span>{item.label}</span>
                     </NavLink>
                   );
                 })}
-              </div>
-            </div>
+              </CollapsibleContent>
+            </Collapsible>
           );
         })}
       </nav>
