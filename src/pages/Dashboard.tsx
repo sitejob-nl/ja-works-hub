@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { formatDate, formatRelativeTime } from '@/lib/format';
 import { toast } from 'sonner';
 import KpiDashboard from '@/components/dashboard/KpiDashboard';
+import OnboardingWizard from '@/components/onboarding/OnboardingWizard';
 
 interface StatCardProps {
   icon: React.ElementType;
@@ -61,7 +62,7 @@ const ACTION_ICONS: Record<string, React.ElementType> = {
 };
 
 const Dashboard = () => {
-  const { profile } = useAuth();
+  const { profile, user } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [stats, setStats] = useState({
@@ -70,6 +71,21 @@ const Dashboard = () => {
     occupancyRate: '0%',
     weeklyHours: 0,
   });
+
+  // Onboarding wizard state
+  const storageKey = user ? `sitejob_onboarded_${user.id}` : null;
+  const [showOnboarding, setShowOnboarding] = useState(false);
+
+  useEffect(() => {
+    if (storageKey && !localStorage.getItem(storageKey)) {
+      setShowOnboarding(true);
+    }
+  }, [storageKey]);
+
+  const handleOnboardingComplete = () => {
+    if (storageKey) localStorage.setItem(storageKey, '1');
+    setShowOnboarding(false);
+  };
 
   const firstName = profile?.full_name?.split(' ')[0] ?? '';
 
@@ -320,6 +336,7 @@ const Dashboard = () => {
 
   return (
     <div>
+      <OnboardingWizard open={showOnboarding} onComplete={handleOnboardingComplete} userName={firstName} />
       <h1 className="text-2xl font-semibold mb-1">{getGreeting()}, {firstName}</h1>
       <p className="text-sm text-muted-foreground mb-6">Hier is een overzicht van vandaag.</p>
 
