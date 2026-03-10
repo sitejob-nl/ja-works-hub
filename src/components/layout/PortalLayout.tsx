@@ -4,6 +4,7 @@ import { Home, Clock, FileText, Building, MoreHorizontal, LogOut, Globe } from '
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/integrations/supabase/client';
 
 const mainTabs = [
   { label: 'Dashboard', icon: Home, path: '/portaal' },
