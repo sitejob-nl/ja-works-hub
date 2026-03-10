@@ -1,5 +1,9 @@
+import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { formatDate } from '@/lib/format';
+import { Send } from 'lucide-react';
+import PortalActivateSheet from '@/components/employees/PortalActivateSheet';
 
 const Field = ({ label, value }: { label: string; value: string | null | undefined }) => (
   <div>
