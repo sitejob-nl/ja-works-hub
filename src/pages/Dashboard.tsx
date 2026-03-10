@@ -24,14 +24,14 @@ interface StatCardProps {
 }
 
 const StatCard = ({ icon: Icon, label, value, colorClass, bgClass }: StatCardProps) => (
-  <div className="bg-card rounded-lg p-5 shadow-sm border border-border">
-    <div className="flex items-center gap-3 mb-3">
-      <div className={`h-9 w-9 rounded-lg ${bgClass} flex items-center justify-center`}>
+  <div className="bg-card rounded-lg p-3 sm:p-5 shadow-sm border border-border">
+    <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
+      <div className={`h-8 w-8 sm:h-9 sm:w-9 rounded-lg ${bgClass} flex items-center justify-center`}>
         <Icon className={`h-4 w-4 ${colorClass}`} />
       </div>
-      <span className="text-sm text-muted-foreground">{label}</span>
+      <span className="text-xs sm:text-sm text-muted-foreground leading-tight">{label}</span>
     </div>
-    <p className="text-2xl font-semibold">{value}</p>
+    <p className="text-xl sm:text-2xl font-semibold">{value}</p>
   </div>
 );
 
