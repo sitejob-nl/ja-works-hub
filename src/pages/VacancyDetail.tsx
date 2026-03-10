@@ -131,8 +131,6 @@ const VacancyDetail = () => {
         <TabsContent value="matches"><VacancyMatchesTab vacancy={vacancy} /></TabsContent>
         <TabsContent value="plaatsingen"><VacancyPlacementsTab vacancyId={vacancy.id} /></TabsContent>
       </Tabs>
-
-      <VacancySlideOver open={editOpen} onOpenChange={setEditOpen} vacancy={vacancy} />
     </div>
   );
 };

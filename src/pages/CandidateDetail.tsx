@@ -126,8 +126,6 @@ const CandidateDetail = () => {
         <TabsContent value="plaatsingen"><CandidatePlacementsTab candidateId={id!} /></TabsContent>
         <TabsContent value="voorkeuren"><CandidatePreferencesTab candidateId={id!} /></TabsContent>
       </Tabs>
-
-      <CandidateSlideOver open={editOpen} onOpenChange={setEditOpen} candidate={candidate} />
     </div>
   );
 };

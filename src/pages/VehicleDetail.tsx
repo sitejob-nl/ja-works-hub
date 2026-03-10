@@ -109,8 +109,6 @@ const VehicleDetail = () => {
         <TabsContent value="boetes"><VehicleFinesTab vehicle={vehicle} /></TabsContent>
         <TabsContent value="schade"><VehicleDamageTab vehicle={vehicle} /></TabsContent>
       </Tabs>
-
-      <VehicleSlideOver open={editOpen} onOpenChange={setEditOpen} vehicle={vehicle} />
     </div>
   );
 };

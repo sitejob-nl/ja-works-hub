@@ -97,8 +97,6 @@ const CompanyDetail = () => {
         <TabsContent value="communicatie"><CommunicationTab companyId={id!} /></TabsContent>
         <TabsContent value="plaatsingen"><PlacementsTab companyId={id!} /></TabsContent>
       </Tabs>
-
-      <CompanySlideOver open={editOpen} onOpenChange={setEditOpen} company={company} />
     </div>
   );
 };
