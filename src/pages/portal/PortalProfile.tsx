@@ -15,6 +15,7 @@ import SensitiveField from '@/components/ui/sensitive-field';
 const PortalProfile = () => {
   const { employee, candidate } = usePortal();
   const qc = useQueryClient();
+  const { data: sensitive, isLoading: sensitiveLoading } = useMyDecryptedData();
 
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
