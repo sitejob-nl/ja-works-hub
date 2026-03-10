@@ -13,6 +13,7 @@ import VehicleInfoTab from '@/components/transport/tabs/VehicleInfoTab';
 import VehicleAssignmentsTab from '@/components/transport/tabs/VehicleAssignmentsTab';
 import VehicleMileageTab from '@/components/transport/tabs/VehicleMileageTab';
 import VehicleFinesTab from '@/components/transport/tabs/VehicleFinesTab';
+import VehicleDamageTab from '@/components/transport/tabs/VehicleDamageTab';
 
 const statusBadge: Record<string, string> = {
   beschikbaar: 'bg-stat-green/10 text-stat-green border-0',
