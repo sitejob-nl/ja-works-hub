@@ -46,11 +46,30 @@ const CandidateDetail = () => {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const { data: candidate, isLoading } = useQuery({
     queryKey: ['candidate', id],
     queryFn: async () => {
       const { data, error } = await supabase.from('candidates').select('*').eq('id', id!).single();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!id,
+  });
+
+  // Fetch or create profile token
+  const { data: activeToken, refetch: refetchToken } = useQuery({
+    queryKey: ['candidate-profile-token-header', id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('candidate_profile_tokens')
+        .select('*')
+        .eq('candidate_id', id!)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
       if (error) throw error;
       return data;
     },
@@ -68,6 +87,46 @@ const CandidateDetail = () => {
       toast.success('Status bijgewerkt');
     },
   });
+
+  const handleGenerateLink = async () => {
+    if (!candidate) return;
+    try {
+      const { data, error } = await supabase
+        .from('candidate_profile_tokens')
+        .insert({ organization_id: candidate.organization_id, candidate_id: candidate.id })
+        .select('token')
+        .single();
+      if (error) throw error;
+      await refetchToken();
+      qc.invalidateQueries({ queryKey: ['candidate-profile-token', id] });
+      setLinkDialogOpen(true);
+      toast.success('Profiellink aangemaakt');
+    } catch (e: any) {
+      toast.error(e.message);
+    }
+  };
+
+  const profileUrl = activeToken?.token ? `${window.location.origin}/profiel/${activeToken.token}` : '';
+  const isTokenActive = activeToken && !activeToken.used_at && new Date(activeToken.expires_at) > new Date();
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(profileUrl);
+    setCopied(true);
+    toast.success('Link gekopieerd');
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleWhatsApp = () => {
+    const phone = candidate?.phone?.replace(/[^0-9+]/g, '') ?? '';
+    const text = `Hoi ${candidate?.first_name}, vul je profiel aan via deze link: ${profileUrl}`;
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
+  };
+
+  const handleEmail = () => {
+    const subject = encodeURIComponent('Vul je profiel aan');
+    const body = encodeURIComponent(`Hoi ${candidate?.first_name},\n\nVul je profiel aan via deze link:\n${profileUrl}\n\nMet vriendelijke groet`);
+    window.open(`mailto:${candidate?.email ?? ''}?subject=${subject}&body=${body}`);
+  };
 
   if (isLoading) return <div className="p-8 text-muted-foreground">Laden...</div>;
   if (!candidate) return <div className="p-8 text-muted-foreground">Niet gevonden</div>;
@@ -87,6 +146,15 @@ const CandidateDetail = () => {
           <Badge variant="secondary" className={complianceBadge[candidate.compliance_status] ?? ''}>{candidate.compliance_status}</Badge>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => isTokenActive ? setLinkDialogOpen(true) : handleGenerateLink()}
+            className="gap-2"
+          >
+            <Link2 className="h-3.5 w-3.5" />
+            {isTokenActive ? 'Profiellink versturen' : 'Profiellink genereren'}
+          </Button>
           <Button variant="outline" size="sm" onClick={() => navigate(`/cv-tool/${id}`)} className="gap-2">
             <FileText className="h-3.5 w-3.5" /> CV Genereren
           </Button>
@@ -112,6 +180,38 @@ const CandidateDetail = () => {
           </DropdownMenu>
         </div>
       </div>
+
+      {/* Profile Link Dialog */}
+      <Dialog open={linkDialogOpen} onOpenChange={setLinkDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Profiellink versturen</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex gap-2">
+              <Input value={profileUrl} readOnly className="font-mono text-xs" />
+              <Button variant="outline" size="icon" onClick={handleCopy}>
+                {copied ? <Check className="h-4 w-4 text-stat-green" /> : <Copy className="h-4 w-4" />}
+              </Button>
+            </div>
+            <div className="flex gap-3">
+              {candidate.phone && (
+                <Button onClick={handleWhatsApp} className="gap-2 bg-[#25D366] hover:bg-[#1da851] text-white">
+                  <MessageCircle className="h-4 w-4" /> WhatsApp
+                </Button>
+              )}
+              {candidate.email && (
+                <Button variant="outline" onClick={handleEmail} className="gap-2">
+                  <Mail className="h-4 w-4" /> E-mail
+                </Button>
+              )}
+            </div>
+            {activeToken?.used_at && (
+              <p className="text-sm text-muted-foreground">Deze link is al gebruikt. Genereer een nieuwe link via het Profiel-tabblad.</p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Tabs defaultValue="profiel">
         <TabsList>
