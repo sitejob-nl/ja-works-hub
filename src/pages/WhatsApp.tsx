@@ -73,6 +73,7 @@ const WhatsAppPage = () => {
   const organizationId = useOrganizationId();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
   const [search, setSearch] = useState('');
   const [selectedPhone, setSelectedPhone] = useState<string | null>(null);
   const [message, setMessage] = useState('');
