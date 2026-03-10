@@ -97,10 +97,12 @@ Deno.serve(async (req) => {
       console.error("Profile create error:", profileError);
     }
 
-    // 4. Seed default modules
+    // 4. Seed ALL modules
     const defaultModules = [
       "workbench", "opdrachtgevers", "kandidaten", "medewerkers",
-      "vacatures", "planning", "uren", "communicatie", "kennisbank", "importeren",
+      "vacatures", "planning", "uren", "huisvesting", "transport",
+      "communicatie", "whatsapp", "kennisbank", "vacaturebank",
+      "kandidaten-zoeken", "exact-online", "importeren",
     ];
 
     await supabaseAdmin.from("organization_modules").insert(
