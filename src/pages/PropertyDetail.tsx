@@ -7,12 +7,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { ChevronRight, MoreHorizontal, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
+import { Badge } from '@/components/ui/badge';
+import { formatEUR } from '@/lib/format';
 import PropertySlideOver from '@/components/housing/PropertySlideOver';
 import UnitsTab from '@/components/housing/tabs/UnitsTab';
 import ResidentsTab from '@/components/housing/tabs/ResidentsTab';
 import CostsTab from '@/components/housing/tabs/CostsTab';
 import KeysTab from '@/components/housing/tabs/KeysTab';
 import InspectionsTab from '@/components/housing/tabs/InspectionsTab';
+import OwnerTab from '@/components/housing/tabs/OwnerTab';
 
 const PropertyDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -63,6 +66,13 @@ const PropertyDetail = () => {
   const pct = totalCapacity > 0 ? Math.round((currentOccupancy / totalCapacity) * 100) : 0;
   const barColor = pct >= 90 ? 'bg-red-500' : pct >= 70 ? 'bg-orange-500' : 'bg-stat-green';
 
+  const totalMaandlasten = [
+    property.monthly_rent, property.cost_gas, property.cost_water,
+    property.cost_electra, property.cost_municipal_tax, property.cost_other,
+  ].reduce((s: number, v: any) => s + (Number(v) || 0), 0);
+
+  const ownershipLabels: Record<string, string> = { huur: 'Huur', eigendom: 'Eigendom', beheer: 'Beheer' };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-1 text-sm text-muted-foreground">
@@ -82,6 +92,17 @@ const PropertyDetail = () => {
               <div className={`absolute inset-y-0 left-0 rounded-full ${barColor}`} style={{ width: `${pct}%` }} />
             </div>
             <span className="text-sm font-medium">{pct}%</span>
+          </div>
+          <div className="flex items-center gap-4 mt-2 flex-wrap">
+            {property.owner_name && (
+              <span className="text-xs text-muted-foreground">Eigenaar: <span className="text-foreground font-medium">{property.owner_name}</span></span>
+            )}
+            {property.ownership_type && (
+              <Badge variant="secondary" className="text-xs">{ownershipLabels[property.ownership_type] ?? property.ownership_type}</Badge>
+            )}
+            {totalMaandlasten > 0 && (
+              <span className="text-xs text-muted-foreground">Maandlasten: <span className="text-foreground font-medium">{formatEUR(totalMaandlasten)}</span></span>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -106,12 +127,14 @@ const PropertyDetail = () => {
           <TabsTrigger value="kosten">Kosten</TabsTrigger>
           <TabsTrigger value="sleutels">Sleutels</TabsTrigger>
           <TabsTrigger value="inspecties">Inspecties</TabsTrigger>
+          <TabsTrigger value="eigenaar">Eigenaar</TabsTrigger>
         </TabsList>
         <TabsContent value="kamers"><UnitsTab property={property} /></TabsContent>
         <TabsContent value="bewoners"><ResidentsTab property={property} /></TabsContent>
         <TabsContent value="kosten"><CostsTab property={property} /></TabsContent>
         <TabsContent value="sleutels"><KeysTab propertyId={id!} /></TabsContent>
         <TabsContent value="inspecties"><InspectionsTab propertyId={id!} /></TabsContent>
+        <TabsContent value="eigenaar"><OwnerTab property={property} /></TabsContent>
       </Tabs>
 
       <PropertySlideOver open={editOpen} onOpenChange={setEditOpen} property={property} />
