@@ -22,6 +22,7 @@ import Planning from "@/pages/Planning";
 import Companies from "@/pages/Companies";
 import CompanyNew from "@/pages/CompanyNew";
 import CompanyDetail from "@/pages/CompanyDetail";
+import CompanyEdit from "@/pages/CompanyEdit";
 import Candidates from "@/pages/Candidates";
 import CandidateNew from "@/pages/CandidateNew";
 import CandidateDetail from "@/pages/CandidateDetail";
