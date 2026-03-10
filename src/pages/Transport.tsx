@@ -165,8 +165,9 @@ const Transport = () => {
                   <TableHead>Merk / Model</TableHead>
                   <TableHead>Bouwjaar</TableHead>
                   <TableHead>Brandstof</TableHead>
-                  <TableHead className="text-right">KM-stand</TableHead>
-                  <TableHead>Status</TableHead>
+                   <TableHead className="text-right">KM-stand</TableHead>
+                   <TableHead>Tankpas</TableHead>
+                   <TableHead>Status</TableHead>
                   <TableHead>Toegewezen aan</TableHead>
                 </TableRow>
               </TableHeader>
