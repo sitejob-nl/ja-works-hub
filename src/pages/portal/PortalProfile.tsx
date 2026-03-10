@@ -91,8 +91,7 @@ const PortalProfile = () => {
             </p>
           </div>
           <div>
-            <Label className="text-xs text-muted-foreground">BSN</Label>
-            <SensitiveField label="" value={sensitive?.decrypted_bsn} loading={sensitiveLoading} />
+            <SensitiveField label="BSN" value={sensitive?.decrypted_bsn} loading={sensitiveLoading} />
           </div>
           <div>
             <Label className="text-xs text-muted-foreground">Personeelsnummer</Label>
