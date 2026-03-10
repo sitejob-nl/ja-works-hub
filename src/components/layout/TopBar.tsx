@@ -1,24 +1,41 @@
-import { Bell, Search } from 'lucide-react';
+import { Bell, Search, Menu } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { Button } from '@/components/ui/button';
 
-const TopBar = () => {
+interface TopBarProps {
+  onMenuClick?: () => void;
+}
+
+const TopBar = ({ onMenuClick }: TopBarProps) => {
   const { profile, signOut } = useAuth();
   const firstName = profile?.full_name?.split(' ')[0] ?? '';
 
   return (
-    <header className="h-14 border-b border-border bg-card flex items-center justify-between px-6 shrink-0">
-      {/* Search */}
-      <div className="relative max-w-md w-full">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <input
-          type="text"
-          placeholder="Zoeken..."
-          className="w-full h-9 pl-9 pr-4 rounded-md bg-secondary border-0 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-        />
+    <header className="h-14 border-b border-border bg-card flex items-center justify-between px-3 sm:px-6 shrink-0">
+      <div className="flex items-center gap-2 flex-1 min-w-0">
+        {/* Mobile menu button */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="md:hidden shrink-0"
+          onClick={onMenuClick}
+        >
+          <Menu className="h-5 w-5" />
+        </Button>
+
+        {/* Search */}
+        <div className="relative max-w-md w-full hidden sm:block">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <input
+            type="text"
+            placeholder="Zoeken..."
+            className="w-full h-9 pl-9 pr-4 rounded-md bg-secondary border-0 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+        </div>
       </div>
 
       {/* Right */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2 sm:gap-4 shrink-0">
         <button className="relative p-2 rounded-md hover:bg-secondary transition-colors">
           <Bell className="h-4 w-4 text-muted-foreground" />
         </button>
