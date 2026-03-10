@@ -356,7 +356,6 @@ const Dashboard = () => {
       )}
 
       {/* Divider */}
-      <div className="mb-8" />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Aandacht vereist */}
         <div className="bg-card rounded-lg p-5 shadow-sm border border-border">
