@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
-import VehicleSlideOver from '@/components/transport/VehicleSlideOver';
+import VehicleInfoTab from '@/components/transport/tabs/VehicleInfoTab';
 import VehicleInfoTab from '@/components/transport/tabs/VehicleInfoTab';
 import VehicleAssignmentsTab from '@/components/transport/tabs/VehicleAssignmentsTab';
 import VehicleMileageTab from '@/components/transport/tabs/VehicleMileageTab';
