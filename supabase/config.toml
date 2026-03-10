@@ -53,3 +53,6 @@ verify_jwt = false
 
 [functions.bulk-campaign-processor]
 verify_jwt = false
+
+[functions.portal-activate]
+verify_jwt = false

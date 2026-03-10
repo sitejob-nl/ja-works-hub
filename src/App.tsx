@@ -117,6 +117,7 @@ const App = () => (
             {/* Public routes */}
             <Route path="/onboarding/:token" element={<Onboarding />} />
             <Route path="/contract/sign/:token" element={<ContractSign />} />
+            <Route path="/portaal/activeren/:token" element={<PortalActivate />} />
             <Route path="/installeren" element={<Installeren />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
