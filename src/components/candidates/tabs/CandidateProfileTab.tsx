@@ -20,7 +20,7 @@ const Field = ({ label, value }: { label: string; value: string | null | undefin
 const CandidateProfileTab = ({ candidate }: { candidate: any }) => {
   const qc = useQueryClient();
   const [copied, setCopied] = useState(false);
-  const maskedBsn = candidate.bsn ? `****${candidate.bsn.slice(-4)}` : '—';
+  const { data: sensitive, isLoading: sensitiveLoading } = useDecryptedCandidate(candidate.id);
   const address = [candidate.address_street, candidate.address_postal, candidate.address_city].filter(Boolean).join(', ') || null;
 
   // Fetch active profile token
