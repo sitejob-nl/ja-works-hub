@@ -55,6 +55,7 @@ import BulkCampaignDetail from "@/pages/BulkCampaignDetail";
 import ImportData from "@/pages/ImportData";
 import Installeren from "@/pages/Installeren";
 import ContractSign from "@/pages/ContractSign";
+import CandidateProfile from "@/pages/CandidateProfile";
 import Register from "@/pages/Register";
 import PortalActivate from "@/pages/PortalActivate";
 import FuelCardAnalysis from "@/pages/FuelCardAnalysis";
@@ -145,6 +146,7 @@ const App = () => (
             {/* Public routes */}
             <Route path="/onboarding/:token" element={<Onboarding />} />
             <Route path="/contract/sign/:token" element={<ContractSign />} />
+            <Route path="/profiel/:token" element={<CandidateProfile />} />
             <Route path="/portaal/activeren/:token" element={<PortalActivate />} />
             <Route path="/portaal/login" element={<PortalLogin />} />
             {/* Portal (medewerker) routes */}

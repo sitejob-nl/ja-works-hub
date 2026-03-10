@@ -56,3 +56,6 @@ verify_jwt = false
 
 [functions.portal-activate]
 verify_jwt = false
+
+[functions.candidate-profile]
+verify_jwt = false
