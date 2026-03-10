@@ -12,10 +12,11 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
 import {
   Search, Send, Loader2, Check, CheckCheck, Clock,
-  AlertCircle, User, MessageSquare, Phone,
+  AlertCircle, User, MessageSquare, Phone, ArrowLeft,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Link } from 'react-router-dom';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface Conversation {
   phone: string;
