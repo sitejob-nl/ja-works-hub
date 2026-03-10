@@ -7,6 +7,8 @@ import { Input } from '@/components/ui/input';
 import { formatDate } from '@/lib/format';
 import { Copy, Check, MessageCircle, Mail, Link2, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
+import { useDecryptedCandidate } from '@/hooks/useDecryptedCandidate';
+import SensitiveField from '@/components/ui/sensitive-field';
 
 const Field = ({ label, value }: { label: string; value: string | null | undefined }) => (
   <div>
