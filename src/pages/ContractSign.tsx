@@ -7,6 +7,9 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { FileText, CheckCircle2, AlertTriangle } from 'lucide-react';
 
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
 const ContractSign = () => {
   const { token } = useParams<{ token: string }>();
   const [fullName, setFullName] = useState('');
