@@ -93,8 +93,12 @@ const FuelCardAnalysis = () => {
   }, [transactions]);
 
   return (
-    <ShellPage title="Q8 Tankpas Analyse" subtitle="Upload transactielijsten en detecteer afwijkingen">
-      <div className="flex justify-end mb-6">
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-semibold">Q8 Tankpas Analyse</h1>
+          <p className="text-sm text-muted-foreground">Upload transactielijsten en detecteer afwijkingen</p>
+        </div>
         <Button onClick={() => setImportOpen(true)}><Upload className="h-4 w-4 mr-2" /> CSV Importeren</Button>
       </div>
 
