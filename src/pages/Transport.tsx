@@ -208,7 +208,7 @@ const Transport = () => {
         </>
       )}
 
-      <VehicleSlideOver open={slideOverOpen} onOpenChange={setSlideOverOpen} />
+      
     </div>
   );
 };
