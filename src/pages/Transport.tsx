@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Link } from 'react-router-dom';
-import { Car, Plus, Search } from 'lucide-react';
+import { Car, Plus, Search, Fuel } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -67,6 +67,29 @@ const Transport = () => {
     },
   });
 
+  const { data: fuelFlagCount = 0 } = useQuery({
+    queryKey: ['fuel-flag-count'],
+    queryFn: async () => {
+      const { count, error } = await supabase.from('fuel_card_transactions')
+        .select('id', { count: 'exact', head: true })
+        .eq('reviewed', false)
+        .or('flag_over_capacity.eq.true,flag_multiple_same_day.eq.true,flag_excessive_consumption.eq.true');
+      if (error) throw error;
+      return count ?? 0;
+    },
+  });
+
+  const { data: openDamageCount = 0 } = useQuery({
+    queryKey: ['damage-open-count'],
+    queryFn: async () => {
+      const { count, error } = await supabase.from('vehicle_damage_reports')
+        .select('id', { count: 'exact', head: true })
+        .eq('resolved', false);
+      if (error) throw error;
+      return count ?? 0;
+    },
+  });
+
   const stats = useMemo(() => {
     const v = allVehicles ?? [];
     return {
@@ -84,10 +107,13 @@ const Transport = () => {
           <h1 className="text-2xl font-semibold">Transport</h1>
           <p className="text-muted-foreground text-sm mt-1">Voertuigen, toewijzingen en kilometerregistratie</p>
         </div>
-        <Button onClick={() => setSlideOverOpen(true)} className="gap-2"><Plus className="h-4 w-4" /> Nieuw voertuig</Button>
+        <div className="flex gap-2">
+          <Button asChild variant="outline" className="gap-2"><Link to="/tankpas-analyse"><Fuel className="h-4 w-4" /> Tankpas analyse</Link></Button>
+          <Button onClick={() => setSlideOverOpen(true)} className="gap-2"><Plus className="h-4 w-4" /> Nieuw voertuig</Button>
+        </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
         {[
           { label: 'Totaal voertuigen', value: stats.total },
           { label: 'Beschikbaar', value: stats.beschikbaar },
@@ -99,6 +125,14 @@ const Transport = () => {
             <div className="text-lg font-semibold">{s.value}</div>
           </div>
         ))}
+        <Link to="/tankpas-analyse" className={`bg-card border rounded-lg p-3 hover:ring-2 hover:ring-ring transition ${fuelFlagCount > 0 ? 'border-destructive bg-destructive/5' : ''}`}>
+          <div className="text-xs text-muted-foreground">Afwijkingen tankpas</div>
+          <div className={`text-lg font-semibold ${fuelFlagCount > 0 ? 'text-destructive' : ''}`}>{fuelFlagCount}</div>
+        </Link>
+        <div className={`bg-card border rounded-lg p-3 ${openDamageCount > 0 ? 'border-orange-400 bg-orange-50 dark:bg-orange-950/20' : ''}`}>
+          <div className="text-xs text-muted-foreground">Open schademeldingen</div>
+          <div className={`text-lg font-semibold ${openDamageCount > 0 ? 'text-orange-600' : ''}`}>{openDamageCount}</div>
+        </div>
       </div>
 
       <div className="flex items-center gap-3 flex-wrap">
@@ -132,8 +166,9 @@ const Transport = () => {
                   <TableHead>Merk / Model</TableHead>
                   <TableHead>Bouwjaar</TableHead>
                   <TableHead>Brandstof</TableHead>
-                  <TableHead className="text-right">KM-stand</TableHead>
-                  <TableHead>Status</TableHead>
+                   <TableHead className="text-right">KM-stand</TableHead>
+                   <TableHead>Tankpas</TableHead>
+                   <TableHead>Status</TableHead>
                   <TableHead>Toegewezen aan</TableHead>
                 </TableRow>
               </TableHeader>
@@ -150,6 +185,7 @@ const Transport = () => {
                       <TableCell>{v.year ?? '—'}</TableCell>
                       <TableCell>{v.fuel_type ?? '—'}</TableCell>
                       <TableCell className="text-right">{v.current_mileage != null ? v.current_mileage.toLocaleString('nl-NL') : '—'}</TableCell>
+                      <TableCell className="font-mono text-xs">{v.fuel_card_reference ?? '—'}</TableCell>
                       <TableCell><Badge variant="secondary" className={statusBadge[v.status] ?? ''}>{statusLabel[v.status] ?? v.status}</Badge></TableCell>
                       <TableCell>{assignee ? `${assignee.first_name} ${assignee.last_name}` : '—'}</TableCell>
                     </TableRow>
