@@ -32,7 +32,6 @@ const VacancyDetail = () => {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const [editOpen, setEditOpen] = useState(false);
 
   const { data: vacancy, isLoading } = useQuery({
     queryKey: ['vacancy', id],
