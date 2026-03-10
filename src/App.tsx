@@ -47,6 +47,7 @@ import ImportData from "@/pages/ImportData";
 import Installeren from "@/pages/Installeren";
 import ContractSign from "@/pages/ContractSign";
 import Register from "@/pages/Register";
+import PortalActivate from "@/pages/PortalActivate";
 import FuelCardAnalysis from "@/pages/FuelCardAnalysis";
 
 const queryClient = new QueryClient();
@@ -116,6 +117,7 @@ const App = () => (
             {/* Public routes */}
             <Route path="/onboarding/:token" element={<Onboarding />} />
             <Route path="/contract/sign/:token" element={<ContractSign />} />
+            <Route path="/portaal/activeren/:token" element={<PortalActivate />} />
             <Route path="/installeren" element={<Installeren />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
