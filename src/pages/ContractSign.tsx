@@ -19,20 +19,10 @@ const ContractSign = () => {
     queryKey: ['contract-sign', token],
     queryFn: async () => {
       if (!token) throw new Error('Geen token');
-      const { data, error } = await supabase.functions.invoke('contract-sign', {
-        method: 'GET',
-        body: undefined,
-        headers: { 'Content-Type': 'application/json' },
-      });
-      // supabase.functions.invoke doesn't support GET query params natively,
-      // so we construct the URL manually
       const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
       const res = await fetch(
         `https://${projectId}.supabase.co/functions/v1/contract-sign?token=${encodeURIComponent(token)}`,
-        {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
-        }
+        { method: 'GET', headers: { 'Content-Type': 'application/json' } }
       );
       const body = await res.json();
       if (!res.ok) throw new Error(body.error || 'Contract niet gevonden');
