@@ -51,6 +51,12 @@ Deno.serve(async (req) => {
 
     const orgId = profile.organization_id;
 
+    // Service client for decryption and other operations
+    const serviceClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
+
     // Get WhatsApp config with decrypted tokens
     const { data: decryptedConfig, error: configError } = await serviceClient.rpc('get_whatsapp_token', {
       p_org_id: orgId,
