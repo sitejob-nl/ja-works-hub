@@ -40,6 +40,7 @@ import Timesheets from "@/pages/Timesheets";
 import Transport from "@/pages/Transport";
 import VehicleNew from "@/pages/VehicleNew";
 import VehicleDetail from "@/pages/VehicleDetail";
+import VehicleEdit from "@/pages/VehicleEdit";
 import Vacaturebank from "@/pages/Vacaturebank";
 import KandidatenZoeken from "@/pages/KandidatenZoeken";
 import Communications from "@/pages/Communications";
