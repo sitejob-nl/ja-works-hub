@@ -9,10 +9,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { useMyDecryptedData } from '@/hooks/useDecryptedCandidate';
+import SensitiveField from '@/components/ui/sensitive-field';
 
 const PortalProfile = () => {
   const { employee, candidate } = usePortal();
   const qc = useQueryClient();
+  const { data: sensitive, isLoading: sensitiveLoading } = useMyDecryptedData();
 
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
@@ -88,8 +91,7 @@ const PortalProfile = () => {
             </p>
           </div>
           <div>
-            <Label className="text-xs text-muted-foreground">BSN</Label>
-            <p className="text-sm font-medium">{candidate.bsn ? '••••' + candidate.bsn.slice(-3) : '—'}</p>
+            <SensitiveField label="BSN" value={sensitive?.decrypted_bsn} loading={sensitiveLoading} />
           </div>
           <div>
             <Label className="text-xs text-muted-foreground">Personeelsnummer</Label>

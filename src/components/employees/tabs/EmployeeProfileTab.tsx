@@ -4,6 +4,8 @@ import { Button } from '@/components/ui/button';
 import { formatDate } from '@/lib/format';
 import { Send } from 'lucide-react';
 import PortalActivateSheet from '@/components/employees/PortalActivateSheet';
+import { useDecryptedCandidate } from '@/hooks/useDecryptedCandidate';
+import SensitiveField from '@/components/ui/sensitive-field';
 
 const Field = ({ label, value }: { label: string; value: string | null | undefined }) => (
   <div>
@@ -26,7 +28,7 @@ const statusLabel: Record<string, string> = {
 const EmployeeProfileTab = ({ employee }: { employee: any }) => {
   const [sheetOpen, setSheetOpen] = useState(false);
   const c = employee.candidates;
-  const maskedBsn = c?.bsn ? `****${c.bsn.slice(-4)}` : '—';
+  const { data: sensitive, isLoading: sensitiveLoading } = useDecryptedCandidate(c?.id);
   const address = [c?.address_street, c?.address_postal, c?.address_city].filter(Boolean).join(', ') || null;
   const portalEnabled = employee.portal_enabled === true;
 
@@ -39,8 +41,8 @@ const EmployeeProfileTab = ({ employee }: { employee: any }) => {
         <Field label="Achternaam" value={c?.last_name} />
         <Field label="Geboortedatum" value={formatDate(c?.date_of_birth)} />
         <Field label="Nationaliteit" value={c?.nationality} />
-        <Field label="BSN" value={maskedBsn} />
-        <Field label="IBAN" value={c?.iban} />
+        <SensitiveField label="BSN" value={sensitive?.decrypted_bsn} loading={sensitiveLoading} />
+        <SensitiveField label="IBAN" value={sensitive?.decrypted_iban} loading={sensitiveLoading} />
       </div>
 
       {/* Contactgegevens */}

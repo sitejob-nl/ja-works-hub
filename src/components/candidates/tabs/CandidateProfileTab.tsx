@@ -7,6 +7,8 @@ import { Input } from '@/components/ui/input';
 import { formatDate } from '@/lib/format';
 import { Copy, Check, MessageCircle, Mail, Link2, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
+import { useDecryptedCandidate } from '@/hooks/useDecryptedCandidate';
+import SensitiveField from '@/components/ui/sensitive-field';
 
 const Field = ({ label, value }: { label: string; value: string | null | undefined }) => (
   <div>
@@ -18,7 +20,7 @@ const Field = ({ label, value }: { label: string; value: string | null | undefin
 const CandidateProfileTab = ({ candidate }: { candidate: any }) => {
   const qc = useQueryClient();
   const [copied, setCopied] = useState(false);
-  const maskedBsn = candidate.bsn ? `****${candidate.bsn.slice(-4)}` : '—';
+  const { data: sensitive, isLoading: sensitiveLoading } = useDecryptedCandidate(candidate.id);
   const address = [candidate.address_street, candidate.address_postal, candidate.address_city].filter(Boolean).join(', ') || null;
 
   // Fetch active profile token
@@ -96,8 +98,8 @@ const CandidateProfileTab = ({ candidate }: { candidate: any }) => {
         <Field label="Achternaam" value={candidate.last_name} />
         <Field label="Geboortedatum" value={formatDate(candidate.date_of_birth)} />
         <Field label="Nationaliteit" value={candidate.nationality} />
-        <Field label="BSN" value={maskedBsn} />
-        <Field label="IBAN" value={candidate.iban} />
+        <SensitiveField label="BSN" value={sensitive?.decrypted_bsn} loading={sensitiveLoading} />
+        <SensitiveField label="IBAN" value={sensitive?.decrypted_iban} loading={sensitiveLoading} />
       </div>
 
       <div className="bg-card rounded-lg border p-6 space-y-4">
