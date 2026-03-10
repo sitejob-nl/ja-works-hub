@@ -9,6 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { useMyDecryptedData } from '@/hooks/useDecryptedCandidate';
+import SensitiveField from '@/components/ui/sensitive-field';
 
 const PortalProfile = () => {
   const { employee, candidate } = usePortal();
