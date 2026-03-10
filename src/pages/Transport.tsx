@@ -67,6 +67,29 @@ const Transport = () => {
     },
   });
 
+  const { data: fuelFlagCount = 0 } = useQuery({
+    queryKey: ['fuel-flag-count'],
+    queryFn: async () => {
+      const { count, error } = await supabase.from('fuel_card_transactions')
+        .select('id', { count: 'exact', head: true })
+        .eq('reviewed', false)
+        .or('flag_over_capacity.eq.true,flag_multiple_same_day.eq.true,flag_excessive_consumption.eq.true');
+      if (error) throw error;
+      return count ?? 0;
+    },
+  });
+
+  const { data: openDamageCount = 0 } = useQuery({
+    queryKey: ['damage-open-count'],
+    queryFn: async () => {
+      const { count, error } = await supabase.from('vehicle_damage_reports')
+        .select('id', { count: 'exact', head: true })
+        .eq('resolved', false);
+      if (error) throw error;
+      return count ?? 0;
+    },
+  });
+
   const stats = useMemo(() => {
     const v = allVehicles ?? [];
     return {
