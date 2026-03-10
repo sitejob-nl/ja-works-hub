@@ -24,14 +24,14 @@ interface StatCardProps {
 }
 
 const StatCard = ({ icon: Icon, label, value, colorClass, bgClass }: StatCardProps) => (
-  <div className="bg-card rounded-lg p-5 shadow-sm border border-border">
-    <div className="flex items-center gap-3 mb-3">
-      <div className={`h-9 w-9 rounded-lg ${bgClass} flex items-center justify-center`}>
+  <div className="bg-card rounded-lg p-3 sm:p-5 shadow-sm border border-border">
+    <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
+      <div className={`h-8 w-8 sm:h-9 sm:w-9 rounded-lg ${bgClass} flex items-center justify-center`}>
         <Icon className={`h-4 w-4 ${colorClass}`} />
       </div>
-      <span className="text-sm text-muted-foreground">{label}</span>
+      <span className="text-xs sm:text-sm text-muted-foreground leading-tight">{label}</span>
     </div>
-    <p className="text-2xl font-semibold">{value}</p>
+    <p className="text-xl sm:text-2xl font-semibold">{value}</p>
   </div>
 );
 
@@ -335,16 +335,18 @@ const Dashboard = () => {
   const visibleAlerts = alerts.slice(0, 15);
 
   return (
-    <div>
+    <div className="space-y-4 sm:space-y-6">
       <OnboardingWizard open={showOnboarding} onComplete={handleOnboardingComplete} userName={firstName} />
-      <h1 className="text-2xl font-semibold mb-1">{getGreeting()}, {firstName}</h1>
-      <p className="text-sm text-muted-foreground mb-6">Hier is een overzicht van vandaag.</p>
+      <div>
+        <h1 className="text-xl sm:text-2xl font-semibold mb-1">{getGreeting()}, {firstName}</h1>
+        <p className="text-sm text-muted-foreground">Hier is een overzicht van vandaag.</p>
+      </div>
 
       {/* Stat cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <StatCard icon={UserCheck} label="Actieve medewerkers" value={stats.activeEmployees} colorClass="text-stat-blue" bgClass="bg-stat-blue/10" />
-        <StatCard icon={Briefcase} label="Openstaande vacatures" value={stats.openVacancies} colorClass="text-stat-orange" bgClass="bg-stat-orange/10" />
-        <StatCard icon={Home} label="Bezettingsgraad" value={stats.occupancyRate} colorClass="text-stat-green" bgClass="bg-stat-green/10" />
+        <StatCard icon={Briefcase} label="Open vacatures" value={stats.openVacancies} colorClass="text-stat-orange" bgClass="bg-stat-orange/10" />
+        <StatCard icon={Home} label="Bezetting" value={stats.occupancyRate} colorClass="text-stat-green" bgClass="bg-stat-green/10" />
         <StatCard icon={Clock} label="Uren deze week" value={stats.weeklyHours} colorClass="text-stat-purple" bgClass="bg-stat-purple/10" />
       </div>
 
@@ -354,7 +356,6 @@ const Dashboard = () => {
       )}
 
       {/* Divider */}
-      <div className="mb-8" />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Aandacht vereist */}
         <div className="bg-card rounded-lg p-5 shadow-sm border border-border">

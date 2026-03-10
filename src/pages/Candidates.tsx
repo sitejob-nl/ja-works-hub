@@ -96,21 +96,21 @@ const Candidates = () => {
   const tokensList = tokens ?? [];
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Kandidaten</h1>
-          <p className="text-muted-foreground text-sm mt-1">Overzicht van alle kandidaten</p>
+          <h1 className="text-xl sm:text-2xl font-semibold">Kandidaten</h1>
+          <p className="text-muted-foreground text-sm mt-1 hidden sm:block">Overzicht van alle kandidaten</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => { setImportPreset(null); setImportOpen(true); }} className="gap-2">
-            <Upload className="h-4 w-4" /> Importeren
+        <div className="flex gap-2 flex-wrap">
+          <Button variant="outline" size="sm" onClick={() => { setImportPreset(null); setImportOpen(true); }} className="gap-1.5">
+            <Upload className="h-4 w-4" /> <span className="hidden sm:inline">Importeren</span><span className="sm:hidden">Import</span>
           </Button>
-          <Button variant="outline" onClick={() => { setImportPreset('buddy'); setImportOpen(true); }} className="gap-2">
+          <Button variant="outline" size="sm" onClick={() => { setImportPreset('buddy'); setImportOpen(true); }} className="gap-1.5 hidden md:flex">
             <Upload className="h-4 w-4" /> Buddy import
           </Button>
-          <Button onClick={() => navigate('/kandidaten/new')} className="gap-2">
-            <Plus className="h-4 w-4" /> Nieuwe kandidaat
+          <Button size="sm" onClick={() => navigate('/kandidaten/new')} className="gap-1.5">
+            <Plus className="h-4 w-4" /> <span className="hidden sm:inline">Nieuwe kandidaat</span><span className="sm:hidden">Nieuw</span>
           </Button>
         </div>
       </div>
@@ -149,8 +149,8 @@ const Candidates = () => {
         </div>
       ) : (
         <>
-          <div className="bg-card rounded-lg border">
-            <Table>
+          <div className="bg-card rounded-lg border overflow-x-auto">
+            <Table className="min-w-[700px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>Naam</TableHead>

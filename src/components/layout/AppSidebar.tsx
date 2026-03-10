@@ -12,6 +12,10 @@ import { cn } from '@/lib/utils';
 import { useEffect } from 'react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 
+interface AppSidebarProps {
+  onNavigate?: () => void;
+}
+
 const navGroups = [
   {
     label: null,
@@ -63,7 +67,7 @@ const navGroups = [
   },
 ];
 
-const AppSidebar = () => {
+const AppSidebar = ({ onNavigate }: AppSidebarProps) => {
   const [collapsed, setCollapsed] = useState(false);
   const { profile } = useAuth();
   const location = useLocation();
@@ -141,6 +145,10 @@ const AppSidebar = () => {
 
   const orgInitials = (org?.name ?? 'JA').slice(0, 2).toUpperCase();
 
+  const handleNavClick = () => {
+    onNavigate?.();
+  };
+
   return (
     <aside
       className={cn(
@@ -166,7 +174,6 @@ const AppSidebar = () => {
           const hasActiveItem = group.items.some(item => location.pathname === item.path);
 
           if (!group.label || collapsed) {
-            // No label or collapsed: render flat
             return (
               <div key={gi} className={cn(group.label && 'mt-4')}>
                 {group.label && collapsed && (
@@ -179,6 +186,7 @@ const AppSidebar = () => {
                       <NavLink
                         key={item.path}
                         to={item.path}
+                        onClick={handleNavClick}
                         className={cn(
                           'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors',
                           isActive
@@ -211,6 +219,7 @@ const AppSidebar = () => {
                     <NavLink
                       key={item.path}
                       to={item.path}
+                      onClick={handleNavClick}
                       className={cn(
                         'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors',
                         isActive
@@ -233,6 +242,7 @@ const AppSidebar = () => {
       <div className="border-t border-sidebar-border px-2 py-3 space-y-0.5">
         <NavLink
           to="/instellingen"
+          onClick={handleNavClick}
           className={cn(
             'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors',
             location.pathname === '/instellingen'
@@ -257,10 +267,10 @@ const AppSidebar = () => {
           </div>
         )}
 
-        {/* Collapse toggle */}
+        {/* Collapse toggle - hidden on mobile */}
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="flex items-center gap-3 px-3 py-2 rounded-md text-sm text-sidebar-foreground hover:bg-sidebar-hover hover:text-sidebar-active w-full transition-colors"
+          className="hidden md:flex items-center gap-3 px-3 py-2 rounded-md text-sm text-sidebar-foreground hover:bg-sidebar-hover hover:text-sidebar-active w-full transition-colors"
         >
           {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
           {!collapsed && <span>Inklappen</span>}
