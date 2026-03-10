@@ -83,7 +83,7 @@ const VehicleDetail = () => {
           </div>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => setEditOpen(true)} className="gap-1"><Edit className="h-4 w-4" /> Bewerken</Button>
+          <Button variant="outline" size="sm" onClick={() => navigate(`/transport/${id}/bewerken`)} className="gap-1"><Edit className="h-4 w-4" /> Bewerken</Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild><Button variant="outline" size="sm">Status wijzigen</Button></DropdownMenuTrigger>
             <DropdownMenuContent>
