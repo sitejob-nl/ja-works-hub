@@ -7,12 +7,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { ChevronRight, MoreHorizontal, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
+import { Badge } from '@/components/ui/badge';
+import { formatEUR } from '@/lib/format';
 import PropertySlideOver from '@/components/housing/PropertySlideOver';
 import UnitsTab from '@/components/housing/tabs/UnitsTab';
 import ResidentsTab from '@/components/housing/tabs/ResidentsTab';
 import CostsTab from '@/components/housing/tabs/CostsTab';
 import KeysTab from '@/components/housing/tabs/KeysTab';
 import InspectionsTab from '@/components/housing/tabs/InspectionsTab';
+import OwnerTab from '@/components/housing/tabs/OwnerTab';
 
 const PropertyDetail = () => {
   const { id } = useParams<{ id: string }>();
