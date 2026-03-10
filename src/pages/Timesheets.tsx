@@ -170,21 +170,21 @@ const Timesheets = () => {
   });
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Uren</h1>
-          <p className="text-muted-foreground text-sm mt-1">Urenregistratie en goedkeuring</p>
+          <h1 className="text-xl sm:text-2xl font-semibold">Uren</h1>
+          <p className="text-muted-foreground text-sm mt-1 hidden sm:block">Urenregistratie en goedkeuring</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => aiValidation.mutate()} disabled={aiValidation.isPending} className="gap-2">
-            <Sparkles className="h-4 w-4" /> {aiValidation.isPending ? 'Valideren...' : 'AI Validatie'}
+        <div className="flex gap-2 flex-wrap">
+          <Button variant="outline" size="sm" onClick={() => aiValidation.mutate()} disabled={aiValidation.isPending} className="gap-1.5">
+            <Sparkles className="h-4 w-4" /> <span className="hidden sm:inline">{aiValidation.isPending ? 'Valideren...' : 'AI Validatie'}</span><span className="sm:hidden">AI</span>
           </Button>
-          <Button variant="outline" onClick={() => setCsvOpen(true)} className="gap-2">
-            <Upload className="h-4 w-4" /> CSV importeren
+          <Button variant="outline" size="sm" onClick={() => setCsvOpen(true)} className="gap-1.5">
+            <Upload className="h-4 w-4" /> <span className="hidden sm:inline">CSV importeren</span><span className="sm:hidden">CSV</span>
           </Button>
-          <Button onClick={() => setEntryOpen(true)} className="gap-2">
-            <Plus className="h-4 w-4" /> Uren invoeren
+          <Button size="sm" onClick={() => setEntryOpen(true)} className="gap-1.5">
+            <Plus className="h-4 w-4" /> <span className="hidden sm:inline">Uren invoeren</span><span className="sm:hidden">Nieuw</span>
           </Button>
         </div>
       </div>
