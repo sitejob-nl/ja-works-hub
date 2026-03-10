@@ -64,31 +64,31 @@ const VacancyDetail = () => {
   const pct = vacancy.required_count > 0 ? Math.round((vacancy.filled_count / vacancy.required_count) * 100) : 0;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6 min-w-0">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Link to="/vacatures" className="hover:text-foreground">Vacatures</Link>
         <ChevronRight className="h-4 w-4" />
-        <span className="text-foreground">{vacancy.title}</span>
+        <span className="text-foreground truncate">{vacancy.title}</span>
       </div>
 
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">{vacancy.title}</h1>
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-semibold truncate">{vacancy.title}</h1>
           {company && (
             <Link to={`/opdrachtgevers/${company.id}`} className="text-sm text-muted-foreground hover:text-primary">
               {company.name}
             </Link>
           )}
-          <div className="flex items-center gap-2 mt-2">
+          <div className="flex items-center gap-2 mt-2 flex-wrap">
             <Badge variant="secondary" className={statusBadge[vacancy.status] ?? ''}>{statusLabel[vacancy.status] ?? vacancy.status}</Badge>
             <Badge variant="secondary" className={urgencyBadge(vacancy.urgency)}>Urgentie {vacancy.urgency}</Badge>
           </div>
-          <div className="mt-3 w-64">
+          <div className="mt-3 max-w-64">
             <div className="text-xs text-muted-foreground mb-1">{vacancy.filled_count} van {vacancy.required_count} vervuld</div>
             <Progress value={pct} className="h-2" />
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Button
             size="sm"
             className="gap-1"
@@ -101,14 +101,14 @@ const VacancyDetail = () => {
               navigate(`/kandidaten-zoeken?query=${encodeURIComponent(q)}`);
             }}
           >
-            <UserSearch className="h-4 w-4" /> Zoek kandidaten
+            <UserSearch className="h-4 w-4" /> <span className="hidden sm:inline">Zoek kandidaten</span><span className="sm:hidden">Zoeken</span>
           </Button>
           <Button variant="outline" size="sm" onClick={() => navigate(`/vacatures/${id}/bewerken`)} className="gap-1">
-            <Edit className="h-4 w-4" /> Bewerken
+            <Edit className="h-4 w-4" /> <span className="hidden sm:inline">Bewerken</span>
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">Status wijzigen</Button>
+              <Button variant="outline" size="sm">Status</Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent>
               {Object.entries(statusLabel).map(([k, v]) => (
@@ -120,11 +120,13 @@ const VacancyDetail = () => {
       </div>
 
       <Tabs defaultValue="details">
-        <TabsList>
-          <TabsTrigger value="details">Details</TabsTrigger>
-          <TabsTrigger value="matches">Matches</TabsTrigger>
-          <TabsTrigger value="plaatsingen">Plaatsingen</TabsTrigger>
-        </TabsList>
+        <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">
+          <TabsList className="w-max sm:w-auto">
+            <TabsTrigger value="details">Details</TabsTrigger>
+            <TabsTrigger value="matches">Matches</TabsTrigger>
+            <TabsTrigger value="plaatsingen">Plaatsingen</TabsTrigger>
+          </TabsList>
+        </div>
         <TabsContent value="details"><VacancyDetailsTab vacancy={vacancy} /></TabsContent>
         <TabsContent value="matches"><VacancyMatchesTab vacancy={vacancy} /></TabsContent>
         <TabsContent value="plaatsingen"><VacancyPlacementsTab vacancyId={vacancy.id} /></TabsContent>

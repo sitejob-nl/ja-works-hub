@@ -157,21 +157,22 @@ const RecruiterWorkbench = () => {
   }).length;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 sm:space-y-6 min-w-0">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Workbench</h1>
+          <h1 className="text-xl sm:text-2xl font-semibold">Workbench</h1>
           <p className="text-sm text-muted-foreground">
             Hallo {profile?.full_name?.split(' ')[0]}, hier zijn je prioriteiten voor vandaag
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => { setForm(emptyForm); setSheetOpen(true); }} className="gap-2">
-            <Plus className="h-4 w-4" /> Taak toevoegen
+          <Button variant="outline" size="sm" onClick={() => { setForm(emptyForm); setSheetOpen(true); }} className="gap-1.5">
+            <Plus className="h-4 w-4" /> <span className="hidden sm:inline">Taak toevoegen</span><span className="sm:hidden">Taak</span>
           </Button>
-          <Button onClick={handleGeneratePriorities} disabled={isGenerating} className="gap-2">
+          <Button size="sm" onClick={handleGeneratePriorities} disabled={isGenerating} className="gap-1.5">
             <Sparkles className="h-4 w-4" />
-            {isGenerating ? 'Genereren...' : 'AI Prioriteiten'}
+            <span className="hidden sm:inline">{isGenerating ? 'Genereren...' : 'AI Prioriteiten'}</span>
+            <span className="sm:hidden">{isGenerating ? '...' : 'AI'}</span>
           </Button>
         </div>
       </div>
