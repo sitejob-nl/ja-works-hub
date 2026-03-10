@@ -92,7 +92,7 @@ const PortalProfile = () => {
           </div>
           <div>
             <Label className="text-xs text-muted-foreground">BSN</Label>
-            <p className="text-sm font-medium">{candidate.bsn ? '••••' + candidate.bsn.slice(-3) : '—'}</p>
+            <SensitiveField label="" value={sensitive?.decrypted_bsn} loading={sensitiveLoading} />
           </div>
           <div>
             <Label className="text-xs text-muted-foreground">Personeelsnummer</Label>

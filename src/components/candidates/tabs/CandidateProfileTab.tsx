@@ -98,8 +98,8 @@ const CandidateProfileTab = ({ candidate }: { candidate: any }) => {
         <Field label="Achternaam" value={candidate.last_name} />
         <Field label="Geboortedatum" value={formatDate(candidate.date_of_birth)} />
         <Field label="Nationaliteit" value={candidate.nationality} />
-        <Field label="BSN" value={maskedBsn} />
-        <Field label="IBAN" value={candidate.iban} />
+        <SensitiveField label="BSN" value={sensitive?.decrypted_bsn} loading={sensitiveLoading} />
+        <SensitiveField label="IBAN" value={sensitive?.decrypted_iban} loading={sensitiveLoading} />
       </div>
 
       <div className="bg-card rounded-lg border p-6 space-y-4">

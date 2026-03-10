@@ -41,8 +41,8 @@ const EmployeeProfileTab = ({ employee }: { employee: any }) => {
         <Field label="Achternaam" value={c?.last_name} />
         <Field label="Geboortedatum" value={formatDate(c?.date_of_birth)} />
         <Field label="Nationaliteit" value={c?.nationality} />
-        <Field label="BSN" value={maskedBsn} />
-        <Field label="IBAN" value={c?.iban} />
+        <SensitiveField label="BSN" value={sensitive?.decrypted_bsn} loading={sensitiveLoading} />
+        <SensitiveField label="IBAN" value={sensitive?.decrypted_iban} loading={sensitiveLoading} />
       </div>
 
       {/* Contactgegevens */}
