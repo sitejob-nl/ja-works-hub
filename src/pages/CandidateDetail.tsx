@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
@@ -7,9 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { ChevronRight, MoreHorizontal, Pencil, FileText } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import CandidateSlideOver from '@/components/candidates/CandidateSlideOver';
 import CandidateProfileTab from '@/components/candidates/tabs/CandidateProfileTab';
 import CandidateDocumentsTab from '@/components/candidates/tabs/CandidateDocumentsTab';
 import CandidateCommunicationTab from '@/components/candidates/tabs/CandidateCommunicationTab';
@@ -46,7 +43,6 @@ const CandidateDetail = () => {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const [editOpen, setEditOpen] = useState(false);
 
   const { data: candidate, isLoading } = useQuery({
     queryKey: ['candidate', id],
@@ -91,7 +87,7 @@ const CandidateDetail = () => {
           <Button variant="outline" size="sm" onClick={() => navigate(`/cv-tool/${id}`)} className="gap-2">
             <FileText className="h-3.5 w-3.5" /> CV Genereren
           </Button>
-          <Button variant="outline" size="sm" onClick={() => setEditOpen(true)} className="gap-2">
+          <Button variant="outline" size="sm" onClick={() => navigate(`/kandidaten/${id}/bewerken`)} className="gap-2">
             <Pencil className="h-3.5 w-3.5" /> Bewerken
           </Button>
           <DropdownMenu>
@@ -130,8 +126,6 @@ const CandidateDetail = () => {
         <TabsContent value="plaatsingen"><CandidatePlacementsTab candidateId={id!} /></TabsContent>
         <TabsContent value="voorkeuren"><CandidatePreferencesTab candidateId={id!} /></TabsContent>
       </Tabs>
-
-      <CandidateSlideOver open={editOpen} onOpenChange={setEditOpen} candidate={candidate} />
     </div>
   );
 };

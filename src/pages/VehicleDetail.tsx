@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { ChevronRight, Edit } from 'lucide-react';
@@ -8,7 +7,6 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
-import VehicleSlideOver from '@/components/transport/VehicleSlideOver';
 import VehicleInfoTab from '@/components/transport/tabs/VehicleInfoTab';
 import VehicleAssignmentsTab from '@/components/transport/tabs/VehicleAssignmentsTab';
 import VehicleMileageTab from '@/components/transport/tabs/VehicleMileageTab';
@@ -28,7 +26,7 @@ const statusLabel: Record<string, string> = {
 const VehicleDetail = () => {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
-  const [editOpen, setEditOpen] = useState(false);
+  const navigate = useNavigate();
 
   const { data: vehicle, isLoading } = useQuery({
     queryKey: ['vehicle', id],
@@ -84,7 +82,7 @@ const VehicleDetail = () => {
           </div>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => setEditOpen(true)} className="gap-1"><Edit className="h-4 w-4" /> Bewerken</Button>
+          <Button variant="outline" size="sm" onClick={() => navigate(`/transport/${id}/bewerken`)} className="gap-1"><Edit className="h-4 w-4" /> Bewerken</Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild><Button variant="outline" size="sm">Status wijzigen</Button></DropdownMenuTrigger>
             <DropdownMenuContent>
@@ -110,8 +108,6 @@ const VehicleDetail = () => {
         <TabsContent value="boetes"><VehicleFinesTab vehicle={vehicle} /></TabsContent>
         <TabsContent value="schade"><VehicleDamageTab vehicle={vehicle} /></TabsContent>
       </Tabs>
-
-      <VehicleSlideOver open={editOpen} onOpenChange={setEditOpen} vehicle={vehicle} />
     </div>
   );
 };

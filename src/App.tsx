@@ -20,17 +20,22 @@ import NotFound from "./pages/NotFound";
 import SettingsPage from "@/pages/Settings";
 import Planning from "@/pages/Planning";
 import Companies from "@/pages/Companies";
+import CompanyNew from "@/pages/CompanyNew";
 import CompanyDetail from "@/pages/CompanyDetail";
 import Candidates from "@/pages/Candidates";
+import CandidateNew from "@/pages/CandidateNew";
 import CandidateDetail from "@/pages/CandidateDetail";
 import Employees from "@/pages/Employees";
+import EmployeeNew from "@/pages/EmployeeNew";
 import EmployeeDetail from "@/pages/EmployeeDetail";
 import Housing from "@/pages/Housing";
 import PropertyDetail from "@/pages/PropertyDetail";
 import Vacancies from "@/pages/Vacancies";
+import VacancyNew from "@/pages/VacancyNew";
 import VacancyDetail from "@/pages/VacancyDetail";
 import Timesheets from "@/pages/Timesheets";
 import Transport from "@/pages/Transport";
+import VehicleNew from "@/pages/VehicleNew";
 import VehicleDetail from "@/pages/VehicleDetail";
 import Vacaturebank from "@/pages/Vacaturebank";
 import KandidatenZoeken from "@/pages/KandidatenZoeken";
@@ -98,18 +103,23 @@ const App = () => (
               <Route path="/" element={<Dashboard />} />
               <Route path="/workbench" element={<RecruiterWorkbench />} />
               <Route path="/opdrachtgevers" element={<Companies />} />
+              <Route path="/opdrachtgevers/new" element={<CompanyNew />} />
               <Route path="/opdrachtgevers/:id" element={<CompanyDetail />} />
               <Route path="/kandidaten" element={<Candidates />} />
+              <Route path="/kandidaten/new" element={<CandidateNew />} />
               <Route path="/kandidaten/:id" element={<CandidateDetail />} />
               <Route path="/medewerkers" element={<Employees />} />
+              <Route path="/medewerkers/new" element={<EmployeeNew />} />
               <Route path="/medewerkers/:id" element={<EmployeeDetail />} />
               <Route path="/huisvesting" element={<Housing />} />
               <Route path="/huisvesting/:id" element={<PropertyDetail />} />
               <Route path="/vacatures" element={<Vacancies />} />
+              <Route path="/vacatures/new" element={<VacancyNew />} />
               <Route path="/vacatures/:id" element={<VacancyDetail />} />
               <Route path="/planning" element={<Planning />} />
               <Route path="/uren" element={<Timesheets />} />
               <Route path="/transport" element={<Transport />} />
+              <Route path="/transport/new" element={<VehicleNew />} />
               <Route path="/transport/:id" element={<VehicleDetail />} />
               <Route path="/tankpas-analyse" element={<FuelCardAnalysis />} />
               <Route path="/vacaturebank" element={<Vacaturebank />} />

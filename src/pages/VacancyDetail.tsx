@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -9,7 +8,6 @@ import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
-import VacancySlideOver from '@/components/vacancies/VacancySlideOver';
 import VacancyDetailsTab from '@/components/vacancies/tabs/VacancyDetailsTab';
 import VacancyMatchesTab from '@/components/vacancies/tabs/VacancyMatchesTab';
 import VacancyPlacementsTab from '@/components/vacancies/tabs/VacancyPlacementsTab';
@@ -32,7 +30,6 @@ const VacancyDetail = () => {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const [editOpen, setEditOpen] = useState(false);
 
   const { data: vacancy, isLoading } = useQuery({
     queryKey: ['vacancy', id],
@@ -106,7 +103,7 @@ const VacancyDetail = () => {
           >
             <UserSearch className="h-4 w-4" /> Zoek kandidaten
           </Button>
-          <Button variant="outline" size="sm" onClick={() => setEditOpen(true)} className="gap-1">
+          <Button variant="outline" size="sm" onClick={() => navigate(`/vacatures/${id}/bewerken`)} className="gap-1">
             <Edit className="h-4 w-4" /> Bewerken
           </Button>
           <DropdownMenu>
@@ -132,8 +129,6 @@ const VacancyDetail = () => {
         <TabsContent value="matches"><VacancyMatchesTab vacancy={vacancy} /></TabsContent>
         <TabsContent value="plaatsingen"><VacancyPlacementsTab vacancyId={vacancy.id} /></TabsContent>
       </Tabs>
-
-      <VacancySlideOver open={editOpen} onOpenChange={setEditOpen} vacancy={vacancy} />
     </div>
   );
 };
