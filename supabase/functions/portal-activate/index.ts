@@ -12,7 +12,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { token, user_id, password, language } = await req.json();
+    const { token, password, language } = await req.json();
 
     if (!token || !password) {
       return new Response(
