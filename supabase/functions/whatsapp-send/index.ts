@@ -51,20 +51,23 @@ Deno.serve(async (req) => {
 
     const orgId = profile.organization_id;
 
-    // Get WhatsApp config using service role
-    const serviceClient = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
+    // Get WhatsApp config with decrypted tokens
+    const { data: decryptedConfig, error: configError } = await serviceClient.rpc('get_whatsapp_token', {
+      p_org_id: orgId,
+    });
 
-    const { data: config } = await serviceClient
-      .from("whatsapp_config")
-      .select("*")
-      .eq("organization_id", orgId)
-      .eq("is_active", true)
-      .single();
+    if (configError || !decryptedConfig || decryptedConfig.length === 0) {
+      return new Response(JSON.stringify({ error: "WhatsApp niet geconfigureerd" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
-    if (!config || !config.access_token || !config.phone_number_id) {
+    const waConfig = decryptedConfig[0];
+    const accessToken = waConfig.decrypted_access_token;
+    const phoneNumberId = waConfig.phone_number_id;
+
+    if (!accessToken || !phoneNumberId) {
       return new Response(JSON.stringify({ error: "WhatsApp niet geconfigureerd" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
