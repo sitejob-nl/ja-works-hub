@@ -101,8 +101,9 @@ Deno.serve(async (req) => {
     const defaultModules = [
       "workbench", "opdrachtgevers", "kandidaten", "medewerkers",
       "vacatures", "planning", "uren", "huisvesting", "transport",
-      "communicatie", "whatsapp", "kennisbank", "vacaturebank",
-      "kandidaten-zoeken", "exact-online", "importeren",
+      "tankpas-analyse", "communicatie", "whatsapp", "bulk-campaigns",
+      "kennisbank", "vacaturebank", "kandidaten-zoeken", "exact-online",
+      "importeren", "cv-tool", "ai-analyse", "ai-matching", "ai-prioriteiten",
     ];
 
     await supabaseAdmin.from("organization_modules").insert(

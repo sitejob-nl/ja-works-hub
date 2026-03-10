@@ -45,7 +45,7 @@ const navGroups = [
     items: [
       { label: 'Huisvesting', icon: Home, path: '/huisvesting', moduleKey: 'huisvesting' },
       { label: 'Transport', icon: Car, path: '/transport', moduleKey: 'transport' },
-      { label: 'Tankpas analyse', icon: Fuel, path: '/tankpas-analyse', moduleKey: 'transport' },
+      { label: 'Tankpas analyse', icon: Fuel, path: '/tankpas-analyse', moduleKey: 'tankpas-analyse' },
     ],
   },
   {
@@ -53,7 +53,7 @@ const navGroups = [
     items: [
       { label: 'Communicatie', icon: MessageSquare, path: '/communicatie', moduleKey: 'communicatie' },
       { label: 'WhatsApp', icon: MessageSquare, path: '/whatsapp', moduleKey: 'whatsapp' },
-      { label: 'Bulk Campagnes', icon: Users, path: '/bulk-campaigns', moduleKey: 'whatsapp' },
+      { label: 'Bulk Campagnes', icon: Users, path: '/bulk-campaigns', moduleKey: 'bulk-campaigns' },
     ],
   },
   {

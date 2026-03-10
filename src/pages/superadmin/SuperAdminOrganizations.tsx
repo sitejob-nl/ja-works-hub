@@ -11,22 +11,28 @@ import { toast } from 'sonner';
 import { Building2, Search, Settings2 } from 'lucide-react';
 
 const ALL_MODULES = [
-  { key: 'workbench', label: 'Workbench' },
-  { key: 'opdrachtgevers', label: 'Opdrachtgevers' },
-  { key: 'kandidaten', label: 'Kandidaten' },
-  { key: 'medewerkers', label: 'Medewerkers' },
-  { key: 'vacatures', label: 'Vacatures' },
-  { key: 'planning', label: 'Planning' },
-  { key: 'uren', label: 'Uren' },
-  { key: 'huisvesting', label: 'Huisvesting' },
-  { key: 'transport', label: 'Transport' },
-  { key: 'communicatie', label: 'Communicatie' },
-  { key: 'whatsapp', label: 'WhatsApp' },
-  { key: 'kennisbank', label: 'Kennisbank' },
-  { key: 'vacaturebank', label: 'Vacaturebank' },
-  { key: 'kandidaten-zoeken', label: 'Kandidaten zoeken' },
-  { key: 'exact-online', label: 'Exact Online' },
-  { key: 'importeren', label: 'Importeren' },
+  { key: 'workbench', label: 'Workbench', group: 'Kern' },
+  { key: 'opdrachtgevers', label: 'Opdrachtgevers', group: 'Kern' },
+  { key: 'kandidaten', label: 'Kandidaten', group: 'Kern' },
+  { key: 'medewerkers', label: 'Medewerkers', group: 'Kern' },
+  { key: 'vacatures', label: 'Vacatures', group: 'Kern' },
+  { key: 'planning', label: 'Planning', group: 'Kern' },
+  { key: 'uren', label: 'Uren', group: 'Kern' },
+  { key: 'huisvesting', label: 'Huisvesting', group: 'Vastgoed & Fleet' },
+  { key: 'transport', label: 'Transport', group: 'Vastgoed & Fleet' },
+  { key: 'tankpas-analyse', label: 'Tankpas analyse', group: 'Vastgoed & Fleet' },
+  { key: 'communicatie', label: 'Communicatie', group: 'Communicatie' },
+  { key: 'whatsapp', label: 'WhatsApp', group: 'Communicatie' },
+  { key: 'bulk-campaigns', label: 'Bulk Campagnes', group: 'Communicatie' },
+  { key: 'kennisbank', label: 'Kennisbank', group: 'Tools' },
+  { key: 'vacaturebank', label: 'Vacaturebank', group: 'Tools' },
+  { key: 'kandidaten-zoeken', label: 'Kandidaten zoeken', group: 'Tools' },
+  { key: 'exact-online', label: 'Exact Online', group: 'Integraties' },
+  { key: 'importeren', label: 'Importeren', group: 'Tools' },
+  { key: 'cv-tool', label: 'CV Herschrijf-tool', group: 'AI Modules' },
+  { key: 'ai-analyse', label: 'AI Kandidaat-analyse', group: 'AI Modules' },
+  { key: 'ai-matching', label: 'AI Matching', group: 'AI Modules' },
+  { key: 'ai-prioriteiten', label: 'AI Recruiter Prioriteiten', group: 'AI Modules' },
 ];
 
 const SuperAdminOrganizations = () => {
@@ -222,20 +228,27 @@ const SuperAdminOrganizations = () => {
           </SheetHeader>
           <div className="mt-6 space-y-4 overflow-y-auto max-h-[calc(100vh-8rem)]">
             <p className="text-zinc-400 text-sm">Schakel modules in of uit voor deze organisatie. Overrides hebben voorrang op het abonnement.</p>
-            <div className="space-y-3 pb-4">
-              {ALL_MODULES.map((mod) => (
-                <div key={mod.key} className="flex items-center justify-between py-2 px-3 bg-zinc-800 rounded-lg">
-                  <span className="text-sm text-white">{mod.label}</span>
-                  <Switch
-                    checked={getModuleEnabled(mod.key)}
-                    onCheckedChange={(enabled) =>
-                      toggleModule.mutate({
-                        orgId: selectedOrg.id,
-                        moduleName: mod.key,
-                        enabled,
-                      })
-                    }
-                  />
+            <div className="space-y-5 pb-4">
+              {Array.from(new Set(ALL_MODULES.map(m => m.group))).map(group => (
+                <div key={group}>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2 px-1">{group}</p>
+                  <div className="space-y-2">
+                    {ALL_MODULES.filter(m => m.group === group).map((mod) => (
+                      <div key={mod.key} className="flex items-center justify-between py-2 px-3 bg-zinc-800 rounded-lg">
+                        <span className="text-sm text-white">{mod.label}</span>
+                        <Switch
+                          checked={getModuleEnabled(mod.key)}
+                          onCheckedChange={(enabled) =>
+                            toggleModule.mutate({
+                              orgId: selectedOrg.id,
+                              moduleName: mod.key,
+                              enabled,
+                            })
+                          }
+                        />
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
