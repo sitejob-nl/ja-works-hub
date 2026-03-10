@@ -33,6 +33,14 @@ const statusLabel: Record<string, string> = {
   geplaatst: 'Geplaatst', inactief: 'Inactief', afgewezen: 'Afgewezen',
 };
 
+const getProfileLinkStatus = (candidate: any, tokens: any[]) => {
+  const token = tokens.find((t) => t.candidate_id === candidate.id);
+  if (!token) return { label: 'Niet verstuurd', className: 'bg-muted text-muted-foreground border-0' };
+  if (token.used_at) return { label: 'Profiel compleet', className: 'bg-stat-green/10 text-stat-green border-0' };
+  if (token.last_accessed_at) return { label: 'Bezig met invullen', className: 'bg-orange-100 text-orange-700 border-0' };
+  return { label: 'Link verstuurd', className: 'bg-yellow-100 text-yellow-700 border-0' };
+};
+
 const Candidates = () => {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
@@ -61,6 +69,31 @@ const Candidates = () => {
   const candidates = data?.candidates ?? [];
   const total = data?.total ?? 0;
   const totalPages = Math.ceil(total / PAGE_SIZE);
+  const candidateIds = candidates.map((c: any) => c.id);
+
+  // Fetch latest profile tokens for visible candidates
+  const { data: tokens } = useQuery({
+    queryKey: ['candidate-profile-tokens-list', candidateIds],
+    queryFn: async () => {
+      if (candidateIds.length === 0) return [];
+      const { data, error } = await supabase
+        .from('candidate_profile_tokens')
+        .select('candidate_id, used_at, last_accessed_at, expires_at')
+        .in('candidate_id', candidateIds)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      // Deduplicate: keep only latest per candidate
+      const seen = new Set<string>();
+      return (data ?? []).filter((t) => {
+        if (seen.has(t.candidate_id)) return false;
+        seen.add(t.candidate_id);
+        return true;
+      });
+    },
+    enabled: candidateIds.length > 0,
+  });
+
+  const tokensList = tokens ?? [];
 
   return (
     <div className="space-y-6">
@@ -122,6 +155,7 @@ const Candidates = () => {
                 <TableRow>
                   <TableHead>Naam</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Profiel</TableHead>
                   <TableHead>Telefoon</TableHead>
                   <TableHead>E-mail</TableHead>
                   <TableHead>Vaardigheden</TableHead>
@@ -131,6 +165,7 @@ const Candidates = () => {
               <TableBody>
                 {candidates.map((c: any, i: number) => {
                   const skills = c.skills ?? [];
+                  const profileStatus = getProfileLinkStatus(c, tokensList);
                   return (
                     <TableRow key={c.id} className={i % 2 === 1 ? 'bg-background' : ''}>
                       <TableCell>
@@ -141,6 +176,11 @@ const Candidates = () => {
                       <TableCell>
                         <Badge variant="secondary" className={statusBadge[c.status] ?? ''}>
                           {statusLabel[c.status] ?? c.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="secondary" className={profileStatus.className}>
+                          {profileStatus.label}
                         </Badge>
                       </TableCell>
                       <TableCell>{c.phone ?? '—'}</TableCell>
