@@ -228,20 +228,27 @@ const SuperAdminOrganizations = () => {
           </SheetHeader>
           <div className="mt-6 space-y-4 overflow-y-auto max-h-[calc(100vh-8rem)]">
             <p className="text-zinc-400 text-sm">Schakel modules in of uit voor deze organisatie. Overrides hebben voorrang op het abonnement.</p>
-            <div className="space-y-3 pb-4">
-              {ALL_MODULES.map((mod) => (
-                <div key={mod.key} className="flex items-center justify-between py-2 px-3 bg-zinc-800 rounded-lg">
-                  <span className="text-sm text-white">{mod.label}</span>
-                  <Switch
-                    checked={getModuleEnabled(mod.key)}
-                    onCheckedChange={(enabled) =>
-                      toggleModule.mutate({
-                        orgId: selectedOrg.id,
-                        moduleName: mod.key,
-                        enabled,
-                      })
-                    }
-                  />
+            <div className="space-y-5 pb-4">
+              {Array.from(new Set(ALL_MODULES.map(m => m.group))).map(group => (
+                <div key={group}>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2 px-1">{group}</p>
+                  <div className="space-y-2">
+                    {ALL_MODULES.filter(m => m.group === group).map((mod) => (
+                      <div key={mod.key} className="flex items-center justify-between py-2 px-3 bg-zinc-800 rounded-lg">
+                        <span className="text-sm text-white">{mod.label}</span>
+                        <Switch
+                          checked={getModuleEnabled(mod.key)}
+                          onCheckedChange={(enabled) =>
+                            toggleModule.mutate({
+                              orgId: selectedOrg.id,
+                              moduleName: mod.key,
+                              enabled,
+                            })
+                          }
+                        />
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
