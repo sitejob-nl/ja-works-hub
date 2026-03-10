@@ -85,6 +85,7 @@ Deno.serve(async (req) => {
       .from("employees")
       .update({
         auth_user_id: newUserId,
+        portal_enabled: true,
         portal_activated_at: new Date().toISOString(),
         portal_language: language || "nl",
       })
