@@ -24,10 +24,10 @@ const statusLabel: Record<string, string> = {
 };
 
 const Transport = () => {
+  const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [page, setPage] = useState(0);
-  const [slideOverOpen, setSlideOverOpen] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['vehicles', search, statusFilter, page],
