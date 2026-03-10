@@ -134,11 +134,11 @@ Deno.serve(async (req) => {
 
     // Send via Meta API
     const metaRes = await fetch(
-      `https://graph.facebook.com/v25.0/${config.phone_number_id}/messages`,
+      `https://graph.facebook.com/v25.0/${phoneNumberId}/messages`,
       {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${config.access_token}`,
+          Authorization: `Bearer ${accessToken}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
