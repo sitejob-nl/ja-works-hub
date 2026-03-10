@@ -20,7 +20,8 @@ const fuelTypes = ['benzine', 'diesel', 'elektrisch', 'hybride', 'lpg'];
 
 const emptyForm = {
   license_plate: '', brand: '', model: '', year: '', fuel_type: '',
-  current_mileage: '', status: 'beschikbaar', notes: '',
+  current_mileage: '', tank_capacity_liters: '', fuel_card_reference: '',
+  avg_consumption_per_100km: '', status: 'beschikbaar', notes: '',
 };
 
 const VehicleSlideOver = ({ open, onOpenChange, vehicle }: Props) => {
@@ -38,6 +39,9 @@ const VehicleSlideOver = ({ open, onOpenChange, vehicle }: Props) => {
         year: vehicle.year?.toString() ?? '',
         fuel_type: vehicle.fuel_type ?? '',
         current_mileage: vehicle.current_mileage?.toString() ?? '',
+        tank_capacity_liters: vehicle.tank_capacity_liters?.toString() ?? '',
+        fuel_card_reference: vehicle.fuel_card_reference ?? '',
+        avg_consumption_per_100km: vehicle.avg_consumption_per_100km?.toString() ?? '',
         status: vehicle.status ?? 'beschikbaar',
         notes: vehicle.notes ?? '',
       });
@@ -57,6 +61,9 @@ const VehicleSlideOver = ({ open, onOpenChange, vehicle }: Props) => {
         year: form.year ? parseInt(form.year) : null,
         fuel_type: form.fuel_type || null,
         current_mileage: form.current_mileage ? parseInt(form.current_mileage) : null,
+        tank_capacity_liters: form.tank_capacity_liters ? parseFloat(form.tank_capacity_liters) : null,
+        fuel_card_reference: form.fuel_card_reference || null,
+        avg_consumption_per_100km: form.avg_consumption_per_100km ? parseFloat(form.avg_consumption_per_100km) : null,
         status: form.status as any,
         notes: form.notes || null,
       };
@@ -100,6 +107,19 @@ const VehicleSlideOver = ({ open, onOpenChange, vehicle }: Props) => {
             </div>
           </div>
           <div><Label>Kilometerstand</Label><Input type="number" value={form.current_mileage} onChange={(e) => set('current_mileage', e.target.value)} /></div>
+
+          {/* Tankgegevens */}
+          <div className="pt-2">
+            <p className="text-sm font-medium text-muted-foreground mb-3">Tankgegevens</p>
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label>Tankcapaciteit (liter)</Label><Input type="number" value={form.tank_capacity_liters} onChange={(e) => set('tank_capacity_liters', e.target.value)} placeholder="bijv. 50" /></div>
+                <div><Label>Gem. verbruik (l/100km)</Label><Input type="number" step="0.1" value={form.avg_consumption_per_100km} onChange={(e) => set('avg_consumption_per_100km', e.target.value)} placeholder="bijv. 6.5" /></div>
+              </div>
+              <div><Label>Tankpas referentie</Label><Input value={form.fuel_card_reference} onChange={(e) => set('fuel_card_reference', e.target.value)} placeholder="Q8 pasnummer" /></div>
+            </div>
+          </div>
+
           <div>
             <Label>Status</Label>
             <Select value={form.status} onValueChange={(v) => set('status', v)}>
