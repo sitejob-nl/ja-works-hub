@@ -107,6 +107,19 @@ const VehicleSlideOver = ({ open, onOpenChange, vehicle }: Props) => {
             </div>
           </div>
           <div><Label>Kilometerstand</Label><Input type="number" value={form.current_mileage} onChange={(e) => set('current_mileage', e.target.value)} /></div>
+
+          {/* Tankgegevens */}
+          <div className="pt-2">
+            <p className="text-sm font-medium text-muted-foreground mb-3">Tankgegevens</p>
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label>Tankcapaciteit (liter)</Label><Input type="number" value={form.tank_capacity_liters} onChange={(e) => set('tank_capacity_liters', e.target.value)} placeholder="bijv. 50" /></div>
+                <div><Label>Gem. verbruik (l/100km)</Label><Input type="number" step="0.1" value={form.avg_consumption_per_100km} onChange={(e) => set('avg_consumption_per_100km', e.target.value)} placeholder="bijv. 6.5" /></div>
+              </div>
+              <div><Label>Tankpas referentie</Label><Input value={form.fuel_card_reference} onChange={(e) => set('fuel_card_reference', e.target.value)} placeholder="Q8 pasnummer" /></div>
+            </div>
+          </div>
+
           <div>
             <Label>Status</Label>
             <Select value={form.status} onValueChange={(v) => set('status', v)}>
