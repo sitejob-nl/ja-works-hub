@@ -70,7 +70,7 @@ const CandidateProfile = () => {
         const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
         const res = await fetch(
           `https://${projectId}.supabase.co/functions/v1/candidate-profile?token=${encodeURIComponent(token)}`,
-          { headers: { 'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY } }
+          { headers: { 'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY, 'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` } }
         );
         const data = await res.json();
 
