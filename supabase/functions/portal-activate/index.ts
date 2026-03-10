@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 Deno.serve(async (req) => {
@@ -12,7 +12,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { token, user_id, password, language } = await req.json();
+    const { token, password, language } = await req.json();
 
     if (!token || !password) {
       return new Response(
@@ -85,6 +85,7 @@ Deno.serve(async (req) => {
       .from("employees")
       .update({
         auth_user_id: newUserId,
+        portal_enabled: true,
         portal_activated_at: new Date().toISOString(),
         portal_language: language || "nl",
       })
