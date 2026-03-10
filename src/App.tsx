@@ -109,9 +109,11 @@ const App = () => (
               <Route path="/opdrachtgevers" element={<Companies />} />
               <Route path="/opdrachtgevers/new" element={<CompanyNew />} />
               <Route path="/opdrachtgevers/:id" element={<CompanyDetail />} />
+              <Route path="/opdrachtgevers/:id/bewerken" element={<CompanyEdit />} />
               <Route path="/kandidaten" element={<Candidates />} />
               <Route path="/kandidaten/new" element={<CandidateNew />} />
               <Route path="/kandidaten/:id" element={<CandidateDetail />} />
+              <Route path="/kandidaten/:id/bewerken" element={<CandidateEdit />} />
               <Route path="/medewerkers" element={<Employees />} />
               <Route path="/medewerkers/new" element={<EmployeeNew />} />
               <Route path="/medewerkers/:id" element={<EmployeeDetail />} />
@@ -120,11 +122,13 @@ const App = () => (
               <Route path="/vacatures" element={<Vacancies />} />
               <Route path="/vacatures/new" element={<VacancyNew />} />
               <Route path="/vacatures/:id" element={<VacancyDetail />} />
+              <Route path="/vacatures/:id/bewerken" element={<VacancyEdit />} />
               <Route path="/planning" element={<Planning />} />
               <Route path="/uren" element={<Timesheets />} />
               <Route path="/transport" element={<Transport />} />
               <Route path="/transport/new" element={<VehicleNew />} />
               <Route path="/transport/:id" element={<VehicleDetail />} />
+              <Route path="/transport/:id/bewerken" element={<VehicleEdit />} />
               <Route path="/tankpas-analyse" element={<FuelCardAnalysis />} />
               <Route path="/vacaturebank" element={<Vacaturebank />} />
               <Route path="/kandidaten-zoeken" element={<KandidatenZoeken />} />
