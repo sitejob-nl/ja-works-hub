@@ -122,9 +122,10 @@ const Employees = () => {
                   <TableHead>Compliance</TableHead>
                   <TableHead>Startdatum</TableHead>
                   <TableHead>Huisvesting</TableHead>
-                  <TableHead>Actieve plaatsing</TableHead>
-                </TableRow>
-              </TableHeader>
+                   <TableHead>Portaal</TableHead>
+                   <TableHead>Actieve plaatsing</TableHead>
+                 </TableRow>
+               </TableHeader>
               <TableBody>
                 {employees.map((e: any, i: number) => {
                   const c = e.candidates;
@@ -150,6 +151,9 @@ const Employees = () => {
                         {hasHousing
                           ? <Check className="h-4 w-4 text-stat-green" />
                           : <X className="h-4 w-4 text-red-500" />}
+                      </TableCell>
+                      <TableCell>
+                        <span className={`inline-block h-2.5 w-2.5 rounded-full ${e.portal_enabled ? 'bg-stat-green' : 'bg-muted-foreground/30'}`} />
                       </TableCell>
                       <TableCell>{companyName ?? '—'}</TableCell>
                     </TableRow>

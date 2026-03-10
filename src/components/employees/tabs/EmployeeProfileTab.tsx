@@ -1,5 +1,9 @@
+import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { formatDate } from '@/lib/format';
+import { Send } from 'lucide-react';
+import PortalActivateSheet from '@/components/employees/PortalActivateSheet';
 
 const Field = ({ label, value }: { label: string; value: string | null | undefined }) => (
   <div>
@@ -20,9 +24,11 @@ const statusLabel: Record<string, string> = {
 };
 
 const EmployeeProfileTab = ({ employee }: { employee: any }) => {
+  const [sheetOpen, setSheetOpen] = useState(false);
   const c = employee.candidates;
   const maskedBsn = c?.bsn ? `****${c.bsn.slice(-4)}` : '—';
   const address = [c?.address_street, c?.address_postal, c?.address_city].filter(Boolean).join(', ') || null;
+  const portalEnabled = employee.portal_enabled === true;
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -83,6 +89,39 @@ const EmployeeProfileTab = ({ employee }: { employee: any }) => {
           </p>
         </div>
       </div>
+
+      {/* Medewerkerportaal */}
+      <div className="bg-card rounded-lg border p-6 space-y-4 md:col-span-2">
+        <div className="flex items-center justify-between">
+          <h3 className="font-medium">Medewerkerportaal</h3>
+          <Badge variant="secondary" className={portalEnabled ? 'bg-stat-green/10 text-stat-green border-0' : 'bg-muted text-muted-foreground border-0'}>
+            {portalEnabled ? 'Portaal actief' : 'Portaal niet actief'}
+          </Badge>
+        </div>
+        {portalEnabled ? (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <Field label="Geactiveerd op" value={formatDate(employee.portal_activated_at)} />
+              <Field label="Taal" value={employee.portal_language === 'en' ? 'English' : 'Nederlands'} />
+              <Field label="Laatste login" value={formatDate(employee.portal_last_login) || 'Nog niet ingelogd'} />
+            </div>
+            <Button variant="outline" size="sm" className="gap-2" onClick={() => setSheetOpen(true)}>
+              <Send className="h-4 w-4" /> Nieuwe uitnodiging versturen
+            </Button>
+          </div>
+        ) : (
+          <Button size="sm" onClick={() => setSheetOpen(true)}>
+            Portaal activeren
+          </Button>
+        )}
+      </div>
+
+      <PortalActivateSheet
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+        employeeId={employee.id}
+        candidateEmail={c?.email}
+      />
     </div>
   );
 };
