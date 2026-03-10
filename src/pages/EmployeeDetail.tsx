@@ -1,12 +1,14 @@
 import { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { ChevronRight, MoreHorizontal, Pencil } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { ChevronRight, MoreHorizontal, Pencil, ClipboardList, Copy, Check, MessageCircle, Mail } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Database } from '@/integrations/supabase/types';
 
@@ -42,6 +44,9 @@ const allStatuses: EmployeeStatus[] = ['onboarding', 'actief', 'ziek', 'uit_dien
 const EmployeeDetail = () => {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
+  const navigate = useNavigate();
+  const [onboardingDialogOpen, setOnboardingDialogOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const { data: employee, isLoading } = useQuery({
     queryKey: ['employee', id],
@@ -51,6 +56,23 @@ const EmployeeDetail = () => {
         .select('*, candidates!employees_candidate_id_fkey(*)')
         .eq('id', id!)
         .single();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!id,
+  });
+
+  // Fetch onboarding token
+  const { data: onboardingToken, refetch: refetchOnboardingToken } = useQuery({
+    queryKey: ['onboarding-token', id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('onboarding_tokens')
+        .select('*')
+        .eq('employee_id', id!)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
       if (error) throw error;
       return data;
     },
@@ -69,10 +91,49 @@ const EmployeeDetail = () => {
     },
   });
 
+  const handleGenerateOnboardingLink = async () => {
+    if (!employee) return;
+    try {
+      const { data, error } = await supabase
+        .from('onboarding_tokens')
+        .insert({ employee_id: employee.id, organization_id: employee.organization_id })
+        .select('token')
+        .single();
+      if (error) throw error;
+      await refetchOnboardingToken();
+      setOnboardingDialogOpen(true);
+      toast.success('Onboardinglink aangemaakt');
+    } catch (e: any) {
+      toast.error(e.message);
+    }
+  };
+
+  const onboardingUrl = onboardingToken?.token ? `${window.location.origin}/onboarding/${onboardingToken.token}` : '';
+  const isOnboardingTokenActive = onboardingToken && !onboardingToken.used_at && new Date(onboardingToken.expires_at) > new Date();
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(onboardingUrl);
+    setCopied(true);
+    toast.success('Link gekopieerd');
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   if (isLoading) return <div className="p-8 text-muted-foreground">Laden...</div>;
   if (!employee) return <div className="p-8 text-muted-foreground">Niet gevonden</div>;
 
   const c = employee.candidates as any;
+
+  const handleWhatsApp = () => {
+    const phone = c?.phone?.replace(/[^0-9+]/g, '') ?? '';
+    const text = `Hoi ${c?.first_name}, vul je onboarding aan via deze link: ${onboardingUrl}`;
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
+  };
+
+  const handleEmail = () => {
+    const subject = encodeURIComponent('Onboarding invullen');
+    const body = encodeURIComponent(`Hoi ${c?.first_name},\n\nVul je onboarding aan via deze link:\n${onboardingUrl}\n\nMet vriendelijke groet`);
+    window.open(`mailto:${c?.email ?? ''}?subject=${subject}&body=${body}`);
+  };
 
   return (
     <div className="space-y-6">
@@ -92,6 +153,18 @@ const EmployeeDetail = () => {
           {employee.employee_number && <p className="text-sm text-muted-foreground mt-1">#{employee.employee_number}</p>}
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => isOnboardingTokenActive ? setOnboardingDialogOpen(true) : handleGenerateOnboardingLink()}
+            className="gap-2"
+          >
+            <ClipboardList className="h-3.5 w-3.5" />
+            {isOnboardingTokenActive ? 'Onboarding versturen' : 'Onboardinglink genereren'}
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => navigate(`/kandidaten/${employee.candidate_id}/bewerken`)} className="gap-2">
+            <Pencil className="h-3.5 w-3.5" /> Bewerken
+          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
@@ -111,6 +184,38 @@ const EmployeeDetail = () => {
           </DropdownMenu>
         </div>
       </div>
+
+      {/* Onboarding Link Dialog */}
+      <Dialog open={onboardingDialogOpen} onOpenChange={setOnboardingDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Onboardinglink versturen</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Verstuur deze link naar {c?.first_name} zodat de medewerker zelf BSN, IBAN en andere gegevens kan invullen.
+            </p>
+            <div className="flex gap-2">
+              <Input value={onboardingUrl} readOnly className="font-mono text-xs" />
+              <Button variant="outline" size="icon" onClick={handleCopy}>
+                {copied ? <Check className="h-4 w-4 text-stat-green" /> : <Copy className="h-4 w-4" />}
+              </Button>
+            </div>
+            <div className="flex gap-3">
+              {c?.phone && (
+                <Button onClick={handleWhatsApp} className="gap-2 bg-[#25D366] hover:bg-[#1da851] text-white">
+                  <MessageCircle className="h-4 w-4" /> WhatsApp
+                </Button>
+              )}
+              {c?.email && (
+                <Button variant="outline" onClick={handleEmail} className="gap-2">
+                  <Mail className="h-4 w-4" /> E-mail
+                </Button>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Tabs defaultValue="profiel">
         <TabsList className="flex-wrap">
