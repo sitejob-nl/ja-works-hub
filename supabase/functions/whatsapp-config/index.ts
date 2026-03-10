@@ -24,7 +24,7 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Find org by tenant_id and verify webhook_secret
+    // Find org by tenant_id
     const { data: config, error: findError } = await serviceClient
       .from("whatsapp_config")
       .select("*")
@@ -36,7 +36,12 @@ Deno.serve(async (req) => {
       return new Response("Not found", { status: 404 });
     }
 
-    if (config.webhook_secret !== webhookSecret) {
+    // Decrypt and compare webhook_secret
+    const { data: decrypted } = await serviceClient.rpc('get_whatsapp_token', {
+      p_org_id: config.organization_id,
+    });
+
+    if (!decrypted?.[0] || decrypted[0].decrypted_webhook_secret !== webhookSecret) {
       console.error("Webhook secret mismatch");
       return new Response("Unauthorized", { status: 401 });
     }
