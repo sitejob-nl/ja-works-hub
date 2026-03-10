@@ -102,11 +102,13 @@ const VehicleDetail = () => {
           <TabsTrigger value="toewijzingen">Toewijzingen</TabsTrigger>
           <TabsTrigger value="kilometers">Kilometers</TabsTrigger>
           <TabsTrigger value="boetes">Boetes</TabsTrigger>
+          <TabsTrigger value="schade">Schademeldingen</TabsTrigger>
         </TabsList>
         <TabsContent value="gegevens"><VehicleInfoTab vehicle={vehicle} activeAssignment={activeAssignment} /></TabsContent>
         <TabsContent value="toewijzingen"><VehicleAssignmentsTab vehicle={vehicle} /></TabsContent>
         <TabsContent value="kilometers"><VehicleMileageTab vehicle={vehicle} /></TabsContent>
         <TabsContent value="boetes"><VehicleFinesTab vehicle={vehicle} /></TabsContent>
+        <TabsContent value="schade"><VehicleDamageTab vehicle={vehicle} /></TabsContent>
       </Tabs>
 
       <VehicleSlideOver open={editOpen} onOpenChange={setEditOpen} vehicle={vehicle} />
