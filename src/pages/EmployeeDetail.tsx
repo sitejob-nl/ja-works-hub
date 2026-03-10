@@ -136,34 +136,35 @@ const EmployeeDetail = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6 min-w-0">
       <div className="flex items-center gap-1 text-sm text-muted-foreground">
         <Link to="/medewerkers" className="hover:text-foreground transition-colors">Medewerkers</Link>
         <ChevronRight className="h-3 w-3" />
-        <span className="text-foreground">{c?.first_name} {c?.last_name}</span>
+        <span className="text-foreground truncate">{c?.first_name} {c?.last_name}</span>
       </div>
 
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-semibold">{c?.first_name} {c?.last_name}</h1>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-xl sm:text-2xl font-semibold truncate">{c?.first_name} {c?.last_name}</h1>
             <Badge variant="secondary" className={statusBadge[employee.status] ?? ''}>{statusLabel[employee.status] ?? employee.status}</Badge>
             <Badge variant="secondary" className={complianceBadge[c?.compliance_status] ?? ''}>{c?.compliance_status}</Badge>
           </div>
           {employee.employee_number && <p className="text-sm text-muted-foreground mt-1">#{employee.employee_number}</p>}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Button
             variant="outline"
             size="sm"
             onClick={() => isOnboardingTokenActive ? setOnboardingDialogOpen(true) : handleGenerateOnboardingLink()}
-            className="gap-2"
+            className="gap-1.5"
           >
             <ClipboardList className="h-3.5 w-3.5" />
-            {isOnboardingTokenActive ? 'Onboarding versturen' : 'Onboardinglink genereren'}
+            <span className="hidden sm:inline">{isOnboardingTokenActive ? 'Onboarding versturen' : 'Onboardinglink'}</span>
+            <span className="sm:hidden">Onboarding</span>
           </Button>
-          <Button variant="outline" size="sm" onClick={() => navigate(`/kandidaten/${employee.candidate_id}/bewerken`)} className="gap-2">
-            <Pencil className="h-3.5 w-3.5" /> Bewerken
+          <Button variant="outline" size="sm" onClick={() => navigate(`/kandidaten/${employee.candidate_id}/bewerken`)} className="gap-1.5">
+            <Pencil className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Bewerken</span>
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -218,18 +219,20 @@ const EmployeeDetail = () => {
       </Dialog>
 
       <Tabs defaultValue="profiel">
-        <TabsList className="flex-wrap">
-          <TabsTrigger value="profiel">Profiel</TabsTrigger>
-          <TabsTrigger value="onboarding">Onboarding</TabsTrigger>
-          <TabsTrigger value="documenten">Documenten</TabsTrigger>
-          <TabsTrigger value="huisvesting">Huisvesting</TabsTrigger>
-          <TabsTrigger value="plaatsingen">Plaatsingen</TabsTrigger>
-          <TabsTrigger value="uren">Uren</TabsTrigger>
-          <TabsTrigger value="transport">Transport</TabsTrigger>
-          <TabsTrigger value="ziekte">Ziekte</TabsTrigger>
-          <TabsTrigger value="reglementen">Reglementen</TabsTrigger>
-          <TabsTrigger value="contracten">Contracten</TabsTrigger>
-        </TabsList>
+        <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">
+          <TabsList className="w-max sm:w-auto">
+            <TabsTrigger value="profiel">Profiel</TabsTrigger>
+            <TabsTrigger value="onboarding">Onboarding</TabsTrigger>
+            <TabsTrigger value="documenten">Docs</TabsTrigger>
+            <TabsTrigger value="huisvesting">Woning</TabsTrigger>
+            <TabsTrigger value="plaatsingen">Plaatsing</TabsTrigger>
+            <TabsTrigger value="uren">Uren</TabsTrigger>
+            <TabsTrigger value="transport">Transport</TabsTrigger>
+            <TabsTrigger value="ziekte">Ziekte</TabsTrigger>
+            <TabsTrigger value="reglementen">Regl.</TabsTrigger>
+            <TabsTrigger value="contracten">Contract</TabsTrigger>
+          </TabsList>
+        </div>
         <TabsContent value="profiel"><EmployeeProfileTab employee={employee} /></TabsContent>
         <TabsContent value="onboarding"><EmployeeOnboardingTab employee={employee} /></TabsContent>
         <TabsContent value="documenten"><CandidateDocumentsTab candidateId={employee.candidate_id} /></TabsContent>

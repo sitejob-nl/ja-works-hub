@@ -132,34 +132,35 @@ const CandidateDetail = () => {
   if (!candidate) return <div className="p-8 text-muted-foreground">Niet gevonden</div>;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6 min-w-0">
       <div className="flex items-center gap-1 text-sm text-muted-foreground">
         <Link to="/kandidaten" className="hover:text-foreground transition-colors">Kandidaten</Link>
         <ChevronRight className="h-3 w-3" />
-        <span className="text-foreground">{candidate.first_name} {candidate.last_name}</span>
+        <span className="text-foreground truncate">{candidate.first_name} {candidate.last_name}</span>
       </div>
 
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-semibold">{candidate.first_name} {candidate.last_name}</h1>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-2 flex-wrap min-w-0">
+          <h1 className="text-xl sm:text-2xl font-semibold truncate">{candidate.first_name} {candidate.last_name}</h1>
           <Badge variant="secondary" className={statusBadge[candidate.status] ?? ''}>{statusLabel[candidate.status] ?? candidate.status}</Badge>
           <Badge variant="secondary" className={complianceBadge[candidate.compliance_status] ?? ''}>{candidate.compliance_status}</Badge>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Button
             variant="outline"
             size="sm"
             onClick={() => isTokenActive ? setLinkDialogOpen(true) : handleGenerateLink()}
-            className="gap-2"
+            className="gap-1.5"
           >
             <Link2 className="h-3.5 w-3.5" />
-            {isTokenActive ? 'Profiellink versturen' : 'Profiellink genereren'}
+            <span className="hidden sm:inline">{isTokenActive ? 'Profiellink versturen' : 'Profiellink genereren'}</span>
+            <span className="sm:hidden">Link</span>
           </Button>
-          <Button variant="outline" size="sm" onClick={() => navigate(`/cv-tool/${id}`)} className="gap-2">
-            <FileText className="h-3.5 w-3.5" /> CV Genereren
+          <Button variant="outline" size="sm" onClick={() => navigate(`/cv-tool/${id}`)} className="gap-1.5">
+            <FileText className="h-3.5 w-3.5" /> <span className="hidden sm:inline">CV Genereren</span><span className="sm:hidden">CV</span>
           </Button>
-          <Button variant="outline" size="sm" onClick={() => navigate(`/kandidaten/${id}/bewerken`)} className="gap-2">
-            <Pencil className="h-3.5 w-3.5" /> Bewerken
+          <Button variant="outline" size="sm" onClick={() => navigate(`/kandidaten/${id}/bewerken`)} className="gap-1.5">
+            <Pencil className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Bewerken</span>
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -214,14 +215,16 @@ const CandidateDetail = () => {
       </Dialog>
 
       <Tabs defaultValue="profiel">
-        <TabsList>
-          <TabsTrigger value="profiel">Profiel</TabsTrigger>
-          <TabsTrigger value="documenten">Documenten</TabsTrigger>
-          <TabsTrigger value="communicatie">Communicatie</TabsTrigger>
-          <TabsTrigger value="matches">Matches</TabsTrigger>
-          <TabsTrigger value="plaatsingen">Plaatsingen</TabsTrigger>
-          <TabsTrigger value="voorkeuren">Voorkeuren</TabsTrigger>
-        </TabsList>
+        <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">
+          <TabsList className="w-max sm:w-auto">
+            <TabsTrigger value="profiel">Profiel</TabsTrigger>
+            <TabsTrigger value="documenten">Documenten</TabsTrigger>
+            <TabsTrigger value="communicatie">Communicatie</TabsTrigger>
+            <TabsTrigger value="matches">Matches</TabsTrigger>
+            <TabsTrigger value="plaatsingen">Plaatsingen</TabsTrigger>
+            <TabsTrigger value="voorkeuren">Voorkeuren</TabsTrigger>
+          </TabsList>
+        </div>
         <TabsContent value="profiel"><CandidateProfileTab candidate={candidate} /></TabsContent>
         <TabsContent value="documenten"><CandidateDocumentsTab candidateId={id!} /></TabsContent>
         <TabsContent value="communicatie"><CandidateCommunicationTab candidateId={id!} /></TabsContent>

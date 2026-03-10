@@ -65,26 +65,26 @@ const VehicleDetail = () => {
   const assignee = activeAssignment?.employees?.candidates as any;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6 min-w-0">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Link to="/transport" className="hover:text-foreground">Transport</Link>
         <ChevronRight className="h-4 w-4" />
-        <span className="text-foreground">{vehicle.license_plate}</span>
+        <span className="text-foreground truncate">{vehicle.license_plate}</span>
       </div>
 
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">{vehicle.license_plate}</h1>
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-semibold">{vehicle.license_plate}</h1>
           <p className="text-sm text-muted-foreground">{[vehicle.brand, vehicle.model].filter(Boolean).join(' ')}</p>
-          <div className="flex items-center gap-2 mt-2">
+          <div className="flex items-center gap-2 mt-2 flex-wrap">
             <Badge variant="secondary" className={statusBadge[vehicle.status] ?? ''}>{statusLabel[vehicle.status] ?? vehicle.status}</Badge>
             {assignee && <span className="text-sm text-muted-foreground">Toegewezen aan {assignee.first_name} {assignee.last_name}</span>}
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Button variant="outline" size="sm" onClick={() => navigate(`/transport/${id}/bewerken`)} className="gap-1"><Edit className="h-4 w-4" /> Bewerken</Button>
           <DropdownMenu>
-            <DropdownMenuTrigger asChild><Button variant="outline" size="sm">Status wijzigen</Button></DropdownMenuTrigger>
+            <DropdownMenuTrigger asChild><Button variant="outline" size="sm">Status</Button></DropdownMenuTrigger>
             <DropdownMenuContent>
               {Object.entries(statusLabel).map(([k, v]) => (
                 <DropdownMenuItem key={k} onClick={() => statusMutation.mutate(k)}>{v}</DropdownMenuItem>
@@ -95,13 +95,15 @@ const VehicleDetail = () => {
       </div>
 
       <Tabs defaultValue="gegevens">
-        <TabsList>
-          <TabsTrigger value="gegevens">Gegevens</TabsTrigger>
-          <TabsTrigger value="toewijzingen">Toewijzingen</TabsTrigger>
-          <TabsTrigger value="kilometers">Kilometers</TabsTrigger>
-          <TabsTrigger value="boetes">Boetes</TabsTrigger>
-          <TabsTrigger value="schade">Schademeldingen</TabsTrigger>
-        </TabsList>
+        <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">
+          <TabsList className="w-max sm:w-auto">
+            <TabsTrigger value="gegevens">Gegevens</TabsTrigger>
+            <TabsTrigger value="toewijzingen">Toewijzingen</TabsTrigger>
+            <TabsTrigger value="kilometers">Kilometers</TabsTrigger>
+            <TabsTrigger value="boetes">Boetes</TabsTrigger>
+            <TabsTrigger value="schade">Schade</TabsTrigger>
+          </TabsList>
+        </div>
         <TabsContent value="gegevens"><VehicleInfoTab vehicle={vehicle} activeAssignment={activeAssignment} /></TabsContent>
         <TabsContent value="toewijzingen"><VehicleAssignmentsTab vehicle={vehicle} /></TabsContent>
         <TabsContent value="kilometers"><VehicleMileageTab vehicle={vehicle} /></TabsContent>

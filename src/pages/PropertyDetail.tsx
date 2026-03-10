@@ -74,17 +74,17 @@ const PropertyDetail = () => {
   const ownershipLabels: Record<string, string> = { huur: 'Huur', eigendom: 'Eigendom', beheer: 'Beheer' };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6 min-w-0">
       <div className="flex items-center gap-1 text-sm text-muted-foreground">
         <Link to="/huisvesting" className="hover:text-foreground transition-colors">Huisvesting</Link>
         <ChevronRight className="h-3 w-3" />
-        <span className="text-foreground">{property.name}</span>
+        <span className="text-foreground truncate">{property.name}</span>
       </div>
 
-      <div className="flex items-center justify-between">
-        <div className="flex-1">
-          <h1 className="text-2xl font-semibold">{property.name}</h1>
-          <p className="text-sm text-muted-foreground mt-1">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          <h1 className="text-xl sm:text-2xl font-semibold truncate">{property.name}</h1>
+          <p className="text-sm text-muted-foreground mt-1 truncate">
             {[property.address_street, property.address_postal, property.address_city].filter(Boolean).join(', ')}
           </p>
           <div className="flex items-center gap-3 mt-3 max-w-sm">
@@ -106,7 +106,7 @@ const PropertyDetail = () => {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => setEditOpen(true)} className="gap-2">
+          <Button variant="outline" size="sm" onClick={() => setEditOpen(true)} className="gap-1.5">
             <Pencil className="h-3.5 w-3.5" /> Bewerken
           </Button>
           <DropdownMenu>
@@ -121,14 +121,16 @@ const PropertyDetail = () => {
       </div>
 
       <Tabs defaultValue="kamers">
-        <TabsList className="flex-wrap">
-          <TabsTrigger value="kamers">Kamers</TabsTrigger>
-          <TabsTrigger value="bewoners">Bewoners</TabsTrigger>
-          <TabsTrigger value="kosten">Kosten</TabsTrigger>
-          <TabsTrigger value="sleutels">Sleutels</TabsTrigger>
-          <TabsTrigger value="inspecties">Inspecties</TabsTrigger>
-          <TabsTrigger value="eigenaar">Eigenaar</TabsTrigger>
-        </TabsList>
+        <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">
+          <TabsList className="w-max sm:w-auto">
+            <TabsTrigger value="kamers">Kamers</TabsTrigger>
+            <TabsTrigger value="bewoners">Bewoners</TabsTrigger>
+            <TabsTrigger value="kosten">Kosten</TabsTrigger>
+            <TabsTrigger value="sleutels">Sleutels</TabsTrigger>
+            <TabsTrigger value="inspecties">Inspecties</TabsTrigger>
+            <TabsTrigger value="eigenaar">Eigenaar</TabsTrigger>
+          </TabsList>
+        </div>
         <TabsContent value="kamers"><UnitsTab property={property} /></TabsContent>
         <TabsContent value="bewoners"><ResidentsTab property={property} /></TabsContent>
         <TabsContent value="kosten"><CostsTab property={property} /></TabsContent>

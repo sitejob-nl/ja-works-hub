@@ -45,24 +45,22 @@ const CompanyDetail = () => {
   if (!company) return <div className="p-8 text-muted-foreground">Niet gevonden</div>;
 
   return (
-    <div className="space-y-6">
-      {/* Breadcrumb */}
+    <div className="space-y-4 sm:space-y-6 min-w-0">
       <div className="flex items-center gap-1 text-sm text-muted-foreground">
         <Link to="/opdrachtgevers" className="hover:text-foreground transition-colors">Opdrachtgevers</Link>
         <ChevronRight className="h-3 w-3" />
-        <span className="text-foreground">{company.name}</span>
+        <span className="text-foreground truncate">{company.name}</span>
       </div>
 
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-semibold">{company.name}</h1>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-2 flex-wrap min-w-0">
+          <h1 className="text-xl sm:text-2xl font-semibold truncate">{company.name}</h1>
           <Badge variant={company.is_active ? 'default' : 'secondary'} className={company.is_active ? 'bg-stat-green/10 text-stat-green border-0' : ''}>
             {company.is_active ? 'Actief' : 'Inactief'}
           </Badge>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => navigate(`/opdrachtgevers/${id}/bewerken`)} className="gap-2">
+          <Button variant="outline" size="sm" onClick={() => navigate(`/opdrachtgevers/${id}/bewerken`)} className="gap-1.5">
             <Pencil className="h-3.5 w-3.5" /> Bewerken
           </Button>
           <DropdownMenu>
@@ -78,16 +76,17 @@ const CompanyDetail = () => {
         </div>
       </div>
 
-      {/* Tabs */}
       <Tabs defaultValue="gegevens">
-        <TabsList>
-          <TabsTrigger value="gegevens">Gegevens</TabsTrigger>
-          <TabsTrigger value="contacten">Contactpersonen</TabsTrigger>
-          <TabsTrigger value="tarieven">Tariefafspraken</TabsTrigger>
-          <TabsTrigger value="sla">SLA</TabsTrigger>
-          <TabsTrigger value="communicatie">Communicatie</TabsTrigger>
-          <TabsTrigger value="plaatsingen">Plaatsingen</TabsTrigger>
-        </TabsList>
+        <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">
+          <TabsList className="w-max sm:w-auto">
+            <TabsTrigger value="gegevens">Gegevens</TabsTrigger>
+            <TabsTrigger value="contacten">Contacten</TabsTrigger>
+            <TabsTrigger value="tarieven">Tarieven</TabsTrigger>
+            <TabsTrigger value="sla">SLA</TabsTrigger>
+            <TabsTrigger value="communicatie">Comm.</TabsTrigger>
+            <TabsTrigger value="plaatsingen">Plaatsingen</TabsTrigger>
+          </TabsList>
+        </div>
         <TabsContent value="gegevens"><CompanyInfoTab company={company} /></TabsContent>
         <TabsContent value="contacten"><ContactsTab companyId={id!} /></TabsContent>
         <TabsContent value="tarieven"><RateAgreementsTab companyId={id!} /></TabsContent>
