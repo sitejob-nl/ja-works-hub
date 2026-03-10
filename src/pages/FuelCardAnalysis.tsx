@@ -505,7 +505,7 @@ const ImportSheet = ({ open, onOpenChange, orgId, onDone }: { open: boolean; onO
 
         {step === 3 && result && (
           <div className="mt-6 space-y-4 text-center py-8">
-            <CheckCircle2 className="h-12 w-12 text-green-500 mx-auto" />
+            <CheckCircle2 className="h-12 w-12 text-primary mx-auto" />
             <p className="text-lg font-semibold">{result.imported} transacties geïmporteerd</p>
             {result.flags > 0 ? (
               <Badge variant="destructive" className="text-sm">{result.flags} afwijkingen gedetecteerd</Badge>
