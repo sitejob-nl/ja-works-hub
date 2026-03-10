@@ -107,8 +107,10 @@ const Transport = () => {
           <h1 className="text-2xl font-semibold">Transport</h1>
           <p className="text-muted-foreground text-sm mt-1">Voertuigen, toewijzingen en kilometerregistratie</p>
         </div>
-        <Button onClick={() => setSlideOverOpen(true)} className="gap-2"><Plus className="h-4 w-4" /> Nieuw voertuig</Button>
-      </div>
+        <div className="flex gap-2">
+          <Button asChild variant="outline" className="gap-2"><Link to="/tankpas-analyse"><Fuel className="h-4 w-4" /> Tankpas analyse</Link></Button>
+          <Button onClick={() => setSlideOverOpen(true)} className="gap-2"><Plus className="h-4 w-4" /> Nieuw voertuig</Button>
+        </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
