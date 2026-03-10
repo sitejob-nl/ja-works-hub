@@ -20,6 +20,7 @@ import NotFound from "./pages/NotFound";
 import SettingsPage from "@/pages/Settings";
 import Planning from "@/pages/Planning";
 import Companies from "@/pages/Companies";
+import CompanyNew from "@/pages/CompanyNew";
 import CompanyDetail from "@/pages/CompanyDetail";
 import Candidates from "@/pages/Candidates";
 import CandidateNew from "@/pages/CandidateNew";
