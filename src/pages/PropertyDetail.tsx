@@ -66,6 +66,13 @@ const PropertyDetail = () => {
   const pct = totalCapacity > 0 ? Math.round((currentOccupancy / totalCapacity) * 100) : 0;
   const barColor = pct >= 90 ? 'bg-red-500' : pct >= 70 ? 'bg-orange-500' : 'bg-stat-green';
 
+  const totalMaandlasten = [
+    property.monthly_rent, property.cost_gas, property.cost_water,
+    property.cost_electra, property.cost_municipal_tax, property.cost_other,
+  ].reduce((s: number, v: any) => s + (Number(v) || 0), 0);
+
+  const ownershipLabels: Record<string, string> = { huur: 'Huur', eigendom: 'Eigendom', beheer: 'Beheer' };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-1 text-sm text-muted-foreground">
