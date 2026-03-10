@@ -112,7 +112,7 @@ const Transport = () => {
           <Button onClick={() => setSlideOverOpen(true)} className="gap-2"><Plus className="h-4 w-4" /> Nieuw voertuig</Button>
         </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
         {[
           { label: 'Totaal voertuigen', value: stats.total },
           { label: 'Beschikbaar', value: stats.beschikbaar },
@@ -124,6 +124,14 @@ const Transport = () => {
             <div className="text-lg font-semibold">{s.value}</div>
           </div>
         ))}
+        <Link to="/tankpas-analyse" className={`bg-card border rounded-lg p-3 hover:ring-2 hover:ring-ring transition ${fuelFlagCount > 0 ? 'border-destructive bg-destructive/5' : ''}`}>
+          <div className="text-xs text-muted-foreground">Afwijkingen tankpas</div>
+          <div className={`text-lg font-semibold ${fuelFlagCount > 0 ? 'text-destructive' : ''}`}>{fuelFlagCount}</div>
+        </Link>
+        <div className={`bg-card border rounded-lg p-3 ${openDamageCount > 0 ? 'border-orange-400 bg-orange-50 dark:bg-orange-950/20' : ''}`}>
+          <div className="text-xs text-muted-foreground">Open schademeldingen</div>
+          <div className={`text-lg font-semibold ${openDamageCount > 0 ? 'text-orange-600' : ''}`}>{openDamageCount}</div>
+        </div>
       </div>
 
       <div className="flex items-center gap-3 flex-wrap">
