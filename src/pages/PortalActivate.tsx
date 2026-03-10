@@ -58,12 +58,20 @@ const PortalActivate = () => {
 
     setSubmitting(true);
     try {
-      const res = await supabase.functions.invoke('portal-activate', {
-        body: { token, password, language },
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+      const res = await fetch(`${supabaseUrl}/functions/v1/portal-activate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': anonKey,
+          'Authorization': `Bearer ${anonKey}`,
+        },
+        body: JSON.stringify({ token, password, language }),
       });
+      const data = await res.json();
 
-      if (res.error) throw new Error(res.error.message);
-      if (res.data?.error) throw new Error(res.data.error);
+      if (!res.ok || data?.error) throw new Error(data?.error || 'Activatie mislukt');
 
       setActivated(true);
       toast.success('Account aangemaakt!');
