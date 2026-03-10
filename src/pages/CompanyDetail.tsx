@@ -8,7 +8,6 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { ChevronRight, MoreHorizontal, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import CompanyInfoTab from '@/components/companies/tabs/CompanyInfoTab';
-import CompanyInfoTab from '@/components/companies/tabs/CompanyInfoTab';
 import ContactsTab from '@/components/companies/tabs/ContactsTab';
 import RateAgreementsTab from '@/components/companies/tabs/RateAgreementsTab';
 import SlaTab from '@/components/companies/tabs/SlaTab';
