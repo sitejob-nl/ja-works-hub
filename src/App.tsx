@@ -129,6 +129,7 @@ const App = () => (
               <PortalProvider><PortalLayout /></PortalProvider>
             }>
               <Route index element={<PortalDashboard />} />
+              <Route path="uren" element={<PortalTimesheets />} />
             </Route>
             <Route path="/installeren" element={<Installeren />} />
             <Route path="*" element={<NotFound />} />
