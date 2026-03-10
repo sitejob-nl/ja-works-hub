@@ -122,6 +122,13 @@ const App = () => (
             <Route path="/onboarding/:token" element={<Onboarding />} />
             <Route path="/contract/sign/:token" element={<ContractSign />} />
             <Route path="/portaal/activeren/:token" element={<PortalActivate />} />
+            <Route path="/portaal/login" element={<PortalLogin />} />
+            {/* Portal (medewerker) routes */}
+            <Route path="/portaal" element={
+              <PortalProvider><PortalLayout /></PortalProvider>
+            }>
+              <Route index element={<PortalDashboard />} />
+            </Route>
             <Route path="/installeren" element={<Installeren />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
