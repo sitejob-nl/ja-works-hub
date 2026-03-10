@@ -62,7 +62,7 @@ const ACTION_ICONS: Record<string, React.ElementType> = {
 };
 
 const Dashboard = () => {
-  const { profile } = useAuth();
+  const { profile, user } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [stats, setStats] = useState({
@@ -71,6 +71,21 @@ const Dashboard = () => {
     occupancyRate: '0%',
     weeklyHours: 0,
   });
+
+  // Onboarding wizard state
+  const storageKey = user ? `sitejob_onboarded_${user.id}` : null;
+  const [showOnboarding, setShowOnboarding] = useState(false);
+
+  useEffect(() => {
+    if (storageKey && !localStorage.getItem(storageKey)) {
+      setShowOnboarding(true);
+    }
+  }, [storageKey]);
+
+  const handleOnboardingComplete = () => {
+    if (storageKey) localStorage.setItem(storageKey, '1');
+    setShowOnboarding(false);
+  };
 
   const firstName = profile?.full_name?.split(' ')[0] ?? '';
 
