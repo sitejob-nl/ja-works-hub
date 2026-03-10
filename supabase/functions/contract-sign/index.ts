@@ -2,7 +2,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 Deno.serve(async (req) => {
@@ -49,10 +50,17 @@ Deno.serve(async (req) => {
         });
       }
 
-      return new Response(JSON.stringify({ contract }), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      if (contract.status === "getekend") {
+        return new Response(
+          JSON.stringify({ contract: { title: contract.title, status: contract.status, signed_at: contract.signed_at } }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      return new Response(
+        JSON.stringify({ contract: { title: contract.title, content: contract.content, status: contract.status } }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     // POST — sign the contract
@@ -67,7 +75,6 @@ Deno.serve(async (req) => {
         });
       }
 
-      // Fetch contract to verify it exists and isn't already signed
       const { data: contract, error: fetchError } = await supabase
         .from("contracts")
         .select("id, status")
@@ -82,25 +89,26 @@ Deno.serve(async (req) => {
       }
 
       if (contract.status === "getekend") {
-        return new Response(JSON.stringify({ error: "Contract is al ondertekend", already_signed: true }), {
-          status: 409,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        return new Response(
+          JSON.stringify({ error: "Contract is al ondertekend", already_signed: true }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
       }
 
-      // Get client IP from headers
-      const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
-        || req.headers.get("x-real-ip")
-        || "onbekend";
+      const clientIp =
+        req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+        req.headers.get("x-real-ip") ||
+        "onbekend";
 
       const signedAt = new Date().toISOString();
+      const timestamp = new Date().toLocaleString("nl-NL", { timeZone: "Europe/Amsterdam" });
 
       const { error: updateError } = await supabase
         .from("contracts")
         .update({
           status: "getekend",
           signed_at: signedAt,
-          pdf_url: `Digitaal getekend door: ${full_name.trim()} op ${new Date().toLocaleString("nl-NL", { timeZone: "Europe/Amsterdam" })} | IP: ${clientIp}`,
+          pdf_url: `Digitaal getekend door: ${full_name.trim()} op ${timestamp} | IP: ${clientIp}`,
         })
         .eq("sign_token", token);
 
@@ -114,10 +122,10 @@ Deno.serve(async (req) => {
 
       console.log(`Contract ${contract.id} signed by ${full_name.trim()} from ${clientIp}`);
 
-      return new Response(JSON.stringify({ success: true, signed_at: signedAt }), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ success: true, signed_at: signedAt }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     return new Response("Method not allowed", { status: 405, headers: corsHeaders });
