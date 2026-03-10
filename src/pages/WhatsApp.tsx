@@ -212,177 +212,199 @@ const WhatsAppPage = () => {
     );
   }
 
+  const showConversationList = !isMobile || !selectedPhone;
+  const showChat = !isMobile || !!selectedPhone;
+
   return (
-    <div className="flex flex-col h-[calc(100vh-8rem)]">
-      <div className="mb-4">
-        <h1 className="text-2xl font-bold text-foreground">WhatsApp</h1>
-        <p className="text-muted-foreground text-sm">Gesprekken met kandidaten</p>
-      </div>
+    <div className="flex flex-col h-[calc(100vh-8rem)] sm:h-[calc(100vh-8rem)]">
+      {(!isMobile || !selectedPhone) && (
+        <div className="mb-4">
+          <h1 className="text-xl sm:text-2xl font-bold text-foreground">WhatsApp</h1>
+          <p className="text-muted-foreground text-sm">Gesprekken met kandidaten</p>
+        </div>
+      )}
 
       <div className="flex flex-1 min-h-0 border rounded-lg overflow-hidden bg-card">
         {/* Left: Conversation list */}
-        <div className="w-80 border-r flex flex-col shrink-0">
-          <div className="p-3 border-b">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Zoek gesprek..."
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                className="pl-9 h-9"
-              />
-            </div>
-          </div>
-          <ScrollArea className="flex-1">
-            {filteredConversations.length === 0 ? (
-              <div className="p-6 text-center text-muted-foreground text-sm">
-                <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                Geen gesprekken gevonden
+        {showConversationList && (
+          <div className={cn(
+            'border-r flex flex-col',
+            isMobile ? 'w-full' : 'w-80 shrink-0'
+          )}>
+            <div className="p-3 border-b">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Zoek gesprek..."
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  className="pl-9 h-9"
+                />
               </div>
-            ) : (
-              filteredConversations.map(conv => (
-                <button
-                  key={conv.phone}
-                  onClick={() => setSelectedPhone(conv.phone)}
-                  className={cn(
-                    'w-full text-left px-3 py-3 border-b border-border/50 hover:bg-muted/50 transition-colors',
-                    selectedPhone === conv.phone && 'bg-muted'
-                  )}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="h-10 w-10 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center shrink-0">
-                      <User className="h-5 w-5 text-green-700 dark:text-green-400" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between">
-                        <p className="font-medium text-sm text-foreground truncate">
-                          {conv.candidateName || conv.phone}
-                        </p>
-                        <span className="text-xs text-muted-foreground shrink-0 ml-2">
-                          {formatTime(conv.lastAt)}
-                        </span>
+            </div>
+            <ScrollArea className="flex-1">
+              {filteredConversations.length === 0 ? (
+                <div className="p-6 text-center text-muted-foreground text-sm">
+                  <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                  Geen gesprekken gevonden
+                </div>
+              ) : (
+                filteredConversations.map(conv => (
+                  <button
+                    key={conv.phone}
+                    onClick={() => setSelectedPhone(conv.phone)}
+                    className={cn(
+                      'w-full text-left px-3 py-3 border-b border-border/50 hover:bg-muted/50 transition-colors',
+                      selectedPhone === conv.phone && 'bg-muted'
+                    )}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="h-10 w-10 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center shrink-0">
+                        <User className="h-5 w-5 text-green-700 dark:text-green-400" />
                       </div>
-                      <div className="flex items-center gap-1 mt-0.5">
-                        {conv.lastDirection === 'outbound' && (
-                          <StatusIcon status={conv.lastStatus} />
-                        )}
-                        <p className="text-xs text-muted-foreground truncate">
-                          {conv.lastMessage}
-                        </p>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between">
+                          <p className="font-medium text-sm text-foreground truncate">
+                            {conv.candidateName || conv.phone}
+                          </p>
+                          <span className="text-xs text-muted-foreground shrink-0 ml-2">
+                            {formatTime(conv.lastAt)}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1 mt-0.5">
+                          {conv.lastDirection === 'outbound' && (
+                            <StatusIcon status={conv.lastStatus} />
+                          )}
+                          <p className="text-xs text-muted-foreground truncate">
+                            {conv.lastMessage}
+                          </p>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </button>
-              ))
-            )}
-          </ScrollArea>
-        </div>
+                  </button>
+                ))
+              )}
+            </ScrollArea>
+          </div>
+        )}
 
         {/* Right: Chat thread */}
-        <div className="flex-1 flex flex-col min-w-0">
-          {selectedPhone ? (
-            <>
-              {/* Chat header */}
-              <div className="h-14 border-b flex items-center justify-between px-4 shrink-0">
-                <div className="flex items-center gap-3">
-                  <div className="h-9 w-9 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-                    <User className="h-4 w-4 text-green-700 dark:text-green-400" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-sm text-foreground">
-                      {selectedConversation?.candidateName || selectedPhone}
-                    </p>
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                      <Phone className="h-3 w-3" />
-                      +{selectedPhone}
+        {showChat && (
+          <div className="flex-1 flex flex-col min-w-0">
+            {selectedPhone ? (
+              <>
+                {/* Chat header */}
+                <div className="h-14 border-b flex items-center justify-between px-3 sm:px-4 shrink-0">
+                  <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                    {isMobile && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="shrink-0 -ml-1"
+                        onClick={() => setSelectedPhone(null)}
+                      >
+                        <ArrowLeft className="h-5 w-5" />
+                      </Button>
+                    )}
+                    <div className="h-9 w-9 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center shrink-0">
+                      <User className="h-4 w-4 text-green-700 dark:text-green-400" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-medium text-sm text-foreground truncate">
+                        {selectedConversation?.candidateName || selectedPhone}
+                      </p>
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <Phone className="h-3 w-3 shrink-0" />
+                        <span className="truncate">+{selectedPhone}</span>
+                      </div>
                     </div>
                   </div>
+                  {selectedConversation?.candidateId && (
+                    <Link to={`/kandidaten/${selectedConversation.candidateId}`}>
+                      <Badge variant="outline" className="text-xs cursor-pointer hover:bg-muted shrink-0 whitespace-nowrap">
+                        {isMobile ? 'Profiel' : 'Profiel bekijken'}
+                      </Badge>
+                    </Link>
+                  )}
                 </div>
-                {selectedConversation?.candidateId && (
-                  <Link to={`/kandidaten/${selectedConversation.candidateId}`}>
-                    <Badge variant="outline" className="text-xs cursor-pointer hover:bg-muted">
-                      Profiel bekijken
-                    </Badge>
-                  </Link>
-                )}
-              </div>
 
-              {/* Messages */}
-              <ScrollArea className="flex-1 p-4">
-                <div className="space-y-1 max-w-3xl mx-auto">
-                  {groupedMessages.map((group, gi) => (
-                    <div key={gi}>
-                      <div className="flex justify-center my-4">
-                        <span className="text-xs bg-muted text-muted-foreground px-3 py-1 rounded-full">
-                          {formatDateLabel(group.date)}
-                        </span>
-                      </div>
-                      {group.messages.map(msg => (
-                        <div
-                          key={msg.id}
-                          className={cn(
-                            'flex mb-1',
-                            msg.direction === 'outbound' ? 'justify-end' : 'justify-start'
-                          )}
-                        >
+                {/* Messages */}
+                <ScrollArea className="flex-1 p-3 sm:p-4">
+                  <div className="space-y-1 max-w-3xl mx-auto">
+                    {groupedMessages.map((group, gi) => (
+                      <div key={gi}>
+                        <div className="flex justify-center my-4">
+                          <span className="text-xs bg-muted text-muted-foreground px-3 py-1 rounded-full">
+                            {formatDateLabel(group.date)}
+                          </span>
+                        </div>
+                        {group.messages.map(msg => (
                           <div
+                            key={msg.id}
                             className={cn(
-                              'max-w-[75%] rounded-lg px-3 py-2 text-sm',
-                              msg.direction === 'outbound'
-                                ? 'bg-green-600 text-white rounded-br-sm'
-                                : 'bg-muted text-foreground rounded-bl-sm'
+                              'flex mb-1',
+                              msg.direction === 'outbound' ? 'justify-end' : 'justify-start'
                             )}
                           >
-                            <p className="whitespace-pre-wrap break-words">{msg.body}</p>
-                            <div className={cn(
-                              'flex items-center gap-1 justify-end mt-1',
-                              msg.direction === 'outbound' ? 'text-green-200' : 'text-muted-foreground'
-                            )}>
-                              <span className="text-[10px]">{formatFullTime(msg.sent_at)}</span>
-                              {msg.direction === 'outbound' && (
-                                <StatusIcon status={msg.whatsapp_status} />
+                            <div
+                              className={cn(
+                                'max-w-[85%] sm:max-w-[75%] rounded-lg px-3 py-2 text-sm',
+                                msg.direction === 'outbound'
+                                  ? 'bg-green-600 text-white rounded-br-sm'
+                                  : 'bg-muted text-foreground rounded-bl-sm'
                               )}
+                            >
+                              <p className="whitespace-pre-wrap break-words">{msg.body}</p>
+                              <div className={cn(
+                                'flex items-center gap-1 justify-end mt-1',
+                                msg.direction === 'outbound' ? 'text-green-200' : 'text-muted-foreground'
+                              )}>
+                                <span className="text-[10px]">{formatFullTime(msg.sent_at)}</span>
+                                {msg.direction === 'outbound' && (
+                                  <StatusIcon status={msg.whatsapp_status} />
+                                )}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  ))}
-                  <div ref={messagesEndRef} />
-                </div>
-              </ScrollArea>
+                        ))}
+                      </div>
+                    ))}
+                    <div ref={messagesEndRef} />
+                  </div>
+                </ScrollArea>
 
-              {/* Input */}
-              <div className="border-t p-3 shrink-0">
-                <div className="flex items-center gap-2 max-w-3xl mx-auto">
-                  <Input
-                    placeholder="Typ een bericht..."
-                    value={message}
-                    onChange={e => setMessage(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    disabled={sending}
-                    className="flex-1"
-                  />
-                  <Button
-                    onClick={handleSend}
-                    disabled={!message.trim() || sending}
-                    size="icon"
-                    className="bg-green-600 hover:bg-green-700 shrink-0"
-                  >
-                    {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                  </Button>
+                {/* Input */}
+                <div className="border-t p-2 sm:p-3 shrink-0">
+                  <div className="flex items-center gap-2 max-w-3xl mx-auto">
+                    <Input
+                      placeholder="Typ een bericht..."
+                      value={message}
+                      onChange={e => setMessage(e.target.value)}
+                      onKeyDown={handleKeyDown}
+                      disabled={sending}
+                      className="flex-1"
+                    />
+                    <Button
+                      onClick={handleSend}
+                      disabled={!message.trim() || sending}
+                      size="icon"
+                      className="bg-green-600 hover:bg-green-700 shrink-0"
+                    >
+                      {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-muted-foreground">
+                <div className="text-center space-y-2">
+                  <MessageSquare className="h-12 w-12 mx-auto opacity-30" />
+                  <p>Selecteer een gesprek</p>
                 </div>
               </div>
-            </>
-          ) : (
-            <div className="flex-1 flex items-center justify-center text-muted-foreground">
-              <div className="text-center space-y-2">
-                <MessageSquare className="h-12 w-12 mx-auto opacity-30" />
-                <p>Selecteer een gesprek</p>
-              </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
