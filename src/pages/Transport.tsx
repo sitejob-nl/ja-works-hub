@@ -109,7 +109,7 @@ const Transport = () => {
         </div>
         <div className="flex gap-2">
           <Button asChild variant="outline" className="gap-2"><Link to="/tankpas-analyse"><Fuel className="h-4 w-4" /> Tankpas analyse</Link></Button>
-          <Button onClick={() => setSlideOverOpen(true)} className="gap-2"><Plus className="h-4 w-4" /> Nieuw voertuig</Button>
+          <Button onClick={() => navigate('/transport/new')} className="gap-2"><Plus className="h-4 w-4" /> Nieuw voertuig</Button>
         </div>
       </div>
 
