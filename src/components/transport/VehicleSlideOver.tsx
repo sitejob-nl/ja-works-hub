@@ -61,6 +61,9 @@ const VehicleSlideOver = ({ open, onOpenChange, vehicle }: Props) => {
         year: form.year ? parseInt(form.year) : null,
         fuel_type: form.fuel_type || null,
         current_mileage: form.current_mileage ? parseInt(form.current_mileage) : null,
+        tank_capacity_liters: form.tank_capacity_liters ? parseFloat(form.tank_capacity_liters) : null,
+        fuel_card_reference: form.fuel_card_reference || null,
+        avg_consumption_per_100km: form.avg_consumption_per_100km ? parseFloat(form.avg_consumption_per_100km) : null,
         status: form.status as any,
         notes: form.notes || null,
       };
