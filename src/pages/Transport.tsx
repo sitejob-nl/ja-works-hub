@@ -154,7 +154,7 @@ const Transport = () => {
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <Car className="h-12 w-12 text-muted-foreground/40 mb-4" />
           <p className="text-lg font-medium text-muted-foreground">Nog geen voertuigen</p>
-          <Button onClick={() => setSlideOverOpen(true)} variant="outline" className="mt-4 gap-2"><Plus className="h-4 w-4" /> Voeg je eerste voertuig toe</Button>
+          <Button onClick={() => navigate('/transport/new')} variant="outline" className="mt-4 gap-2"><Plus className="h-4 w-4" /> Voeg je eerste voertuig toe</Button>
         </div>
       ) : (
         <>
