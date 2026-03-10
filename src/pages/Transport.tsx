@@ -184,6 +184,7 @@ const Transport = () => {
                       <TableCell>{v.year ?? '—'}</TableCell>
                       <TableCell>{v.fuel_type ?? '—'}</TableCell>
                       <TableCell className="text-right">{v.current_mileage != null ? v.current_mileage.toLocaleString('nl-NL') : '—'}</TableCell>
+                      <TableCell className="font-mono text-xs">{v.fuel_card_reference ?? '—'}</TableCell>
                       <TableCell><Badge variant="secondary" className={statusBadge[v.status] ?? ''}>{statusLabel[v.status] ?? v.status}</Badge></TableCell>
                       <TableCell>{assignee ? `${assignee.first_name} ${assignee.last_name}` : '—'}</TableCell>
                     </TableRow>
