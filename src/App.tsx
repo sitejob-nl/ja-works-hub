@@ -47,6 +47,7 @@ import ImportData from "@/pages/ImportData";
 import Installeren from "@/pages/Installeren";
 import ContractSign from "@/pages/ContractSign";
 import Register from "@/pages/Register";
+import FuelCardAnalysis from "@/pages/FuelCardAnalysis";
 
 const queryClient = new QueryClient();
 
