@@ -28,9 +28,6 @@ const PortalLayout = () => {
   const toggleLanguage = async () => {
     if (!employee) return;
     const newLang = employee.portal_language === 'en' ? 'nl' : 'en';
-    // This is a simple client-side toggle; persisted via employee update
-    // For now just reload - in future this would update context
-    const { supabase } = await import('@/integrations/supabase/client');
     await supabase.from('employees').update({ portal_language: newLang }).eq('id', employee.id);
     window.location.reload();
   };
