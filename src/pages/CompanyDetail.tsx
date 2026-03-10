@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { ChevronRight, MoreHorizontal, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
-import CompanySlideOver from '@/components/companies/CompanySlideOver';
+import CompanyInfoTab from '@/components/companies/tabs/CompanyInfoTab';
 import CompanyInfoTab from '@/components/companies/tabs/CompanyInfoTab';
 import ContactsTab from '@/components/companies/tabs/ContactsTab';
 import RateAgreementsTab from '@/components/companies/tabs/RateAgreementsTab';
