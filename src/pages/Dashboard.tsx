@@ -335,10 +335,12 @@ const Dashboard = () => {
   const visibleAlerts = alerts.slice(0, 15);
 
   return (
-    <div>
+    <div className="space-y-4 sm:space-y-6">
       <OnboardingWizard open={showOnboarding} onComplete={handleOnboardingComplete} userName={firstName} />
-      <h1 className="text-2xl font-semibold mb-1">{getGreeting()}, {firstName}</h1>
-      <p className="text-sm text-muted-foreground mb-6">Hier is een overzicht van vandaag.</p>
+      <div>
+        <h1 className="text-xl sm:text-2xl font-semibold mb-1">{getGreeting()}, {firstName}</h1>
+        <p className="text-sm text-muted-foreground">Hier is een overzicht van vandaag.</p>
+      </div>
 
       {/* Stat cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
