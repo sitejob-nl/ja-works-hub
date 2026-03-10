@@ -105,7 +105,7 @@ const VacancyDetail = () => {
           >
             <UserSearch className="h-4 w-4" /> Zoek kandidaten
           </Button>
-          <Button variant="outline" size="sm" onClick={() => setEditOpen(true)} className="gap-1">
+          <Button variant="outline" size="sm" onClick={() => navigate(`/vacatures/${id}/bewerken`)} className="gap-1">
             <Edit className="h-4 w-4" /> Bewerken
           </Button>
           <DropdownMenu>
