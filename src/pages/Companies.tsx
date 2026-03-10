@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Building2, Plus, Search, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,16 +9,15 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
-import CompanySlideOver from '@/components/companies/CompanySlideOver';
 import ImportWizard from '@/components/import/ImportWizard';
 
 const PAGE_SIZE = 10;
 
 const Companies = () => {
+  const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [page, setPage] = useState(0);
-  const [slideOverOpen, setSlideOverOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
 
   const { data, isLoading } = useQuery({
@@ -52,7 +51,6 @@ const Companies = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Opdrachtgevers</h1>
@@ -62,27 +60,19 @@ const Companies = () => {
           <Button variant="outline" onClick={() => setImportOpen(true)} className="gap-2">
             <Upload className="h-4 w-4" /> Importeren
           </Button>
-          <Button onClick={() => setSlideOverOpen(true)} className="gap-2">
+          <Button onClick={() => navigate('/opdrachtgevers/new')} className="gap-2">
             <Plus className="h-4 w-4" /> Nieuwe opdrachtgever
           </Button>
         </div>
       </div>
 
-      {/* Filters */}
       <div className="flex items-center gap-3">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Zoek op naam of stad..."
-            value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(0); }}
-            className="pl-9"
-          />
+          <Input placeholder="Zoek op naam of stad..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} className="pl-9" />
         </div>
         <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(0); }}>
-          <SelectTrigger className="w-36">
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
+          <SelectTrigger className="w-36"><SelectValue placeholder="Status" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Alle</SelectItem>
             <SelectItem value="actief">Actief</SelectItem>
@@ -92,12 +82,11 @@ const Companies = () => {
         <span className="text-sm text-muted-foreground">{total} opdrachtgevers</span>
       </div>
 
-      {/* Table or empty state */}
       {!isLoading && companies.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <Building2 className="h-12 w-12 text-muted-foreground/40 mb-4" />
           <p className="text-lg font-medium text-muted-foreground">Nog geen opdrachtgevers</p>
-          <Button onClick={() => setSlideOverOpen(true)} variant="outline" className="mt-4 gap-2">
+          <Button onClick={() => navigate('/opdrachtgevers/new')} variant="outline" className="mt-4 gap-2">
             <Plus className="h-4 w-4" /> Voeg je eerste opdrachtgever toe
           </Button>
         </div>
@@ -162,7 +151,6 @@ const Companies = () => {
         </>
       )}
 
-      <CompanySlideOver open={slideOverOpen} onOpenChange={setSlideOverOpen} />
       <ImportWizard open={importOpen} onOpenChange={setImportOpen} target="companies" />
     </div>
   );

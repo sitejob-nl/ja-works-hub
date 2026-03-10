@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Users, Plus, Search, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,7 +9,6 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
-import CandidateSlideOver from '@/components/candidates/CandidateSlideOver';
 import ImportWizard from '@/components/import/ImportWizard';
 
 const PAGE_SIZE = 10;
@@ -30,20 +29,16 @@ const complianceBadge: Record<string, string> = {
 };
 
 const statusLabel: Record<string, string> = {
-  nieuw: 'Nieuw',
-  in_behandeling: 'In behandeling',
-  beschikbaar: 'Beschikbaar',
-  geplaatst: 'Geplaatst',
-  inactief: 'Inactief',
-  afgewezen: 'Afgewezen',
+  nieuw: 'Nieuw', in_behandeling: 'In behandeling', beschikbaar: 'Beschikbaar',
+  geplaatst: 'Geplaatst', inactief: 'Inactief', afgewezen: 'Afgewezen',
 };
 
 const Candidates = () => {
+  const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [complianceFilter, setComplianceFilter] = useState('all');
   const [page, setPage] = useState(0);
-  const [slideOverOpen, setSlideOverOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importPreset, setImportPreset] = useState<'carerix' | 'buddy' | null>(null);
 
@@ -51,15 +46,12 @@ const Candidates = () => {
     queryKey: ['candidates', search, statusFilter, complianceFilter, page],
     queryFn: async () => {
       let query = supabase.from('candidates').select('*', { count: 'exact' });
-
       if (search) {
         query = query.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,address_city.ilike.%${search}%,email.ilike.%${search}%`);
       }
       if (statusFilter !== 'all') query = query.eq('status', statusFilter as any);
       if (complianceFilter !== 'all') query = query.eq('compliance_status', complianceFilter as any);
-
       query = query.order('created_at', { ascending: false }).range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
-
       const { data, count, error } = await query;
       if (error) throw error;
       return { candidates: data ?? [], total: count ?? 0 };
@@ -84,7 +76,7 @@ const Candidates = () => {
           <Button variant="outline" onClick={() => { setImportPreset('buddy'); setImportOpen(true); }} className="gap-2">
             <Upload className="h-4 w-4" /> Buddy import
           </Button>
-          <Button onClick={() => setSlideOverOpen(true)} className="gap-2">
+          <Button onClick={() => navigate('/kandidaten/new')} className="gap-2">
             <Plus className="h-4 w-4" /> Nieuwe kandidaat
           </Button>
         </div>
@@ -118,7 +110,7 @@ const Candidates = () => {
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <Users className="h-12 w-12 text-muted-foreground/40 mb-4" />
           <p className="text-lg font-medium text-muted-foreground">Nog geen kandidaten</p>
-          <Button onClick={() => setSlideOverOpen(true)} variant="outline" className="mt-4 gap-2">
+          <Button onClick={() => navigate('/kandidaten/new')} variant="outline" className="mt-4 gap-2">
             <Plus className="h-4 w-4" /> Voeg je eerste kandidaat toe
           </Button>
         </div>
@@ -193,7 +185,6 @@ const Candidates = () => {
         </>
       )}
 
-      <CandidateSlideOver open={slideOverOpen} onOpenChange={setSlideOverOpen} />
       <ImportWizard open={importOpen} onOpenChange={setImportOpen} target="candidates" preset={importPreset} />
     </div>
   );

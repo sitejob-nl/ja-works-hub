@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Car, Plus, Search, Fuel } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
-import VehicleSlideOver from '@/components/transport/VehicleSlideOver';
+
 
 const PAGE_SIZE = 10;
 
@@ -24,10 +24,10 @@ const statusLabel: Record<string, string> = {
 };
 
 const Transport = () => {
+  const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [page, setPage] = useState(0);
-  const [slideOverOpen, setSlideOverOpen] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['vehicles', search, statusFilter, page],
@@ -109,7 +109,7 @@ const Transport = () => {
         </div>
         <div className="flex gap-2">
           <Button asChild variant="outline" className="gap-2"><Link to="/tankpas-analyse"><Fuel className="h-4 w-4" /> Tankpas analyse</Link></Button>
-          <Button onClick={() => setSlideOverOpen(true)} className="gap-2"><Plus className="h-4 w-4" /> Nieuw voertuig</Button>
+          <Button onClick={() => navigate('/transport/new')} className="gap-2"><Plus className="h-4 w-4" /> Nieuw voertuig</Button>
         </div>
       </div>
 
@@ -154,7 +154,7 @@ const Transport = () => {
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <Car className="h-12 w-12 text-muted-foreground/40 mb-4" />
           <p className="text-lg font-medium text-muted-foreground">Nog geen voertuigen</p>
-          <Button onClick={() => setSlideOverOpen(true)} variant="outline" className="mt-4 gap-2"><Plus className="h-4 w-4" /> Voeg je eerste voertuig toe</Button>
+          <Button onClick={() => navigate('/transport/new')} variant="outline" className="mt-4 gap-2"><Plus className="h-4 w-4" /> Voeg je eerste voertuig toe</Button>
         </div>
       ) : (
         <>
@@ -208,7 +208,7 @@ const Transport = () => {
         </>
       )}
 
-      <VehicleSlideOver open={slideOverOpen} onOpenChange={setSlideOverOpen} />
+      
     </div>
   );
 };

@@ -217,6 +217,54 @@ export type Database = {
           },
         ]
       }
+      candidate_profile_tokens: {
+        Row: {
+          candidate_id: string
+          created_at: string
+          expires_at: string
+          id: string
+          last_accessed_at: string | null
+          organization_id: string
+          token: string
+          used_at: string | null
+        }
+        Insert: {
+          candidate_id: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          last_accessed_at?: string | null
+          organization_id: string
+          token?: string
+          used_at?: string | null
+        }
+        Update: {
+          candidate_id?: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          last_accessed_at?: string | null
+          organization_id?: string
+          token?: string
+          used_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "candidate_profile_tokens_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "candidate_profile_tokens_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       candidate_signup_links: {
         Row: {
           created_at: string
