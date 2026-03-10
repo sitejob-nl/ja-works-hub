@@ -1923,11 +1923,321 @@ export type Database = {
           },
         ]
       }
+      onboarding_form_fields: {
+        Row: {
+          conditional_field_id: string | null
+          conditional_value: string | null
+          created_at: string
+          document_type: string | null
+          field_type: string
+          help_text: string | null
+          id: string
+          is_active: boolean | null
+          is_required: boolean | null
+          label: string
+          maps_to_column: string | null
+          maps_to_table: string | null
+          max_value: number | null
+          min_value: number | null
+          options: Json | null
+          organization_id: string
+          placeholder: string | null
+          require_expiry_date: boolean | null
+          sort_order: number
+          step_id: string
+          validation_message: string | null
+          validation_regex: string | null
+          width: string | null
+        }
+        Insert: {
+          conditional_field_id?: string | null
+          conditional_value?: string | null
+          created_at?: string
+          document_type?: string | null
+          field_type: string
+          help_text?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_required?: boolean | null
+          label: string
+          maps_to_column?: string | null
+          maps_to_table?: string | null
+          max_value?: number | null
+          min_value?: number | null
+          options?: Json | null
+          organization_id: string
+          placeholder?: string | null
+          require_expiry_date?: boolean | null
+          sort_order?: number
+          step_id: string
+          validation_message?: string | null
+          validation_regex?: string | null
+          width?: string | null
+        }
+        Update: {
+          conditional_field_id?: string | null
+          conditional_value?: string | null
+          created_at?: string
+          document_type?: string | null
+          field_type?: string
+          help_text?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_required?: boolean | null
+          label?: string
+          maps_to_column?: string | null
+          maps_to_table?: string | null
+          max_value?: number | null
+          min_value?: number | null
+          options?: Json | null
+          organization_id?: string
+          placeholder?: string | null
+          require_expiry_date?: boolean | null
+          sort_order?: number
+          step_id?: string
+          validation_message?: string | null
+          validation_regex?: string | null
+          width?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "onboarding_form_fields_conditional_field_id_fkey"
+            columns: ["conditional_field_id"]
+            isOneToOne: false
+            referencedRelation: "onboarding_form_fields"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_form_fields_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_form_fields_step_id_fkey"
+            columns: ["step_id"]
+            isOneToOne: false
+            referencedRelation: "onboarding_form_steps"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      onboarding_form_regulations: {
+        Row: {
+          form_id: string
+          id: string
+          is_required: boolean | null
+          regulation_id: string
+          sort_order: number | null
+        }
+        Insert: {
+          form_id: string
+          id?: string
+          is_required?: boolean | null
+          regulation_id: string
+          sort_order?: number | null
+        }
+        Update: {
+          form_id?: string
+          id?: string
+          is_required?: boolean | null
+          regulation_id?: string
+          sort_order?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "onboarding_form_regulations_form_id_fkey"
+            columns: ["form_id"]
+            isOneToOne: false
+            referencedRelation: "onboarding_forms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_form_regulations_regulation_id_fkey"
+            columns: ["regulation_id"]
+            isOneToOne: false
+            referencedRelation: "regulations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      onboarding_form_steps: {
+        Row: {
+          created_at: string
+          description: string | null
+          form_id: string
+          id: string
+          is_active: boolean | null
+          organization_id: string
+          sort_order: number
+          title: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          form_id: string
+          id?: string
+          is_active?: boolean | null
+          organization_id: string
+          sort_order?: number
+          title: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          form_id?: string
+          id?: string
+          is_active?: boolean | null
+          organization_id?: string
+          sort_order?: number
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "onboarding_form_steps_form_id_fkey"
+            columns: ["form_id"]
+            isOneToOne: false
+            referencedRelation: "onboarding_forms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_form_steps_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      onboarding_forms: {
+        Row: {
+          contract_type: string | null
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean | null
+          is_default: boolean | null
+          name: string
+          nationality_filter: string[] | null
+          organization_id: string
+          sector: string | null
+          sort_order: number | null
+          updated_at: string
+        }
+        Insert: {
+          contract_type?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_default?: boolean | null
+          name: string
+          nationality_filter?: string[] | null
+          organization_id: string
+          sector?: string | null
+          sort_order?: number | null
+          updated_at?: string
+        }
+        Update: {
+          contract_type?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_default?: boolean | null
+          name?: string
+          nationality_filter?: string[] | null
+          organization_id?: string
+          sector?: string | null
+          sort_order?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "onboarding_forms_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      onboarding_responses: {
+        Row: {
+          created_at: string
+          employee_id: string
+          field_id: string
+          file_path: string | null
+          form_id: string
+          id: string
+          organization_id: string
+          value: string | null
+        }
+        Insert: {
+          created_at?: string
+          employee_id: string
+          field_id: string
+          file_path?: string | null
+          form_id: string
+          id?: string
+          organization_id: string
+          value?: string | null
+        }
+        Update: {
+          created_at?: string
+          employee_id?: string
+          field_id?: string
+          file_path?: string | null
+          form_id?: string
+          id?: string
+          organization_id?: string
+          value?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "onboarding_responses_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_responses_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_employee_compliance"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "onboarding_responses_field_id_fkey"
+            columns: ["field_id"]
+            isOneToOne: false
+            referencedRelation: "onboarding_form_fields"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_responses_form_id_fkey"
+            columns: ["form_id"]
+            isOneToOne: false
+            referencedRelation: "onboarding_forms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_responses_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       onboarding_tokens: {
         Row: {
           created_at: string
           employee_id: string
           expires_at: string
+          form_id: string | null
           id: string
           organization_id: string
           token: string
@@ -1937,6 +2247,7 @@ export type Database = {
           created_at?: string
           employee_id: string
           expires_at?: string
+          form_id?: string | null
           id?: string
           organization_id: string
           token?: string
@@ -1946,6 +2257,7 @@ export type Database = {
           created_at?: string
           employee_id?: string
           expires_at?: string
+          form_id?: string | null
           id?: string
           organization_id?: string
           token?: string
@@ -1965,6 +2277,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_employee_compliance"
             referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "onboarding_tokens_form_id_fkey"
+            columns: ["form_id"]
+            isOneToOne: false
+            referencedRelation: "onboarding_forms"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "onboarding_tokens_organization_id_fkey"
