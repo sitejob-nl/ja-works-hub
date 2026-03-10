@@ -54,6 +54,9 @@ import PortalDashboard from "@/pages/portal/PortalDashboard";
 import PortalLayout from "@/components/layout/PortalLayout";
 import { PortalProvider } from "@/contexts/PortalContext";
 import PortalTimesheets from "@/pages/portal/PortalTimesheets";
+import PortalDocuments from "@/pages/portal/PortalDocuments";
+import PortalProfile from "@/pages/portal/PortalProfile";
+import PortalSickReport from "@/pages/portal/PortalSickReport";
 
 const queryClient = new QueryClient();
 
