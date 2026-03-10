@@ -27,8 +27,7 @@ const statusLabel: Record<string, string> = {
 
 const VehicleDetail = () => {
   const { id } = useParams<{ id: string }>();
-  const qc = useQueryClient();
-  const [editOpen, setEditOpen] = useState(false);
+  const navigate = useNavigate();
 
   const { data: vehicle, isLoading } = useQuery({
     queryKey: ['vehicle', id],
