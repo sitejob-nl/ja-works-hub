@@ -156,7 +156,7 @@ const FuelCardAnalysis = () => {
 
       {/* Import Sheet */}
       <ImportSheet open={importOpen} onOpenChange={setImportOpen} orgId={orgId} onDone={() => { qc.invalidateQueries({ queryKey: ['fuel-transactions'] }); }} />
-    </ShellPage>
+    </div>
   );
 };
 
