@@ -26,6 +26,7 @@ import CompanyEdit from "@/pages/CompanyEdit";
 import Candidates from "@/pages/Candidates";
 import CandidateNew from "@/pages/CandidateNew";
 import CandidateDetail from "@/pages/CandidateDetail";
+import CandidateEdit from "@/pages/CandidateEdit";
 import Employees from "@/pages/Employees";
 import EmployeeNew from "@/pages/EmployeeNew";
 import EmployeeDetail from "@/pages/EmployeeDetail";
