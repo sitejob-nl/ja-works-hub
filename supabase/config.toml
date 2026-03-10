@@ -1,61 +1,75 @@
 project_id = "noaupcteygfvlyymqtew"
 
-[functions.apify-job-import]
-verify_jwt = false
+# ============================================================
+# PUBLIEKE ENDPOINTS (geen JWT nodig)
+# ============================================================
 
-[functions.exa-people-search]
-verify_jwt = false
-
-[functions.whatsapp-register]
-verify_jwt = false
-
-[functions.whatsapp-config]
+[functions.onboarding-submit]
 verify_jwt = false
 
 [functions.whatsapp-webhook]
 verify_jwt = false
 
-[functions.whatsapp-send]
+[functions.exact-webhook]
 verify_jwt = false
 
-[functions.exact-register]
+[functions.whatsapp-config]
 verify_jwt = false
 
 [functions.exact-config]
 verify_jwt = false
 
-[functions.exact-webhook]
+[functions.register-organization]
 verify_jwt = false
 
-[functions.exact-api]
-verify_jwt = false
-
-[functions.check-document-expiry]
-verify_jwt = false
-
-[functions.validate-timesheets]
-verify_jwt = false
-
-[functions.calculate-match]
-verify_jwt = false
-
-[functions.onboarding-submit]
-verify_jwt = false
-
-[functions.cv-rewrite]
-verify_jwt = false
-
-[functions.recruiter-priorities]
-verify_jwt = false
-
-[functions.opt-out-handler]
-verify_jwt = false
-
-[functions.bulk-campaign-processor]
+[functions.candidate-profile]
 verify_jwt = false
 
 [functions.portal-activate]
 verify_jwt = false
 
-[functions.candidate-profile]
+[functions.contract-sign]
 verify_jwt = false
+
+# ============================================================
+# BESCHERMDE ENDPOINTS (JWT verplicht)
+# ============================================================
+
+[functions.apify-job-import]
+verify_jwt = true
+
+[functions.exa-people-search]
+verify_jwt = true
+
+[functions.whatsapp-register]
+verify_jwt = true
+
+[functions.whatsapp-send]
+verify_jwt = true
+
+[functions.exact-register]
+verify_jwt = true
+
+[functions.exact-api]
+verify_jwt = true
+
+[functions.check-document-expiry]
+verify_jwt = true
+
+[functions.validate-timesheets]
+verify_jwt = true
+
+[functions.calculate-match]
+verify_jwt = true
+
+[functions.cv-rewrite]
+verify_jwt = true
+
+[functions.recruiter-priorities]
+verify_jwt = true
+
+[functions.opt-out-handler]
+verify_jwt = true
+
+[functions.bulk-campaign-processor]
+verify_jwt = true

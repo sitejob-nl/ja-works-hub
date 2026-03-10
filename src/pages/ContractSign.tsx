@@ -13,20 +13,20 @@ const ContractSign = () => {
   const [fullName, setFullName] = useState('');
   const [agreed, setAgreed] = useState(false);
   const [signed, setSigned] = useState(false);
+  const [signedAt, setSignedAt] = useState<string | null>(null);
 
   const { data: contract, isLoading, error } = useQuery({
     queryKey: ['contract-sign', token],
     queryFn: async () => {
       if (!token) throw new Error('Geen token');
-      // Use anon key — RLS allows select on contracts with sign_token IS NOT NULL
-      const { data, error } = await supabase
-        .from('contracts')
-        .select('id, title, content, status, signed_at, sign_token')
-        .eq('sign_token', token)
-        .maybeSingle();
-      if (error) throw error;
-      if (!data) throw new Error('Contract niet gevonden');
-      return data;
+      const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+      const res = await fetch(
+        `https://${projectId}.supabase.co/functions/v1/contract-sign?token=${encodeURIComponent(token)}`,
+        { method: 'GET', headers: { 'Content-Type': 'application/json' } }
+      );
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || 'Contract niet gevonden');
+      return body.contract;
     },
     enabled: !!token,
     retry: false,
@@ -34,18 +34,25 @@ const ContractSign = () => {
 
   const signContract = useMutation({
     mutationFn: async () => {
-      if (!contract) throw new Error('Geen contract');
-      const { error } = await supabase
-        .from('contracts')
-        .update({
-          status: 'getekend' as any,
-          signed_at: new Date().toISOString(),
-          pdf_url: `Digitaal getekend door: ${fullName} op ${new Date().toLocaleString('nl-NL')} | IP: browser`,
-        })
-        .eq('sign_token', token!);
+      if (!contract || !token) throw new Error('Geen contract');
+      const { data, error } = await supabase.functions.invoke('contract-sign', {
+        method: 'POST',
+        body: { token, full_name: fullName.trim() },
+      });
       if (error) throw error;
+      if (data?.error) {
+        if (data.already_signed) {
+          setSigned(true);
+          return data;
+        }
+        throw new Error(data.error);
+      }
+      return data;
     },
-    onSuccess: () => setSigned(true),
+    onSuccess: (data) => {
+      setSigned(true);
+      if (data?.signed_at) setSignedAt(data.signed_at);
+    },
   });
 
   if (isLoading) {
@@ -73,6 +80,7 @@ const ContractSign = () => {
   const alreadySigned = contract.status === 'getekend' || signed;
 
   if (alreadySigned) {
+    const displayDate = signedAt || contract.signed_at;
     return (
       <div className="min-h-screen bg-muted flex items-center justify-center p-4">
         <div className="bg-card border rounded-xl p-8 max-w-md text-center space-y-3">
@@ -80,8 +88,8 @@ const ContractSign = () => {
           <h1 className="text-lg font-semibold">Contract getekend</h1>
           <p className="text-sm text-muted-foreground">
             {contract.title} is succesvol digitaal ondertekend.
-            {contract.signed_at && (
-              <> Op {new Date(contract.signed_at).toLocaleDateString('nl-NL')}.</>
+            {displayDate && (
+              <> Op {new Date(displayDate).toLocaleDateString('nl-NL')}.</>
             )}
           </p>
           <p className="text-xs text-muted-foreground">U kunt dit venster sluiten.</p>
