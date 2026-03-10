@@ -16,6 +16,9 @@ const VehicleInfoTab = ({ vehicle, activeAssignment }: { vehicle: any; activeAss
           <div className="flex justify-between"><span className="text-muted-foreground">Bouwjaar</span><span>{vehicle.year ?? '—'}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">Brandstof</span><span>{vehicle.fuel_type ?? '—'}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">Kilometerstand</span><span>{vehicle.current_mileage != null ? vehicle.current_mileage.toLocaleString('nl-NL') + ' km' : '—'}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Tankcapaciteit</span><span>{vehicle.tank_capacity_liters != null ? vehicle.tank_capacity_liters + ' liter' : '—'}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Tankpas referentie</span><span>{vehicle.fuel_card_reference ?? '—'}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Gem. verbruik</span><span>{vehicle.avg_consumption_per_100km != null ? vehicle.avg_consumption_per_100km + ' l/100km' : '—'}</span></div>
         </CardContent>
       </Card>
 
