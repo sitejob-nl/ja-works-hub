@@ -49,6 +49,10 @@ import ContractSign from "@/pages/ContractSign";
 import Register from "@/pages/Register";
 import PortalActivate from "@/pages/PortalActivate";
 import FuelCardAnalysis from "@/pages/FuelCardAnalysis";
+import PortalLogin from "@/pages/portal/PortalLogin";
+import PortalDashboard from "@/pages/portal/PortalDashboard";
+import PortalLayout from "@/components/layout/PortalLayout";
+import { PortalProvider } from "@/contexts/PortalContext";
 
 const queryClient = new QueryClient();
 
