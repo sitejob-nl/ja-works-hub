@@ -2,9 +2,10 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { startOfWeek, endOfWeek, addWeeks, subWeeks, format, getISOWeek } from 'date-fns';
 import { nl } from 'date-fns/locale';
-import { Clock, Plus, Upload, ChevronLeft, ChevronRight, CheckCircle2, XCircle, AlertTriangle, Sparkles } from 'lucide-react';
+import { Clock, Plus, Upload, ChevronLeft, ChevronRight, CheckCircle2, XCircle, AlertTriangle, Sparkles, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -104,6 +105,8 @@ const Timesheets = () => {
     return {
       totalHours: ts.reduce((s, t: any) => s + (t.hours ?? 0), 0),
       totalOvertime: ts.reduce((s, t: any) => s + (t.overtime_hours ?? 0), 0),
+      totalKm: ts.reduce((s, t: any) => s + (t.travel_km ?? 0), 0),
+      totalAllowances: ts.reduce((s, t: any) => s + (t.allowances_amount ?? 0) + (t.travel_amount ?? 0) + (t.surcharge_amount ?? 0), 0),
       approved: ts.filter((t: any) => t.status === 'goedgekeurd').length,
       attention: ts.filter((t: any) => ['oranje', 'rood'].includes(t.status)).length,
     };
@@ -169,6 +172,45 @@ const Timesheets = () => {
     onError: (e: any) => toast.error(e.message),
   });
 
+  const orgId = useOrganizationId();
+
+  const generateHourLetter = useMutation({
+    mutationFn: async () => {
+      if (employeeFilter === 'all') throw new Error('Selecteer eerst een medewerker');
+      // Group timesheets by placement
+      const placementIds = [...new Set(timesheets.map((t: any) => t.placement_id))];
+      const results = [];
+      for (const pid of placementIds) {
+        const pTimesheets = timesheets.filter((t: any) => t.placement_id === pid);
+        const totalHrs = pTimesheets.reduce((s: number, t: any) => s + (t.hours ?? 0), 0);
+        const totalOT = pTimesheets.reduce((s: number, t: any) => s + (t.overtime_hours ?? 0), 0);
+        const totalKm = pTimesheets.reduce((s: number, t: any) => s + (t.travel_km ?? 0), 0);
+        const totalAllow = pTimesheets.reduce((s: number, t: any) => s + (t.allowances_amount ?? 0) + (t.travel_amount ?? 0) + (t.surcharge_amount ?? 0), 0);
+        
+        const { data, error } = await supabase.from('hour_letters').insert({
+          organization_id: orgId,
+          employee_id: employeeFilter,
+          placement_id: pid,
+          week_number: weekNum,
+          year: weekRef.getFullYear(),
+          total_hours: totalHrs,
+          overtime_hours: totalOT,
+          total_km: totalKm,
+          allowances_total: totalAllow,
+          line_items: pTimesheets.map((t: any) => ({ date: t.work_date, hours: t.hours, overtime: t.overtime_hours, km: t.travel_km })),
+          status: 'concept',
+        }).select('id').single();
+        if (error) throw error;
+        results.push(data);
+      }
+      return results;
+    },
+    onSuccess: (data) => {
+      toast.success(`${data.length} urenbrief(ven) aangemaakt voor week ${weekNum}`);
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
   return (
     <div className="space-y-4 sm:space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -177,6 +219,11 @@ const Timesheets = () => {
           <p className="text-muted-foreground text-sm mt-1 hidden sm:block">Urenregistratie en goedkeuring</p>
         </div>
         <div className="flex gap-2 flex-wrap">
+          {employeeFilter !== 'all' && timesheets.length > 0 && (
+            <Button variant="outline" size="sm" onClick={() => generateHourLetter.mutate()} disabled={generateHourLetter.isPending} className="gap-1.5">
+              <FileText className="h-4 w-4" /> <span className="hidden sm:inline">{generateHourLetter.isPending ? 'Genereren...' : 'Urenbrief'}</span><span className="sm:hidden">Brief</span>
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={() => aiValidation.mutate()} disabled={aiValidation.isPending} className="gap-1.5">
             <Sparkles className="h-4 w-4" /> <span className="hidden sm:inline">{aiValidation.isPending ? 'Valideren...' : 'AI Validatie'}</span><span className="sm:hidden">AI</span>
           </Button>
@@ -221,12 +268,14 @@ const Timesheets = () => {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         {[
           { label: 'Totaal uren', value: stats.totalHours.toFixed(2) },
           { label: 'Overwerk', value: stats.totalOvertime.toFixed(2) },
+          { label: 'Kilometers', value: stats.totalKm.toFixed(1) },
+          { label: 'Vergoedingen', value: `€${stats.totalAllowances.toFixed(2)}` },
           { label: 'Goedgekeurd', value: stats.approved },
-          { label: 'Aandacht vereist', value: stats.attention },
+          { label: 'Aandacht', value: stats.attention },
         ].map((s) => (
           <div key={s.label} className="bg-card border rounded-lg p-3">
             <div className="text-xs text-muted-foreground">{s.label}</div>
