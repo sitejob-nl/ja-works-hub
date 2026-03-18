@@ -5,32 +5,96 @@ import { Link } from 'react-router-dom';
 import { Clock, AlertTriangle, Building, Car } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatDate } from '@/lib/format';
-import { startOfWeek, endOfWeek } from 'date-fns';
+import { startOfWeek, endOfWeek, subWeeks, getISOWeek, format } from 'date-fns';
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from '@/components/ui/chart';
+import { BarChart, Bar, XAxis, YAxis, Line, ComposedChart, PieChart, Pie, Cell } from 'recharts';
 
 const PortalDashboard = () => {
   const { employee, candidate } = usePortal();
   const employeeId = employee?.id;
   const firstName = candidate?.first_name ?? 'Medewerker';
 
-  // Active placement
-  const { data: placement } = useQuery({
-    queryKey: ['portal-placement', employeeId],
+  // Active placements
+  const { data: placements = [] } = useQuery({
+    queryKey: ['portal-placements', employeeId],
     queryFn: async () => {
       const { data } = await supabase
         .from('placements')
         .select('*, companies:company_id(name), vacancies:vacancy_id(title)')
         .eq('employee_id', employeeId!)
-        .eq('status', 'actief' as any)
-        .maybeSingle();
-      return data;
+        .eq('status', 'actief' as any);
+      return data ?? [];
+    },
+    enabled: !!employeeId,
+  });
+
+  // Last 12 weeks hours data
+  const { data: weeklyData = [] } = useQuery({
+    queryKey: ['portal-weekly-hours', employeeId],
+    queryFn: async () => {
+      const now = new Date();
+      const start = format(startOfWeek(subWeeks(now, 11), { weekStartsOn: 1 }), 'yyyy-MM-dd');
+      const end = format(endOfWeek(now, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+
+      const { data } = await supabase
+        .from('timesheets')
+        .select('work_date, hours, overtime_hours, surcharge_amount')
+        .eq('employee_id', employeeId!)
+        .gte('work_date', start)
+        .lte('work_date', end);
+
+      // Group by week
+      const weeks = new Map<number, { week: number; hours: number; overtime: number; surcharges: number }>();
+      (data ?? []).forEach((t) => {
+        const d = new Date(t.work_date);
+        const w = getISOWeek(d);
+        const existing = weeks.get(w) ?? { week: w, hours: 0, overtime: 0, surcharges: 0 };
+        existing.hours += Number(t.hours) || 0;
+        existing.overtime += Number(t.overtime_hours) || 0;
+        existing.surcharges += Number(t.surcharge_amount) || 0;
+        weeks.set(w, existing);
+      });
+
+      return Array.from(weeks.values()).sort((a, b) => a.week - b.week);
+    },
+    enabled: !!employeeId,
+  });
+
+  // Surcharges breakdown for pie chart
+  const { data: surchargeData = [] } = useQuery({
+    queryKey: ['portal-surcharges', employeeId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('timesheets')
+        .select('surcharge_amount, allowances_amount, travel_amount')
+        .eq('employee_id', employeeId!)
+        .not('surcharge_amount', 'is', null);
+
+      let surcharges = 0, allowances = 0, travel = 0;
+      (data ?? []).forEach((t) => {
+        surcharges += Number(t.surcharge_amount) || 0;
+        allowances += Number(t.allowances_amount) || 0;
+        travel += Number(t.travel_amount) || 0;
+      });
+
+      return [
+        { name: 'Toeslagen', value: Math.round(surcharges * 100) / 100, fill: 'hsl(var(--primary))' },
+        { name: 'Vergoedingen', value: Math.round(allowances * 100) / 100, fill: 'hsl(var(--accent))' },
+        { name: 'Reiskosten', value: Math.round(travel * 100) / 100, fill: 'hsl(var(--muted-foreground))' },
+      ].filter((d) => d.value > 0);
     },
     enabled: !!employeeId,
   });
 
   // Hours this week
-  const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 }).toISOString().split('T')[0];
-  const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 }).toISOString().split('T')[0];
+  const weekStart = format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd');
+  const weekEnd = format(endOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd');
 
   const { data: timesheets } = useQuery({
     queryKey: ['portal-hours', employeeId, weekStart],
@@ -80,7 +144,7 @@ const PortalDashboard = () => {
     enabled: !!employeeId,
   });
 
-  // Expiring / missing documents
+  // Expiring docs
   const { data: docIssues } = useQuery({
     queryKey: ['portal-doc-issues', employee?.candidate_id],
     queryFn: async () => {
@@ -99,23 +163,24 @@ const PortalDashboard = () => {
       {/* Welcome card */}
       <div className="bg-card rounded-xl border p-5">
         <h1 className="text-lg font-semibold">Welkom, {firstName} 👋</h1>
-        {placement ? (
-          <div className="mt-2 text-sm text-muted-foreground">
-            <p>
-              Actieve plaatsing bij{' '}
-              <span className="font-medium text-foreground">{(placement.companies as any)?.name}</span>
-            </p>
-            {(placement.vacancies as any)?.title && (
-              <p className="text-xs">{(placement.vacancies as any).title}</p>
-            )}
-            <p className="text-xs mt-1">Sinds {formatDate(placement.start_date)}</p>
+        {placements.length > 0 ? (
+          <div className="mt-2 space-y-2">
+            {placements.map((p: any) => (
+              <div key={p.id} className="text-sm text-muted-foreground">
+                <p>
+                  Plaatsing bij <span className="font-medium text-foreground">{p.companies?.name}</span>
+                  {p.vacancies?.title && <span className="text-xs"> · {p.vacancies.title}</span>}
+                </p>
+                <p className="text-xs">Sinds {formatDate(p.start_date)}{p.end_date ? ` tot ${formatDate(p.end_date)}` : ''}</p>
+              </div>
+            ))}
           </div>
         ) : (
           <p className="mt-2 text-sm text-muted-foreground">Je hebt momenteel geen actieve plaatsing</p>
         )}
       </div>
 
-      {/* Hours card */}
+      {/* Hours this week */}
       <div className="bg-card rounded-xl border p-5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -140,6 +205,62 @@ const PortalDashboard = () => {
           <Link to="/portaal/uren">Uren invullen</Link>
         </Button>
       </div>
+
+      {/* Charts */}
+      {weeklyData.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Uren per week (laatste 12 weken)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ChartContainer config={{
+              hours: { label: 'Uren', color: 'hsl(var(--primary))' },
+              overtime: { label: 'Overwerk', color: 'hsl(var(--destructive))' },
+            }} className="h-[200px] w-full">
+              <ComposedChart data={weeklyData}>
+                <XAxis dataKey="week" tick={{ fontSize: 11 }} tickFormatter={(w) => `W${w}`} />
+                <YAxis tick={{ fontSize: 11 }} />
+                <ChartTooltip content={<ChartTooltipContent />} />
+                <Bar dataKey="hours" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} name="Uren" />
+                <Line type="monotone" dataKey="overtime" stroke="hsl(var(--destructive))" strokeWidth={2} dot={{ r: 3 }} name="Overwerk" />
+              </ComposedChart>
+            </ChartContainer>
+          </CardContent>
+        </Card>
+      )}
+
+      {surchargeData.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Toeslagen breakdown</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-4">
+              <ChartContainer config={{
+                surcharges: { label: 'Toeslagen', color: 'hsl(var(--primary))' },
+                allowances: { label: 'Vergoedingen', color: 'hsl(var(--accent))' },
+              }} className="h-[140px] w-[140px]">
+                <PieChart>
+                  <Pie data={surchargeData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={40} outerRadius={60}>
+                    {surchargeData.map((entry, i) => (
+                      <Cell key={i} fill={entry.fill} />
+                    ))}
+                  </Pie>
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                </PieChart>
+              </ChartContainer>
+              <div className="space-y-2 text-sm">
+                {surchargeData.map((d) => (
+                  <div key={d.name} className="flex items-center gap-2">
+                    <div className="h-3 w-3 rounded-sm" style={{ backgroundColor: d.fill }} />
+                    <span>{d.name}: <strong>€{d.value.toFixed(2)}</strong></span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Housing card */}
       {housing && (
@@ -176,7 +297,7 @@ const PortalDashboard = () => {
         </div>
       )}
 
-      {/* Actions card */}
+      {/* Doc issues */}
       {docIssues && docIssues.length > 0 && (
         <div className="bg-card rounded-xl border p-5">
           <div className="flex items-center gap-2 mb-2">

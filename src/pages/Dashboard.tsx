@@ -14,6 +14,14 @@ import { formatDate, formatRelativeTime } from '@/lib/format';
 import { toast } from 'sonner';
 import KpiDashboard from '@/components/dashboard/KpiDashboard';
 import OnboardingWizard from '@/components/onboarding/OnboardingWizard';
+import {
+  ExpiringContractsCard,
+  ContractRenewalsCard,
+  MissingDocumentsCard,
+  ContractStatusChart,
+  BirthdaysCard,
+  PendingHoursCard,
+} from '@/components/dashboard/DashboardWidgets';
 
 interface StatCardProps {
   icon: React.ElementType;
@@ -354,6 +362,16 @@ const Dashboard = () => {
       {profile?.role === 'admin' && (
         <KpiDashboard />
       )}
+
+      {/* Management widgets */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <ExpiringContractsCard />
+        <ContractRenewalsCard />
+        <MissingDocumentsCard />
+        <ContractStatusChart />
+        <BirthdaysCard />
+        <PendingHoursCard />
+      </div>
 
       {/* Divider */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
