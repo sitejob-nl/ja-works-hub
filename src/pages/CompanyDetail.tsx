@@ -9,6 +9,7 @@ import { ChevronRight, MoreHorizontal, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import CompanyInfoTab from '@/components/companies/tabs/CompanyInfoTab';
 import ContactsTab from '@/components/companies/tabs/ContactsTab';
+import CompanyFunctionsTab from '@/components/companies/tabs/CompanyFunctionsTab';
 import RateAgreementsTab from '@/components/companies/tabs/RateAgreementsTab';
 import SlaTab from '@/components/companies/tabs/SlaTab';
 import CommunicationTab from '@/components/companies/tabs/CommunicationTab';
