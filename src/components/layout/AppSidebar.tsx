@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
+import { applyBranding, type BrandingSettings } from '@/lib/branding';
 import { useQuery } from '@tanstack/react-query';
 import {
   LayoutDashboard, Building2, Users, UserCheck, Home, Briefcase,

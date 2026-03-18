@@ -263,32 +263,134 @@ const Settings = () => {
             </CardContent>
           </Card>
 
-          {/* Accent color */}
+          {/* Branding */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Palette className="h-4 w-4" /> Accentkleur
-              </CardTitle>
-              <CardDescription>Kies een accentkleur voor het dashboard en de interface</CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Palette className="h-4 w-4" /> Branding & Kleuren
+                  </CardTitle>
+                  <CardDescription>Pas het uiterlijk van het platform aan per organisatie</CardDescription>
+                </div>
+                <Button size="sm" variant="ghost" onClick={handleResetBranding}>
+                  <RotateCcw className="h-3.5 w-3.5 mr-1.5" /> Standaard
+                </Button>
+              </div>
             </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-4 sm:grid-cols-8 gap-3">
-                {ACCENT_PRESETS.map((preset) => (
-                  <button
-                    key={preset.hsl}
-                    onClick={() => handleSetAccent(preset.hsl)}
-                    className={`group flex flex-col items-center gap-1.5`}
-                    title={preset.name}
+            <CardContent className="space-y-6">
+              {/* Accent color */}
+              <div>
+                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 block">Accentkleur</Label>
+                <div className="grid grid-cols-4 sm:grid-cols-8 gap-3">
+                  {ACCENT_PRESETS.map((preset) => (
+                    <button
+                      key={preset.hsl}
+                      onClick={() => handleSetAccent(preset.hsl)}
+                      className="group flex flex-col items-center gap-1.5"
+                      title={preset.name}
+                    >
+                      <div
+                        className={`h-10 w-10 rounded-full border-2 transition-all ${
+                          accentColor === preset.hsl ? 'border-foreground scale-110 shadow-md' : 'border-transparent hover:scale-105'
+                        }`}
+                        style={{ backgroundColor: preset.hex }}
+                      />
+                      <span className="text-[10px] text-muted-foreground leading-tight text-center">{preset.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Sidebar color */}
+              <div>
+                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 block">Sidebar kleur</Label>
+                <div className="grid grid-cols-4 sm:grid-cols-8 gap-3">
+                  {SIDEBAR_PRESETS.map((preset) => (
+                    <button
+                      key={preset.hsl}
+                      onClick={() => handleSetSidebarBg(preset.hsl)}
+                      className="group flex flex-col items-center gap-1.5"
+                      title={preset.name}
+                    >
+                      <div
+                        className={`h-10 w-10 rounded-full border-2 transition-all ${
+                          (settings.sidebar_bg ?? BRANDING_DEFAULTS.sidebar_bg) === preset.hsl
+                            ? 'border-foreground scale-110 shadow-md'
+                            : 'border-border hover:scale-105'
+                        }`}
+                        style={{ backgroundColor: preset.hex }}
+                      />
+                      <span className="text-[10px] text-muted-foreground leading-tight text-center">{preset.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Background color */}
+              <div>
+                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 block">Achtergrondkleur</Label>
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
+                  {BG_PRESETS.map((preset) => (
+                    <button
+                      key={preset.hsl}
+                      onClick={() => handleSetBackground(preset.hsl)}
+                      className="group flex flex-col items-center gap-1.5"
+                      title={preset.name}
+                    >
+                      <div
+                        className={`h-10 w-10 rounded-full border-2 transition-all ${
+                          (settings.background ?? BRANDING_DEFAULTS.background) === preset.hsl
+                            ? 'border-foreground scale-110 shadow-md'
+                            : 'border-border hover:scale-105'
+                        }`}
+                        style={{ backgroundColor: preset.hex }}
+                      />
+                      <span className="text-[10px] text-muted-foreground leading-tight text-center">{preset.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Live preview */}
+              <div>
+                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 block">Voorbeeld</Label>
+                <div className="flex rounded-lg overflow-hidden border border-border h-24">
+                  <div
+                    className="w-16 p-2 flex flex-col gap-1.5"
+                    style={{ backgroundColor: `hsl(${settings.sidebar_bg ?? BRANDING_DEFAULTS.sidebar_bg})` }}
                   >
+                    {[1, 2, 3].map(i => (
+                      <div
+                        key={i}
+                        className="h-2 rounded-sm"
+                        style={{
+                          backgroundColor: i === 1
+                            ? `hsl(${accentColor})`
+                            : `hsl(${settings.sidebar_fg ?? BRANDING_DEFAULTS.sidebar_fg} / 0.3)`,
+                        }}
+                      />
+                    ))}
+                  </div>
+                  <div
+                    className="flex-1 p-3 flex flex-col gap-2"
+                    style={{ backgroundColor: `hsl(${settings.background ?? BRANDING_DEFAULTS.background})` }}
+                  >
+                    <div className="h-2.5 w-20 rounded-sm" style={{ backgroundColor: `hsl(${settings.heading ?? BRANDING_DEFAULTS.heading})` }} />
                     <div
-                      className={`h-10 w-10 rounded-full border-2 transition-all ${
-                        accentColor === preset.hsl ? 'border-foreground scale-110 shadow-md' : 'border-transparent hover:scale-105'
-                      }`}
-                      style={{ backgroundColor: preset.hex }}
-                    />
-                    <span className="text-[10px] text-muted-foreground leading-tight text-center">{preset.name}</span>
-                  </button>
-                ))}
+                      className="flex-1 rounded-md p-2"
+                      style={{ backgroundColor: `hsl(${settings.card ?? BRANDING_DEFAULTS.card})` }}
+                    >
+                      <div className="h-2 w-16 rounded-sm" style={{ backgroundColor: `hsl(${accentColor})` }} />
+                    </div>
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>
