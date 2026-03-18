@@ -104,6 +104,8 @@ const Timesheets = () => {
     return {
       totalHours: ts.reduce((s, t: any) => s + (t.hours ?? 0), 0),
       totalOvertime: ts.reduce((s, t: any) => s + (t.overtime_hours ?? 0), 0),
+      totalKm: ts.reduce((s, t: any) => s + (t.travel_km ?? 0), 0),
+      totalAllowances: ts.reduce((s, t: any) => s + (t.allowances_amount ?? 0) + (t.travel_amount ?? 0) + (t.surcharge_amount ?? 0), 0),
       approved: ts.filter((t: any) => t.status === 'goedgekeurd').length,
       attention: ts.filter((t: any) => ['oranje', 'rood'].includes(t.status)).length,
     };
