@@ -14,6 +14,14 @@ import { formatDate, formatRelativeTime } from '@/lib/format';
 import { toast } from 'sonner';
 import KpiDashboard from '@/components/dashboard/KpiDashboard';
 import OnboardingWizard from '@/components/onboarding/OnboardingWizard';
+import {
+  ExpiringContractsCard,
+  ContractRenewalsCard,
+  MissingDocumentsCard,
+  ContractStatusChart,
+  BirthdaysCard,
+  PendingHoursCard,
+} from '@/components/dashboard/DashboardWidgets';
 
 interface StatCardProps {
   icon: React.ElementType;

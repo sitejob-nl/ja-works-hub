@@ -37,9 +37,7 @@ const TopBar = ({ onMenuClick }: TopBarProps) => {
 
       {/* Right */}
       <div className="flex items-center gap-2 sm:gap-4 shrink-0">
-        <button className="relative p-2 rounded-md hover:bg-secondary transition-colors">
-          <Bell className="h-4 w-4 text-muted-foreground" />
-        </button>
+        <NotificationBell />
 
         <div className="flex items-center gap-2 cursor-pointer" onClick={signOut}>
           <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium text-primary">
