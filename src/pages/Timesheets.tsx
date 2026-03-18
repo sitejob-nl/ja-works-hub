@@ -223,12 +223,14 @@ const Timesheets = () => {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         {[
           { label: 'Totaal uren', value: stats.totalHours.toFixed(2) },
           { label: 'Overwerk', value: stats.totalOvertime.toFixed(2) },
+          { label: 'Kilometers', value: stats.totalKm.toFixed(1) },
+          { label: 'Vergoedingen', value: `€${stats.totalAllowances.toFixed(2)}` },
           { label: 'Goedgekeurd', value: stats.approved },
-          { label: 'Aandacht vereist', value: stats.attention },
+          { label: 'Aandacht', value: stats.attention },
         ].map((s) => (
           <div key={s.label} className="bg-card border rounded-lg p-3">
             <div className="text-xs text-muted-foreground">{s.label}</div>
