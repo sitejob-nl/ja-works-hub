@@ -1,6 +1,7 @@
-import { Bell, Search, Menu } from 'lucide-react';
+import { Search, Menu } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
+import NotificationBell from './NotificationBell';
 
 interface TopBarProps {
   onMenuClick?: () => void;
