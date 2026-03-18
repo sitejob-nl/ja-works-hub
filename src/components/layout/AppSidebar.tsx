@@ -136,12 +136,7 @@ const AppSidebar = ({ onNavigate }: AppSidebarProps) => {
   useEffect(() => {
     if (!org) return;
     const s = (org.settings as Record<string, string> | null) ?? {};
-    if (s.accent_color) {
-      document.documentElement.style.setProperty('--primary', s.accent_color);
-      document.documentElement.style.setProperty('--ring', s.accent_color);
-      document.documentElement.style.setProperty('--accent-blue', s.accent_color);
-      document.documentElement.style.setProperty('--stat-blue', s.accent_color);
-    }
+    applyBranding(s as BrandingSettings);
   }, [org]);
 
   const orgInitials = (org?.name ?? 'JA').slice(0, 2).toUpperCase();
