@@ -9,7 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Pencil, X, Check } from 'lucide-react';
 import { toast } from 'sonner';
-import { TagInput } from '@/components/ui/tag-input';
+import TagInput from '@/components/ui/tag-input';
 
 const Field = ({ label, value }: { label: string; value: string | null | undefined }) => (
   <div>
