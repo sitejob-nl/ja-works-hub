@@ -20,6 +20,118 @@ import ContractTemplatesSettings from '@/components/settings/ContractTemplatesSe
 import OnboardingFormSettings from '@/components/settings/OnboardingFormSettings';
 import { applyBranding, BRANDING_DEFAULTS, type BrandingSettings } from '@/lib/branding';
 
+/* ---- Color conversion helpers ---- */
+function hexToHsl(hex: string): string {
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h = 0, s = 0;
+  const l = (max + min) / 2;
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+    else if (max === g) h = ((b - r) / d + 2) / 6;
+    else h = ((r - g) / d + 4) / 6;
+  }
+  return `${Math.round(h * 360)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%`;
+}
+
+function hslToHex(hslStr: string): string {
+  const parts = hslStr.split(/\s+/);
+  const h = parseInt(parts[0], 10) / 360;
+  const s = parseInt(parts[1], 10) / 100;
+  const l = parseInt(parts[2], 10) / 100;
+  let r: number, g: number, b: number;
+  if (s === 0) { r = g = b = l; } else {
+    const hue2rgb = (p: number, q: number, t: number) => {
+      if (t < 0) t += 1; if (t > 1) t -= 1;
+      if (t < 1/6) return p + (q - p) * 6 * t;
+      if (t < 1/2) return q;
+      if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+      return p;
+    };
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    r = hue2rgb(p, q, h + 1/3);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1/3);
+  }
+  const toHex = (x: number) => Math.round(x * 255).toString(16).padStart(2, '0');
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+/** Small color picker: presets + native picker + hex input */
+function ColorPickerRow({
+  presets,
+  value,
+  onChange,
+  columns = 8,
+}: {
+  presets: { name: string; hsl: string; hex: string }[];
+  value: string;
+  onChange: (hsl: string) => void;
+  columns?: number;
+}) {
+  const currentHex = hslToHex(value);
+  const [hexInput, setHexInput] = useState(currentHex);
+
+  useEffect(() => { setHexInput(hslToHex(value)); }, [value]);
+
+  const applyHex = (hex: string) => {
+    if (/^#[0-9a-fA-F]{6}$/.test(hex)) {
+      onChange(hexToHsl(hex));
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className={`grid gap-3`} style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
+        {presets.map((preset) => (
+          <button
+            key={preset.hsl}
+            onClick={() => onChange(preset.hsl)}
+            className="group flex flex-col items-center gap-1.5"
+            title={preset.name}
+          >
+            <div
+              className={`h-10 w-10 rounded-full border-2 transition-all ${
+                value === preset.hsl ? 'border-foreground scale-110 shadow-md' : 'border-transparent hover:scale-105'
+              }`}
+              style={{ backgroundColor: preset.hex }}
+            />
+            <span className="text-[10px] text-muted-foreground leading-tight text-center">{preset.name}</span>
+          </button>
+        ))}
+      </div>
+      <div className="flex items-center gap-3">
+        <div className="relative">
+          <input
+            type="color"
+            value={currentHex}
+            onChange={(e) => { applyHex(e.target.value); setHexInput(e.target.value); }}
+            className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+          />
+          <div
+            className="h-9 w-9 rounded-md border border-border cursor-pointer shadow-sm"
+            style={{ backgroundColor: currentHex }}
+          />
+        </div>
+        <Input
+          value={hexInput}
+          onChange={(e) => setHexInput(e.target.value)}
+          onBlur={() => applyHex(hexInput)}
+          onKeyDown={(e) => e.key === 'Enter' && applyHex(hexInput)}
+          placeholder="#000000"
+          className="w-28 font-mono text-sm"
+        />
+        <span className="text-xs text-muted-foreground">of kies een kleurcode</span>
+      </div>
+    </div>
+  );
+}
+
 const ACCENT_PRESETS = [
   { name: 'Blauw (standaard)', hsl: '197 100% 60%', hex: '#32C5FF' },
   { name: 'Groen', hsl: '142 71% 45%', hex: '#22C55E' },
