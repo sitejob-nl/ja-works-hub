@@ -14,6 +14,100 @@ export type Database = {
   }
   public: {
     Tables: {
+      annual_statements: {
+        Row: {
+          created_at: string
+          employee_id: string
+          generated_at: string | null
+          id: string
+          notes: string | null
+          organization_id: string
+          pdf_url: string | null
+          sent_at: string | null
+          status: string
+          total_allowances: number | null
+          total_deductions: number | null
+          total_gross: number | null
+          total_hours: number | null
+          total_net: number | null
+          total_overtime_hours: number | null
+          total_pension: number | null
+          total_social_premiums: number | null
+          total_tax_withheld: number | null
+          total_vacation_money: number | null
+          updated_at: string
+          year: number
+        }
+        Insert: {
+          created_at?: string
+          employee_id: string
+          generated_at?: string | null
+          id?: string
+          notes?: string | null
+          organization_id: string
+          pdf_url?: string | null
+          sent_at?: string | null
+          status?: string
+          total_allowances?: number | null
+          total_deductions?: number | null
+          total_gross?: number | null
+          total_hours?: number | null
+          total_net?: number | null
+          total_overtime_hours?: number | null
+          total_pension?: number | null
+          total_social_premiums?: number | null
+          total_tax_withheld?: number | null
+          total_vacation_money?: number | null
+          updated_at?: string
+          year: number
+        }
+        Update: {
+          created_at?: string
+          employee_id?: string
+          generated_at?: string | null
+          id?: string
+          notes?: string | null
+          organization_id?: string
+          pdf_url?: string | null
+          sent_at?: string | null
+          status?: string
+          total_allowances?: number | null
+          total_deductions?: number | null
+          total_gross?: number | null
+          total_hours?: number | null
+          total_net?: number | null
+          total_overtime_hours?: number | null
+          total_pension?: number | null
+          total_social_premiums?: number | null
+          total_tax_withheld?: number | null
+          total_vacation_money?: number | null
+          updated_at?: string
+          year?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "annual_statements_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "annual_statements_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_employee_compliance"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "annual_statements_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_log: {
         Row: {
           action: Database["public"]["Enums"]["audit_action"]
@@ -348,6 +442,9 @@ export type Database = {
           ai_risk_factors: string[] | null
           ai_summary: string | null
           availability_notes: string | null
+          bank_account_holder: string | null
+          birth_country: string | null
+          birth_place: string | null
           bsn: string | null
           certifications: string[] | null
           compliance_status: Database["public"]["Enums"]["compliance_status"]
@@ -359,11 +456,18 @@ export type Database = {
           email: string | null
           external_id: string | null
           first_name: string
+          gender: string | null
           has_drivers_license: boolean | null
           iban: string | null
           id: string
+          id_document_number: string | null
+          id_document_type: string | null
+          id_document_valid_until: string | null
+          initials: string | null
           languages: string[] | null
           last_name: string
+          marital_status: string | null
+          middle_name: string | null
           nationality: string | null
           notes: string | null
           organization_id: string
@@ -388,6 +492,9 @@ export type Database = {
           ai_risk_factors?: string[] | null
           ai_summary?: string | null
           availability_notes?: string | null
+          bank_account_holder?: string | null
+          birth_country?: string | null
+          birth_place?: string | null
           bsn?: string | null
           certifications?: string[] | null
           compliance_status?: Database["public"]["Enums"]["compliance_status"]
@@ -399,11 +506,18 @@ export type Database = {
           email?: string | null
           external_id?: string | null
           first_name: string
+          gender?: string | null
           has_drivers_license?: boolean | null
           iban?: string | null
           id?: string
+          id_document_number?: string | null
+          id_document_type?: string | null
+          id_document_valid_until?: string | null
+          initials?: string | null
           languages?: string[] | null
           last_name: string
+          marital_status?: string | null
+          middle_name?: string | null
           nationality?: string | null
           notes?: string | null
           organization_id: string
@@ -428,6 +542,9 @@ export type Database = {
           ai_risk_factors?: string[] | null
           ai_summary?: string | null
           availability_notes?: string | null
+          bank_account_holder?: string | null
+          birth_country?: string | null
+          birth_place?: string | null
           bsn?: string | null
           certifications?: string[] | null
           compliance_status?: Database["public"]["Enums"]["compliance_status"]
@@ -439,11 +556,18 @@ export type Database = {
           email?: string | null
           external_id?: string | null
           first_name?: string
+          gender?: string | null
           has_drivers_license?: boolean | null
           iban?: string | null
           id?: string
+          id_document_number?: string | null
+          id_document_type?: string | null
+          id_document_valid_until?: string | null
+          initials?: string | null
           languages?: string[] | null
           last_name?: string
+          marital_status?: string | null
+          middle_name?: string | null
           nationality?: string | null
           notes?: string | null
           organization_id?: string
@@ -674,17 +798,36 @@ export type Database = {
           address_country: string | null
           address_postal: string | null
           address_street: string | null
+          authorized_signatory: string | null
+          bank_account_holder: string | null
           btw_number: string | null
+          cao: string | null
           created_at: string
           email: string | null
+          iban: string | null
           id: string
+          invoice_address_city: string | null
+          invoice_address_country: string | null
+          invoice_address_postal: string | null
+          invoice_address_street: string | null
+          invoice_cc: string | null
+          invoice_company_name: string | null
+          invoice_email: string | null
           is_active: boolean
           kvk_number: string | null
+          language: string | null
+          legal_form: string | null
           name: string
           notes: string | null
           organization_id: string
           phone: string | null
+          sbi_codes: string[] | null
           updated_at: string
+          vat_rate: number | null
+          visit_address_city: string | null
+          visit_address_country: string | null
+          visit_address_postal: string | null
+          visit_address_street: string | null
           website: string | null
         }
         Insert: {
@@ -692,17 +835,36 @@ export type Database = {
           address_country?: string | null
           address_postal?: string | null
           address_street?: string | null
+          authorized_signatory?: string | null
+          bank_account_holder?: string | null
           btw_number?: string | null
+          cao?: string | null
           created_at?: string
           email?: string | null
+          iban?: string | null
           id?: string
+          invoice_address_city?: string | null
+          invoice_address_country?: string | null
+          invoice_address_postal?: string | null
+          invoice_address_street?: string | null
+          invoice_cc?: string | null
+          invoice_company_name?: string | null
+          invoice_email?: string | null
           is_active?: boolean
           kvk_number?: string | null
+          language?: string | null
+          legal_form?: string | null
           name: string
           notes?: string | null
           organization_id: string
           phone?: string | null
+          sbi_codes?: string[] | null
           updated_at?: string
+          vat_rate?: number | null
+          visit_address_city?: string | null
+          visit_address_country?: string | null
+          visit_address_postal?: string | null
+          visit_address_street?: string | null
           website?: string | null
         }
         Update: {
@@ -710,17 +872,36 @@ export type Database = {
           address_country?: string | null
           address_postal?: string | null
           address_street?: string | null
+          authorized_signatory?: string | null
+          bank_account_holder?: string | null
           btw_number?: string | null
+          cao?: string | null
           created_at?: string
           email?: string | null
+          iban?: string | null
           id?: string
+          invoice_address_city?: string | null
+          invoice_address_country?: string | null
+          invoice_address_postal?: string | null
+          invoice_address_street?: string | null
+          invoice_cc?: string | null
+          invoice_company_name?: string | null
+          invoice_email?: string | null
           is_active?: boolean
           kvk_number?: string | null
+          language?: string | null
+          legal_form?: string | null
           name?: string
           notes?: string | null
           organization_id?: string
           phone?: string | null
+          sbi_codes?: string[] | null
           updated_at?: string
+          vat_rate?: number | null
+          visit_address_city?: string | null
+          visit_address_country?: string | null
+          visit_address_postal?: string | null
+          visit_address_street?: string | null
           website?: string | null
         }
         Relationships: [
@@ -777,6 +958,54 @@ export type Database = {
           },
           {
             foreignKeyName: "company_contacts_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      company_functions: {
+        Row: {
+          company_id: string
+          created_at: string
+          default_hourly_rate: number | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          organization_id: string
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          default_hourly_rate?: number | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          organization_id: string
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          default_hourly_rate?: number | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          organization_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_functions_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "company_functions_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
@@ -1016,6 +1245,7 @@ export type Database = {
           ai_verification_result: Json | null
           candidate_id: string
           created_at: string
+          employee_id: string | null
           expiry_date: string | null
           file_path: string | null
           id: string
@@ -1023,6 +1253,7 @@ export type Database = {
           name: string
           notes: string | null
           organization_id: string
+          source: string | null
           status: Database["public"]["Enums"]["document_status"]
           type: Database["public"]["Enums"]["document_type"]
           updated_at: string
@@ -1033,6 +1264,7 @@ export type Database = {
           ai_verification_result?: Json | null
           candidate_id: string
           created_at?: string
+          employee_id?: string | null
           expiry_date?: string | null
           file_path?: string | null
           id?: string
@@ -1040,6 +1272,7 @@ export type Database = {
           name: string
           notes?: string | null
           organization_id: string
+          source?: string | null
           status?: Database["public"]["Enums"]["document_status"]
           type: Database["public"]["Enums"]["document_type"]
           updated_at?: string
@@ -1050,6 +1283,7 @@ export type Database = {
           ai_verification_result?: Json | null
           candidate_id?: string
           created_at?: string
+          employee_id?: string | null
           expiry_date?: string | null
           file_path?: string | null
           id?: string
@@ -1057,6 +1291,7 @@ export type Database = {
           name?: string
           notes?: string | null
           organization_id?: string
+          source?: string | null
           status?: Database["public"]["Enums"]["document_status"]
           type?: Database["public"]["Enums"]["document_type"]
           updated_at?: string
@@ -1070,6 +1305,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "candidates"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "documents_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "documents_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_employee_compliance"
+            referencedColumns: ["employee_id"]
           },
           {
             foreignKeyName: "documents_organization_id_fkey"
@@ -1087,6 +1336,318 @@ export type Database = {
           },
         ]
       }
+      employee_deductions: {
+        Row: {
+          amount: number
+          category: string
+          created_at: string
+          deducted_amount: number | null
+          description: string
+          employee_id: string
+          end_date: string | null
+          frequency: string
+          id: string
+          is_active: boolean
+          notes: string | null
+          organization_id: string
+          start_date: string
+          total_amount: number | null
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          category?: string
+          created_at?: string
+          deducted_amount?: number | null
+          description: string
+          employee_id: string
+          end_date?: string | null
+          frequency?: string
+          id?: string
+          is_active?: boolean
+          notes?: string | null
+          organization_id: string
+          start_date?: string
+          total_amount?: number | null
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          category?: string
+          created_at?: string
+          deducted_amount?: number | null
+          description?: string
+          employee_id?: string
+          end_date?: string | null
+          frequency?: string
+          id?: string
+          is_active?: boolean
+          notes?: string | null
+          organization_id?: string
+          start_date?: string
+          total_amount?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employee_deductions_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_deductions_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_employee_compliance"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "employee_deductions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      employee_notifications: {
+        Row: {
+          company_id: string | null
+          created_at: string
+          due_date: string | null
+          employee_id: string | null
+          id: string
+          is_dismissed: boolean | null
+          is_read: boolean | null
+          message: string | null
+          organization_id: string
+          read_at: string | null
+          read_by: string | null
+          reference_id: string | null
+          reference_table: string | null
+          severity: string | null
+          title: string
+          type: string
+        }
+        Insert: {
+          company_id?: string | null
+          created_at?: string
+          due_date?: string | null
+          employee_id?: string | null
+          id?: string
+          is_dismissed?: boolean | null
+          is_read?: boolean | null
+          message?: string | null
+          organization_id: string
+          read_at?: string | null
+          read_by?: string | null
+          reference_id?: string | null
+          reference_table?: string | null
+          severity?: string | null
+          title: string
+          type: string
+        }
+        Update: {
+          company_id?: string | null
+          created_at?: string
+          due_date?: string | null
+          employee_id?: string | null
+          id?: string
+          is_dismissed?: boolean | null
+          is_read?: boolean | null
+          message?: string | null
+          organization_id?: string
+          read_at?: string | null
+          read_by?: string | null
+          reference_id?: string | null
+          reference_table?: string | null
+          severity?: string | null
+          title?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employee_notifications_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_notifications_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_notifications_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_employee_compliance"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "employee_notifications_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_notifications_read_by_fkey"
+            columns: ["read_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      employee_reservations: {
+        Row: {
+          calculation_base: string | null
+          category: string
+          created_at: string
+          description: string
+          employee_id: string
+          end_date: string | null
+          fixed_amount: number | null
+          id: string
+          is_active: boolean
+          notes: string | null
+          organization_id: string
+          percentage: number | null
+          start_date: string
+          updated_at: string
+        }
+        Insert: {
+          calculation_base?: string | null
+          category?: string
+          created_at?: string
+          description: string
+          employee_id: string
+          end_date?: string | null
+          fixed_amount?: number | null
+          id?: string
+          is_active?: boolean
+          notes?: string | null
+          organization_id: string
+          percentage?: number | null
+          start_date?: string
+          updated_at?: string
+        }
+        Update: {
+          calculation_base?: string | null
+          category?: string
+          created_at?: string
+          description?: string
+          employee_id?: string
+          end_date?: string | null
+          fixed_amount?: number | null
+          id?: string
+          is_active?: boolean
+          notes?: string | null
+          organization_id?: string
+          percentage?: number | null
+          start_date?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employee_reservations_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_reservations_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_employee_compliance"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "employee_reservations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      employee_subsidies: {
+        Row: {
+          amount_per_hour: number | null
+          created_at: string
+          description: string | null
+          employee_id: string
+          end_date: string | null
+          id: string
+          is_active: boolean
+          max_annual_amount: number | null
+          notes: string | null
+          organization_id: string
+          start_date: string
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          amount_per_hour?: number | null
+          created_at?: string
+          description?: string | null
+          employee_id: string
+          end_date?: string | null
+          id?: string
+          is_active?: boolean
+          max_annual_amount?: number | null
+          notes?: string | null
+          organization_id: string
+          start_date: string
+          type: string
+          updated_at?: string
+        }
+        Update: {
+          amount_per_hour?: number | null
+          created_at?: string
+          description?: string | null
+          employee_id?: string
+          end_date?: string | null
+          id?: string
+          is_active?: boolean
+          max_annual_amount?: number | null
+          notes?: string | null
+          organization_id?: string
+          start_date?: string
+          type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employee_subsidies_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_subsidies_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_employee_compliance"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "employee_subsidies_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       employees: {
         Row: {
           auth_user_id: string | null
@@ -1096,18 +1657,28 @@ export type Database = {
           created_at: string
           employee_number: string | null
           end_date: string | null
+          end_reason: string | null
           id: string
+          insurance_notes: string | null
+          insurance_type: string | null
           notes: string | null
           onboarding_completed: boolean
           onboarding_completed_at: string | null
           organization_id: string
+          pay_frequency: string | null
+          pension_scheme: string | null
+          pension_start_date: string | null
           portal_activated_at: string | null
           portal_enabled: boolean | null
           portal_language: string | null
           portal_last_login: string | null
+          senior_days: number | null
           start_date: string
           status: Database["public"]["Enums"]["employee_status"]
           updated_at: string
+          vacation_days_total: number | null
+          vacation_days_used: number | null
+          vacation_money_percentage: number | null
         }
         Insert: {
           auth_user_id?: string | null
@@ -1117,18 +1688,28 @@ export type Database = {
           created_at?: string
           employee_number?: string | null
           end_date?: string | null
+          end_reason?: string | null
           id?: string
+          insurance_notes?: string | null
+          insurance_type?: string | null
           notes?: string | null
           onboarding_completed?: boolean
           onboarding_completed_at?: string | null
           organization_id: string
+          pay_frequency?: string | null
+          pension_scheme?: string | null
+          pension_start_date?: string | null
           portal_activated_at?: string | null
           portal_enabled?: boolean | null
           portal_language?: string | null
           portal_last_login?: string | null
+          senior_days?: number | null
           start_date: string
           status?: Database["public"]["Enums"]["employee_status"]
           updated_at?: string
+          vacation_days_total?: number | null
+          vacation_days_used?: number | null
+          vacation_money_percentage?: number | null
         }
         Update: {
           auth_user_id?: string | null
@@ -1138,18 +1719,28 @@ export type Database = {
           created_at?: string
           employee_number?: string | null
           end_date?: string | null
+          end_reason?: string | null
           id?: string
+          insurance_notes?: string | null
+          insurance_type?: string | null
           notes?: string | null
           onboarding_completed?: boolean
           onboarding_completed_at?: string | null
           organization_id?: string
+          pay_frequency?: string | null
+          pension_scheme?: string | null
+          pension_start_date?: string | null
           portal_activated_at?: string | null
           portal_enabled?: boolean | null
           portal_language?: string | null
           portal_last_login?: string | null
+          senior_days?: number | null
           start_date?: string
           status?: Database["public"]["Enums"]["employee_status"]
           updated_at?: string
+          vacation_days_total?: number | null
+          vacation_days_used?: number | null
+          vacation_money_percentage?: number | null
         }
         Relationships: [
           {
@@ -1367,6 +1958,118 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "vehicles"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      hour_letters: {
+        Row: {
+          allowances_total: number | null
+          approved_at: string | null
+          approved_by: string | null
+          created_at: string
+          deductions_total: number | null
+          employee_id: string
+          id: string
+          line_items: Json | null
+          notes: string | null
+          organization_id: string
+          overtime_hours: number | null
+          pdf_url: string | null
+          placement_id: string | null
+          reservations_total: number | null
+          status: string
+          total_hours: number | null
+          total_km: number | null
+          updated_at: string
+          week_number: number
+          year: number
+        }
+        Insert: {
+          allowances_total?: number | null
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          deductions_total?: number | null
+          employee_id: string
+          id?: string
+          line_items?: Json | null
+          notes?: string | null
+          organization_id: string
+          overtime_hours?: number | null
+          pdf_url?: string | null
+          placement_id?: string | null
+          reservations_total?: number | null
+          status?: string
+          total_hours?: number | null
+          total_km?: number | null
+          updated_at?: string
+          week_number: number
+          year: number
+        }
+        Update: {
+          allowances_total?: number | null
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          deductions_total?: number | null
+          employee_id?: string
+          id?: string
+          line_items?: Json | null
+          notes?: string | null
+          organization_id?: string
+          overtime_hours?: number | null
+          pdf_url?: string | null
+          placement_id?: string | null
+          reservations_total?: number | null
+          status?: string
+          total_hours?: number | null
+          total_km?: number | null
+          updated_at?: string
+          week_number?: number
+          year?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hour_letters_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hour_letters_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hour_letters_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_employee_compliance"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "hour_letters_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hour_letters_placement_id_fkey"
+            columns: ["placement_id"]
+            isOneToOne: false
+            referencedRelation: "placements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hour_letters_placement_id_fkey"
+            columns: ["placement_id"]
+            isOneToOne: false
+            referencedRelation: "v_active_placements"
+            referencedColumns: ["placement_id"]
           },
         ]
       }
@@ -2517,6 +3220,128 @@ export type Database = {
           },
         ]
       }
+      payslips: {
+        Row: {
+          allowances_total: number | null
+          approved_at: string | null
+          approved_by: string | null
+          created_at: string
+          deductions_total: number | null
+          employee_id: string
+          exported_at: string | null
+          gross_salary: number
+          id: string
+          line_items: Json | null
+          net_salary: number
+          notes: string | null
+          organization_id: string
+          overtime_hours: number | null
+          pdf_url: string | null
+          pension_reserved: number | null
+          period_end: string
+          period_number: number
+          period_start: string
+          period_year: number
+          reservations_total: number | null
+          social_premiums: number | null
+          status: string
+          surcharges_total: number | null
+          tax_withheld: number | null
+          total_hours: number | null
+          updated_at: string
+          vacation_money_reserved: number | null
+        }
+        Insert: {
+          allowances_total?: number | null
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          deductions_total?: number | null
+          employee_id: string
+          exported_at?: string | null
+          gross_salary?: number
+          id?: string
+          line_items?: Json | null
+          net_salary?: number
+          notes?: string | null
+          organization_id: string
+          overtime_hours?: number | null
+          pdf_url?: string | null
+          pension_reserved?: number | null
+          period_end: string
+          period_number: number
+          period_start: string
+          period_year: number
+          reservations_total?: number | null
+          social_premiums?: number | null
+          status?: string
+          surcharges_total?: number | null
+          tax_withheld?: number | null
+          total_hours?: number | null
+          updated_at?: string
+          vacation_money_reserved?: number | null
+        }
+        Update: {
+          allowances_total?: number | null
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          deductions_total?: number | null
+          employee_id?: string
+          exported_at?: string | null
+          gross_salary?: number
+          id?: string
+          line_items?: Json | null
+          net_salary?: number
+          notes?: string | null
+          organization_id?: string
+          overtime_hours?: number | null
+          pdf_url?: string | null
+          pension_reserved?: number | null
+          period_end?: string
+          period_number?: number
+          period_start?: string
+          period_year?: number
+          reservations_total?: number | null
+          social_premiums?: number | null
+          status?: string
+          surcharges_total?: number | null
+          tax_withheld?: number | null
+          total_hours?: number | null
+          updated_at?: string
+          vacation_money_reserved?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payslips_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payslips_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payslips_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_employee_compliance"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "payslips_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       people_search_results: {
         Row: {
           date_imported: string
@@ -2576,8 +3401,195 @@ export type Database = {
           },
         ]
       }
+      placement_allowances: {
+        Row: {
+          amount: number
+          code: string
+          created_at: string
+          description: string
+          frequency: string
+          id: string
+          is_taxable: boolean | null
+          organization_id: string
+          placement_id: string
+          sort_order: number | null
+        }
+        Insert: {
+          amount: number
+          code: string
+          created_at?: string
+          description: string
+          frequency?: string
+          id?: string
+          is_taxable?: boolean | null
+          organization_id: string
+          placement_id: string
+          sort_order?: number | null
+        }
+        Update: {
+          amount?: number
+          code?: string
+          created_at?: string
+          description?: string
+          frequency?: string
+          id?: string
+          is_taxable?: boolean | null
+          organization_id?: string
+          placement_id?: string
+          sort_order?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "placement_allowances_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "placement_allowances_placement_id_fkey"
+            columns: ["placement_id"]
+            isOneToOne: false
+            referencedRelation: "placements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "placement_allowances_placement_id_fkey"
+            columns: ["placement_id"]
+            isOneToOne: false
+            referencedRelation: "v_active_placements"
+            referencedColumns: ["placement_id"]
+          },
+        ]
+      }
+      placement_hour_types: {
+        Row: {
+          code: string
+          created_at: string
+          description: string
+          id: string
+          is_default: boolean | null
+          multiplier: number
+          organization_id: string
+          placement_id: string
+          sort_order: number | null
+          surcharge_amount: number | null
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          description: string
+          id?: string
+          is_default?: boolean | null
+          multiplier?: number
+          organization_id: string
+          placement_id: string
+          sort_order?: number | null
+          surcharge_amount?: number | null
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          description?: string
+          id?: string
+          is_default?: boolean | null
+          multiplier?: number
+          organization_id?: string
+          placement_id?: string
+          sort_order?: number | null
+          surcharge_amount?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "placement_hour_types_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "placement_hour_types_placement_id_fkey"
+            columns: ["placement_id"]
+            isOneToOne: false
+            referencedRelation: "placements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "placement_hour_types_placement_id_fkey"
+            columns: ["placement_id"]
+            isOneToOne: false
+            referencedRelation: "v_active_placements"
+            referencedColumns: ["placement_id"]
+          },
+        ]
+      }
+      placement_travel_types: {
+        Row: {
+          code: string
+          created_at: string
+          description: string
+          fixed_amount: number | null
+          id: string
+          is_taxable: boolean | null
+          max_km_per_day: number | null
+          organization_id: string
+          placement_id: string
+          rate_per_km: number | null
+          sort_order: number | null
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          description: string
+          fixed_amount?: number | null
+          id?: string
+          is_taxable?: boolean | null
+          max_km_per_day?: number | null
+          organization_id: string
+          placement_id: string
+          rate_per_km?: number | null
+          sort_order?: number | null
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          description?: string
+          fixed_amount?: number | null
+          id?: string
+          is_taxable?: boolean | null
+          max_km_per_day?: number | null
+          organization_id?: string
+          placement_id?: string
+          rate_per_km?: number | null
+          sort_order?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "placement_travel_types_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "placement_travel_types_placement_id_fkey"
+            columns: ["placement_id"]
+            isOneToOne: false
+            referencedRelation: "placements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "placement_travel_types_placement_id_fkey"
+            columns: ["placement_id"]
+            isOneToOne: false
+            referencedRelation: "v_active_placements"
+            referencedColumns: ["placement_id"]
+          },
+        ]
+      }
       placements: {
         Row: {
+          cao_hours: number | null
           company_id: string
           compliance_check_at: string | null
           compliance_check_passed: boolean
@@ -2592,6 +3604,8 @@ export type Database = {
           hourly_rate: number
           housing_assignment_id: string | null
           id: string
+          is_seasonal: boolean | null
+          is_time_for_time: boolean | null
           match_id: string | null
           notes: string | null
           organization_id: string
@@ -2601,8 +3615,11 @@ export type Database = {
           status: Database["public"]["Enums"]["placement_status"]
           updated_at: string
           vacancy_id: string | null
+          work_days: string[] | null
+          work_location: string | null
         }
         Insert: {
+          cao_hours?: number | null
           company_id: string
           compliance_check_at?: string | null
           compliance_check_passed?: boolean
@@ -2617,6 +3634,8 @@ export type Database = {
           hourly_rate: number
           housing_assignment_id?: string | null
           id?: string
+          is_seasonal?: boolean | null
+          is_time_for_time?: boolean | null
           match_id?: string | null
           notes?: string | null
           organization_id: string
@@ -2626,8 +3645,11 @@ export type Database = {
           status?: Database["public"]["Enums"]["placement_status"]
           updated_at?: string
           vacancy_id?: string | null
+          work_days?: string[] | null
+          work_location?: string | null
         }
         Update: {
+          cao_hours?: number | null
           company_id?: string
           compliance_check_at?: string | null
           compliance_check_passed?: boolean
@@ -2642,6 +3664,8 @@ export type Database = {
           hourly_rate?: number
           housing_assignment_id?: string | null
           id?: string
+          is_seasonal?: boolean | null
+          is_time_for_time?: boolean | null
           match_id?: string | null
           notes?: string | null
           organization_id?: string
@@ -2651,6 +3675,8 @@ export type Database = {
           status?: Database["public"]["Enums"]["placement_status"]
           updated_at?: string
           vacancy_id?: string | null
+          work_days?: string[] | null
+          work_location?: string | null
         }
         Relationships: [
           {
@@ -3363,6 +4389,7 @@ export type Database = {
         Row: {
           ai_validated_at: string | null
           ai_validation_result: Json | null
+          allowances_amount: number | null
           approved_at: string | null
           approved_by: string | null
           client_approved: boolean | null
@@ -3371,6 +4398,7 @@ export type Database = {
           employee_confirmed: boolean | null
           employee_confirmed_at: string | null
           employee_id: string
+          hour_type_id: string | null
           hourly_rate: number | null
           hours: number
           id: string
@@ -3381,12 +4409,17 @@ export type Database = {
           rate_code: string | null
           source: Database["public"]["Enums"]["timesheet_source"]
           status: Database["public"]["Enums"]["timesheet_status"]
+          surcharge_amount: number | null
+          travel_amount: number | null
+          travel_km: number | null
+          travel_type_id: string | null
           updated_at: string
           work_date: string
         }
         Insert: {
           ai_validated_at?: string | null
           ai_validation_result?: Json | null
+          allowances_amount?: number | null
           approved_at?: string | null
           approved_by?: string | null
           client_approved?: boolean | null
@@ -3395,6 +4428,7 @@ export type Database = {
           employee_confirmed?: boolean | null
           employee_confirmed_at?: string | null
           employee_id: string
+          hour_type_id?: string | null
           hourly_rate?: number | null
           hours: number
           id?: string
@@ -3405,12 +4439,17 @@ export type Database = {
           rate_code?: string | null
           source?: Database["public"]["Enums"]["timesheet_source"]
           status?: Database["public"]["Enums"]["timesheet_status"]
+          surcharge_amount?: number | null
+          travel_amount?: number | null
+          travel_km?: number | null
+          travel_type_id?: string | null
           updated_at?: string
           work_date: string
         }
         Update: {
           ai_validated_at?: string | null
           ai_validation_result?: Json | null
+          allowances_amount?: number | null
           approved_at?: string | null
           approved_by?: string | null
           client_approved?: boolean | null
@@ -3419,6 +4458,7 @@ export type Database = {
           employee_confirmed?: boolean | null
           employee_confirmed_at?: string | null
           employee_id?: string
+          hour_type_id?: string | null
           hourly_rate?: number | null
           hours?: number
           id?: string
@@ -3429,6 +4469,10 @@ export type Database = {
           rate_code?: string | null
           source?: Database["public"]["Enums"]["timesheet_source"]
           status?: Database["public"]["Enums"]["timesheet_status"]
+          surcharge_amount?: number | null
+          travel_amount?: number | null
+          travel_km?: number | null
+          travel_type_id?: string | null
           updated_at?: string
           work_date?: string
         }
@@ -3455,6 +4499,13 @@ export type Database = {
             referencedColumns: ["employee_id"]
           },
           {
+            foreignKeyName: "timesheets_hour_type_id_fkey"
+            columns: ["hour_type_id"]
+            isOneToOne: false
+            referencedRelation: "placement_hour_types"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "timesheets_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
@@ -3474,6 +4525,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_active_placements"
             referencedColumns: ["placement_id"]
+          },
+          {
+            foreignKeyName: "timesheets_travel_type_id_fkey"
+            columns: ["travel_type_id"]
+            isOneToOne: false
+            referencedRelation: "placement_travel_types"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -4227,6 +5285,10 @@ export type Database = {
         | "contract"
         | "reglement"
         | "overig"
+        | "bankbewijs"
+        | "loonstrook"
+        | "jaaropgave"
+        | "urenbrief"
       employee_status: "onboarding" | "actief" | "ziek" | "uit_dienst"
       housing_assignment_status: "gereserveerd" | "ingecheckt" | "uitgecheckt"
       inspection_type:
@@ -4438,6 +5500,10 @@ export const Constants = {
         "contract",
         "reglement",
         "overig",
+        "bankbewijs",
+        "loonstrook",
+        "jaaropgave",
+        "urenbrief",
       ],
       employee_status: ["onboarding", "actief", "ziek", "uit_dienst"],
       housing_assignment_status: ["gereserveerd", "ingecheckt", "uitgecheckt"],
