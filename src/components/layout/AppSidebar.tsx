@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
+import { applyBranding, type BrandingSettings } from '@/lib/branding';
 import { useQuery } from '@tanstack/react-query';
 import {
   LayoutDashboard, Building2, Users, UserCheck, Home, Briefcase,
@@ -135,12 +136,7 @@ const AppSidebar = ({ onNavigate }: AppSidebarProps) => {
   useEffect(() => {
     if (!org) return;
     const s = (org.settings as Record<string, string> | null) ?? {};
-    if (s.accent_color) {
-      document.documentElement.style.setProperty('--primary', s.accent_color);
-      document.documentElement.style.setProperty('--ring', s.accent_color);
-      document.documentElement.style.setProperty('--accent-blue', s.accent_color);
-      document.documentElement.style.setProperty('--stat-blue', s.accent_color);
-    }
+    applyBranding(s as BrandingSettings);
   }, [org]);
 
   const orgInitials = (org?.name ?? 'JA').slice(0, 2).toUpperCase();

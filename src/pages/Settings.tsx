@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
-import { Settings as SettingsIcon, Upload, Palette, Building2, User, LogOut, Trash2, FileSpreadsheet } from 'lucide-react';
+import { Settings as SettingsIcon, Upload, Palette, Building2, User, LogOut, Trash2, FileSpreadsheet, RotateCcw } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import WhatsAppSettings from '@/components/settings/WhatsAppSettings';
 import ExactOnlineSettings from '@/components/settings/ExactOnlineSettings';
@@ -18,6 +18,7 @@ import ComplianceRulesSettings from '@/components/settings/ComplianceRulesSettin
 import RegulationsSettings from '@/components/settings/RegulationsSettings';
 import ContractTemplatesSettings from '@/components/settings/ContractTemplatesSettings';
 import OnboardingFormSettings from '@/components/settings/OnboardingFormSettings';
+import { applyBranding, BRANDING_DEFAULTS, type BrandingSettings } from '@/lib/branding';
 
 const ACCENT_PRESETS = [
   { name: 'Blauw (standaard)', hsl: '197 100% 60%', hex: '#32C5FF' },
@@ -28,6 +29,26 @@ const ACCENT_PRESETS = [
   { name: 'Roze', hsl: '330 81% 60%', hex: '#EC4899' },
   { name: 'Teal', hsl: '175 77% 40%', hex: '#14B8A6' },
   { name: 'Indigo', hsl: '239 84% 67%', hex: '#6366F1' },
+];
+
+const SIDEBAR_PRESETS = [
+  { name: 'Donker (standaard)', hsl: '224 60% 8%', hex: '#0B1020' },
+  { name: 'Antraciet', hsl: '220 13% 18%', hex: '#272B33' },
+  { name: 'Navy', hsl: '222 47% 15%', hex: '#141E33' },
+  { name: 'Donkergroen', hsl: '160 40% 10%', hex: '#0F1F1A' },
+  { name: 'Donkerpaars', hsl: '270 40% 14%', hex: '#1E1433' },
+  { name: 'Warm grijs', hsl: '30 8% 20%', hex: '#37332F' },
+  { name: 'Wit', hsl: '0 0% 100%', hex: '#FFFFFF' },
+  { name: 'Lichtgrijs', hsl: '210 20% 96%', hex: '#F1F5F9' },
+];
+
+const BG_PRESETS = [
+  { name: 'Lichtgrijs (standaard)', hsl: '210 33% 98%', hex: '#F8FAFC' },
+  { name: 'Wit', hsl: '0 0% 100%', hex: '#FFFFFF' },
+  { name: 'Warm crème', hsl: '40 33% 97%', hex: '#FAF8F5' },
+  { name: 'Koel blauw', hsl: '214 32% 97%', hex: '#F5F8FC' },
+  { name: 'Mint', hsl: '160 25% 97%', hex: '#F4FAF8' },
+  { name: 'Lavender', hsl: '260 25% 97%', hex: '#F6F4FA' },
 ];
 
 const Settings = () => {
@@ -141,12 +162,34 @@ const Settings = () => {
   const handleSetAccent = (hsl: string) => {
     const newSettings = { ...settings, accent_color: hsl };
     updateOrg.mutate({ settings: newSettings });
+    applyBranding(newSettings as BrandingSettings);
+  };
 
-    // Apply immediately
-    document.documentElement.style.setProperty('--primary', hsl);
-    document.documentElement.style.setProperty('--ring', hsl);
-    document.documentElement.style.setProperty('--accent-blue', hsl);
-    document.documentElement.style.setProperty('--stat-blue', hsl);
+  const handleSetSidebarBg = (hsl: string) => {
+    const newSettings = { ...settings, sidebar_bg: hsl };
+    updateOrg.mutate({ settings: newSettings });
+    applyBranding(newSettings as BrandingSettings);
+  };
+
+  const handleSetBackground = (hsl: string) => {
+    const newSettings = { ...settings, background: hsl };
+    updateOrg.mutate({ settings: newSettings });
+    applyBranding(newSettings as BrandingSettings);
+  };
+
+  const handleResetBranding = () => {
+    const newSettings = { ...settings };
+    delete newSettings.accent_color;
+    delete newSettings.sidebar_bg;
+    delete newSettings.background;
+    delete newSettings.sidebar_fg;
+    delete newSettings.sidebar_fg_active;
+    delete newSettings.card;
+    delete newSettings.heading;
+    delete newSettings.border_radius;
+    updateOrg.mutate({ settings: newSettings });
+    applyBranding(BRANDING_DEFAULTS);
+    toast.success('Branding hersteld naar standaard');
   };
 
   if (isLoading) {
@@ -220,32 +263,134 @@ const Settings = () => {
             </CardContent>
           </Card>
 
-          {/* Accent color */}
+          {/* Branding */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Palette className="h-4 w-4" /> Accentkleur
-              </CardTitle>
-              <CardDescription>Kies een accentkleur voor het dashboard en de interface</CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Palette className="h-4 w-4" /> Branding & Kleuren
+                  </CardTitle>
+                  <CardDescription>Pas het uiterlijk van het platform aan per organisatie</CardDescription>
+                </div>
+                <Button size="sm" variant="ghost" onClick={handleResetBranding}>
+                  <RotateCcw className="h-3.5 w-3.5 mr-1.5" /> Standaard
+                </Button>
+              </div>
             </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-4 sm:grid-cols-8 gap-3">
-                {ACCENT_PRESETS.map((preset) => (
-                  <button
-                    key={preset.hsl}
-                    onClick={() => handleSetAccent(preset.hsl)}
-                    className={`group flex flex-col items-center gap-1.5`}
-                    title={preset.name}
+            <CardContent className="space-y-6">
+              {/* Accent color */}
+              <div>
+                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 block">Accentkleur</Label>
+                <div className="grid grid-cols-4 sm:grid-cols-8 gap-3">
+                  {ACCENT_PRESETS.map((preset) => (
+                    <button
+                      key={preset.hsl}
+                      onClick={() => handleSetAccent(preset.hsl)}
+                      className="group flex flex-col items-center gap-1.5"
+                      title={preset.name}
+                    >
+                      <div
+                        className={`h-10 w-10 rounded-full border-2 transition-all ${
+                          accentColor === preset.hsl ? 'border-foreground scale-110 shadow-md' : 'border-transparent hover:scale-105'
+                        }`}
+                        style={{ backgroundColor: preset.hex }}
+                      />
+                      <span className="text-[10px] text-muted-foreground leading-tight text-center">{preset.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Sidebar color */}
+              <div>
+                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 block">Sidebar kleur</Label>
+                <div className="grid grid-cols-4 sm:grid-cols-8 gap-3">
+                  {SIDEBAR_PRESETS.map((preset) => (
+                    <button
+                      key={preset.hsl}
+                      onClick={() => handleSetSidebarBg(preset.hsl)}
+                      className="group flex flex-col items-center gap-1.5"
+                      title={preset.name}
+                    >
+                      <div
+                        className={`h-10 w-10 rounded-full border-2 transition-all ${
+                          (settings.sidebar_bg ?? BRANDING_DEFAULTS.sidebar_bg) === preset.hsl
+                            ? 'border-foreground scale-110 shadow-md'
+                            : 'border-border hover:scale-105'
+                        }`}
+                        style={{ backgroundColor: preset.hex }}
+                      />
+                      <span className="text-[10px] text-muted-foreground leading-tight text-center">{preset.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Background color */}
+              <div>
+                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 block">Achtergrondkleur</Label>
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
+                  {BG_PRESETS.map((preset) => (
+                    <button
+                      key={preset.hsl}
+                      onClick={() => handleSetBackground(preset.hsl)}
+                      className="group flex flex-col items-center gap-1.5"
+                      title={preset.name}
+                    >
+                      <div
+                        className={`h-10 w-10 rounded-full border-2 transition-all ${
+                          (settings.background ?? BRANDING_DEFAULTS.background) === preset.hsl
+                            ? 'border-foreground scale-110 shadow-md'
+                            : 'border-border hover:scale-105'
+                        }`}
+                        style={{ backgroundColor: preset.hex }}
+                      />
+                      <span className="text-[10px] text-muted-foreground leading-tight text-center">{preset.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Live preview */}
+              <div>
+                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 block">Voorbeeld</Label>
+                <div className="flex rounded-lg overflow-hidden border border-border h-24">
+                  <div
+                    className="w-16 p-2 flex flex-col gap-1.5"
+                    style={{ backgroundColor: `hsl(${settings.sidebar_bg ?? BRANDING_DEFAULTS.sidebar_bg})` }}
                   >
+                    {[1, 2, 3].map(i => (
+                      <div
+                        key={i}
+                        className="h-2 rounded-sm"
+                        style={{
+                          backgroundColor: i === 1
+                            ? `hsl(${accentColor})`
+                            : `hsl(${settings.sidebar_fg ?? BRANDING_DEFAULTS.sidebar_fg} / 0.3)`,
+                        }}
+                      />
+                    ))}
+                  </div>
+                  <div
+                    className="flex-1 p-3 flex flex-col gap-2"
+                    style={{ backgroundColor: `hsl(${settings.background ?? BRANDING_DEFAULTS.background})` }}
+                  >
+                    <div className="h-2.5 w-20 rounded-sm" style={{ backgroundColor: `hsl(${settings.heading ?? BRANDING_DEFAULTS.heading})` }} />
                     <div
-                      className={`h-10 w-10 rounded-full border-2 transition-all ${
-                        accentColor === preset.hsl ? 'border-foreground scale-110 shadow-md' : 'border-transparent hover:scale-105'
-                      }`}
-                      style={{ backgroundColor: preset.hex }}
-                    />
-                    <span className="text-[10px] text-muted-foreground leading-tight text-center">{preset.name}</span>
-                  </button>
-                ))}
+                      className="flex-1 rounded-md p-2"
+                      style={{ backgroundColor: `hsl(${settings.card ?? BRANDING_DEFAULTS.card})` }}
+                    >
+                      <div className="h-2 w-16 rounded-sm" style={{ backgroundColor: `hsl(${accentColor})` }} />
+                    </div>
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>
