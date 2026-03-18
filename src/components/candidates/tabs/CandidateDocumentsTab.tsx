@@ -18,12 +18,14 @@ type DocType = Database['public']['Enums']['document_type'];
 
 const typeIcons: Record<DocType, any> = {
   id_bewijs: CreditCard, rijbewijs: Car, certificaat: Award,
-  contract: FileText, reglement: FileCheck, overig: File,
+  contract: FileText, reglement: FileCheck, bankbewijs: CreditCard,
+  loonstrook: FileText, jaaropgave: FileText, urenbrief: FileText, overig: File,
 };
 
 const typeLabels: Record<DocType, string> = {
   id_bewijs: 'ID Bewijs', rijbewijs: 'Rijbewijs', certificaat: 'Certificaat',
-  contract: 'Contract', reglement: 'Reglement', overig: 'Overig',
+  contract: 'Contract', reglement: 'Reglement', bankbewijs: 'Bankbewijs',
+  loonstrook: 'Loonstrook', jaaropgave: 'Jaaropgave', urenbrief: 'Urenbrief', overig: 'Overig',
 };
 
 const statusBadge: Record<string, string> = {

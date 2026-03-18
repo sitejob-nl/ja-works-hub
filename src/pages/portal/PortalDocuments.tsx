@@ -23,6 +23,10 @@ const typeLabels: Record<DocType, string> = {
   certificaat: 'Certificaat',
   contract: 'Contract',
   reglement: 'Reglement',
+  bankbewijs: 'Bankbewijs',
+  loonstrook: 'Loonstrook',
+  jaaropgave: 'Jaaropgave',
+  urenbrief: 'Urenbrief',
   overig: 'Overig',
 };
 
