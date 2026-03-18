@@ -16,7 +16,9 @@ const mainTabs = [
 const moreTabs = [
   { label: 'Voertuig', path: '/portaal/voertuig' },
   { label: 'Ziekmelding', path: '/portaal/ziekmelding' },
-  { label: 'Kennisbank', path: '/portaal/kennisbank' },
+  { label: 'Loonstroken', path: '/portaal/loonstroken' },
+  { label: 'Jaaropgaven', path: '/portaal/jaaropgaven' },
+  { label: 'Urenbrieven', path: '/portaal/urenbrieven' },
   { label: 'Profiel', path: '/portaal/profiel' },
 ];
 

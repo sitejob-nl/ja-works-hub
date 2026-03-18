@@ -165,6 +165,9 @@ const App = () => (
               <Route path="ziekmelding" element={<PortalSickReport />} />
               <Route path="huisvesting" element={<PortalHousing />} />
               <Route path="voertuig" element={<PortalVehicle />} />
+              <Route path="loonstroken" element={<PortalPayslips />} />
+              <Route path="jaaropgaven" element={<PortalAnnualStatements />} />
+              <Route path="urenbrieven" element={<PortalHourLetters />} />
             </Route>
             <Route path="/installeren" element={<Installeren />} />
             <Route path="*" element={<NotFound />} />
