@@ -219,6 +219,11 @@ const Timesheets = () => {
           <p className="text-muted-foreground text-sm mt-1 hidden sm:block">Urenregistratie en goedkeuring</p>
         </div>
         <div className="flex gap-2 flex-wrap">
+          {employeeFilter !== 'all' && timesheets.length > 0 && (
+            <Button variant="outline" size="sm" onClick={() => generateHourLetter.mutate()} disabled={generateHourLetter.isPending} className="gap-1.5">
+              <FileText className="h-4 w-4" /> <span className="hidden sm:inline">{generateHourLetter.isPending ? 'Genereren...' : 'Urenbrief'}</span><span className="sm:hidden">Brief</span>
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={() => aiValidation.mutate()} disabled={aiValidation.isPending} className="gap-1.5">
             <Sparkles className="h-4 w-4" /> <span className="hidden sm:inline">{aiValidation.isPending ? 'Valideren...' : 'AI Validatie'}</span><span className="sm:hidden">AI</span>
           </Button>
