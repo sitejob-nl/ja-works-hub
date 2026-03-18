@@ -82,6 +82,7 @@ const CompanyDetail = () => {
           <TabsList className="w-max sm:w-auto">
             <TabsTrigger value="gegevens">Gegevens</TabsTrigger>
             <TabsTrigger value="contacten">Contacten</TabsTrigger>
+            <TabsTrigger value="functies">Functies</TabsTrigger>
             <TabsTrigger value="tarieven">Tarieven</TabsTrigger>
             <TabsTrigger value="sla">SLA</TabsTrigger>
             <TabsTrigger value="communicatie">Comm.</TabsTrigger>
@@ -90,6 +91,7 @@ const CompanyDetail = () => {
         </div>
         <TabsContent value="gegevens"><CompanyInfoTab company={company} /></TabsContent>
         <TabsContent value="contacten"><ContactsTab companyId={id!} /></TabsContent>
+        <TabsContent value="functies"><CompanyFunctionsTab companyId={id!} /></TabsContent>
         <TabsContent value="tarieven"><RateAgreementsTab companyId={id!} /></TabsContent>
         <TabsContent value="sla"><SlaTab companyId={id!} /></TabsContent>
         <TabsContent value="communicatie"><CommunicationTab companyId={id!} /></TabsContent>
