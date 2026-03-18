@@ -394,24 +394,7 @@ const Settings = () => {
               {/* Accent color */}
               <div>
                 <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 block">Accentkleur</Label>
-                <div className="grid grid-cols-4 sm:grid-cols-8 gap-3">
-                  {ACCENT_PRESETS.map((preset) => (
-                    <button
-                      key={preset.hsl}
-                      onClick={() => handleSetAccent(preset.hsl)}
-                      className="group flex flex-col items-center gap-1.5"
-                      title={preset.name}
-                    >
-                      <div
-                        className={`h-10 w-10 rounded-full border-2 transition-all ${
-                          accentColor === preset.hsl ? 'border-foreground scale-110 shadow-md' : 'border-transparent hover:scale-105'
-                        }`}
-                        style={{ backgroundColor: preset.hex }}
-                      />
-                      <span className="text-[10px] text-muted-foreground leading-tight text-center">{preset.name}</span>
-                    </button>
-                  ))}
-                </div>
+                <ColorPickerRow presets={ACCENT_PRESETS} value={accentColor} onChange={handleSetAccent} columns={8} />
               </div>
 
               <Separator />
@@ -419,26 +402,7 @@ const Settings = () => {
               {/* Sidebar color */}
               <div>
                 <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 block">Sidebar kleur</Label>
-                <div className="grid grid-cols-4 sm:grid-cols-8 gap-3">
-                  {SIDEBAR_PRESETS.map((preset) => (
-                    <button
-                      key={preset.hsl}
-                      onClick={() => handleSetSidebarBg(preset.hsl)}
-                      className="group flex flex-col items-center gap-1.5"
-                      title={preset.name}
-                    >
-                      <div
-                        className={`h-10 w-10 rounded-full border-2 transition-all ${
-                          (settings.sidebar_bg ?? BRANDING_DEFAULTS.sidebar_bg) === preset.hsl
-                            ? 'border-foreground scale-110 shadow-md'
-                            : 'border-border hover:scale-105'
-                        }`}
-                        style={{ backgroundColor: preset.hex }}
-                      />
-                      <span className="text-[10px] text-muted-foreground leading-tight text-center">{preset.name}</span>
-                    </button>
-                  ))}
-                </div>
+                <ColorPickerRow presets={SIDEBAR_PRESETS} value={settings.sidebar_bg ?? BRANDING_DEFAULTS.sidebar_bg} onChange={handleSetSidebarBg} columns={8} />
               </div>
 
               <Separator />
@@ -446,26 +410,7 @@ const Settings = () => {
               {/* Background color */}
               <div>
                 <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 block">Achtergrondkleur</Label>
-                <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
-                  {BG_PRESETS.map((preset) => (
-                    <button
-                      key={preset.hsl}
-                      onClick={() => handleSetBackground(preset.hsl)}
-                      className="group flex flex-col items-center gap-1.5"
-                      title={preset.name}
-                    >
-                      <div
-                        className={`h-10 w-10 rounded-full border-2 transition-all ${
-                          (settings.background ?? BRANDING_DEFAULTS.background) === preset.hsl
-                            ? 'border-foreground scale-110 shadow-md'
-                            : 'border-border hover:scale-105'
-                        }`}
-                        style={{ backgroundColor: preset.hex }}
-                      />
-                      <span className="text-[10px] text-muted-foreground leading-tight text-center">{preset.name}</span>
-                    </button>
-                  ))}
-                </div>
+                <ColorPickerRow presets={BG_PRESETS} value={settings.background ?? BRANDING_DEFAULTS.background} onChange={handleSetBackground} columns={6} />
               </div>
 
               <Separator />
