@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -15,6 +16,7 @@ const statusLabel: Record<string, string> = {
 };
 
 const EmployeePlacementsTab = ({ employeeId }: { employeeId: string }) => {
+  const navigate = useNavigate();
   const { data: placements = [] } = useQuery({
     queryKey: ['employee-placements', employeeId],
     queryFn: async () => {
@@ -45,7 +47,7 @@ const EmployeePlacementsTab = ({ employeeId }: { employeeId: string }) => {
         </TableHeader>
         <TableBody>
           {placements.map((p: any) => (
-            <TableRow key={p.id}>
+            <TableRow key={p.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/plaatsingen/${p.id}`)}>
               <TableCell className="font-medium">{p.companies?.name ?? '—'}</TableCell>
               <TableCell>{p.function_name}</TableCell>
               <TableCell>{formatDate(p.start_date)}</TableCell>
