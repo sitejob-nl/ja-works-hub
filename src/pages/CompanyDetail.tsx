@@ -9,6 +9,7 @@ import { ChevronRight, MoreHorizontal, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import CompanyInfoTab from '@/components/companies/tabs/CompanyInfoTab';
 import ContactsTab from '@/components/companies/tabs/ContactsTab';
+import CompanyFunctionsTab from '@/components/companies/tabs/CompanyFunctionsTab';
 import RateAgreementsTab from '@/components/companies/tabs/RateAgreementsTab';
 import SlaTab from '@/components/companies/tabs/SlaTab';
 import CommunicationTab from '@/components/companies/tabs/CommunicationTab';
@@ -81,6 +82,7 @@ const CompanyDetail = () => {
           <TabsList className="w-max sm:w-auto">
             <TabsTrigger value="gegevens">Gegevens</TabsTrigger>
             <TabsTrigger value="contacten">Contacten</TabsTrigger>
+            <TabsTrigger value="functies">Functies</TabsTrigger>
             <TabsTrigger value="tarieven">Tarieven</TabsTrigger>
             <TabsTrigger value="sla">SLA</TabsTrigger>
             <TabsTrigger value="communicatie">Comm.</TabsTrigger>
@@ -89,6 +91,7 @@ const CompanyDetail = () => {
         </div>
         <TabsContent value="gegevens"><CompanyInfoTab company={company} /></TabsContent>
         <TabsContent value="contacten"><ContactsTab companyId={id!} /></TabsContent>
+        <TabsContent value="functies"><CompanyFunctionsTab companyId={id!} /></TabsContent>
         <TabsContent value="tarieven"><RateAgreementsTab companyId={id!} /></TabsContent>
         <TabsContent value="sla"><SlaTab companyId={id!} /></TabsContent>
         <TabsContent value="communicatie"><CommunicationTab companyId={id!} /></TabsContent>

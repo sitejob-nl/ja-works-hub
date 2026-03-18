@@ -12,7 +12,8 @@ import { ChevronRight, MoreHorizontal, Pencil, ClipboardList, Copy, Check, Messa
 import { toast } from 'sonner';
 import type { Database } from '@/integrations/supabase/types';
 
-import EmployeeProfileTab from '@/components/employees/tabs/EmployeeProfileTab';
+import EmployeePersonalTab from '@/components/employees/tabs/EmployeePersonalTab';
+import EmployeeEmploymentTab from '@/components/employees/tabs/EmployeeEmploymentTab';
 import EmployeeOnboardingTab from '@/components/employees/tabs/EmployeeOnboardingTab';
 import CandidateDocumentsTab from '@/components/candidates/tabs/CandidateDocumentsTab';
 import EmployeeHousingTab from '@/components/employees/tabs/EmployeeHousingTab';
@@ -22,6 +23,10 @@ import EmployeeTransportTab from '@/components/employees/tabs/EmployeeTransportT
 import EmployeeSickTab from '@/components/employees/tabs/EmployeeSickTab';
 import EmployeeRegulationsTab from '@/components/employees/tabs/EmployeeRegulationsTab';
 import EmployeeContractsTab from '@/components/employees/tabs/EmployeeContractsTab';
+import EmployeeDeductionsTab from '@/components/employees/tabs/EmployeeDeductionsTab';
+import EmployeeReservationsTab from '@/components/employees/tabs/EmployeeReservationsTab';
+import EmployeeSubsidiesTab from '@/components/employees/tabs/EmployeeSubsidiesTab';
+import EmployeePortalTab from '@/components/employees/tabs/EmployeePortalTab';
 
 type EmployeeStatus = Database['public']['Enums']['employee_status'];
 
@@ -62,7 +67,6 @@ const EmployeeDetail = () => {
     enabled: !!id,
   });
 
-  // Fetch onboarding token
   const { data: onboardingToken, refetch: refetchOnboardingToken } = useQuery({
     queryKey: ['onboarding-token', id],
     queryFn: async () => {
@@ -153,12 +157,7 @@ const EmployeeDetail = () => {
           {employee.employee_number && <p className="text-sm text-muted-foreground mt-1">#{employee.employee_number}</p>}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => isOnboardingTokenActive ? setOnboardingDialogOpen(true) : handleGenerateOnboardingLink()}
-            className="gap-1.5"
-          >
+          <Button variant="outline" size="sm" onClick={() => isOnboardingTokenActive ? setOnboardingDialogOpen(true) : handleGenerateOnboardingLink()} className="gap-1.5">
             <ClipboardList className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">{isOnboardingTokenActive ? 'Onboarding versturen' : 'Onboardinglink'}</span>
             <span className="sm:hidden">Onboarding</span>
@@ -186,7 +185,6 @@ const EmployeeDetail = () => {
         </div>
       </div>
 
-      {/* Onboarding Link Dialog */}
       <Dialog open={onboardingDialogOpen} onOpenChange={setOnboardingDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -218,31 +216,41 @@ const EmployeeDetail = () => {
         </DialogContent>
       </Dialog>
 
-      <Tabs defaultValue="profiel">
+      <Tabs defaultValue="persoon">
         <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">
           <TabsList className="w-max sm:w-auto">
-            <TabsTrigger value="profiel">Profiel</TabsTrigger>
+            <TabsTrigger value="persoon">Persoon</TabsTrigger>
+            <TabsTrigger value="dienstverband">Dienst</TabsTrigger>
             <TabsTrigger value="onboarding">Onboarding</TabsTrigger>
             <TabsTrigger value="documenten">Docs</TabsTrigger>
-            <TabsTrigger value="huisvesting">Woning</TabsTrigger>
+            <TabsTrigger value="inhoudingen">Inhoud.</TabsTrigger>
+            <TabsTrigger value="reserveringen">Reserv.</TabsTrigger>
+            <TabsTrigger value="subsidies">Subsidies</TabsTrigger>
             <TabsTrigger value="plaatsingen">Plaatsing</TabsTrigger>
+            <TabsTrigger value="contracten">Contract</TabsTrigger>
+            <TabsTrigger value="huisvesting">Woning</TabsTrigger>
             <TabsTrigger value="uren">Uren</TabsTrigger>
             <TabsTrigger value="transport">Transport</TabsTrigger>
             <TabsTrigger value="ziekte">Ziekte</TabsTrigger>
             <TabsTrigger value="reglementen">Regl.</TabsTrigger>
-            <TabsTrigger value="contracten">Contract</TabsTrigger>
+            <TabsTrigger value="portaal">Portaal</TabsTrigger>
           </TabsList>
         </div>
-        <TabsContent value="profiel"><EmployeeProfileTab employee={employee} /></TabsContent>
+        <TabsContent value="persoon"><EmployeePersonalTab employee={employee} /></TabsContent>
+        <TabsContent value="dienstverband"><EmployeeEmploymentTab employee={employee} /></TabsContent>
         <TabsContent value="onboarding"><EmployeeOnboardingTab employee={employee} /></TabsContent>
         <TabsContent value="documenten"><CandidateDocumentsTab candidateId={employee.candidate_id} /></TabsContent>
-        <TabsContent value="huisvesting"><EmployeeHousingTab employeeId={id!} /></TabsContent>
+        <TabsContent value="inhoudingen"><EmployeeDeductionsTab employeeId={id!} /></TabsContent>
+        <TabsContent value="reserveringen"><EmployeeReservationsTab employeeId={id!} /></TabsContent>
+        <TabsContent value="subsidies"><EmployeeSubsidiesTab employeeId={id!} /></TabsContent>
         <TabsContent value="plaatsingen"><EmployeePlacementsTab employeeId={id!} /></TabsContent>
+        <TabsContent value="contracten"><EmployeeContractsTab employeeId={id!} employee={employee} /></TabsContent>
+        <TabsContent value="huisvesting"><EmployeeHousingTab employeeId={id!} /></TabsContent>
         <TabsContent value="uren"><EmployeeTimesheetsTab employeeId={id!} /></TabsContent>
         <TabsContent value="transport"><EmployeeTransportTab employeeId={id!} /></TabsContent>
         <TabsContent value="ziekte"><EmployeeSickTab employeeId={id!} employee={employee} /></TabsContent>
         <TabsContent value="reglementen"><EmployeeRegulationsTab employeeId={id!} /></TabsContent>
-        <TabsContent value="contracten"><EmployeeContractsTab employeeId={id!} employee={employee} /></TabsContent>
+        <TabsContent value="portaal"><EmployeePortalTab employee={employee} /></TabsContent>
       </Tabs>
     </div>
   );
