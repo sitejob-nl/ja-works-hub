@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
-import { Settings as SettingsIcon, Upload, Palette, Building2, User, LogOut, Trash2, FileSpreadsheet } from 'lucide-react';
+import { Settings as SettingsIcon, Upload, Palette, Building2, User, LogOut, Trash2, FileSpreadsheet, RotateCcw } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import WhatsAppSettings from '@/components/settings/WhatsAppSettings';
 import ExactOnlineSettings from '@/components/settings/ExactOnlineSettings';
@@ -18,6 +18,7 @@ import ComplianceRulesSettings from '@/components/settings/ComplianceRulesSettin
 import RegulationsSettings from '@/components/settings/RegulationsSettings';
 import ContractTemplatesSettings from '@/components/settings/ContractTemplatesSettings';
 import OnboardingFormSettings from '@/components/settings/OnboardingFormSettings';
+import { applyBranding, BRANDING_DEFAULTS, type BrandingSettings } from '@/lib/branding';
 
 const ACCENT_PRESETS = [
   { name: 'Blauw (standaard)', hsl: '197 100% 60%', hex: '#32C5FF' },
@@ -28,6 +29,26 @@ const ACCENT_PRESETS = [
   { name: 'Roze', hsl: '330 81% 60%', hex: '#EC4899' },
   { name: 'Teal', hsl: '175 77% 40%', hex: '#14B8A6' },
   { name: 'Indigo', hsl: '239 84% 67%', hex: '#6366F1' },
+];
+
+const SIDEBAR_PRESETS = [
+  { name: 'Donker (standaard)', hsl: '224 60% 8%', hex: '#0B1020' },
+  { name: 'Antraciet', hsl: '220 13% 18%', hex: '#272B33' },
+  { name: 'Navy', hsl: '222 47% 15%', hex: '#141E33' },
+  { name: 'Donkergroen', hsl: '160 40% 10%', hex: '#0F1F1A' },
+  { name: 'Donkerpaars', hsl: '270 40% 14%', hex: '#1E1433' },
+  { name: 'Warm grijs', hsl: '30 8% 20%', hex: '#37332F' },
+  { name: 'Wit', hsl: '0 0% 100%', hex: '#FFFFFF' },
+  { name: 'Lichtgrijs', hsl: '210 20% 96%', hex: '#F1F5F9' },
+];
+
+const BG_PRESETS = [
+  { name: 'Lichtgrijs (standaard)', hsl: '210 33% 98%', hex: '#F8FAFC' },
+  { name: 'Wit', hsl: '0 0% 100%', hex: '#FFFFFF' },
+  { name: 'Warm crème', hsl: '40 33% 97%', hex: '#FAF8F5' },
+  { name: 'Koel blauw', hsl: '214 32% 97%', hex: '#F5F8FC' },
+  { name: 'Mint', hsl: '160 25% 97%', hex: '#F4FAF8' },
+  { name: 'Lavender', hsl: '260 25% 97%', hex: '#F6F4FA' },
 ];
 
 const Settings = () => {
