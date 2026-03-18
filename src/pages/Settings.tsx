@@ -162,12 +162,34 @@ const Settings = () => {
   const handleSetAccent = (hsl: string) => {
     const newSettings = { ...settings, accent_color: hsl };
     updateOrg.mutate({ settings: newSettings });
+    applyBranding(newSettings as BrandingSettings);
+  };
 
-    // Apply immediately
-    document.documentElement.style.setProperty('--primary', hsl);
-    document.documentElement.style.setProperty('--ring', hsl);
-    document.documentElement.style.setProperty('--accent-blue', hsl);
-    document.documentElement.style.setProperty('--stat-blue', hsl);
+  const handleSetSidebarBg = (hsl: string) => {
+    const newSettings = { ...settings, sidebar_bg: hsl };
+    updateOrg.mutate({ settings: newSettings });
+    applyBranding(newSettings as BrandingSettings);
+  };
+
+  const handleSetBackground = (hsl: string) => {
+    const newSettings = { ...settings, background: hsl };
+    updateOrg.mutate({ settings: newSettings });
+    applyBranding(newSettings as BrandingSettings);
+  };
+
+  const handleResetBranding = () => {
+    const newSettings = { ...settings };
+    delete newSettings.accent_color;
+    delete newSettings.sidebar_bg;
+    delete newSettings.background;
+    delete newSettings.sidebar_fg;
+    delete newSettings.sidebar_fg_active;
+    delete newSettings.card;
+    delete newSettings.heading;
+    delete newSettings.border_radius;
+    updateOrg.mutate({ settings: newSettings });
+    applyBranding(BRANDING_DEFAULTS);
+    toast.success('Branding hersteld naar standaard');
   };
 
   if (isLoading) {
