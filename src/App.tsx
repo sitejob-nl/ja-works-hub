@@ -59,6 +59,7 @@ import CandidateProfile from "@/pages/CandidateProfile";
 import Register from "@/pages/Register";
 import PortalActivate from "@/pages/PortalActivate";
 import FuelCardAnalysis from "@/pages/FuelCardAnalysis";
+import PlacementDetail from "@/pages/PlacementDetail";
 import PortalLogin from "@/pages/portal/PortalLogin";
 import PortalDashboard from "@/pages/portal/PortalDashboard";
 import PortalLayout from "@/components/layout/PortalLayout";
