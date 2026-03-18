@@ -172,6 +172,45 @@ const Timesheets = () => {
     onError: (e: any) => toast.error(e.message),
   });
 
+  const orgId = useOrganizationId();
+
+  const generateHourLetter = useMutation({
+    mutationFn: async () => {
+      if (employeeFilter === 'all') throw new Error('Selecteer eerst een medewerker');
+      // Group timesheets by placement
+      const placementIds = [...new Set(timesheets.map((t: any) => t.placement_id))];
+      const results = [];
+      for (const pid of placementIds) {
+        const pTimesheets = timesheets.filter((t: any) => t.placement_id === pid);
+        const totalHrs = pTimesheets.reduce((s: number, t: any) => s + (t.hours ?? 0), 0);
+        const totalOT = pTimesheets.reduce((s: number, t: any) => s + (t.overtime_hours ?? 0), 0);
+        const totalKm = pTimesheets.reduce((s: number, t: any) => s + (t.travel_km ?? 0), 0);
+        const totalAllow = pTimesheets.reduce((s: number, t: any) => s + (t.allowances_amount ?? 0) + (t.travel_amount ?? 0) + (t.surcharge_amount ?? 0), 0);
+        
+        const { data, error } = await supabase.from('hour_letters').insert({
+          organization_id: orgId,
+          employee_id: employeeFilter,
+          placement_id: pid,
+          week_number: weekNum,
+          year: weekRef.getFullYear(),
+          total_hours: totalHrs,
+          overtime_hours: totalOT,
+          total_km: totalKm,
+          allowances_total: totalAllow,
+          line_items: pTimesheets.map((t: any) => ({ date: t.work_date, hours: t.hours, overtime: t.overtime_hours, km: t.travel_km })),
+          status: 'concept',
+        }).select('id').single();
+        if (error) throw error;
+        results.push(data);
+      }
+      return results;
+    },
+    onSuccess: (data) => {
+      toast.success(`${data.length} urenbrief(ven) aangemaakt voor week ${weekNum}`);
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
   return (
     <div className="space-y-4 sm:space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
