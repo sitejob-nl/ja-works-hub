@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { startOfWeek, endOfWeek, addWeeks, subWeeks, format, getISOWeek } from 'date-fns';
 import { nl } from 'date-fns/locale';
 import { Clock, Plus, Upload, ChevronLeft, ChevronRight, CheckCircle2, XCircle, AlertTriangle, Sparkles, FileText } from 'lucide-react';
