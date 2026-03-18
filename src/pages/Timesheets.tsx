@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { startOfWeek, endOfWeek, addWeeks, subWeeks, format, getISOWeek } from 'date-fns';
 import { nl } from 'date-fns/locale';
-import { Clock, Plus, Upload, ChevronLeft, ChevronRight, CheckCircle2, XCircle, AlertTriangle, Sparkles } from 'lucide-react';
+import { Clock, Plus, Upload, ChevronLeft, ChevronRight, CheckCircle2, XCircle, AlertTriangle, Sparkles, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
