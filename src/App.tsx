@@ -70,6 +70,9 @@ import PortalProfile from "@/pages/portal/PortalProfile";
 import PortalSickReport from "@/pages/portal/PortalSickReport";
 import PortalHousing from "@/pages/portal/PortalHousing";
 import PortalVehicle from "@/pages/portal/PortalVehicle";
+import PortalPayslips from "@/pages/portal/PortalPayslips";
+import PortalAnnualStatements from "@/pages/portal/PortalAnnualStatements";
+import PortalHourLetters from "@/pages/portal/PortalHourLetters";
 
 const queryClient = new QueryClient();
 
