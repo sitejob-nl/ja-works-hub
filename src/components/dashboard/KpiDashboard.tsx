@@ -47,7 +47,7 @@ const KpiDashboard = () => {
         // Active placements with rates
         supabase
           .from('placements')
-          .select('id, hourly_rate, company_id, companies!placements_company_id_fkey(name)')
+          .select('id, hourly_rate, client_hourly_rate, company_id, companies!placements_company_id_fkey(name)')
           .eq('status', 'actief' as any),
         // Housing occupancy
         supabase.from('v_unit_occupancy').select('capacity, current_occupancy'),
