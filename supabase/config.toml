@@ -67,3 +67,12 @@ verify_jwt = true
 
 [functions.bulk-campaign-processor]
 verify_jwt = true
+
+[functions.generate-notifications]
+verify_jwt = true
+
+[functions.candidate-profile]
+verify_jwt = false
+
+[functions.portal-activate]
+verify_jwt = false

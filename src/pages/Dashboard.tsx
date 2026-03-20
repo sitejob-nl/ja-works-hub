@@ -104,6 +104,25 @@ const Dashboard = () => {
     return 'Goedenavond';
   };
 
+  // Generate notifications on dashboard load (lazy)
+  useEffect(() => {
+    const generateNotifications = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) return;
+        await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-notifications`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+        queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      } catch { /* non-blocking */ }
+    };
+    generateNotifications();
+  }, []);
+
   useEffect(() => {
     const fetchStats = async () => {
       const [empRes, vacRes, unitRes, tsRes] = await Promise.all([
