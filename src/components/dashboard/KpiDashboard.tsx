@@ -193,7 +193,7 @@ const KpiDashboard = () => {
           ) : (
             <ResponsiveContainer width="100%" height={260}>
               <BarChart data={k.revenueByClient} layout="vertical" margin={{ left: 10, right: 20 }}>
-                <XAxis type="number" tickFormatter={(v) => `€${(v / 1000).toFixed(0)}k`} fontSize={11} />
+                <XAxis type="number" tickFormatter={(v) => v >= 1000 ? `€${(v / 1000).toFixed(1)}k` : `€${Math.round(v)}`} fontSize={11} tickCount={5} allowDecimals={false} />
                 <YAxis
                   type="category"
                   dataKey="name"
