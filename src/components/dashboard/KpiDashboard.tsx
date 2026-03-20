@@ -91,6 +91,7 @@ const KpiDashboard = () => {
         clientRevenue[companyId].hours += hrs;
       }
       const revenueByClient = Object.values(clientRevenue)
+        .filter(c => c.hours > 0)
         .sort((a, b) => b.revenue - a.revenue)
         .slice(0, 8);
 
