@@ -65,7 +65,7 @@ const KpiDashboard = () => {
       // Weekly hours & revenue
       const totalHoursWeek = tsWeek.reduce((s, t: any) => s + Number(t.hours ?? 0) + Number(t.overtime_hours ?? 0), 0);
       const revenueWeek = tsWeek.reduce((s, t: any) => {
-        const clientRate = Number((t.placements as any)?.hourly_rate ?? t.hourly_rate ?? 0);
+        const clientRate = Number((t.placements as any)?.client_hourly_rate ?? (t.placements as any)?.hourly_rate ?? t.hourly_rate ?? 0) * 1.25;
         const hrs = Number(t.hours ?? 0) + Number(t.overtime_hours ?? 0);
         return s + clientRate * hrs;
       }, 0);
