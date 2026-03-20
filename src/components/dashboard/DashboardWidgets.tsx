@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatDate, formatEUR } from '@/lib/format';
-import { FileWarning, RefreshCw, Clock, Cake, FileCheck, AlertTriangle } from 'lucide-react';
+import { FileWarning, RefreshCw, Clock, Cake, FileCheck, AlertTriangle, Upload } from 'lucide-react';
 import { differenceInDays, format, addDays, parseISO } from 'date-fns';
 import { toast } from 'sonner';
 import {
