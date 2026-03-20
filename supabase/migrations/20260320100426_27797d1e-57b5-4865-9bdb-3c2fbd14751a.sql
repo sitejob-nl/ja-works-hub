@@ -1,0 +1,1 @@
+ALTER TABLE public.placements ADD COLUMN IF NOT EXISTS client_hourly_rate numeric;

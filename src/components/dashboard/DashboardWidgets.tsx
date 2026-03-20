@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatDate, formatEUR } from '@/lib/format';
-import { FileWarning, RefreshCw, Clock, Cake, FileCheck, AlertTriangle } from 'lucide-react';
+import { FileWarning, RefreshCw, Clock, Cake, FileCheck, AlertTriangle, Upload } from 'lucide-react';
 import { differenceInDays, format, addDays, parseISO } from 'date-fns';
 import { toast } from 'sonner';
 import {
@@ -200,22 +200,33 @@ export const MissingDocumentsCard = () => {
         ) : (
           <div className="space-y-2 max-h-[250px] overflow-y-auto">
             {employees.map((emp: any) => (
-              <button
+              <div
                 key={emp.id}
-                onClick={() => navigate(`/medewerkers/${emp.id}`)}
-                className="w-full flex items-center justify-between p-2 rounded-md hover:bg-muted/50 text-left text-sm"
+                className="w-full flex items-center justify-between p-2 rounded-md hover:bg-muted/50 text-sm"
               >
-                <span className="font-medium">
+                <button
+                  onClick={() => navigate(`/medewerkers/${emp.id}`)}
+                  className="font-medium text-left hover:underline"
+                >
                   {emp.candidates?.first_name} {emp.candidates?.last_name}
-                </span>
-                <div className="flex gap-1 flex-wrap justify-end">
+                </button>
+                <div className="flex gap-1 items-center flex-wrap justify-end">
                   {emp.missing.map((t: string) => (
-                    <Badge key={t} variant="destructive" className="text-[10px]">
+                    <span key={t} className="text-[10px] px-1.5 py-0.5 rounded bg-destructive/10 text-destructive font-medium">
                       {typeLabels[t] ?? t}
-                    </Badge>
+                    </span>
                   ))}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 w-6 p-0 ml-1"
+                    onClick={() => navigate(`/medewerkers/${emp.id}`)}
+                    title="Upload document"
+                  >
+                    <Upload className="h-3.5 w-3.5" />
+                  </Button>
                 </div>
-              </button>
+              </div>
             ))}
           </div>
         )}

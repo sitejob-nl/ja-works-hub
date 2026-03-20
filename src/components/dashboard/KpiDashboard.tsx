@@ -35,19 +35,19 @@ const KpiDashboard = () => {
         // Weekly timesheets
         supabase
           .from('timesheets')
-          .select('hours, overtime_hours, hourly_rate, employee_id, placement_id, placements!timesheets_placement_id_fkey(company_id, hourly_rate, companies!placements_company_id_fkey(name))')
+          .select('hours, overtime_hours, hourly_rate, employee_id, placement_id, placements!timesheets_placement_id_fkey(company_id, hourly_rate, client_hourly_rate, companies!placements_company_id_fkey(name))')
           .gte('work_date', weekStart)
           .lte('work_date', weekEnd),
         // Monthly timesheets
         supabase
           .from('timesheets')
-          .select('hours, overtime_hours, hourly_rate, placement_id, placements!timesheets_placement_id_fkey(company_id, hourly_rate, companies!placements_company_id_fkey(name))')
+          .select('hours, overtime_hours, hourly_rate, placement_id, placements!timesheets_placement_id_fkey(company_id, hourly_rate, client_hourly_rate, companies!placements_company_id_fkey(name))')
           .gte('work_date', monthStart)
           .lte('work_date', monthEnd),
         // Active placements with rates
         supabase
           .from('placements')
-          .select('id, hourly_rate, company_id, companies!placements_company_id_fkey(name)')
+          .select('id, hourly_rate, client_hourly_rate, company_id, companies!placements_company_id_fkey(name)')
           .eq('status', 'actief' as any),
         // Housing occupancy
         supabase.from('v_unit_occupancy').select('capacity, current_occupancy'),
@@ -65,7 +65,7 @@ const KpiDashboard = () => {
       // Weekly hours & revenue
       const totalHoursWeek = tsWeek.reduce((s, t: any) => s + Number(t.hours ?? 0) + Number(t.overtime_hours ?? 0), 0);
       const revenueWeek = tsWeek.reduce((s, t: any) => {
-        const clientRate = Number((t.placements as any)?.hourly_rate ?? t.hourly_rate ?? 0);
+        const clientRate = Number((t.placements as any)?.client_hourly_rate ?? (t.placements as any)?.hourly_rate ?? t.hourly_rate ?? 0) * 1.25;
         const hrs = Number(t.hours ?? 0) + Number(t.overtime_hours ?? 0);
         return s + clientRate * hrs;
       }, 0);
@@ -82,7 +82,7 @@ const KpiDashboard = () => {
       for (const t of tsMonth as any[]) {
         const companyName = t.placements?.companies?.name ?? 'Onbekend';
         const companyId = t.placements?.company_id ?? 'unknown';
-        const clientRate = Number(t.placements?.hourly_rate ?? t.hourly_rate ?? 0);
+        const clientRate = Number(t.placements?.client_hourly_rate ?? t.placements?.hourly_rate ?? t.hourly_rate ?? 0) * 1.25;
         const empRate = Number(t.hourly_rate ?? 0);
         const hrs = Number(t.hours ?? 0) + Number(t.overtime_hours ?? 0);
         if (!clientRevenue[companyId]) clientRevenue[companyId] = { name: companyName, revenue: 0, cost: 0, hours: 0 };
@@ -91,6 +91,7 @@ const KpiDashboard = () => {
         clientRevenue[companyId].hours += hrs;
       }
       const revenueByClient = Object.values(clientRevenue)
+        .filter(c => c.hours > 0)
         .sort((a, b) => b.revenue - a.revenue)
         .slice(0, 8);
 
@@ -192,7 +193,7 @@ const KpiDashboard = () => {
           ) : (
             <ResponsiveContainer width="100%" height={260}>
               <BarChart data={k.revenueByClient} layout="vertical" margin={{ left: 10, right: 20 }}>
-                <XAxis type="number" tickFormatter={(v) => `€${(v / 1000).toFixed(0)}k`} fontSize={11} />
+                <XAxis type="number" tickFormatter={(v) => v >= 1000 ? `€${(v / 1000).toFixed(1)}k` : `€${Math.round(v)}`} fontSize={11} tickCount={5} allowDecimals={false} />
                 <YAxis
                   type="category"
                   dataKey="name"
@@ -226,7 +227,7 @@ const KpiDashboard = () => {
               <p className="text-sm text-muted-foreground text-center py-4">Geen kamers</p>
             ) : (
               <div className="flex items-center gap-2">
-                <ResponsiveContainer width={100} height={100}>
+                <ResponsiveContainer width="100%" height={100}>
                   <PieChart>
                     <Pie
                       data={k.housingData}
@@ -262,7 +263,7 @@ const KpiDashboard = () => {
               <p className="text-sm text-muted-foreground text-center py-4">Geen voertuigen</p>
             ) : (
               <div className="flex items-center gap-2">
-                <ResponsiveContainer width={100} height={100}>
+                <ResponsiveContainer width="100%" height={100}>
                   <PieChart>
                     <Pie
                       data={k.vehicleData}

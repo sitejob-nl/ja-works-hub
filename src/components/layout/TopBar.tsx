@@ -1,6 +1,17 @@
+import { useState, useEffect, useCallback } from 'react';
 import { Search, Menu } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
+import {
+  CommandDialog,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
 import NotificationBell from './NotificationBell';
 
 interface TopBarProps {
@@ -9,7 +20,68 @@ interface TopBarProps {
 
 const TopBar = ({ onMenuClick }: TopBarProps) => {
   const { profile, signOut } = useAuth();
+  const navigate = useNavigate();
   const firstName = profile?.full_name?.split(' ')[0] ?? '';
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<{ candidates: any[]; employees: any[]; companies: any[] }>({
+    candidates: [], employees: [], companies: [],
+  });
+
+  // Cmd+K shortcut
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setOpen((o) => !o);
+      }
+    };
+    document.addEventListener('keydown', down);
+    return () => document.removeEventListener('keydown', down);
+  }, []);
+
+  // Debounced search
+  useEffect(() => {
+    if (!query || query.length < 2) {
+      setResults({ candidates: [], employees: [], companies: [] });
+      return;
+    }
+    const timer = setTimeout(async () => {
+      const q = `%${query}%`;
+      const [candRes, compRes] = await Promise.all([
+        supabase
+          .from('candidates')
+          .select('id, first_name, last_name, email, phone')
+          .or(`first_name.ilike.${q},last_name.ilike.${q},email.ilike.${q},phone.ilike.${q}`)
+          .limit(5),
+        supabase
+          .from('companies')
+          .select('id, name, email')
+          .or(`name.ilike.${q},email.ilike.${q}`)
+          .limit(5),
+      ]);
+
+      // Employees via candidates join
+      const empRes = await supabase
+        .from('employees')
+        .select('id, employee_number, candidates!employees_candidate_id_fkey(first_name, last_name)')
+        .limit(5);
+
+      const filteredEmps = (empRes.data ?? []).filter((e: any) => {
+        const name = `${e.candidates?.first_name ?? ''} ${e.candidates?.last_name ?? ''}`.toLowerCase();
+        return name.includes(query.toLowerCase()) || (e.employee_number ?? '').toLowerCase().includes(query.toLowerCase());
+      }).slice(0, 5);
+
+      setResults({
+        candidates: candRes.data ?? [],
+        employees: filteredEmps,
+        companies: compRes.data ?? [],
+      });
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  const hasResults = results.candidates.length > 0 || results.employees.length > 0 || results.companies.length > 0;
 
   return (
     <header className="h-14 border-b border-border bg-card flex items-center justify-between px-3 sm:px-6 shrink-0">
@@ -24,19 +96,26 @@ const TopBar = ({ onMenuClick }: TopBarProps) => {
           <Menu className="h-5 w-5" />
         </Button>
 
-        {/* Search */}
-        <div className="relative max-w-md w-full hidden sm:block">
+        {/* Search trigger */}
+        <button
+          onClick={() => setOpen(true)}
+          className="relative max-w-md w-full hidden sm:flex items-center h-9 pl-9 pr-4 rounded-md bg-secondary text-sm text-muted-foreground hover:bg-muted transition-colors cursor-pointer"
+        >
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="Zoeken..."
-            className="w-full h-9 pl-9 pr-4 rounded-md bg-secondary border-0 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-          />
-        </div>
+          <span>Zoeken...</span>
+          <kbd className="ml-auto pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
+            ⌘K
+          </kbd>
+        </button>
       </div>
 
       {/* Right */}
       <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+        {/* Mobile search icon */}
+        <Button variant="ghost" size="icon" className="sm:hidden" onClick={() => setOpen(true)}>
+          <Search className="h-5 w-5" />
+        </Button>
+
         <NotificationBell />
 
         <div className="flex items-center gap-2 cursor-pointer" onClick={signOut}>
@@ -49,6 +128,44 @@ const TopBar = ({ onMenuClick }: TopBarProps) => {
           </div>
         </div>
       </div>
+
+      {/* Command palette */}
+      <CommandDialog open={open} onOpenChange={setOpen}>
+        <CommandInput placeholder="Zoek kandidaten, medewerkers, opdrachtgevers..." value={query} onValueChange={setQuery} />
+        <CommandList>
+          <CommandEmpty>Geen resultaten gevonden.</CommandEmpty>
+          {results.candidates.length > 0 && (
+            <CommandGroup heading="Kandidaten">
+              {results.candidates.map((c) => (
+                <CommandItem key={c.id} onSelect={() => { navigate(`/kandidaten/${c.id}`); setOpen(false); setQuery(''); }}>
+                  <span>{c.first_name} {c.last_name}</span>
+                  {c.email && <span className="ml-auto text-xs text-muted-foreground">{c.email}</span>}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          )}
+          {results.employees.length > 0 && (
+            <CommandGroup heading="Medewerkers">
+              {results.employees.map((e: any) => (
+                <CommandItem key={e.id} onSelect={() => { navigate(`/medewerkers/${e.id}`); setOpen(false); setQuery(''); }}>
+                  <span>{e.candidates?.first_name} {e.candidates?.last_name}</span>
+                  {e.employee_number && <span className="ml-auto text-xs text-muted-foreground">#{e.employee_number}</span>}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          )}
+          {results.companies.length > 0 && (
+            <CommandGroup heading="Opdrachtgevers">
+              {results.companies.map((c) => (
+                <CommandItem key={c.id} onSelect={() => { navigate(`/opdrachtgevers/${c.id}`); setOpen(false); setQuery(''); }}>
+                  <span>{c.name}</span>
+                  {c.email && <span className="ml-auto text-xs text-muted-foreground">{c.email}</span>}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          )}
+        </CommandList>
+      </CommandDialog>
     </header>
   );
 };

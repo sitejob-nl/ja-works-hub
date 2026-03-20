@@ -30,6 +30,7 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
     start_date: '',
     end_date: '',
     hourly_rate: '',
+    client_hourly_rate: '',
     overtime_rate: '',
   });
 
@@ -46,6 +47,7 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
         start_date: vacancy.start_date ?? '',
         end_date: vacancy.end_date ?? '',
         hourly_rate: vacancy.hourly_rate?.toString() ?? '',
+        client_hourly_rate: '',
         overtime_rate: '',
       });
     }
@@ -109,6 +111,7 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
       start_date: form.start_date,
       end_date: form.end_date || null,
       hourly_rate: parseFloat(form.hourly_rate),
+      client_hourly_rate: form.client_hourly_rate ? parseFloat(form.client_hourly_rate) : null,
       overtime_rate: form.overtime_rate ? parseFloat(form.overtime_rate) : null,
       status: 'actief' as any,
       created_by: user?.id ?? null,
@@ -247,7 +250,8 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
               <div><Label>Functienaam *</Label><Input value={form.function_name} onChange={(e) => set('function_name', e.target.value)} /></div>
               <div><Label>Startdatum *</Label><Input type="date" value={form.start_date} onChange={(e) => set('start_date', e.target.value)} /></div>
               <div><Label>Einddatum</Label><Input type="date" value={form.end_date} onChange={(e) => set('end_date', e.target.value)} /></div>
-              <div><Label>Uurtarief (€) *</Label><Input type="number" step="0.01" value={form.hourly_rate} onChange={(e) => set('hourly_rate', e.target.value)} /></div>
+              <div><Label>Uurtarief medewerker (€) *</Label><Input type="number" step="0.01" value={form.hourly_rate} onChange={(e) => set('hourly_rate', e.target.value)} /></div>
+              <div><Label>Factuurtarief klant (€)</Label><Input type="number" step="0.01" value={form.client_hourly_rate} onChange={(e) => set('client_hourly_rate', e.target.value)} placeholder="Verkooptarief aan opdrachtgever" /></div>
               <div><Label>Overwerktarief (€)</Label><Input type="number" step="0.01" value={form.overtime_rate} onChange={(e) => set('overtime_rate', e.target.value)} /></div>
               {placementDone && housingSuggestions.length > 0 && lastPlacementData && (
                 <HousingSuggestionsCard

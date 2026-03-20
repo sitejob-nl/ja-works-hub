@@ -36,7 +36,7 @@ const VacancyDetail = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('vacancies')
-        .select(`*, companies!vacancies_company_id_fkey(id, name, phone, email), company_contacts:company_contacts!company_contacts_company_id_fkey(full_name, phone, is_primary)`)
+        .select(`*, companies!vacancies_company_id_fkey(id, name, phone, email)`)
         .eq('id', id!)
         .single();
       if (error) throw error;
