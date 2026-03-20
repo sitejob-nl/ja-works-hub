@@ -82,7 +82,7 @@ const KpiDashboard = () => {
       for (const t of tsMonth as any[]) {
         const companyName = t.placements?.companies?.name ?? 'Onbekend';
         const companyId = t.placements?.company_id ?? 'unknown';
-        const clientRate = Number(t.placements?.hourly_rate ?? t.hourly_rate ?? 0);
+        const clientRate = Number(t.placements?.client_hourly_rate ?? t.placements?.hourly_rate ?? t.hourly_rate ?? 0) * 1.25;
         const empRate = Number(t.hourly_rate ?? 0);
         const hrs = Number(t.hours ?? 0) + Number(t.overtime_hours ?? 0);
         if (!clientRevenue[companyId]) clientRevenue[companyId] = { name: companyName, revenue: 0, cost: 0, hours: 0 };
