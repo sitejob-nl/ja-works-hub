@@ -111,6 +111,7 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
       start_date: form.start_date,
       end_date: form.end_date || null,
       hourly_rate: parseFloat(form.hourly_rate),
+      client_hourly_rate: form.client_hourly_rate ? parseFloat(form.client_hourly_rate) : null,
       overtime_rate: form.overtime_rate ? parseFloat(form.overtime_rate) : null,
       status: 'actief' as any,
       created_by: user?.id ?? null,
