@@ -227,7 +227,7 @@ const KpiDashboard = () => {
               <p className="text-sm text-muted-foreground text-center py-4">Geen kamers</p>
             ) : (
               <div className="flex items-center gap-2">
-                <ResponsiveContainer width={100} height={100}>
+                <ResponsiveContainer width="100%" height={100}>
                   <PieChart>
                     <Pie
                       data={k.housingData}
