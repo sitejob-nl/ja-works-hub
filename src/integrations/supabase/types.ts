@@ -3590,6 +3590,7 @@ export type Database = {
       placements: {
         Row: {
           cao_hours: number | null
+          client_hourly_rate: number | null
           company_id: string
           compliance_check_at: string | null
           compliance_check_passed: boolean
@@ -3620,6 +3621,7 @@ export type Database = {
         }
         Insert: {
           cao_hours?: number | null
+          client_hourly_rate?: number | null
           company_id: string
           compliance_check_at?: string | null
           compliance_check_passed?: boolean
@@ -3650,6 +3652,7 @@ export type Database = {
         }
         Update: {
           cao_hours?: number | null
+          client_hourly_rate?: number | null
           company_id?: string
           compliance_check_at?: string | null
           compliance_check_passed?: boolean
