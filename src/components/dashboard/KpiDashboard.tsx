@@ -41,7 +41,7 @@ const KpiDashboard = () => {
         // Monthly timesheets
         supabase
           .from('timesheets')
-          .select('hours, overtime_hours, hourly_rate, placement_id, placements!timesheets_placement_id_fkey(company_id, hourly_rate, companies!placements_company_id_fkey(name))')
+          .select('hours, overtime_hours, hourly_rate, placement_id, placements!timesheets_placement_id_fkey(company_id, hourly_rate, client_hourly_rate, companies!placements_company_id_fkey(name))')
           .gte('work_date', monthStart)
           .lte('work_date', monthEnd),
         // Active placements with rates
