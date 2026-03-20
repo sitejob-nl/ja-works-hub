@@ -30,6 +30,7 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
     start_date: '',
     end_date: '',
     hourly_rate: '',
+    client_hourly_rate: '',
     overtime_rate: '',
   });
 
