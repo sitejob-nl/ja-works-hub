@@ -5397,6 +5397,16 @@ export type Database = {
         }[]
       }
       get_employee_id: { Args: never; Returns: string }
+      get_exact_token: {
+        Args: { p_org_id: string }
+        Returns: {
+          base_url: string
+          decrypted_webhook_secret: string
+          division: number
+          region: string
+          tenant_id: string
+        }[]
+      }
       get_my_sensitive_data: {
         Args: never
         Returns: {
