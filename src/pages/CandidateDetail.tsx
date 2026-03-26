@@ -17,6 +17,7 @@ import CandidateMatchesTab from '@/components/candidates/tabs/CandidateMatchesTa
 import CandidatePlacementsTab from '@/components/candidates/tabs/CandidatePlacementsTab';
 import { CandidatePreferencesTab } from '@/components/candidates/tabs/CandidatePreferencesTab';
 import CandidateAiTab from '@/components/candidates/tabs/CandidateAiTab';
+import { useModuleEnabled } from '@/hooks/useModuleEnabled';
 import type { Database } from '@/integrations/supabase/types';
 
 type CandidateStatus = Database['public']['Enums']['candidate_status'];
