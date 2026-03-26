@@ -187,12 +187,34 @@ export default function InvoicesPage() {
 }
 
 // ─── Create Invoice Sheet ───
+interface ManualLine { description: string; hours: number; hourly_rate: number; line_total: number; }
+
 function CreateInvoiceSheet({ open, onOpenChange, orgId, onSuccess }: { open: boolean; onOpenChange: (o: boolean) => void; orgId: string; onSuccess: () => void }) {
+  const [mode, setMode] = useState<'uren' | 'handmatig'>('uren');
   const [companyId, setCompanyId] = useState('');
   const [periodStart, setPeriodStart] = useState('');
   const [periodEnd, setPeriodEnd] = useState('');
+  const [reference, setReference] = useState('');
   const [preview, setPreview] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // Manual lines state
+  const [manualLines, setManualLines] = useState<ManualLine[]>([{ description: '', hours: 0, hourly_rate: 0, line_total: 0 }]);
+
+  const addManualLine = () => setManualLines(prev => [...prev, { description: '', hours: 0, hourly_rate: 0, line_total: 0 }]);
+  const removeManualLine = (i: number) => setManualLines(prev => prev.filter((_, idx) => idx !== i));
+  const updateManualLine = (i: number, field: keyof ManualLine, value: any) => {
+    setManualLines(prev => {
+      const next = [...prev];
+      next[i] = { ...next[i], [field]: value };
+      // Auto-calculate line_total when hours or rate changes
+      if (field === 'hours' || field === 'hourly_rate') {
+        next[i].line_total = Number(next[i].hours) * Number(next[i].hourly_rate);
+      }
+      // If line_total is set directly (flat amount), keep it
+      return next;
+    });
+  };
 
   // Fetch companies
   const { data: companies } = useQuery({
@@ -226,21 +248,19 @@ function CreateInvoiceSheet({ open, onOpenChange, orgId, onSuccess }: { open: bo
     setLoading(false);
   };
 
-  // Group by placement for invoice lines
+  // Group by placement for invoice lines (uren mode)
   const groupedByPlacement = preview.reduce((acc: Record<string, any>, ts: any) => {
     const pid = ts.placement_id;
     if (!acc[pid]) {
       const p = ts.placements;
       const emp = p?.employees?.candidates;
       acc[pid] = {
-        placement_id: pid,
-        employee_id: p?.employees?.id,
+        placement_id: pid, employee_id: p?.employees?.id,
         description: `${p?.function_name ?? 'Plaatsing'} — ${emp?.first_name ?? ''} ${emp?.last_name ?? ''}`.trim(),
         hours: 0, overtime_hours: 0,
         hourly_rate: Number(p?.client_hourly_rate) || Number(ts.hourly_rate) || 0,
         overtime_rate: Number(p?.overtime_rate) || 0,
-        travel_amount: 0, allowances_amount: 0, surcharge_amount: 0,
-        timesheets: [],
+        travel_amount: 0, allowances_amount: 0, surcharge_amount: 0, timesheets: [],
       };
     }
     acc[pid].hours += Number(ts.hours) || 0;
@@ -252,65 +272,58 @@ function CreateInvoiceSheet({ open, onOpenChange, orgId, onSuccess }: { open: bo
     return acc;
   }, {});
 
-  const lines = Object.values(groupedByPlacement).map((g: any) => ({
+  const urenLines = Object.values(groupedByPlacement).map((g: any) => ({
     ...g,
     line_total: (g.hours * g.hourly_rate) + (g.overtime_hours * g.overtime_rate) + g.travel_amount + g.allowances_amount + g.surcharge_amount,
   }));
 
-  const subtotal = lines.reduce((s: number, l: any) => s + l.line_total, 0);
+  const activeLines = mode === 'uren' ? urenLines : manualLines.filter(l => l.description);
+  const subtotal = activeLines.reduce((s: number, l: any) => s + (Number(l.line_total) || 0), 0);
   const vatRate = 21;
   const vatAmount = subtotal * (vatRate / 100);
   const total = subtotal + vatAmount;
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      // Generate invoice number
+      if (activeLines.length === 0) throw new Error('Voeg minimaal één factuurlijn toe');
+      if (!companyId) throw new Error('Selecteer een opdrachtgever');
+      if (!periodStart || !periodEnd) throw new Error('Vul de periode in');
+
       const { data: numData, error: numErr } = await supabase.rpc('next_invoice_number', { org_id: orgId });
       if (numErr) throw numErr;
-      const invoiceNumber = numData;
 
-      // Create invoice
       const { data: inv, error: invErr } = await supabase.from('invoices').insert({
-        organization_id: orgId,
-        company_id: companyId,
-        invoice_number: invoiceNumber,
-        period_start: periodStart,
-        period_end: periodEnd,
+        organization_id: orgId, company_id: companyId, invoice_number: numData,
+        period_start: periodStart, period_end: periodEnd, reference: reference || null,
         subtotal, vat_rate: vatRate, vat_amount: vatAmount, total,
         due_date: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
       }).select().single();
       if (invErr) throw invErr;
 
-      // Create invoice lines
-      for (let i = 0; i < lines.length; i++) {
-        const l = lines[i];
+      for (let i = 0; i < activeLines.length; i++) {
+        const l = activeLines[i];
         const { data: lineData, error: lineErr } = await supabase.from('invoice_lines').insert({
-          organization_id: orgId,
-          invoice_id: inv.id,
-          placement_id: l.placement_id,
-          employee_id: l.employee_id,
+          organization_id: orgId, invoice_id: inv.id,
+          placement_id: l.placement_id || null, employee_id: l.employee_id || null,
           description: l.description,
-          hours: l.hours, overtime_hours: l.overtime_hours,
-          hourly_rate: l.hourly_rate, overtime_rate: l.overtime_rate,
-          travel_amount: l.travel_amount, allowances_amount: l.allowances_amount,
-          surcharge_amount: l.surcharge_amount,
+          hours: l.hours || 0, overtime_hours: l.overtime_hours || 0,
+          hourly_rate: l.hourly_rate || 0, overtime_rate: l.overtime_rate || 0,
+          travel_amount: l.travel_amount || 0, allowances_amount: l.allowances_amount || 0,
+          surcharge_amount: l.surcharge_amount || 0,
           line_total: l.line_total, sort_order: i,
         }).select().single();
         if (lineErr) throw lineErr;
 
-        // Link timesheets to invoice line
-        if (l.timesheets.length > 0) {
+        // Link timesheets (only for uren mode)
+        if (l.timesheets?.length > 0) {
           await supabase.from('timesheets').update({ invoice_line_id: lineData.id }).in('id', l.timesheets);
         }
       }
 
-      logAudit({ action: 'create', tableName: 'invoices', recordId: inv.id, newValues: { invoice_number: invoiceNumber, total } });
+      logAudit({ action: 'create', tableName: 'invoices', recordId: inv.id, newValues: { invoice_number: numData, total } });
       return inv;
     },
-    onSuccess: () => {
-      toast.success('Factuur aangemaakt');
-      onSuccess();
-    },
+    onSuccess: () => { toast.success('Factuur aangemaakt'); onSuccess(); },
     onError: (e: any) => toast.error(e.message),
   });
 
@@ -319,6 +332,13 @@ function CreateInvoiceSheet({ open, onOpenChange, orgId, onSuccess }: { open: bo
       <SheetContent className="sm:max-w-2xl overflow-y-auto">
         <SheetHeader><SheetTitle>Nieuwe factuur</SheetTitle></SheetHeader>
         <div className="space-y-4 mt-6">
+          {/* Mode toggle */}
+          <div className="flex gap-1 bg-muted p-1 rounded-lg">
+            <button className={`flex-1 text-sm py-1.5 rounded-md transition-colors ${mode === 'uren' ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground'}`} onClick={() => setMode('uren')}>Vanuit uren</button>
+            <button className={`flex-1 text-sm py-1.5 rounded-md transition-colors ${mode === 'handmatig' ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground'}`} onClick={() => setMode('handmatig')}>Handmatig</button>
+          </div>
+
+          {/* Company + period (shared) */}
           <div>
             <Label>Opdrachtgever *</Label>
             <Select value={companyId} onValueChange={setCompanyId}>
@@ -332,29 +352,70 @@ function CreateInvoiceSheet({ open, onOpenChange, orgId, onSuccess }: { open: bo
             <div><Label>Periode van *</Label><Input type="date" value={periodStart} onChange={e => setPeriodStart(e.target.value)} /></div>
             <div><Label>Periode tot *</Label><Input type="date" value={periodEnd} onChange={e => setPeriodEnd(e.target.value)} /></div>
           </div>
-          <Button variant="outline" onClick={loadTimesheets} disabled={!companyId || !periodStart || !periodEnd || loading}>
-            {loading ? 'Laden...' : 'Goedgekeurde uren ophalen'}
-          </Button>
+          <div><Label>Referentie / PO nummer</Label><Input value={reference} onChange={e => setReference(e.target.value)} placeholder="Optioneel" /></div>
 
-          {preview.length > 0 && (
+          {/* Uren mode */}
+          {mode === 'uren' && (
+            <>
+              <Button variant="outline" onClick={loadTimesheets} disabled={!companyId || !periodStart || !periodEnd || loading}>
+                {loading ? 'Laden...' : 'Goedgekeurde uren ophalen'}
+              </Button>
+
+              {preview.length > 0 && (
+                <>
+                  <Separator />
+                  <h4 className="text-sm font-medium">Factuurregels ({urenLines.length})</h4>
+                  <div className="space-y-2">
+                    {urenLines.map((l: any, i: number) => (
+                      <div key={i} className="bg-muted/50 rounded-lg p-3 text-sm">
+                        <p className="font-medium">{l.description}</p>
+                        <div className="flex gap-4 text-muted-foreground mt-1">
+                          <span>{l.hours}u x {formatEUR(l.hourly_rate)}</span>
+                          {l.overtime_hours > 0 && <span>{l.overtime_hours}u overwerk x {formatEUR(l.overtime_rate)}</span>}
+                          {l.travel_amount > 0 && <span>Reis: {formatEUR(l.travel_amount)}</span>}
+                        </div>
+                        <p className="text-right font-mono font-medium mt-1">{formatEUR(l.line_total)}</p>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+              {preview.length === 0 && companyId && periodStart && periodEnd && !loading && (
+                <p className="text-sm text-muted-foreground text-center py-4">Geen goedgekeurde, nog niet gefactureerde uren gevonden.</p>
+              )}
+            </>
+          )}
+
+          {/* Handmatig mode */}
+          {mode === 'handmatig' && (
             <>
               <Separator />
-              <h4 className="text-sm font-medium">Factuurregels ({lines.length})</h4>
-              <div className="space-y-2">
-                {lines.map((l: any, i: number) => (
-                  <div key={i} className="bg-muted/50 rounded-lg p-3 text-sm">
-                    <p className="font-medium">{l.description}</p>
-                    <div className="flex gap-4 text-muted-foreground mt-1">
-                      <span>{l.hours}u x {formatEUR(l.hourly_rate)}</span>
-                      {l.overtime_hours > 0 && <span>{l.overtime_hours}u overwerk x {formatEUR(l.overtime_rate)}</span>}
-                      {l.travel_amount > 0 && <span>Reiskosten: {formatEUR(l.travel_amount)}</span>}
-                      {l.allowances_amount > 0 && <span>Toeslagen: {formatEUR(l.allowances_amount)}</span>}
+              <h4 className="text-sm font-medium">Factuurregels</h4>
+              <div className="space-y-3">
+                {manualLines.map((line, i) => (
+                  <div key={i} className="bg-muted/50 rounded-lg p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground font-medium">Regel {i + 1}</span>
+                      {manualLines.length > 1 && (
+                        <Button variant="ghost" size="sm" className="h-6 text-xs text-red-500" onClick={() => removeManualLine(i)}>Verwijder</Button>
+                      )}
                     </div>
-                    <p className="text-right font-mono font-medium mt-1">{formatEUR(l.line_total)}</p>
+                    <Input placeholder="Omschrijving *" value={line.description} onChange={e => updateManualLine(i, 'description', e.target.value)} />
+                    <div className="grid grid-cols-3 gap-2">
+                      <div><Label className="text-xs">Uren</Label><Input type="number" step="0.5" value={line.hours || ''} onChange={e => updateManualLine(i, 'hours', Number(e.target.value))} /></div>
+                      <div><Label className="text-xs">Uurtarief €</Label><Input type="number" step="0.01" value={line.hourly_rate || ''} onChange={e => updateManualLine(i, 'hourly_rate', Number(e.target.value))} /></div>
+                      <div><Label className="text-xs">Bedrag €</Label><Input type="number" step="0.01" value={line.line_total || ''} onChange={e => updateManualLine(i, 'line_total', Number(e.target.value))} /></div>
+                    </div>
                   </div>
                 ))}
               </div>
+              <Button variant="outline" size="sm" onClick={addManualLine} className="gap-1"><Plus className="h-3 w-3" /> Regel toevoegen</Button>
+            </>
+          )}
 
+          {/* Totals + submit */}
+          {activeLines.length > 0 && subtotal > 0 && (
+            <>
               <Separator />
               <div className="space-y-1 text-sm">
                 <div className="flex justify-between"><span>Subtotaal</span><span className="font-mono">{formatEUR(subtotal)}</span></div>
@@ -367,12 +428,6 @@ function CreateInvoiceSheet({ open, onOpenChange, orgId, onSuccess }: { open: bo
                 {createMutation.isPending ? 'Aanmaken...' : 'Factuur aanmaken'}
               </Button>
             </>
-          )}
-
-          {preview.length === 0 && companyId && periodStart && periodEnd && !loading && (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              Geen goedgekeurde, nog niet gefactureerde uren gevonden voor deze periode.
-            </p>
           )}
         </div>
       </SheetContent>

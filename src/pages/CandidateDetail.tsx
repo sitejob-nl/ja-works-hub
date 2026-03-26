@@ -16,6 +16,7 @@ import CandidateCommunicationTab from '@/components/candidates/tabs/CandidateCom
 import CandidateMatchesTab from '@/components/candidates/tabs/CandidateMatchesTab';
 import CandidatePlacementsTab from '@/components/candidates/tabs/CandidatePlacementsTab';
 import { CandidatePreferencesTab } from '@/components/candidates/tabs/CandidatePreferencesTab';
+import CandidateAiTab from '@/components/candidates/tabs/CandidateAiTab';
 import type { Database } from '@/integrations/supabase/types';
 
 type CandidateStatus = Database['public']['Enums']['candidate_status'];
@@ -223,6 +224,7 @@ const CandidateDetail = () => {
             <TabsTrigger value="matches">Matches</TabsTrigger>
             <TabsTrigger value="plaatsingen">Plaatsingen</TabsTrigger>
             <TabsTrigger value="voorkeuren">Voorkeuren</TabsTrigger>
+            <TabsTrigger value="ai" className="gap-1.5">AI Analyse</TabsTrigger>
           </TabsList>
         </div>
         <TabsContent value="profiel"><CandidateProfileTab candidate={candidate} /></TabsContent>
@@ -231,6 +233,7 @@ const CandidateDetail = () => {
         <TabsContent value="matches"><CandidateMatchesTab candidateId={id!} /></TabsContent>
         <TabsContent value="plaatsingen"><CandidatePlacementsTab candidateId={id!} /></TabsContent>
         <TabsContent value="voorkeuren"><CandidatePreferencesTab candidateId={id!} /></TabsContent>
+        <TabsContent value="ai"><CandidateAiTab candidate={candidate} /></TabsContent>
       </Tabs>
     </div>
   );
