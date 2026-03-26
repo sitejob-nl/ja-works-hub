@@ -60,6 +60,7 @@ import Register from "@/pages/Register";
 import PortalActivate from "@/pages/PortalActivate";
 import FuelCardAnalysis from "@/pages/FuelCardAnalysis";
 import InvoicesPage from "@/pages/Invoices";
+import PlacementsPage from "@/pages/Placements";
 import PlacementDetail from "@/pages/PlacementDetail";
 import PortalLogin from "@/pages/portal/PortalLogin";
 import PortalDashboard from "@/pages/portal/PortalDashboard";
@@ -130,6 +131,7 @@ const App = () => (
               <Route path="/vacatures/:id" element={<VacancyDetail />} />
               <Route path="/vacatures/:id/bewerken" element={<VacancyEdit />} />
               <Route path="/planning" element={<Planning />} />
+              <Route path="/plaatsingen" element={<PlacementsPage />} />
               <Route path="/plaatsingen/:id" element={<PlacementDetail />} />
               <Route path="/uren" element={<Timesheets />} />
               <Route path="/facturatie" element={<InvoicesPage />} />

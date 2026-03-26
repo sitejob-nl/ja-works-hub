@@ -2843,6 +2843,9 @@ export type Database = {
           organization_id: string
           proposed_at: string
           proposed_by: string | null
+          screening_completed_at: string | null
+          screening_completed_by: string | null
+          source: string | null
           status: Database["public"]["Enums"]["match_status"]
           status_changed_at: string | null
           updated_at: string
@@ -2858,6 +2861,9 @@ export type Database = {
           organization_id: string
           proposed_at?: string
           proposed_by?: string | null
+          screening_completed_at?: string | null
+          screening_completed_by?: string | null
+          source?: string | null
           status?: Database["public"]["Enums"]["match_status"]
           status_changed_at?: string | null
           updated_at?: string
@@ -2873,6 +2879,9 @@ export type Database = {
           organization_id?: string
           proposed_at?: string
           proposed_by?: string | null
+          screening_completed_at?: string | null
+          screening_completed_by?: string | null
+          source?: string | null
           status?: Database["public"]["Enums"]["match_status"]
           status_changed_at?: string | null
           updated_at?: string
@@ -2896,6 +2905,13 @@ export type Database = {
           {
             foreignKeyName: "matches_proposed_by_fkey"
             columns: ["proposed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "matches_screening_completed_by_fkey"
+            columns: ["screening_completed_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -3826,9 +3842,11 @@ export type Database = {
           created_by: string | null
           employee_id: string
           end_date: string | null
+          expected_end_date: string | null
           function_name: string
           hourly_rate: number
           housing_assignment_id: string | null
+          housing_payment_type: string | null
           id: string
           is_seasonal: boolean | null
           is_time_for_time: boolean | null
@@ -3836,9 +3854,17 @@ export type Database = {
           notes: string | null
           organization_id: string
           overtime_rate: number | null
+          payroller: Database["public"]["Enums"]["payroller_type"] | null
           rate_agreement_id: string | null
+          salary_indication: string | null
           start_date: string
           status: Database["public"]["Enums"]["placement_status"]
+          terminated_at: string | null
+          terminated_by:
+            | Database["public"]["Enums"]["terminated_by_type"]
+            | null
+          termination_notes: string | null
+          termination_reason: string | null
           updated_at: string
           vacancy_id: string | null
           work_days: string[] | null
@@ -3857,9 +3883,11 @@ export type Database = {
           created_by?: string | null
           employee_id: string
           end_date?: string | null
+          expected_end_date?: string | null
           function_name: string
           hourly_rate: number
           housing_assignment_id?: string | null
+          housing_payment_type?: string | null
           id?: string
           is_seasonal?: boolean | null
           is_time_for_time?: boolean | null
@@ -3867,9 +3895,17 @@ export type Database = {
           notes?: string | null
           organization_id: string
           overtime_rate?: number | null
+          payroller?: Database["public"]["Enums"]["payroller_type"] | null
           rate_agreement_id?: string | null
+          salary_indication?: string | null
           start_date: string
           status?: Database["public"]["Enums"]["placement_status"]
+          terminated_at?: string | null
+          terminated_by?:
+            | Database["public"]["Enums"]["terminated_by_type"]
+            | null
+          termination_notes?: string | null
+          termination_reason?: string | null
           updated_at?: string
           vacancy_id?: string | null
           work_days?: string[] | null
@@ -3888,9 +3924,11 @@ export type Database = {
           created_by?: string | null
           employee_id?: string
           end_date?: string | null
+          expected_end_date?: string | null
           function_name?: string
           hourly_rate?: number
           housing_assignment_id?: string | null
+          housing_payment_type?: string | null
           id?: string
           is_seasonal?: boolean | null
           is_time_for_time?: boolean | null
@@ -3898,9 +3936,17 @@ export type Database = {
           notes?: string | null
           organization_id?: string
           overtime_rate?: number | null
+          payroller?: Database["public"]["Enums"]["payroller_type"] | null
           rate_agreement_id?: string | null
+          salary_indication?: string | null
           start_date?: string
           status?: Database["public"]["Enums"]["placement_status"]
+          terminated_at?: string | null
+          terminated_by?:
+            | Database["public"]["Enums"]["terminated_by_type"]
+            | null
+          termination_notes?: string | null
+          termination_reason?: string | null
           updated_at?: string
           vacancy_id?: string | null
           work_days?: string[] | null
@@ -4612,6 +4658,44 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      termination_reasons: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          organization_id: string
+          reason: string
+          sort_order: number | null
+          terminated_by: Database["public"]["Enums"]["terminated_by_type"]
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          organization_id: string
+          reason: string
+          sort_order?: number | null
+          terminated_by: Database["public"]["Enums"]["terminated_by_type"]
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          organization_id?: string
+          reason?: string
+          sort_order?: number | null
+          terminated_by?: Database["public"]["Enums"]["terminated_by_type"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "termination_reasons_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       timesheets: {
         Row: {
@@ -5571,17 +5655,21 @@ export type Database = {
         | "betaald"
         | "gecrediteerd"
       match_status:
+        | "nieuwe_match"
+        | "gescreend"
         | "voorgesteld"
         | "in_gesprek"
         | "geaccepteerd"
         | "afgewezen"
         | "geplaatst"
+      payroller_type: "flexpedia" | "brioworks" | "bromida" | "retiva"
       placement_status:
         | "gepland"
         | "actief"
         | "afgerond"
         | "voortijdig_beeindigd"
       rate_limit_window: "minute" | "hour"
+      terminated_by_type: "opdrachtgever" | "medewerker" | "uitzendbureau"
       timesheet_source:
         | "handmatig"
         | "klantportaal"
@@ -5800,12 +5888,15 @@ export const Constants = {
         "gecrediteerd",
       ],
       match_status: [
+        "nieuwe_match",
+        "gescreend",
         "voorgesteld",
         "in_gesprek",
         "geaccepteerd",
         "afgewezen",
         "geplaatst",
       ],
+      payroller_type: ["flexpedia", "brioworks", "bromida", "retiva"],
       placement_status: [
         "gepland",
         "actief",
@@ -5813,6 +5904,7 @@ export const Constants = {
         "voortijdig_beeindigd",
       ],
       rate_limit_window: ["minute", "hour"],
+      terminated_by_type: ["opdrachtgever", "medewerker", "uitzendbureau"],
       timesheet_source: [
         "handmatig",
         "klantportaal",

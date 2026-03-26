@@ -37,6 +37,7 @@ const navGroups = [
     label: 'Werk',
     items: [
       { label: 'Vacatures', icon: Briefcase, path: '/vacatures', moduleKey: 'vacatures' },
+      { label: 'Plaatsingen', icon: UserCheck, path: '/plaatsingen', moduleKey: 'plaatsingen' },
       { label: 'Planning', icon: Calendar, path: '/planning', moduleKey: 'planning' },
       { label: 'Uren', icon: Clock, path: '/uren', moduleKey: 'uren' },
       { label: 'Facturatie', icon: FileText, path: '/facturatie', moduleKey: 'facturatie' },
