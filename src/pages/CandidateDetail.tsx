@@ -17,6 +17,7 @@ import CandidateMatchesTab from '@/components/candidates/tabs/CandidateMatchesTa
 import CandidatePlacementsTab from '@/components/candidates/tabs/CandidatePlacementsTab';
 import { CandidatePreferencesTab } from '@/components/candidates/tabs/CandidatePreferencesTab';
 import CandidateAiTab from '@/components/candidates/tabs/CandidateAiTab';
+import { useModuleEnabled } from '@/hooks/useModuleEnabled';
 import type { Database } from '@/integrations/supabase/types';
 
 type CandidateStatus = Database['public']['Enums']['candidate_status'];
@@ -49,6 +50,7 @@ const CandidateDetail = () => {
   const navigate = useNavigate();
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const aiEnabled = useModuleEnabled('ai-analyse');
 
   const { data: candidate, isLoading } = useQuery({
     queryKey: ['candidate', id],
@@ -224,7 +226,7 @@ const CandidateDetail = () => {
             <TabsTrigger value="matches">Matches</TabsTrigger>
             <TabsTrigger value="plaatsingen">Plaatsingen</TabsTrigger>
             <TabsTrigger value="voorkeuren">Voorkeuren</TabsTrigger>
-            <TabsTrigger value="ai" className="gap-1.5">AI Analyse</TabsTrigger>
+            {aiEnabled && <TabsTrigger value="ai" className="gap-1.5">AI Analyse</TabsTrigger>}
           </TabsList>
         </div>
         <TabsContent value="profiel"><CandidateProfileTab candidate={candidate} /></TabsContent>
@@ -233,7 +235,7 @@ const CandidateDetail = () => {
         <TabsContent value="matches"><CandidateMatchesTab candidateId={id!} /></TabsContent>
         <TabsContent value="plaatsingen"><CandidatePlacementsTab candidateId={id!} /></TabsContent>
         <TabsContent value="voorkeuren"><CandidatePreferencesTab candidateId={id!} /></TabsContent>
-        <TabsContent value="ai"><CandidateAiTab candidate={candidate} /></TabsContent>
+        {aiEnabled && <TabsContent value="ai"><CandidateAiTab candidate={candidate} /></TabsContent>}
       </Tabs>
     </div>
   );
