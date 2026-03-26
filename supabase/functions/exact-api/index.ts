@@ -40,27 +40,31 @@ Deno.serve(async (req) => {
       { global: { headers: { Authorization: authHeader } } }
     );
 
-    const token = authHeader.replace("Bearer ", "");
-    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims) {
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const userId = claimsData.claims.sub;
-    const { data: profile } = await supabase.from("profiles").select("organization_id").eq("id", userId).single();
+    const { data: profile } = await supabase.from("profiles").select("organization_id").eq("id", user.id).single();
     if (!profile) {
       return new Response(JSON.stringify({ error: "Profile not found" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const serviceClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-    const { data: config } = await serviceClient
-      .from("exact_config")
-      .select("*")
-      .eq("organization_id", profile.organization_id)
-      .eq("is_active", true)
-      .single();
 
-    if (!config || !config.tenant_id || !config.webhook_secret) {
+    // Use RPC to get decrypted credentials
+    const { data: exactTokenData, error: rpcError } = await serviceClient.rpc('get_exact_token', {
+      p_org_id: profile.organization_id,
+    });
+
+    if (rpcError || !exactTokenData || exactTokenData.length === 0) {
+      return new Response(JSON.stringify({ error: "Exact Online niet geconfigureerd" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const config = exactTokenData[0];
+    if (!config.tenant_id || !config.decrypted_webhook_secret) {
       return new Response(JSON.stringify({ error: "Exact Online niet geconfigureerd" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -75,12 +79,12 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Get fresh token
+    // Get fresh token using decrypted webhook secret
     let tokenData;
     try {
-      tokenData = await getExactToken(config.tenant_id, config.webhook_secret);
-    } catch (err: any) {
-      if (err.message === "REAUTH_REQUIRED") {
+      tokenData = await getExactToken(config.tenant_id, config.decrypted_webhook_secret);
+    } catch (err: unknown) {
+      if ((err as Error).message === "REAUTH_REQUIRED") {
         return new Response(JSON.stringify({
           error: "Exact Online koppeling verlopen. Koppel opnieuw via Instellingen.",
           needs_reauth: true,
@@ -90,7 +94,7 @@ Deno.serve(async (req) => {
       throw err;
     }
 
-    // Build the full URL — endpoint can be relative (e.g., "crm/Accounts") or include division
+    // Build the full URL
     let fullUrl: string;
     if (endpoint.startsWith("http")) {
       fullUrl = endpoint;

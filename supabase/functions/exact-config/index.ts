@@ -21,6 +21,7 @@ Deno.serve(async (req) => {
 
     const serviceClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
+    // Find config by tenant_id
     const { data: config, error: findError } = await serviceClient
       .from("exact_config")
       .select("*")
@@ -32,7 +33,12 @@ Deno.serve(async (req) => {
       return new Response("Not found", { status: 404 });
     }
 
-    if (config.webhook_secret !== webhookSecret) {
+    // Decrypt webhook_secret via RPC and compare
+    const { data: decrypted } = await serviceClient.rpc('get_exact_token', {
+      p_org_id: config.organization_id,
+    });
+
+    if (!decrypted?.[0] || decrypted[0].decrypted_webhook_secret !== webhookSecret) {
       console.error("Webhook secret mismatch");
       return new Response("Unauthorized", { status: 401 });
     }

@@ -26,22 +26,37 @@ Deno.serve(async (req) => {
 
     const serviceClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-    // Find config by webhook_secret
+    // Get all active exact configs and decrypt to find match
     const { data: configs } = await serviceClient
       .from("exact_config")
-      .select("*")
-      .eq("webhook_secret", webhookSecret);
+      .select("id, organization_id, is_active")
+      .eq("is_active", true);
 
     if (!configs || configs.length === 0) {
+      console.error("No active exact configs found");
+      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+
+    // Decrypt webhook_secret for each config and find match
+    let matchedConfig: { id: string; organization_id: string } | null = null;
+    for (const c of configs) {
+      const { data: decrypted } = await serviceClient.rpc('get_exact_token', {
+        p_org_id: c.organization_id,
+      });
+      if (decrypted?.[0]?.decrypted_webhook_secret === webhookSecret) {
+        matchedConfig = c;
+        break;
+      }
+    }
+
+    if (!matchedConfig) {
       console.error("No config found for webhook secret");
       return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
     }
 
-    const config = configs[0];
-
     // Log the webhook event in audit_log for traceability
     await serviceClient.from("audit_log").insert({
-      organization_id: config.organization_id,
+      organization_id: matchedConfig.organization_id,
       action: "create",
       table_name: "exact_webhook",
       new_values: {
@@ -53,7 +68,7 @@ Deno.serve(async (req) => {
       },
     });
 
-    console.log("Exact webhook processed for org:", config.organization_id, "topic:", body.Topic);
+    console.log("Exact webhook processed for org:", matchedConfig.organization_id, "topic:", body.Topic);
 
     // Always return 200
     return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });

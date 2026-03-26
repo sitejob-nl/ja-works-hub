@@ -440,6 +440,7 @@ export type Database = {
           ai_interview_questions: string[] | null
           ai_reliability_score: number | null
           ai_risk_factors: string[] | null
+          ai_status: string | null
           ai_summary: string | null
           availability_notes: string | null
           bank_account_holder: string | null
@@ -490,6 +491,7 @@ export type Database = {
           ai_interview_questions?: string[] | null
           ai_reliability_score?: number | null
           ai_risk_factors?: string[] | null
+          ai_status?: string | null
           ai_summary?: string | null
           availability_notes?: string | null
           bank_account_holder?: string | null
@@ -540,6 +542,7 @@ export type Database = {
           ai_interview_questions?: string[] | null
           ai_reliability_score?: number | null
           ai_risk_factors?: string[] | null
+          ai_status?: string | null
           ai_summary?: string | null
           availability_notes?: string | null
           bank_account_holder?: string | null
@@ -5394,6 +5397,16 @@ export type Database = {
         }[]
       }
       get_employee_id: { Args: never; Returns: string }
+      get_exact_token: {
+        Args: { p_org_id: string }
+        Returns: {
+          base_url: string
+          decrypted_webhook_secret: string
+          division: number
+          region: string
+          tenant_id: string
+        }[]
+      }
       get_my_sensitive_data: {
         Args: never
         Returns: {

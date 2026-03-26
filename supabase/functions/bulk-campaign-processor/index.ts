@@ -236,7 +236,7 @@ Deno.serve(async (req) => {
             .from("campaign_recipients")
             .update({
               status: "failed",
-              error_message: err.message,
+              error_message: (err as Error).message,
             })
             .eq("campaign_id", campaign_id)
             .eq("candidate_id", candidate.candidate_id);
