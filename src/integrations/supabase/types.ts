@@ -440,6 +440,7 @@ export type Database = {
           ai_interview_questions: string[] | null
           ai_reliability_score: number | null
           ai_risk_factors: string[] | null
+          ai_status: string | null
           ai_summary: string | null
           availability_notes: string | null
           bank_account_holder: string | null
@@ -490,6 +491,7 @@ export type Database = {
           ai_interview_questions?: string[] | null
           ai_reliability_score?: number | null
           ai_risk_factors?: string[] | null
+          ai_status?: string | null
           ai_summary?: string | null
           availability_notes?: string | null
           bank_account_holder?: string | null
@@ -540,6 +542,7 @@ export type Database = {
           ai_interview_questions?: string[] | null
           ai_reliability_score?: number | null
           ai_risk_factors?: string[] | null
+          ai_status?: string | null
           ai_summary?: string | null
           availability_notes?: string | null
           bank_account_holder?: string | null
