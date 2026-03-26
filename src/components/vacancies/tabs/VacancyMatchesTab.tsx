@@ -15,14 +15,19 @@ import { formatDate } from '@/lib/format';
 import PlacementSheet from '@/components/vacancies/PlacementSheet';
 
 const matchStatusLabel: Record<string, string> = {
-  voorgesteld: 'Voorgesteld', in_gesprek: 'In gesprek', geaccepteerd: 'Geaccepteerd', afgewezen: 'Afgewezen', geplaatst: 'Geplaatst',
+  nieuwe_match: 'Nieuwe match', gescreend: 'Gescreend', voorgesteld: 'Voorgesteld', in_gesprek: 'In gesprek', geaccepteerd: 'Geaccepteerd', afgewezen: 'Afgewezen', geplaatst: 'Geplaatst',
 };
 const matchStatusBadge: Record<string, string> = {
+  nieuwe_match: 'bg-amber-100 text-amber-700 border-0',
+  gescreend: 'bg-cyan-100 text-cyan-700 border-0',
   voorgesteld: 'bg-muted text-muted-foreground border-0',
   in_gesprek: 'bg-blue-100 text-blue-700 border-0',
   geaccepteerd: 'bg-stat-green/10 text-stat-green border-0',
   afgewezen: 'bg-red-100 text-red-600 border-0',
   geplaatst: 'bg-purple-100 text-purple-700 border-0',
+};
+const sourceLabel: Record<string, string> = {
+  sollicitatie: 'Sollicitatie', eigen_match: 'Eigen match', facebook: 'Facebook', jobmarket: 'Jobmarket', linkedin: 'LinkedIn', overig: 'Overig',
 };
 
 const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
@@ -68,7 +73,8 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
         vacancy_id: vacancy.id,
         candidate_id: candidateId,
         proposed_by: user?.id ?? null,
-        status: 'voorgesteld' as any,
+        status: 'nieuwe_match' as any,
+        source: 'eigen_match',
       }).select('id').single();
       if (error) throw error;
 
@@ -116,6 +122,8 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
   });
 
   const grouped = {
+    nieuwe_match: (matches ?? []).filter((m: any) => m.status === 'nieuwe_match'),
+    gescreend: (matches ?? []).filter((m: any) => m.status === 'gescreend'),
     voorgesteld: (matches ?? []).filter((m: any) => m.status === 'voorgesteld'),
     in_gesprek: (matches ?? []).filter((m: any) => m.status === 'in_gesprek'),
     geaccepteerd: (matches ?? []).filter((m: any) => m.status === 'geaccepteerd'),
@@ -162,10 +170,25 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
                             )}
                           </TableCell>
                           <TableCell className="text-xs text-muted-foreground">{formatDate(m.proposed_at)}</TableCell>
+                          <TableCell>
+                            {m.source && <Badge variant="outline" className="text-[10px] mr-1">{sourceLabel[m.source] ?? m.source}</Badge>}
+                          </TableCell>
                           <TableCell className="text-right">
+                            {status === 'nieuwe_match' && (
+                              <div className="flex gap-1 justify-end">
+                                <Button size="sm" variant="outline" onClick={() => statusMutation.mutate({ matchId: m.id, status: 'gescreend' })}>Screening afgerond</Button>
+                                <Button size="sm" variant="ghost" className="text-red-600" onClick={() => statusMutation.mutate({ matchId: m.id, status: 'afgewezen' })}>Afwijzen</Button>
+                              </div>
+                            )}
+                            {status === 'gescreend' && (
+                              <div className="flex gap-1 justify-end">
+                                <Button size="sm" variant="outline" onClick={() => statusMutation.mutate({ matchId: m.id, status: 'voorgesteld' })}>Voorstellen aan klant</Button>
+                                <Button size="sm" variant="ghost" className="text-red-600" onClick={() => statusMutation.mutate({ matchId: m.id, status: 'afgewezen' })}>Afwijzen</Button>
+                              </div>
+                            )}
                             {status === 'voorgesteld' && (
                               <div className="flex gap-1 justify-end">
-                                <Button size="sm" variant="outline" onClick={() => statusMutation.mutate({ matchId: m.id, status: 'in_gesprek' })}>In gesprek</Button>
+                                <Button size="sm" variant="outline" onClick={() => statusMutation.mutate({ matchId: m.id, status: 'in_gesprek' })}>Klant heeft interesse</Button>
                                 <Button size="sm" variant="ghost" className="text-red-600" onClick={() => statusMutation.mutate({ matchId: m.id, status: 'afgewezen' })}>Afwijzen</Button>
                               </div>
                             )}
