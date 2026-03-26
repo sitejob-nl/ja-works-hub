@@ -226,7 +226,7 @@ const CandidateDetail = () => {
             <TabsTrigger value="matches">Matches</TabsTrigger>
             <TabsTrigger value="plaatsingen">Plaatsingen</TabsTrigger>
             <TabsTrigger value="voorkeuren">Voorkeuren</TabsTrigger>
-            <TabsTrigger value="ai" className="gap-1.5">AI Analyse</TabsTrigger>
+            {aiEnabled && <TabsTrigger value="ai" className="gap-1.5">AI Analyse</TabsTrigger>}
           </TabsList>
         </div>
         <TabsContent value="profiel"><CandidateProfileTab candidate={candidate} /></TabsContent>
@@ -235,7 +235,7 @@ const CandidateDetail = () => {
         <TabsContent value="matches"><CandidateMatchesTab candidateId={id!} /></TabsContent>
         <TabsContent value="plaatsingen"><CandidatePlacementsTab candidateId={id!} /></TabsContent>
         <TabsContent value="voorkeuren"><CandidatePreferencesTab candidateId={id!} /></TabsContent>
-        <TabsContent value="ai"><CandidateAiTab candidate={candidate} /></TabsContent>
+        {aiEnabled && <TabsContent value="ai"><CandidateAiTab candidate={candidate} /></TabsContent>}
       </Tabs>
     </div>
   );
