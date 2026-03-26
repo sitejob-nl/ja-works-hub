@@ -18,6 +18,7 @@ type UnitStatus = Database['public']['Enums']['unit_status'];
 
 const statusBadge: Record<string, string> = {
   beschikbaar: 'bg-stat-green/10 text-stat-green border-0',
+  gereserveerd: 'bg-blue-100 text-blue-600 border-0',
   bezet: 'bg-red-100 text-red-600 border-0',
   onderhoud: 'bg-orange-100 text-orange-600 border-0',
   geblokkeerd: 'bg-muted text-muted-foreground border-0',
@@ -29,7 +30,7 @@ const UnitsTab = ({ property }: { property: any }) => {
   const [adding, setAdding] = useState(false);
   const [expandedUnit, setExpandedUnit] = useState<string | null>(null);
   const [form, setForm] = useState({
-    name: '', capacity: '1', floor: '', monthly_cost: '', deposit_amount: '', status: 'beschikbaar' as UnitStatus, notes: '',
+    name: '', capacity: '1', floor: '', weekly_cost: '', monthly_cost: '', deposit_amount: '', status: 'beschikbaar' as UnitStatus, notes: '',
   });
 
   const addUnit = useMutation({
@@ -40,6 +41,7 @@ const UnitsTab = ({ property }: { property: any }) => {
         name: form.name,
         capacity: Number(form.capacity) || 1,
         floor: form.floor ? Number(form.floor) : null,
+        weekly_cost: form.weekly_cost ? Number(form.weekly_cost) : null,
         monthly_cost: form.monthly_cost ? Number(form.monthly_cost) : null,
         deposit_amount: form.deposit_amount ? Number(form.deposit_amount) : null,
         status: form.status,
@@ -50,7 +52,7 @@ const UnitsTab = ({ property }: { property: any }) => {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['property', property.id] });
       setAdding(false);
-      setForm({ name: '', capacity: '1', floor: '', monthly_cost: '', deposit_amount: '', status: 'beschikbaar', notes: '' });
+      setForm({ name: '', capacity: '1', floor: '', weekly_cost: '', monthly_cost: '', deposit_amount: '', status: 'beschikbaar', notes: '' });
       toast.success('Kamer aangemaakt');
     },
     onError: (e: any) => toast.error(e.message),
@@ -76,7 +78,8 @@ const UnitsTab = ({ property }: { property: any }) => {
               <div><Label>Capaciteit</Label><Input type="number" value={form.capacity} onChange={(e) => setForm(f => ({ ...f, capacity: e.target.value }))} /></div>
               <div><Label>Verdieping</Label><Input type="number" value={form.floor} onChange={(e) => setForm(f => ({ ...f, floor: e.target.value }))} /></div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
+              <div><Label>Weekprijs (€)</Label><Input type="number" value={form.weekly_cost} onChange={(e) => setForm(f => ({ ...f, weekly_cost: e.target.value }))} /></div>
               <div><Label>Maandkosten (€)</Label><Input type="number" value={form.monthly_cost} onChange={(e) => setForm(f => ({ ...f, monthly_cost: e.target.value }))} /></div>
               <div><Label>Borgbedrag (€)</Label><Input type="number" value={form.deposit_amount} onChange={(e) => setForm(f => ({ ...f, deposit_amount: e.target.value }))} /></div>
             </div>
@@ -86,6 +89,7 @@ const UnitsTab = ({ property }: { property: any }) => {
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="beschikbaar">Beschikbaar</SelectItem>
+                  <SelectItem value="gereserveerd">Gereserveerd</SelectItem>
                   <SelectItem value="bezet">Bezet</SelectItem>
                   <SelectItem value="onderhoud">Onderhoud</SelectItem>
                   <SelectItem value="geblokkeerd">Geblokkeerd</SelectItem>
@@ -122,7 +126,8 @@ const UnitsTab = ({ property }: { property: any }) => {
                     <Badge variant="secondary" className={`text-xs ${statusBadge[u.status] ?? ''}`}>{u.status}</Badge>
                   </div>
                   <p className="text-xs text-muted-foreground">{occupied}/{u.capacity} bezet</p>
-                  {u.monthly_cost && <p className="text-xs text-muted-foreground">{formatEUR(u.monthly_cost)}/maand</p>}
+                  {u.weekly_cost && <p className="text-xs text-muted-foreground">{formatEUR(u.weekly_cost)}/week</p>}
+                  {!u.weekly_cost && u.monthly_cost && <p className="text-xs text-muted-foreground">{formatEUR(u.monthly_cost)}/maand</p>}
                   {u.floor != null && <p className="text-xs text-muted-foreground">Verdieping {u.floor}</p>}
                   {occupants.length > 0 && (
                     <div className="mt-2 space-y-1">

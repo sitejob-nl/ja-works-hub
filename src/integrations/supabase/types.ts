@@ -2282,6 +2282,228 @@ export type Database = {
           },
         ]
       }
+      invoice_lines: {
+        Row: {
+          allowances_amount: number
+          created_at: string
+          description: string
+          employee_id: string | null
+          hourly_rate: number
+          hours: number
+          id: string
+          invoice_id: string
+          line_total: number
+          organization_id: string
+          overtime_hours: number
+          overtime_rate: number
+          placement_id: string | null
+          sort_order: number
+          surcharge_amount: number
+          travel_amount: number
+        }
+        Insert: {
+          allowances_amount?: number
+          created_at?: string
+          description: string
+          employee_id?: string | null
+          hourly_rate?: number
+          hours?: number
+          id?: string
+          invoice_id: string
+          line_total?: number
+          organization_id: string
+          overtime_hours?: number
+          overtime_rate?: number
+          placement_id?: string | null
+          sort_order?: number
+          surcharge_amount?: number
+          travel_amount?: number
+        }
+        Update: {
+          allowances_amount?: number
+          created_at?: string
+          description?: string
+          employee_id?: string | null
+          hourly_rate?: number
+          hours?: number
+          id?: string
+          invoice_id?: string
+          line_total?: number
+          organization_id?: string
+          overtime_hours?: number
+          overtime_rate?: number
+          placement_id?: string | null
+          sort_order?: number
+          surcharge_amount?: number
+          travel_amount?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_lines_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_lines_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "v_employee_compliance"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "invoice_lines_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_lines_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_lines_placement_id_fkey"
+            columns: ["placement_id"]
+            isOneToOne: false
+            referencedRelation: "placements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_lines_placement_id_fkey"
+            columns: ["placement_id"]
+            isOneToOne: false
+            referencedRelation: "v_active_placements"
+            referencedColumns: ["placement_id"]
+          },
+        ]
+      }
+      invoice_sequences: {
+        Row: {
+          next_number: number
+          organization_id: string
+          prefix: string
+          updated_at: string
+        }
+        Insert: {
+          next_number?: number
+          organization_id: string
+          prefix?: string
+          updated_at?: string
+        }
+        Update: {
+          next_number?: number
+          organization_id?: string
+          prefix?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_sequences_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      invoices: {
+        Row: {
+          company_id: string
+          created_at: string
+          created_by: string | null
+          due_date: string | null
+          exact_invoice_id: string | null
+          id: string
+          invoice_date: string
+          invoice_number: string
+          notes: string | null
+          organization_id: string
+          paid_amount: number
+          paid_at: string | null
+          pdf_url: string | null
+          period_end: string
+          period_start: string
+          reference: string | null
+          sent_at: string | null
+          status: Database["public"]["Enums"]["invoice_status"]
+          subtotal: number
+          total: number
+          updated_at: string
+          vat_amount: number
+          vat_rate: number
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          created_by?: string | null
+          due_date?: string | null
+          exact_invoice_id?: string | null
+          id?: string
+          invoice_date?: string
+          invoice_number: string
+          notes?: string | null
+          organization_id: string
+          paid_amount?: number
+          paid_at?: string | null
+          pdf_url?: string | null
+          period_end: string
+          period_start: string
+          reference?: string | null
+          sent_at?: string | null
+          status?: Database["public"]["Enums"]["invoice_status"]
+          subtotal?: number
+          total?: number
+          updated_at?: string
+          vat_amount?: number
+          vat_rate?: number
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          created_by?: string | null
+          due_date?: string | null
+          exact_invoice_id?: string | null
+          id?: string
+          invoice_date?: string
+          invoice_number?: string
+          notes?: string | null
+          organization_id?: string
+          paid_amount?: number
+          paid_at?: string | null
+          pdf_url?: string | null
+          period_end?: string
+          period_start?: string
+          reference?: string | null
+          sent_at?: string | null
+          status?: Database["public"]["Enums"]["invoice_status"]
+          subtotal?: number
+          total?: number
+          updated_at?: string
+          vat_amount?: number
+          vat_rate?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoices_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       job_import_logs: {
         Row: {
           filters_used: Json | null
@@ -4405,6 +4627,7 @@ export type Database = {
           hourly_rate: number | null
           hours: number
           id: string
+          invoice_line_id: string | null
           notes: string | null
           organization_id: string
           overtime_hours: number | null
@@ -4435,6 +4658,7 @@ export type Database = {
           hourly_rate?: number | null
           hours: number
           id?: string
+          invoice_line_id?: string | null
           notes?: string | null
           organization_id: string
           overtime_hours?: number | null
@@ -4465,6 +4689,7 @@ export type Database = {
           hourly_rate?: number | null
           hours?: number
           id?: string
+          invoice_line_id?: string | null
           notes?: string | null
           organization_id?: string
           overtime_hours?: number | null
@@ -4506,6 +4731,13 @@ export type Database = {
             columns: ["hour_type_id"]
             isOneToOne: false
             referencedRelation: "placement_hour_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "timesheets_invoice_line_id_fkey"
+            columns: ["invoice_line_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_lines"
             referencedColumns: ["id"]
           },
           {
@@ -4552,6 +4784,7 @@ export type Database = {
           property_id: string
           status: Database["public"]["Enums"]["unit_status"]
           updated_at: string
+          weekly_cost: number | null
         }
         Insert: {
           capacity?: number
@@ -4566,6 +4799,7 @@ export type Database = {
           property_id: string
           status?: Database["public"]["Enums"]["unit_status"]
           updated_at?: string
+          weekly_cost?: number | null
         }
         Update: {
           capacity?: number
@@ -4580,6 +4814,7 @@ export type Database = {
           property_id?: string
           status?: Database["public"]["Enums"]["unit_status"]
           updated_at?: string
+          weekly_cost?: number | null
         }
         Relationships: [
           {
@@ -4925,10 +5160,13 @@ export type Database = {
       }
       vehicles: {
         Row: {
+          apk_expiry: string | null
           avg_consumption_per_100km: number | null
           brand: string | null
+          color: string | null
           created_at: string
           current_mileage: number | null
+          first_registration: string | null
           fuel_card_reference: string | null
           fuel_type: string | null
           id: string
@@ -4936,16 +5174,21 @@ export type Database = {
           model: string | null
           notes: string | null
           organization_id: string
+          seats: number | null
           status: Database["public"]["Enums"]["vehicle_status"]
           tank_capacity_liters: number | null
           updated_at: string
+          weight: number | null
           year: number | null
         }
         Insert: {
+          apk_expiry?: string | null
           avg_consumption_per_100km?: number | null
           brand?: string | null
+          color?: string | null
           created_at?: string
           current_mileage?: number | null
+          first_registration?: string | null
           fuel_card_reference?: string | null
           fuel_type?: string | null
           id?: string
@@ -4953,16 +5196,21 @@ export type Database = {
           model?: string | null
           notes?: string | null
           organization_id: string
+          seats?: number | null
           status?: Database["public"]["Enums"]["vehicle_status"]
           tank_capacity_liters?: number | null
           updated_at?: string
+          weight?: number | null
           year?: number | null
         }
         Update: {
+          apk_expiry?: string | null
           avg_consumption_per_100km?: number | null
           brand?: string | null
+          color?: string | null
           created_at?: string
           current_mileage?: number | null
+          first_registration?: string | null
           fuel_card_reference?: string | null
           fuel_type?: string | null
           id?: string
@@ -4970,9 +5218,11 @@ export type Database = {
           model?: string | null
           notes?: string | null
           organization_id?: string
+          seats?: number | null
           status?: Database["public"]["Enums"]["vehicle_status"]
           tank_capacity_liters?: number | null
           updated_at?: string
+          weight?: number | null
           year?: number | null
         }
         Relationships: [
@@ -5167,6 +5417,7 @@ export type Database = {
       }
       is_employee_user: { Args: never; Returns: boolean }
       is_superadmin: { Args: never; Returns: boolean }
+      next_invoice_number: { Args: { org_id: string }; Returns: string }
       record_rate_limit: {
         Args: {
           p_channel: Database["public"]["Enums"]["communication_channel"]
@@ -5300,6 +5551,12 @@ export type Database = {
         | "periodiek"
         | "onderhoud"
         | "klacht"
+      invoice_status:
+        | "concept"
+        | "definitief"
+        | "verzonden"
+        | "betaald"
+        | "gecrediteerd"
       match_status:
         | "voorgesteld"
         | "in_gesprek"
@@ -5325,7 +5582,12 @@ export type Database = {
         | "rood"
         | "goedgekeurd"
         | "afgekeurd"
-      unit_status: "beschikbaar" | "bezet" | "onderhoud" | "geblokkeerd"
+      unit_status:
+        | "beschikbaar"
+        | "gereserveerd"
+        | "bezet"
+        | "onderhoud"
+        | "geblokkeerd"
       user_role:
         | "admin"
         | "intercedent"
@@ -5517,6 +5779,13 @@ export const Constants = {
         "onderhoud",
         "klacht",
       ],
+      invoice_status: [
+        "concept",
+        "definitief",
+        "verzonden",
+        "betaald",
+        "gecrediteerd",
+      ],
       match_status: [
         "voorgesteld",
         "in_gesprek",
@@ -5546,7 +5815,13 @@ export const Constants = {
         "goedgekeurd",
         "afgekeurd",
       ],
-      unit_status: ["beschikbaar", "bezet", "onderhoud", "geblokkeerd"],
+      unit_status: [
+        "beschikbaar",
+        "gereserveerd",
+        "bezet",
+        "onderhoud",
+        "geblokkeerd",
+      ],
       user_role: [
         "admin",
         "intercedent",

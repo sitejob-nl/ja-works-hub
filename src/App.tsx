@@ -59,6 +59,7 @@ import CandidateProfile from "@/pages/CandidateProfile";
 import Register from "@/pages/Register";
 import PortalActivate from "@/pages/PortalActivate";
 import FuelCardAnalysis from "@/pages/FuelCardAnalysis";
+import InvoicesPage from "@/pages/Invoices";
 import PlacementDetail from "@/pages/PlacementDetail";
 import PortalLogin from "@/pages/portal/PortalLogin";
 import PortalDashboard from "@/pages/portal/PortalDashboard";
@@ -131,6 +132,7 @@ const App = () => (
               <Route path="/planning" element={<Planning />} />
               <Route path="/plaatsingen/:id" element={<PlacementDetail />} />
               <Route path="/uren" element={<Timesheets />} />
+              <Route path="/facturatie" element={<InvoicesPage />} />
               <Route path="/transport" element={<Transport />} />
               <Route path="/transport/new" element={<VehicleNew />} />
               <Route path="/transport/:id" element={<VehicleDetail />} />

@@ -7,9 +7,10 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Pencil, X, Check } from 'lucide-react';
+import { Pencil, X, Check, Search, Building2 } from 'lucide-react';
 import { toast } from 'sonner';
 import TagInput from '@/components/ui/tag-input';
+import { logAudit } from '@/lib/audit';
 
 const Field = ({ label, value }: { label: string; value: string | null | undefined }) => (
   <div>
@@ -24,7 +25,53 @@ const CompanyInfoTab = ({ company }: { company: any }) => {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<any>(company);
   const [sameAddress, setSameAddress] = useState(false);
+  const [kvkPreview, setKvkPreview] = useState<any>(null);
   const qc = useQueryClient();
+
+  const kvkLookup = useMutation({
+    mutationFn: async (kvkNumber: string) => {
+      const { data, error } = await supabase.functions.invoke('kvk-lookup', {
+        body: { kvk_number: kvkNumber },
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      setKvkPreview(data);
+      toast.success('KVK-gegevens opgehaald');
+    },
+    onError: (e: any) => {
+      setKvkPreview(null);
+      toast.error(e.message || 'KVK-lookup mislukt');
+    },
+  });
+
+  const applyKvkData = useMutation({
+    mutationFn: async () => {
+      if (!kvkPreview) return;
+      const payload: any = {};
+      if (kvkPreview.name) payload.name = kvkPreview.name;
+      if (kvkPreview.sbi_codes?.length) payload.sbi_codes = kvkPreview.sbi_codes;
+      if (kvkPreview.visit_address?.street) payload.visit_address_street = kvkPreview.visit_address.street;
+      if (kvkPreview.visit_address?.postal) payload.visit_address_postal = kvkPreview.visit_address.postal;
+      if (kvkPreview.visit_address?.city) payload.visit_address_city = kvkPreview.visit_address.city;
+      if (kvkPreview.visit_address?.country) payload.visit_address_country = kvkPreview.visit_address.country;
+      // Sync old address fields too
+      if (kvkPreview.visit_address?.street) payload.address_street = kvkPreview.visit_address.street;
+      if (kvkPreview.visit_address?.postal) payload.address_postal = kvkPreview.visit_address.postal;
+      if (kvkPreview.visit_address?.city) payload.address_city = kvkPreview.visit_address.city;
+      if (kvkPreview.visit_address?.country) payload.address_country = kvkPreview.visit_address.country;
+      const { error } = await supabase.from('companies').update(payload).eq('id', company.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['company', company.id] });
+      logAudit({ action: 'update', tableName: 'companies', recordId: company.id, newValues: { source: 'kvk_enrichment', kvk_number: company.kvk_number } });
+      setKvkPreview(null);
+      toast.success('KVK-gegevens overgenomen');
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
 
   const save = useMutation({
     mutationFn: async () => {
@@ -179,8 +226,51 @@ const CompanyInfoTab = ({ company }: { company: any }) => {
     <div className="space-y-6">
       <div className="flex justify-between items-start">
         <h3 className="font-medium">Bedrijfsgegevens</h3>
-        <Button size="sm" variant="ghost" onClick={startEdit}><Pencil className="h-3.5 w-3.5" /></Button>
+        <div className="flex gap-2">
+          {company.kvk_number && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => kvkLookup.mutate(company.kvk_number)}
+              disabled={kvkLookup.isPending}
+            >
+              <Building2 className="h-3.5 w-3.5 mr-1" />
+              {kvkLookup.isPending ? 'Ophalen...' : 'KVK Verrijken'}
+            </Button>
+          )}
+          <Button size="sm" variant="ghost" onClick={startEdit}><Pencil className="h-3.5 w-3.5" /></Button>
+        </div>
       </div>
+
+      {kvkPreview && (
+        <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4 space-y-3">
+          <div className="flex justify-between items-start">
+            <h4 className="text-sm font-medium text-blue-700 dark:text-blue-300">KVK-gegevens gevonden</h4>
+            <div className="flex gap-2">
+              <Button size="sm" variant="ghost" onClick={() => setKvkPreview(null)}>
+                <X className="h-3.5 w-3.5" />
+              </Button>
+              <Button size="sm" onClick={() => applyKvkData.mutate()} disabled={applyKvkData.isPending}>
+                <Check className="h-3.5 w-3.5 mr-1" />
+                {applyKvkData.isPending ? 'Overnemen...' : 'Overnemen'}
+              </Button>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            {kvkPreview.name && <div><span className="text-muted-foreground">Naam:</span> {kvkPreview.name}</div>}
+            {kvkPreview.kvk_number && <div><span className="text-muted-foreground">KVK:</span> {kvkPreview.kvk_number}</div>}
+            {kvkPreview.visit_address?.street && (
+              <div><span className="text-muted-foreground">Adres:</span> {kvkPreview.visit_address.street}, {kvkPreview.visit_address.postal} {kvkPreview.visit_address.city}</div>
+            )}
+            {kvkPreview.sbi_codes?.length > 0 && (
+              <div><span className="text-muted-foreground">SBI:</span> {kvkPreview.sbi_codes.join(', ')}</div>
+            )}
+            {kvkPreview.total_employees != null && (
+              <div><span className="text-muted-foreground">Werkzame personen:</span> {kvkPreview.total_employees}</div>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="bg-card rounded-lg border p-6 space-y-4">
