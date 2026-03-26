@@ -50,6 +50,7 @@ const CandidateDetail = () => {
   const navigate = useNavigate();
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const aiEnabled = useModuleEnabled('ai-analyse');
 
   const { data: candidate, isLoading } = useQuery({
     queryKey: ['candidate', id],
