@@ -14,7 +14,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Plus, FileText, Search, Eye, Send, CheckCircle2, Clock, Euro } from 'lucide-react';
+import { Plus, FileText, Search, Eye, Send, CheckCircle2, Clock, Euro, Download, RefreshCw } from 'lucide-react';
 import { formatDate, formatEUR } from '@/lib/format';
 import { logAudit } from '@/lib/audit';
 
@@ -454,6 +454,33 @@ function InvoiceDetailSheet({ invoice, lines, open, onOpenChange, onUpdate }: {
     onError: (e: any) => toast.error(e.message),
   });
 
+  // PDF generation
+  const generatePdf = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke('generate-invoice-pdf', { body: { invoice_id: invoice.id } });
+      if (error) throw error;
+      if (data?.html) {
+        const win = window.open('', '_blank');
+        if (win) { win.document.write(data.html); win.document.close(); win.print(); }
+      }
+      return data;
+    },
+    onSuccess: (data) => { toast.success('PDF gegenereerd'); if (data?.pdf_url) onUpdate(); },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  // Exact Online sync
+  const syncExact = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke('exact-sync-invoice', { body: { invoice_id: invoice.id } });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      return data;
+    },
+    onSuccess: (data) => { toast.success(data?.message || 'Gesynchroniseerd naar Exact Online'); onUpdate(); },
+    onError: (e: any) => toast.error(e.message),
+  });
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="sm:max-w-2xl overflow-y-auto">
@@ -499,8 +526,16 @@ function InvoiceDetailSheet({ invoice, lines, open, onOpenChange, onUpdate }: {
             <div className="flex justify-between font-semibold text-base"><span>Totaal</span><span className="font-mono">{formatEUR(invoice.total)}</span></div>
           </div>
 
+          {invoice.exact_invoice_id && (
+            <div className="bg-emerald-50 rounded-lg p-3 text-sm text-emerald-800">
+              <span className="font-medium">✓ Gesynchroniseerd naar Exact Online</span>
+              <span className="text-xs ml-2 text-emerald-600">ID: {invoice.exact_invoice_id}</span>
+            </div>
+          )}
+
           <Separator />
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            {/* Status flow */}
             {invoice.status === 'concept' && (
               <Button variant="outline" onClick={() => markAs.mutate('definitief')} disabled={markAs.isPending}>
                 <CheckCircle2 className="h-4 w-4 mr-1" /> Definitief maken
@@ -514,6 +549,19 @@ function InvoiceDetailSheet({ invoice, lines, open, onOpenChange, onUpdate }: {
             {invoice.status === 'verzonden' && (
               <Button variant="default" onClick={() => markAs.mutate('betaald')} disabled={markAs.isPending}>
                 <Euro className="h-4 w-4 mr-1" /> Markeer als betaald
+              </Button>
+            )}
+
+            {/* PDF */}
+            <Button variant="outline" onClick={() => generatePdf.mutate()} disabled={generatePdf.isPending}>
+              <Download className="h-4 w-4 mr-1" /> {generatePdf.isPending ? 'Genereren...' : 'PDF'}
+            </Button>
+
+            {/* Exact sync */}
+            {!invoice.exact_invoice_id && invoice.status !== 'concept' && (
+              <Button variant="outline" onClick={() => syncExact.mutate()} disabled={syncExact.isPending}>
+                <RefreshCw className={`h-4 w-4 mr-1 ${syncExact.isPending ? 'animate-spin' : ''}`} />
+                {syncExact.isPending ? 'Synchroniseren...' : 'Naar Exact'}
               </Button>
             )}
           </div>
