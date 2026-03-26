@@ -108,7 +108,7 @@ Deno.serve(async (req) => {
   } catch (err) {
     console.error("portal-activate error:", err);
     return new Response(
-      JSON.stringify({ error: err.message || "Er ging iets mis" }),
+      JSON.stringify({ error: (err as Error).message || "Er ging iets mis" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

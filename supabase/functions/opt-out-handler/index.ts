@@ -104,27 +104,27 @@ Deno.serve(async (req) => {
     if (updated && updated.length > 0) {
       const campaignIds = [...new Set(updated.map((r) => r.campaign_id))];
       for (const campaignId of campaignIds) {
-        await serviceClient.rpc("increment", {
-          row_id: campaignId,
-          x: 1,
-          table_name: "bulk_campaigns",
-          column_name: "opted_out_count",
-        }).catch(() => {
+        try {
+          await serviceClient.rpc("increment", {
+            row_id: campaignId,
+            x: 1,
+            table_name: "bulk_campaigns",
+            column_name: "opted_out_count",
+          });
+        } catch {
           // Fallback if increment RPC doesn't exist
-          serviceClient
+          const { data } = await serviceClient
             .from("bulk_campaigns")
             .select("opted_out_count")
             .eq("id", campaignId)
-            .single()
-            .then(({ data }) => {
-              if (data) {
-                serviceClient
-                  .from("bulk_campaigns")
-                  .update({ opted_out_count: (data.opted_out_count || 0) + 1 })
-                  .eq("id", campaignId);
-              }
-            });
-        });
+            .single();
+          if (data) {
+            await serviceClient
+              .from("bulk_campaigns")
+              .update({ opted_out_count: (data.opted_out_count || 0) + 1 })
+              .eq("id", campaignId);
+          }
+        }
       }
     }
 
