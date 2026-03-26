@@ -1,107 +1,77 @@
 
 
-# Bugfix Plan: 8 Issues
+# Fix Plan: Build Errors + WhatsApp/Exact Encryption Issues
 
-## 1. KRITIEK — Vacature detailpagina laadt niet
+## Problem Analysis
 
-**Oorzaak**: De Supabase query in `VacancyDetail.tsx` (regel 39) doet een join op `company_contacts!company_contacts_company_id_fkey`, maar die FK verwijst naar `companies`, niet naar `vacancies`. PostgREST kan die relatie niet resolven via `vacancies` en gooit een error, waardoor de query faalt en de pagina op "Laden..." blijft hangen.
+There are **two categories** of issues:
 
-**Fix**: Verwijder de `company_contacts` join uit de `.select()`. Haal contactpersonen op in een aparte query of via de company relatie.
+### A. TypeScript Build Errors (4 files)
+Simple type errors that block deployment.
 
-**Bestand**: `src/pages/VacancyDetail.tsx` regel 39
+### B. Encryption Breaking WhatsApp & Exact Connect (Root Cause)
+The encryption triggers (`encrypt_exact_sensitive`, `encrypt_whatsapp_sensitive`) encrypt `webhook_secret` and `access_token` on write. But multiple edge functions read these values raw and use them for:
+- **Authenticating with SiteJob Connect** (sending `webhook_secret` to `exact-token` endpoint)
+- **Comparing incoming webhook secrets** (in `exact-config`, `exact-webhook`)
 
----
-
-## 2. Globale zoekbalk werkt niet
-
-**Oorzaak**: De zoekbalk in `TopBar.tsx` is een statische `<input>` zonder event handlers — geen `onChange`, geen `onKeyDown`, geen navigatie.
-
-**Fix**: Implementeer een functionele zoekbalk:
-- State voor zoekterm
-- Bij Enter of na debounce: navigeer naar een zoekresultatenpagina of filter op kandidaten/medewerkers/opdrachtgevers
-- Simpelste aanpak: bij Enter navigeer naar `/kandidaten?q=...` of een dedicated `/zoeken?q=...` route
-- Alternatief: Command palette (Cmd+K) met zoekresultaten uit meerdere tabellen
-
-**Bestand**: `src/components/layout/TopBar.tsx`
+After encryption, the stored values are base64 ciphertext — not the original secrets. This breaks all authentication flows.
 
 ---
 
-## 3. Marge is overal €0
+## Fix 1: TypeScript Build Errors
 
-**Oorzaak**: In `KpiDashboard.tsx` worden revenue en cost beide berekend met dezelfde `hourly_rate`. De `placements` tabel heeft maar één `hourly_rate` kolom (= kostprijs). Er is geen apart verkooptarief.
+### 1a. `apify-job-import/index.ts` line 248
+`err` is `unknown` — cast to `(err as Error).message`
 
-De `rate_agreements` tabel bevat wél een `hourly_rate` per company/functie, maar die wordt niet gebruikt in de KPI-berekening.
+### 1b. `bulk-campaign-processor/index.ts` line 239
+Same fix: `(err as Error).message`
 
-**Fix**:
-1. Voeg een `client_hourly_rate` kolom toe aan de `placements` tabel (= factuurtarief aan klant)
-2. Update de KPI-query: revenue = `client_hourly_rate × uren`, cost = `hourly_rate × uren`
-3. Fallback: als `client_hourly_rate` leeg is, gebruik `rate_agreements.hourly_rate` voor de betreffende company
-4. Update de PlacementSheet/forms om het verkooptarief in te vullen
+### 1c. `portal-activate/index.ts` line 111
+Same fix: `(err as Error).message`
 
-**Database migratie**: `ALTER TABLE placements ADD COLUMN client_hourly_rate numeric;`
+### 1d. `opt-out-handler/index.ts` line 112
+`.catch()` doesn't exist on PostgREST builder. Wrap the `rpc` call in a try/catch instead.
 
-**Bestanden**: `src/components/dashboard/KpiDashboard.tsx`, placement-gerelateerde formulieren
-
----
-
-## 4. DialogTitle ontbreekt (accessibility)
-
-**Oorzaak**: `CommandDialog` in `src/components/ui/command.tsx` wraps `DialogContent` zonder `DialogTitle`.
-
-**Fix**: Voeg een visueel verborgen `DialogTitle` toe met `sr-only` class.
-
-**Bestand**: `src/components/ui/command.tsx`
+### 1e. `src/pages/Invoices.tsx` line 46
+`statusFilter` is `string` but `.eq('status', ...)` expects the enum type. Cast: `.eq('status', statusFilter as any)`
 
 ---
 
-## 5. Dashboard X-as labels overlappen
+## Fix 2: Exact Online Edge Functions — Decrypt Before Use
 
-**Oorzaak**: De omzetgrafiek is een horizontale bar chart met `XAxis` die `€0k, €0k, €1k` toont — te veel ticks voor kleine bedragen.
+### 2a. Create `get_exact_token` RPC function (migration)
+Similar to `get_whatsapp_token`, create a Security Definer function that decrypts `webhook_secret` from `exact_config`:
 
-**Fix**: Configureer `XAxis` met `tickCount`, `allowDecimals={false}`, en een betere formatter die lage bedragen als gehele euro's toont i.p.v. k-notatie.
+```sql
+CREATE OR REPLACE FUNCTION public.get_exact_token(p_org_id uuid)
+RETURNS TABLE(tenant_id text, decrypted_webhook_secret text, division int, base_url text)
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path TO 'public', 'extensions', 'vault'
+AS $$ ...decrypt_sensitive(webhook_secret)... $$;
+```
 
-**Bestand**: `src/components/dashboard/KpiDashboard.tsx`
+### 2b. Update `exact-api/index.ts`
+Replace raw `config.webhook_secret` read with `serviceClient.rpc('get_exact_token', { p_org_id })` call. Pass the decrypted secret to `getExactToken()`.
 
----
+### 2c. Update `exact-config/index.ts`
+Currently compares `config.webhook_secret !== webhookSecret` — but stored value is encrypted. Use `serviceClient.rpc('get_exact_token')` to get decrypted secret for comparison.
 
-## 6. Ontbrekende documenten — geen actieknop
-
-**Fix**: Voeg een "Upload document" knop toe per medewerker in de `MissingDocumentsCard`, die direct navigeert naar het documenten-tab van die medewerker.
-
-**Bestand**: `src/components/dashboard/DashboardWidgets.tsx`
-
----
-
-## 7. Inactieve opdrachtgevers in margetabel
-
-**Fix**: Filter `revenueByClient` om alleen entries met `hours > 0` of `revenue > 0` te tonen, zodat companies zonder activiteit niet verschijnen.
-
-**Bestand**: `src/components/dashboard/KpiDashboard.tsx`
+### 2d. Update `exact-webhook/index.ts`
+Same issue: finds config by `webhook_secret` but stored value is encrypted. Change to: query all configs, then decrypt and compare (or add an RPC that looks up by decrypted secret).
 
 ---
 
-## 8. Notificatiebel altijd leeg
+## Fix 3: WhatsApp Edge Functions — Already Partially Fixed
 
-**Oorzaak**: De `employee_notifications` tabel wordt uitgelezen maar er worden nergens automatisch records aangemaakt. Er is geen trigger of cron-job die notificaties genereert op basis van aflopende documenten, achterstallige huur, etc.
-
-**Fix**: Maak een Supabase Edge Function `generate-notifications` die periodiek:
-- Aflopende contracten → `contract_aflopend` notificatie
-- Verlopen documenten → `document_verlopen` notificatie
-- Ontbrekende documenten → `document_ontbrekend` notificatie
-- Openstaande uren → `uren_openstaand` notificatie
-- Verjaardagen → `verjaardag` notificatie
-
-Roep deze aan vanuit de dashboard-pagina (lazy) of via een cron trigger. De functie controleert of er al een recente notificatie bestaat om duplicaten te voorkomen.
-
-**Bestanden**: Nieuwe edge function + aanroep vanuit Dashboard
+`whatsapp-send` already uses `get_whatsapp_token` RPC — correct.
+`whatsapp-config` already uses `get_whatsapp_token` for comparison — correct.
+`whatsapp-webhook` needs checking — it may read raw encrypted values.
 
 ---
 
-## Samenvatting volgorde
-
-1. Vacature detail fix (kritiek, 1 regel)
-2. Marge fix (DB migratie + code)
-3. Zoekbalk implementatie
-4. Notificatie-generatie
-5. Overige UX fixes (DialogTitle, chart labels, actieknoppen, filters)
+## Execution Order
+1. Fix all 5 TypeScript errors (unblocks build)
+2. Create `get_exact_token` RPC via migration
+3. Update 3 Exact edge functions to use decrypted values
+4. Verify whatsapp-webhook uses decryption
 
