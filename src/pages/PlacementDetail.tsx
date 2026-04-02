@@ -17,6 +17,7 @@ import { ChevronRight, Save, Building2, User, FileText, XCircle, ExternalLink } 
 import { toast } from 'sonner';
 import { formatDate, formatEUR } from '@/lib/format';
 import { logAudit } from '@/lib/audit';
+import { payrollerLabel } from '@/lib/payroller';
 import PlacementHourTypesTab from '@/components/placements/tabs/PlacementHourTypesTab';
 import PlacementTravelTypesTab from '@/components/placements/tabs/PlacementTravelTypesTab';
 import PlacementAllowancesTab from '@/components/placements/tabs/PlacementAllowancesTab';
@@ -29,9 +30,6 @@ const statusBadge: Record<string, string> = {
 };
 const statusLabel: Record<string, string> = {
   gepland: 'Gepland', actief: 'Actief', afgerond: 'Afgerond', voortijdig_beeindigd: 'Voortijdig beëindigd',
-};
-const payrollerLabel: Record<string, string> = {
-  flexpedia: 'Flexpedia', brioworks: 'BrioWorks', bromida: 'Bromida', retiva: 'Retiva/A1',
 };
 const housingPaymentLabel: Record<string, string> = {
   betaald: 'Betaald door medewerker', inhouding: 'Inhouding via payroller', gratis: 'Gratis huisvesting',
