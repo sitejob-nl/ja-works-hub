@@ -77,6 +77,7 @@ import PortalVehicle from "@/pages/portal/PortalVehicle";
 import PortalPayslips from "@/pages/portal/PortalPayslips";
 import PortalAnnualStatements from "@/pages/portal/PortalAnnualStatements";
 import PortalHourLetters from "@/pages/portal/PortalHourLetters";
+import PortalPlacements from "@/pages/portal/PortalPlacements";
 
 const queryClient = new QueryClient();
 
@@ -169,6 +170,7 @@ const App = () => (
             }>
               <Route index element={<PortalDashboard />} />
               <Route path="uren" element={<PortalTimesheets />} />
+              <Route path="plaatsingen" element={<PortalPlacements />} />
               <Route path="documenten" element={<PortalDocuments />} />
               <Route path="profiel" element={<PortalProfile />} />
               <Route path="ziekmelding" element={<PortalSickReport />} />
