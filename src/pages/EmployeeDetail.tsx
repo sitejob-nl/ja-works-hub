@@ -27,6 +27,7 @@ import EmployeeDeductionsTab from '@/components/employees/tabs/EmployeeDeduction
 import EmployeeReservationsTab from '@/components/employees/tabs/EmployeeReservationsTab';
 import EmployeeSubsidiesTab from '@/components/employees/tabs/EmployeeSubsidiesTab';
 import EmployeePortalTab from '@/components/employees/tabs/EmployeePortalTab';
+import { useTrackPageVisit } from '@/hooks/useTrackPageVisit';
 
 type EmployeeStatus = Database['public']['Enums']['employee_status'];
 
@@ -65,6 +66,12 @@ const EmployeeDetail = () => {
       return data;
     },
     enabled: !!id,
+  });
+
+  useTrackPageVisit({
+    id,
+    type: 'medewerker',
+    label: employee?.candidates ? `${employee.candidates.first_name} ${employee.candidates.last_name}` : undefined,
   });
 
   const { data: onboardingToken, refetch: refetchOnboardingToken } = useQuery({

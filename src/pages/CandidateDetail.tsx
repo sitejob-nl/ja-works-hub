@@ -18,6 +18,7 @@ import CandidatePlacementsTab from '@/components/candidates/tabs/CandidatePlacem
 import { CandidatePreferencesTab } from '@/components/candidates/tabs/CandidatePreferencesTab';
 import CandidateAiTab from '@/components/candidates/tabs/CandidateAiTab';
 import { useModuleEnabled } from '@/hooks/useModuleEnabled';
+import { useTrackPageVisit } from '@/hooks/useTrackPageVisit';
 import type { Database } from '@/integrations/supabase/types';
 
 type CandidateStatus = Database['public']['Enums']['candidate_status'];
@@ -60,6 +61,13 @@ const CandidateDetail = () => {
       return data;
     },
     enabled: !!id,
+  });
+
+  useTrackPageVisit({
+    id,
+    type: 'kandidaat',
+    label: candidate ? `${candidate.first_name} ${candidate.last_name}` : undefined,
+    sublabel: candidate?.status,
   });
 
   // Fetch or create profile token

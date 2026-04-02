@@ -21,6 +21,7 @@ import { payrollerLabel } from '@/lib/payroller';
 import PlacementHourTypesTab from '@/components/placements/tabs/PlacementHourTypesTab';
 import PlacementTravelTypesTab from '@/components/placements/tabs/PlacementTravelTypesTab';
 import PlacementAllowancesTab from '@/components/placements/tabs/PlacementAllowancesTab';
+import { useTrackPageVisit } from '@/hooks/useTrackPageVisit';
 
 const statusBadge: Record<string, string> = {
   gepland: 'bg-blue-100 text-blue-700 border-0',
@@ -55,6 +56,20 @@ const PlacementDetail = () => {
       return data;
     },
     enabled: !!id,
+  });
+
+  const candidateName = placement?.employees?.candidates
+    ? `${placement.employees.candidates.first_name} ${placement.employees.candidates.last_name}`
+    : undefined;
+  const placementSublabel = placement?.companies && placement?.function_name
+    ? `${(placement.companies as any).name} - ${placement.function_name}`
+    : undefined;
+
+  useTrackPageVisit({
+    id,
+    type: 'plaatsing',
+    label: candidateName,
+    sublabel: placementSublabel,
   });
 
   const [form, setForm] = useState<any>({});

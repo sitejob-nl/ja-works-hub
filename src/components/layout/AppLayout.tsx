@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import AppSidebar from './AppSidebar';
 import TopBar from './TopBar';
+import RecentItemsBar from './RecentItemsBar';
 
 const AppLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -27,6 +28,7 @@ const AppLayout = () => {
 
       <div className="flex-1 flex flex-col min-w-0 h-screen">
         <TopBar onMenuClick={() => setSidebarOpen(v => !v)} />
+        <RecentItemsBar />
         <main className="flex-1 p-3 sm:p-4 md:p-6 overflow-y-auto overflow-x-hidden">
           <div className="max-w-[1400px] mx-auto">
             <Outlet />

@@ -3,6 +3,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { RecentItemsProvider } from "@/contexts/RecentItemsContext";
 import { SuperAdminProvider } from "@/contexts/SuperAdminContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import ErrorBoundary from "@/components/ErrorBoundary";
@@ -108,7 +109,9 @@ const App = () => (
             <Route element={
               <AuthProvider>
                 <ProtectedRoute>
-                  <AppLayout />
+                  <RecentItemsProvider>
+                    <AppLayout />
+                  </RecentItemsProvider>
                 </ProtectedRoute>
               </AuthProvider>
             }>
