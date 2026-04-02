@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -l \"exact_config\" \"/c/Users/kas20/ja werkt/supabase/migrations\"/*.sql)",
+      "Bash(grep -l \"whatsapp_config\" \"/c/Users/kas20/ja werkt/supabase/migrations\"/*.sql)",
+      "Bash(xargs cat:*)",
+      "Bash(npx supabase:*)",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx vite:*)",
+      "Bash(cp \"/c/Users/kas20/Downloads/AiAnalysisCard.tsx\" \"/c/Users/kas20/ja werkt/src/components/AiAnalysisCard.tsx\")",
+      "Bash(cp \"/c/Users/kas20/Downloads/CandidateAiTab.tsx\" \"/c/Users/kas20/ja werkt/src/components/candidates/tabs/CandidateAiTab.tsx\")",
+      "Bash(cp \"/c/Users/kas20/Downloads/CandidateDetail.tsx\" \"/c/Users/kas20/ja werkt/src/pages/CandidateDetail.tsx\")"
+    ]
+  }
+}

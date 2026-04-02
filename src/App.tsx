@@ -67,6 +67,7 @@ import PlacementDetail from "@/pages/PlacementDetail";
 import UitstroomAnalyse from "@/pages/UitstroomAnalyse";
 import Contacts from "@/pages/Contacts";
 import ContactDetail from "@/pages/ContactDetail";
+import Dashboards from "@/pages/Dashboards";
 import PortalLogin from "@/pages/portal/PortalLogin";
 import PortalDashboard from "@/pages/portal/PortalDashboard";
 import PortalLayout from "@/components/layout/PortalLayout";
@@ -162,6 +163,7 @@ const App = () => (
               <Route path="/exact-online" element={<ExactOnlinePage />} />
               <Route path="/cv-tool/:candidateId" element={<CvTool />} />
               <Route path="/importeren" element={<ImportData />} />
+              <Route path="/dashboards" element={<Dashboards />} />
               <Route path="/instellingen" element={<SettingsPage />} />
             </Route>
             {/* Public routes */}
