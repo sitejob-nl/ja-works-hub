@@ -144,3 +144,46 @@ export async function sendPlacementWhatsApp(
     return false;
   }
 }
+
+/**
+ * Result from placement confirmation email generation.
+ */
+export interface PlacementConfirmationResult {
+  success: boolean;
+  client_email?: {
+    subject: string;
+    html: string;
+    to: string;
+    communication_id?: string;
+  };
+  employee_email?: {
+    subject: string;
+    html: string;
+    to: string;
+    communication_id?: string;
+  };
+  warnings: string[];
+}
+
+/**
+ * Send placement confirmation emails (stored as concept in communications table).
+ */
+export async function sendPlacementConfirmation(
+  placementId: string,
+  sendToClient: boolean,
+  sendToEmployee: boolean,
+): Promise<PlacementConfirmationResult> {
+  const { data, error } = await supabase.functions.invoke('send-placement-confirmation', {
+    body: {
+      placement_id: placementId,
+      send_to_client: sendToClient,
+      send_to_employee: sendToEmployee,
+    },
+  });
+
+  if (error) {
+    throw new Error(error.message ?? 'Fout bij versturen bevestigingsemail');
+  }
+
+  return data as PlacementConfirmationResult;
+}

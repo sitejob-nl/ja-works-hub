@@ -71,6 +71,9 @@ verify_jwt = true
 [functions.generate-notifications]
 verify_jwt = true
 
+[functions.send-placement-confirmation]
+verify_jwt = true
+
 [functions.candidate-profile]
 verify_jwt = false
 
