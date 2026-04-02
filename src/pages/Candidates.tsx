@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Link, useNavigate } from 'react-router-dom';
-import { Users, Plus, Search, Upload } from 'lucide-react';
+import { Users, Plus, Search, Upload, CheckCircle2, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -169,9 +169,22 @@ const Candidates = () => {
                   return (
                     <TableRow key={c.id} className={i % 2 === 1 ? 'bg-background' : ''}>
                       <TableCell>
-                        <Link to={`/kandidaten/${c.id}`} className="font-medium text-foreground hover:text-primary transition-colors">
-                          {c.first_name} {c.last_name}
-                        </Link>
+                        <div className="flex items-center gap-1.5">
+                          {c.screened_at ? (
+                            (c.screening_data as any)?.result === 'goedgekeurd' ? (
+                              <CheckCircle2 className="h-3.5 w-3.5 text-stat-green flex-shrink-0" />
+                            ) : (c.screening_data as any)?.result === 'afgekeurd' ? (
+                              <XCircle className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
+                            ) : (
+                              <span className="h-2 w-2 rounded-full bg-muted-foreground/40 flex-shrink-0" />
+                            )
+                          ) : (
+                            <span className="h-2 w-2 rounded-full bg-muted-foreground/20 flex-shrink-0" />
+                          )}
+                          <Link to={`/kandidaten/${c.id}`} className="font-medium text-foreground hover:text-primary transition-colors">
+                            {c.first_name} {c.last_name}
+                          </Link>
+                        </div>
                       </TableCell>
                       <TableCell>
                         <Badge variant="secondary" className={statusBadge[c.status] ?? ''}>

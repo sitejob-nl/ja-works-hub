@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { ChevronRight, MoreHorizontal, Pencil, FileText, Link2, Copy, Check, MessageCircle, Mail } from 'lucide-react';
+import { ChevronRight, MoreHorizontal, Pencil, FileText, Link2, Copy, Check, MessageCircle, Mail, ClipboardCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import CandidateProfileTab from '@/components/candidates/tabs/CandidateProfileTab';
 import CandidateDocumentsTab from '@/components/candidates/tabs/CandidateDocumentsTab';
@@ -17,6 +17,7 @@ import CandidateMatchesTab from '@/components/candidates/tabs/CandidateMatchesTa
 import CandidatePlacementsTab from '@/components/candidates/tabs/CandidatePlacementsTab';
 import { CandidatePreferencesTab } from '@/components/candidates/tabs/CandidatePreferencesTab';
 import CandidateAiTab from '@/components/candidates/tabs/CandidateAiTab';
+import CandidateScreeningTab from '@/components/candidates/tabs/CandidateScreeningTab';
 import { useModuleEnabled } from '@/hooks/useModuleEnabled';
 import { useTrackPageVisit } from '@/hooks/useTrackPageVisit';
 import type { Database } from '@/integrations/supabase/types';
@@ -234,6 +235,7 @@ const CandidateDetail = () => {
             <TabsTrigger value="matches">Matches</TabsTrigger>
             <TabsTrigger value="plaatsingen">Plaatsingen</TabsTrigger>
             <TabsTrigger value="voorkeuren">Voorkeuren</TabsTrigger>
+            <TabsTrigger value="screening" className="gap-1.5"><ClipboardCheck className="h-3.5 w-3.5" />Screening</TabsTrigger>
             {aiEnabled && <TabsTrigger value="ai" className="gap-1.5">AI Analyse</TabsTrigger>}
           </TabsList>
         </div>
@@ -243,6 +245,7 @@ const CandidateDetail = () => {
         <TabsContent value="matches"><CandidateMatchesTab candidateId={id!} /></TabsContent>
         <TabsContent value="plaatsingen"><CandidatePlacementsTab candidateId={id!} /></TabsContent>
         <TabsContent value="voorkeuren"><CandidatePreferencesTab candidateId={id!} /></TabsContent>
+        <TabsContent value="screening"><CandidateScreeningTab candidate={candidate} onUpdate={() => qc.invalidateQueries({ queryKey: ['candidate', id] })} /></TabsContent>
         {aiEnabled && <TabsContent value="ai"><CandidateAiTab candidate={candidate} /></TabsContent>}
       </Tabs>
     </div>
