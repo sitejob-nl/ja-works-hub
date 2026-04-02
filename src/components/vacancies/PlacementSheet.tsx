@@ -13,6 +13,7 @@ import ComplianceWarningDialog from '@/components/ComplianceWarningDialog';
 import { logAudit } from '@/lib/audit';
 import { generateTimesheetTemplates, getHousingSuggestions, sendPlacementWhatsApp, type HousingSuggestion } from '@/components/placement/PlacementTriggers';
 import HousingSuggestionsCard from '@/components/placement/HousingSuggestionsCard';
+import PlacementConfirmationDialog from '@/components/placement/PlacementConfirmationDialog';
 
 interface Props {
   match: any | null;
@@ -39,6 +40,8 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
   const [housingSuggestions, setHousingSuggestions] = useState<HousingSuggestion[]>([]);
   const [placementDone, setPlacementDone] = useState(false);
   const [lastPlacementData, setLastPlacementData] = useState<{ employeeId: string; placementId: string } | null>(null);
+  const [showConfirmationDialog, setShowConfirmationDialog] = useState(false);
+  const [confirmationPlacementId, setConfirmationPlacementId] = useState<string | null>(null);
 
   useEffect(() => {
     if (match && vacancy) {
@@ -50,6 +53,8 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
         client_hourly_rate: '',
         overtime_rate: '',
       });
+      setConfirmationPlacementId(null);
+      setShowConfirmationDialog(false);
     }
   }, [match, vacancy]);
 
@@ -173,7 +178,6 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
         setHousingSuggestions(suggestions);
         setLastPlacementData({ employeeId, placementId: placement.id });
         setPlacementDone(true);
-        return; // Keep sheet open to show housing suggestions
       }
     } catch { /* non-blocking */ }
 
@@ -191,6 +195,10 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
         candidateName: candidate?.first_name,
       });
     } catch { /* non-blocking */ }
+
+    // 4. Show placement confirmation email dialog
+    setConfirmationPlacementId(placement.id);
+    setShowConfirmationDialog(true);
   };
 
   const invalidateAll = () => {
@@ -207,10 +215,8 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
     mutationFn: () => executePlacement(false),
     onSuccess: () => {
       invalidateAll();
-      if (!placementDone) {
-        toast.success('Plaatsing aangemaakt');
-        onClose();
-      }
+      toast.success('Plaatsing aangemaakt');
+      setPlacementDone(true);
     },
     onError: (e: any) => {
       // Don't show error if compliance dialog is being shown
@@ -224,10 +230,8 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
     mutationFn: () => executePlacement(true),
     onSuccess: () => {
       invalidateAll();
-      if (!placementDone) {
-        toast.success('Plaatsing aangemaakt (compliance override)');
-        onClose();
-      }
+      toast.success('Plaatsing aangemaakt (compliance override)');
+      setPlacementDone(true);
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -285,6 +289,26 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
         issues={complianceIssues}
         onOverride={() => overrideMutation.mutate()}
       />
+
+      {confirmationPlacementId && (
+        <PlacementConfirmationDialog
+          open={showConfirmationDialog}
+          onOpenChange={(open) => {
+            setShowConfirmationDialog(open);
+            if (!open) {
+              // Close the main sheet when the confirmation dialog is dismissed
+              onClose();
+            }
+          }}
+          placementId={confirmationPlacementId}
+          candidateName={`${candidate?.first_name ?? ''} ${candidate?.last_name ?? ''}`.trim()}
+          candidateEmail={candidate?.email ?? null}
+          candidatePhone={candidate?.phone ?? null}
+          companyName={(vacancy.companies as any)?.name ?? ''}
+          functionName={form.function_name}
+          startDate={form.start_date}
+        />
+      )}
     </>
   );
 };

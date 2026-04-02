@@ -42,7 +42,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('matches')
-        .select(`*, candidates!matches_candidate_id_fkey(id, first_name, last_name, compliance_status)`)
+        .select(`*, candidates!matches_candidate_id_fkey(id, first_name, last_name, email, phone, compliance_status)`)
         .eq('vacancy_id', vacancy.id)
         .order('created_at', { ascending: false });
       if (error) throw error;
