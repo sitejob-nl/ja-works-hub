@@ -2,7 +2,7 @@ import { usePortal } from '@/contexts/PortalContext';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Link } from 'react-router-dom';
-import { Clock, AlertTriangle, Building, Car } from 'lucide-react';
+import { Clock, AlertTriangle, Building, Car, MapPin, Bell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -144,6 +144,29 @@ const PortalDashboard = () => {
     enabled: !!employeeId,
   });
 
+  // Recent approved/rejected timesheets for notifications
+  const sevenDaysAgo = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    return d.toISOString();
+  })();
+
+  const { data: recentNotifications = [] } = useQuery({
+    queryKey: ['portal-dashboard-notifications', employeeId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('timesheets')
+        .select('id, work_date, status, approved_at')
+        .eq('employee_id', employeeId!)
+        .gte('approved_at', sevenDaysAgo)
+        .in('status', ['goedgekeurd', 'afgekeurd'] as any)
+        .order('approved_at', { ascending: false })
+        .limit(3);
+      return data ?? [];
+    },
+    enabled: !!employeeId,
+  });
+
   // Expiring docs
   const { data: docIssues } = useQuery({
     queryKey: ['portal-doc-issues', employee?.candidate_id],
@@ -179,6 +202,47 @@ const PortalDashboard = () => {
           <p className="mt-2 text-sm text-muted-foreground">Je hebt momenteel geen actieve plaatsing</p>
         )}
       </div>
+
+      {/* Active placement card */}
+      {placements.length > 0 && (
+        <div className="bg-card rounded-xl border p-5">
+          <div className="flex items-center gap-2 mb-2">
+            <MapPin className="h-5 w-5 text-primary" />
+            <h2 className="font-medium">Mijn plaatsing</h2>
+          </div>
+          <div className="text-sm space-y-1">
+            <p className="font-medium">{(placements[0] as any).companies?.name}</p>
+            <p className="text-muted-foreground">
+              {(placements[0] as any).function_name && `${(placements[0] as any).function_name} · `}
+              Sinds {formatDate((placements[0] as any).start_date)}
+            </p>
+          </div>
+          <Button asChild variant="outline" size="sm" className="mt-3 w-full">
+            <Link to="/portaal/plaatsingen">Bekijk details</Link>
+          </Button>
+        </div>
+      )}
+
+      {/* Recent notifications */}
+      {recentNotifications.length > 0 && (
+        <div className="bg-card rounded-xl border p-5">
+          <div className="flex items-center gap-2 mb-2">
+            <Bell className="h-5 w-5 text-primary" />
+            <h2 className="font-medium">Recente meldingen</h2>
+          </div>
+          <ul className="space-y-2">
+            {recentNotifications.map((n: any) => (
+              <li key={n.id} className="text-sm">
+                <span className={n.status === 'goedgekeurd' ? 'text-stat-green' : 'text-destructive'}>
+                  {n.status === 'goedgekeurd'
+                    ? `Je uren van ${formatDate(n.work_date)} zijn goedgekeurd \u2713`
+                    : `Je uren van ${formatDate(n.work_date)} zijn afgekeurd \u2717`}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Hours this week */}
       <div className="bg-card rounded-xl border p-5">

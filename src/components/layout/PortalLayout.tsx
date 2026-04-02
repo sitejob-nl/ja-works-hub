@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { usePortal } from '@/contexts/PortalContext';
-import { Home, Clock, FileText, Building, MoreHorizontal, LogOut, Globe } from 'lucide-react';
+import { Home, Clock, FileText, Building, MoreHorizontal, LogOut, Globe, MapPin } from 'lucide-react';
+import PortalNotifications from '@/components/portal/PortalNotifications';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
@@ -9,6 +10,7 @@ import { supabase } from '@/integrations/supabase/client';
 const mainTabs = [
   { label: 'Dashboard', icon: Home, path: '/portaal' },
   { label: 'Uren', icon: Clock, path: '/portaal/uren' },
+  { label: 'Plaatsingen', icon: MapPin, path: '/portaal/plaatsingen' },
   { label: 'Documenten', icon: FileText, path: '/portaal/documenten' },
   { label: 'Huisvesting', icon: Building, path: '/portaal/huisvesting' },
 ];
@@ -46,6 +48,8 @@ const PortalLayout = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          <PortalNotifications />
+
           <Button variant="ghost" size="icon" onClick={toggleLanguage} className="h-8 w-8" title="Taal wisselen">
             <Globe className="h-4 w-4" />
           </Button>
