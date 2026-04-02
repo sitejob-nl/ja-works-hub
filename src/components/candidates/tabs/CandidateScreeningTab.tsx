@@ -163,10 +163,14 @@ const CandidateScreeningTab = ({
         screened_by: user?.id,
       };
 
-      if (data.result === 'goedgekeurd') {
-        updates.status = 'beschikbaar';
-      } else if (data.result === 'afgekeurd') {
-        updates.status = 'afgewezen';
+      // Only update status on FIRST completion (not on re-saves)
+      const isFirstCompletion = !candidate.screened_at;
+      if (isFirstCompletion) {
+        if (data.result === 'goedgekeurd') {
+          updates.status = 'beschikbaar';
+        } else if (data.result === 'afgekeurd') {
+          updates.status = 'afgewezen';
+        }
       }
 
       const { error } = await supabase
@@ -422,7 +426,7 @@ const CandidateScreeningTab = ({
         {isComplete && (
           <p className="text-xs text-muted-foreground">
             Eerder gescreend op{' '}
-            {new Date(candidate.screened_at).toLocaleDateString('nl-NL', {
+            {new Date(candidate.screened_at).toLocaleString('nl-NL', {
               day: 'numeric',
               month: 'long',
               year: 'numeric',

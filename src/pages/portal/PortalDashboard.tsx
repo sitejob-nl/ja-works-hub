@@ -49,19 +49,21 @@ const PortalDashboard = () => {
         .gte('work_date', start)
         .lte('work_date', end);
 
-      // Group by week
-      const weeks = new Map<number, { week: number; hours: number; overtime: number; surcharges: number }>();
+      // Group by year+week to avoid collisions across year boundaries
+      const weeks = new Map<string, { key: string; week: number; hours: number; overtime: number; surcharges: number }>();
       (data ?? []).forEach((t) => {
         const d = new Date(t.work_date);
         const w = getISOWeek(d);
-        const existing = weeks.get(w) ?? { week: w, hours: 0, overtime: 0, surcharges: 0 };
+        const year = d.getFullYear();
+        const key = `${year}-W${w}`;
+        const existing = weeks.get(key) ?? { key, week: w, hours: 0, overtime: 0, surcharges: 0 };
         existing.hours += Number(t.hours) || 0;
         existing.overtime += Number(t.overtime_hours) || 0;
         existing.surcharges += Number(t.surcharge_amount) || 0;
-        weeks.set(w, existing);
+        weeks.set(key, existing);
       });
 
-      return Array.from(weeks.values()).sort((a, b) => a.week - b.week);
+      return Array.from(weeks.values()).sort((a, b) => a.key.localeCompare(b.key));
     },
     enabled: !!employeeId,
   });
@@ -152,7 +154,7 @@ const PortalDashboard = () => {
   })();
 
   const { data: recentNotifications = [] } = useQuery({
-    queryKey: ['portal-dashboard-notifications', employeeId],
+    queryKey: ['portal-notifications', employeeId],
     queryFn: async () => {
       const { data } = await supabase
         .from('timesheets')

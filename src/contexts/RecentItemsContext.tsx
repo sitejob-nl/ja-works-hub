@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
-import { useOrganizationId } from '@/hooks/useOrganizationId';
+import { useAuth } from '@/contexts/AuthContext';
 
 export type RecentItemType = 'kandidaat' | 'opdrachtgever' | 'medewerker' | 'vacature' | 'plaatsing';
 
@@ -37,19 +37,28 @@ function loadItems(orgId: string): RecentItem[] {
 }
 
 function saveItems(orgId: string, items: RecentItem[]) {
-  localStorage.setItem(getStorageKey(orgId), JSON.stringify(items));
+  try {
+    localStorage.setItem(getStorageKey(orgId), JSON.stringify(items));
+  } catch {
+    // quota exceeded — in-memory state still works
+  }
 }
 
 export const RecentItemsProvider = ({ children }: { children: ReactNode }) => {
-  const orgId = useOrganizationId();
-  const [items, setItems] = useState<RecentItem[]>(() => loadItems(orgId));
+  const { profile } = useAuth();
+  const orgId = profile?.organization_id ?? null;
+
+  const [items, setItems] = useState<RecentItem[]>(() =>
+    orgId ? loadItems(orgId) : []
+  );
 
   // Sync when orgId changes
   useEffect(() => {
-    setItems(loadItems(orgId));
+    if (orgId) setItems(loadItems(orgId));
   }, [orgId]);
 
   const addItem = useCallback((item: Omit<RecentItem, 'visitedAt'>) => {
+    if (!orgId) return;
     setItems(prev => {
       const filtered = prev.filter(i => !(i.id === item.id && i.type === item.type));
       const next = [{ ...item, visitedAt: new Date().toISOString() }, ...filtered].slice(0, MAX_ITEMS);
@@ -59,6 +68,7 @@ export const RecentItemsProvider = ({ children }: { children: ReactNode }) => {
   }, [orgId]);
 
   const removeItem = useCallback((id: string, type: RecentItemType) => {
+    if (!orgId) return;
     setItems(prev => {
       const next = prev.filter(i => !(i.id === id && i.type === type));
       saveItems(orgId, next);
@@ -67,6 +77,7 @@ export const RecentItemsProvider = ({ children }: { children: ReactNode }) => {
   }, [orgId]);
 
   const clearItems = useCallback(() => {
+    if (!orgId) return;
     setItems([]);
     saveItems(orgId, []);
   }, [orgId]);

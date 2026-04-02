@@ -17,5 +17,5 @@ export const useTrackPageVisit = ({ id, type, label, sublabel }: TrackPageVisitO
     if (id && label) {
       addItem({ id, type, label, sublabel, path: pathname });
     }
-  }, [id, label]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [id, label, sublabel]); // eslint-disable-line react-hooks/exhaustive-deps
 };

@@ -170,7 +170,7 @@ const Candidates = () => {
                     <TableRow key={c.id} className={i % 2 === 1 ? 'bg-background' : ''}>
                       <TableCell>
                         <div className="flex items-center gap-1.5">
-                          {c.screened_at ? (
+                          {c.screened_at && (c.screening_data as any)?.result && (c.screening_data as any)?.result !== 'niet_gescreend' ? (
                             (c.screening_data as any)?.result === 'goedgekeurd' ? (
                               <CheckCircle2 className="h-3.5 w-3.5 text-stat-green flex-shrink-0" />
                             ) : (c.screening_data as any)?.result === 'afgekeurd' ? (

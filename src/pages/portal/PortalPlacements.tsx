@@ -155,7 +155,7 @@ const PortalPlacements = () => {
                     <p className="text-sm font-medium">{p.companies?.name ?? 'Onbekend bedrijf'}</p>
                     <p className="text-xs text-muted-foreground">
                       {p.function_name && `${p.function_name} · `}
-                      {formatDate(p.start_date)} — {formatDate(p.end_date)}
+                      {formatDate(p.start_date)} — {p.end_date ? formatDate(p.end_date) : '—'}
                     </p>
                   </div>
                   <Badge variant="secondary" className={`text-[10px] ${statusColors[p.status] ?? ''}`}>

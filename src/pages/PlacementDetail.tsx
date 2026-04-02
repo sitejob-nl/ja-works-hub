@@ -60,7 +60,7 @@ const PlacementDetail = () => {
 
   const candidateName = placement?.employees?.candidates
     ? `${placement.employees.candidates.first_name} ${placement.employees.candidates.last_name}`
-    : undefined;
+    : placement?.function_name ?? 'Plaatsing';
   const placementSublabel = placement?.companies && placement?.function_name
     ? `${(placement.companies as any).name} - ${placement.function_name}`
     : undefined;

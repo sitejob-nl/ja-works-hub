@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { usePortal } from '@/contexts/PortalContext';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -13,7 +13,7 @@ const STORAGE_KEY_PREFIX = 'portal-notifications-seen-';
 const PortalNotifications = () => {
   const { employee } = usePortal();
   const employeeId = employee?.id;
-  const storageKey = `${STORAGE_KEY_PREFIX}${employeeId}`;
+  const storageKey = employeeId ? `${STORAGE_KEY_PREFIX}${employeeId}` : null;
 
   const [seenIds, setSeenIds] = useState<string[]>(() => {
     if (!employeeId) return [];
@@ -26,19 +26,15 @@ const PortalNotifications = () => {
 
   // Reload seen IDs when employee changes
   useEffect(() => {
-    if (!employeeId) return;
+    if (!storageKey) return;
     try {
       setSeenIds(JSON.parse(localStorage.getItem(storageKey) ?? '[]'));
     } catch {
       setSeenIds([]);
     }
-  }, [employeeId, storageKey]);
+  }, [storageKey]);
 
-  const sevenDaysAgo = useMemo(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 7);
-    return d.toISOString();
-  }, []);
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
   const { data: notifications = [] } = useQuery({
     queryKey: ['portal-notifications', employeeId],
@@ -59,11 +55,10 @@ const PortalNotifications = () => {
   const unseenCount = notifications.filter((n) => !seenIds.includes(n.id)).length;
 
   const markAllSeen = () => {
-    const allIds = notifications.map((n) => n.id);
+    if (!storageKey) return;
+    const allIds = [...new Set([...seenIds, ...notifications.map(n => n.id)])];
     setSeenIds(allIds);
-    if (employeeId) {
-      localStorage.setItem(storageKey, JSON.stringify(allIds));
-    }
+    localStorage.setItem(storageKey, JSON.stringify(allIds));
   };
 
   return (

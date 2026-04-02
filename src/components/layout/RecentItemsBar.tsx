@@ -35,16 +35,18 @@ const RecentItemsBar = () => {
                 >
                   <Icon className="h-3 w-3 shrink-0" />
                   <span className="max-w-32 truncate">{item.label}</span>
-                  <span
-                    role="button"
-                    className="hidden group-hover:inline-flex items-center justify-center h-3.5 w-3.5 rounded-full hover:bg-black/10 shrink-0"
+                  <button
+                    type="button"
+                    tabIndex={0}
+                    aria-label={`Verwijder ${item.label}`}
+                    className="hidden group-hover:inline-flex items-center justify-center h-3.5 w-3.5 rounded-full hover:bg-black/10 shrink-0 p-0 border-0 bg-transparent cursor-pointer"
                     onClick={(e) => {
                       e.stopPropagation();
                       removeItem(item.id, item.type);
                     }}
                   >
                     <X className="h-2.5 w-2.5" />
-                  </span>
+                  </button>
                 </button>
               </TooltipTrigger>
               <TooltipContent side="bottom" className="text-xs">
