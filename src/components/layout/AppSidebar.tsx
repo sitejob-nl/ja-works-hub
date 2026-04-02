@@ -7,7 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   LayoutDashboard, Building2, Users, UserCheck, UserRound, Home, Briefcase,
   Calendar, Clock, Car, MessageSquare, BookOpen, Settings,
-  ChevronLeft, ChevronRight, ChevronDown, Search, UserSearch, Calculator, ClipboardList, Fuel, FileText, BarChart3, CheckSquare, BarChart2,
+  ChevronLeft, ChevronRight, ChevronDown, Search, UserSearch, Calculator, ClipboardList, Fuel, FileText, BarChart3, CheckSquare, BarChart2, FolderHeart,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useEffect } from 'react';
@@ -34,6 +34,7 @@ const navGroups = [
       { label: 'Kandidaten', icon: Users, path: '/kandidaten', moduleKey: 'kandidaten' },
       { label: 'Medewerkers', icon: UserCheck, path: '/medewerkers', moduleKey: 'medewerkers' },
       { label: 'Contacten', icon: UserRound, path: '/contacten', moduleKey: 'contacten' },
+      { label: 'Talentpools', icon: FolderHeart, path: '/talentpools', moduleKey: 'talentpools' },
     ],
   },
   {

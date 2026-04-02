@@ -5079,6 +5079,97 @@ export type Database = {
           },
         ]
       }
+      talentpools: {
+        Row: {
+          id: string
+          organization_id: string
+          name: string
+          description: string | null
+          color: string | null
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          name: string
+          description?: string | null
+          color?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          name?: string
+          description?: string | null
+          color?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "talentpools_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "talentpools_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      talentpool_members: {
+        Row: {
+          talentpool_id: string
+          candidate_id: string
+          added_by: string | null
+          added_at: string
+        }
+        Insert: {
+          talentpool_id: string
+          candidate_id: string
+          added_by?: string | null
+          added_at?: string
+        }
+        Update: {
+          talentpool_id?: string
+          candidate_id?: string
+          added_by?: string | null
+          added_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "talentpool_members_talentpool_id_fkey"
+            columns: ["talentpool_id"]
+            isOneToOne: false
+            referencedRelation: "talentpools"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "talentpool_members_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "talentpool_members_added_by_fkey"
+            columns: ["added_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       timesheets: {
         Row: {
           ai_validated_at: string | null

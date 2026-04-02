@@ -2,14 +2,17 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Link, useNavigate } from 'react-router-dom';
-import { Users, Plus, Search, Upload, CheckCircle2, XCircle } from 'lucide-react';
+import { Users, Plus, Search, Upload, CheckCircle2, XCircle, FolderHeart, SlidersHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import ImportWizard from '@/components/import/ImportWizard';
+import AddToPoolSheet from '@/components/talentpools/AddToPoolSheet';
 
 const PAGE_SIZE = 10;
 
@@ -49,13 +52,20 @@ const Candidates = () => {
   const [page, setPage] = useState(0);
   const [importOpen, setImportOpen] = useState(false);
   const [importPreset, setImportPreset] = useState<'carerix' | 'buddy' | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [poolSheetOpen, setPoolSheetOpen] = useState(false);
+  const [cvSearch, setCvSearch] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['candidates', search, statusFilter, complianceFilter, page],
+    queryKey: ['candidates', search, statusFilter, complianceFilter, cvSearch, page],
     queryFn: async () => {
       let query = supabase.from('candidates').select('*', { count: 'exact' });
       if (search) {
         query = query.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,address_city.ilike.%${search}%,email.ilike.%${search}%`);
+      }
+      if (cvSearch.trim()) {
+        query = query.textSearch('cv_raw_text', cvSearch.trim(), { config: 'dutch' });
       }
       if (statusFilter !== 'all') query = query.eq('status', statusFilter as any);
       if (complianceFilter !== 'all') query = query.eq('compliance_status', complianceFilter as any);
@@ -94,6 +104,33 @@ const Candidates = () => {
   });
 
   const tokensList = tokens ?? [];
+
+  const toggleCandidate = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (candidates.every((c: any) => selected.has(c.id))) {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        candidates.forEach((c: any) => next.delete(c.id));
+        return next;
+      });
+    } else {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        candidates.forEach((c: any) => next.add(c.id));
+        return next;
+      });
+    }
+  };
+
+  const allOnPageSelected = candidates.length > 0 && candidates.every((c: any) => selected.has(c.id));
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -136,8 +173,54 @@ const Candidates = () => {
             <SelectItem value="verlopen">Verlopen</SelectItem>
           </SelectContent>
         </Select>
+        <Button
+          variant={showAdvanced ? 'secondary' : 'outline'}
+          size="sm"
+          onClick={() => setShowAdvanced(!showAdvanced)}
+          className="gap-1.5"
+        >
+          <SlidersHorizontal className="h-4 w-4" /> CV zoeken
+        </Button>
         <span className="text-sm text-muted-foreground">{total} kandidaten</span>
       </div>
+
+      {/* Advanced: CV full-text search */}
+      {showAdvanced && (
+        <div className="bg-card rounded-lg border p-4">
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Zoek in CV-tekst</label>
+            <div className="flex gap-2">
+              <Input
+                placeholder="bijv. lassen MIG TIG ervaring"
+                value={cvSearch}
+                onChange={(e) => { setCvSearch(e.target.value); setPage(0); }}
+                className="flex-1"
+              />
+              {cvSearch && (
+                <Button variant="ghost" size="sm" onClick={() => { setCvSearch(''); setPage(0); }}>
+                  Wissen
+                </Button>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">Zoekt met Nederlandse taalondersteuning in de volledige CV-tekst</p>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk action bar */}
+      {selected.size > 0 && (
+        <div className="bg-primary/5 border border-primary/20 rounded-lg px-4 py-2.5 flex items-center justify-between gap-3">
+          <span className="text-sm font-medium">{selected.size} geselecteerd</span>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => setPoolSheetOpen(true)} className="gap-1.5">
+              <FolderHeart className="h-4 w-4" /> Toevoegen aan talentpool
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
+              Deselecteren
+            </Button>
+          </div>
+        </div>
+      )}
 
       {!isLoading && candidates.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
@@ -153,6 +236,9 @@ const Candidates = () => {
             <Table className="min-w-[700px]">
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <Checkbox checked={allOnPageSelected} onCheckedChange={toggleAll} />
+                  </TableHead>
                   <TableHead>Naam</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Profiel</TableHead>
@@ -168,6 +254,9 @@ const Candidates = () => {
                   const profileStatus = getProfileLinkStatus(c, tokensList);
                   return (
                     <TableRow key={c.id} className={i % 2 === 1 ? 'bg-background' : ''}>
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <Checkbox checked={selected.has(c.id)} onCheckedChange={() => toggleCandidate(c.id)} />
+                      </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1.5">
                           {c.screened_at && (c.screening_data as any)?.result && (c.screening_data as any)?.result !== 'niet_gescreend' ? (
@@ -239,6 +328,12 @@ const Candidates = () => {
       )}
 
       <ImportWizard open={importOpen} onOpenChange={setImportOpen} target="candidates" preset={importPreset} />
+      <AddToPoolSheet
+        open={poolSheetOpen}
+        onOpenChange={setPoolSheetOpen}
+        candidateIds={Array.from(selected)}
+        onDone={() => setSelected(new Set())}
+      />
     </div>
   );
 };

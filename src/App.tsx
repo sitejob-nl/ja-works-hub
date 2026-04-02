@@ -68,6 +68,8 @@ import UitstroomAnalyse from "@/pages/UitstroomAnalyse";
 import Contacts from "@/pages/Contacts";
 import ContactDetail from "@/pages/ContactDetail";
 import Dashboards from "@/pages/Dashboards";
+import Talentpools from "@/pages/Talentpools";
+import TalentpoolDetail from "@/pages/TalentpoolDetail";
 import PortalLogin from "@/pages/portal/PortalLogin";
 import PortalDashboard from "@/pages/portal/PortalDashboard";
 import PortalLayout from "@/components/layout/PortalLayout";
@@ -136,6 +138,8 @@ const App = () => (
               <Route path="/medewerkers/:id" element={<EmployeeDetail />} />
               <Route path="/contacten" element={<Contacts />} />
               <Route path="/contacten/:id" element={<ContactDetail />} />
+              <Route path="/talentpools" element={<Talentpools />} />
+              <Route path="/talentpools/:id" element={<TalentpoolDetail />} />
               <Route path="/huisvesting" element={<Housing />} />
               <Route path="/huisvesting/:id" element={<PropertyDetail />} />
               <Route path="/vacatures" element={<Vacancies />} />
