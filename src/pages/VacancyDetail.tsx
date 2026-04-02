@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import VacancyDetailsTab from '@/components/vacancies/tabs/VacancyDetailsTab';
 import VacancyMatchesTab from '@/components/vacancies/tabs/VacancyMatchesTab';
 import VacancyPlacementsTab from '@/components/vacancies/tabs/VacancyPlacementsTab';
+import { useTrackPageVisit } from '@/hooks/useTrackPageVisit';
 
 const statusBadge: Record<string, string> = {
   open: 'bg-stat-green/10 text-stat-green border-0',
@@ -43,6 +44,13 @@ const VacancyDetail = () => {
       return data;
     },
     enabled: !!id,
+  });
+
+  useTrackPageVisit({
+    id,
+    type: 'vacature',
+    label: vacancy?.title,
+    sublabel: (vacancy?.companies as any)?.name,
   });
 
   const statusMutation = useMutation({

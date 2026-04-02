@@ -14,6 +14,7 @@ import RateAgreementsTab from '@/components/companies/tabs/RateAgreementsTab';
 import SlaTab from '@/components/companies/tabs/SlaTab';
 import CommunicationTab from '@/components/companies/tabs/CommunicationTab';
 import PlacementsTab from '@/components/companies/tabs/PlacementsTab';
+import { useTrackPageVisit } from '@/hooks/useTrackPageVisit';
 
 const CompanyDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -28,6 +29,12 @@ const CompanyDetail = () => {
       return data;
     },
     enabled: !!id,
+  });
+
+  useTrackPageVisit({
+    id,
+    type: 'opdrachtgever',
+    label: company?.name,
   });
 
   const toggleActive = useMutation({
