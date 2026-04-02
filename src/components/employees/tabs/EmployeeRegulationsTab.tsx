@@ -12,7 +12,7 @@ import { toast } from 'sonner';
 import { useState } from 'react';
 import { logAudit } from '@/lib/audit';
 
-const EmployeeRegulationsTab = ({ employeeId }: { employeeId: string }) => {
+const EmployeeRegulationsTab = ({ candidateId }: { candidateId: string }) => {
   const orgId = useOrganizationId();
   const qc = useQueryClient();
   const [viewReg, setViewReg] = useState<any>(null);
@@ -33,12 +33,12 @@ const EmployeeRegulationsTab = ({ employeeId }: { employeeId: string }) => {
   });
 
   const { data: acknowledgements = [] } = useQuery({
-    queryKey: ['regulation-acks', employeeId],
+    queryKey: ['regulation-acks', candidateId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('regulation_acknowledgements')
         .select('*')
-        .eq('employee_id', employeeId);
+        .eq('candidate_id', candidateId);
       if (error) throw error;
       return data;
     },
@@ -49,13 +49,13 @@ const EmployeeRegulationsTab = ({ employeeId }: { employeeId: string }) => {
       const { error } = await supabase.from('regulation_acknowledgements').insert({
         organization_id: orgId,
         regulation_id: regulationId,
-        employee_id: employeeId,
+        candidate_id: candidateId,
       });
       if (error) throw error;
     },
     onSuccess: (_, regulationId) => {
-      qc.invalidateQueries({ queryKey: ['regulation-acks', employeeId] });
-      logAudit({ action: 'create', tableName: 'regulation_acknowledgements', recordId: regulationId, newValues: { employee_id: employeeId } });
+      qc.invalidateQueries({ queryKey: ['regulation-acks', candidateId] });
+      logAudit({ action: 'create', tableName: 'regulation_acknowledgements', recordId: regulationId, newValues: { candidate_id: candidateId } });
       setViewReg(null);
       setAgreed(false);
       toast.success('Reglement getekend');

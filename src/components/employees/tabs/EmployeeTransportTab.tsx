@@ -4,13 +4,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { formatDate, formatEUR } from '@/lib/format';
 
-const EmployeeTransportTab = ({ employeeId }: { employeeId: string }) => {
+const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
   const { data: assignment } = useQuery({
-    queryKey: ['vehicle-assignment', employeeId],
+    queryKey: ['vehicle-assignment', candidateId],
     queryFn: async () => {
       const { data, error } = await supabase.from('vehicle_assignments')
         .select('*, vehicles!vehicle_assignments_vehicle_id_fkey(license_plate, brand, model)')
-        .eq('employee_id', employeeId)
+        .eq('candidate_id', candidateId)
         .is('returned_date', null)
         .maybeSingle();
       if (error) throw error;
@@ -19,11 +19,11 @@ const EmployeeTransportTab = ({ employeeId }: { employeeId: string }) => {
   });
 
   const { data: mileage = [] } = useQuery({
-    queryKey: ['mileage', employeeId],
+    queryKey: ['mileage', candidateId],
     queryFn: async () => {
       const { data, error } = await supabase.from('mileage_entries')
         .select('*')
-        .eq('employee_id', employeeId)
+        .eq('candidate_id', candidateId)
         .order('entry_date', { ascending: false })
         .limit(10);
       if (error) throw error;
@@ -32,11 +32,11 @@ const EmployeeTransportTab = ({ employeeId }: { employeeId: string }) => {
   });
 
   const { data: fines = [] } = useQuery({
-    queryKey: ['vehicle-fines', employeeId],
+    queryKey: ['vehicle-fines', candidateId],
     queryFn: async () => {
       const { data, error } = await supabase.from('vehicle_fines')
         .select('*')
-        .eq('employee_id', employeeId)
+        .eq('candidate_id', candidateId)
         .order('fine_date', { ascending: false });
       if (error) throw error;
       return data;

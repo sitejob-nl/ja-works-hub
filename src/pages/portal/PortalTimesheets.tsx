@@ -55,7 +55,7 @@ const PortalTimesheets = () => {
       const { data } = await supabase
         .from('placements')
         .select('id, company_id')
-        .eq('employee_id', employeeId!)
+        .eq('candidate_id', employeeId!)
         .eq('status', 'actief' as any)
         .maybeSingle();
       return data;
@@ -70,7 +70,7 @@ const PortalTimesheets = () => {
       const { data } = await supabase
         .from('timesheets')
         .select('*')
-        .eq('employee_id', employeeId!)
+        .eq('candidate_id', employeeId!)
         .gte('work_date', wsStr)
         .lte('work_date', weStr)
         .order('work_date');
@@ -94,7 +94,7 @@ const PortalTimesheets = () => {
       if (!editDay || !placement || !employeeId || !orgId) throw new Error('Geen actieve plaatsing');
       const workDate = format(editDay, 'yyyy-MM-dd');
       const { error } = await supabase.from('timesheets').insert({
-        employee_id: employeeId,
+        candidate_id: employeeId,
         organization_id: orgId,
         placement_id: placement.id,
         work_date: workDate,

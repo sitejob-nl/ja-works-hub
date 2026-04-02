@@ -15,14 +15,14 @@ const statusLabel: Record<string, string> = {
   gepland: 'Gepland', actief: 'Actief', afgerond: 'Afgerond', voortijdig_beeindigd: 'Voortijdig beëindigd',
 };
 
-const EmployeePlacementsTab = ({ employeeId }: { employeeId: string }) => {
+const EmployeePlacementsTab = ({ candidateId }: { candidateId: string }) => {
   const navigate = useNavigate();
   const { data: placements = [] } = useQuery({
-    queryKey: ['employee-placements', employeeId],
+    queryKey: ['employee-placements', candidateId],
     queryFn: async () => {
       const { data, error } = await supabase.from('placements')
         .select('*, companies!placements_company_id_fkey(name)')
-        .eq('employee_id', employeeId)
+        .eq('candidate_id', candidateId)
         .order('status', { ascending: true })
         .order('start_date', { ascending: false });
       if (error) throw error;

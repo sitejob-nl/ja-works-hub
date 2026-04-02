@@ -46,10 +46,10 @@ const genderLabel: Record<string, string> = { man: 'Man', vrouw: 'Vrouw', anders
 const maritalLabel: Record<string, string> = { ongehuwd: 'Ongehuwd', gehuwd: 'Gehuwd', geregistreerd_partner: 'Geregistreerd partner', gescheiden: 'Gescheiden', weduwe_weduwnaar: 'Weduwe/weduwnaar' };
 const idDocLabel: Record<string, string> = { paspoort: 'Paspoort', id_kaart: 'ID-kaart', rijbewijs: 'Rijbewijs', verblijfsdocument: 'Verblijfsdocument' };
 
-const EmployeePersonalTab = ({ employee }: { employee: any }) => {
-  const c = employee.candidates;
+const EmployeePersonalTab = ({ candidateId, candidate }: { candidateId: string; candidate: any }) => {
+  const c = candidate;
   const qc = useQueryClient();
-  const { data: sensitive, isLoading: sensitiveLoading } = useDecryptedCandidate(c?.id);
+  const { data: sensitive, isLoading: sensitiveLoading } = useDecryptedCandidate(candidateId);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<any>({});
 
@@ -89,11 +89,11 @@ const EmployeePersonalTab = ({ employee }: { employee: any }) => {
         id_document_type: form.id_document_type || null, id_document_number: form.id_document_number || null,
         id_document_valid_until: form.id_document_valid_until || null,
         bank_account_holder: form.bank_account_holder || null,
-      }).eq('id', c.id);
+      }).eq('id', candidateId);
       if (error) throw error;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['employee', employee.id] });
+      qc.invalidateQueries({ queryKey: ['candidate', candidateId] });
       setEditing(false);
       toast.success('Persoonsgegevens bijgewerkt');
     },

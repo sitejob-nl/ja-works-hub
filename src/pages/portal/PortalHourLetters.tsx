@@ -22,7 +22,7 @@ const PortalHourLetters = () => {
       const { data, error } = await supabase
         .from('hour_letters')
         .select('*, placements:placement_id(companies:company_id(name))')
-        .eq('employee_id', employee!.id)
+        .eq('candidate_id', employee!.id)
         .order('year', { ascending: false })
         .order('week_number', { ascending: false });
       if (error) throw error;

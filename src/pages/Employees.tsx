@@ -39,30 +39,24 @@ const Employees = () => {
   const { data, isLoading } = useQuery({
     queryKey: ['employees', search, statusFilter, page],
     queryFn: async () => {
-      let query = supabase.from('employees').select(`
+      let query = supabase.from('candidates').select(`
         *,
-        candidates!employees_candidate_id_fkey(first_name, last_name, compliance_status, phone, email),
-        housing_assignments!housing_assignments_employee_id_fkey(id, status),
-        placements!placements_employee_id_fkey(id, status, company_id, companies!placements_company_id_fkey(name))
-      `, { count: 'exact' });
+        candidate_employment(*),
+        housing_assignments!housing_assignments_candidate_id_fkey(id, status),
+        placements!placements_candidate_id_fkey(id, status, company_id, companies!placements_company_id_fkey(name))
+      `, { count: 'exact' })
+        .not('employee_status', 'is', null);
 
-      if (statusFilter !== 'all') query = query.eq('status', statusFilter as any);
+      if (statusFilter !== 'all') query = query.eq('employee_status', statusFilter as any);
+      if (search) {
+        query = query.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%`);
+      }
       query = query.order('created_at', { ascending: false }).range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
 
       const { data, count, error } = await query;
       if (error) throw error;
 
-      let results = data ?? [];
-      if (search) {
-        const s = search.toLowerCase();
-        results = results.filter((e: any) => {
-          const c = e.candidates;
-          if (!c) return false;
-          return `${c.first_name} ${c.last_name}`.toLowerCase().includes(s);
-        });
-      }
-
-      return { employees: results, total: search ? results.length : (count ?? 0) };
+      return { employees: data ?? [], total: count ?? 0 };
     },
   });
 
@@ -122,33 +116,35 @@ const Employees = () => {
                  </TableRow>
                </TableHeader>
               <TableBody>
-                {employees.map((e: any, i: number) => {
-                  const c = e.candidates;
-                  const hasHousing = (e.housing_assignments ?? []).some((h: any) => h.status === 'ingecheckt');
-                  const activePlacement = (e.placements ?? []).find((p: any) => p.status === 'actief');
+                {employees.map((c: any, i: number) => {
+                  const hasHousing = (c.housing_assignments ?? []).some((h: any) => h.status === 'ingecheckt');
+                  const activePlacement = (c.placements ?? []).find((p: any) => p.status === 'actief');
                   const companyName = activePlacement?.companies?.name;
+                  const sortedEmployments = (c.candidate_employment ?? [])
+                    .sort((a: any, b: any) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime());
+                  const currentEmployment = sortedEmployments.find((e: any) => e.is_current) ?? sortedEmployments[0];
                   return (
-                    <TableRow key={e.id} className={i % 2 === 1 ? 'bg-background' : ''}>
+                    <TableRow key={c.id} className={i % 2 === 1 ? 'bg-background' : ''}>
                       <TableCell>
-                        <Link to={`/medewerkers/${e.id}`} className="font-medium text-foreground hover:text-primary transition-colors">
-                          {c?.first_name} {c?.last_name}
+                        <Link to={`/kandidaten/${c.id}`} className="font-medium text-foreground hover:text-primary transition-colors">
+                          {c.first_name} {c.last_name}
                         </Link>
                       </TableCell>
-                      <TableCell>{e.employee_number ?? '—'}</TableCell>
+                      <TableCell>{c.employee_number ?? '—'}</TableCell>
                       <TableCell>
-                        <Badge variant="secondary" className={statusBadge[e.status] ?? ''}>{statusLabel[e.status] ?? e.status}</Badge>
+                        <Badge variant="secondary" className={statusBadge[c.employee_status] ?? ''}>{statusLabel[c.employee_status] ?? c.employee_status}</Badge>
                       </TableCell>
                       <TableCell>
-                        <Badge variant="secondary" className={complianceBadge[c?.compliance_status] ?? ''}>{c?.compliance_status ?? '—'}</Badge>
+                        <Badge variant="secondary" className={complianceBadge[c.compliance_status] ?? ''}>{c.compliance_status ?? '—'}</Badge>
                       </TableCell>
-                      <TableCell>{formatDate(e.start_date)}</TableCell>
+                      <TableCell>{formatDate(currentEmployment?.start_date)}</TableCell>
                       <TableCell>
                         {hasHousing
                           ? <Check className="h-4 w-4 text-stat-green" />
                           : <X className="h-4 w-4 text-red-500" />}
                       </TableCell>
                       <TableCell>
-                        <span className={`inline-block h-2.5 w-2.5 rounded-full ${e.portal_enabled ? 'bg-stat-green' : 'bg-muted-foreground/30'}`} />
+                        <span className={`inline-block h-2.5 w-2.5 rounded-full ${c.portal_enabled ? 'bg-stat-green' : 'bg-muted-foreground/30'}`} />
                       </TableCell>
                       <TableCell>{companyName ?? '—'}</TableCell>
                     </TableRow>

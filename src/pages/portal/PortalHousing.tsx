@@ -30,7 +30,7 @@ const PortalHousing = () => {
       const { data } = await supabase
         .from('housing_assignments')
         .select('*, units!inner(id, name, floor, property_id, properties!inner(id, name, address_street, address_postal, address_city))')
-        .eq('employee_id', employeeId!)
+        .eq('candidate_id', employeeId!)
         .eq('status', 'ingecheckt')
         .maybeSingle();
       return data;

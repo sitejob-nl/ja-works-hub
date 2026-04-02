@@ -18,6 +18,18 @@ import CandidatePlacementsTab from '@/components/candidates/tabs/CandidatePlacem
 import { CandidatePreferencesTab } from '@/components/candidates/tabs/CandidatePreferencesTab';
 import CandidateAiTab from '@/components/candidates/tabs/CandidateAiTab';
 import CandidateScreeningTab from '@/components/candidates/tabs/CandidateScreeningTab';
+import EmployeeEmploymentTab from '@/components/employees/tabs/EmployeeEmploymentTab';
+import EmployeeOnboardingTab from '@/components/employees/tabs/EmployeeOnboardingTab';
+import EmployeeDeductionsTab from '@/components/employees/tabs/EmployeeDeductionsTab';
+import EmployeeReservationsTab from '@/components/employees/tabs/EmployeeReservationsTab';
+import EmployeeSubsidiesTab from '@/components/employees/tabs/EmployeeSubsidiesTab';
+import EmployeeContractsTab from '@/components/employees/tabs/EmployeeContractsTab';
+import EmployeeHousingTab from '@/components/employees/tabs/EmployeeHousingTab';
+import EmployeeTimesheetsTab from '@/components/employees/tabs/EmployeeTimesheetsTab';
+import EmployeeTransportTab from '@/components/employees/tabs/EmployeeTransportTab';
+import EmployeeSickTab from '@/components/employees/tabs/EmployeeSickTab';
+import EmployeeRegulationsTab from '@/components/employees/tabs/EmployeeRegulationsTab';
+import EmployeePortalTab from '@/components/employees/tabs/EmployeePortalTab';
 import { useModuleEnabled } from '@/hooks/useModuleEnabled';
 import { useTrackPageVisit } from '@/hooks/useTrackPageVisit';
 import type { Database } from '@/integrations/supabase/types';
@@ -57,7 +69,7 @@ const CandidateDetail = () => {
   const { data: candidate, isLoading } = useQuery({
     queryKey: ['candidate', id],
     queryFn: async () => {
-      const { data, error } = await supabase.from('candidates').select('*').eq('id', id!).single();
+      const { data, error } = await supabase.from('candidates').select('*, candidate_employment(*)').eq('id', id!).single();
       if (error) throw error;
       return data;
     },
@@ -139,6 +151,11 @@ const CandidateDetail = () => {
     const body = encodeURIComponent(`Hoi ${candidate?.first_name},\n\nVul je profiel aan via deze link:\n${profileUrl}\n\nMet vriendelijke groet`);
     window.open(`mailto:${candidate?.email ?? ''}?subject=${subject}&body=${body}`);
   };
+
+  const isEmployee = candidate?.employee_status != null;
+  const employments = ((candidate as any)?.candidate_employment ?? [])
+    .sort((a: any, b: any) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime());
+  const currentEmployment = employments.find((e: any) => e.is_current) ?? employments[0];
 
   if (isLoading) return <div className="p-8 text-muted-foreground">Laden...</div>;
   if (!candidate) return <div className="p-8 text-muted-foreground">Niet gevonden</div>;
@@ -237,6 +254,22 @@ const CandidateDetail = () => {
             <TabsTrigger value="voorkeuren">Voorkeuren</TabsTrigger>
             <TabsTrigger value="screening" className="gap-1.5"><ClipboardCheck className="h-3.5 w-3.5" />Screening</TabsTrigger>
             {aiEnabled && <TabsTrigger value="ai" className="gap-1.5">AI Analyse</TabsTrigger>}
+            {isEmployee && (
+              <>
+                <TabsTrigger value="dienstverband">Dienst</TabsTrigger>
+                <TabsTrigger value="onboarding">Onboarding</TabsTrigger>
+                <TabsTrigger value="inhoudingen">Inhoud.</TabsTrigger>
+                <TabsTrigger value="reserveringen">Reserv.</TabsTrigger>
+                <TabsTrigger value="subsidies">Subsidies</TabsTrigger>
+                <TabsTrigger value="contracten">Contract</TabsTrigger>
+                <TabsTrigger value="huisvesting">Woning</TabsTrigger>
+                <TabsTrigger value="uren">Uren</TabsTrigger>
+                <TabsTrigger value="transport">Transport</TabsTrigger>
+                <TabsTrigger value="ziekte">Ziekte</TabsTrigger>
+                <TabsTrigger value="reglementen">Regl.</TabsTrigger>
+                <TabsTrigger value="portaal">Portaal</TabsTrigger>
+              </>
+            )}
           </TabsList>
         </div>
         <TabsContent value="profiel"><CandidateProfileTab candidate={candidate} /></TabsContent>
@@ -247,6 +280,22 @@ const CandidateDetail = () => {
         <TabsContent value="voorkeuren"><CandidatePreferencesTab candidateId={id!} /></TabsContent>
         <TabsContent value="screening"><CandidateScreeningTab key={candidate?.screened_at ?? 'unsaved'} candidate={candidate} onUpdate={() => qc.invalidateQueries({ queryKey: ['candidate', id] })} /></TabsContent>
         {aiEnabled && <TabsContent value="ai"><CandidateAiTab candidate={candidate} /></TabsContent>}
+        {isEmployee && (
+          <>
+            <TabsContent value="dienstverband"><EmployeeEmploymentTab candidateId={id!} candidate={candidate} employment={currentEmployment} /></TabsContent>
+            <TabsContent value="onboarding"><EmployeeOnboardingTab candidateId={id!} candidate={candidate} /></TabsContent>
+            <TabsContent value="inhoudingen"><EmployeeDeductionsTab candidateId={id!} /></TabsContent>
+            <TabsContent value="reserveringen"><EmployeeReservationsTab candidateId={id!} /></TabsContent>
+            <TabsContent value="subsidies"><EmployeeSubsidiesTab candidateId={id!} /></TabsContent>
+            <TabsContent value="contracten"><EmployeeContractsTab candidateId={id!} candidate={candidate} employment={currentEmployment} /></TabsContent>
+            <TabsContent value="huisvesting"><EmployeeHousingTab candidateId={id!} /></TabsContent>
+            <TabsContent value="uren"><EmployeeTimesheetsTab candidateId={id!} /></TabsContent>
+            <TabsContent value="transport"><EmployeeTransportTab candidateId={id!} /></TabsContent>
+            <TabsContent value="ziekte"><EmployeeSickTab candidateId={id!} candidate={candidate} /></TabsContent>
+            <TabsContent value="reglementen"><EmployeeRegulationsTab candidateId={id!} /></TabsContent>
+            <TabsContent value="portaal"><EmployeePortalTab candidateId={id!} candidate={candidate} /></TabsContent>
+          </>
+        )}
       </Tabs>
     </div>
   );

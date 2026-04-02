@@ -38,9 +38,9 @@ const TimesheetEntrySheet = ({ open, onOpenChange }: Props) => {
   }, [open]);
 
   const { data: employees } = useQuery({
-    queryKey: ['employees-active-for-timesheet'],
+    queryKey: ['candidates-active-for-timesheet'],
     queryFn: async () => {
-      const { data, error } = await supabase.from('employees').select('id, candidates!employees_candidate_id_fkey(first_name, last_name)').eq('status', 'actief' as any).order('created_at');
+      const { data, error } = await supabase.from('candidates').select('id, first_name, last_name').not('employee_status', 'is', null).order('first_name');
       if (error) throw error;
       return data ?? [];
     },
@@ -50,7 +50,7 @@ const TimesheetEntrySheet = ({ open, onOpenChange }: Props) => {
   const { data: placements } = useQuery({
     queryKey: ['placements-for-employee', employeeId],
     queryFn: async () => {
-      const { data, error } = await supabase.from('placements').select('id, function_name, hourly_rate, companies!placements_company_id_fkey(name)').eq('employee_id', employeeId).eq('status', 'actief' as any);
+      const { data, error } = await supabase.from('placements').select('id, function_name, hourly_rate, companies!placements_company_id_fkey(name)').eq('candidate_id', employeeId).eq('status', 'actief' as any);
       if (error) throw error;
       return data ?? [];
     },
@@ -130,7 +130,7 @@ const TimesheetEntrySheet = ({ open, onOpenChange }: Props) => {
     mutationFn: async () => {
       const { error } = await supabase.from('timesheets').insert({
         organization_id: orgId,
-        employee_id: employeeId,
+        candidate_id: employeeId,
         placement_id: placementId,
         work_date: workDate,
         hours: parseFloat(hours),
@@ -166,10 +166,9 @@ const TimesheetEntrySheet = ({ open, onOpenChange }: Props) => {
             <Select value={employeeId} onValueChange={(v) => { setEmployeeId(v); setPlacementId(''); setHourTypeId(''); setTravelTypeId(''); }}>
               <SelectTrigger><SelectValue placeholder="Selecteer medewerker" /></SelectTrigger>
               <SelectContent>
-                {(employees ?? []).map((e: any) => {
-                  const c = e.candidates as any;
-                  return <SelectItem key={e.id} value={e.id}>{c?.first_name} {c?.last_name}</SelectItem>;
-                })}
+                {(employees ?? []).map((e: any) => (
+                  <SelectItem key={e.id} value={e.id}>{e.first_name} {e.last_name}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

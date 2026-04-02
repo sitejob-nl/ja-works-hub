@@ -4,13 +4,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { formatDate, formatEUR } from '@/lib/format';
 
-const EmployeeHousingTab = ({ employeeId }: { employeeId: string }) => {
+const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
   const { data: assignments = [] } = useQuery({
-    queryKey: ['housing-assignments', employeeId],
+    queryKey: ['housing-assignments', candidateId],
     queryFn: async () => {
       const { data, error } = await supabase.from('housing_assignments')
         .select('*, units!housing_assignments_unit_id_fkey(name, properties!units_property_id_fkey(name))')
-        .eq('employee_id', employeeId)
+        .eq('candidate_id', candidateId)
         .order('check_in_date', { ascending: false });
       if (error) throw error;
       return data;
@@ -18,11 +18,11 @@ const EmployeeHousingTab = ({ employeeId }: { employeeId: string }) => {
   });
 
   const { data: keys = [] } = useQuery({
-    queryKey: ['key-registrations', employeeId],
+    queryKey: ['key-registrations', candidateId],
     queryFn: async () => {
       const { data, error } = await supabase.from('key_registrations')
         .select('*, units!key_registrations_unit_id_fkey(name)')
-        .eq('employee_id', employeeId)
+        .eq('candidate_id', candidateId)
         .order('issued_at', { ascending: false });
       if (error) throw error;
       return data;

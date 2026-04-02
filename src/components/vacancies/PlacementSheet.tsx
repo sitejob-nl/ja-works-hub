@@ -39,7 +39,7 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
   const [showComplianceWarning, setShowComplianceWarning] = useState(false);
   const [housingSuggestions, setHousingSuggestions] = useState<HousingSuggestion[]>([]);
   const [placementDone, setPlacementDone] = useState(false);
-  const [lastPlacementData, setLastPlacementData] = useState<{ employeeId: string; placementId: string } | null>(null);
+  const [lastPlacementData, setLastPlacementData] = useState<{ candidateId: string; placementId: string } | null>(null);
   const [showConfirmationDialog, setShowConfirmationDialog] = useState(false);
   const [confirmationPlacementId, setConfirmationPlacementId] = useState<string | null>(null);
 
@@ -73,42 +73,17 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
       return;
     }
 
-    // 1. Check if employee exists
-    const { data: existingEmployee } = await supabase
-      .from('employees')
-      .select('id')
-      .eq('candidate_id', candidateId)
-      .maybeSingle();
-
-    let employeeId: string;
-
-    if (existingEmployee) {
-      employeeId = existingEmployee.id;
-    } else {
-      const { data: newEmployee, error: empError } = await supabase
-        .from('employees')
-        .insert({
-          organization_id: orgId,
-          candidate_id: candidateId,
-          start_date: form.start_date,
-          status: 'actief' as any,
-        })
-        .select('id')
-        .single();
-      if (empError) throw empError;
-      employeeId = newEmployee.id;
-
-      const { error: candError } = await supabase
-        .from('candidates')
-        .update({ status: 'geplaatst' as any })
-        .eq('id', candidateId);
-      if (candError) throw candError;
-    }
+    // 1. Update candidate status to geplaatst
+    const { error: candError } = await supabase
+      .from('candidates')
+      .update({ status: 'geplaatst' as any, employee_status: 'actief' as any })
+      .eq('id', candidateId);
+    if (candError) throw candError;
 
     // 2. Create placement
     const { data: placement, error: plError } = await supabase.from('placements').insert({
       organization_id: orgId,
-      employee_id: employeeId,
+      candidate_id: candidateId,
       company_id: companyId,
       vacancy_id: vacancy.id,
       match_id: match.id,
@@ -161,7 +136,7 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
     try {
       const count = await generateTimesheetTemplates({
         placementId: placement.id,
-        employeeId,
+        candidateId,
         companyId,
         organizationId: orgId,
         startDate: form.start_date,
@@ -176,7 +151,7 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
       const suggestions = await getHousingSuggestions(orgId, companyId);
       if (suggestions.length > 0) {
         setHousingSuggestions(suggestions);
-        setLastPlacementData({ employeeId, placementId: placement.id });
+        setLastPlacementData({ candidateId, placementId: placement.id });
         setPlacementDone(true);
       }
     } catch { /* non-blocking */ }
@@ -185,7 +160,7 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
     try {
       await sendPlacementWhatsApp({
         placementId: placement.id,
-        employeeId,
+        candidateId,
         companyId,
         organizationId: orgId,
         startDate: form.start_date,
@@ -260,7 +235,7 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
               {placementDone && housingSuggestions.length > 0 && lastPlacementData && (
                 <HousingSuggestionsCard
                   suggestions={housingSuggestions}
-                  employeeId={lastPlacementData.employeeId}
+                  candidateId={lastPlacementData.candidateId}
                   startDate={form.start_date}
                   onAssigned={() => {
                     qc.invalidateQueries({ queryKey: ['housing'] });

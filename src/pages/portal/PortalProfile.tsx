@@ -39,7 +39,7 @@ const PortalProfile = () => {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      if (!candidate?.id || !employee?.id) throw new Error('Geen profiel gevonden');
+      if (!candidate?.id) throw new Error('Geen profiel gevonden');
 
       const { error: cErr } = await supabase
         .from('candidates')
@@ -49,15 +49,10 @@ const PortalProfile = () => {
           address_street: street || null,
           address_postal: postal || null,
           address_city: city || null,
+          portal_language: lang,
         })
         .eq('id', candidate.id);
       if (cErr) throw cErr;
-
-      const { error: eErr } = await supabase
-        .from('employees')
-        .update({ portal_language: lang })
-        .eq('id', employee.id);
-      if (eErr) throw eErr;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['portal-employee'] });

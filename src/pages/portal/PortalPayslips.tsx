@@ -16,7 +16,7 @@ const PortalPayslips = () => {
       const { data, error } = await supabase
         .from('payslips')
         .select('*')
-        .eq('employee_id', employee!.id)
+        .eq('candidate_id', employee!.id)
         .eq('status', 'definitief' as any)
         .order('period_year', { ascending: false })
         .order('period_number', { ascending: false });

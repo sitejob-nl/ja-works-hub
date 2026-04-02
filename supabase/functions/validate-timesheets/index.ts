@@ -35,10 +35,10 @@ Deno.serve(async (req) => {
     const { data: timesheets, error: tsError } = await userClient
       .from("timesheets")
       .select(`
-        id, work_date, hours, overtime_hours, status, employee_id, placement_id,
-        employees!timesheets_employee_id_fkey(
-          contract_hours,
-          candidates!employees_candidate_id_fkey(first_name, last_name)
+        id, work_date, hours, overtime_hours, status, candidate_id, placement_id,
+        candidates!timesheets_candidate_id_fkey(
+          first_name, last_name,
+          candidate_employment(contract_hours, start_date, is_current)
         ),
         placements!timesheets_placement_id_fkey(
           function_name,
@@ -52,12 +52,12 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "No timesheets found" }), { status: 404, headers: corsHeaders });
     }
 
-    // Group by employee for weekly analysis
-    const byEmployee = new Map<string, any[]>();
+    // Group by candidate for weekly analysis
+    const byCandidate = new Map<string, any[]>();
     for (const ts of timesheets) {
-      const key = ts.employee_id;
-      if (!byEmployee.has(key)) byEmployee.set(key, []);
-      byEmployee.get(key)!.push(ts);
+      const key = ts.candidate_id;
+      if (!byCandidate.has(key)) byCandidate.set(key, []);
+      byCandidate.get(key)!.push(ts);
     }
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
@@ -65,11 +65,14 @@ Deno.serve(async (req) => {
 
     const results: { id: string; status: string; issues: string[] }[] = [];
 
-    for (const [employeeId, entries] of byEmployee) {
-      const emp = entries[0].employees as any;
+    for (const [candidateId, entries] of byCandidate) {
+      const cand = entries[0].candidates as any;
       const pl = entries[0].placements as any;
-      const name = `${emp?.candidates?.first_name ?? ""} ${emp?.candidates?.last_name ?? ""}`.trim();
-      const contractHours = emp?.contract_hours ?? 40;
+      const name = `${cand?.first_name ?? ""} ${cand?.last_name ?? ""}`.trim();
+      const currentEmployment = cand?.candidate_employment
+        ?.sort((a: any, b: any) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime())
+        ?.find((e: any) => e.is_current) ?? cand?.candidate_employment?.[0];
+      const contractHours = currentEmployment?.contract_hours ?? 40;
 
       const prompt = `Valideer de volgende urenregistraties voor medewerker "${name}" (contracturen: ${contractHours}/week, functie: ${pl?.function_name ?? "onbekend"}, bedrijf: ${(pl?.companies as any)?.name ?? "onbekend"}).
 

@@ -18,27 +18,9 @@ const CandidatePlacementsTab = ({ candidateId }: { candidateId: string }) => {
       const { data, error } = await supabase
         .from('placements')
         .select('*, companies!placements_company_id_fkey(name)')
-        .eq('employee_id', candidateId)
+        .eq('candidate_id', candidateId)
         .order('start_date', { ascending: false });
       if (error) throw error;
-
-      // Also try via employees table
-      if (data && data.length === 0) {
-        const { data: empData } = await supabase
-          .from('employees')
-          .select('id')
-          .eq('candidate_id', candidateId)
-          .maybeSingle();
-        if (empData) {
-          const { data: placementData, error: pErr } = await supabase
-            .from('placements')
-            .select('*, companies!placements_company_id_fkey(name)')
-            .eq('employee_id', empData.id)
-            .order('start_date', { ascending: false });
-          if (pErr) throw pErr;
-          return placementData ?? [];
-        }
-      }
       return data ?? [];
     },
   });

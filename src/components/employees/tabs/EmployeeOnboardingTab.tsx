@@ -24,14 +24,14 @@ interface CheckItem {
   done: boolean;
 }
 
-const EmployeeOnboardingTab = ({ employee }: { employee: any }) => {
+const EmployeeOnboardingTab = ({ candidateId, candidate }: { candidateId: string; candidate: any }) => {
   const qc = useQueryClient();
-  const c = employee.candidates;
+  const c = candidate;
 
   const { data: docs = [] } = useQuery({
-    queryKey: ['documents', employee.candidate_id],
+    queryKey: ['documents', candidateId],
     queryFn: async () => {
-      const { data, error } = await supabase.from('documents').select('type, status').eq('candidate_id', employee.candidate_id);
+      const { data, error } = await supabase.from('documents').select('type, status').eq('candidate_id', candidateId);
       if (error) throw error;
       return data;
     },
@@ -111,23 +111,24 @@ const EmployeeOnboardingTab = ({ employee }: { employee: any }) => {
 
   const finishOnboarding = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.from('employees')
-        .update({ onboarding_completed: true, onboarding_completed_at: new Date().toISOString(), status: 'actief' as const })
-        .eq('id', employee.id);
+      const { error } = await supabase.from('candidates')
+        .update({
+          onboarding_completed: true,
+          onboarding_completed_at: new Date().toISOString(),
+          employee_status: 'actief' as any,
+          compliance_status: 'compleet' as const,
+        })
+        .eq('id', candidateId);
       if (error) throw error;
-      const { error: e2 } = await supabase.from('candidates')
-        .update({ compliance_status: 'compleet' as const })
-        .eq('id', employee.candidate_id);
-      if (e2) throw e2;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['employee', employee.id] });
-      qc.invalidateQueries({ queryKey: ['employees'] });
+      qc.invalidateQueries({ queryKey: ['candidate', candidateId] });
+      qc.invalidateQueries({ queryKey: ['candidates'] });
       logAudit({
         action: 'status_change',
-        tableName: 'employees',
-        recordId: employee.id,
-        newValues: { onboarding_completed: true, status: 'actief' },
+        tableName: 'candidates',
+        recordId: candidateId,
+        newValues: { onboarding_completed: true, employee_status: 'actief' },
       });
       toast.success('Onboarding afgerond');
     },
@@ -161,10 +162,10 @@ const EmployeeOnboardingTab = ({ employee }: { employee: any }) => {
         ))}
       </div>
 
-      {employee.onboarding_completed ? (
+      {candidate?.onboarding_completed ? (
         <div className="bg-stat-green/10 border border-stat-green/20 rounded-lg p-4">
           <p className="text-sm font-medium text-stat-green">
-            ✓ Onboarding afgerond op {formatDate(employee.onboarding_completed_at)}
+            ✓ Onboarding afgerond op {formatDate(candidate.onboarding_completed_at)}
           </p>
         </div>
       ) : allComplete ? (

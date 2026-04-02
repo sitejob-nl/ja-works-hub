@@ -57,38 +57,41 @@ const HireEmployeeSheet = ({ open, onOpenChange }: Props) => {
 
   const hire = useMutation({
     mutationFn: async () => {
-      const { data: emp, error } = await supabase.from('employees').insert({
-        organization_id: orgId,
+      // Update candidate directly: set employee_status and employee_number
+      const { error: updateErr } = await supabase.from('candidates')
+        .update({
+          employee_status: 'onboarding' as any,
+          employee_number: form.employee_number || null,
+          status: 'geplaatst' as any,
+        })
+        .eq('id', selectedCandidate.id);
+      if (updateErr) throw updateErr;
+
+      // Create candidate_employment record
+      const { error: empError } = await supabase.from('candidate_employment').insert({
         candidate_id: selectedCandidate.id,
-        employee_number: form.employee_number || null,
+        organization_id: orgId,
         start_date: form.start_date,
         contract_type: form.contract_type || null,
         contract_hours: form.contract_hours ? Number(form.contract_hours) : null,
         notes: form.notes || null,
-        status: 'onboarding' as const,
-      }).select('id').single();
-      if (error) throw error;
-
-      const { error: updateErr } = await supabase.from('candidates')
-        .update({ status: 'geplaatst' as const })
-        .eq('id', selectedCandidate.id);
-      if (updateErr) throw updateErr;
+      });
+      if (empError) throw empError;
 
       // Generate onboarding token
       const { data: tokenData } = await supabase.from('onboarding_tokens').insert({
-        employee_id: emp.id,
+        candidate_id: selectedCandidate.id,
         organization_id: orgId,
       } as any).select('token').single();
 
-      return { employeeId: emp.id, token: tokenData?.token };
+      return { candidateId: selectedCandidate.id, token: tokenData?.token };
     },
     onSuccess: (result) => {
-      qc.invalidateQueries({ queryKey: ['employees'] });
       qc.invalidateQueries({ queryKey: ['candidates'] });
       logAudit({
         action: 'create',
-        tableName: 'employees',
-        recordId: result?.employeeId ?? selectedCandidate.id,
+        tableName: 'candidate_employment',
+        recordId: result?.candidateId ?? selectedCandidate.id,
         newValues: { ...form, candidate: `${selectedCandidate.first_name} ${selectedCandidate.last_name}` },
       });
 

@@ -25,12 +25,12 @@ const statusLabel: Record<string, string> = {
   onboarding: 'Onboarding', actief: 'Actief', ziek: 'Ziek', uit_dienst: 'Uit dienst',
 };
 
-const EmployeeProfileTab = ({ employee }: { employee: any }) => {
+const EmployeeProfileTab = ({ candidateId, candidate, employment }: { candidateId: string; candidate: any; employment?: any }) => {
   const [sheetOpen, setSheetOpen] = useState(false);
-  const c = employee.candidates;
-  const { data: sensitive, isLoading: sensitiveLoading } = useDecryptedCandidate(c?.id);
+  const c = candidate;
+  const { data: sensitive, isLoading: sensitiveLoading } = useDecryptedCandidate(candidateId);
   const address = [c?.address_street, c?.address_postal, c?.address_city].filter(Boolean).join(', ') || null;
-  const portalEnabled = employee.portal_enabled === true;
+  const portalEnabled = candidate?.portal_enabled === true;
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -56,12 +56,12 @@ const EmployeeProfileTab = ({ employee }: { employee: any }) => {
       {/* Dienstverband */}
       <div className="bg-card rounded-lg border p-6 space-y-4">
         <h3 className="font-medium">Dienstverband</h3>
-        <Field label="Medewerkernummer" value={employee.employee_number} />
-        <Field label="Startdatum" value={formatDate(employee.start_date)} />
-        <Field label="Einddatum" value={formatDate(employee.end_date)} />
-        <Field label="Contracttype" value={contractLabels[employee.contract_type] ?? employee.contract_type} />
-        <Field label="Contracturen" value={employee.contract_hours != null ? `${employee.contract_hours} uur/week` : null} />
-        <Field label="Status" value={statusLabel[employee.status] ?? employee.status} />
+        <Field label="Medewerkernummer" value={candidate?.employee_number} />
+        <Field label="Startdatum" value={formatDate(employment?.start_date)} />
+        <Field label="Einddatum" value={formatDate(employment?.end_date)} />
+        <Field label="Contracttype" value={contractLabels[employment?.contract_type] ?? employment?.contract_type} />
+        <Field label="Contracturen" value={employment?.contract_hours != null ? `${employment.contract_hours} uur/week` : null} />
+        <Field label="Status" value={statusLabel[candidate?.employee_status] ?? candidate?.employee_status} />
       </div>
 
       {/* Vaardigheden */}
@@ -103,9 +103,9 @@ const EmployeeProfileTab = ({ employee }: { employee: any }) => {
         {portalEnabled ? (
           <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <Field label="Geactiveerd op" value={formatDate(employee.portal_activated_at)} />
-              <Field label="Taal" value={employee.portal_language === 'en' ? 'English' : 'Nederlands'} />
-              <Field label="Laatste login" value={formatDate(employee.portal_last_login) || 'Nog niet ingelogd'} />
+              <Field label="Geactiveerd op" value={formatDate(candidate?.portal_activated_at)} />
+              <Field label="Taal" value={candidate?.portal_language === 'en' ? 'English' : 'Nederlands'} />
+              <Field label="Laatste login" value={formatDate(candidate?.portal_last_login) || 'Nog niet ingelogd'} />
             </div>
             <Button variant="outline" size="sm" className="gap-2" onClick={() => setSheetOpen(true)}>
               <Send className="h-4 w-4" /> Nieuwe uitnodiging versturen
@@ -121,7 +121,7 @@ const EmployeeProfileTab = ({ employee }: { employee: any }) => {
       <PortalActivateSheet
         open={sheetOpen}
         onOpenChange={setSheetOpen}
-        employeeId={employee.id}
+        employeeId={candidateId}
         candidateEmail={c?.email}
       />
     </div>

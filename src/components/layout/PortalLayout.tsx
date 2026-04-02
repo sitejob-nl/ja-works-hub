@@ -32,7 +32,7 @@ const PortalLayout = () => {
   const toggleLanguage = async () => {
     if (!employee) return;
     const newLang = employee.portal_language === 'en' ? 'nl' : 'en';
-    await supabase.from('employees').update({ portal_language: newLang }).eq('id', employee.id);
+    await supabase.from('candidates').update({ portal_language: newLang }).eq('id', employee.id);
     window.location.reload();
   };
 

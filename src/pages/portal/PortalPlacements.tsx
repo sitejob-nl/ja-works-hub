@@ -33,7 +33,7 @@ const PortalPlacements = () => {
       const { data } = await supabase
         .from('placements')
         .select('*, companies!placements_company_id_fkey(name, address_city, phone, email)')
-        .eq('employee_id', employeeId!)
+        .eq('candidate_id', employeeId!)
         .order('start_date', { ascending: false });
       return data ?? [];
     },

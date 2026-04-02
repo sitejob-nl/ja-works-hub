@@ -16,6 +16,7 @@ export type Database = {
     Tables: {
       annual_statements: {
         Row: {
+          candidate_id: string | null
           created_at: string
           employee_id: string
           generated_at: string | null
@@ -39,6 +40,7 @@ export type Database = {
           year: number
         }
         Insert: {
+          candidate_id?: string | null
           created_at?: string
           employee_id: string
           generated_at?: string | null
@@ -62,6 +64,7 @@ export type Database = {
           year: number
         }
         Update: {
+          candidate_id?: string | null
           created_at?: string
           employee_id?: string
           generated_at?: string | null
@@ -85,6 +88,13 @@ export type Database = {
           year?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "annual_statements_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "annual_statements_employee_id_fkey"
             columns: ["employee_id"]
@@ -311,6 +321,93 @@ export type Database = {
           },
         ]
       }
+      candidate_employment: {
+        Row: {
+          candidate_id: string
+          contract_hours: number | null
+          contract_type: string | null
+          created_at: string | null
+          end_date: string | null
+          end_reason: string | null
+          id: string
+          insurance_notes: string | null
+          insurance_type: string | null
+          is_current: boolean | null
+          notes: string | null
+          organization_id: string
+          pay_frequency: string | null
+          pension_scheme: string | null
+          pension_start_date: string | null
+          senior_days: number | null
+          start_date: string
+          updated_at: string | null
+          vacation_days_total: number | null
+          vacation_days_used: number | null
+          vacation_money_percentage: number | null
+        }
+        Insert: {
+          candidate_id: string
+          contract_hours?: number | null
+          contract_type?: string | null
+          created_at?: string | null
+          end_date?: string | null
+          end_reason?: string | null
+          id?: string
+          insurance_notes?: string | null
+          insurance_type?: string | null
+          is_current?: boolean | null
+          notes?: string | null
+          organization_id: string
+          pay_frequency?: string | null
+          pension_scheme?: string | null
+          pension_start_date?: string | null
+          senior_days?: number | null
+          start_date: string
+          updated_at?: string | null
+          vacation_days_total?: number | null
+          vacation_days_used?: number | null
+          vacation_money_percentage?: number | null
+        }
+        Update: {
+          candidate_id?: string
+          contract_hours?: number | null
+          contract_type?: string | null
+          created_at?: string | null
+          end_date?: string | null
+          end_reason?: string | null
+          id?: string
+          insurance_notes?: string | null
+          insurance_type?: string | null
+          is_current?: boolean | null
+          notes?: string | null
+          organization_id?: string
+          pay_frequency?: string | null
+          pension_scheme?: string | null
+          pension_start_date?: string | null
+          senior_days?: number | null
+          start_date?: string
+          updated_at?: string | null
+          vacation_days_total?: number | null
+          vacation_days_used?: number | null
+          vacation_money_percentage?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "candidate_employment_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "candidate_employment_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       candidate_profile_tokens: {
         Row: {
           candidate_id: string
@@ -438,10 +535,16 @@ export type Database = {
           ai_classification: string | null
           ai_function_group: string | null
           ai_interview_questions: string[] | null
+          ai_languages: Json | null
+          ai_positive_signals: string[] | null
+          ai_red_flags: string[] | null
           ai_reliability_score: number | null
           ai_risk_factors: string[] | null
+          ai_stability: string | null
           ai_status: string | null
           ai_summary: string | null
+          ai_target_functions: string[] | null
+          auth_user_id: string | null
           availability_notes: string | null
           bank_account_holder: string | null
           birth_country: string | null
@@ -455,6 +558,8 @@ export type Database = {
           date_of_birth: string | null
           drivers_license_expiry: string | null
           email: string | null
+          employee_number: string | null
+          employee_status: string | null
           external_id: string | null
           first_name: string
           gender: string | null
@@ -471,11 +576,14 @@ export type Database = {
           middle_name: string | null
           nationality: string | null
           notes: string | null
+          onboarding_completed: boolean | null
+          onboarding_completed_at: string | null
           organization_id: string
           phone: string | null
-          screened_at: string | null
-          screened_by: string | null
-          screening_data: Json | null
+          portal_activated_at: string | null
+          portal_enabled: boolean | null
+          portal_language: string | null
+          portal_last_login: string | null
           signup_link_id: string | null
           skills: string[] | null
           source: string | null
@@ -492,10 +600,16 @@ export type Database = {
           ai_classification?: string | null
           ai_function_group?: string | null
           ai_interview_questions?: string[] | null
+          ai_languages?: Json | null
+          ai_positive_signals?: string[] | null
+          ai_red_flags?: string[] | null
           ai_reliability_score?: number | null
           ai_risk_factors?: string[] | null
+          ai_stability?: string | null
           ai_status?: string | null
           ai_summary?: string | null
+          ai_target_functions?: string[] | null
+          auth_user_id?: string | null
           availability_notes?: string | null
           bank_account_holder?: string | null
           birth_country?: string | null
@@ -509,6 +623,8 @@ export type Database = {
           date_of_birth?: string | null
           drivers_license_expiry?: string | null
           email?: string | null
+          employee_number?: string | null
+          employee_status?: string | null
           external_id?: string | null
           first_name: string
           gender?: string | null
@@ -525,11 +641,14 @@ export type Database = {
           middle_name?: string | null
           nationality?: string | null
           notes?: string | null
+          onboarding_completed?: boolean | null
+          onboarding_completed_at?: string | null
           organization_id: string
           phone?: string | null
-          screened_at?: string | null
-          screened_by?: string | null
-          screening_data?: Json | null
+          portal_activated_at?: string | null
+          portal_enabled?: boolean | null
+          portal_language?: string | null
+          portal_last_login?: string | null
           signup_link_id?: string | null
           skills?: string[] | null
           source?: string | null
@@ -546,10 +665,16 @@ export type Database = {
           ai_classification?: string | null
           ai_function_group?: string | null
           ai_interview_questions?: string[] | null
+          ai_languages?: Json | null
+          ai_positive_signals?: string[] | null
+          ai_red_flags?: string[] | null
           ai_reliability_score?: number | null
           ai_risk_factors?: string[] | null
+          ai_stability?: string | null
           ai_status?: string | null
           ai_summary?: string | null
+          ai_target_functions?: string[] | null
+          auth_user_id?: string | null
           availability_notes?: string | null
           bank_account_holder?: string | null
           birth_country?: string | null
@@ -563,6 +688,8 @@ export type Database = {
           date_of_birth?: string | null
           drivers_license_expiry?: string | null
           email?: string | null
+          employee_number?: string | null
+          employee_status?: string | null
           external_id?: string | null
           first_name?: string
           gender?: string | null
@@ -579,11 +706,14 @@ export type Database = {
           middle_name?: string | null
           nationality?: string | null
           notes?: string | null
+          onboarding_completed?: boolean | null
+          onboarding_completed_at?: string | null
           organization_id?: string
           phone?: string | null
-          screened_at?: string | null
-          screened_by?: string | null
-          screening_data?: Json | null
+          portal_activated_at?: string | null
+          portal_enabled?: boolean | null
+          portal_language?: string | null
+          portal_last_login?: string | null
           signup_link_id?: string | null
           skills?: string[] | null
           source?: string | null
@@ -1167,6 +1297,7 @@ export type Database = {
       }
       contracts: {
         Row: {
+          candidate_id: string | null
           content: string
           created_at: string
           created_by: string | null
@@ -1183,6 +1314,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          candidate_id?: string | null
           content: string
           created_at?: string
           created_by?: string | null
@@ -1199,6 +1331,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          candidate_id?: string | null
           content?: string
           created_at?: string
           created_by?: string | null
@@ -1215,6 +1348,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "contracts_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "contracts_created_by_fkey"
             columns: ["created_by"]
@@ -1351,6 +1491,7 @@ export type Database = {
       employee_deductions: {
         Row: {
           amount: number
+          candidate_id: string | null
           category: string
           created_at: string
           deducted_amount: number | null
@@ -1368,6 +1509,7 @@ export type Database = {
         }
         Insert: {
           amount: number
+          candidate_id?: string | null
           category?: string
           created_at?: string
           deducted_amount?: number | null
@@ -1385,6 +1527,7 @@ export type Database = {
         }
         Update: {
           amount?: number
+          candidate_id?: string | null
           category?: string
           created_at?: string
           deducted_amount?: number | null
@@ -1401,6 +1544,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "employee_deductions_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "employee_deductions_employee_id_fkey"
             columns: ["employee_id"]
@@ -1426,6 +1576,7 @@ export type Database = {
       }
       employee_notifications: {
         Row: {
+          candidate_id: string | null
           company_id: string | null
           created_at: string
           due_date: string | null
@@ -1444,6 +1595,7 @@ export type Database = {
           type: string
         }
         Insert: {
+          candidate_id?: string | null
           company_id?: string | null
           created_at?: string
           due_date?: string | null
@@ -1462,6 +1614,7 @@ export type Database = {
           type: string
         }
         Update: {
+          candidate_id?: string | null
           company_id?: string | null
           created_at?: string
           due_date?: string | null
@@ -1480,6 +1633,13 @@ export type Database = {
           type?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "employee_notifications_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "employee_notifications_company_id_fkey"
             columns: ["company_id"]
@@ -1520,6 +1680,7 @@ export type Database = {
       employee_reservations: {
         Row: {
           calculation_base: string | null
+          candidate_id: string | null
           category: string
           created_at: string
           description: string
@@ -1536,6 +1697,7 @@ export type Database = {
         }
         Insert: {
           calculation_base?: string | null
+          candidate_id?: string | null
           category?: string
           created_at?: string
           description: string
@@ -1552,6 +1714,7 @@ export type Database = {
         }
         Update: {
           calculation_base?: string | null
+          candidate_id?: string | null
           category?: string
           created_at?: string
           description?: string
@@ -1567,6 +1730,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "employee_reservations_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "employee_reservations_employee_id_fkey"
             columns: ["employee_id"]
@@ -1593,6 +1763,7 @@ export type Database = {
       employee_subsidies: {
         Row: {
           amount_per_hour: number | null
+          candidate_id: string | null
           created_at: string
           description: string | null
           employee_id: string
@@ -1608,6 +1779,7 @@ export type Database = {
         }
         Insert: {
           amount_per_hour?: number | null
+          candidate_id?: string | null
           created_at?: string
           description?: string | null
           employee_id: string
@@ -1623,6 +1795,7 @@ export type Database = {
         }
         Update: {
           amount_per_hour?: number | null
+          candidate_id?: string | null
           created_at?: string
           description?: string | null
           employee_id?: string
@@ -1637,6 +1810,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "employee_subsidies_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "employee_subsidies_employee_id_fkey"
             columns: ["employee_id"]
@@ -1865,6 +2045,7 @@ export type Database = {
       fuel_card_transactions: {
         Row: {
           amount_eur: number
+          candidate_id: string | null
           created_at: string
           employee_id: string | null
           flag_excessive_consumption: boolean | null
@@ -1889,6 +2070,7 @@ export type Database = {
         }
         Insert: {
           amount_eur: number
+          candidate_id?: string | null
           created_at?: string
           employee_id?: string | null
           flag_excessive_consumption?: boolean | null
@@ -1913,6 +2095,7 @@ export type Database = {
         }
         Update: {
           amount_eur?: number
+          candidate_id?: string | null
           created_at?: string
           employee_id?: string | null
           flag_excessive_consumption?: boolean | null
@@ -1936,6 +2119,13 @@ export type Database = {
           vehicle_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "fuel_card_transactions_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "fuel_card_transactions_employee_id_fkey"
             columns: ["employee_id"]
@@ -1978,6 +2168,7 @@ export type Database = {
           allowances_total: number | null
           approved_at: string | null
           approved_by: string | null
+          candidate_id: string | null
           created_at: string
           deductions_total: number | null
           employee_id: string
@@ -2000,6 +2191,7 @@ export type Database = {
           allowances_total?: number | null
           approved_at?: string | null
           approved_by?: string | null
+          candidate_id?: string | null
           created_at?: string
           deductions_total?: number | null
           employee_id: string
@@ -2022,6 +2214,7 @@ export type Database = {
           allowances_total?: number | null
           approved_at?: string | null
           approved_by?: string | null
+          candidate_id?: string | null
           created_at?: string
           deductions_total?: number | null
           employee_id?: string
@@ -2046,6 +2239,13 @@ export type Database = {
             columns: ["approved_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hour_letters_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
             referencedColumns: ["id"]
           },
           {
@@ -2087,6 +2287,7 @@ export type Database = {
       }
       housing_assignments: {
         Row: {
+          candidate_id: string | null
           check_in_date: string
           check_out_date: string | null
           created_at: string
@@ -2102,6 +2303,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          candidate_id?: string | null
           check_in_date: string
           check_out_date?: string | null
           created_at?: string
@@ -2117,6 +2319,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          candidate_id?: string | null
           check_in_date?: string
           check_out_date?: string | null
           created_at?: string
@@ -2132,6 +2335,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "housing_assignments_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "housing_assignments_employee_id_fkey"
             columns: ["employee_id"]
@@ -2297,6 +2507,7 @@ export type Database = {
       invoice_lines: {
         Row: {
           allowances_amount: number
+          candidate_id: string | null
           created_at: string
           description: string
           employee_id: string | null
@@ -2315,6 +2526,7 @@ export type Database = {
         }
         Insert: {
           allowances_amount?: number
+          candidate_id?: string | null
           created_at?: string
           description: string
           employee_id?: string | null
@@ -2333,6 +2545,7 @@ export type Database = {
         }
         Update: {
           allowances_amount?: number
+          candidate_id?: string | null
           created_at?: string
           description?: string
           employee_id?: string | null
@@ -2350,6 +2563,13 @@ export type Database = {
           travel_amount?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "invoice_lines_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "invoice_lines_employee_id_fkey"
             columns: ["employee_id"]
@@ -2723,6 +2943,7 @@ export type Database = {
       }
       key_registrations: {
         Row: {
+          candidate_id: string | null
           employee_id: string
           id: string
           issued_at: string
@@ -2733,6 +2954,7 @@ export type Database = {
           unit_id: string
         }
         Insert: {
+          candidate_id?: string | null
           employee_id: string
           id?: string
           issued_at?: string
@@ -2743,6 +2965,7 @@ export type Database = {
           unit_id: string
         }
         Update: {
+          candidate_id?: string | null
           employee_id?: string
           id?: string
           issued_at?: string
@@ -2753,6 +2976,13 @@ export type Database = {
           unit_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "key_registrations_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "key_registrations_employee_id_fkey"
             columns: ["employee_id"]
@@ -2936,6 +3166,7 @@ export type Database = {
       }
       mileage_entries: {
         Row: {
+          candidate_id: string | null
           created_at: string
           employee_id: string
           end_km: number
@@ -2948,6 +3179,7 @@ export type Database = {
           vehicle_id: string
         }
         Insert: {
+          candidate_id?: string | null
           created_at?: string
           employee_id: string
           end_km: number
@@ -2960,6 +3192,7 @@ export type Database = {
           vehicle_id: string
         }
         Update: {
+          candidate_id?: string | null
           created_at?: string
           employee_id?: string
           end_km?: number
@@ -2972,6 +3205,13 @@ export type Database = {
           vehicle_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "mileage_entries_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "mileage_entries_employee_id_fkey"
             columns: ["employee_id"]
@@ -3244,6 +3484,7 @@ export type Database = {
       }
       onboarding_responses: {
         Row: {
+          candidate_id: string | null
           created_at: string
           employee_id: string
           field_id: string
@@ -3254,6 +3495,7 @@ export type Database = {
           value: string | null
         }
         Insert: {
+          candidate_id?: string | null
           created_at?: string
           employee_id: string
           field_id: string
@@ -3264,6 +3506,7 @@ export type Database = {
           value?: string | null
         }
         Update: {
+          candidate_id?: string | null
           created_at?: string
           employee_id?: string
           field_id?: string
@@ -3274,6 +3517,13 @@ export type Database = {
           value?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "onboarding_responses_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "onboarding_responses_employee_id_fkey"
             columns: ["employee_id"]
@@ -3313,6 +3563,7 @@ export type Database = {
       }
       onboarding_tokens: {
         Row: {
+          candidate_id: string | null
           created_at: string
           employee_id: string
           expires_at: string
@@ -3323,6 +3574,7 @@ export type Database = {
           used_at: string | null
         }
         Insert: {
+          candidate_id?: string | null
           created_at?: string
           employee_id: string
           expires_at?: string
@@ -3333,6 +3585,7 @@ export type Database = {
           used_at?: string | null
         }
         Update: {
+          candidate_id?: string | null
           created_at?: string
           employee_id?: string
           expires_at?: string
@@ -3343,6 +3596,13 @@ export type Database = {
           used_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "onboarding_tokens_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "onboarding_tokens_employee_id_fkey"
             columns: ["employee_id"]
@@ -3475,6 +3735,7 @@ export type Database = {
           allowances_total: number | null
           approved_at: string | null
           approved_by: string | null
+          candidate_id: string | null
           created_at: string
           deductions_total: number | null
           employee_id: string
@@ -3505,6 +3766,7 @@ export type Database = {
           allowances_total?: number | null
           approved_at?: string | null
           approved_by?: string | null
+          candidate_id?: string | null
           created_at?: string
           deductions_total?: number | null
           employee_id: string
@@ -3535,6 +3797,7 @@ export type Database = {
           allowances_total?: number | null
           approved_at?: string | null
           approved_by?: string | null
+          candidate_id?: string | null
           created_at?: string
           deductions_total?: number | null
           employee_id?: string
@@ -3567,6 +3830,13 @@ export type Database = {
             columns: ["approved_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payslips_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
             referencedColumns: ["id"]
           },
           {
@@ -3839,6 +4109,7 @@ export type Database = {
       }
       placements: {
         Row: {
+          candidate_id: string | null
           cao_hours: number | null
           client_hourly_rate: number | null
           company_id: string
@@ -3880,6 +4151,7 @@ export type Database = {
           work_location: string | null
         }
         Insert: {
+          candidate_id?: string | null
           cao_hours?: number | null
           client_hourly_rate?: number | null
           company_id: string
@@ -3921,6 +4193,7 @@ export type Database = {
           work_location?: string | null
         }
         Update: {
+          candidate_id?: string | null
           cao_hours?: number | null
           client_hourly_rate?: number | null
           company_id?: string
@@ -3962,6 +4235,13 @@ export type Database = {
           work_location?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "placements_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "placements_company_id_fkey"
             columns: ["company_id"]
@@ -4036,6 +4316,7 @@ export type Database = {
       }
       portal_invites: {
         Row: {
+          candidate_id: string | null
           created_at: string
           email: string
           employee_id: string
@@ -4046,6 +4327,7 @@ export type Database = {
           used_at: string | null
         }
         Insert: {
+          candidate_id?: string | null
           created_at?: string
           email: string
           employee_id: string
@@ -4056,6 +4338,7 @@ export type Database = {
           used_at?: string | null
         }
         Update: {
+          candidate_id?: string | null
           created_at?: string
           email?: string
           employee_id?: string
@@ -4066,6 +4349,13 @@ export type Database = {
           used_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "portal_invites_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "portal_invites_employee_id_fkey"
             columns: ["employee_id"]
@@ -4421,6 +4711,7 @@ export type Database = {
       }
       regulation_acknowledgements: {
         Row: {
+          candidate_id: string | null
           employee_id: string
           id: string
           ip_address: string | null
@@ -4429,6 +4720,7 @@ export type Database = {
           signed_at: string
         }
         Insert: {
+          candidate_id?: string | null
           employee_id: string
           id?: string
           ip_address?: string | null
@@ -4437,6 +4729,7 @@ export type Database = {
           signed_at?: string
         }
         Update: {
+          candidate_id?: string | null
           employee_id?: string
           id?: string
           ip_address?: string | null
@@ -4445,6 +4738,13 @@ export type Database = {
           signed_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "regulation_acknowledgements_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "regulation_acknowledgements_employee_id_fkey"
             columns: ["employee_id"]
@@ -4532,6 +4832,7 @@ export type Database = {
       sick_reports: {
         Row: {
           actual_return_date: string | null
+          candidate_id: string | null
           client_notified: boolean
           client_notified_at: string | null
           created_at: string
@@ -4547,6 +4848,7 @@ export type Database = {
         }
         Insert: {
           actual_return_date?: string | null
+          candidate_id?: string | null
           client_notified?: boolean
           client_notified_at?: string | null
           created_at?: string
@@ -4562,6 +4864,7 @@ export type Database = {
         }
         Update: {
           actual_return_date?: string | null
+          candidate_id?: string | null
           client_notified?: boolean
           client_notified_at?: string | null
           created_at?: string
@@ -4576,6 +4879,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "sick_reports_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "sick_reports_created_by_fkey"
             columns: ["created_by"]
@@ -4713,6 +5023,7 @@ export type Database = {
           allowances_amount: number | null
           approved_at: string | null
           approved_by: string | null
+          candidate_id: string | null
           client_approved: boolean | null
           client_approved_at: string | null
           created_at: string
@@ -4744,6 +5055,7 @@ export type Database = {
           allowances_amount?: number | null
           approved_at?: string | null
           approved_by?: string | null
+          candidate_id?: string | null
           client_approved?: boolean | null
           client_approved_at?: string | null
           created_at?: string
@@ -4775,6 +5087,7 @@ export type Database = {
           allowances_amount?: number | null
           approved_at?: string | null
           approved_by?: string | null
+          candidate_id?: string | null
           client_approved?: boolean | null
           client_approved_at?: string | null
           created_at?: string
@@ -4806,6 +5119,13 @@ export type Database = {
             columns: ["approved_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "timesheets_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
             referencedColumns: ["id"]
           },
           {
@@ -5026,6 +5346,7 @@ export type Database = {
       vehicle_assignments: {
         Row: {
           assigned_date: string
+          candidate_id: string | null
           created_at: string
           employee_id: string
           end_mileage: number | null
@@ -5038,6 +5359,7 @@ export type Database = {
         }
         Insert: {
           assigned_date: string
+          candidate_id?: string | null
           created_at?: string
           employee_id: string
           end_mileage?: number | null
@@ -5050,6 +5372,7 @@ export type Database = {
         }
         Update: {
           assigned_date?: string
+          candidate_id?: string | null
           created_at?: string
           employee_id?: string
           end_mileage?: number | null
@@ -5061,6 +5384,13 @@ export type Database = {
           vehicle_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "vehicle_assignments_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "vehicle_assignments_employee_id_fkey"
             columns: ["employee_id"]
@@ -5093,6 +5423,7 @@ export type Database = {
       }
       vehicle_damage_reports: {
         Row: {
+          candidate_id: string | null
           cost_estimate: number | null
           created_at: string
           damage_type: string
@@ -5112,6 +5443,7 @@ export type Database = {
           vehicle_id: string
         }
         Insert: {
+          candidate_id?: string | null
           cost_estimate?: number | null
           created_at?: string
           damage_type: string
@@ -5131,6 +5463,7 @@ export type Database = {
           vehicle_id: string
         }
         Update: {
+          candidate_id?: string | null
           cost_estimate?: number | null
           created_at?: string
           damage_type?: string
@@ -5150,6 +5483,13 @@ export type Database = {
           vehicle_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "vehicle_damage_reports_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "vehicle_damage_reports_employee_id_fkey"
             columns: ["employee_id"]
@@ -5183,6 +5523,7 @@ export type Database = {
       vehicle_fines: {
         Row: {
           amount: number
+          candidate_id: string | null
           created_at: string
           description: string | null
           employee_id: string | null
@@ -5197,6 +5538,7 @@ export type Database = {
         }
         Insert: {
           amount: number
+          candidate_id?: string | null
           created_at?: string
           description?: string | null
           employee_id?: string | null
@@ -5211,6 +5553,7 @@ export type Database = {
         }
         Update: {
           amount?: number
+          candidate_id?: string | null
           created_at?: string
           description?: string | null
           employee_id?: string | null
@@ -5224,6 +5567,13 @@ export type Database = {
           vehicle_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "vehicle_fines_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "vehicle_fines_employee_id_fkey"
             columns: ["employee_id"]

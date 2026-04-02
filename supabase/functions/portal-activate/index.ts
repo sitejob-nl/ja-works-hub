@@ -29,7 +29,7 @@ Deno.serve(async (req) => {
     // 1. Validate token
     const { data: invite, error: inviteErr } = await supabaseAdmin
       .from("portal_invites")
-      .select("*, employees!portal_invites_employee_id_fkey(id, candidate_id, organization_id, candidates!employees_candidate_id_fkey(first_name, last_name, email))")
+      .select("*, candidates!portal_invites_candidate_id_fkey(id, first_name, last_name, email, organization_id)")
       .eq("token", token)
       .is("used_at", null)
       .gt("expires_at", new Date().toISOString())
@@ -42,8 +42,13 @@ Deno.serve(async (req) => {
       );
     }
 
-    const employee = invite.employees;
-    const candidate = employee.candidates;
+    const candidate = invite.candidates;
+    if (!candidate) {
+      return new Response(
+        JSON.stringify({ error: "Kandidaat niet gevonden" }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
     const fullName = `${candidate.first_name} ${candidate.last_name}`;
 
     // 2. Create auth user
@@ -72,7 +77,7 @@ Deno.serve(async (req) => {
       .from("profiles")
       .insert({
         id: newUserId,
-        organization_id: employee.organization_id,
+        organization_id: candidate.organization_id,
         email: invite.email,
         full_name: fullName,
         role: "medewerker",
@@ -80,18 +85,18 @@ Deno.serve(async (req) => {
 
     if (profileErr) throw profileErr;
 
-    // 4. Update employee
-    const { error: empErr } = await supabaseAdmin
-      .from("employees")
+    // 4. Update candidate with portal fields
+    const { error: candErr } = await supabaseAdmin
+      .from("candidates")
       .update({
         auth_user_id: newUserId,
         portal_enabled: true,
         portal_activated_at: new Date().toISOString(),
         portal_language: language || "nl",
       })
-      .eq("id", employee.id);
+      .eq("id", candidate.id);
 
-    if (empErr) throw empErr;
+    if (candErr) throw candErr;
 
     // 5. Mark invite as used
     const { error: usedErr } = await supabaseAdmin

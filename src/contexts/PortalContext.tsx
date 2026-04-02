@@ -51,22 +51,23 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     setProfile(prof);
 
-    // Fetch employee + candidate
-    const { data: emp } = await supabase
-      .from('employees')
-      .select('*, candidates!employees_candidate_id_fkey(*)')
+    // Fetch candidate (= altijd kandidaat, ook als geplaatst)
+    const { data: cand } = await supabase
+      .from('candidates')
+      .select('*, candidate_employment(*)')
       .eq('auth_user_id', userId)
       .maybeSingle();
 
-    if (emp) {
-      setEmployee(emp);
-      setCandidate(emp.candidates);
+    if (cand) {
+      setCandidate(cand);
+      // Backward compat: employee verwijst nu ook naar candidate
+      setEmployee(cand);
 
       // Update portal_last_login silently
       supabase
-        .from('employees')
+        .from('candidates')
         .update({ portal_last_login: new Date().toISOString() })
-        .eq('id', emp.id)
+        .eq('id', cand.id)
         .then(() => {});
     }
 

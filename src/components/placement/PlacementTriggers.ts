@@ -10,7 +10,7 @@ import { addDays, format, startOfWeek, getDay } from 'date-fns';
 
 interface PlacementTriggerInput {
   placementId: string;
-  employeeId: string;
+  candidateId: string;
   companyId: string;
   organizationId: string;
   startDate: string;
@@ -44,7 +44,7 @@ export async function generateTimesheetTemplates(input: PlacementTriggerInput): 
     if (day < start) continue; // skip days before start
     entries.push({
       organization_id: input.organizationId,
-      employee_id: input.employeeId,
+      candidate_id: input.candidateId,
       placement_id: input.placementId,
       work_date: format(day, 'yyyy-MM-dd'),
       hours: 8,
@@ -88,9 +88,9 @@ export async function getHousingSuggestions(
     .from('housing_assignments')
     .select(`
       unit_id,
-      employees!housing_assignments_employee_id_fkey(
+      candidates!housing_assignments_candidate_id_fkey(
         id,
-        placements!placements_employee_id_fkey(company_id, status)
+        placements!placements_candidate_id_fkey(company_id, status)
       )
     `)
     .eq('organization_id', organizationId)
@@ -99,7 +99,7 @@ export async function getHousingSuggestions(
   // Count colleagues per unit
   const colleagueMap: Record<string, number> = {};
   for (const a of (assignments ?? []) as any[]) {
-    const placements = a.employees?.placements ?? [];
+    const placements = a.candidates?.placements ?? [];
     const hasMatch = placements.some(
       (p: any) => p.company_id === companyId && p.status === 'actief'
     );

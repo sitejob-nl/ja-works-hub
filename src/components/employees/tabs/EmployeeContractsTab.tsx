@@ -23,7 +23,7 @@ const statusColors: Record<string, string> = {
   verlopen: 'bg-red-100 text-red-600 border-0',
 };
 
-const EmployeeContractsTab = ({ employeeId, employee }: { employeeId: string; employee: any }) => {
+const EmployeeContractsTab = ({ candidateId, candidate, employment }: { candidateId: string; candidate: any; employment?: any }) => {
   const orgId = useOrganizationId();
   const { user } = useAuth();
   const qc = useQueryClient();
@@ -34,12 +34,12 @@ const EmployeeContractsTab = ({ employeeId, employee }: { employeeId: string; em
   const [viewContract, setViewContract] = useState<any>(null);
 
   const { data: contracts = [] } = useQuery({
-    queryKey: ['contracts', employeeId],
+    queryKey: ['contracts', candidateId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('contracts')
         .select('*')
-        .eq('employee_id', employeeId)
+        .eq('candidate_id', candidateId)
         .order('created_at', { ascending: false });
       if (error) throw error;
       return data;
@@ -72,12 +72,12 @@ const EmployeeContractsTab = ({ employeeId, employee }: { employeeId: string; em
 
   // Get active placement for merge fields
   const { data: placement } = useQuery({
-    queryKey: ['active-placement', employeeId],
+    queryKey: ['active-placement', candidateId],
     queryFn: async () => {
       const { data } = await supabase
         .from('placements')
         .select('*, companies(name)')
-        .eq('employee_id', employeeId)
+        .eq('candidate_id', candidateId)
         .eq('status', 'actief')
         .limit(1)
         .maybeSingle();
@@ -86,17 +86,16 @@ const EmployeeContractsTab = ({ employeeId, employee }: { employeeId: string; em
   });
 
   const applyMergeFields = (template: string) => {
-    const c = employee?.candidates as any;
     const today = new Date().toISOString().split('T')[0];
     return template
-      .replace(/\{\{employee_name\}\}/g, `${c?.first_name ?? ''} ${c?.last_name ?? ''}`.trim())
-      .replace(/\{\{employee_number\}\}/g, employee?.employee_number ?? '')
-      .replace(/\{\{start_date\}\}/g, employee?.start_date ?? '')
-      .replace(/\{\{end_date\}\}/g, employee?.end_date ?? '')
+      .replace(/\{\{employee_name\}\}/g, `${candidate?.first_name ?? ''} ${candidate?.last_name ?? ''}`.trim())
+      .replace(/\{\{employee_number\}\}/g, candidate?.employee_number ?? '')
+      .replace(/\{\{start_date\}\}/g, employment?.start_date ?? '')
+      .replace(/\{\{end_date\}\}/g, employment?.end_date ?? '')
       .replace(/\{\{function_name\}\}/g, placement?.function_name ?? '')
       .replace(/\{\{hourly_rate\}\}/g, placement?.hourly_rate?.toString() ?? '')
-      .replace(/\{\{contract_hours\}\}/g, employee?.contract_hours?.toString() ?? '')
-      .replace(/\{\{contract_type\}\}/g, employee?.contract_type ?? '')
+      .replace(/\{\{contract_hours\}\}/g, employment?.contract_hours?.toString() ?? '')
+      .replace(/\{\{contract_type\}\}/g, employment?.contract_type ?? '')
       .replace(/\{\{company_name\}\}/g, (placement?.companies as any)?.name ?? '')
       .replace(/\{\{organization_name\}\}/g, org?.name ?? '')
       .replace(/\{\{today\}\}/g, today);
@@ -116,7 +115,7 @@ const EmployeeContractsTab = ({ employeeId, employee }: { employeeId: string; em
       const token = crypto.randomUUID();
       const { error } = await supabase.from('contracts').insert({
         organization_id: orgId,
-        employee_id: employeeId,
+        candidate_id: candidateId,
         template_id: selectedTemplate || null,
         title: contractTitle,
         content: contractContent,
@@ -126,8 +125,8 @@ const EmployeeContractsTab = ({ employeeId, employee }: { employeeId: string; em
       if (error) throw error;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['contracts', employeeId] });
-      logAudit({ action: 'create', tableName: 'contracts', recordId: employeeId, newValues: { title: contractTitle } });
+      qc.invalidateQueries({ queryKey: ['contracts', candidateId] });
+      logAudit({ action: 'create', tableName: 'contracts', recordId: candidateId, newValues: { title: contractTitle } });
       setCreating(false);
       setContractContent('');
       setContractTitle('');
@@ -151,7 +150,7 @@ const EmployeeContractsTab = ({ employeeId, employee }: { employeeId: string; em
       if (error) throw error;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['contracts', employeeId] });
+      qc.invalidateQueries({ queryKey: ['contracts', candidateId] });
       toast.success('Contract als verzonden gemarkeerd');
     },
   });
@@ -164,7 +163,7 @@ const EmployeeContractsTab = ({ employeeId, employee }: { employeeId: string; em
       if (error) throw error;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['contracts', employeeId] });
+      qc.invalidateQueries({ queryKey: ['contracts', candidateId] });
       toast.success('Contract als getekend gemarkeerd');
     },
   });

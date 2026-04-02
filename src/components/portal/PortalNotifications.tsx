@@ -42,7 +42,7 @@ const PortalNotifications = () => {
       const { data } = await supabase
         .from('timesheets')
         .select('id, work_date, status, approved_at')
-        .eq('employee_id', employeeId!)
+        .eq('candidate_id', employeeId!)
         .gte('approved_at', sevenDaysAgo)
         .in('status', ['goedgekeurd', 'afgekeurd'] as any)
         .order('approved_at', { ascending: false });

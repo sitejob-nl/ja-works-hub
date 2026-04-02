@@ -13,11 +13,14 @@ import { Copy, Check } from 'lucide-react';
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  employeeId: string;
+  candidateId: string;
+  /** @deprecated Use candidateId instead */
+  employeeId?: string;
   candidateEmail?: string | null;
 }
 
-const PortalActivateSheet = ({ open, onOpenChange, employeeId, candidateEmail }: Props) => {
+const PortalActivateSheet = ({ open, onOpenChange, candidateId: candidateIdProp, employeeId, candidateEmail }: Props) => {
+  const candidateId = candidateIdProp ?? employeeId!;
   const orgId = useOrganizationId();
   const qc = useQueryClient();
   const [email, setEmail] = useState(candidateEmail ?? '');
@@ -27,15 +30,15 @@ const PortalActivateSheet = ({ open, onOpenChange, employeeId, candidateEmail }:
 
   const activate = useMutation({
     mutationFn: async () => {
-      // 1. Update employee
+      // 1. Update candidate
       const { error: empError } = await supabase
-        .from('employees')
+        .from('candidates')
         .update({
           portal_enabled: true,
           portal_activated_at: new Date().toISOString(),
           portal_language: language,
         })
-        .eq('id', employeeId);
+        .eq('id', candidateId);
       if (empError) throw empError;
 
       // 2. Insert portal invite
@@ -43,7 +46,7 @@ const PortalActivateSheet = ({ open, onOpenChange, employeeId, candidateEmail }:
         .from('portal_invites')
         .insert({
           organization_id: orgId,
-          employee_id: employeeId,
+          candidate_id: candidateId,
           email,
         })
         .select('token')
@@ -55,7 +58,7 @@ const PortalActivateSheet = ({ open, onOpenChange, employeeId, candidateEmail }:
     onSuccess: (token) => {
       const link = `${window.location.origin}/portaal/activeren/${token}`;
       setInviteLink(link);
-      qc.invalidateQueries({ queryKey: ['employee', employeeId] });
+      qc.invalidateQueries({ queryKey: ['candidate', candidateId] });
       qc.invalidateQueries({ queryKey: ['employees'] });
       toast.success('Portaal geactiveerd en uitnodiging aangemaakt');
     },
@@ -70,7 +73,7 @@ const PortalActivateSheet = ({ open, onOpenChange, employeeId, candidateEmail }:
         .from('portal_invites')
         .insert({
           organization_id: orgId,
-          employee_id: employeeId,
+          candidate_id: candidateId,
           email,
         })
         .select('token')

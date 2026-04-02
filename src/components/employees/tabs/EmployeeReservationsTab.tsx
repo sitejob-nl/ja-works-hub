@@ -32,7 +32,7 @@ const basisBadge: Record<string, string> = { bruto_loon: 'bg-teal-100 text-teal-
 
 const emptyForm = { description: '', percentage: '', fixed_amount: '', calculation_base: 'bruto_loon', category: 'overig', start_date: '', end_date: '', is_active: true };
 
-const EmployeeReservationsTab = ({ employeeId }: { employeeId: string }) => {
+const EmployeeReservationsTab = ({ candidateId }: { candidateId: string }) => {
   const orgId = useOrganizationId();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -40,9 +40,9 @@ const EmployeeReservationsTab = ({ employeeId }: { employeeId: string }) => {
   const [form, setForm] = useState<any>(emptyForm);
 
   const { data: reservations = [] } = useQuery({
-    queryKey: ['reservations', employeeId],
+    queryKey: ['reservations', candidateId],
     queryFn: async () => {
-      const { data, error } = await supabase.from('employee_reservations').select('*').eq('employee_id', employeeId).order('created_at', { ascending: false });
+      const { data, error } = await supabase.from('employee_reservations').select('*').eq('candidate_id', candidateId).order('created_at', { ascending: false });
       if (error) throw error;
       return data;
     },
@@ -71,12 +71,12 @@ const EmployeeReservationsTab = ({ employeeId }: { employeeId: string }) => {
         const { error } = await supabase.from('employee_reservations').update(payload).eq('id', editItem.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('employee_reservations').insert({ ...payload, employee_id: employeeId, organization_id: orgId });
+        const { error } = await supabase.from('employee_reservations').insert({ ...payload, candidate_id: candidateId, organization_id: orgId });
         if (error) throw error;
       }
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['reservations', employeeId] });
+      qc.invalidateQueries({ queryKey: ['reservations', candidateId] });
       setOpen(false);
       toast.success(editItem ? 'Reservering bijgewerkt' : 'Reservering toegevoegd');
     },

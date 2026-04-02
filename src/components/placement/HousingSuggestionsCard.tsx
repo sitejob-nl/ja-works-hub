@@ -9,12 +9,12 @@ import { toast } from 'sonner';
 
 interface Props {
   suggestions: HousingSuggestion[];
-  employeeId: string;
+  candidateId: string;
   startDate: string;
   onAssigned?: () => void;
 }
 
-const HousingSuggestionsCard = ({ suggestions, employeeId, startDate, onAssigned }: Props) => {
+const HousingSuggestionsCard = ({ suggestions, candidateId, startDate, onAssigned }: Props) => {
   const orgId = useOrganizationId();
   const [assigning, setAssigning] = useState<string | null>(null);
   const [assigned, setAssigned] = useState<string | null>(null);
@@ -25,7 +25,7 @@ const HousingSuggestionsCard = ({ suggestions, employeeId, startDate, onAssigned
       const { error } = await supabase.from('housing_assignments').insert({
         organization_id: orgId,
         unit_id: s.unitId,
-        employee_id: employeeId,
+        candidate_id: candidateId,
         check_in_date: startDate,
         status: 'ingecheckt' as any,
         monthly_deduction: s.monthlyCost,

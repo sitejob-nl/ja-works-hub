@@ -35,7 +35,7 @@ const catBadge: Record<string, string> = { huisvesting: 'bg-teal-100 text-teal-7
 
 const emptyForm = { description: '', amount: '', frequency: 'maandelijks', category: 'overig', start_date: '', end_date: '', total_amount: '', is_active: true };
 
-const EmployeeDeductionsTab = ({ employeeId }: { employeeId: string }) => {
+const EmployeeDeductionsTab = ({ candidateId }: { candidateId: string }) => {
   const orgId = useOrganizationId();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -43,9 +43,9 @@ const EmployeeDeductionsTab = ({ employeeId }: { employeeId: string }) => {
   const [form, setForm] = useState<any>(emptyForm);
 
   const { data: deductions = [] } = useQuery({
-    queryKey: ['deductions', employeeId],
+    queryKey: ['deductions', candidateId],
     queryFn: async () => {
-      const { data, error } = await supabase.from('employee_deductions').select('*').eq('employee_id', employeeId).order('created_at', { ascending: false });
+      const { data, error } = await supabase.from('employee_deductions').select('*').eq('candidate_id', candidateId).order('created_at', { ascending: false });
       if (error) throw error;
       return data;
     },
@@ -70,12 +70,12 @@ const EmployeeDeductionsTab = ({ employeeId }: { employeeId: string }) => {
         const { error } = await supabase.from('employee_deductions').update(payload).eq('id', editItem.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('employee_deductions').insert({ ...payload, employee_id: employeeId, organization_id: orgId });
+        const { error } = await supabase.from('employee_deductions').insert({ ...payload, candidate_id: candidateId, organization_id: orgId });
         if (error) throw error;
       }
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['deductions', employeeId] });
+      qc.invalidateQueries({ queryKey: ['deductions', candidateId] });
       setOpen(false);
       toast.success(editItem ? 'Inhouding bijgewerkt' : 'Inhouding toegevoegd');
     },

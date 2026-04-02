@@ -14,7 +14,7 @@ import { formatDate } from '@/lib/format';
 import { toast } from 'sonner';
 import { logAudit } from '@/lib/audit';
 
-const EmployeeSickTab = ({ employeeId, employee }: { employeeId: string; employee: any }) => {
+const EmployeeSickTab = ({ candidateId, candidate }: { candidateId: string; candidate: any }) => {
   const orgId = useOrganizationId();
   const { user } = useAuth();
   const qc = useQueryClient();
@@ -22,11 +22,11 @@ const EmployeeSickTab = ({ employeeId, employee }: { employeeId: string; employe
   const [form, setForm] = useState({ expected_return_date: '', notes: '' });
 
   const { data: reports = [] } = useQuery({
-    queryKey: ['sick-reports', employeeId],
+    queryKey: ['sick-reports', candidateId],
     queryFn: async () => {
       const { data, error } = await supabase.from('sick_reports')
         .select('*')
-        .eq('employee_id', employeeId)
+        .eq('candidate_id', candidateId)
         .order('reported_at', { ascending: false });
       if (error) throw error;
       return data;
@@ -37,13 +37,13 @@ const EmployeeSickTab = ({ employeeId, employee }: { employeeId: string; employe
     mutationFn: async () => {
       const { error } = await supabase.from('sick_reports').insert({
         organization_id: orgId,
-        employee_id: employeeId,
+        candidate_id: candidateId,
         created_by: user?.id ?? null,
         expected_return_date: form.expected_return_date || null,
         notes: form.notes || null,
       });
       if (error) throw error;
-      const { error: e2 } = await supabase.from('employees').update({ status: 'ziek' as const }).eq('id', employeeId);
+      const { error: e2 } = await supabase.from('candidates').update({ employee_status: 'ziek' as any }).eq('id', candidateId);
       if (e2) throw e2;
 
       // Auto-notify client via WhatsApp
@@ -51,7 +51,7 @@ const EmployeeSickTab = ({ employeeId, employee }: { employeeId: string; employe
         const { data: placements } = await supabase
           .from('placements')
           .select('company_id, companies!placements_company_id_fkey(name)')
-          .eq('employee_id', employeeId)
+          .eq('candidate_id', candidateId)
           .eq('status', 'actief' as any)
           .limit(1);
 
@@ -66,7 +66,7 @@ const EmployeeSickTab = ({ employeeId, employee }: { employeeId: string; employe
 
           const contact = contacts?.[0];
           if (contact?.phone) {
-            const empName = `${employee?.first_name ?? ''} ${employee?.last_name ?? ''}`.trim();
+            const empName = `${candidate?.first_name ?? ''} ${candidate?.last_name ?? ''}`.trim();
             const companyName = placement.companies?.name ?? '';
             const msg = `Beste ${contact.full_name}, hierbij informeren wij u dat ${empName} zich ziek heeft gemeld${form.expected_return_date ? `. Verwachte terugkeer: ${form.expected_return_date}` : ''}. Wij houden u op de hoogte. Met vriendelijke groet.`;
 
@@ -88,7 +88,7 @@ const EmployeeSickTab = ({ employeeId, employee }: { employeeId: string; employe
               const { data: latestReport } = await supabase
                 .from('sick_reports')
                 .select('id')
-                .eq('employee_id', employeeId)
+                .eq('candidate_id', candidateId)
                 .order('reported_at', { ascending: false })
                 .limit(1);
               if (latestReport?.[0]) {
@@ -104,13 +104,13 @@ const EmployeeSickTab = ({ employeeId, employee }: { employeeId: string; employe
       }
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['sick-reports', employeeId] });
-      qc.invalidateQueries({ queryKey: ['employee', employeeId] });
-      qc.invalidateQueries({ queryKey: ['employees'] });
+      qc.invalidateQueries({ queryKey: ['sick-reports', candidateId] });
+      qc.invalidateQueries({ queryKey: ['candidate', candidateId] });
+      qc.invalidateQueries({ queryKey: ['candidates'] });
       logAudit({
         action: 'create',
         tableName: 'sick_reports',
-        recordId: employeeId,
+        recordId: candidateId,
         newValues: form,
       });
       setAdding(false);
@@ -126,13 +126,13 @@ const EmployeeSickTab = ({ employeeId, employee }: { employeeId: string; employe
         .update({ actual_return_date: new Date().toISOString().split('T')[0] })
         .eq('id', reportId);
       if (error) throw error;
-      const { error: e2 } = await supabase.from('employees').update({ status: 'actief' as const }).eq('id', employeeId);
+      const { error: e2 } = await supabase.from('candidates').update({ employee_status: 'actief' as any }).eq('id', candidateId);
       if (e2) throw e2;
     },
     onSuccess: (_, reportId) => {
-      qc.invalidateQueries({ queryKey: ['sick-reports', employeeId] });
-      qc.invalidateQueries({ queryKey: ['employee', employeeId] });
-      qc.invalidateQueries({ queryKey: ['employees'] });
+      qc.invalidateQueries({ queryKey: ['sick-reports', candidateId] });
+      qc.invalidateQueries({ queryKey: ['candidate', candidateId] });
+      qc.invalidateQueries({ queryKey: ['candidates'] });
       logAudit({
         action: 'status_change',
         tableName: 'sick_reports',

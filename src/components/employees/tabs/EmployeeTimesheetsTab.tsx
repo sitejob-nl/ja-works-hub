@@ -21,16 +21,16 @@ const sourceLabel: Record<string, string> = {
   handmatig: 'Handmatig', klantportaal: 'Klantportaal', csv_import: 'CSV', kloksysteem: 'Kloksysteem',
 };
 
-const EmployeeTimesheetsTab = ({ employeeId }: { employeeId: string }) => {
+const EmployeeTimesheetsTab = ({ candidateId }: { candidateId: string }) => {
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
 
   const { data: timesheets = [] } = useQuery({
-    queryKey: ['employee-timesheets', employeeId, fromDate, toDate],
+    queryKey: ['employee-timesheets', candidateId, fromDate, toDate],
     queryFn: async () => {
       let query = supabase.from('timesheets')
         .select('*, placements!timesheets_placement_id_fkey(company_id, companies!placements_company_id_fkey(name))')
-        .eq('employee_id', employeeId)
+        .eq('candidate_id', candidateId)
         .order('work_date', { ascending: false })
         .limit(100);
       if (fromDate) query = query.gte('work_date', fromDate);

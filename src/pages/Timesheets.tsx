@@ -59,9 +59,9 @@ const Timesheets = () => {
   const weekLabel = `Week ${weekNum} (${format(startOfWeek(weekRef, { weekStartsOn: 1 }), 'dd-MM', { locale: nl })} t/m ${format(endOfWeek(weekRef, { weekStartsOn: 1 }), 'dd-MM', { locale: nl })})`;
 
   const { data: employees } = useQuery({
-    queryKey: ['employees-active-list'],
+    queryKey: ['candidates-active-list'],
     queryFn: async () => {
-      const { data, error } = await supabase.from('employees').select('id, candidates!employees_candidate_id_fkey(first_name, last_name)').eq('status', 'actief' as any);
+      const { data, error } = await supabase.from('candidates').select('id, first_name, last_name').not('employee_status', 'is', null).order('first_name');
       if (error) throw error;
       return data ?? [];
     },
@@ -72,9 +72,8 @@ const Timesheets = () => {
     queryFn: async () => {
       let query = supabase.from('timesheets').select(`
         *,
-        employees!timesheets_employee_id_fkey(
-          id,
-          candidates!employees_candidate_id_fkey(first_name, last_name)
+        candidates!timesheets_candidate_id_fkey(
+          id, first_name, last_name
         ),
         placements!timesheets_placement_id_fkey(
           id,
@@ -85,7 +84,7 @@ const Timesheets = () => {
         .lte('work_date', weekEnd);
 
       if (statusFilter !== 'all') query = query.eq('status', statusFilter as any);
-      if (employeeFilter !== 'all') query = query.eq('employee_id', employeeFilter);
+      if (employeeFilter !== 'all') query = query.eq('candidate_id', employeeFilter);
 
       query = query.order('work_date', { ascending: false }).range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
 
@@ -258,10 +257,9 @@ const Timesheets = () => {
           <SelectTrigger className="w-48"><SelectValue placeholder="Medewerker" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Alle medewerkers</SelectItem>
-            {(employees ?? []).map((e: any) => {
-              const c = e.candidates as any;
-              return <SelectItem key={e.id} value={e.id}>{c?.first_name} {c?.last_name}</SelectItem>;
-            })}
+            {(employees ?? []).map((e: any) => (
+              <SelectItem key={e.id} value={e.id}>{e.first_name} {e.last_name}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
         <span className="text-sm text-muted-foreground">{total} registraties</span>
@@ -326,8 +324,7 @@ const Timesheets = () => {
               </TableHeader>
               <TableBody>
                 {timesheets.map((t: any, i: number) => {
-                  const emp = t.employees as any;
-                  const cand = emp?.candidates as any;
+                  const cand = t.candidates as any;
                   const pl = t.placements as any;
                   const companyName = (pl?.companies as any)?.name ?? '—';
                   const name = cand ? `${cand.first_name} ${cand.last_name}` : '—';

@@ -27,7 +27,7 @@ const PortalDashboard = () => {
       const { data } = await supabase
         .from('placements')
         .select('*, companies:company_id(name), vacancies:vacancy_id(title)')
-        .eq('employee_id', employeeId!)
+        .eq('candidate_id', employeeId!)
         .eq('status', 'actief' as any);
       return data ?? [];
     },
@@ -45,7 +45,7 @@ const PortalDashboard = () => {
       const { data } = await supabase
         .from('timesheets')
         .select('work_date, hours, overtime_hours, surcharge_amount')
-        .eq('employee_id', employeeId!)
+        .eq('candidate_id', employeeId!)
         .gte('work_date', start)
         .lte('work_date', end);
 
@@ -75,7 +75,7 @@ const PortalDashboard = () => {
       const { data } = await supabase
         .from('timesheets')
         .select('surcharge_amount, allowances_amount, travel_amount')
-        .eq('employee_id', employeeId!)
+        .eq('candidate_id', employeeId!)
         .not('surcharge_amount', 'is', null);
 
       let surcharges = 0, allowances = 0, travel = 0;
@@ -104,7 +104,7 @@ const PortalDashboard = () => {
       const { data } = await supabase
         .from('timesheets')
         .select('hours, status')
-        .eq('employee_id', employeeId!)
+        .eq('candidate_id', employeeId!)
         .gte('work_date', weekStart)
         .lte('work_date', weekEnd);
       return data ?? [];
@@ -123,7 +123,7 @@ const PortalDashboard = () => {
       const { data } = await supabase
         .from('housing_assignments')
         .select('*, units:unit_id(name, properties:property_id(name, address_street, address_city))')
-        .eq('employee_id', employeeId!)
+        .eq('candidate_id', employeeId!)
         .eq('status', 'ingecheckt' as any)
         .maybeSingle();
       return data;
@@ -138,7 +138,7 @@ const PortalDashboard = () => {
       const { data } = await supabase
         .from('vehicle_assignments')
         .select('*, vehicles:vehicle_id(license_plate, brand, model)')
-        .eq('employee_id', employeeId!)
+        .eq('candidate_id', employeeId!)
         .is('end_date', null)
         .maybeSingle();
       return data;
@@ -159,7 +159,7 @@ const PortalDashboard = () => {
       const { data } = await supabase
         .from('timesheets')
         .select('id, work_date, status, approved_at')
-        .eq('employee_id', employeeId!)
+        .eq('candidate_id', employeeId!)
         .gte('approved_at', sevenDaysAgo)
         .in('status', ['goedgekeurd', 'afgekeurd'] as any)
         .order('approved_at', { ascending: false })
@@ -171,16 +171,16 @@ const PortalDashboard = () => {
 
   // Expiring docs
   const { data: docIssues } = useQuery({
-    queryKey: ['portal-doc-issues', employee?.candidate_id],
+    queryKey: ['portal-doc-issues', employeeId],
     queryFn: async () => {
       const { data } = await supabase
         .from('documents')
         .select('id, name, status')
-        .eq('candidate_id', employee!.candidate_id)
+        .eq('candidate_id', employeeId!)
         .in('status', ['verlopen', 'bijna_verlopen'] as any);
       return data ?? [];
     },
-    enabled: !!employee?.candidate_id,
+    enabled: !!employeeId,
   });
 
   return (

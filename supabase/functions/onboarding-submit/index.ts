@@ -28,7 +28,7 @@ Deno.serve(async (req) => {
 
       const { data: tokenData, error: tErr } = await admin
         .from("onboarding_tokens")
-        .select("id, employee_id, organization_id, expires_at, used_at, form_id")
+        .select("id, employee_id, candidate_id, organization_id, expires_at, used_at, form_id")
         .eq("token", token)
         .maybeSingle();
 
@@ -132,7 +132,7 @@ Deno.serve(async (req) => {
       // Validate token
       const { data: tokenData, error: tErr } = await admin
         .from("onboarding_tokens")
-        .select("id, employee_id, organization_id, expires_at, used_at, form_id")
+        .select("id, employee_id, candidate_id, organization_id, expires_at, used_at, form_id")
         .eq("token", token)
         .maybeSingle();
 
@@ -140,13 +140,19 @@ Deno.serve(async (req) => {
       if (tokenData.used_at) return json({ error: "Deze link is al gebruikt" }, 400);
       if (new Date(tokenData.expires_at) < new Date()) return json({ error: "Deze link is verlopen" }, 400);
 
-      // Get employee + candidate
-      const { data: employee, error: eErr } = await admin
-        .from("employees")
-        .select("id, candidate_id")
-        .eq("id", tokenData.employee_id)
-        .single();
-      if (eErr || !employee) return json({ error: "Medewerker niet gevonden" }, 404);
+      // Resolve candidate_id (prefer candidate_id, fall back to employee_id lookup)
+      let candidateId = tokenData.candidate_id;
+      if (!candidateId && tokenData.employee_id) {
+        // TRANSITIONAL: fallback to employees table lookup during migration to candidate-centric model.
+        // Remove once all onboarding_tokens have candidate_id populated and employees table is dropped.
+        const { data: employee } = await admin
+          .from("employees")
+          .select("candidate_id")
+          .eq("id", tokenData.employee_id)
+          .single();
+        candidateId = employee?.candidate_id;
+      }
+      if (!candidateId) return json({ error: "Kandidaat niet gevonden" }, 404);
 
       const activeFormId = form_id || tokenData.form_id;
 
@@ -187,7 +193,7 @@ Deno.serve(async (req) => {
           // Store in onboarding_responses
           responseInserts.push({
             organization_id: tokenData.organization_id,
-            employee_id: employee.id,
+            candidate_id: candidateId,
             form_id: activeFormId,
             field_id: fieldId,
             value: value,
@@ -196,7 +202,7 @@ Deno.serve(async (req) => {
 
         // Apply candidate updates
         if (Object.keys(candidateUpdates).length > 0) {
-          await admin.from("candidates").update(candidateUpdates).eq("id", employee.candidate_id);
+          await admin.from("candidates").update(candidateUpdates).eq("id", candidateId);
         }
 
         // Store responses
@@ -214,7 +220,7 @@ Deno.serve(async (req) => {
           }
         }
         if (Object.keys(updates).length > 0) {
-          await admin.from("candidates").update(updates).eq("id", employee.candidate_id);
+          await admin.from("candidates").update(updates).eq("id", candidateId);
         }
       }
 
@@ -222,7 +228,7 @@ Deno.serve(async (req) => {
       if (documents_accepted) {
         await admin.from("documents").insert({
           organization_id: tokenData.organization_id,
-          candidate_id: employee.candidate_id,
+          candidate_id: candidateId,
           name: "Reglement akkoord",
           type: "reglement",
           status: "geldig",
@@ -232,11 +238,11 @@ Deno.serve(async (req) => {
       // Mark token as used
       await admin.from("onboarding_tokens").update({ used_at: new Date().toISOString() }).eq("id", tokenData.id);
 
-      // Mark onboarding completed
-      await admin.from("employees").update({
+      // Mark onboarding completed on candidate
+      await admin.from("candidates").update({
         onboarding_completed: true,
         onboarding_completed_at: new Date().toISOString(),
-      }).eq("id", employee.id);
+      }).eq("id", candidateId);
 
       return json({ success: true });
     }

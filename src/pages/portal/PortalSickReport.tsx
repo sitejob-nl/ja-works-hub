@@ -29,7 +29,7 @@ const PortalSickReport = () => {
       const { data } = await supabase
         .from('placements')
         .select('id')
-        .eq('employee_id', employeeId!)
+        .eq('candidate_id', employeeId!)
         .eq('status', 'actief' as any)
         .maybeSingle();
       return data;
@@ -44,7 +44,7 @@ const PortalSickReport = () => {
       const { data } = await supabase
         .from('sick_reports')
         .select('*')
-        .eq('employee_id', employeeId!)
+        .eq('candidate_id', employeeId!)
         .order('reported_at', { ascending: false });
       return data ?? [];
     },
@@ -57,7 +57,7 @@ const PortalSickReport = () => {
       if (!reason.trim()) throw new Error('Vul een reden in');
 
       const { error } = await supabase.from('sick_reports').insert({
-        employee_id: employeeId,
+        candidate_id: employeeId,
         organization_id: orgId,
         placement_id: placement?.id ?? null,
         notes: reason.trim(),

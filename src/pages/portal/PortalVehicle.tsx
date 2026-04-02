@@ -41,7 +41,7 @@ const PortalVehicle = () => {
       const { data } = await supabase
         .from('vehicle_assignments')
         .select('*, vehicles!inner(id, license_plate, brand, model, fuel_type, current_mileage)')
-        .eq('employee_id', employeeId!)
+        .eq('candidate_id', employeeId!)
         .is('returned_date', null)
         .maybeSingle();
       return data;
@@ -56,7 +56,7 @@ const PortalVehicle = () => {
       const { data } = await supabase
         .from('vehicle_damage_reports')
         .select('*')
-        .eq('employee_id', employeeId!)
+        .eq('candidate_id', employeeId!)
         .order('reported_at', { ascending: false });
       return data ?? [];
     },
@@ -82,7 +82,7 @@ const PortalVehicle = () => {
 
       const { error } = await supabase.from('vehicle_damage_reports').insert({
         vehicle_id: vehicle.id,
-        employee_id: employeeId,
+        candidate_id: employeeId,
         organization_id: orgId,
         damage_type: damageType,
         description: description.trim(),

@@ -26,7 +26,7 @@ const typeBadge: Record<string, string> = { liv: 'bg-green-100 text-green-700 bo
 
 const emptyForm = { type: 'overig', description: '', amount_per_hour: '', max_annual_amount: '', start_date: '', end_date: '', is_active: true, notes: '' };
 
-const EmployeeSubsidiesTab = ({ employeeId }: { employeeId: string }) => {
+const EmployeeSubsidiesTab = ({ candidateId }: { candidateId: string }) => {
   const orgId = useOrganizationId();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -34,9 +34,9 @@ const EmployeeSubsidiesTab = ({ employeeId }: { employeeId: string }) => {
   const [form, setForm] = useState<any>(emptyForm);
 
   const { data: subsidies = [] } = useQuery({
-    queryKey: ['subsidies', employeeId],
+    queryKey: ['subsidies', candidateId],
     queryFn: async () => {
-      const { data, error } = await supabase.from('employee_subsidies').select('*').eq('employee_id', employeeId).order('created_at', { ascending: false });
+      const { data, error } = await supabase.from('employee_subsidies').select('*').eq('candidate_id', candidateId).order('created_at', { ascending: false });
       if (error) throw error;
       return data;
     },
@@ -62,12 +62,12 @@ const EmployeeSubsidiesTab = ({ employeeId }: { employeeId: string }) => {
         const { error } = await supabase.from('employee_subsidies').update(payload).eq('id', editItem.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('employee_subsidies').insert({ ...payload, employee_id: employeeId, organization_id: orgId });
+        const { error } = await supabase.from('employee_subsidies').insert({ ...payload, candidate_id: candidateId, organization_id: orgId });
         if (error) throw error;
       }
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['subsidies', employeeId] });
+      qc.invalidateQueries({ queryKey: ['subsidies', candidateId] });
       setOpen(false);
       toast.success(editItem ? 'Subsidie bijgewerkt' : 'Subsidie toegevoegd');
     },

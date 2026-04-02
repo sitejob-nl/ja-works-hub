@@ -15,7 +15,7 @@ const PortalAnnualStatements = () => {
       const { data, error } = await supabase
         .from('annual_statements')
         .select('*')
-        .eq('employee_id', employee!.id)
+        .eq('candidate_id', employee!.id)
         .in('status', ['definitief', 'verzonden'])
         .order('year', { ascending: false });
       if (error) throw error;

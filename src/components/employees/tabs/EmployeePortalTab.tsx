@@ -12,10 +12,10 @@ const Field = ({ label, value }: { label: string; value: string | null | undefin
   </div>
 );
 
-const EmployeePortalTab = ({ employee }: { employee: any }) => {
+const EmployeePortalTab = ({ candidateId, candidate }: { candidateId: string; candidate: any }) => {
   const [sheetOpen, setSheetOpen] = useState(false);
-  const c = employee.candidates;
-  const portalEnabled = employee.portal_enabled === true;
+  const c = candidate;
+  const portalEnabled = candidate?.portal_enabled === true;
 
   return (
     <div className="space-y-6">
@@ -29,9 +29,9 @@ const EmployeePortalTab = ({ employee }: { employee: any }) => {
         {portalEnabled ? (
           <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <Field label="Geactiveerd op" value={formatDate(employee.portal_activated_at)} />
-              <Field label="Taal" value={employee.portal_language === 'en' ? 'English' : 'Nederlands'} />
-              <Field label="Laatste login" value={formatDate(employee.portal_last_login) || 'Nog niet ingelogd'} />
+              <Field label="Geactiveerd op" value={formatDate(candidate?.portal_activated_at)} />
+              <Field label="Taal" value={candidate?.portal_language === 'en' ? 'English' : 'Nederlands'} />
+              <Field label="Laatste login" value={formatDate(candidate?.portal_last_login) || 'Nog niet ingelogd'} />
             </div>
             <Button variant="outline" size="sm" className="gap-2" onClick={() => setSheetOpen(true)}>
               <Send className="h-4 w-4" /> Nieuwe uitnodiging versturen
@@ -50,7 +50,7 @@ const EmployeePortalTab = ({ employee }: { employee: any }) => {
       <PortalActivateSheet
         open={sheetOpen}
         onOpenChange={setSheetOpen}
-        employeeId={employee.id}
+        employeeId={candidateId}
         candidateEmail={c?.email}
       />
     </div>
