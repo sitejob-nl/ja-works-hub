@@ -18,6 +18,7 @@ import ComplianceRulesSettings from '@/components/settings/ComplianceRulesSettin
 import RegulationsSettings from '@/components/settings/RegulationsSettings';
 import ContractTemplatesSettings from '@/components/settings/ContractTemplatesSettings';
 import OnboardingFormSettings from '@/components/settings/OnboardingFormSettings';
+import TerminationReasonsSettings from '@/components/settings/TerminationReasonsSettings';
 import { applyBranding, BRANDING_DEFAULTS, type BrandingSettings } from '@/lib/branding';
 
 /* ---- Color conversion helpers ---- */
@@ -472,6 +473,9 @@ const Settings = () => {
 
           {/* Onboarding formulieren */}
           <OnboardingFormSettings />
+
+          {/* Beëindigingsredenen */}
+          <TerminationReasonsSettings />
 
           {/* Data Import */}
           <Card>

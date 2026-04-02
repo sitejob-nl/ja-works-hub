@@ -62,6 +62,7 @@ import FuelCardAnalysis from "@/pages/FuelCardAnalysis";
 import InvoicesPage from "@/pages/Invoices";
 import PlacementsPage from "@/pages/Placements";
 import PlacementDetail from "@/pages/PlacementDetail";
+import UitstroomAnalyse from "@/pages/UitstroomAnalyse";
 import PortalLogin from "@/pages/portal/PortalLogin";
 import PortalDashboard from "@/pages/portal/PortalDashboard";
 import PortalLayout from "@/components/layout/PortalLayout";
@@ -135,6 +136,7 @@ const App = () => (
               <Route path="/plaatsingen/:id" element={<PlacementDetail />} />
               <Route path="/uren" element={<Timesheets />} />
               <Route path="/facturatie" element={<InvoicesPage />} />
+              <Route path="/uitstroom-analyse" element={<UitstroomAnalyse />} />
               <Route path="/transport" element={<Transport />} />
               <Route path="/transport/new" element={<VehicleNew />} />
               <Route path="/transport/:id" element={<VehicleDetail />} />
