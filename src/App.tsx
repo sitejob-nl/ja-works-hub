@@ -64,6 +64,8 @@ import InvoicesPage from "@/pages/Invoices";
 import PlacementsPage from "@/pages/Placements";
 import PlacementDetail from "@/pages/PlacementDetail";
 import UitstroomAnalyse from "@/pages/UitstroomAnalyse";
+import Contacts from "@/pages/Contacts";
+import ContactDetail from "@/pages/ContactDetail";
 import PortalLogin from "@/pages/portal/PortalLogin";
 import PortalDashboard from "@/pages/portal/PortalDashboard";
 import PortalLayout from "@/components/layout/PortalLayout";
@@ -129,6 +131,8 @@ const App = () => (
               <Route path="/medewerkers" element={<Employees />} />
               <Route path="/medewerkers/new" element={<EmployeeNew />} />
               <Route path="/medewerkers/:id" element={<EmployeeDetail />} />
+              <Route path="/contacten" element={<Contacts />} />
+              <Route path="/contacten/:id" element={<ContactDetail />} />
               <Route path="/huisvesting" element={<Housing />} />
               <Route path="/huisvesting/:id" element={<PropertyDetail />} />
               <Route path="/vacatures" element={<Vacancies />} />
