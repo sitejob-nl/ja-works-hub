@@ -473,6 +473,9 @@ export type Database = {
           notes: string | null
           organization_id: string
           phone: string | null
+          screened_at: string | null
+          screened_by: string | null
+          screening_data: Json | null
           signup_link_id: string | null
           skills: string[] | null
           source: string | null
@@ -524,6 +527,9 @@ export type Database = {
           notes?: string | null
           organization_id: string
           phone?: string | null
+          screened_at?: string | null
+          screened_by?: string | null
+          screening_data?: Json | null
           signup_link_id?: string | null
           skills?: string[] | null
           source?: string | null
@@ -575,6 +581,9 @@ export type Database = {
           notes?: string | null
           organization_id?: string
           phone?: string | null
+          screened_at?: string | null
+          screened_by?: string | null
+          screening_data?: Json | null
           signup_link_id?: string | null
           skills?: string[] | null
           source?: string | null
