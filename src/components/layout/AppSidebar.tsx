@@ -5,7 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { applyBranding, type BrandingSettings } from '@/lib/branding';
 import { useQuery } from '@tanstack/react-query';
 import {
-  LayoutDashboard, Building2, Users, UserCheck, Home, Briefcase,
+  LayoutDashboard, Building2, Users, UserCheck, UserRound, Home, Briefcase,
   Calendar, Clock, Car, MessageSquare, BookOpen, Settings,
   ChevronLeft, ChevronRight, ChevronDown, Search, UserSearch, Calculator, ClipboardList, Fuel, FileText, BarChart3, CheckSquare,
 } from 'lucide-react';
@@ -32,6 +32,7 @@ const navGroups = [
       { label: 'Opdrachtgevers', icon: Building2, path: '/opdrachtgevers', moduleKey: 'opdrachtgevers' },
       { label: 'Kandidaten', icon: Users, path: '/kandidaten', moduleKey: 'kandidaten' },
       { label: 'Medewerkers', icon: UserCheck, path: '/medewerkers', moduleKey: 'medewerkers' },
+      { label: 'Contacten', icon: UserRound, path: '/contacten', moduleKey: 'contacten' },
     ],
   },
   {

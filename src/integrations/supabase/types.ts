@@ -1061,10 +1061,14 @@ export type Database = {
           company_id: string
           created_at: string
           email: string | null
+          first_name: string | null
           full_name: string
           function_title: string | null
           id: string
           is_primary: boolean
+          last_name: string | null
+          linkedin_url: string | null
+          notes: string | null
           organization_id: string
           phone: string | null
         }
@@ -1072,10 +1076,14 @@ export type Database = {
           company_id: string
           created_at?: string
           email?: string | null
+          first_name?: string | null
           full_name: string
           function_title?: string | null
           id?: string
           is_primary?: boolean
+          last_name?: string | null
+          linkedin_url?: string | null
+          notes?: string | null
           organization_id: string
           phone?: string | null
         }
@@ -1083,10 +1091,14 @@ export type Database = {
           company_id?: string
           created_at?: string
           email?: string | null
+          first_name?: string | null
           full_name?: string
           function_title?: string | null
           id?: string
           is_primary?: boolean
+          last_name?: string | null
+          linkedin_url?: string | null
+          notes?: string | null
           organization_id?: string
           phone?: string | null
         }
