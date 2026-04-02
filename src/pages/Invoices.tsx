@@ -12,11 +12,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
-import { Plus, FileText, Search, Eye, Send, CheckCircle2, Clock, Euro, Download, RefreshCw } from 'lucide-react';
+import { Plus, FileText, Search, Eye, Send, CheckCircle2, Euro, Download, RefreshCw, Info } from 'lucide-react';
 import { formatDate, formatEUR } from '@/lib/format';
 import { logAudit } from '@/lib/audit';
+import { payrollerLabel, payrollerBadgeClass, JA_WERKT_PAYROLLERS } from '@/lib/payroller';
 
 const statusBadge: Record<string, { class: string; label: string }> = {
   concept: { class: 'bg-muted text-muted-foreground border-0', label: 'Concept' },
@@ -31,22 +32,49 @@ export default function InvoicesPage() {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [payrollerFilter, setPayrollerFilter] = useState<string>('all');
   const [showCreate, setShowCreate] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState<string>('eigen');
 
-  // Fetch invoices
+  // Fetch invoices with payroller info from invoice_lines -> placements
   const { data: invoices, isLoading } = useQuery({
     queryKey: ['invoices', orgId, statusFilter],
     queryFn: async () => {
       let q = supabase
         .from('invoices')
-        .select('*, companies(name)')
+        .select('*, companies(name), invoice_lines(placements(payroller))')
         .eq('organization_id', orgId)
         .order('created_at', { ascending: false });
       if (statusFilter !== 'all') q = q.eq('status', statusFilter as any);
       const { data, error } = await q;
       if (error) throw error;
-      return data;
+      // Derive unique payrollers per invoice
+      return (data ?? []).map((inv: any) => {
+        const payrollers = [...new Set(
+          (inv.invoice_lines ?? [])
+            .map((l: any) => l.placements?.payroller)
+            .filter(Boolean)
+        )] as string[];
+        return { ...inv, payrollers };
+      });
+    },
+  });
+
+  // Fetch Flexpedia timesheets (read-only reference)
+  const { data: flexpediaTimesheets, isLoading: flexpediaLoading } = useQuery({
+    queryKey: ['flexpedia-timesheets', orgId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('timesheets')
+        .select('*, placements!inner(company_id, function_name, payroller, client_hourly_rate, overtime_rate, companies!placements_company_id_fkey(name), employees(id, candidates(first_name, last_name)))')
+        .eq('organization_id', orgId)
+        .eq('status', 'goedgekeurd')
+        .eq('placements.payroller', 'flexpedia')
+        .is('invoice_line_id', null)
+        .order('work_date', { ascending: false });
+      if (error) throw error;
+      return data ?? [];
     },
   });
 
@@ -57,7 +85,7 @@ export default function InvoicesPage() {
       if (!selectedInvoice) return [];
       const { data, error } = await supabase
         .from('invoice_lines')
-        .select('*, placements(function_name, employees(id, candidates(first_name, last_name)))')
+        .select('*, placements(function_name, payroller, employees(id, candidates(first_name, last_name)))')
         .eq('invoice_id', selectedInvoice.id)
         .order('sort_order');
       if (error) throw error;
@@ -67,6 +95,9 @@ export default function InvoicesPage() {
   });
 
   const filtered = (invoices ?? []).filter((inv: any) => {
+    if (payrollerFilter !== 'all') {
+      if (!inv.payrollers?.includes(payrollerFilter)) return false;
+    }
     if (!search) return true;
     const s = search.toLowerCase();
     return inv.invoice_number?.toLowerCase().includes(s) ||
@@ -81,6 +112,24 @@ export default function InvoicesPage() {
     return acc;
   }, { count: 0, total: 0, open: 0 });
 
+  // Group Flexpedia timesheets by company for the reference view
+  const flexpediaByCompany = (flexpediaTimesheets ?? []).reduce((acc: Record<string, any>, ts: any) => {
+    const companyName = ts.placements?.companies?.name ?? 'Onbekend';
+    if (!acc[companyName]) {
+      acc[companyName] = { company: companyName, hours: 0, overtime_hours: 0, timesheets: [] };
+    }
+    acc[companyName].hours += Number(ts.hours) || 0;
+    acc[companyName].overtime_hours += Number(ts.overtime_hours) || 0;
+    acc[companyName].timesheets.push(ts);
+    return acc;
+  }, {});
+
+  const flexpediaTotal = (flexpediaTimesheets ?? []).reduce((s: number, ts: any) => {
+    const rate = Number(ts.placements?.client_hourly_rate) || Number(ts.hourly_rate) || 0;
+    const otRate = Number(ts.placements?.overtime_rate) || 0;
+    return s + (Number(ts.hours) || 0) * rate + (Number(ts.overtime_hours) || 0) * otRate;
+  }, 0);
+
   return (
     <div>
       <div className="flex justify-between items-start mb-6">
@@ -94,9 +143,9 @@ export default function InvoicesPage() {
       </div>
 
       {/* KPI cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <Card><CardContent className="py-4">
-          <p className="text-xs text-muted-foreground">Totaal facturen</p>
+          <p className="text-xs text-muted-foreground">Eigen facturen</p>
           <p className="text-2xl font-semibold">{totals.count}</p>
         </CardContent></Card>
         <Card><CardContent className="py-4">
@@ -107,67 +156,153 @@ export default function InvoicesPage() {
           <p className="text-xs text-muted-foreground">Openstaand</p>
           <p className="text-2xl font-semibold text-orange-600">{formatEUR(totals.open)}</p>
         </CardContent></Card>
+        <Card><CardContent className="py-4">
+          <p className="text-xs text-muted-foreground">Flexpedia (referentie)</p>
+          <p className="text-2xl font-semibold text-amber-600">{formatEUR(flexpediaTotal)}</p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">Niet door ja werkt gefactureerd</p>
+        </CardContent></Card>
       </div>
 
-      {/* Filters */}
-      <div className="flex items-center gap-3 mb-4">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Zoek op nummer, bedrijf..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
-        </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Alle statussen</SelectItem>
-            <SelectItem value="concept">Concept</SelectItem>
-            <SelectItem value="definitief">Definitief</SelectItem>
-            <SelectItem value="verzonden">Verzonden</SelectItem>
-            <SelectItem value="betaald">Betaald</SelectItem>
-            <SelectItem value="gecrediteerd">Gecrediteerd</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="mb-4">
+          <TabsTrigger value="eigen">Eigen facturen</TabsTrigger>
+          <TabsTrigger value="flexpedia">Flexpedia (referentie)</TabsTrigger>
+        </TabsList>
 
-      {/* Table */}
-      <Card>
-        <CardContent className="p-0">
-          {isLoading ? (
-            <div className="p-6 space-y-3">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nummer</TableHead>
-                  <TableHead>Opdrachtgever</TableHead>
-                  <TableHead>Periode</TableHead>
-                  <TableHead>Factuurdatum</TableHead>
-                  <TableHead className="text-right">Bedrag</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.length === 0 ? (
-                  <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">Geen facturen gevonden</TableCell></TableRow>
-                ) : filtered.map((inv: any) => {
-                  const st = statusBadge[inv.status] || statusBadge.concept;
-                  return (
-                    <TableRow key={inv.id} className="cursor-pointer" onClick={() => setSelectedInvoice(inv)}>
-                      <TableCell className="font-mono text-xs font-medium">{inv.invoice_number}</TableCell>
-                      <TableCell>{inv.companies?.name ?? '—'}</TableCell>
-                      <TableCell className="text-xs">{formatDate(inv.period_start)} — {formatDate(inv.period_end)}</TableCell>
-                      <TableCell>{formatDate(inv.invoice_date)}</TableCell>
-                      <TableCell className="text-right font-mono">{formatEUR(inv.total)}</TableCell>
-                      <TableCell><Badge variant="secondary" className={st.class}>{st.label}</Badge></TableCell>
-                      <TableCell><Button size="sm" variant="ghost"><Eye className="h-3.5 w-3.5" /></Button></TableCell>
+        <TabsContent value="eigen">
+          {/* Filters */}
+          <div className="flex items-center gap-3 mb-4 flex-wrap">
+            <div className="relative flex-1 min-w-[200px] max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input placeholder="Zoek op nummer, bedrijf..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
+            </div>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Alle statussen</SelectItem>
+                <SelectItem value="concept">Concept</SelectItem>
+                <SelectItem value="definitief">Definitief</SelectItem>
+                <SelectItem value="verzonden">Verzonden</SelectItem>
+                <SelectItem value="betaald">Betaald</SelectItem>
+                <SelectItem value="gecrediteerd">Gecrediteerd</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={payrollerFilter} onValueChange={setPayrollerFilter}>
+              <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Alle payrollers</SelectItem>
+                <SelectItem value="brioworks">BrioWorks</SelectItem>
+                <SelectItem value="bromida">Bromida</SelectItem>
+                <SelectItem value="retiva">Retiva/A1</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Table */}
+          <Card>
+            <CardContent className="p-0">
+              {isLoading ? (
+                <div className="p-6 space-y-3">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Nummer</TableHead>
+                      <TableHead>Opdrachtgever</TableHead>
+                      <TableHead>Payroller</TableHead>
+                      <TableHead>Periode</TableHead>
+                      <TableHead>Factuurdatum</TableHead>
+                      <TableHead className="text-right">Bedrag</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead></TableHead>
                     </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {filtered.length === 0 ? (
+                      <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">Geen facturen gevonden</TableCell></TableRow>
+                    ) : filtered.map((inv: any) => {
+                      const st = statusBadge[inv.status] || statusBadge.concept;
+                      return (
+                        <TableRow key={inv.id} className="cursor-pointer" onClick={() => setSelectedInvoice(inv)}>
+                          <TableCell className="font-mono text-xs font-medium">{inv.invoice_number}</TableCell>
+                          <TableCell>{inv.companies?.name ?? '—'}</TableCell>
+                          <TableCell>
+                            <div className="flex gap-1 flex-wrap">
+                              {(inv.payrollers ?? []).length > 0
+                                ? inv.payrollers.map((p: string) => (
+                                    <Badge key={p} variant="secondary" className={`text-[10px] ${payrollerBadgeClass[p] ?? ''}`}>
+                                      {payrollerLabel[p] ?? p}
+                                    </Badge>
+                                  ))
+                                : <span className="text-muted-foreground text-xs">—</span>
+                              }
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-xs">{formatDate(inv.period_start)} — {formatDate(inv.period_end)}</TableCell>
+                          <TableCell>{formatDate(inv.invoice_date)}</TableCell>
+                          <TableCell className="text-right font-mono">{formatEUR(inv.total)}</TableCell>
+                          <TableCell><Badge variant="secondary" className={st.class}>{st.label}</Badge></TableCell>
+                          <TableCell><Button size="sm" variant="ghost"><Eye className="h-3.5 w-3.5" /></Button></TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="flexpedia">
+          {/* Flexpedia reference view */}
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 flex items-start gap-2">
+            <Info className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+            <div className="text-sm text-amber-800">
+              <p className="font-medium">Deze uren worden door Flexpedia gefactureerd</p>
+              <p className="text-xs text-amber-600 mt-0.5">Flexpedia factureert rechtstreeks aan de eindklant. Dit overzicht is alleen ter referentie — hier worden geen facturen voor aangemaakt.</p>
+            </div>
+          </div>
+
+          {flexpediaLoading ? (
+            <div className="space-y-3">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}</div>
+          ) : Object.keys(flexpediaByCompany).length === 0 ? (
+            <div className="text-center text-muted-foreground py-12">
+              <p>Geen goedgekeurde, niet-gefactureerde Flexpedia uren gevonden.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {Object.values(flexpediaByCompany).map((group: any) => (
+                <Card key={group.company}>
+                  <CardContent className="py-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-medium">{group.company}</h4>
+                        <Badge variant="secondary" className={payrollerBadgeClass.flexpedia + ' text-[10px]'}>Flexpedia</Badge>
+                      </div>
+                      <span className="text-sm text-muted-foreground">{group.hours.toFixed(1)}u normaal{group.overtime_hours > 0 ? ` + ${group.overtime_hours.toFixed(1)}u overwerk` : ''}</span>
+                    </div>
+                    <div className="space-y-1">
+                      {group.timesheets.map((ts: any) => {
+                        const emp = ts.placements?.employees?.candidates;
+                        return (
+                          <div key={ts.id} className="flex items-center justify-between text-sm py-1 border-b last:border-0">
+                            <div className="flex gap-3">
+                              <span className="text-muted-foreground w-20">{formatDate(ts.work_date)}</span>
+                              <span className="font-medium">{emp?.first_name} {emp?.last_name}</span>
+                              <span className="text-muted-foreground">{ts.placements?.function_name}</span>
+                            </div>
+                            <span className="font-mono text-xs">{Number(ts.hours).toFixed(1)}u</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           )}
-        </CardContent>
-      </Card>
+        </TabsContent>
+      </Tabs>
 
       {/* Create Invoice Sheet */}
       <CreateInvoiceSheet open={showCreate} onOpenChange={setShowCreate} orgId={orgId} onSuccess={() => { qc.invalidateQueries({ queryKey: ['invoices'] }); setShowCreate(false); }} />
@@ -197,6 +332,7 @@ function CreateInvoiceSheet({ open, onOpenChange, orgId, onSuccess }: { open: bo
   const [reference, setReference] = useState('');
   const [preview, setPreview] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [payrollerCreateFilter, setPayrollerCreateFilter] = useState<string>('ja_werkt');
 
   // Manual lines state
   const [manualLines, setManualLines] = useState<ManualLine[]>([{ description: '', hours: 0, hourly_rate: 0, line_total: 0 }]);
@@ -225,14 +361,14 @@ function CreateInvoiceSheet({ open, onOpenChange, orgId, onSuccess }: { open: bo
     },
   });
 
-  // Load approved timesheets for preview
+  // Load approved timesheets for preview (filtered by payroller)
   const loadTimesheets = async () => {
     if (!companyId || !periodStart || !periodEnd) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      let q = supabase
         .from('timesheets')
-        .select('*, placements!inner(company_id, function_name, client_hourly_rate, overtime_rate, employees(id, candidates(first_name, last_name)))')
+        .select('*, placements!inner(company_id, function_name, payroller, client_hourly_rate, overtime_rate, employees(id, candidates(first_name, last_name)))')
         .eq('organization_id', orgId)
         .eq('status', 'goedgekeurd')
         .is('invoice_line_id', null)
@@ -240,6 +376,15 @@ function CreateInvoiceSheet({ open, onOpenChange, orgId, onSuccess }: { open: bo
         .gte('work_date', periodStart)
         .lte('work_date', periodEnd)
         .order('work_date');
+
+      // Apply payroller filter
+      if (payrollerCreateFilter === 'ja_werkt') {
+        q = q.in('placements.payroller', JA_WERKT_PAYROLLERS);
+      } else if (payrollerCreateFilter !== 'all') {
+        q = q.eq('placements.payroller', payrollerCreateFilter);
+      }
+
+      const { data, error } = await q;
       if (error) throw error;
       setPreview(data ?? []);
     } catch (e: any) {
@@ -256,6 +401,7 @@ function CreateInvoiceSheet({ open, onOpenChange, orgId, onSuccess }: { open: bo
       const emp = p?.employees?.candidates;
       acc[pid] = {
         placement_id: pid, employee_id: p?.employees?.id,
+        payroller: p?.payroller ?? null,
         description: `${p?.function_name ?? 'Plaatsing'} — ${emp?.first_name ?? ''} ${emp?.last_name ?? ''}`.trim(),
         hours: 0, overtime_hours: 0,
         hourly_rate: Number(p?.client_hourly_rate) || Number(ts.hourly_rate) || 0,
@@ -332,11 +478,37 @@ function CreateInvoiceSheet({ open, onOpenChange, orgId, onSuccess }: { open: bo
       <SheetContent className="sm:max-w-2xl overflow-y-auto">
         <SheetHeader><SheetTitle>Nieuwe factuur</SheetTitle></SheetHeader>
         <div className="space-y-4 mt-6">
+          {/* Payroller info banner */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2">
+            <Info className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+            <div className="text-sm text-blue-800">
+              <p className="font-medium">Alleen BrioWorks, Bromida en Retiva plaatsingen</p>
+              <p className="text-xs text-blue-600 mt-0.5">Flexpedia factureert rechtstreeks aan de eindklant. Die uren worden hier standaard uitgesloten.</p>
+            </div>
+          </div>
+
           {/* Mode toggle */}
           <div className="flex gap-1 bg-muted p-1 rounded-lg">
             <button className={`flex-1 text-sm py-1.5 rounded-md transition-colors ${mode === 'uren' ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground'}`} onClick={() => setMode('uren')}>Vanuit uren</button>
             <button className={`flex-1 text-sm py-1.5 rounded-md transition-colors ${mode === 'handmatig' ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground'}`} onClick={() => setMode('handmatig')}>Handmatig</button>
           </div>
+
+          {/* Payroller filter for uren mode */}
+          {mode === 'uren' && (
+            <div>
+              <Label>Payroller filter</Label>
+              <Select value={payrollerCreateFilter} onValueChange={(v) => { setPayrollerCreateFilter(v); setPreview([]); }}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ja_werkt">Eigen facturatie (BrioWorks, Bromida, Retiva)</SelectItem>
+                  <SelectItem value="brioworks">Alleen BrioWorks</SelectItem>
+                  <SelectItem value="bromida">Alleen Bromida</SelectItem>
+                  <SelectItem value="retiva">Alleen Retiva/A1</SelectItem>
+                  <SelectItem value="all">Alles (incl. Flexpedia)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           {/* Company + period (shared) */}
           <div>
@@ -368,7 +540,14 @@ function CreateInvoiceSheet({ open, onOpenChange, orgId, onSuccess }: { open: bo
                   <div className="space-y-2">
                     {urenLines.map((l: any, i: number) => (
                       <div key={i} className="bg-muted/50 rounded-lg p-3 text-sm">
-                        <p className="font-medium">{l.description}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium flex-1">{l.description}</p>
+                          {l.payroller && (
+                            <Badge variant="secondary" className={`text-[10px] ${payrollerBadgeClass[l.payroller] ?? ''}`}>
+                              {payrollerLabel[l.payroller] ?? l.payroller}
+                            </Badge>
+                          )}
+                        </div>
                         <div className="flex gap-4 text-muted-foreground mt-1">
                           <span>{l.hours}u x {formatEUR(l.hourly_rate)}</span>
                           {l.overtime_hours > 0 && <span>{l.overtime_hours}u overwerk x {formatEUR(l.overtime_rate)}</span>}
@@ -505,9 +684,17 @@ function InvoiceDetailSheet({ invoice, lines, open, onOpenChange, onUpdate }: {
           <div className="space-y-2">
             {lines.map((l: any) => {
               const emp = l.placements?.employees?.candidates;
+              const linePayroller = l.placements?.payroller;
               return (
                 <div key={l.id} className="bg-muted/50 rounded-lg p-3 text-sm">
-                  <p className="font-medium">{l.description}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-medium flex-1">{l.description}</p>
+                    {linePayroller && (
+                      <Badge variant="secondary" className={`text-[10px] ${payrollerBadgeClass[linePayroller] ?? ''}`}>
+                        {payrollerLabel[linePayroller] ?? linePayroller}
+                      </Badge>
+                    )}
+                  </div>
                   <div className="flex gap-4 text-muted-foreground mt-1">
                     <span>{l.hours}u x {formatEUR(l.hourly_rate)}</span>
                     {Number(l.overtime_hours) > 0 && <span>{l.overtime_hours}u overwerk</span>}

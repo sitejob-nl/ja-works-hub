@@ -12,19 +12,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import { Search, Users, CalendarClock, TrendingUp } from 'lucide-react';
 import { formatDate, formatEUR } from '@/lib/format';
+import { payrollerLabel } from '@/lib/payroller';
 
 const statusBadge: Record<string, { class: string; label: string }> = {
   gepland: { class: 'bg-blue-100 text-blue-700 border-0', label: 'Gepland' },
   actief: { class: 'bg-stat-green/10 text-stat-green border-0', label: 'Actief' },
   afgerond: { class: 'bg-muted text-muted-foreground border-0', label: 'Afgerond' },
   voortijdig_beeindigd: { class: 'bg-red-100 text-red-600 border-0', label: 'Voortijdig beëindigd' },
-};
-
-const payrollerLabel: Record<string, string> = {
-  flexpedia: 'Flexpedia',
-  brioworks: 'BrioWorks',
-  bromida: 'Bromida',
-  retiva: 'Retiva/A1',
 };
 
 export default function PlacementsPage() {
