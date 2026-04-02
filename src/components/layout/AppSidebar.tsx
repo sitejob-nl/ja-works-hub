@@ -7,7 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   LayoutDashboard, Building2, Users, UserCheck, Home, Briefcase,
   Calendar, Clock, Car, MessageSquare, BookOpen, Settings,
-  ChevronLeft, ChevronRight, ChevronDown, Search, UserSearch, Calculator, ClipboardList, Fuel, FileText, BarChart3,
+  ChevronLeft, ChevronRight, ChevronDown, Search, UserSearch, Calculator, ClipboardList, Fuel, FileText, BarChart3, CheckSquare,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useEffect } from 'react';
@@ -23,6 +23,7 @@ const navGroups = [
     items: [
       { label: 'Dashboard', icon: LayoutDashboard, path: '/', moduleKey: null },
       { label: 'Workbench', icon: ClipboardList, path: '/workbench', moduleKey: 'workbench' },
+      { label: 'Taken', icon: CheckSquare, path: '/taken', moduleKey: 'taken' },
     ],
   },
   {
@@ -120,6 +121,20 @@ const AppSidebar = ({ onNavigate }: AppSidebarProps) => {
     enabled: !!org?.plan_id,
   });
 
+  const { data: openTaskCount } = useQuery({
+    queryKey: ['open-task-count', profile?.id],
+    queryFn: async () => {
+      const { count } = await supabase
+        .from('recruiter_tasks' as any)
+        .select('id', { count: 'exact', head: true })
+        .eq('assigned_to', profile!.id)
+        .not('status', 'in', '(done,dismissed)');
+      return count ?? 0;
+    },
+    enabled: !!profile?.id,
+    staleTime: 60_000,
+  });
+
   const isModuleEnabled = (moduleKey: string | null): boolean => {
     if (!moduleKey) return true;
     const override = moduleOverrides?.find(m => m.module_name === moduleKey);
@@ -194,7 +209,12 @@ const AppSidebar = ({ onNavigate }: AppSidebarProps) => {
                         )}
                       >
                         <item.icon className="h-4 w-4 shrink-0" />
-                        {!collapsed && <span>{item.label}</span>}
+                        {!collapsed && <span className="flex-1">{item.label}</span>}
+                        {!collapsed && item.path === '/taken' && (openTaskCount ?? 0) > 0 && (
+                          <span className="ml-auto text-[10px] font-semibold bg-primary text-primary-foreground rounded-full px-1.5 py-0.5 min-w-[18px] text-center">
+                            {openTaskCount! > 99 ? '99+' : openTaskCount}
+                          </span>
+                        )}
                       </NavLink>
                     );
                   })}
@@ -227,7 +247,12 @@ const AppSidebar = ({ onNavigate }: AppSidebarProps) => {
                       )}
                     >
                       <item.icon className="h-4 w-4 shrink-0" />
-                      <span>{item.label}</span>
+                      <span className="flex-1">{item.label}</span>
+                      {item.path === '/taken' && (openTaskCount ?? 0) > 0 && (
+                        <span className="ml-auto text-[10px] font-semibold bg-primary text-primary-foreground rounded-full px-1.5 py-0.5 min-w-[18px] text-center">
+                          {openTaskCount! > 99 ? '99+' : openTaskCount}
+                        </span>
+                      )}
                     </NavLink>
                   );
                 })}

@@ -51,6 +51,7 @@ import ExactOnlinePage from "@/pages/ExactOnline";
 import Onboarding from "@/pages/Onboarding";
 import CvTool from "@/pages/CvTool";
 import RecruiterWorkbench from "@/pages/RecruiterWorkbench";
+import Tasks from "@/pages/Tasks";
 import BulkCampaigns from "@/pages/BulkCampaigns";
 import BulkCampaignDetail from "@/pages/BulkCampaignDetail";
 import ImportData from "@/pages/ImportData";
@@ -118,6 +119,7 @@ const App = () => (
             }>
               <Route path="/" element={<Dashboard />} />
               <Route path="/workbench" element={<RecruiterWorkbench />} />
+              <Route path="/taken" element={<Tasks />} />
               <Route path="/opdrachtgevers" element={<Companies />} />
               <Route path="/opdrachtgevers/new" element={<CompanyNew />} />
               <Route path="/opdrachtgevers/:id" element={<CompanyDetail />} />

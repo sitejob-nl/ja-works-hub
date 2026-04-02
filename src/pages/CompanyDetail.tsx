@@ -13,6 +13,8 @@ import CompanyFunctionsTab from '@/components/companies/tabs/CompanyFunctionsTab
 import RateAgreementsTab from '@/components/companies/tabs/RateAgreementsTab';
 import SlaTab from '@/components/companies/tabs/SlaTab';
 import CommunicationTab from '@/components/companies/tabs/CommunicationTab';
+import NotesSection from '@/components/shared/NotesSection';
+import TasksSection from '@/components/shared/TasksSection';
 import PlacementsTab from '@/components/companies/tabs/PlacementsTab';
 import { useTrackPageVisit } from '@/hooks/useTrackPageVisit';
 
@@ -94,6 +96,8 @@ const CompanyDetail = () => {
             <TabsTrigger value="sla">SLA</TabsTrigger>
             <TabsTrigger value="communicatie">Comm.</TabsTrigger>
             <TabsTrigger value="plaatsingen">Plaatsingen</TabsTrigger>
+            <TabsTrigger value="notities">Notities</TabsTrigger>
+            <TabsTrigger value="taken">Taken</TabsTrigger>
           </TabsList>
         </div>
         <TabsContent value="gegevens"><CompanyInfoTab company={company} /></TabsContent>
@@ -103,6 +107,8 @@ const CompanyDetail = () => {
         <TabsContent value="sla"><SlaTab companyId={id!} /></TabsContent>
         <TabsContent value="communicatie"><CommunicationTab companyId={id!} /></TabsContent>
         <TabsContent value="plaatsingen"><PlacementsTab companyId={id!} /></TabsContent>
+        <TabsContent value="notities"><NotesSection entityId={id!} entityType="opdrachtgever" /></TabsContent>
+        <TabsContent value="taken"><TasksSection entityId={id!} entityType="opdrachtgever" /></TabsContent>
       </Tabs>
     </div>
   );

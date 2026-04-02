@@ -19,13 +19,7 @@ import {
   ExternalLink, X,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-
-const priorityConfig: Record<string, { label: string; color: string; icon: typeof AlertTriangle; order: number }> = {
-  critical: { label: 'Kritiek', color: 'bg-destructive/10 text-destructive border-destructive/20', icon: AlertTriangle, order: 0 },
-  high: { label: 'Hoog', color: 'bg-orange-100 text-orange-700 border-orange-200', icon: ArrowUpCircle, order: 1 },
-  medium: { label: 'Medium', color: 'bg-yellow-100 text-yellow-700 border-yellow-200', icon: CircleDot, order: 2 },
-  low: { label: 'Laag', color: 'bg-muted text-muted-foreground border-border', icon: Clock, order: 3 },
-};
+import { priorityConfig, entityLinks } from '@/lib/tasks';
 
 const categoryConfig: Record<string, { label: string; icon: typeof Shield }> = {
   compliance: { label: 'Compliance', icon: Shield },
@@ -34,12 +28,6 @@ const categoryConfig: Record<string, { label: string; icon: typeof Shield }> = {
   onboarding: { label: 'Onboarding', icon: UserCheck },
   ziekte: { label: 'Ziekte', icon: Heart },
   overig: { label: 'Overig', icon: CircleDot },
-};
-
-const entityLinks: Record<string, (id: string) => string> = {
-  candidate: (id) => `/kandidaten/${id}`,
-  employee: (id) => `/medewerkers/${id}`,
-  vacancy: (id) => `/vacatures/${id}`,
 };
 
 interface TaskForm {

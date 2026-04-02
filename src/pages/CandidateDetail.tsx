@@ -18,6 +18,8 @@ import CandidatePlacementsTab from '@/components/candidates/tabs/CandidatePlacem
 import { CandidatePreferencesTab } from '@/components/candidates/tabs/CandidatePreferencesTab';
 import CandidateAiTab from '@/components/candidates/tabs/CandidateAiTab';
 import CandidateScreeningTab from '@/components/candidates/tabs/CandidateScreeningTab';
+import NotesSection from '@/components/shared/NotesSection';
+import TasksSection from '@/components/shared/TasksSection';
 import EmployeeEmploymentTab from '@/components/employees/tabs/EmployeeEmploymentTab';
 import EmployeeOnboardingTab from '@/components/employees/tabs/EmployeeOnboardingTab';
 import EmployeeDeductionsTab from '@/components/employees/tabs/EmployeeDeductionsTab';
@@ -253,6 +255,8 @@ const CandidateDetail = () => {
             <TabsTrigger value="plaatsingen">Plaatsingen</TabsTrigger>
             <TabsTrigger value="voorkeuren">Voorkeuren</TabsTrigger>
             <TabsTrigger value="screening" className="gap-1.5"><ClipboardCheck className="h-3.5 w-3.5" />Screening</TabsTrigger>
+            <TabsTrigger value="notities">Notities</TabsTrigger>
+            <TabsTrigger value="taken">Taken</TabsTrigger>
             {aiEnabled && <TabsTrigger value="ai" className="gap-1.5">AI Analyse</TabsTrigger>}
             {isEmployee && (
               <>
@@ -279,6 +283,8 @@ const CandidateDetail = () => {
         <TabsContent value="plaatsingen"><CandidatePlacementsTab candidateId={id!} /></TabsContent>
         <TabsContent value="voorkeuren"><CandidatePreferencesTab candidateId={id!} /></TabsContent>
         <TabsContent value="screening"><CandidateScreeningTab key={candidate?.screened_at ?? 'unsaved'} candidate={candidate} onUpdate={() => qc.invalidateQueries({ queryKey: ['candidate', id] })} /></TabsContent>
+        <TabsContent value="notities"><NotesSection entityId={id!} entityType="kandidaat" /></TabsContent>
+        <TabsContent value="taken"><TasksSection entityId={id!} entityType="kandidaat" /></TabsContent>
         {aiEnabled && <TabsContent value="ai"><CandidateAiTab candidate={candidate} /></TabsContent>}
         {isEmployee && (
           <>

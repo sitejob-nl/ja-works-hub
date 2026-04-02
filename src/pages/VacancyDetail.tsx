@@ -12,6 +12,8 @@ import VacancyDetailsTab from '@/components/vacancies/tabs/VacancyDetailsTab';
 import VacancyMatchesTab from '@/components/vacancies/tabs/VacancyMatchesTab';
 import VacancyPlacementsTab from '@/components/vacancies/tabs/VacancyPlacementsTab';
 import { useTrackPageVisit } from '@/hooks/useTrackPageVisit';
+import NotesSection from '@/components/shared/NotesSection';
+import TasksSection from '@/components/shared/TasksSection';
 
 const statusBadge: Record<string, string> = {
   open: 'bg-stat-green/10 text-stat-green border-0',
@@ -133,11 +135,15 @@ const VacancyDetail = () => {
             <TabsTrigger value="details">Details</TabsTrigger>
             <TabsTrigger value="matches">Matches</TabsTrigger>
             <TabsTrigger value="plaatsingen">Plaatsingen</TabsTrigger>
+            <TabsTrigger value="notities">Notities</TabsTrigger>
+            <TabsTrigger value="taken">Taken</TabsTrigger>
           </TabsList>
         </div>
         <TabsContent value="details"><VacancyDetailsTab vacancy={vacancy} /></TabsContent>
         <TabsContent value="matches"><VacancyMatchesTab vacancy={vacancy} /></TabsContent>
         <TabsContent value="plaatsingen"><VacancyPlacementsTab vacancyId={vacancy.id} /></TabsContent>
+        <TabsContent value="notities"><NotesSection entityId={vacancy.id} entityType="vacature" /></TabsContent>
+        <TabsContent value="taken"><TasksSection entityId={vacancy.id} entityType="vacature" /></TabsContent>
       </Tabs>
     </div>
   );

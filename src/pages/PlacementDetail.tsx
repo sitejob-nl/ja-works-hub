@@ -22,6 +22,8 @@ import PlacementHourTypesTab from '@/components/placements/tabs/PlacementHourTyp
 import PlacementTravelTypesTab from '@/components/placements/tabs/PlacementTravelTypesTab';
 import PlacementAllowancesTab from '@/components/placements/tabs/PlacementAllowancesTab';
 import { useTrackPageVisit } from '@/hooks/useTrackPageVisit';
+import NotesSection from '@/components/shared/NotesSection';
+import TasksSection from '@/components/shared/TasksSection';
 
 const statusBadge: Record<string, string> = {
   gepland: 'bg-blue-100 text-blue-700 border-0',
@@ -280,11 +282,15 @@ const PlacementDetail = () => {
             <TabsTrigger value="uurtypes">Uurtypes</TabsTrigger>
             <TabsTrigger value="reistypes">Reistypes</TabsTrigger>
             <TabsTrigger value="vergoedingen">Vergoedingen</TabsTrigger>
+            <TabsTrigger value="notities">Notities</TabsTrigger>
+            <TabsTrigger value="taken">Taken</TabsTrigger>
           </TabsList>
         </div>
         <TabsContent value="uurtypes"><PlacementHourTypesTab placementId={id!} organizationId={placement.organization_id} /></TabsContent>
         <TabsContent value="reistypes"><PlacementTravelTypesTab placementId={id!} organizationId={placement.organization_id} /></TabsContent>
         <TabsContent value="vergoedingen"><PlacementAllowancesTab placementId={id!} organizationId={placement.organization_id} /></TabsContent>
+        <TabsContent value="notities"><NotesSection entityId={id!} entityType="plaatsing" /></TabsContent>
+        <TabsContent value="taken"><TasksSection entityId={id!} entityType="plaatsing" /></TabsContent>
       </Tabs>
 
       {/* Termination Dialog */}
