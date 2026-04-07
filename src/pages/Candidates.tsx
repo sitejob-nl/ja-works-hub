@@ -1,18 +1,20 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Link, useNavigate } from 'react-router-dom';
-import { Users, Plus, Search, Upload, CheckCircle2, XCircle, FolderHeart, SlidersHorizontal } from 'lucide-react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Users, Plus, Search, Upload, CheckCircle2, XCircle, FolderHeart, SlidersHorizontal, UserPlus, Check, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import ImportWizard from '@/components/import/ImportWizard';
 import AddToPoolSheet from '@/components/talentpools/AddToPoolSheet';
+import { formatDate } from '@/lib/format';
 
 const PAGE_SIZE = 10;
 
@@ -36,6 +38,17 @@ const statusLabel: Record<string, string> = {
   geplaatst: 'Geplaatst', inactief: 'Inactief', afgewezen: 'Afgewezen',
 };
 
+const employeeStatusBadge: Record<string, string> = {
+  onboarding: 'bg-yellow-100 text-yellow-700 border-0',
+  actief: 'bg-stat-green/10 text-stat-green border-0',
+  ziek: 'bg-orange-100 text-orange-600 border-0',
+  uit_dienst: 'bg-muted text-muted-foreground border-0',
+};
+
+const employeeStatusLabel: Record<string, string> = {
+  onboarding: 'Onboarding', actief: 'Actief', ziek: 'Ziek', uit_dienst: 'Uit dienst',
+};
+
 const getProfileLinkStatus = (candidate: any, tokens: any[]) => {
   const token = tokens.find((t) => t.candidate_id === candidate.id);
   if (!token) return { label: 'Niet verstuurd', className: 'bg-muted text-muted-foreground border-0' };
@@ -46,8 +59,12 @@ const getProfileLinkStatus = (candidate: any, tokens: any[]) => {
 
 const Candidates = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialTab = searchParams.get('tab') === 'in-dienst' ? 'in-dienst' : 'alle';
+  const [activeTab, setActiveTab] = useState<'alle' | 'in-dienst'>(initialTab);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [employeeStatusFilter, setEmployeeStatusFilter] = useState('all');
   const [complianceFilter, setComplianceFilter] = useState('all');
   const [page, setPage] = useState(0);
   const [importOpen, setImportOpen] = useState(false);
@@ -57,6 +74,21 @@ const Candidates = () => {
   const [cvSearch, setCvSearch] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
 
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab as 'alle' | 'in-dienst');
+    setPage(0);
+    setSearch('');
+    setStatusFilter('all');
+    setEmployeeStatusFilter('all');
+    setSelected(new Set());
+    if (tab === 'in-dienst') {
+      setSearchParams({ tab: 'in-dienst' });
+    } else {
+      setSearchParams({});
+    }
+  };
+
+  // Query for "Alle" tab
   const { data, isLoading } = useQuery({
     queryKey: ['candidates', search, statusFilter, complianceFilter, cvSearch, page],
     queryFn: async () => {
@@ -74,6 +106,31 @@ const Candidates = () => {
       if (error) throw error;
       return { candidates: data ?? [], total: count ?? 0 };
     },
+    enabled: activeTab === 'alle',
+  });
+
+  // Query for "In dienst" tab
+  const { data: employeeData, isLoading: employeesLoading } = useQuery({
+    queryKey: ['candidates-in-dienst', search, employeeStatusFilter, page],
+    queryFn: async () => {
+      let query = supabase.from('candidates').select(`
+        *,
+        candidate_employment(*),
+        housing_assignments!housing_assignments_candidate_id_fkey(id, status),
+        placements!placements_candidate_id_fkey(id, status, company_id, companies!placements_company_id_fkey(name))
+      `, { count: 'exact' })
+        .not('employee_status', 'is', null);
+
+      if (employeeStatusFilter !== 'all') query = query.eq('employee_status', employeeStatusFilter as any);
+      if (search) {
+        query = query.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%`);
+      }
+      query = query.order('created_at', { ascending: false }).range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+      const { data, count, error } = await query;
+      if (error) throw error;
+      return { employees: data ?? [], total: count ?? 0 };
+    },
+    enabled: activeTab === 'in-dienst',
   });
 
   const candidates = data?.candidates ?? [];
@@ -132,6 +189,10 @@ const Candidates = () => {
 
   const allOnPageSelected = candidates.length > 0 && candidates.every((c: any) => selected.has(c.id));
 
+  const employees = employeeData?.employees ?? [];
+  const employeeTotal = employeeData?.total ?? 0;
+  const employeeTotalPages = Math.ceil(employeeTotal / PAGE_SIZE);
+
   return (
     <div className="space-y-4 sm:space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -140,52 +201,87 @@ const Candidates = () => {
           <p className="text-muted-foreground text-sm mt-1 hidden sm:block">Overzicht van alle kandidaten</p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <Button variant="outline" size="sm" onClick={() => { setImportPreset(null); setImportOpen(true); }} className="gap-1.5">
-            <Upload className="h-4 w-4" /> <span className="hidden sm:inline">Importeren</span><span className="sm:hidden">Import</span>
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => { setImportPreset('buddy'); setImportOpen(true); }} className="gap-1.5 hidden md:flex">
-            <Upload className="h-4 w-4" /> Buddy import
-          </Button>
-          <Button size="sm" onClick={() => navigate('/kandidaten/new')} className="gap-1.5">
-            <Plus className="h-4 w-4" /> <span className="hidden sm:inline">Nieuwe kandidaat</span><span className="sm:hidden">Nieuw</span>
-          </Button>
+          {activeTab === 'alle' && (
+            <>
+              <Button variant="outline" size="sm" onClick={() => { setImportPreset(null); setImportOpen(true); }} className="gap-1.5">
+                <Upload className="h-4 w-4" /> <span className="hidden sm:inline">Importeren</span><span className="sm:hidden">Import</span>
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => { setImportPreset('buddy'); setImportOpen(true); }} className="gap-1.5 hidden md:flex">
+                <Upload className="h-4 w-4" /> Buddy import
+              </Button>
+              <Button size="sm" onClick={() => navigate('/kandidaten/new')} className="gap-1.5">
+                <Plus className="h-4 w-4" /> <span className="hidden sm:inline">Nieuwe kandidaat</span><span className="sm:hidden">Nieuw</span>
+              </Button>
+            </>
+          )}
+          {activeTab === 'in-dienst' && (
+            <Button size="sm" onClick={() => navigate('/medewerkers/new')} className="gap-1.5">
+              <UserPlus className="h-4 w-4" /> In dienst nemen
+            </Button>
+          )}
         </div>
       </div>
 
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Zoek op naam, stad of email..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} className="pl-9" />
+      <Tabs value={activeTab} onValueChange={handleTabChange}>
+        <TabsList>
+          <TabsTrigger value="alle">Alle kandidaten</TabsTrigger>
+          <TabsTrigger value="in-dienst">In dienst</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      {activeTab === 'alle' && (
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="relative flex-1 max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input placeholder="Zoek op naam, stad of email..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} className="pl-9" />
+          </div>
+          <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(0); }}>
+            <SelectTrigger className="w-40"><SelectValue placeholder="Status" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Alle statussen</SelectItem>
+              {Object.entries(statusLabel).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select value={complianceFilter} onValueChange={(v) => { setComplianceFilter(v); setPage(0); }}>
+            <SelectTrigger className="w-40"><SelectValue placeholder="Compliance" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Alle compliance</SelectItem>
+              <SelectItem value="compleet">Compleet</SelectItem>
+              <SelectItem value="incompleet">Incompleet</SelectItem>
+              <SelectItem value="verlopen">Verlopen</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button
+            variant={showAdvanced ? 'secondary' : 'outline'}
+            size="sm"
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            className="gap-1.5"
+          >
+            <SlidersHorizontal className="h-4 w-4" /> CV zoeken
+          </Button>
+          <span className="text-sm text-muted-foreground">{total} kandidaten</span>
         </div>
-        <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(0); }}>
-          <SelectTrigger className="w-40"><SelectValue placeholder="Status" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Alle statussen</SelectItem>
-            {Object.entries(statusLabel).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <Select value={complianceFilter} onValueChange={(v) => { setComplianceFilter(v); setPage(0); }}>
-          <SelectTrigger className="w-40"><SelectValue placeholder="Compliance" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Alle compliance</SelectItem>
-            <SelectItem value="compleet">Compleet</SelectItem>
-            <SelectItem value="incompleet">Incompleet</SelectItem>
-            <SelectItem value="verlopen">Verlopen</SelectItem>
-          </SelectContent>
-        </Select>
-        <Button
-          variant={showAdvanced ? 'secondary' : 'outline'}
-          size="sm"
-          onClick={() => setShowAdvanced(!showAdvanced)}
-          className="gap-1.5"
-        >
-          <SlidersHorizontal className="h-4 w-4" /> CV zoeken
-        </Button>
-        <span className="text-sm text-muted-foreground">{total} kandidaten</span>
-      </div>
+      )}
+
+      {activeTab === 'in-dienst' && (
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="relative flex-1 max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input placeholder="Zoek op naam..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} className="pl-9" />
+          </div>
+          <Select value={employeeStatusFilter} onValueChange={(v) => { setEmployeeStatusFilter(v); setPage(0); }}>
+            <SelectTrigger className="w-40"><SelectValue placeholder="Status" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Alle statussen</SelectItem>
+              {Object.entries(employeeStatusLabel).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <span className="text-sm text-muted-foreground">{employeeTotal} in dienst</span>
+        </div>
+      )}
 
       {/* Advanced: CV full-text search */}
-      {showAdvanced && (
+      {activeTab === 'alle' && showAdvanced && (
         <div className="bg-card rounded-lg border p-4">
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Zoek in CV-tekst</label>
@@ -222,107 +318,204 @@ const Candidates = () => {
         </div>
       )}
 
-      {!isLoading && candidates.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <Users className="h-12 w-12 text-muted-foreground/40 mb-4" />
-          <p className="text-lg font-medium text-muted-foreground">Nog geen kandidaten</p>
-          <Button onClick={() => navigate('/kandidaten/new')} variant="outline" className="mt-4 gap-2">
-            <Plus className="h-4 w-4" /> Voeg je eerste kandidaat toe
-          </Button>
-        </div>
-      ) : (
+      {/* ===== ALLE KANDIDATEN TAB ===== */}
+      {activeTab === 'alle' && (
         <>
-          <div className="bg-card rounded-lg border overflow-x-auto">
-            <Table className="min-w-[700px]">
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-10">
-                    <Checkbox checked={allOnPageSelected} onCheckedChange={toggleAll} />
-                  </TableHead>
-                  <TableHead>Naam</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Profiel</TableHead>
-                  <TableHead>Telefoon</TableHead>
-                  <TableHead>E-mail</TableHead>
-                  <TableHead>Vaardigheden</TableHead>
-                  <TableHead>Compliance</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {candidates.map((c: any, i: number) => {
-                  const skills = c.skills ?? [];
-                  const profileStatus = getProfileLinkStatus(c, tokensList);
-                  return (
-                    <TableRow key={c.id} className={i % 2 === 1 ? 'bg-background' : ''}>
-                      <TableCell onClick={(e) => e.stopPropagation()}>
-                        <Checkbox checked={selected.has(c.id)} onCheckedChange={() => toggleCandidate(c.id)} />
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1.5">
-                          {c.screened_at && (c.screening_data as any)?.result && (c.screening_data as any)?.result !== 'niet_gescreend' ? (
-                            (c.screening_data as any)?.result === 'goedgekeurd' ? (
-                              <CheckCircle2 className="h-3.5 w-3.5 text-stat-green flex-shrink-0" />
-                            ) : (c.screening_data as any)?.result === 'afgekeurd' ? (
-                              <XCircle className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
-                            ) : (
-                              <span className="h-2 w-2 rounded-full bg-muted-foreground/40 flex-shrink-0" />
-                            )
-                          ) : (
-                            <span className="h-2 w-2 rounded-full bg-muted-foreground/20 flex-shrink-0" />
-                          )}
-                          <Link to={`/kandidaten/${c.id}`} className="font-medium text-foreground hover:text-primary transition-colors">
-                            {c.first_name} {c.last_name}
-                          </Link>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="secondary" className={statusBadge[c.status] ?? ''}>
-                          {statusLabel[c.status] ?? c.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="secondary" className={profileStatus.className}>
-                          {profileStatus.label}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>{c.phone ?? '—'}</TableCell>
-                      <TableCell>{c.email ?? '—'}</TableCell>
-                      <TableCell>
-                        <div className="flex gap-1 flex-wrap">
-                          {skills.slice(0, 3).map((s: string) => (
-                            <Badge key={s} variant="outline" className="text-xs">{s}</Badge>
-                          ))}
-                          {skills.length > 3 && <Badge variant="outline" className="text-xs">+{skills.length - 3}</Badge>}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="secondary" className={complianceBadge[c.compliance_status] ?? ''}>
-                          {c.compliance_status}
-                        </Badge>
-                      </TableCell>
+          {!isLoading && candidates.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <Users className="h-12 w-12 text-muted-foreground/40 mb-4" />
+              <p className="text-lg font-medium text-muted-foreground">Nog geen kandidaten</p>
+              <Button onClick={() => navigate('/kandidaten/new')} variant="outline" className="mt-4 gap-2">
+                <Plus className="h-4 w-4" /> Voeg je eerste kandidaat toe
+              </Button>
+            </div>
+          ) : (
+            <>
+              <div className="bg-card rounded-lg border overflow-x-auto">
+                <Table className="min-w-[700px]">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-10">
+                        <Checkbox checked={allOnPageSelected} onCheckedChange={toggleAll} />
+                      </TableHead>
+                      <TableHead>Naam</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Profiel</TableHead>
+                      <TableHead>Telefoon</TableHead>
+                      <TableHead>E-mail</TableHead>
+                      <TableHead>Vaardigheden</TableHead>
+                      <TableHead>Compliance</TableHead>
                     </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
+                  </TableHeader>
+                  <TableBody>
+                    {candidates.map((c: any, i: number) => {
+                      const skills = c.skills ?? [];
+                      const profileStatus = getProfileLinkStatus(c, tokensList);
+                      return (
+                        <TableRow key={c.id} className={i % 2 === 1 ? 'bg-background' : ''}>
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            <Checkbox checked={selected.has(c.id)} onCheckedChange={() => toggleCandidate(c.id)} />
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1.5">
+                              {c.screened_at && (c.screening_data as any)?.result && (c.screening_data as any)?.result !== 'niet_gescreend' ? (
+                                (c.screening_data as any)?.result === 'goedgekeurd' ? (
+                                  <CheckCircle2 className="h-3.5 w-3.5 text-stat-green flex-shrink-0" />
+                                ) : (c.screening_data as any)?.result === 'afgekeurd' ? (
+                                  <XCircle className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
+                                ) : (
+                                  <span className="h-2 w-2 rounded-full bg-muted-foreground/40 flex-shrink-0" />
+                                )
+                              ) : (
+                                <span className="h-2 w-2 rounded-full bg-muted-foreground/20 flex-shrink-0" />
+                              )}
+                              <Link to={`/kandidaten/${c.id}`} className="font-medium text-foreground hover:text-primary transition-colors">
+                                {c.first_name} {c.last_name}
+                              </Link>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="secondary" className={statusBadge[c.status] ?? ''}>
+                              {statusLabel[c.status] ?? c.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="secondary" className={profileStatus.className}>
+                              {profileStatus.label}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>{c.phone ?? '—'}</TableCell>
+                          <TableCell>{c.email ?? '—'}</TableCell>
+                          <TableCell>
+                            <div className="flex gap-1 flex-wrap">
+                              {skills.slice(0, 3).map((s: string) => (
+                                <Badge key={s} variant="outline" className="text-xs">{s}</Badge>
+                              ))}
+                              {skills.length > 3 && <Badge variant="outline" className="text-xs">+{skills.length - 3}</Badge>}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="secondary" className={complianceBadge[c.compliance_status] ?? ''}>
+                              {c.compliance_status}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
 
-          {totalPages > 1 && (
-            <Pagination>
-              <PaginationContent>
-                <PaginationItem>
-                  <PaginationPrevious onClick={() => setPage(Math.max(0, page - 1))} className={page === 0 ? 'pointer-events-none opacity-50' : 'cursor-pointer'} />
-                </PaginationItem>
-                {Array.from({ length: totalPages }, (_, i) => (
-                  <PaginationItem key={i}>
-                    <PaginationLink isActive={i === page} onClick={() => setPage(i)} className="cursor-pointer">{i + 1}</PaginationLink>
-                  </PaginationItem>
-                ))}
-                <PaginationItem>
-                  <PaginationNext onClick={() => setPage(Math.min(totalPages - 1, page + 1))} className={page >= totalPages - 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'} />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
+              {totalPages > 1 && (
+                <Pagination>
+                  <PaginationContent>
+                    <PaginationItem>
+                      <PaginationPrevious onClick={() => setPage(Math.max(0, page - 1))} className={page === 0 ? 'pointer-events-none opacity-50' : 'cursor-pointer'} />
+                    </PaginationItem>
+                    {Array.from({ length: totalPages }, (_, i) => (
+                      <PaginationItem key={i}>
+                        <PaginationLink isActive={i === page} onClick={() => setPage(i)} className="cursor-pointer">{i + 1}</PaginationLink>
+                      </PaginationItem>
+                    ))}
+                    <PaginationItem>
+                      <PaginationNext onClick={() => setPage(Math.min(totalPages - 1, page + 1))} className={page >= totalPages - 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'} />
+                    </PaginationItem>
+                  </PaginationContent>
+                </Pagination>
+              )}
+            </>
+          )}
+        </>
+      )}
+
+      {/* ===== IN DIENST TAB ===== */}
+      {activeTab === 'in-dienst' && (
+        <>
+          {!employeesLoading && employees.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <Users className="h-12 w-12 text-muted-foreground/40 mb-4" />
+              <p className="text-lg font-medium text-muted-foreground">Nog geen kandidaten in dienst</p>
+              <Button onClick={() => navigate('/medewerkers/new')} variant="outline" className="mt-4 gap-2">
+                <UserPlus className="h-4 w-4" /> Kandidaat in dienst nemen
+              </Button>
+            </div>
+          ) : (
+            <>
+              <div className="bg-card rounded-lg border overflow-x-auto">
+                <Table className="min-w-[700px]">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Naam</TableHead>
+                      <TableHead>Medewerkernr.</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Compliance</TableHead>
+                      <TableHead>Startdatum</TableHead>
+                      <TableHead>Huisvesting</TableHead>
+                      <TableHead>Portaal</TableHead>
+                      <TableHead>Actieve plaatsing</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {employees.map((c: any, i: number) => {
+                      const hasHousing = (c.housing_assignments ?? []).some((h: any) => h.status === 'ingecheckt');
+                      const activePlacement = (c.placements ?? []).find((p: any) => p.status === 'actief');
+                      const companyName = activePlacement?.companies?.name;
+                      const sortedEmployments = (c.candidate_employment ?? [])
+                        .sort((a: any, b: any) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime());
+                      const currentEmployment = sortedEmployments.find((e: any) => e.is_current) ?? sortedEmployments[0];
+                      return (
+                        <TableRow key={c.id} className={i % 2 === 1 ? 'bg-background' : ''}>
+                          <TableCell>
+                            <Link to={`/kandidaten/${c.id}`} className="font-medium text-foreground hover:text-primary transition-colors">
+                              {c.first_name} {c.last_name}
+                            </Link>
+                          </TableCell>
+                          <TableCell>{c.employee_number ?? '—'}</TableCell>
+                          <TableCell>
+                            <Badge variant="secondary" className={employeeStatusBadge[c.employee_status] ?? ''}>
+                              {employeeStatusLabel[c.employee_status] ?? c.employee_status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="secondary" className={complianceBadge[c.compliance_status] ?? ''}>
+                              {c.compliance_status ?? '—'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>{formatDate(currentEmployment?.start_date)}</TableCell>
+                          <TableCell>
+                            {hasHousing
+                              ? <Check className="h-4 w-4 text-stat-green" />
+                              : <X className="h-4 w-4 text-red-500" />}
+                          </TableCell>
+                          <TableCell>
+                            <span className={`inline-block h-2.5 w-2.5 rounded-full ${c.portal_enabled ? 'bg-stat-green' : 'bg-muted-foreground/30'}`} />
+                          </TableCell>
+                          <TableCell>{companyName ?? '—'}</TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {employeeTotalPages > 1 && (
+                <Pagination>
+                  <PaginationContent>
+                    <PaginationItem>
+                      <PaginationPrevious onClick={() => setPage(Math.max(0, page - 1))} className={page === 0 ? 'pointer-events-none opacity-50' : 'cursor-pointer'} />
+                    </PaginationItem>
+                    {Array.from({ length: employeeTotalPages }, (_, i) => (
+                      <PaginationItem key={i}>
+                        <PaginationLink isActive={i === page} onClick={() => setPage(i)} className="cursor-pointer">{i + 1}</PaginationLink>
+                      </PaginationItem>
+                    ))}
+                    <PaginationItem>
+                      <PaginationNext onClick={() => setPage(Math.min(employeeTotalPages - 1, page + 1))} className={page >= employeeTotalPages - 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'} />
+                    </PaginationItem>
+                  </PaginationContent>
+                </Pagination>
+              )}
+            </>
           )}
         </>
       )}

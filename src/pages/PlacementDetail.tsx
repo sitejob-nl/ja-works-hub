@@ -151,7 +151,7 @@ const PlacementDetail = () => {
         </div>
         <div className="flex items-center gap-2">
           {company && <Link to={`/opdrachtgevers/${company.id}`} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"><Building2 className="h-3 w-3" />{company.name}</Link>}
-          {emp && <Link to={`/medewerkers/${emp.id}`} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"><User className="h-3 w-3" />{cand?.first_name} {cand?.last_name}</Link>}
+          {placement.candidate_id && <Link to={`/kandidaten/${placement.candidate_id}`} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"><User className="h-3 w-3" />{cand?.first_name} {cand?.last_name}</Link>}
         </div>
       </div>
 

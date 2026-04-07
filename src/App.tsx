@@ -1,7 +1,7 @@
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { RecentItemsProvider } from "@/contexts/RecentItemsContext";
 import { SuperAdminProvider } from "@/contexts/SuperAdminContext";
@@ -133,7 +133,7 @@ const App = () => (
               <Route path="/kandidaten/new" element={<CandidateNew />} />
               <Route path="/kandidaten/:id" element={<CandidateDetail />} />
               <Route path="/kandidaten/:id/bewerken" element={<CandidateEdit />} />
-              <Route path="/medewerkers" element={<Employees />} />
+              <Route path="/medewerkers" element={<Navigate to="/kandidaten?tab=in-dienst" replace />} />
               <Route path="/medewerkers/new" element={<EmployeeNew />} />
               <Route path="/medewerkers/:id" element={<EmployeeDetail />} />
               <Route path="/contacten" element={<Contacts />} />

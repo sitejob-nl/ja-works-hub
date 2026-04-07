@@ -36,7 +36,6 @@ const navGroups: NavGroup[] = [
     items: [
       { label: 'Opdrachtgevers', icon: Building2, path: '/opdrachtgevers', moduleKey: 'opdrachtgevers', roles: ['intercedent', 'backoffice'] },
       { label: 'Kandidaten', icon: Users, path: '/kandidaten', moduleKey: 'kandidaten', roles: ['intercedent', 'backoffice'] },
-      { label: 'Medewerkers', icon: UserCheck, path: '/medewerkers', moduleKey: 'medewerkers', roles: ['intercedent', 'backoffice'] },
       { label: 'Contacten', icon: UserRound, path: '/contacten', moduleKey: 'contacten', roles: ['intercedent', 'backoffice'] },
       { label: 'Talentpools', icon: FolderHeart, path: '/talentpools', moduleKey: 'talentpools', roles: ['intercedent'] },
     ],

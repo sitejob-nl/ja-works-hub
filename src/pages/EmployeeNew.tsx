@@ -93,7 +93,7 @@ const EmployeeNew = () => {
       } else {
         toast.success('Medewerker aangemaakt');
       }
-      navigate(`/medewerkers/${result.employeeId}`);
+      navigate(`/kandidaten/${selectedCandidate.id}`);
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -101,7 +101,7 @@ const EmployeeNew = () => {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-1 text-sm text-muted-foreground">
-        <Link to="/medewerkers" className="hover:text-foreground transition-colors">Medewerkers</Link>
+        <Link to="/kandidaten" className="hover:text-foreground transition-colors">Kandidaten</Link>
         <ChevronRight className="h-3 w-3" />
         <span className="text-foreground">In dienst nemen</span>
       </div>
@@ -165,7 +165,7 @@ const EmployeeNew = () => {
             <div className="space-y-1.5"><Label>Notities</Label><Textarea value={form.notes} onChange={(e) => setForm(f => ({ ...f, notes: e.target.value }))} rows={3} /></div>
 
             <div className="flex justify-end gap-3 pt-4 border-t">
-              <Button variant="ghost" onClick={() => navigate('/medewerkers')}>Annuleren</Button>
+              <Button variant="ghost" onClick={() => navigate('/kandidaten?tab=in-dienst')}>Annuleren</Button>
               <Button onClick={() => hire.mutate()} disabled={!form.start_date || hire.isPending}>
                 {hire.isPending ? 'Opslaan...' : 'In dienst nemen'}
               </Button>

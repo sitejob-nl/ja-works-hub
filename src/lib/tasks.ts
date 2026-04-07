@@ -10,7 +10,7 @@ export const priorityConfig: Record<string, { label: string; color: string; icon
 export const entityLinks: Record<string, (id: string) => string> = {
   candidate: (id) => `/kandidaten/${id}`,
   kandidaat: (id) => `/kandidaten/${id}`,
-  employee: (id) => `/medewerkers/${id}`,
+  employee: (id) => `/kandidaten/${id}`,
   opdrachtgever: (id) => `/opdrachtgevers/${id}`,
   vacancy: (id) => `/vacatures/${id}`,
   vacature: (id) => `/vacatures/${id}`,

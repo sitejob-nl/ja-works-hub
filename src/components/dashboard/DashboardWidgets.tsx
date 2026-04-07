@@ -205,7 +205,7 @@ export const MissingDocumentsCard = () => {
                 className="w-full flex items-center justify-between p-2 rounded-md hover:bg-muted/50 text-sm"
               >
                 <button
-                  onClick={() => navigate(`/medewerkers/${emp.id}`)}
+                  onClick={() => navigate(`/kandidaten/${emp.candidate_id}`)}
                   className="font-medium text-left hover:underline"
                 >
                   {emp.candidates?.first_name} {emp.candidates?.last_name}
@@ -220,7 +220,7 @@ export const MissingDocumentsCard = () => {
                     size="sm"
                     variant="ghost"
                     className="h-6 w-6 p-0 ml-1"
-                    onClick={() => navigate(`/medewerkers/${emp.id}`)}
+                    onClick={() => navigate(`/kandidaten/${emp.candidate_id}`)}
                     title="Upload document"
                   >
                     <Upload className="h-3.5 w-3.5" />

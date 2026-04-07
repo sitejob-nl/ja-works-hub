@@ -270,7 +270,7 @@ const Planning = () => {
                     return (
                       <TableRow key={employee?.id}>
                         <TableCell className="font-medium sticky left-0 bg-card z-10">
-                          <button className="text-left hover:text-primary transition-colors" onClick={() => navigate(`/medewerkers/${employee?.id}`)}>
+                          <button className="text-left hover:text-primary transition-colors" onClick={() => navigate(`/kandidaten/${empPlacements[0]?.candidate_id ?? employee?.id}`)}>
                             {empName}
                           </button>
                         </TableCell>
@@ -326,7 +326,7 @@ const Planning = () => {
                       return (
                         <TableRow key={p.id}>
                           <TableCell>
-                            <button className="font-medium hover:text-primary transition-colors" onClick={() => navigate(`/medewerkers/${p.employee_id}`)}>
+                            <button className="font-medium hover:text-primary transition-colors" onClick={() => navigate(`/kandidaten/${p.candidate_id}`)}>
                               {cand?.first_name} {cand?.last_name}
                             </button>
                           </TableCell>
@@ -402,7 +402,7 @@ const PlacementCell = ({ placement, navigate }: { placement: any; navigate: any 
           <div><span className="font-medium text-foreground">Compliance:</span> <Badge variant={placement.compliance_check_passed ? 'default' : 'destructive'} className="ml-1">{placement.compliance_check_passed ? 'OK' : 'Niet voldaan'}</Badge></div>
         </div>
         <div className="flex gap-2 pt-2">
-          <Button size="sm" variant="outline" onClick={() => navigate(`/medewerkers/${placement.employee_id}`)}>Medewerker</Button>
+          <Button size="sm" variant="outline" onClick={() => navigate(`/kandidaten/${placement.candidate_id}`)}>Medewerker</Button>
           <Button size="sm" variant="outline" onClick={() => navigate(`/opdrachtgevers/${placement.company_id}`)}>Opdrachtgever</Button>
         </div>
       </PopoverContent>

@@ -124,7 +124,7 @@ export default function PlacementsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Medewerker</TableHead>
+                  <TableHead>Kandidaat</TableHead>
                   <TableHead>Opdrachtgever</TableHead>
                   <TableHead>Functie</TableHead>
                   <TableHead>Payroller</TableHead>

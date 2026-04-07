@@ -131,7 +131,7 @@ const TopBar = ({ onMenuClick }: TopBarProps) => {
 
       {/* Command palette */}
       <CommandDialog open={open} onOpenChange={setOpen}>
-        <CommandInput placeholder="Zoek kandidaten, medewerkers, opdrachtgevers..." value={query} onValueChange={setQuery} />
+        <CommandInput placeholder="Zoek kandidaten, opdrachtgevers..." value={query} onValueChange={setQuery} />
         <CommandList>
           <CommandEmpty>Geen resultaten gevonden.</CommandEmpty>
           {results.candidates.length > 0 && (
@@ -145,9 +145,9 @@ const TopBar = ({ onMenuClick }: TopBarProps) => {
             </CommandGroup>
           )}
           {results.employees.length > 0 && (
-            <CommandGroup heading="Medewerkers">
+            <CommandGroup heading="In dienst">
               {results.employees.map((e: any) => (
-                <CommandItem key={e.id} onSelect={() => { navigate(`/medewerkers/${e.id}`); setOpen(false); setQuery(''); }}>
+                <CommandItem key={e.id} onSelect={() => { navigate(`/kandidaten/${e.candidates?.id ?? e.candidate_id}`); setOpen(false); setQuery(''); }}>
                   <span>{e.candidates?.first_name} {e.candidates?.last_name}</span>
                   {e.employee_number && <span className="ml-auto text-xs text-muted-foreground">#{e.employee_number}</span>}
                 </CommandItem>

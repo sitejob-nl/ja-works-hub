@@ -57,7 +57,7 @@ const VacancyPlacementsTab = ({ vacancyId }: { vacancyId: string }) => {
             return (
               <TableRow key={p.id}>
                 <TableCell>
-                  {emp ? <Link to={`/medewerkers/${emp.id}`} className="font-medium hover:text-primary">{name}</Link> : name}
+                  {p.candidate_id ? <Link to={`/kandidaten/${p.candidate_id}`} className="font-medium hover:text-primary">{name}</Link> : name}
                 </TableCell>
                 <TableCell>{p.function_name}</TableCell>
                 <TableCell>{formatDate(p.start_date)}</TableCell>
