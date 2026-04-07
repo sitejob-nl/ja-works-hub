@@ -1,6 +1,7 @@
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { AlertTriangle, Briefcase, Target, Clock, MessageSquare, User, TrendingUp, Star } from 'lucide-react';
+import WorkHistoryTimeline from '@/components/candidates/WorkHistoryTimeline';
 
 interface AiAnalysis {
   werkhistorie?: {
@@ -105,6 +106,23 @@ const AiAnalysisCard = ({ analysis }: { analysis: AiAnalysis }) => {
         </Card>
       )}
 
+      {/* Classificatie badges */}
+      {(analysis.doelgroep?.functies?.length || analysis.eigenschappen) && (
+        <div className="flex flex-wrap gap-2">
+          {analysis.eigenschappen?.specialisatie && (
+            <Badge className={analysis.eigenschappen.specialisatie === 'specialist' ? 'bg-blue-100 text-blue-800 hover:bg-blue-100' : 'bg-green-100 text-green-800 hover:bg-green-100'}>
+              {analysis.eigenschappen.specialisatie === 'specialist' ? 'Specialist' : 'Productiekracht'}
+            </Badge>
+          )}
+          {analysis.doelgroep?.functies?.map((f, i) => (
+            <Badge key={i} variant="outline">{f}</Badge>
+          ))}
+          {analysis.doelgroep?.niveau && (
+            <Badge variant="secondary">{analysis.doelgroep.niveau}</Badge>
+          )}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Werkhistorie */}
         {analysis.werkhistorie && (
@@ -114,6 +132,11 @@ const AiAnalysisCard = ({ analysis }: { analysis: AiAnalysis }) => {
               <span className="font-medium">{analysis.werkhistorie.totale_werkervaring_jaren} jaar</span>
               {analysis.werkhistorie.patroon && <PatroonBadge patroon={analysis.werkhistorie.patroon} />}
             </div>
+            <WorkHistoryTimeline
+              werkgevers={analysis.werkhistorie.werkgevers}
+              gaten={analysis.werkhistorie.gaten}
+              totaleJaren={analysis.werkhistorie.totale_werkervaring_jaren}
+            />
             <div className="space-y-2">
               {analysis.werkhistorie.werkgevers?.map((w, i) => (
                 <div key={i} className="text-sm border-l-2 border-muted pl-3 py-1">

@@ -65,6 +65,13 @@ Deno.serve(async (req) => {
     // Handle success: write analysis to candidate
     console.log(`[analyze-cv-callback] Writing result for candidate=${candidate_id} org=${organization_id}`);
 
+    // Extract skills and certifications from analysis for auto-fill
+    const hardSkills: string[] = analysis?.competenties?.hard_skills || [];
+    const softSkills: string[] = analysis?.competenties?.soft_skills || [];
+    const certifications: string[] = analysis?.competenties?.certificaten || [];
+    const allSkills = [...new Set([...hardSkills, ...softSkills])].filter(Boolean);
+    const targetFunctions: string[] = analysis?.doelgroep?.functies || [];
+
     const { error: updateError } = await supabase
       .from("candidates")
       .update({
@@ -77,6 +84,11 @@ Deno.serve(async (req) => {
         ai_interview_questions: analysis?.plaatsingsadvies?.interviewvragen || [],
         ai_risk_factors: analysis?.plaatsingsadvies?.risicos || [],
         ai_summary: analysis?.samenvatting?.profiel || null,
+        ai_target_functions: targetFunctions,
+        ai_positive_signals: analysis?.samenvatting?.positieve_signalen || [],
+        // Auto-fill profile fields from AI extraction (only if currently empty)
+        ...(allSkills.length > 0 ? { skills: allSkills } : {}),
+        ...(certifications.length > 0 ? { certifications } : {}),
       })
       .eq("id", candidate_id)
       .eq("organization_id", organization_id);

@@ -59,6 +59,9 @@ const Onboarding = () => {
     address_street: '', address_postal: '', address_city: '', address_country: 'NL',
   });
   const [reglementAccepted, setReglementAccepted] = useState(false);
+  const [docFiles, setDocFiles] = useState<{ id_bewijs: File | null; rijbewijs: File | null; certificaat: File | null }>({
+    id_bewijs: null, rijbewijs: null, certificaat: null,
+  });
 
   useEffect(() => {
     if (!token) { setStatus('error'); setErrorMsg('Geen token opgegeven'); return; }
@@ -170,6 +173,14 @@ const Onboarding = () => {
   };
 
   // Fallback submit (old behavior)
+  const fileToBase64 = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
   const handleSubmitFallback = async () => {
     if (!fallbackForm.bsn || !fallbackForm.iban || !fallbackForm.date_of_birth) {
       toast.error('Vul alle verplichte velden in (BSN, IBAN, geboortedatum)');
@@ -177,6 +188,14 @@ const Onboarding = () => {
     }
     setSubmitting(true);
     try {
+      // Prepare document uploads as base64
+      const documents: Array<{ type: string; name: string; data: string }> = [];
+      for (const [type, file] of Object.entries(docFiles)) {
+        if (file && file.size <= 10 * 1024 * 1024) {
+          documents.push({ type, name: file.name, data: await fileToBase64(file) });
+        }
+      }
+
       const res = await fetch(`${SUPABASE_URL}/functions/v1/onboarding-submit`, {
         method: 'POST',
         headers: {
@@ -184,7 +203,7 @@ const Onboarding = () => {
           'apikey': SUPABASE_ANON_KEY,
           'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
         },
-        body: JSON.stringify({ token, personal_data: fallbackForm, documents_accepted: reglementAccepted }),
+        body: JSON.stringify({ token, personal_data: fallbackForm, documents_accepted: reglementAccepted, documents }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Fout bij indienen');
@@ -347,6 +366,25 @@ const Onboarding = () => {
                 <div><Label>Postcode</Label><Input value={fallbackForm.address_postal} onChange={e => setFallback('address_postal', e.target.value)} /></div>
                 <div><Label>Stad</Label><Input value={fallbackForm.address_city} onChange={e => setFallback('address_city', e.target.value)} /></div>
               </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader><CardTitle className="text-base">Documenten uploaden</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              <div>
+                <Label>ID-bewijs (paspoort/identiteitskaart)</Label>
+                <Input type="file" accept="image/*,.pdf" onChange={e => setDocFiles(prev => ({ ...prev, id_bewijs: e.target.files?.[0] ?? null }))} />
+              </div>
+              <div>
+                <Label>Rijbewijs (optioneel)</Label>
+                <Input type="file" accept="image/*,.pdf" onChange={e => setDocFiles(prev => ({ ...prev, rijbewijs: e.target.files?.[0] ?? null }))} />
+              </div>
+              <div>
+                <Label>Certificaat (optioneel)</Label>
+                <Input type="file" accept="image/*,.pdf" onChange={e => setDocFiles(prev => ({ ...prev, certificaat: e.target.files?.[0] ?? null }))} />
+              </div>
+              <p className="text-xs text-muted-foreground">Foto of PDF, max 10MB per bestand</p>
             </CardContent>
           </Card>
 

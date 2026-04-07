@@ -85,8 +85,26 @@ const CvTool = () => {
     }
   };
 
-  const handleDownload = () => {
-    window.print();
+  const handleDownload = async () => {
+    const element = document.getElementById('cv-preview');
+    if (!element) { window.print(); return; }
+
+    try {
+      const html2pdf = (await import('html2pdf.js')).default;
+      const candidateName = `${candidate?.first_name ?? 'CV'}_${candidate?.last_name ?? ''}`.replace(/\s+/g, '_');
+      await html2pdf()
+        .set({
+          margin: [10, 10, 10, 10],
+          filename: `${candidateName}_CV.pdf`,
+          image: { type: 'jpeg', quality: 0.95 },
+          html2canvas: { scale: 2, useCORS: true },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        })
+        .from(element)
+        .save();
+    } catch {
+      window.print();
+    }
   };
 
   const toggleSection = (key: string) => {
@@ -134,7 +152,7 @@ const CvTool = () => {
         </div>
 
         {/* CV Preview */}
-        <div className="lg:col-span-3">
+        <div className="lg:col-span-3" id="cv-preview">
           {hasSections ? (
             <CvTemplate
               candidate={candidate}

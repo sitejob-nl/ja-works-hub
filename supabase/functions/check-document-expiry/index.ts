@@ -76,6 +76,32 @@ Deno.serve(async (req) => {
         .eq("id", candidateId);
     }
 
+    // 5. Create notifications for expired and expiring documents
+    const notifications: any[] = [];
+    for (const doc of (expired ?? []) as any[]) {
+      if (doc.candidate_id) {
+        notifications.push({
+          candidate_id: doc.candidate_id,
+          title: "Document verlopen",
+          message: `Een document is verlopen. Controleer je documenten en upload een nieuw exemplaar.`,
+          read: false,
+        });
+      }
+    }
+    for (const doc of (expiring ?? []) as any[]) {
+      if (doc.candidate_id) {
+        notifications.push({
+          candidate_id: doc.candidate_id,
+          title: "Document verloopt binnenkort",
+          message: `Een document verloopt binnen 30 dagen. Zorg voor een verlenging.`,
+          read: false,
+        });
+      }
+    }
+    if (notifications.length > 0) {
+      await adminClient.from("employee_notifications").insert(notifications);
+    }
+
     return new Response(
       JSON.stringify({
         expired: expired?.length ?? 0,

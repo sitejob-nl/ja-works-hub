@@ -5,10 +5,11 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Brain, Upload, Loader2, CheckCircle2, XCircle, FileText, Clock } from 'lucide-react';
+import { Brain, Upload, Loader2, CheckCircle2, XCircle, FileText, Clock, ArrowDownToLine } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDate } from '@/lib/format';
 import AiAnalysisCard from '@/components/AiAnalysisCard';
+import { logAudit } from '@/lib/audit';
 
 const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => {
   const qc = useQueryClient();
@@ -252,7 +253,49 @@ const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => 
 
       {/* Analysis results */}
       {hasAnalysis && (
-        <AiAnalysisCard analysis={candidate.ai_analysis} />
+        <>
+          <AiAnalysisCard analysis={candidate.ai_analysis} />
+          <Card className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Profiel bijwerken vanuit AI-analyse</p>
+              <p className="text-xs text-muted-foreground">Neem vaardigheden, certificaten en functiegroep over naar het profiel</p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={async () => {
+                const analysis = candidate.ai_analysis;
+                const hardSkills: string[] = analysis?.competenties?.hard_skills || [];
+                const softSkills: string[] = analysis?.competenties?.soft_skills || [];
+                const certs: string[] = analysis?.competenties?.certificaten || [];
+                const allSkills = [...new Set([...hardSkills, ...softSkills])].filter(Boolean);
+
+                const updates: Record<string, any> = {};
+                if (allSkills.length > 0) updates.skills = allSkills;
+                if (certs.length > 0) updates.certifications = certs;
+                if (analysis?.doelgroep?.functies?.[0]) updates.ai_function_group = analysis.doelgroep.functies[0];
+                if (analysis?.eigenschappen?.specialisatie) {
+                  updates.ai_classification = analysis.eigenschappen.specialisatie === 'specialist' ? 'specialist' : 'productie';
+                }
+
+                if (Object.keys(updates).length === 0) {
+                  toast.info('Geen gegevens om over te nemen');
+                  return;
+                }
+
+                const { error } = await supabase.from('candidates').update(updates).eq('id', candidate.id);
+                if (error) { toast.error(error.message); return; }
+                logAudit({ action: 'update', tableName: 'candidates', recordId: candidate.id, newValues: updates, reason: 'AI analyse overgenomen naar profiel' });
+                qc.invalidateQueries({ queryKey: ['candidate', candidate.id] });
+                toast.success(`${Object.keys(updates).length} velden overgenomen naar profiel`);
+              }}
+            >
+              <ArrowDownToLine className="h-3.5 w-3.5" />
+              Overnemen naar profiel
+            </Button>
+          </Card>
+        </>
       )}
 
       {/* Quick summary fields if present but no full analysis card */}

@@ -224,6 +224,37 @@ Deno.serve(async (req) => {
         }
       }
 
+      // Upload document files if provided
+      const uploadedDocs = body.documents;
+      if (Array.isArray(uploadedDocs)) {
+        for (const doc of uploadedDocs) {
+          if (!doc.data || !doc.type || !doc.name) continue;
+          try {
+            // Convert base64 data URL to binary
+            const base64Data = doc.data.split(",")[1];
+            if (!base64Data) continue;
+            const binaryData = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0));
+            const ext = doc.name.split(".").pop() || "bin";
+            const storagePath = `${tokenData.organization_id}/${candidateId}/${crypto.randomUUID()}.${ext}`;
+
+            await admin.storage.from("documents").upload(storagePath, binaryData, {
+              contentType: doc.data.split(";")[0]?.split(":")[1] || "application/octet-stream",
+            });
+
+            await admin.from("documents").insert({
+              organization_id: tokenData.organization_id,
+              candidate_id: candidateId,
+              name: doc.name,
+              type: doc.type, // id_bewijs, rijbewijs, certificaat
+              file_path: storagePath,
+              status: "geldig",
+            });
+          } catch (uploadErr) {
+            console.error(`[onboarding-submit] Doc upload failed: ${(uploadErr as Error).message}`);
+          }
+        }
+      }
+
       // Create reglement document if accepted
       if (documents_accepted) {
         await admin.from("documents").insert({
