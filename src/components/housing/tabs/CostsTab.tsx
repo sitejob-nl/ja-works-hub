@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { logAudit } from '@/lib/audit';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -44,7 +45,8 @@ const CostsTab = ({ property }: { property: any }) => {
       const { error } = await supabase.from('housing_assignments').update({ deposit_paid: paid }).eq('id', id);
       if (error) throw error;
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
+      logAudit({ action: 'update', tableName: 'housing_assignments', recordId: variables.id, newValues: { deposit_paid: variables.paid } });
       qc.invalidateQueries({ queryKey: ['property', property.id] });
       toast.success('Borg status bijgewerkt');
     },
@@ -55,7 +57,8 @@ const CostsTab = ({ property }: { property: any }) => {
       const { error } = await supabase.from('housing_assignments').update({ rent_paid_until: date || null }).eq('id', id);
       if (error) throw error;
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
+      logAudit({ action: 'update', tableName: 'housing_assignments', recordId: variables.id, newValues: { rent_paid_until: variables.date } });
       qc.invalidateQueries({ queryKey: ['property', property.id] });
       toast.success('Huur betaald tot bijgewerkt');
     },

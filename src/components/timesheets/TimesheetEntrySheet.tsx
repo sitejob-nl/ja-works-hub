@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
+import { logAudit } from '@/lib/audit';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -149,6 +150,7 @@ const TimesheetEntrySheet = ({ open, onOpenChange }: Props) => {
       if (error) throw error;
     },
     onSuccess: () => {
+      logAudit({ action: 'create', tableName: 'timesheets', recordId: employeeId, newValues: { work_date: workDate, hours, placement_id: placementId } });
       qc.invalidateQueries({ queryKey: ['timesheets'] });
       toast.success('Uren geregistreerd');
       onOpenChange(false);

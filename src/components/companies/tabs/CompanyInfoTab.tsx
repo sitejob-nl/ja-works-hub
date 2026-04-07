@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import CustomFieldsSection from '@/components/shared/CustomFieldsSection';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -329,6 +330,9 @@ const CompanyInfoTab = ({ company }: { company: any }) => {
           <p className="text-sm whitespace-pre-wrap">{company.notes}</p>
         </div>
       )}
+
+      {/* Custom fields */}
+      <CustomFieldsSection entityType="company" entityId={company.id} />
     </div>
   );
 };

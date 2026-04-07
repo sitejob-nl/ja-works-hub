@@ -6,23 +6,40 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, Star, Trash2, Check, X } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { Link } from 'react-router-dom';
+import { Badge } from '@/components/ui/badge';
+
+const CONTACT_ROLES = [
+  { value: 'admin', label: 'Admin' },
+  { value: 'plaatsing', label: 'Plaatsing' },
+  { value: 'hr', label: 'HR' },
+  { value: 'overig', label: 'Overig' },
+] as const;
+
+const ROLE_COLORS: Record<string, string> = {
+  admin: 'bg-blue-50 text-blue-700',
+  plaatsing: 'bg-green-50 text-green-700',
+  hr: 'bg-purple-50 text-purple-700',
+  overig: 'bg-gray-50 text-gray-600',
+};
 
 interface FormState {
   full_name: string;
   first_name: string;
   last_name: string;
   function_title: string;
+  role: string;
   phone: string;
   email: string;
   linkedin_url: string;
   notes: string;
 }
 
-const emptyForm: FormState = { full_name: '', first_name: '', last_name: '', function_title: '', phone: '', email: '', linkedin_url: '', notes: '' };
+const emptyForm: FormState = { full_name: '', first_name: '', last_name: '', function_title: '', role: 'overig', phone: '', email: '', linkedin_url: '', notes: '' };
 
 const ContactsTab = ({ companyId }: { companyId: string }) => {
   const orgId = useOrganizationId();
@@ -50,6 +67,7 @@ const ContactsTab = ({ companyId }: { companyId: string }) => {
       first_name: form.first_name || null,
       last_name: form.last_name || null,
       function_title: form.function_title || null,
+      role: form.role || 'overig',
       phone: form.phone || null,
       email: form.email || null,
       linkedin_url: form.linkedin_url || null,
@@ -113,6 +131,7 @@ const ContactsTab = ({ companyId }: { companyId: string }) => {
       first_name: c.first_name ?? '',
       last_name: c.last_name ?? '',
       function_title: c.function_title ?? '',
+      role: c.role ?? 'overig',
       phone: c.phone ?? '',
       email: c.email ?? '',
       linkedin_url: c.linkedin_url ?? '',
@@ -127,6 +146,14 @@ const ContactsTab = ({ companyId }: { companyId: string }) => {
     <>
       <TableCell><Input value={form.first_name} onChange={(e) => set('first_name', e.target.value)} placeholder="Voornaam" className="h-8" onClick={(e) => e.stopPropagation()} /></TableCell>
       <TableCell><Input value={form.last_name} onChange={(e) => set('last_name', e.target.value)} placeholder="Achternaam" className="h-8" onClick={(e) => e.stopPropagation()} /></TableCell>
+      <TableCell>
+        <Select value={form.role} onValueChange={(v) => set('role', v)}>
+          <SelectTrigger className="h-8" onClick={(e) => e.stopPropagation()}><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {CONTACT_ROLES.map(r => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </TableCell>
       <TableCell><Input value={form.function_title} onChange={(e) => set('function_title', e.target.value)} placeholder="Functie" className="h-8" onClick={(e) => e.stopPropagation()} /></TableCell>
       <TableCell><Input value={form.phone} onChange={(e) => set('phone', e.target.value)} placeholder="Telefoon" className="h-8" onClick={(e) => e.stopPropagation()} /></TableCell>
       <TableCell><Input value={form.email} onChange={(e) => set('email', e.target.value)} placeholder="E-mail" className="h-8" onClick={(e) => e.stopPropagation()} /></TableCell>
@@ -142,7 +169,7 @@ const ContactsTab = ({ companyId }: { companyId: string }) => {
 
   const renderExtraFields = () => (
     <TableRow>
-      <TableCell colSpan={7} className="pt-0 pb-3" onClick={(e) => e.stopPropagation()}>
+      <TableCell colSpan={8} className="pt-0 pb-3" onClick={(e) => e.stopPropagation()}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl pl-2">
           <div className="space-y-1">
             <label className="text-xs text-muted-foreground">LinkedIn</label>
@@ -172,6 +199,7 @@ const ContactsTab = ({ companyId }: { companyId: string }) => {
             <TableRow>
               <TableHead>Voornaam</TableHead>
               <TableHead>Achternaam</TableHead>
+              <TableHead>Rol</TableHead>
               <TableHead>Functie</TableHead>
               <TableHead>Telefoon</TableHead>
               <TableHead>E-mail</TableHead>
@@ -204,6 +232,13 @@ const ContactsTab = ({ companyId }: { companyId: string }) => {
                       {c.last_name || '—'}
                     </Link>
                   </TableCell>
+                  <TableCell>
+                    {c.role ? (
+                      <Badge variant="secondary" className={`text-[10px] ${ROLE_COLORS[c.role] || ''}`}>
+                        {CONTACT_ROLES.find(r => r.value === c.role)?.label ?? c.role}
+                      </Badge>
+                    ) : '—'}
+                  </TableCell>
                   <TableCell>{c.function_title ?? '—'}</TableCell>
                   <TableCell>{c.phone ?? '—'}</TableCell>
                   <TableCell>{c.email ?? '—'}</TableCell>
@@ -233,7 +268,7 @@ const ContactsTab = ({ companyId }: { companyId: string }) => {
               )
             ))}
             {contacts.length === 0 && !adding && (
-              <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">Nog geen contactpersonen</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">Nog geen contactpersonen</TableCell></TableRow>
             )}
           </TableBody>
         </Table>

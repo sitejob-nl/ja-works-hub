@@ -19,6 +19,7 @@ import RegulationsSettings from '@/components/settings/RegulationsSettings';
 import ContractTemplatesSettings from '@/components/settings/ContractTemplatesSettings';
 import OnboardingFormSettings from '@/components/settings/OnboardingFormSettings';
 import TerminationReasonsSettings from '@/components/settings/TerminationReasonsSettings';
+import CustomFieldsSettings from '@/components/settings/CustomFieldsSettings';
 import { applyBranding, BRANDING_DEFAULTS, type BrandingSettings } from '@/lib/branding';
 
 /* ---- Color conversion helpers ---- */
@@ -476,6 +477,17 @@ const Settings = () => {
 
           {/* Beëindigingsredenen */}
           <TerminationReasonsSettings />
+
+          {/* Extra velden */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Extra velden</CardTitle>
+              <CardDescription>Voeg aangepaste velden toe aan kandidaten, opdrachtgevers en meer</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <CustomFieldsSettings />
+            </CardContent>
+          </Card>
 
           {/* Data Import */}
           <Card>

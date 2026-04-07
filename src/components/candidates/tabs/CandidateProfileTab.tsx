@@ -9,6 +9,7 @@ import { Copy, Check, MessageCircle, Mail, Link2, RefreshCw } from 'lucide-react
 import { toast } from 'sonner';
 import { useDecryptedCandidate } from '@/hooks/useDecryptedCandidate';
 import SensitiveField from '@/components/ui/sensitive-field';
+import CustomFieldsSection from '@/components/shared/CustomFieldsSection';
 
 const Field = ({ label, value }: { label: string; value: string | null | undefined }) => (
   <div>
@@ -219,6 +220,9 @@ const CandidateProfileTab = ({ candidate }: { candidate: any }) => {
           </div>
         )}
       </div>
+
+      {/* Custom fields */}
+      <CustomFieldsSection entityType="candidate" entityId={candidate.id} />
     </div>
   );
 };

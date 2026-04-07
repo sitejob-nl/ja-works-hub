@@ -5,10 +5,13 @@ import type { Tables } from '@/integrations/supabase/types';
 
 type Profile = Tables<'profiles'>;
 
+type UserRole = 'admin' | 'intercedent' | 'backoffice' | 'finance' | 'medewerker';
+
 interface AuthContextType {
   session: Session | null;
   user: User | null;
   profile: Profile | null;
+  role: UserRole | null;
   loading: boolean;
   signOut: () => Promise<void>;
 }
@@ -17,11 +20,20 @@ const AuthContext = createContext<AuthContextType>({
   session: null,
   user: null,
   profile: null,
+  role: null,
   loading: true,
   signOut: async () => {},
 });
 
 export const useAuth = () => useContext(AuthContext);
+
+/** Check if the current user has one of the allowed roles. Admin always passes. */
+export const useHasRole = (allowedRoles: UserRole[]): boolean => {
+  const { role } = useAuth();
+  if (!role) return false;
+  if (role === 'admin') return true;
+  return allowedRoles.includes(role);
+};
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [session, setSession] = useState<Session | null>(null);
@@ -83,7 +95,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ session, user, profile, loading, signOut }}>
+    <AuthContext.Provider value={{ session, user, profile, role: (profile?.role as UserRole) ?? null, loading, signOut }}>
       {children}
     </AuthContext.Provider>
   );

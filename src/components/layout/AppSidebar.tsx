@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuth, useHasRole } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { applyBranding, type BrandingSettings } from '@/lib/branding';
 import { useQuery } from '@tanstack/react-query';
@@ -17,60 +17,64 @@ interface AppSidebarProps {
   onNavigate?: () => void;
 }
 
-const navGroups = [
+// roles: null = visible for all roles (admin always sees everything)
+type NavItem = { label: string; icon: any; path: string; moduleKey: string | null; roles: string[] | null };
+type NavGroup = { label: string | null; items: NavItem[] };
+
+const navGroups: NavGroup[] = [
   {
     label: null,
     items: [
-      { label: 'Dashboard', icon: LayoutDashboard, path: '/', moduleKey: null },
-      { label: 'Workbench', icon: ClipboardList, path: '/workbench', moduleKey: 'workbench' },
-      { label: 'Taken', icon: CheckSquare, path: '/taken', moduleKey: 'taken' },
-      { label: 'Dashboards', icon: BarChart2, path: '/dashboards', moduleKey: 'dashboards' },
+      { label: 'Dashboard', icon: LayoutDashboard, path: '/', moduleKey: null, roles: null },
+      { label: 'Workbench', icon: ClipboardList, path: '/workbench', moduleKey: 'workbench', roles: ['intercedent', 'backoffice'] },
+      { label: 'Taken', icon: CheckSquare, path: '/taken', moduleKey: 'taken', roles: null },
+      { label: 'Dashboards', icon: BarChart2, path: '/dashboards', moduleKey: 'dashboards', roles: null },
     ],
   },
   {
     label: 'Relaties',
     items: [
-      { label: 'Opdrachtgevers', icon: Building2, path: '/opdrachtgevers', moduleKey: 'opdrachtgevers' },
-      { label: 'Kandidaten', icon: Users, path: '/kandidaten', moduleKey: 'kandidaten' },
-      { label: 'Medewerkers', icon: UserCheck, path: '/medewerkers', moduleKey: 'medewerkers' },
-      { label: 'Contacten', icon: UserRound, path: '/contacten', moduleKey: 'contacten' },
-      { label: 'Talentpools', icon: FolderHeart, path: '/talentpools', moduleKey: 'talentpools' },
+      { label: 'Opdrachtgevers', icon: Building2, path: '/opdrachtgevers', moduleKey: 'opdrachtgevers', roles: ['intercedent', 'backoffice'] },
+      { label: 'Kandidaten', icon: Users, path: '/kandidaten', moduleKey: 'kandidaten', roles: ['intercedent', 'backoffice'] },
+      { label: 'Medewerkers', icon: UserCheck, path: '/medewerkers', moduleKey: 'medewerkers', roles: ['intercedent', 'backoffice'] },
+      { label: 'Contacten', icon: UserRound, path: '/contacten', moduleKey: 'contacten', roles: ['intercedent', 'backoffice'] },
+      { label: 'Talentpools', icon: FolderHeart, path: '/talentpools', moduleKey: 'talentpools', roles: ['intercedent'] },
     ],
   },
   {
     label: 'Werk',
     items: [
-      { label: 'Vacatures', icon: Briefcase, path: '/vacatures', moduleKey: 'vacatures' },
-      { label: 'Plaatsingen', icon: UserCheck, path: '/plaatsingen', moduleKey: 'plaatsingen' },
-      { label: 'Planning', icon: Calendar, path: '/planning', moduleKey: 'planning' },
-      { label: 'Uren', icon: Clock, path: '/uren', moduleKey: 'uren' },
-      { label: 'Facturatie', icon: FileText, path: '/facturatie', moduleKey: 'facturatie' },
-      { label: 'Uitstroom', icon: BarChart3, path: '/uitstroom-analyse', moduleKey: 'uitstroom-analyse' },
+      { label: 'Vacatures', icon: Briefcase, path: '/vacatures', moduleKey: 'vacatures', roles: ['intercedent'] },
+      { label: 'Plaatsingen', icon: UserCheck, path: '/plaatsingen', moduleKey: 'plaatsingen', roles: ['intercedent', 'backoffice'] },
+      { label: 'Planning', icon: Calendar, path: '/planning', moduleKey: 'planning', roles: ['intercedent', 'backoffice'] },
+      { label: 'Uren', icon: Clock, path: '/uren', moduleKey: 'uren', roles: ['intercedent', 'backoffice', 'finance'] },
+      { label: 'Facturatie', icon: FileText, path: '/facturatie', moduleKey: 'facturatie', roles: ['finance', 'backoffice'] },
+      { label: 'Uitstroom', icon: BarChart3, path: '/uitstroom-analyse', moduleKey: 'uitstroom-analyse', roles: ['intercedent', 'backoffice'] },
     ],
   },
   {
     label: 'Vastgoed & Fleet',
     items: [
-      { label: 'Huisvesting', icon: Home, path: '/huisvesting', moduleKey: 'huisvesting' },
-      { label: 'Transport', icon: Car, path: '/transport', moduleKey: 'transport' },
-      { label: 'Tankpas analyse', icon: Fuel, path: '/tankpas-analyse', moduleKey: 'tankpas-analyse' },
+      { label: 'Huisvesting', icon: Home, path: '/huisvesting', moduleKey: 'huisvesting', roles: ['intercedent', 'backoffice'] },
+      { label: 'Transport', icon: Car, path: '/transport', moduleKey: 'transport', roles: ['intercedent', 'backoffice'] },
+      { label: 'Tankpas analyse', icon: Fuel, path: '/tankpas-analyse', moduleKey: 'tankpas-analyse', roles: ['finance', 'backoffice'] },
     ],
   },
   {
     label: 'Communicatie',
     items: [
-      { label: 'Communicatie', icon: MessageSquare, path: '/communicatie', moduleKey: 'communicatie' },
-      { label: 'WhatsApp', icon: MessageSquare, path: '/whatsapp', moduleKey: 'whatsapp' },
-      { label: 'Bulk Campagnes', icon: Users, path: '/bulk-campaigns', moduleKey: 'bulk-campaigns' },
+      { label: 'Communicatie', icon: MessageSquare, path: '/communicatie', moduleKey: 'communicatie', roles: ['intercedent', 'backoffice'] },
+      { label: 'WhatsApp', icon: MessageSquare, path: '/whatsapp', moduleKey: 'whatsapp', roles: ['intercedent', 'backoffice'] },
+      { label: 'Bulk Campagnes', icon: Users, path: '/bulk-campaigns', moduleKey: 'bulk-campaigns', roles: ['intercedent'] },
     ],
   },
   {
     label: 'Tools',
     items: [
-      { label: 'Kennisbank', icon: BookOpen, path: '/kennisbank', moduleKey: 'kennisbank' },
-      { label: 'Vacaturebank', icon: Search, path: '/vacaturebank', moduleKey: 'vacaturebank' },
-      { label: 'Kandidaten zoeken', icon: UserSearch, path: '/kandidaten-zoeken', moduleKey: 'kandidaten-zoeken' },
-      { label: 'Exact Online', icon: Calculator, path: '/exact-online', moduleKey: 'exact-online' },
+      { label: 'Kennisbank', icon: BookOpen, path: '/kennisbank', moduleKey: 'kennisbank', roles: null },
+      { label: 'Vacaturebank', icon: Search, path: '/vacaturebank', moduleKey: 'vacaturebank', roles: ['intercedent'] },
+      { label: 'Kandidaten zoeken', icon: UserSearch, path: '/kandidaten-zoeken', moduleKey: 'kandidaten-zoeken', roles: ['intercedent'] },
+      { label: 'Exact Online', icon: Calculator, path: '/exact-online', moduleKey: 'exact-online', roles: ['finance', 'backoffice'] },
     ],
   },
 ];
@@ -138,6 +142,8 @@ const AppSidebar = ({ onNavigate }: AppSidebarProps) => {
     staleTime: 60_000,
   });
 
+  const userRole = profile?.role as string | undefined;
+
   const isModuleEnabled = (moduleKey: string | null): boolean => {
     if (!moduleKey) return true;
     const override = moduleOverrides?.find(m => m.module_name === moduleKey);
@@ -146,10 +152,16 @@ const AppSidebar = ({ onNavigate }: AppSidebarProps) => {
     return true;
   };
 
+  const isRoleAllowed = (roles: string[] | null): boolean => {
+    if (!roles) return true; // null = visible for all
+    if (userRole === 'admin') return true; // admin sees everything
+    return !!userRole && roles.includes(userRole);
+  };
+
   const filteredGroups = navGroups
     .map(group => ({
       ...group,
-      items: group.items.filter(item => isModuleEnabled(item.moduleKey)),
+      items: group.items.filter(item => isModuleEnabled(item.moduleKey) && isRoleAllowed(item.roles)),
     }))
     .filter(group => group.items.length > 0);
 

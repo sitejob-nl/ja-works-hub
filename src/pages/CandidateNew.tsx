@@ -11,9 +11,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import TagInput from '@/components/ui/tag-input';
-import { ChevronRight, Copy, MessageCircle, Mail, Check } from 'lucide-react';
+import { ChevronRight, Copy, MessageCircle, Mail, Check, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { logAudit } from '@/lib/audit';
+import { useDeduplication } from '@/hooks/useDeduplication';
 
 const sources = [
   { value: 'website', label: 'Website' },
@@ -43,6 +44,13 @@ const CandidateNew = () => {
   });
 
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
+
+  const { data: duplicates = [] } = useDeduplication({
+    email: form.email,
+    phone: form.phone,
+    date_of_birth: form.date_of_birth,
+    last_name: form.last_name,
+  });
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -209,6 +217,29 @@ const CandidateNew = () => {
             </Select>
           </div>
           <div className="space-y-1.5"><Label>Notities</Label><Textarea value={form.notes} onChange={(e) => set('notes', e.target.value)} rows={3} /></div>
+
+          {duplicates.length > 0 && (
+            <div className="rounded-lg border border-orange-200 bg-orange-50 p-4 space-y-2">
+              <div className="flex items-center gap-2 text-orange-700">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                <span className="text-sm font-medium">Mogelijke duplicaten gevonden</span>
+              </div>
+              <div className="space-y-1.5">
+                {duplicates.map(d => (
+                  <div key={d.id} className="flex items-center justify-between text-sm">
+                    <span>
+                      <span className="font-medium">{d.first_name} {d.last_name}</span>
+                      <span className="text-muted-foreground ml-2">— match op {d.matchedOn.join(', ')}</span>
+                    </span>
+                    <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={() => navigate(`/kandidaten/${d.id}`)}>
+                      Bekijk
+                    </Button>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-orange-600">Je kunt de kandidaat alsnog aanmaken als het geen duplicaat is.</p>
+            </div>
+          )}
 
           <div className="flex justify-end gap-3 pt-4 border-t">
             <Button variant="ghost" onClick={() => navigate('/kandidaten')}>Annuleren</Button>

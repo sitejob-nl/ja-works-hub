@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { HousingSuggestion } from './PlacementTriggers';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
+import { logAudit } from '@/lib/audit';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Home, Users, MapPin, Check } from 'lucide-react';
@@ -31,6 +32,7 @@ const HousingSuggestionsCard = ({ suggestions, candidateId, startDate, onAssigne
         monthly_deduction: s.monthlyCost,
       });
       if (error) throw error;
+      logAudit({ action: 'create', tableName: 'housing_assignments', recordId: candidateId, newValues: { unit_id: s.unitId, unit_name: s.unitName } });
       setAssigned(s.unitId);
       toast.success(`Huisvesting toegewezen: ${s.unitName}`);
       onAssigned?.();

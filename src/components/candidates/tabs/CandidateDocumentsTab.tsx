@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
+import { logAudit } from '@/lib/audit';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -75,6 +76,7 @@ const CandidateDocumentsTab = ({ candidateId }: { candidateId: string }) => {
       if (error) throw error;
     },
     onSuccess: () => {
+      logAudit({ action: 'create', tableName: 'documents', recordId: candidateId, newValues: { type: form.type, name: form.name } });
       qc.invalidateQueries({ queryKey: ['documents', candidateId] });
       setAdding(false);
       setForm({ type: 'overig', name: '', issued_date: '', expiry_date: '', notes: '' });
