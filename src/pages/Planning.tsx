@@ -5,7 +5,7 @@ import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { useAuth } from '@/contexts/AuthContext';
 import { startOfWeek, endOfWeek, addWeeks, subWeeks, addDays, format, getISOWeek, isWithinInterval, parseISO } from 'date-fns';
 import { nl } from 'date-fns/locale';
-import { Calendar, Plus, ChevronLeft, ChevronRight, Users, Briefcase, DollarSign, LayoutList, LayoutGrid, Search } from 'lucide-react';
+import { Calendar, Plus, ChevronLeft, ChevronRight, Users, Briefcase, DollarSign, LayoutList, LayoutGrid, Search, Home } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -376,8 +376,11 @@ const PlacementCell = ({ placement, navigate }: { placement: any; navigate: any 
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <button className="w-full h-10 rounded text-xs font-medium px-2 text-left truncate border-l-[3px] border-primary bg-primary/10 hover:bg-primary/20 transition-colors">
-          {comp?.name}
+        <button className="w-full h-10 rounded text-xs font-medium px-2 text-left truncate border-l-[3px] border-primary bg-primary/10 hover:bg-primary/20 transition-colors flex items-center gap-1">
+          <span className="truncate">{comp?.name}</span>
+          {!placement.housing_assignment_id && (
+            <Home className="h-3 w-3 text-orange-500 shrink-0" />
+          )}
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-72 space-y-2 text-sm">
@@ -388,7 +391,14 @@ const PlacementCell = ({ placement, navigate }: { placement: any; navigate: any 
           <div><span className="font-medium text-foreground">Periode:</span> {formatDate(placement.start_date)} — {placement.end_date ? formatDate(placement.end_date) : 'Lopend'}</div>
           <div><span className="font-medium text-foreground">Uurtarief:</span> {formatEUR(placement.hourly_rate)}</div>
           <div><span className="font-medium text-foreground">Status:</span> <Badge className={`ml-1 ${statusBadge[placement.status] ?? ''}`}>{statusLabel[placement.status] ?? placement.status}</Badge></div>
-          <div><span className="font-medium text-foreground">Huisvesting:</span> {placement.housing_assignment_id ? 'Ja' : 'Nee'}</div>
+          <div>
+            <span className="font-medium text-foreground">Huisvesting:</span>{' '}
+            {placement.housing_assignment_id ? (
+              <Badge variant="secondary" className="ml-1 text-[10px] bg-stat-green/10 text-stat-green border-0">Toegewezen</Badge>
+            ) : (
+              <Badge variant="secondary" className="ml-1 text-[10px] bg-orange-100 text-orange-600 border-0 gap-0.5"><Home className="h-2.5 w-2.5" />Niet toegewezen</Badge>
+            )}
+          </div>
           <div><span className="font-medium text-foreground">Compliance:</span> <Badge variant={placement.compliance_check_passed ? 'default' : 'destructive'} className="ml-1">{placement.compliance_check_passed ? 'OK' : 'Niet voldaan'}</Badge></div>
         </div>
         <div className="flex gap-2 pt-2">

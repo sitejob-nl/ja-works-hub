@@ -5,7 +5,7 @@ import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { logAudit } from '@/lib/audit';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Home, Users, MapPin, Check } from 'lucide-react';
+import { Home, Users, MapPin, Check, Navigation } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Props {
@@ -30,6 +30,8 @@ const HousingSuggestionsCard = ({ suggestions, candidateId, startDate, onAssigne
         check_in_date: startDate,
         status: 'ingecheckt' as any,
         monthly_deduction: s.monthlyCost,
+        deduction_amount: s.weeklyCost ?? s.monthlyCost,
+        payment_frequency: s.weeklyCost ? 'wekelijks' : 'maandelijks',
       });
       if (error) throw error;
       logAudit({ action: 'create', tableName: 'housing_assignments', recordId: candidateId, newValues: { unit_id: s.unitId, unit_name: s.unitName } });
@@ -55,7 +57,12 @@ const HousingSuggestionsCard = ({ suggestions, candidateId, startDate, onAssigne
           <div key={s.unitId} className="flex items-center justify-between p-2.5 bg-muted/50 rounded-md text-sm">
             <div className="flex-1 min-w-0">
               <div className="font-medium">{s.unitName} — {s.propertyName}</div>
-              <div className="text-xs text-muted-foreground flex items-center gap-2 mt-0.5">
+              <div className="text-xs text-muted-foreground flex items-center gap-2 mt-0.5 flex-wrap">
+                {s.distanceKm != null && (
+                  <span className="flex items-center gap-0.5 text-primary font-medium">
+                    <Navigation className="h-3 w-3" /> {s.distanceKm} km{s.durationMin != null && ` · ${s.durationMin} min`}
+                  </span>
+                )}
                 <span className="flex items-center gap-0.5"><MapPin className="h-3 w-3" /> {s.propertyCity}</span>
                 <span>{s.currentOccupancy}/{s.capacity} bezet</span>
                 {s.colleagueCount > 0 && (
@@ -63,7 +70,11 @@ const HousingSuggestionsCard = ({ suggestions, candidateId, startDate, onAssigne
                     <Users className="h-2.5 w-2.5" /> {s.colleagueCount} collega{s.colleagueCount > 1 ? "'s" : ''}
                   </Badge>
                 )}
-                {s.monthlyCost != null && <span>€{s.monthlyCost}/mnd</span>}
+                {s.weeklyCost != null ? (
+                  <span>€{s.weeklyCost}/week</span>
+                ) : s.monthlyCost != null ? (
+                  <span>€{s.monthlyCost}/mnd</span>
+                ) : null}
               </div>
             </div>
             {assigned === s.unitId ? (

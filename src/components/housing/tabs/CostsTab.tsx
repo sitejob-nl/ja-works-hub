@@ -21,7 +21,17 @@ const CostsTab = ({ property }: { property: any }) => {
       .map((a: any) => ({ ...a, unitName: u.name }))
   );
 
-  const totalDeductions = allActive.reduce((s: number, a: any) => s + (Number(a.monthly_deduction) || 0), 0);
+  // Calculate monthly-equivalent deductions (weekly × 4.33)
+  const getMonthlyDeduction = (a: any): number => {
+    if (a.deduction_amount != null) {
+      return a.payment_frequency === 'wekelijks'
+        ? Number(a.deduction_amount) * 4.33
+        : Number(a.deduction_amount);
+    }
+    return Number(a.monthly_deduction) || 0;
+  };
+
+  const totalDeductions = allActive.reduce((s: number, a: any) => s + getMonthlyDeduction(a), 0);
   const unpaidDeposits = allActive.filter((a: any) => !a.deposit_paid).length;
 
   const costItems = useMemo(() => [
@@ -138,7 +148,8 @@ const CostsTab = ({ property }: { property: any }) => {
                 <TableRow>
                   <TableHead>Naam</TableHead>
                   <TableHead>Kamer</TableHead>
-                  <TableHead>Maandelijkse inhouding</TableHead>
+                  <TableHead>Inhouding</TableHead>
+                  <TableHead>Per maand</TableHead>
                   <TableHead>Borg</TableHead>
                   <TableHead>Huur betaald tot</TableHead>
                 </TableRow>
@@ -150,7 +161,14 @@ const CostsTab = ({ property }: { property: any }) => {
                       {a.employees?.candidates?.first_name} {a.employees?.candidates?.last_name}
                     </TableCell>
                     <TableCell>{a.unitName}</TableCell>
-                    <TableCell>{formatEUR(a.monthly_deduction)}</TableCell>
+                    <TableCell>
+                      {a.deduction_amount != null ? (
+                        <span>{formatEUR(a.deduction_amount)}/{a.payment_frequency === 'wekelijks' ? 'week' : 'mnd'}</span>
+                      ) : (
+                        <span>{formatEUR(a.monthly_deduction)}/mnd</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">{formatEUR(getMonthlyDeduction(a))}</TableCell>
                     <TableCell>
                       <Button
                         variant="ghost"

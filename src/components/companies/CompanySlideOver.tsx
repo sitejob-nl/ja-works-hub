@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { logAudit } from '@/lib/audit';
+import { geocodeAndSaveCompany } from '@/lib/distance';
 
 interface Props {
   open: boolean;
@@ -41,21 +42,25 @@ const CompanySlideOver = ({ open, onOpenChange, company }: Props) => {
       if (isEdit) {
         const { error } = await supabase.from('companies').update(form).eq('id', company.id);
         if (error) throw error;
+        return company.id as string;
       } else {
-        const { error } = await supabase.from('companies').insert({ ...form, organization_id: orgId });
+        const { data, error } = await supabase.from('companies').insert({ ...form, organization_id: orgId }).select('id').single();
         if (error) throw error;
+        return data.id as string;
       }
     },
-    onSuccess: () => {
+    onSuccess: (savedId: string) => {
       qc.invalidateQueries({ queryKey: ['companies'] });
       logAudit({
         action: isEdit ? 'update' : 'create',
         tableName: 'companies',
-        recordId: company?.id ?? 'new',
+        recordId: savedId,
         newValues: form,
       });
       toast.success(isEdit ? 'Opdrachtgever bijgewerkt' : 'Opdrachtgever aangemaakt');
       onOpenChange(false);
+      // Fire-and-forget geocoding
+      geocodeAndSaveCompany(savedId, form.address_street, form.address_postal, form.address_city);
     },
     onError: (e: any) => toast.error(e.message),
   });

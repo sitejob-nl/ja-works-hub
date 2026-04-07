@@ -11,6 +11,7 @@ import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
+import { geocodeAndSaveProperty } from '@/lib/distance';
 
 interface Props {
   open: boolean;
@@ -121,16 +122,20 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
       if (isEdit) {
         const { error } = await supabase.from('properties').update(payload).eq('id', property.id);
         if (error) throw error;
+        return property.id as string;
       } else {
-        const { error } = await supabase.from('properties').insert({ ...payload, organization_id: orgId });
+        const { data, error } = await supabase.from('properties').insert({ ...payload, organization_id: orgId }).select('id').single();
         if (error) throw error;
+        return data.id as string;
       }
     },
-    onSuccess: () => {
+    onSuccess: (savedId: string) => {
       qc.invalidateQueries({ queryKey: ['properties'] });
       qc.invalidateQueries({ queryKey: ['property'] });
       toast.success(isEdit ? 'Pand bijgewerkt' : 'Pand aangemaakt');
       onOpenChange(false);
+      // Fire-and-forget geocoding
+      geocodeAndSaveProperty(savedId, form.address_street, form.address_postal, form.address_city);
     },
     onError: (e: any) => toast.error(e.message),
   });

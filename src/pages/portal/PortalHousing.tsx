@@ -147,12 +147,19 @@ const PortalHousing = () => {
               {format(new Date(assignment.check_in_date), 'd MMM yyyy', { locale: nl })}
             </span>
           </div>
-          {assignment.monthly_deduction != null && (
+          {(assignment as any).deduction_amount != null ? (
+            <div>
+              <span className="text-muted-foreground">Inhouding:</span>{' '}
+              <span className="font-medium">
+                €{(assignment as any).deduction_amount}/{(assignment as any).payment_frequency === 'wekelijks' ? 'week' : 'mnd'}
+              </span>
+            </div>
+          ) : assignment.monthly_deduction != null ? (
             <div>
               <span className="text-muted-foreground">Inhouding:</span>{' '}
               <span className="font-medium">€{assignment.monthly_deduction}/mnd</span>
             </div>
-          )}
+          ) : null}
           <div>
             <span className="text-muted-foreground">Borg:</span>{' '}
             <Badge variant="secondary" className={`text-[10px] ${assignment.deposit_paid ? 'bg-stat-green/10 text-stat-green' : 'bg-orange-100 text-orange-600'} border-0`}>

@@ -1,5 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import { addDays, format, startOfWeek, getDay } from 'date-fns';
+import { getDrivingDistance } from '@/lib/distance';
 
 /**
  * Post-placement automation:
@@ -29,6 +30,9 @@ export interface HousingSuggestion {
   currentOccupancy: number;
   colleagueCount: number;
   monthlyCost: number | null;
+  weeklyCost: number | null;
+  distanceKm: number | null;
+  durationMin: number | null;
 }
 
 /**
@@ -64,17 +68,19 @@ export async function generateTimesheetTemplates(input: PlacementTriggerInput): 
 }
 
 /**
- * Get housing suggestions ranked by team clustering (colleagues at same company)
+ * Get housing suggestions ranked by driving distance to company, team clustering,
  * and available capacity.
  */
 export async function getHousingSuggestions(
   organizationId: string,
-  companyId: string
+  companyId: string,
+  companyLat?: number | null,
+  companyLng?: number | null,
 ): Promise<HousingSuggestion[]> {
-  // Get all units with available capacity
+  // Get all units with available capacity (view now includes weekly_cost + coords)
   const { data: units, error: unitErr } = await supabase
     .from('v_unit_occupancy')
-    .select('unit_id, unit_name, property_name, property_city, capacity, current_occupancy, monthly_cost');
+    .select('unit_id, unit_name, property_name, address_city, capacity, current_occupancy, weekly_cost, monthly_cost, address_lat, address_lng');
   if (unitErr) throw unitErr;
 
   const available = (units ?? []).filter(
@@ -108,18 +114,55 @@ export async function getHousingSuggestions(
     }
   }
 
-  return available
-    .map((u: any) => ({
+  // Calculate driving distances (deduplicate by property coords)
+  const distanceCache = new Map<string, { distanceKm: number; durationMin: number } | null>();
+  if (companyLat && companyLng) {
+    const uniqueCoords = new Map<string, { lat: number; lng: number }>();
+    for (const u of available as any[]) {
+      if (u.address_lat && u.address_lng) {
+        const key = `${u.address_lat},${u.address_lng}`;
+        uniqueCoords.set(key, { lat: u.address_lat, lng: u.address_lng });
+      }
+    }
+    const results = await Promise.all(
+      Array.from(uniqueCoords.entries()).map(async ([key, coords]) => {
+        const result = await getDrivingDistance(coords.lat, coords.lng, companyLat, companyLng);
+        return [key, result] as const;
+      })
+    );
+    for (const [key, result] of results) {
+      distanceCache.set(key, result);
+    }
+  }
+
+  const suggestions = available.map((u: any) => {
+    const coordKey = u.address_lat && u.address_lng ? `${u.address_lat},${u.address_lng}` : null;
+    const dist = coordKey ? distanceCache.get(coordKey) ?? null : null;
+    return {
       unitId: u.unit_id,
       unitName: u.unit_name,
       propertyName: u.property_name,
-      propertyCity: u.property_city,
+      propertyCity: u.address_city,
       capacity: u.capacity,
       currentOccupancy: Number(u.current_occupancy),
       colleagueCount: colleagueMap[u.unit_id] ?? 0,
       monthlyCost: u.monthly_cost,
-    }))
-    .sort((a, b) => b.colleagueCount - a.colleagueCount || a.currentOccupancy - b.currentOccupancy)
+      weeklyCost: u.weekly_cost,
+      distanceKm: dist?.distanceKm ?? null,
+      durationMin: dist?.durationMin ?? null,
+    };
+  });
+
+  // Sort: distance ASC (nulls last) → colleagues DESC → occupancy ASC
+  return suggestions
+    .sort((a, b) => {
+      if (a.distanceKm != null && b.distanceKm != null) {
+        if (a.distanceKm !== b.distanceKm) return a.distanceKm - b.distanceKm;
+      } else if (a.distanceKm != null) return -1;
+      else if (b.distanceKm != null) return 1;
+      if (b.colleagueCount !== a.colleagueCount) return b.colleagueCount - a.colleagueCount;
+      return a.currentOccupancy - b.currentOccupancy;
+    })
     .slice(0, 10);
 }
 

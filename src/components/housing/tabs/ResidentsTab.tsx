@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Plus, Check, X, Search } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { formatDate, formatEUR } from '@/lib/format';
 import { toast } from 'sonner';
 import { logAudit } from '@/lib/audit';
@@ -22,7 +23,7 @@ const ResidentsTab = ({ property }: { property: any }) => {
   const [empSearch, setEmpSearch] = useState('');
   const [selectedEmployee, setSelectedEmployee] = useState<any>(null);
   const [selectedUnit, setSelectedUnit] = useState<any>(null);
-  const [form, setForm] = useState({ check_in_date: '', monthly_deduction: '', deposit_amount: '' });
+  const [form, setForm] = useState({ check_in_date: '', deduction_amount: '', payment_frequency: 'wekelijks' as 'wekelijks' | 'maandelijks' });
 
   // Get all assignments for all units in this property
   const units = property.units ?? [];
@@ -68,13 +69,16 @@ const ResidentsTab = ({ property }: { property: any }) => {
 
   const assign = useMutation({
     mutationFn: async () => {
+      const deductionNum = form.deduction_amount ? Number(form.deduction_amount) : null;
       const { error } = await supabase.from('housing_assignments').insert({
         organization_id: orgId,
         unit_id: selectedUnit.id,
         employee_id: selectedEmployee.id,
         status: 'gereserveerd' as const,
         check_in_date: form.check_in_date,
-        monthly_deduction: form.monthly_deduction ? Number(form.monthly_deduction) : null,
+        deduction_amount: deductionNum,
+        payment_frequency: form.payment_frequency,
+        monthly_deduction: form.payment_frequency === 'maandelijks' ? deductionNum : (deductionNum ? Math.round(deductionNum * 4.33 * 100) / 100 : null),
       });
       if (error) throw error;
     },
@@ -118,7 +122,7 @@ const ResidentsTab = ({ property }: { property: any }) => {
     setSelectedEmployee(null);
     setSelectedUnit(null);
     setEmpSearch('');
-    setForm({ check_in_date: '', monthly_deduction: '', deposit_amount: '' });
+    setForm({ check_in_date: '', deduction_amount: '', payment_frequency: 'wekelijks' });
   };
 
   return (
@@ -167,7 +171,11 @@ const ResidentsTab = ({ property }: { property: any }) => {
                   {availableUnits.map((u: any) => {
                     const occ = (u.housing_assignments ?? []).filter((a: any) => a.status === 'ingecheckt').length;
                     return (
-                      <button key={u.id} onClick={() => { setSelectedUnit(u); setStep(3); }}
+                      <button key={u.id} onClick={() => {
+                          setSelectedUnit(u);
+                          setForm(f => ({ ...f, deduction_amount: u.weekly_cost ? String(u.weekly_cost) : u.monthly_cost ? String(u.monthly_cost) : '', payment_frequency: u.weekly_cost ? 'wekelijks' : 'maandelijks' }));
+                          setStep(3);
+                        }}
                         className="w-full text-left p-3 rounded-lg border hover:bg-muted/50 transition-colors">
                         <p className="text-sm font-medium">{u.name}</p>
                         <p className="text-xs text-muted-foreground">{occ}/{u.capacity} bezet</p>
@@ -184,7 +192,30 @@ const ResidentsTab = ({ property }: { property: any }) => {
                   <p className="text-sm"><span className="text-muted-foreground">Kamer:</span> {selectedUnit?.name}</p>
                 </div>
                 <div><Label>Check-in datum *</Label><Input type="date" value={form.check_in_date} onChange={(e) => setForm(f => ({ ...f, check_in_date: e.target.value }))} /></div>
-                <div><Label>Maandelijkse inhouding (€)</Label><Input type="number" value={form.monthly_deduction} onChange={(e) => setForm(f => ({ ...f, monthly_deduction: e.target.value }))} /></div>
+                <div>
+                  <Label>Betalingsfrequentie</Label>
+                  <Select value={form.payment_frequency} onValueChange={(v: 'wekelijks' | 'maandelijks') => {
+                    setForm(f => ({
+                      ...f,
+                      payment_frequency: v,
+                      deduction_amount: v === 'wekelijks' && selectedUnit?.weekly_cost
+                        ? String(selectedUnit.weekly_cost)
+                        : v === 'maandelijks' && selectedUnit?.monthly_cost
+                          ? String(selectedUnit.monthly_cost)
+                          : f.deduction_amount,
+                    }));
+                  }}>
+                    <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="wekelijks">Wekelijks</SelectItem>
+                      <SelectItem value="maandelijks">Maandelijks</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>{form.payment_frequency === 'wekelijks' ? 'Wekelijkse' : 'Maandelijkse'} inhouding (€)</Label>
+                  <Input type="number" value={form.deduction_amount} onChange={(e) => setForm(f => ({ ...f, deduction_amount: e.target.value }))} />
+                </div>
                 <div className="flex justify-end gap-3 pt-4">
                   <Button variant="ghost" onClick={resetAssign}>Annuleren</Button>
                   <Button onClick={() => assign.mutate()} disabled={!form.check_in_date || assign.isPending}>
@@ -226,7 +257,15 @@ const ResidentsTab = ({ property }: { property: any }) => {
                     </TableCell>
                     <TableCell>{a.unitName}</TableCell>
                     <TableCell>{formatDate(a.check_in_date)}</TableCell>
-                    <TableCell>{formatEUR(a.monthly_deduction)}</TableCell>
+                    <TableCell>
+                      {a.deduction_amount != null ? (
+                        <span>{formatEUR(a.deduction_amount)}/{a.payment_frequency === 'wekelijks' ? 'week' : 'mnd'}</span>
+                      ) : a.monthly_deduction != null ? (
+                        <span>{formatEUR(a.monthly_deduction)}/mnd</span>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
                     <TableCell>{a.deposit_paid ? <Check className="h-4 w-4 text-stat-green" /> : <X className="h-4 w-4 text-red-500" />}</TableCell>
                     <TableCell className={rentOverdue ? 'text-red-600 font-medium' : ''}>{formatDate(a.rent_paid_until)}</TableCell>
                     <TableCell>
