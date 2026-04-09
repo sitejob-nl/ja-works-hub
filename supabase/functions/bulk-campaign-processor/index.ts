@@ -1,11 +1,18 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  corsHeaders,
+  jsonOk,
+  jsonError,
+  getAuthenticatedOrg,
+  normalizePhone,
+  getWhatsAppCredentials,
+  META_API_BASE,
+} from "../_shared/whatsapp-utils.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const BATCH_SIZE = 50;
+const MAX_CONCURRENT = 5;
+const MAX_RETRIES = 3;
+const RETRY_DELAYS = [60, 300, 900]; // 1min, 5min, 15min in seconds
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -13,265 +20,272 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
+      { global: { headers: { Authorization: req.headers.get("Authorization")! } } }
     );
 
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    const auth = await getAuthenticatedOrg(req, supabase);
+    if (auth instanceof Response) return auth;
+    const { orgId, userId } = auth;
 
-    const userId = user.id;
+    const { campaign_id } = await req.json();
+    if (!campaign_id) return jsonError("campaign_id is verplicht", 400);
 
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("organization_id")
-      .eq("id", userId)
-      .single();
-
-    if (!profile) {
-      return new Response(JSON.stringify({ error: "Profile not found" }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const orgId = profile.organization_id;
-
-    const body = await req.json();
-    const { campaign_id } = body;
-
-    if (!campaign_id) {
-      return new Response(
-        JSON.stringify({ error: "campaign_id is required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Use service role for all operations
     const serviceClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Load campaign
-    const { data: campaign, error: campaignError } = await serviceClient
+    // Load campaign — verify org ownership and valid status
+    const { data: campaign, error: campError } = await serviceClient
       .from("bulk_campaigns")
       .select("*")
       .eq("id", campaign_id)
       .eq("organization_id", orgId)
       .single();
 
-    if (campaignError || !campaign) {
-      return new Response(
-        JSON.stringify({ error: "Campaign not found" }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    if (campError || !campaign) return jsonError("Campagne niet gevonden", 404);
+    if (campaign.status !== "running" && campaign.status !== "scheduled") {
+      return jsonError("Campagne is niet actief (verwacht: running of scheduled)", 400);
     }
 
-    if (campaign.status !== "draft" && campaign.status !== "scheduled") {
-      return new Response(
-        JSON.stringify({ error: "Campaign already processed or running" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Get candidates using RPC
-    const { data: candidates, error: candidatesError } = await serviceClient.rpc(
-      "get_campaign_candidates",
-      {
-        p_org_id: orgId,
-        p_filter: campaign.segment_filter || {},
-        p_channel: campaign.channel,
-      }
-    );
-
-    if (candidatesError) {
-      console.error("Get candidates error:", candidatesError);
-      return new Response(
-        JSON.stringify({ error: "Failed to get candidates" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    if (!candidates || candidates.length === 0) {
-      await serviceClient
-        .from("bulk_campaigns")
-        .update({
-          status: "completed",
-          total_recipients: 0,
-          completed_at: new Date().toISOString(),
-        })
-        .eq("id", campaign_id);
-
-      return new Response(
-        JSON.stringify({ success: true, message: "No recipients found", total: 0 }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Insert campaign_recipients
-    const recipients = candidates.map((c: any) => ({
-      organization_id: orgId,
-      campaign_id,
-      candidate_id: c.candidate_id,
-      status: "pending",
-    }));
-
-    await serviceClient.from("campaign_recipients").insert(recipients);
-
-    // Update campaign status and total_recipients
+    // Set status to running with timestamp
     await serviceClient
       .from("bulk_campaigns")
-      .update({
-        status: "running",
-        started_at: new Date().toISOString(),
-        total_recipients: candidates.length,
-      })
+      .update({ status: "running", started_at: new Date().toISOString() })
       .eq("id", campaign_id);
 
-    // Process in batches of 50
-    const batchSize = 50;
-    const batches = [];
-    for (let i = 0; i < candidates.length; i += batchSize) {
-      batches.push(candidates.slice(i, i + batchSize));
+    // Get WhatsApp credentials
+    const creds = await getWhatsAppCredentials(serviceClient, orgId);
+    if (!creds) {
+      await serviceClient
+        .from("bulk_campaigns")
+        .update({ status: "cancelled" })
+        .eq("id", campaign_id);
+      return jsonError("WhatsApp niet geconfigureerd voor deze organisatie", 400);
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    // Load recipients: pending OR (failed AND retry_count < MAX_RETRIES)
+    const { data: recipients } = await serviceClient
+      .from("campaign_recipients")
+      .select("id, candidate_id, status, retry_count, candidates!inner(first_name, last_name, phone)")
+      .eq("campaign_id", campaign_id)
+      .or(`status.eq.pending,and(status.eq.failed,retry_count.lt.${MAX_RETRIES})`)
+      .order("id");
 
-    for (const batch of batches) {
-      // Check rate limit before processing batch
-      const { data: canSend } = await serviceClient.rpc("check_rate_limit", {
-        p_org_id: orgId,
-        p_channel: campaign.channel,
-        p_window_type: "minute",
-      });
+    if (!recipients?.length) {
+      await serviceClient
+        .from("bulk_campaigns")
+        .update({ status: "completed", completed_at: new Date().toISOString() })
+        .eq("id", campaign_id);
+      return jsonOk({ status: "completed", sent: 0, failed: 0 });
+    }
 
-      if (!canSend) {
-        console.log("Rate limit reached, waiting 60s...");
-        await sleep(60000);
+    let sentCount = 0;
+    let failedCount = 0;
+
+    // Process in batches of BATCH_SIZE
+    for (let i = 0; i < recipients.length; i += BATCH_SIZE) {
+      // Check if campaign was paused or cancelled between batches
+      const { data: currentCampaign } = await serviceClient
+        .from("bulk_campaigns")
+        .select("status")
+        .eq("id", campaign_id)
+        .single();
+
+      if (currentCampaign?.status === "paused" || currentCampaign?.status === "cancelled") {
+        console.log(`Campaign ${campaign_id} stopped: status=${currentCampaign.status}`);
+        break;
       }
 
-      for (const candidate of batch) {
-        try {
-          // Merge fields in message
-          let message = campaign.message_template;
-          message = message.replace(/\{\{first_name\}\}/g, candidate.first_name || "");
-          message = message.replace(/\{\{last_name\}\}/g, candidate.last_name || "");
-          message = message.replace(/\{\{full_name\}\}/g, `${candidate.first_name || ""} ${candidate.last_name || ""}`.trim());
+      const batch = recipients.slice(i, i + BATCH_SIZE);
 
-          // Auto-append opt-out footer if not present
-          if (!message.includes("STOP")) {
-            message += "\n\nWil je geen berichten meer ontvangen? Antwoord met STOP.";
+      // Process batch with concurrency limit of MAX_CONCURRENT
+      const results = await processWithConcurrency(
+        batch,
+        MAX_CONCURRENT,
+        async (recipient: any) => {
+          const candidate = recipient.candidates;
+          if (!candidate?.phone) {
+            return { recipientId: recipient.id, success: false, error: "Geen telefoonnummer" };
           }
 
-          // Call whatsapp-send
-          const sendRes = await fetch(`${supabaseUrl}/functions/v1/whatsapp-send`, {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${supabaseAnonKey}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              to: candidate.phone,
-              message,
-              candidate_id: candidate.candidate_id,
-            }),
-          });
+          const phone = normalizePhone(candidate.phone);
 
-          const sendData = await sendRes.json();
+          // Merge template fields
+          let messageBody = campaign.message_template ?? "";
+          messageBody = messageBody.replace(/\{\{first_name\}\}/g, candidate.first_name ?? "");
+          messageBody = messageBody.replace(/\{\{last_name\}\}/g, candidate.last_name ?? "");
+          messageBody = messageBody.replace(
+            /\{\{full_name\}\}/g,
+            `${candidate.first_name ?? ""} ${candidate.last_name ?? ""}`.trim()
+          );
 
-          if (sendRes.ok) {
-            // Update recipient status to sent
-            await serviceClient
-              .from("campaign_recipients")
-              .update({
-                status: "sent",
-                sent_at: new Date().toISOString(),
-                communication_id: sendData.communication_id || null,
-              })
-              .eq("campaign_id", campaign_id)
-              .eq("candidate_id", candidate.candidate_id);
+          try {
+            // Send directly to Meta API — avoids double rate limiting via whatsapp-send
+            const metaResponse = await fetch(
+              `${META_API_BASE}/${creds.phone_number_id}/messages`,
+              {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${creds.access_token}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  messaging_product: "whatsapp",
+                  recipient_type: "individual",
+                  to: phone.replace("+", ""),
+                  type: "text",
+                  text: { body: messageBody },
+                }),
+              }
+            );
 
-            // Increment sent_count
-            await serviceClient
-              .from("bulk_campaigns")
-              .update({ sent_count: (campaign.sent_count || 0) + 1 })
-              .eq("id", campaign_id);
-          } else {
-            // Update recipient status to failed
-            await serviceClient
-              .from("campaign_recipients")
-              .update({
-                status: "failed",
-                error_message: sendData.error || "Unknown error",
-              })
-              .eq("campaign_id", campaign_id)
-              .eq("candidate_id", candidate.candidate_id);
+            const result = await metaResponse.json();
 
-            // Increment failed_count
-            await serviceClient
-              .from("bulk_campaigns")
-              .update({ failed_count: (campaign.failed_count || 0) + 1 })
-              .eq("id", campaign_id);
+            if (metaResponse.ok) {
+              const waMessageId = result.messages?.[0]?.id;
+
+              // Log communication record on success
+              const { data: comm } = await serviceClient
+                .from("communications")
+                .insert({
+                  organization_id: orgId,
+                  channel: "whatsapp",
+                  direction: "outbound",
+                  subject: `WhatsApp campagne naar ${phone}`,
+                  body: messageBody,
+                  candidate_id: recipient.candidate_id,
+                  sent_by: userId,
+                  sent_at: new Date().toISOString(),
+                  whatsapp_message_id: waMessageId,
+                  whatsapp_status: "pending",
+                  message_type: "text",
+                })
+                .select("id")
+                .single();
+
+              return {
+                recipientId: recipient.id,
+                success: true,
+                communicationId: comm?.id,
+              };
+            } else {
+              return {
+                recipientId: recipient.id,
+                success: false,
+                error: result?.error?.message ?? "Meta API error",
+              };
+            }
+          } catch (err) {
+            return { recipientId: recipient.id, success: false, error: String(err) };
           }
-        } catch (err) {
-          console.error(`Failed to send to ${candidate.candidate_id}:`, err);
+        }
+      );
+
+      // Persist recipient statuses and update batch counts
+      for (const result of results) {
+        if (result.success) {
+          sentCount++;
+          await serviceClient
+            .from("campaign_recipients")
+            .update({
+              status: "sent",
+              sent_at: new Date().toISOString(),
+              communication_id: result.communicationId,
+            })
+            .eq("id", result.recipientId);
+        } else {
+          failedCount++;
+          const recipient = batch.find((r: any) => r.id === result.recipientId);
+          const retryCount = (recipient?.retry_count ?? 0) + 1;
+          const nextRetry =
+            retryCount < MAX_RETRIES
+              ? new Date(Date.now() + RETRY_DELAYS[retryCount - 1] * 1000).toISOString()
+              : null;
+
           await serviceClient
             .from("campaign_recipients")
             .update({
               status: "failed",
-              error_message: (err as Error).message,
+              error_message: result.error,
+              retry_count: retryCount,
+              next_retry_at: nextRetry,
             })
-            .eq("campaign_id", campaign_id)
-            .eq("candidate_id", candidate.candidate_id);
-
-          await serviceClient
-            .from("bulk_campaigns")
-            .update({ failed_count: (campaign.failed_count || 0) + 1 })
-            .eq("id", campaign_id);
+            .eq("id", result.recipientId);
         }
       }
 
-      // Wait 3 seconds between batches
-      if (batches.indexOf(batch) < batches.length - 1) {
-        await sleep(3000);
+      // Update running totals on campaign after each batch
+      await serviceClient
+        .from("bulk_campaigns")
+        .update({
+          sent_count: (campaign.sent_count ?? 0) + sentCount,
+          failed_count: (campaign.failed_count ?? 0) + failedCount,
+        })
+        .eq("id", campaign_id);
+
+      // 2-second delay between batches for rate limiting
+      if (i + BATCH_SIZE < recipients.length) {
+        await new Promise((r) => setTimeout(r, 2000));
       }
     }
 
-    // Mark campaign as completed
-    await serviceClient
-      .from("bulk_campaigns")
-      .update({
-        status: "completed",
-        completed_at: new Date().toISOString(),
-      })
-      .eq("id", campaign_id);
+    // Mark completed only if no pending recipients remain
+    const { data: remaining } = await serviceClient
+      .from("campaign_recipients")
+      .select("id")
+      .eq("campaign_id", campaign_id)
+      .eq("status", "pending")
+      .limit(1);
 
-    return new Response(
-      JSON.stringify({ success: true, total_processed: candidates.length }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    if (!remaining?.length) {
+      await serviceClient
+        .from("bulk_campaigns")
+        .update({ status: "completed", completed_at: new Date().toISOString() })
+        .eq("id", campaign_id);
+    }
+
+    return jsonOk({ status: "ok", sent: sentCount, failed: failedCount });
   } catch (err) {
-    console.error("Bulk campaign processor error:", err);
-    return new Response(JSON.stringify({ error: "Internal server error" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    console.error("bulk-campaign-processor error:", err);
+    return jsonError("Interne fout", 500);
   }
 });
+
+/**
+ * Process an array of items with a maximum concurrency limit.
+ * Uses a semaphore approach: maintains a pool of active promises,
+ * waits for one to complete before starting the next when at capacity.
+ */
+async function processWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  const executing = new Set<Promise<void>>();
+
+  for (let idx = 0; idx < items.length; idx++) {
+    const item = items[idx];
+    const itemIdx = idx;
+
+    const task = fn(item).then((result) => {
+      results[itemIdx] = result;
+    });
+
+    const wrapper: Promise<void> = task.finally(() => {
+      executing.delete(wrapper);
+    });
+    executing.add(wrapper);
+
+    if (executing.size >= concurrency) {
+      await Promise.race(executing);
+    }
+  }
+
+  await Promise.all(executing);
+  return results;
+}
