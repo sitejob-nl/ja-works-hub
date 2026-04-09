@@ -1,9 +1,14 @@
+// supabase/functions/whatsapp-send/index.ts
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import {
+  corsHeaders,
+  jsonOk,
+  jsonError,
+  normalizePhone,
+  getWhatsAppCredentials,
+  getAuthenticatedOrg,
+  META_API_BASE,
+} from "../_shared/whatsapp-utils.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -11,163 +16,195 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
+      { global: { headers: { Authorization: req.headers.get("Authorization")! } } }
     );
 
-    const token = authHeader.replace("Bearer ", "");
-    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    const auth = await getAuthenticatedOrg(req, supabase);
+    if (auth instanceof Response) return auth;
+    const { orgId, userId } = auth;
+
+    const body = await req.json();
+    const { to, type, text, template, image, video, audio, document, reaction, candidate_id, context } = body;
+
+    if (!to || !type) {
+      return jsonError("Veld 'to' en 'type' zijn verplicht", 400);
     }
 
-    const userId = claimsData.claims.sub;
+    const normalizedTo = normalizePhone(to);
 
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("organization_id")
-      .eq("id", userId)
-      .single();
+    // Handle read receipts separately — just mark as read, no logging needed
+    if (type === "read_receipt") {
+      const serviceClient = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+      );
+      const creds = await getWhatsAppCredentials(serviceClient, orgId);
+      if (!creds) return jsonError("WhatsApp niet geconfigureerd", 400);
 
-    if (!profile) {
-      return new Response(JSON.stringify({ error: "Profile not found" }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      await fetch(`${META_API_BASE}/${creds.phone_number_id}/messages`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${creds.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          status: "read",
+          message_id: body.message_id,
+        }),
       });
+
+      return jsonOk({ success: true });
     }
 
-    const orgId = profile.organization_id;
+    // Check opt-out using anon client (respects RLS)
+    if (candidate_id) {
+      const { data: pref } = await supabase
+        .from("communication_preferences")
+        .select("opted_out")
+        .eq("candidate_id", candidate_id)
+        .eq("channel", "whatsapp")
+        .eq("organization_id", orgId)
+        .maybeSingle();
 
-    // Service client for decryption and other operations
+      if (pref?.opted_out) {
+        return jsonError("Kandidaat heeft zich afgemeld voor WhatsApp", 403);
+      }
+    }
+
+    // Service client for rate limit checks, credential decryption, and logging (bypasses RLS)
     const serviceClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Get WhatsApp config with decrypted tokens
-    const { data: decryptedConfig, error: configError } = await serviceClient.rpc('get_whatsapp_token', {
-      p_org_id: orgId,
-    });
-
-    if (configError || !decryptedConfig || decryptedConfig.length === 0) {
-      return new Response(JSON.stringify({ error: "WhatsApp niet geconfigureerd" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const waConfig = decryptedConfig[0];
-    const accessToken = waConfig.decrypted_access_token;
-    const phoneNumberId = waConfig.phone_number_id;
-
-    if (!accessToken || !phoneNumberId) {
-      return new Response(JSON.stringify({ error: "WhatsApp niet geconfigureerd" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const body = await req.json();
-    const { to, message, candidate_id, company_id } = body;
-
-    if (!to || !message) {
-      return new Response(JSON.stringify({ error: "to and message are required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Pre-send check: opt-out status
-    if (candidate_id) {
-      const { data: optOut } = await serviceClient
-        .from("communication_preferences")
-        .select("opted_out")
-        .eq("organization_id", orgId)
-        .eq("candidate_id", candidate_id)
-        .eq("channel", "whatsapp")
-        .single();
-
-      if (optOut?.opted_out) {
-        return new Response(
-          JSON.stringify({ error: "Candidate has opted out of WhatsApp messages" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-    }
-
-    // Pre-send check: rate limit
-    const { data: canSendMinute } = await serviceClient.rpc("check_rate_limit", {
+    // Check rate limit (per minute)
+    const { data: withinLimit } = await serviceClient.rpc("check_rate_limit", {
       p_org_id: orgId,
       p_channel: "whatsapp",
       p_window_type: "minute",
     });
 
-    if (!canSendMinute) {
-      return new Response(
-        JSON.stringify({ error: "Rate limit exceeded (per minute)" }),
-        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    if (withinLimit === false) {
+      return jsonError("Rate limit bereikt, probeer het later opnieuw", 429);
     }
 
-    const { data: canSendHour } = await serviceClient.rpc("check_rate_limit", {
-      p_org_id: orgId,
-      p_channel: "whatsapp",
-      p_window_type: "hour",
-    });
+    // Get decrypted credentials
+    const creds = await getWhatsAppCredentials(serviceClient, orgId);
+    if (!creds) return jsonError("WhatsApp niet geconfigureerd", 400);
 
-    if (!canSendHour) {
-      return new Response(
-        JSON.stringify({ error: "Rate limit exceeded (per hour)" }),
-        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    // Build Meta API payload
+    const metaPayload: Record<string, unknown> = {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: normalizedTo.replace("+", ""), // Meta wants digits only, no + prefix
+    };
+
+    let messageBody = "";
+
+    switch (type) {
+      case "text":
+        metaPayload.type = "text";
+        metaPayload.text = { body: text?.body ?? "", preview_url: text?.preview_url ?? false };
+        messageBody = text?.body ?? "";
+        break;
+
+      case "template":
+        metaPayload.type = "template";
+        metaPayload.template = {
+          name: template?.name,
+          language: { code: template?.language ?? "nl" },
+          components: template?.components ?? [],
+        };
+        messageBody = `[Template: ${template?.name}]`;
+        break;
+
+      case "image":
+        metaPayload.type = "image";
+        metaPayload.image = image;
+        messageBody = image?.caption ?? "[Afbeelding]";
+        break;
+
+      case "video":
+        metaPayload.type = "video";
+        metaPayload.video = video;
+        messageBody = video?.caption ?? "[Video]";
+        break;
+
+      case "audio":
+        metaPayload.type = "audio";
+        metaPayload.audio = audio;
+        messageBody = "[Audio]";
+        break;
+
+      case "document":
+        metaPayload.type = "document";
+        metaPayload.document = document;
+        messageBody = document?.caption ?? `[Document: ${document?.filename ?? "bestand"}]`;
+        break;
+
+      case "reaction":
+        metaPayload.type = "reaction";
+        metaPayload.reaction = reaction;
+        messageBody = `[Reactie: ${reaction?.emoji}]`;
+        break;
+
+      default:
+        return jsonError(`Onbekend berichttype: ${type}`, 400);
     }
 
-    // Clean phone number (remove spaces, dashes, leading +)
-    const cleanPhone = to.replace(/[\s\-\+]/g, "");
+    // Add reply-to context if provided
+    if (context?.message_id) {
+      metaPayload.context = { message_id: context.message_id };
+    }
 
-    // Send via Meta API
-    const metaRes = await fetch(
-      `https://graph.facebook.com/v25.0/${phoneNumberId}/messages`,
+    // Send to Meta Cloud API
+    const metaResponse = await fetch(
+      `${META_API_BASE}/${creds.phone_number_id}/messages`,
       {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${accessToken}`,
+          Authorization: `Bearer ${creds.access_token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          messaging_product: "whatsapp",
-          recipient_type: "individual",
-          to: cleanPhone,
-          type: "text",
-          text: { body: message, preview_url: true },
-        }),
+        body: JSON.stringify(metaPayload),
       }
     );
 
-    const metaBody = await metaRes.json();
+    const metaResult = await metaResponse.json();
 
-    if (!metaRes.ok) {
-      console.error("Meta API error:", metaBody);
-      return new Response(
-        JSON.stringify({ error: "WhatsApp versturen mislukt", details: metaBody }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    if (!metaResponse.ok) {
+      console.error("Meta API error:", metaResult);
+      return jsonError(
+        metaResult?.error?.message ?? "Bericht versturen mislukt",
+        metaResponse.status === 400 ? 400 : 502
       );
     }
 
-    const waMessageId = metaBody.messages?.[0]?.id;
+    const waMessageId = metaResult.messages?.[0]?.id;
+
+    // Log to communications table (service client bypasses RLS)
+    const { error: logError } = await serviceClient.from("communications").insert({
+      organization_id: orgId,
+      channel: "whatsapp",
+      direction: "outbound",
+      subject: `WhatsApp naar ${normalizedTo}`,
+      body: messageBody,
+      candidate_id: candidate_id ?? null,
+      sent_by: userId,
+      sent_at: new Date().toISOString(),
+      whatsapp_message_id: waMessageId,
+      whatsapp_status: "pending",
+      message_type: type,
+    });
+
+    if (logError) {
+      console.error("Communication log failed:", logError);
+      // Don't fail the request — message was already sent successfully
+    }
 
     // Record rate limit usage
     await serviceClient.rpc("record_rate_limit", {
@@ -175,29 +212,9 @@ Deno.serve(async (req) => {
       p_channel: "whatsapp",
     });
 
-    // Store outbound message in communications
-    const { data: comm } = await serviceClient.from("communications").insert({
-      organization_id: orgId,
-      channel: "whatsapp",
-      direction: "outbound",
-      subject: `WhatsApp naar ${cleanPhone}`,
-      body: message,
-      sent_by: userId,
-      candidate_id: candidate_id || null,
-      company_id: company_id || null,
-      whatsapp_message_id: waMessageId || null,
-      whatsapp_status: "sent",
-    }).select("id").single();
-
-    return new Response(
-      JSON.stringify({ success: true, message_id: waMessageId, communication_id: comm?.id }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return jsonOk({ success: true, message_id: waMessageId });
   } catch (err) {
-    console.error("Send error:", err);
-    return new Response(JSON.stringify({ error: "Internal server error" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    console.error("whatsapp-send error:", err);
+    return jsonError("Interne fout bij versturen", 500);
   }
 });
