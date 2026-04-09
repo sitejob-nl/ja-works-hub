@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
+import { useExactActive } from '@/hooks/useExactActive';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,6 +14,7 @@ import { logAudit } from '@/lib/audit';
 
 const CompanyNew = () => {
   const orgId = useOrganizationId();
+  const exactActive = useExactActive();
   const qc = useQueryClient();
   const navigate = useNavigate();
 
@@ -34,6 +36,12 @@ const CompanyNew = () => {
       qc.invalidateQueries({ queryKey: ['companies'] });
       logAudit({ action: 'create', tableName: 'companies', recordId: data.id, newValues: form });
       toast.success('Opdrachtgever aangemaakt');
+      // Auto-sync naar Exact Online als koppeling actief is
+      if (exactActive) {
+        supabase.functions.invoke('exact-sync-account', { body: { company_id: data.id } })
+          .then(({ data: res }) => { if (res?.success) toast.success('Relatie gesynchroniseerd naar Exact'); })
+          .catch(() => {}); // silent fail
+      }
       navigate(`/opdrachtgevers/${data.id}`);
     },
     onError: (e: any) => toast.error(e.message),

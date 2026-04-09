@@ -1,24 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
-
-// Get fresh Exact token via SiteJob Connect
-async function getExactToken(tenantId: string, webhookSecret: string) {
-  const res = await fetch("https://xeshjkznwdrxjjhbpisn.supabase.co/functions/v1/exact-token", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ tenant_id: tenantId, secret: webhookSecret }),
-  });
-  const data = await res.json();
-  if (!res.ok) {
-    if (data.needs_reauth) throw new Error("REAUTH_REQUIRED");
-    throw new Error(data.error || "Token ophalen mislukt");
-  }
-  return data as { access_token: string; division: number; base_url: string };
-}
+import { corsHeaders, getExactToken, jsonError, jsonOk } from "../_shared/exact-helpers.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -28,7 +9,7 @@ Deno.serve(async (req) => {
   try {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return jsonError("Unauthorized", 401);
     }
 
     const supabase = createClient(
@@ -39,12 +20,12 @@ Deno.serve(async (req) => {
 
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError || !user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return jsonError("Unauthorized", 401);
     }
 
     const { data: profile } = await supabase.from("profiles").select("organization_id").eq("id", user.id).single();
     if (!profile) {
-      return new Response(JSON.stringify({ error: "Profile not found" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return jsonError("Profile not found", 404);
     }
 
     const orgId = profile.organization_id;
@@ -54,15 +35,19 @@ Deno.serve(async (req) => {
     const { invoice_id } = body;
 
     if (!invoice_id) {
-      return new Response(JSON.stringify({ error: "invoice_id is required" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return jsonError("invoice_id is required", 400);
     }
 
     // Fetch Exact config (decrypted)
     const { data: exactConfig, error: configError } = await serviceClient.rpc("get_exact_token", { p_org_id: orgId });
     if (configError || !exactConfig?.length) {
-      return new Response(JSON.stringify({ error: "Exact Online niet geconfigureerd" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return jsonError("Exact Online niet geconfigureerd", 400);
     }
     const config = exactConfig[0];
+
+    if (!config.tenant_id || !config.decrypted_webhook_secret) {
+      return jsonError("Exact Online niet geconfigureerd", 400);
+    }
 
     // Get fresh token
     let tokenData;
@@ -70,11 +55,10 @@ Deno.serve(async (req) => {
       tokenData = await getExactToken(config.tenant_id, config.decrypted_webhook_secret);
     } catch (err: unknown) {
       if ((err as Error).message === "REAUTH_REQUIRED") {
-        return new Response(JSON.stringify({
-          error: "Exact Online koppeling verlopen",
+        return jsonError("Exact Online koppeling verlopen. Koppel opnieuw via Instellingen.", 401, {
           needs_reauth: true,
           setup_url: `https://connect.sitejob.nl/exact-setup?tenant_id=${config.tenant_id}`,
-        }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        });
       }
       throw err;
     }
@@ -88,78 +72,117 @@ Deno.serve(async (req) => {
       .single();
 
     if (invError || !invoice) {
-      return new Response(JSON.stringify({ error: "Factuur niet gevonden" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return jsonError("Factuur niet gevonden", 404);
     }
 
     if (invoice.exact_invoice_id) {
-      return new Response(JSON.stringify({ error: "Factuur is al naar Exact gesynchroniseerd", exact_invoice_id: invoice.exact_invoice_id }), {
-        status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      return jsonError("Factuur is al naar Exact gesynchroniseerd", 409, {
+        exact_invoice_id: invoice.exact_invoice_id,
       });
     }
 
-    const { data: lines } = await serviceClient.from("invoice_lines").select("*").eq("invoice_id", invoice_id).order("sort_order");
+    const { data: lines } = await serviceClient
+      .from("invoice_lines")
+      .select("*")
+      .eq("invoice_id", invoice_id)
+      .order("sort_order");
+
+    // Fetch GLAccount mappings for this org
+    const { data: glMappings } = await serviceClient
+      .from("exact_glaccount_mappings")
+      .select("hour_type_code, gl_account_id")
+      .eq("organization_id", orgId);
+
+    const glMap = new Map<string, string>();
+    if (glMappings) {
+      for (const m of glMappings) {
+        glMap.set(m.hour_type_code, m.gl_account_id);
+      }
+    }
+
+    const company = invoice.companies;
 
     // Step 1: Find or create Account in Exact
-    const company = invoice.companies;
-    let exactAccountId: string | null = null;
+    let exactAccountId: string | null = company?.exact_account_id || null;
 
-    // Search by name
-    const accountSearchRes = await fetch(
-      `${tokenData.base_url}/api/v1/${tokenData.division}/crm/Accounts?$filter=Name eq '${encodeURIComponent(company.name)}'&$select=ID,Name`,
-      { headers: { Authorization: `Bearer ${tokenData.access_token}`, Accept: "application/json" } }
-    );
-    const accountSearchData = await accountSearchRes.json();
-    const existingAccounts = accountSearchData?.d?.results || [];
-
-    if (existingAccounts.length > 0) {
-      exactAccountId = existingAccounts[0].ID;
-    } else {
-      // Create account
-      const createAccountRes = await fetch(
-        `${tokenData.base_url}/api/v1/${tokenData.division}/crm/Accounts`,
-        {
-          method: "POST",
-          headers: { Authorization: `Bearer ${tokenData.access_token}`, "Content-Type": "application/json", Accept: "application/json" },
-          body: JSON.stringify({
-            Name: company.name,
-            Status: "C",
-            Email: company.email || undefined,
-            Phone: company.phone || undefined,
-            City: company.city || undefined,
-            AddressLine1: company.address || undefined,
-            Postcode: company.postal_code || undefined,
-            VATNumber: company.vat_number || undefined,
-            ChamberOfCommerce: company.kvk_number || undefined,
-            Country: "NL",
-          }),
-        }
+    if (!exactAccountId && company) {
+      // Search by name
+      const accountSearchRes = await fetch(
+        `${tokenData.base_url}/api/v1/${tokenData.division}/crm/Accounts?$filter=Name eq '${encodeURIComponent(company.name)}'&$select=ID,Name`,
+        { headers: { Authorization: `Bearer ${tokenData.access_token}`, Accept: "application/json" } }
       );
+      const accountSearchData = await accountSearchRes.json();
+      const existingAccounts = accountSearchData?.d?.results || [];
 
-      if (!createAccountRes.ok) {
-        const errBody = await createAccountRes.text();
-        console.error("Create account failed:", errBody);
-        return new Response(JSON.stringify({ error: "Kon account niet aanmaken in Exact", details: errBody }), {
-          status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+      if (existingAccounts.length > 0) {
+        exactAccountId = existingAccounts[0].ID;
+      } else {
+        // Create account with correct field mappings
+        const createAccountRes = await fetch(
+          `${tokenData.base_url}/api/v1/${tokenData.division}/crm/Accounts`,
+          {
+            method: "POST",
+            headers: { Authorization: `Bearer ${tokenData.access_token}`, "Content-Type": "application/json", Accept: "application/json" },
+            body: JSON.stringify({
+              Name: company.name,
+              Status: "C",
+              Email: company.email || undefined,
+              Phone: company.phone || undefined,
+              City: company.address_city || undefined,
+              AddressLine1: company.address_street || undefined,
+              Postcode: company.address_postal || undefined,
+              VATNumber: company.btw_number || undefined,
+              ChamberOfCommerce: company.kvk_number || undefined,
+              Country: "NL",
+            }),
+          }
+        );
+
+        if (!createAccountRes.ok) {
+          const errBody = await createAccountRes.text();
+          console.error("Create account failed:", errBody);
+          await serviceClient.from("invoices").update({ exact_sync_error: `Account aanmaken mislukt: ${errBody}` }).eq("id", invoice_id);
+          return jsonError("Kon account niet aanmaken in Exact", 502, { details: errBody });
+        }
+
+        const createdAccount = await createAccountRes.json();
+        exactAccountId = createdAccount?.d?.ID;
       }
 
-      const createdAccount = await createAccountRes.json();
-      exactAccountId = createdAccount?.d?.ID;
+      // Persist exact_account_id on company
+      if (exactAccountId) {
+        await serviceClient.from("companies").update({ exact_account_id: exactAccountId }).eq("id", company.id);
+      }
     }
 
     if (!exactAccountId) {
-      return new Response(JSON.stringify({ error: "Kon geen Exact account ID verkrijgen" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      await serviceClient.from("invoices").update({ exact_sync_error: "Kon geen Exact account ID verkrijgen" }).eq("id", invoice_id);
+      return jsonError("Kon geen Exact account ID verkrijgen", 500);
     }
 
-    // Step 2: Create SalesInvoice with lines
-    // Build invoice lines for Exact (using GLAccount if available, otherwise description-only)
-    const exactLines = (lines || []).map((l: any) => ({
-      Description: l.description,
-      Quantity: Number(l.hours) || 1,
-      NetPrice: Number(l.hourly_rate) || Number(l.line_total) || 0,
-      AmountFC: Number(l.line_total),
-    }));
+    // Step 2: Build invoice lines with optional GLAccount
+    const exactLines = (lines || []).map((l: any) => {
+      const line: any = {
+        Description: l.description,
+        Quantity: Number(l.hours) || 1,
+        NetPrice: Number(l.hourly_rate) || Number(l.line_total) || 0,
+        AmountFC: Number(l.line_total),
+      };
 
+      // Add GLAccount if mapping exists for this hour type
+      // Invoice lines may reference a placement_hour_type via description or a dedicated field
+      // Try to match on known hour type codes
+      if (l.hour_type_code && glMap.has(l.hour_type_code)) {
+        line.GLAccount = glMap.get(l.hour_type_code);
+      } else if (glMap.has("normaal")) {
+        // Fallback to default "normaal" mapping
+        line.GLAccount = glMap.get("normaal");
+      }
+
+      return line;
+    });
+
+    // Step 3: Create SalesInvoice
     const exactInvoicePayload: any = {
       OrderedBy: exactAccountId,
       Description: `Factuur ${invoice.invoice_number}`,
@@ -180,32 +203,30 @@ Deno.serve(async (req) => {
     if (!createInvoiceRes.ok) {
       const errBody = await createInvoiceRes.text();
       console.error("Create invoice failed:", errBody);
-      return new Response(JSON.stringify({ error: "Kon factuur niet aanmaken in Exact", details: errBody }), {
-        status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      await serviceClient.from("invoices").update({ exact_sync_error: `Factuur aanmaken mislukt: ${errBody}` }).eq("id", invoice_id);
+      return jsonError("Kon factuur niet aanmaken in Exact", 502, { details: errBody });
     }
 
     const createdInvoice = await createInvoiceRes.json();
     const exactInvoiceId = createdInvoice?.d?.InvoiceID || createdInvoice?.d?.ID;
 
-    // Step 3: Update our invoice with Exact reference
+    // Step 4: Update our invoice with Exact reference + clear error
     await serviceClient.from("invoices").update({
       exact_invoice_id: exactInvoiceId,
+      exact_sync_error: null,
       status: invoice.status === "concept" ? "definitief" : invoice.status,
       updated_at: new Date().toISOString(),
     }).eq("id", invoice_id);
 
-    return new Response(JSON.stringify({
+    return jsonOk({
       success: true,
       exact_invoice_id: exactInvoiceId,
       exact_account_id: exactAccountId,
       message: `Factuur ${invoice.invoice_number} succesvol gesynchroniseerd naar Exact Online`,
-    }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    });
 
   } catch (err) {
     console.error("Exact sync error:", err);
-    return new Response(JSON.stringify({ error: (err as Error).message || "Internal server error" }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonError((err as Error).message || "Internal server error", 500);
   }
 });

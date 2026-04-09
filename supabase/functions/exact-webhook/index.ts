@@ -1,13 +1,18 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { corsHeaders, getExactToken } from "../_shared/exact-helpers.ts";
+
+// Invoice status progression order (higher = later in lifecycle)
+const STATUS_ORDER: Record<string, number> = {
+  concept: 0,
+  definitief: 1,
+  verzonden: 2,
+  betaald: 3,
+  gecrediteerd: 4,
+};
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, {
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-webhook-secret",
-      },
-    });
+    return new Response(null, { headers: corsHeaders });
   }
 
   try {
@@ -29,7 +34,7 @@ Deno.serve(async (req) => {
     // Get all active exact configs and decrypt to find match
     const { data: configs } = await serviceClient
       .from("exact_config")
-      .select("id, organization_id, is_active")
+      .select("id, organization_id, tenant_id, is_active")
       .eq("is_active", true);
 
     if (!configs || configs.length === 0) {
@@ -38,13 +43,15 @@ Deno.serve(async (req) => {
     }
 
     // Decrypt webhook_secret for each config and find match
-    let matchedConfig: { id: string; organization_id: string } | null = null;
+    let matchedConfig: { id: string; organization_id: string; tenant_id: string } | null = null;
+    let decryptedSecret: string | null = null;
     for (const c of configs) {
-      const { data: decrypted } = await serviceClient.rpc('get_exact_token', {
+      const { data: decrypted } = await serviceClient.rpc("get_exact_token", {
         p_org_id: c.organization_id,
       });
       if (decrypted?.[0]?.decrypted_webhook_secret === webhookSecret) {
-        matchedConfig = c;
+        matchedConfig = { id: c.id, organization_id: c.organization_id, tenant_id: c.tenant_id };
+        decryptedSecret = decrypted[0].decrypted_webhook_secret;
         break;
       }
     }
@@ -70,10 +77,103 @@ Deno.serve(async (req) => {
 
     console.log("Exact webhook processed for org:", matchedConfig.organization_id, "topic:", body.Topic);
 
+    // Process topic-specific events
+    if (body.Topic === "SalesInvoices" && (body.EventAction === "Update" || body.EventAction === "Create")) {
+      await handleSalesInvoiceEvent(serviceClient, matchedConfig, decryptedSecret!, body);
+    }
+
     // Always return 200
     return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
   } catch (err) {
     console.error("Webhook error:", err);
+    // Always return 200 to prevent Exact retry storms
     return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
   }
 });
+
+/**
+ * Handle SalesInvoice update/create webhook.
+ * Maps Exact StatusCode to JA Werkt invoice status (forward-only).
+ */
+async function handleSalesInvoiceEvent(
+  serviceClient: ReturnType<typeof createClient>,
+  config: { organization_id: string; tenant_id: string },
+  webhookSecret: string,
+  webhook: { Key: string; EventAction: string },
+) {
+  try {
+    // Find local invoice by exact_invoice_id
+    const { data: invoice } = await serviceClient
+      .from("invoices")
+      .select("id, status, exact_invoice_id")
+      .eq("exact_invoice_id", webhook.Key)
+      .eq("organization_id", config.organization_id)
+      .single();
+
+    if (!invoice) {
+      console.log("No local invoice found for Exact Key:", webhook.Key);
+      return;
+    }
+
+    // Get fresh token to query Exact for current invoice status
+    let tokenData;
+    try {
+      tokenData = await getExactToken(config.tenant_id, webhookSecret);
+    } catch (err) {
+      console.error("Could not get token for webhook processing:", err);
+      return;
+    }
+
+    // Fetch invoice status from Exact
+    const exactRes = await fetch(
+      `${tokenData.base_url}/api/v1/${tokenData.division}/salesinvoice/SalesInvoices(guid'${webhook.Key}')?$select=InvoiceID,StatusCode,AmountDC`,
+      {
+        headers: {
+          Authorization: `Bearer ${tokenData.access_token}`,
+          Accept: "application/json",
+        },
+      }
+    );
+
+    if (!exactRes.ok) {
+      console.error("Failed to fetch Exact invoice:", exactRes.status, await exactRes.text());
+      return;
+    }
+
+    const exactData = await exactRes.json();
+    const exactInvoice = exactData?.d;
+    if (!exactInvoice) return;
+
+    // Map Exact StatusCode to JA Werkt status
+    // Exact: 10=Concept, 20=Open, 50=Verwerkt
+    let newStatus: string | null = null;
+    const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+
+    if (exactInvoice.StatusCode === 20) {
+      newStatus = "verzonden";
+    } else if (exactInvoice.StatusCode === 50) {
+      newStatus = "betaald";
+      updates.paid_amount = Number(exactInvoice.AmountDC) || null;
+      updates.paid_at = new Date().toISOString();
+    }
+
+    if (!newStatus) return;
+
+    // Forward-only: only update if new status is further in the lifecycle
+    const currentOrder = STATUS_ORDER[invoice.status] ?? -1;
+    const newOrder = STATUS_ORDER[newStatus] ?? -1;
+
+    if (newOrder <= currentOrder) {
+      console.log(`Skipping status update: ${invoice.status} (${currentOrder}) → ${newStatus} (${newOrder}) — not forward`);
+      return;
+    }
+
+    updates.status = newStatus;
+
+    await serviceClient.from("invoices").update(updates).eq("id", invoice.id);
+    console.log(`Invoice ${invoice.id} status updated: ${invoice.status} → ${newStatus}`);
+
+  } catch (err) {
+    console.error("Error processing SalesInvoice webhook:", err);
+  }
+}

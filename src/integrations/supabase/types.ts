@@ -181,6 +181,8 @@ export type Database = {
           completed_at: string | null
           created_at: string
           created_by: string | null
+          email_subject: string | null
+          email_template_id: string | null
           failed_count: number
           id: string
           message_template: string
@@ -202,6 +204,8 @@ export type Database = {
           completed_at?: string | null
           created_at?: string
           created_by?: string | null
+          email_subject?: string | null
+          email_template_id?: string | null
           failed_count?: number
           id?: string
           message_template: string
@@ -223,6 +227,8 @@ export type Database = {
           completed_at?: string | null
           created_at?: string
           created_by?: string | null
+          email_subject?: string | null
+          email_template_id?: string | null
           failed_count?: number
           id?: string
           message_template?: string
@@ -245,6 +251,13 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bulk_campaigns_email_template_id_fkey"
+            columns: ["email_template_id"]
+            isOneToOne: false
+            referencedRelation: "email_templates"
             referencedColumns: ["id"]
           },
           {
@@ -848,6 +861,12 @@ export type Database = {
           company_id: string | null
           created_at: string
           direction: string
+          email_attachments: Json | null
+          email_cc: string[] | null
+          email_conversation_id: string | null
+          email_from: string | null
+          email_message_id: string | null
+          email_to: string[] | null
           id: string
           organization_id: string
           recording_url: string | null
@@ -867,6 +886,12 @@ export type Database = {
           company_id?: string | null
           created_at?: string
           direction?: string
+          email_attachments?: Json | null
+          email_cc?: string[] | null
+          email_conversation_id?: string | null
+          email_from?: string | null
+          email_message_id?: string | null
+          email_to?: string[] | null
           id?: string
           organization_id: string
           recording_url?: string | null
@@ -886,6 +911,12 @@ export type Database = {
           company_id?: string | null
           created_at?: string
           direction?: string
+          email_attachments?: Json | null
+          email_cc?: string[] | null
+          email_conversation_id?: string | null
+          email_from?: string | null
+          email_message_id?: string | null
+          email_to?: string[] | null
           id?: string
           organization_id?: string
           recording_url?: string | null
@@ -938,6 +969,8 @@ export type Database = {
         Row: {
           address_city: string | null
           address_country: string | null
+          address_lat: number | null
+          address_lng: number | null
           address_postal: string | null
           address_street: string | null
           authorized_signatory: string | null
@@ -946,6 +979,7 @@ export type Database = {
           cao: string | null
           created_at: string
           email: string | null
+          exact_account_id: string | null
           iban: string | null
           id: string
           invoice_address_city: string | null
@@ -975,6 +1009,8 @@ export type Database = {
         Insert: {
           address_city?: string | null
           address_country?: string | null
+          address_lat?: number | null
+          address_lng?: number | null
           address_postal?: string | null
           address_street?: string | null
           authorized_signatory?: string | null
@@ -983,6 +1019,7 @@ export type Database = {
           cao?: string | null
           created_at?: string
           email?: string | null
+          exact_account_id?: string | null
           iban?: string | null
           id?: string
           invoice_address_city?: string | null
@@ -1012,6 +1049,8 @@ export type Database = {
         Update: {
           address_city?: string | null
           address_country?: string | null
+          address_lat?: number | null
+          address_lng?: number | null
           address_postal?: string | null
           address_street?: string | null
           authorized_signatory?: string | null
@@ -1020,6 +1059,7 @@ export type Database = {
           cao?: string | null
           created_at?: string
           email?: string | null
+          exact_account_id?: string | null
           iban?: string | null
           id?: string
           invoice_address_city?: string | null
@@ -1071,6 +1111,7 @@ export type Database = {
           notes: string | null
           organization_id: string
           phone: string | null
+          role: Database["public"]["Enums"]["contact_role"] | null
         }
         Insert: {
           company_id: string
@@ -1086,6 +1127,7 @@ export type Database = {
           notes?: string | null
           organization_id: string
           phone?: string | null
+          role?: Database["public"]["Enums"]["contact_role"] | null
         }
         Update: {
           company_id?: string
@@ -1101,6 +1143,7 @@ export type Database = {
           notes?: string | null
           organization_id?: string
           phone?: string | null
+          role?: Database["public"]["Enums"]["contact_role"] | null
         }
         Relationships: [
           {
@@ -1404,6 +1447,101 @@ export type Database = {
           },
         ]
       }
+      custom_field_values: {
+        Row: {
+          created_at: string | null
+          custom_field_id: string
+          entity_id: string
+          id: string
+          organization_id: string
+          updated_at: string | null
+          value: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          custom_field_id: string
+          entity_id: string
+          id?: string
+          organization_id: string
+          updated_at?: string | null
+          value?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          custom_field_id?: string
+          entity_id?: string
+          id?: string
+          organization_id?: string
+          updated_at?: string | null
+          value?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "custom_field_values_custom_field_id_fkey"
+            columns: ["custom_field_id"]
+            isOneToOne: false
+            referencedRelation: "custom_fields"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "custom_field_values_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      custom_fields: {
+        Row: {
+          created_at: string | null
+          entity_type: string
+          field_label: string
+          field_name: string
+          field_type: string
+          id: string
+          is_active: boolean | null
+          is_required: boolean | null
+          options: Json | null
+          organization_id: string
+          sort_order: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          entity_type: string
+          field_label: string
+          field_name: string
+          field_type: string
+          id?: string
+          is_active?: boolean | null
+          is_required?: boolean | null
+          options?: Json | null
+          organization_id: string
+          sort_order?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          entity_type?: string
+          field_label?: string
+          field_name?: string
+          field_type?: string
+          id?: string
+          is_active?: boolean | null
+          is_required?: boolean | null
+          options?: Json | null
+          organization_id?: string
+          sort_order?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "custom_fields_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       documents: {
         Row: {
           ai_verification_result: Json | null
@@ -1496,6 +1634,56 @@ export type Database = {
             columns: ["verified_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_templates: {
+        Row: {
+          body_html: string
+          body_json: string | null
+          category: string
+          created_at: string
+          id: string
+          is_active: boolean
+          name: string
+          organization_id: string
+          subject: string
+          updated_at: string
+          variables_used: string[] | null
+        }
+        Insert: {
+          body_html?: string
+          body_json?: string | null
+          category?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name: string
+          organization_id: string
+          subject: string
+          updated_at?: string
+          variables_used?: string[] | null
+        }
+        Update: {
+          body_html?: string
+          body_json?: string | null
+          category?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          organization_id?: string
+          subject?: string
+          updated_at?: string
+          variables_used?: string[] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_templates_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -2013,6 +2201,47 @@ export type Database = {
           },
         ]
       }
+      exact_glaccount_mappings: {
+        Row: {
+          created_at: string
+          description: string | null
+          gl_account_code: string | null
+          gl_account_id: string
+          hour_type_code: string
+          id: string
+          organization_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          gl_account_code?: string | null
+          gl_account_id: string
+          hour_type_code: string
+          id?: string
+          organization_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          gl_account_code?: string | null
+          gl_account_id?: string
+          hour_type_code?: string
+          id?: string
+          organization_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "exact_glaccount_mappings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       external_mappings: {
         Row: {
           created_at: string
@@ -2303,12 +2532,14 @@ export type Database = {
           check_in_date: string
           check_out_date: string | null
           created_at: string
+          deduction_amount: number | null
           deposit_paid: boolean
           employee_id: string
           id: string
           monthly_deduction: number | null
           notes: string | null
           organization_id: string
+          payment_frequency: string | null
           rent_paid_until: string | null
           status: Database["public"]["Enums"]["housing_assignment_status"]
           unit_id: string
@@ -2319,12 +2550,14 @@ export type Database = {
           check_in_date: string
           check_out_date?: string | null
           created_at?: string
+          deduction_amount?: number | null
           deposit_paid?: boolean
           employee_id: string
           id?: string
           monthly_deduction?: number | null
           notes?: string | null
           organization_id: string
+          payment_frequency?: string | null
           rent_paid_until?: string | null
           status?: Database["public"]["Enums"]["housing_assignment_status"]
           unit_id: string
@@ -2335,12 +2568,14 @@ export type Database = {
           check_in_date?: string
           check_out_date?: string | null
           created_at?: string
+          deduction_amount?: number | null
           deposit_paid?: boolean
           employee_id?: string
           id?: string
           monthly_deduction?: number | null
           notes?: string | null
           organization_id?: string
+          payment_frequency?: string | null
           rent_paid_until?: string | null
           status?: Database["public"]["Enums"]["housing_assignment_status"]
           unit_id?: string
@@ -2662,6 +2897,7 @@ export type Database = {
           created_by: string | null
           due_date: string | null
           exact_invoice_id: string | null
+          exact_sync_error: string | null
           id: string
           invoice_date: string
           invoice_number: string
@@ -2687,6 +2923,7 @@ export type Database = {
           created_by?: string | null
           due_date?: string | null
           exact_invoice_id?: string | null
+          exact_sync_error?: string | null
           id?: string
           invoice_date?: string
           invoice_number: string
@@ -2712,6 +2949,7 @@ export type Database = {
           created_by?: string | null
           due_date?: string | null
           exact_invoice_id?: string | null
+          exact_sync_error?: string | null
           id?: string
           invoice_date?: string
           invoice_number?: string
@@ -3176,6 +3414,59 @@ export type Database = {
           },
         ]
       }
+      microsoft_config: {
+        Row: {
+          access_token: string | null
+          created_at: string
+          id: string
+          is_active: boolean
+          microsoft_email: string | null
+          microsoft_tenant_id: string | null
+          microsoft_user_id: string | null
+          organization_id: string
+          refresh_token: string | null
+          refreshing_at: string | null
+          token_expires_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          access_token?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          microsoft_email?: string | null
+          microsoft_tenant_id?: string | null
+          microsoft_user_id?: string | null
+          organization_id: string
+          refresh_token?: string | null
+          refreshing_at?: string | null
+          token_expires_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          access_token?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          microsoft_email?: string | null
+          microsoft_tenant_id?: string | null
+          microsoft_user_id?: string | null
+          organization_id?: string
+          refresh_token?: string | null
+          refreshing_at?: string | null
+          token_expires_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "microsoft_config_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       mileage_entries: {
         Row: {
           candidate_id: string | null
@@ -3250,6 +3541,50 @@ export type Database = {
             columns: ["vehicle_id"]
             isOneToOne: false
             referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notes: {
+        Row: {
+          body: string
+          created_at: string
+          created_by: string
+          id: string
+          is_internal: boolean
+          organization_id: string
+          related_entity_id: string
+          related_entity_type: string
+          updated_at: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          created_by: string
+          id?: string
+          is_internal?: boolean
+          organization_id: string
+          related_entity_id: string
+          related_entity_type: string
+          updated_at?: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          is_internal?: boolean
+          organization_id?: string
+          related_entity_id?: string
+          related_entity_type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notes_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -4441,6 +4776,8 @@ export type Database = {
       properties: {
         Row: {
           address_city: string
+          address_lat: number | null
+          address_lng: number | null
           address_postal: string
           address_street: string
           cost_electra: number | null
@@ -4477,6 +4814,8 @@ export type Database = {
         }
         Insert: {
           address_city: string
+          address_lat?: number | null
+          address_lng?: number | null
           address_postal: string
           address_street: string
           cost_electra?: number | null
@@ -4513,6 +4852,8 @@ export type Database = {
         }
         Update: {
           address_city?: string
+          address_lat?: number | null
+          address_lng?: number | null
           address_postal?: string
           address_street?: string
           cost_electra?: number | null
@@ -4642,57 +4983,6 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "rate_limit_tracking_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      notes: {
-        Row: {
-          body: string
-          created_at: string
-          created_by: string
-          id: string
-          is_internal: boolean
-          organization_id: string
-          related_entity_id: string
-          related_entity_type: string
-          updated_at: string
-        }
-        Insert: {
-          body: string
-          created_at?: string
-          created_by: string
-          id?: string
-          is_internal?: boolean
-          organization_id: string
-          related_entity_id: string
-          related_entity_type: string
-          updated_at?: string
-        }
-        Update: {
-          body?: string
-          created_at?: string
-          created_by?: string
-          id?: string
-          is_internal?: boolean
-          organization_id?: string
-          related_entity_id?: string
-          related_entity_type?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "notes_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "notes_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
@@ -5079,97 +5369,6 @@ export type Database = {
           },
         ]
       }
-      talentpools: {
-        Row: {
-          id: string
-          organization_id: string
-          name: string
-          description: string | null
-          color: string | null
-          created_by: string | null
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          organization_id: string
-          name: string
-          description?: string | null
-          color?: string | null
-          created_by?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          organization_id?: string
-          name?: string
-          description?: string | null
-          color?: string | null
-          created_by?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "talentpools_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "talentpools_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      talentpool_members: {
-        Row: {
-          talentpool_id: string
-          candidate_id: string
-          added_by: string | null
-          added_at: string
-        }
-        Insert: {
-          talentpool_id: string
-          candidate_id: string
-          added_by?: string | null
-          added_at?: string
-        }
-        Update: {
-          talentpool_id?: string
-          candidate_id?: string
-          added_by?: string | null
-          added_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "talentpool_members_talentpool_id_fkey"
-            columns: ["talentpool_id"]
-            isOneToOne: false
-            referencedRelation: "talentpools"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "talentpool_members_candidate_id_fkey"
-            columns: ["candidate_id"]
-            isOneToOne: false
-            referencedRelation: "candidates"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "talentpool_members_added_by_fkey"
-            columns: ["added_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       timesheets: {
         Row: {
           ai_validated_at: string | null
@@ -5420,6 +5619,9 @@ export type Database = {
           required_count: number
           required_skills: string[] | null
           requires_drivers_license: boolean | null
+          salary_display: string | null
+          salary_max: number | null
+          salary_min: number | null
           skills_required: string[] | null
           start_date: string | null
           status: Database["public"]["Enums"]["vacancy_status"]
@@ -5443,6 +5645,9 @@ export type Database = {
           required_count?: number
           required_skills?: string[] | null
           requires_drivers_license?: boolean | null
+          salary_display?: string | null
+          salary_max?: number | null
+          salary_min?: number | null
           skills_required?: string[] | null
           start_date?: string | null
           status?: Database["public"]["Enums"]["vacancy_status"]
@@ -5466,6 +5671,9 @@ export type Database = {
           required_count?: number
           required_skills?: string[] | null
           requires_drivers_license?: boolean | null
+          salary_display?: string | null
+          salary_max?: number | null
+          salary_min?: number | null
           skills_required?: string[] | null
           start_date?: string | null
           status?: Database["public"]["Enums"]["vacancy_status"]
@@ -5942,14 +6150,19 @@ export type Database = {
       v_unit_occupancy: {
         Row: {
           address_city: string | null
+          address_lat: number | null
+          address_lng: number | null
+          address_postal: string | null
           available_spots: number | null
           capacity: number | null
           current_occupancy: number | null
+          monthly_cost: number | null
           organization_id: string | null
           property_name: string | null
           status: Database["public"]["Enums"]["unit_status"] | null
           unit_id: string | null
           unit_name: string | null
+          weekly_cost: number | null
         }
         Relationships: [
           {
@@ -6002,6 +6215,17 @@ export type Database = {
           division: number
           region: string
           tenant_id: string
+        }[]
+      }
+      get_microsoft_token: {
+        Args: { p_org_id: string }
+        Returns: {
+          access_token: string
+          microsoft_email: string
+          microsoft_tenant_id: string
+          refresh_token: string
+          refreshing_at: string
+          token_expires_at: string
         }[]
       }
       get_my_sensitive_data: {
@@ -6136,6 +6360,7 @@ export type Database = {
         | "afgewezen"
       communication_channel: "whatsapp" | "email" | "voip" | "notitie" | "sms"
       compliance_status: "incompleet" | "compleet" | "verlopen"
+      contact_role: "admin" | "plaatsing" | "hr" | "overig"
       contract_status: "concept" | "verzonden" | "getekend" | "verlopen"
       document_status:
         | "geldig"
@@ -6365,6 +6590,7 @@ export const Constants = {
       ],
       communication_channel: ["whatsapp", "email", "voip", "notitie", "sms"],
       compliance_status: ["incompleet", "compleet", "verlopen"],
+      contact_role: ["admin", "plaatsing", "hr", "overig"],
       contract_status: ["concept", "verzonden", "getekend", "verlopen"],
       document_status: [
         "geldig",

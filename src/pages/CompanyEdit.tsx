@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useExactActive } from '@/hooks/useExactActive';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -12,6 +13,7 @@ import { logAudit } from '@/lib/audit';
 
 const CompanyEdit = () => {
   const { id } = useParams<{ id: string }>();
+  const exactActive = useExactActive();
   const qc = useQueryClient();
   const navigate = useNavigate();
 
@@ -71,6 +73,12 @@ const CompanyEdit = () => {
       qc.invalidateQueries({ queryKey: ['companies'] });
       logAudit({ action: 'update', tableName: 'companies', recordId: id!, newValues: form });
       toast.success('Opdrachtgever bijgewerkt');
+      // Auto-sync naar Exact Online als koppeling actief is
+      if (exactActive && id) {
+        supabase.functions.invoke('exact-sync-account', { body: { company_id: id } })
+          .then(({ data: res }) => { if (res?.success) toast.success('Relatie bijgewerkt in Exact'); })
+          .catch(() => {}); // silent fail
+      }
       navigate(`/opdrachtgevers/${id}`);
     },
     onError: (e: any) => toast.error(e.message),

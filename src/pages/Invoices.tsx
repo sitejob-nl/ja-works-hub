@@ -629,7 +629,15 @@ function InvoiceDetailSheet({ invoice, lines, open, onOpenChange, onUpdate }: {
       if (error) throw error;
       logAudit({ action: 'update', tableName: 'invoices', recordId: invoice.id, newValues: { status } });
     },
-    onSuccess: () => { toast.success('Status bijgewerkt'); onUpdate(); onOpenChange(false); },
+    onSuccess: (_data, newStatus) => {
+      toast.success('Status bijgewerkt');
+      // Auto-push naar Exact als definitief en nog niet gesynceerd
+      if (newStatus === 'definitief' && !invoice.exact_invoice_id) {
+        syncExact.mutate();
+      }
+      onUpdate();
+      onOpenChange(false);
+    },
     onError: (e: any) => toast.error(e.message),
   });
 

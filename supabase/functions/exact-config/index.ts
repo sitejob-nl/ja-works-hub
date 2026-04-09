@@ -1,9 +1,55 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { corsHeaders, getExactToken } from "../_shared/exact-helpers.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-webhook-secret",
+const CONNECT_WEBHOOK_ROUTER = "https://xeshjkznwdrxjjhbpisn.supabase.co/functions/v1/exact-webhook-router";
+
+const regionBaseUrls: Record<string, string> = {
+  nl: "https://start.exactonline.nl",
+  be: "https://start.exactonline.be",
+  de: "https://start.exactonline.de",
+  uk: "https://start.exactonline.co.uk",
+  fr: "https://start.exactonline.fr",
+  es: "https://start.exactonline.es",
 };
+
+/** Register webhook subscriptions in Exact Online for key topics */
+async function registerWebhookSubscriptions(
+  baseUrl: string,
+  division: number,
+  accessToken: string,
+) {
+  const topics = ["SalesInvoices", "Accounts"];
+
+  for (const topic of topics) {
+    try {
+      const res = await fetch(
+        `${baseUrl}/api/v1/${division}/webhooks/WebhookSubscriptions`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({
+            CallbackURL: CONNECT_WEBHOOK_ROUTER,
+            Topic: topic,
+          }),
+        }
+      );
+
+      if (res.ok) {
+        console.log(`Webhook subscription registered for topic: ${topic}`);
+      } else {
+        const errBody = await res.text();
+        // 409 or duplicate is fine — subscription may already exist
+        console.warn(`Webhook subscription for ${topic} response ${res.status}:`, errBody);
+      }
+    } catch (err) {
+      console.error(`Failed to register webhook for ${topic}:`, err);
+    }
+  }
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -34,7 +80,7 @@ Deno.serve(async (req) => {
     }
 
     // Decrypt webhook_secret via RPC and compare
-    const { data: decrypted } = await serviceClient.rpc('get_exact_token', {
+    const { data: decrypted } = await serviceClient.rpc("get_exact_token", {
       p_org_id: config.organization_id,
     });
 
@@ -57,26 +103,23 @@ Deno.serve(async (req) => {
         .eq("id", config.id);
 
       console.log("Exact disconnected for org:", config.organization_id);
-      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     // Handle config push
-    const regionBaseUrls: Record<string, string> = {
-      nl: "https://start.exactonline.nl",
-      be: "https://start.exactonline.be",
-      de: "https://start.exactonline.de",
-      uk: "https://start.exactonline.co.uk",
-      fr: "https://start.exactonline.fr",
-      es: "https://start.exactonline.es",
-    };
+    const region = body.region || config.region || "nl";
+    const baseUrl = regionBaseUrls[region] || regionBaseUrls.nl;
 
     const { error: updateError } = await serviceClient
       .from("exact_config")
       .update({
         division: body.division,
         company_name: body.company_name || null,
-        region: body.region || config.region || "nl",
-        base_url: regionBaseUrls[body.region || config.region || "nl"] || regionBaseUrls.nl,
+        region,
+        base_url: baseUrl,
         is_active: true,
         updated_at: new Date().toISOString(),
       })
@@ -88,7 +131,22 @@ Deno.serve(async (req) => {
     }
 
     console.log("Exact config updated for org:", config.organization_id, "division:", body.division);
-    return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+    // Register webhook subscriptions in Exact after successful config push
+    if (body.division && config.tenant_id && decrypted[0].decrypted_webhook_secret) {
+      try {
+        const tokenData = await getExactToken(config.tenant_id, decrypted[0].decrypted_webhook_secret);
+        await registerWebhookSubscriptions(tokenData.base_url, tokenData.division, tokenData.access_token);
+      } catch (err) {
+        // Non-blocking — webhook registration failure shouldn't break the config push
+        console.error("Webhook subscription registration failed (non-blocking):", err);
+      }
+    }
+
+    return new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   } catch (err) {
     console.error("Config error:", err);
     return new Response("Internal error", { status: 500 });

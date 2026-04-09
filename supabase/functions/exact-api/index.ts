@@ -1,27 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
-
-// Helper to get a fresh Exact token via SiteJob Connect
-async function getExactToken(tenantId: string, webhookSecret: string) {
-  const res = await fetch("https://xeshjkznwdrxjjhbpisn.supabase.co/functions/v1/exact-token", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ tenant_id: tenantId, secret: webhookSecret }),
-  });
-
-  const data = await res.json();
-  if (!res.ok) {
-    if (data.needs_reauth) {
-      throw new Error("REAUTH_REQUIRED");
-    }
-    throw new Error(data.error || "Token ophalen mislukt");
-  }
-  return data as { access_token: string; division: number; region: string; base_url: string; expires_at: string };
-}
+import { corsHeaders, getExactToken, jsonError } from "../_shared/exact-helpers.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -31,7 +9,7 @@ Deno.serve(async (req) => {
   try {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return jsonError("Unauthorized", 401);
     }
 
     const supabase = createClient(
@@ -42,12 +20,12 @@ Deno.serve(async (req) => {
 
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError || !user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return jsonError("Unauthorized", 401);
     }
 
     const { data: profile } = await supabase.from("profiles").select("organization_id").eq("id", user.id).single();
     if (!profile) {
-      return new Response(JSON.stringify({ error: "Profile not found" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return jsonError("Profile not found", 404);
     }
 
     const serviceClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -58,25 +36,19 @@ Deno.serve(async (req) => {
     });
 
     if (rpcError || !exactTokenData || exactTokenData.length === 0) {
-      return new Response(JSON.stringify({ error: "Exact Online niet geconfigureerd" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonError("Exact Online niet geconfigureerd", 400);
     }
 
     const config = exactTokenData[0];
     if (!config.tenant_id || !config.decrypted_webhook_secret) {
-      return new Response(JSON.stringify({ error: "Exact Online niet geconfigureerd" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonError("Exact Online niet geconfigureerd", 400);
     }
 
     const body = await req.json();
     const { endpoint, method = "GET", payload } = body;
 
     if (!endpoint) {
-      return new Response(JSON.stringify({ error: "endpoint is required" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonError("endpoint is required", 400);
     }
 
     // Get fresh token using decrypted webhook secret
@@ -85,11 +57,10 @@ Deno.serve(async (req) => {
       tokenData = await getExactToken(config.tenant_id, config.decrypted_webhook_secret);
     } catch (err: unknown) {
       if ((err as Error).message === "REAUTH_REQUIRED") {
-        return new Response(JSON.stringify({
-          error: "Exact Online koppeling verlopen. Koppel opnieuw via Instellingen.",
+        return jsonError("Exact Online koppeling verlopen. Koppel opnieuw via Instellingen.", 401, {
           needs_reauth: true,
           setup_url: `https://connect.sitejob.nl/exact-setup?tenant_id=${config.tenant_id}`,
-        }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        });
       }
       throw err;
     }
@@ -127,8 +98,6 @@ Deno.serve(async (req) => {
     });
   } catch (err) {
     console.error("Exact API proxy error:", err);
-    return new Response(JSON.stringify({ error: "Internal server error" }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonError("Internal server error", 500);
   }
 });
