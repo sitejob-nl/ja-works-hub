@@ -31,7 +31,9 @@ const ExactOnlineSettings = () => {
   const registerMutation = useMutation({
     mutationFn: async () => {
       setRegistering(true);
-      const { data, error } = await supabase.functions.invoke('exact-register');
+      const { data, error } = await supabase.functions.invoke('exact-register', {
+        body: { organization_id: orgId },
+      });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
       return data;

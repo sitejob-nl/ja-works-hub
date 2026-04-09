@@ -11,29 +11,15 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    const body = await req.json();
+    const { organization_id } = body;
+
+    if (!organization_id) {
+      return new Response(JSON.stringify({ error: "organization_id is required" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
-
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-
-    const userId = user.id;
-    const { data: profile } = await supabase.from("profiles").select("organization_id").eq("id", userId).single();
-    if (!profile) {
-      return new Response(JSON.stringify({ error: "Profile not found" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-
-    const orgId = profile.organization_id;
     const CONNECT_API_KEY = Deno.env.get("CONNECT_API_KEY");
     if (!CONNECT_API_KEY) {
       return new Response(JSON.stringify({ error: "CONNECT_API_KEY not configured" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -51,7 +37,7 @@ Deno.serve(async (req) => {
           "X-API-Key": CONNECT_API_KEY,
         },
         body: JSON.stringify({
-          name: `Org ${orgId}`,
+          name: `Org ${organization_id}`,
           webhook_url: webhookUrl,
           region: "nl",
         }),
@@ -72,7 +58,7 @@ Deno.serve(async (req) => {
 
     const { error: upsertError } = await serviceClient
       .from("exact_config")
-      .upsert({ organization_id: orgId, tenant_id, webhook_secret, is_active: false }, { onConflict: "organization_id" });
+      .upsert({ organization_id, tenant_id, webhook_secret, is_active: false }, { onConflict: "organization_id" });
 
     if (upsertError) {
       console.error("Upsert error:", upsertError);
