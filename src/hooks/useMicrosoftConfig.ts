@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { useOrganizationId } from '@/hooks/useOrganizationId';
+import { useAuth } from '@/contexts/AuthContext';
 
 export function useMicrosoftConfig() {
-  const orgId = useOrganizationId();
+  const { profile } = useAuth();
+  const orgId = profile?.organization_id;
 
   const { data: config, isLoading } = useQuery({
     queryKey: ['microsoft-config', orgId],
@@ -11,11 +12,12 @@ export function useMicrosoftConfig() {
       const { data, error } = await supabase
         .from('microsoft_config' as any)
         .select('*')
-        .eq('organization_id', orgId)
+        .eq('organization_id', orgId!)
         .maybeSingle();
       if (error) throw error;
       return data as any;
     },
+    enabled: !!orgId,
   });
 
   return {

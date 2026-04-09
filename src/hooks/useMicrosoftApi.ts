@@ -2,7 +2,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { useCallback } from 'react';
-import { useOrganizationId } from '@/hooks/useOrganizationId';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface MicrosoftApiOptions {
   endpoint: string;
@@ -12,9 +12,12 @@ interface MicrosoftApiOptions {
 
 export function useMicrosoftApi() {
   const navigate = useNavigate();
-  const orgId = useOrganizationId();
+  const { profile } = useAuth();
+  const orgId = profile?.organization_id;
 
   const callApi = useCallback(async ({ endpoint, method = 'GET', payload }: MicrosoftApiOptions) => {
+    if (!orgId) throw new Error('Niet ingelogd');
+
     const { data, error } = await supabase.functions.invoke('microsoft-api', {
       body: { endpoint, method, payload, organization_id: orgId },
     });
