@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sendViaOutlook } from "../_shared/outlook-send.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -292,8 +293,8 @@ Deno.serve(async (req) => {
     const workDays = placement.work_days ?? null;
 
     const results: {
-      client_email?: { subject: string; html: string; to: string; communication_id?: string };
-      employee_email?: { subject: string; html: string; to: string; communication_id?: string };
+      client_email?: { subject: string; html: string; to: string; sent_via?: string };
+      employee_email?: { subject: string; html: string; to: string; sent_via?: string };
       warnings: string[];
     } = { warnings };
 
@@ -329,23 +330,38 @@ Deno.serve(async (req) => {
         candidateEmail: candidate.email,
       });
 
-      // Store in communications as concept
-      const { data: comm } = await serviceClient.from("communications").insert({
-        organization_id: orgId,
-        channel: "email",
-        direction: "outbound",
-        subject,
-        body: html,
-        sent_by: userId,
-        company_id: company.id,
-        company_contact_id: primaryContact?.id ?? null,
-      }).select("id").single();
+      // Send via Outlook if connected, otherwise store as concept
+      let sendResult = { success: false, method: "none" as const };
+      if (clientEmail) {
+        sendResult = await sendViaOutlook({
+          orgId,
+          to: clientEmail,
+          subject,
+          htmlBody: html,
+          companyId: company.id,
+          sentBy: userId,
+        });
+      }
+
+      if (!sendResult.success) {
+        // Fallback: store as concept in communications
+        await serviceClient.from("communications").insert({
+          organization_id: orgId,
+          channel: "email",
+          direction: "outbound",
+          subject,
+          body: html,
+          sent_by: userId,
+          company_id: company.id,
+          company_contact_id: primaryContact?.id ?? null,
+        });
+      }
 
       results.client_email = {
         subject,
         html,
         to: clientEmail ?? "Geen e-mail beschikbaar",
-        communication_id: comm?.id,
+        sent_via: sendResult.method,
       };
     }
 
@@ -364,22 +380,34 @@ Deno.serve(async (req) => {
         contactPersonEmail: primaryContact?.email ?? null,
       });
 
-      // Store in communications as concept
-      const { data: comm } = await serviceClient.from("communications").insert({
-        organization_id: orgId,
-        channel: "email",
-        direction: "outbound",
+      // Send via Outlook if connected
+      const empSendResult = await sendViaOutlook({
+        orgId,
+        to: candidate.email,
         subject,
-        body: html,
-        sent_by: userId,
-        candidate_id: candidate.id,
-      }).select("id").single();
+        htmlBody: html,
+        candidateId: candidate.id,
+        sentBy: userId,
+      });
+
+      if (!empSendResult.success) {
+        // Fallback: store as concept
+        await serviceClient.from("communications").insert({
+          organization_id: orgId,
+          channel: "email",
+          direction: "outbound",
+          subject,
+          body: html,
+          sent_by: userId,
+          candidate_id: candidate.id,
+        });
+      }
 
       results.employee_email = {
         subject,
         html,
         to: candidate.email,
-        communication_id: comm?.id,
+        sent_via: empSendResult.method,
       };
     }
 

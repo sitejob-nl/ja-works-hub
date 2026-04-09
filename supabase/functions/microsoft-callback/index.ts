@@ -24,11 +24,13 @@ Deno.serve(async (req) => {
     return Response.redirect(`${frontendUrl}/instellingen?microsoft=error&reason=missing_params`);
   }
 
-  // Decode state to get org_id
+  // Decode state to get org_id + optional user_id
   let orgId: string;
+  let userId: string | null = null;
   try {
     const stateData = JSON.parse(atob(stateParam));
     orgId = stateData.org_id;
+    userId = stateData.user_id || null;
     if (!orgId) throw new Error("No org_id in state");
   } catch {
     return Response.redirect(`${frontendUrl}/instellingen?microsoft=error&reason=invalid_state`);
@@ -102,23 +104,42 @@ Deno.serve(async (req) => {
       plaintext: refresh_token,
     });
 
-    const { error: upsertError } = await serviceClient
+    // Check if record exists for this org+user combo
+    let query = serviceClient
       .from("microsoft_config")
-      .upsert(
-        {
-          organization_id: orgId,
-          access_token: encAccessToken,
-          refresh_token: encRefreshToken,
-          token_expires_at: tokenExpiresAt,
-          microsoft_user_id: microsoftUserId,
-          microsoft_email: microsoftEmail,
-          microsoft_tenant_id: microsoftTenantId,
-          is_active: true,
-          refreshing_at: null,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "organization_id" }
-      );
+      .select("id")
+      .eq("organization_id", orgId);
+
+    if (userId) {
+      query = query.eq("user_id", userId);
+    } else {
+      query = query.is("user_id", null);
+    }
+
+    const { data: existing } = await query.maybeSingle();
+
+    const record = {
+      organization_id: orgId,
+      user_id: userId,
+      access_token: encAccessToken,
+      refresh_token: encRefreshToken,
+      token_expires_at: tokenExpiresAt,
+      microsoft_user_id: microsoftUserId,
+      microsoft_email: microsoftEmail,
+      microsoft_tenant_id: microsoftTenantId,
+      is_active: true,
+      refreshing_at: null,
+      updated_at: new Date().toISOString(),
+    };
+
+    let upsertError;
+    if (existing) {
+      const { error } = await serviceClient.from("microsoft_config").update(record).eq("id", existing.id);
+      upsertError = error;
+    } else {
+      const { error } = await serviceClient.from("microsoft_config").insert(record);
+      upsertError = error;
+    }
 
     if (upsertError) {
       console.error("Upsert error:", upsertError);

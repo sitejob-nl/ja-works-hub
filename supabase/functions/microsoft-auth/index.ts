@@ -13,6 +13,7 @@ Deno.serve(async (req) => {
   try {
     const body = await req.json().catch(() => ({}));
     const orgId = body.organization_id;
+    const userId = body.user_id || null; // null = org default, filled = per-user
 
     if (!orgId) {
       return new Response(JSON.stringify({ error: "organization_id is required" }), {
@@ -32,8 +33,8 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const redirectUri = `${supabaseUrl}/functions/v1/microsoft-callback`;
 
-    // Encode org_id in state so callback knows which org to update
-    const state = btoa(JSON.stringify({ org_id: orgId }));
+    // Encode org_id + user_id in state so callback knows which record to update
+    const state = btoa(JSON.stringify({ org_id: orgId, user_id: userId }));
 
     const params = new URLSearchParams({
       client_id: clientId,
