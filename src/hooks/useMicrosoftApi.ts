@@ -10,17 +10,24 @@ interface MicrosoftApiOptions {
   payload?: unknown;
 }
 
-export function useMicrosoftApi() {
+/**
+ * @param selectedAccount - 'org' for org default, or a user_id for personal account
+ */
+export function useMicrosoftApi(selectedAccount?: string) {
   const navigate = useNavigate();
   const { user, profile } = useAuth();
   const orgId = profile?.organization_id;
-  const userId = user?.id;
+
+  // Determine which user_id to send:
+  // - 'org' or undefined → null (org default)
+  // - user_id string → that specific user's token
+  const resolvedUserId = selectedAccount && selectedAccount !== 'org' ? selectedAccount : null;
 
   const callApi = useCallback(async ({ endpoint, method = 'GET', payload }: MicrosoftApiOptions) => {
     if (!orgId) throw new Error('Niet ingelogd');
 
     const { data, error } = await supabase.functions.invoke('microsoft-api', {
-      body: { endpoint, method, payload, organization_id: orgId, user_id: userId },
+      body: { endpoint, method, payload, organization_id: orgId, user_id: resolvedUserId },
     });
 
     if (error) throw new Error(error.message);
@@ -36,7 +43,7 @@ export function useMicrosoftApi() {
     }
 
     return data;
-  }, [navigate, orgId]);
+  }, [navigate, orgId, resolvedUserId]);
 
   return { callApi };
 }

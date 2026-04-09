@@ -49,8 +49,8 @@ function eventTime(evt: CalendarEvent) {
   return format(parseISO(evt.start.dateTime), 'HH:mm') + ' - ' + format(parseISO(evt.end.dateTime), 'HH:mm');
 }
 
-const CalendarView = () => {
-  const { callApi } = useMicrosoftApi();
+const CalendarView = ({ selectedAccount }: { selectedAccount?: string }) => {
+  const { callApi } = useMicrosoftApi(selectedAccount);
   const { isConnected } = useMicrosoftConfig();
   const [viewMode, setViewMode] = useState<ViewMode>('week');
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -77,7 +77,7 @@ const CalendarView = () => {
   }, [currentDate, viewMode]);
 
   const { data: eventsData, isLoading, isFetching } = useQuery({
-    queryKey: ['microsoft-calendar', rangeStart.toISOString(), rangeEnd.toISOString()],
+    queryKey: ['microsoft-calendar', rangeStart.toISOString(), rangeEnd.toISOString(), selectedAccount],
     queryFn: () => callApi({
       endpoint: `me/calendar/calendarView?startDateTime=${rangeStart.toISOString()}&endDateTime=${rangeEnd.toISOString()}&$top=100&$select=id,subject,start,end,location,isAllDay,showAs,organizer,attendees,body,importance&$orderby=start/dateTime`,
     }),

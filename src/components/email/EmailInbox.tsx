@@ -53,8 +53,8 @@ function senderName(msg: EmailMessage) {
   return msg.from?.emailAddress?.name || msg.from?.emailAddress?.address || 'Onbekend';
 }
 
-const EmailInbox = () => {
-  const { callApi } = useMicrosoftApi();
+const EmailInbox = ({ selectedAccount }: { selectedAccount?: string }) => {
+  const { callApi } = useMicrosoftApi(selectedAccount);
   const { isConnected } = useMicrosoftConfig();
   const [activeFolder, setActiveFolder] = useState<FolderKey>('inbox');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -66,7 +66,7 @@ const EmailInbox = () => {
 
   // Fetch messages
   const { data: messagesData, isLoading, refetch, isFetching } = useQuery({
-    queryKey: ['microsoft-emails', activeFolder, searchQuery, page],
+    queryKey: ['microsoft-emails', activeFolder, searchQuery, page, selectedAccount],
     queryFn: async () => {
       if (searchQuery) {
         return callApi({
@@ -86,7 +86,7 @@ const EmailInbox = () => {
 
   // Fetch selected message detail
   const { data: selectedMessage, isLoading: loadingDetail } = useQuery({
-    queryKey: ['microsoft-email-detail', selectedId],
+    queryKey: ['microsoft-email-detail', selectedId, selectedAccount],
     queryFn: () => callApi({
       endpoint: `me/messages/${selectedId}?$select=id,subject,body,from,toRecipients,ccRecipients,receivedDateTime,isRead,hasAttachments,importance,attachments`,
     }),
