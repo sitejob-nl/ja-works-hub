@@ -70,6 +70,7 @@ import ContactDetail from "@/pages/ContactDetail";
 import Dashboards from "@/pages/Dashboards";
 import Email from "@/pages/Email";
 import Agenda from "@/pages/Agenda";
+import EmailTemplates from "@/pages/EmailTemplates";
 import Talentpools from "@/pages/Talentpools";
 import TalentpoolDetail from "@/pages/TalentpoolDetail";
 import PortalLogin from "@/pages/portal/PortalLogin";
@@ -163,6 +164,7 @@ const App = () => (
               <Route path="/kandidaten-zoeken" element={<KandidatenZoeken />} />
               <Route path="/communicatie" element={<Communications />} />
               <Route path="/email" element={<Email />} />
+              <Route path="/email/templates" element={<EmailTemplates />} />
               <Route path="/agenda" element={<Agenda />} />
               <Route path="/whatsapp" element={<WhatsAppPage />} />
               <Route path="/bulk-campaigns" element={<BulkCampaigns />} />

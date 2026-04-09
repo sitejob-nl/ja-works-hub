@@ -64,6 +64,7 @@ const navGroups: NavGroup[] = [
     items: [
       { label: 'Communicatie', icon: MessageSquare, path: '/communicatie', moduleKey: 'communicatie', roles: ['intercedent', 'backoffice'] },
       { label: 'E-mail', icon: Mail, path: '/email', moduleKey: 'email', roles: ['intercedent', 'backoffice'] },
+      { label: 'Email Templates', icon: FileText, path: '/email/templates', moduleKey: 'email', roles: ['intercedent', 'backoffice'] },
       { label: 'Agenda', icon: Calendar, path: '/agenda', moduleKey: 'agenda', roles: ['intercedent', 'backoffice'] },
       { label: 'WhatsApp', icon: MessageSquare, path: '/whatsapp', moduleKey: 'whatsapp', roles: ['intercedent', 'backoffice'] },
       { label: 'Bulk Campagnes', icon: Users, path: '/bulk-campaigns', moduleKey: 'bulk-campaigns', roles: ['intercedent'] },
