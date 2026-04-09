@@ -29,7 +29,6 @@ async function refreshMicrosoftToken(
     const errText = await refreshRes.text();
     console.error("Microsoft token refresh failed:", errText);
 
-    // Mark config as inactive on permanent failure
     await serviceClient
       .from("microsoft_config")
       .update({
@@ -45,7 +44,6 @@ async function refreshMicrosoftToken(
   const tokenData = await refreshRes.json();
   const newExpiresAt = new Date(Date.now() + tokenData.expires_in * 1000).toISOString();
 
-  // Encrypt new tokens
   const { data: encAccessToken } = await serviceClient.rpc("encrypt_sensitive", {
     plaintext: tokenData.access_token,
   });
@@ -53,7 +51,6 @@ async function refreshMicrosoftToken(
     plaintext: tokenData.refresh_token,
   });
 
-  // Update tokens + clear lock
   await serviceClient
     .from("microsoft_config")
     .update({
@@ -74,37 +71,20 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
+    // Parse request body — org_id comes from frontend
+    const body = await req.json();
+    const { endpoint, method = "GET", payload, organization_id } = body;
+
+    if (!organization_id) {
+      return new Response(JSON.stringify({ error: "organization_id is required" }), {
+        status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
-
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("organization_id")
-      .eq("id", user.id)
-      .single();
-
-    if (!profile) {
-      return new Response(JSON.stringify({ error: "Profile not found" }), {
-        status: 404,
+    if (!endpoint) {
+      return new Response(JSON.stringify({ error: "endpoint is required" }), {
+        status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -116,7 +96,7 @@ Deno.serve(async (req) => {
 
     // Get decrypted tokens via RPC
     const { data: tokenData, error: rpcError } = await serviceClient.rpc("get_microsoft_token", {
-      p_org_id: profile.organization_id,
+      p_org_id: organization_id,
     });
 
     if (rpcError || !tokenData || tokenData.length === 0) {
@@ -141,16 +121,14 @@ Deno.serve(async (req) => {
     let accessToken = config.access_token;
 
     if (expiresAt - now <= bufferMs) {
-      // Token expired or about to expire — refresh with lock
       const refreshingAt = config.refreshing_at ? new Date(config.refreshing_at).getTime() : 0;
       const lockAge = now - refreshingAt;
 
       if (refreshingAt && lockAge < 15_000) {
-        // Another request is refreshing — wait and poll
         for (let i = 0; i < 10; i++) {
           await new Promise((r) => setTimeout(r, 1000));
           const { data: fresh } = await serviceClient.rpc("get_microsoft_token", {
-            p_org_id: profile.organization_id,
+            p_org_id: organization_id,
           });
           if (fresh?.[0] && new Date(fresh[0].token_expires_at).getTime() - Date.now() > bufferMs) {
             accessToken = fresh[0].access_token;
@@ -158,11 +136,10 @@ Deno.serve(async (req) => {
           }
         }
       } else {
-        // Claim the lock
         const { data: locked } = await serviceClient
           .from("microsoft_config")
           .update({ refreshing_at: new Date().toISOString() })
-          .eq("organization_id", profile.organization_id)
+          .eq("organization_id", organization_id)
           .or(`refreshing_at.is.null,refreshing_at.lt.${new Date(Date.now() - 15_000).toISOString()}`)
           .select("id")
           .maybeSingle();
@@ -171,7 +148,7 @@ Deno.serve(async (req) => {
           try {
             const refreshed = await refreshMicrosoftToken(
               serviceClient,
-              profile.organization_id,
+              organization_id,
               config.refresh_token
             );
             accessToken = refreshed.access_token;
@@ -189,17 +166,6 @@ Deno.serve(async (req) => {
           }
         }
       }
-    }
-
-    // Parse request
-    const body = await req.json();
-    const { endpoint, method = "GET", payload } = body;
-
-    if (!endpoint) {
-      return new Response(JSON.stringify({ error: "endpoint is required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
     }
 
     // Build Graph API URL
@@ -221,7 +187,6 @@ Deno.serve(async (req) => {
       ...(payload ? { body: JSON.stringify(payload) } : {}),
     });
 
-    // Handle 401 from Graph — token might be invalid
     if (graphRes.status === 401) {
       return new Response(JSON.stringify({
         error: "Microsoft 365 koppeling verlopen. Koppel opnieuw via Instellingen.",

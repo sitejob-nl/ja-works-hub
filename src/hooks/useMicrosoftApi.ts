@@ -2,6 +2,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { useCallback } from 'react';
+import { useOrganizationId } from '@/hooks/useOrganizationId';
 
 interface MicrosoftApiOptions {
   endpoint: string;
@@ -11,10 +12,11 @@ interface MicrosoftApiOptions {
 
 export function useMicrosoftApi() {
   const navigate = useNavigate();
+  const orgId = useOrganizationId();
 
   const callApi = useCallback(async ({ endpoint, method = 'GET', payload }: MicrosoftApiOptions) => {
     const { data, error } = await supabase.functions.invoke('microsoft-api', {
-      body: { endpoint, method, payload },
+      body: { endpoint, method, payload, organization_id: orgId },
     });
 
     if (error) throw new Error(error.message);
@@ -30,7 +32,7 @@ export function useMicrosoftApi() {
     }
 
     return data;
-  }, [navigate]);
+  }, [navigate, orgId]);
 
   return { callApi };
 }
