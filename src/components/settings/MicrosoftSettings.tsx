@@ -49,7 +49,9 @@ const MicrosoftSettings = () => {
   const connectMutation = useMutation({
     mutationFn: async () => {
       setConnecting(true);
-      const { data, error } = await supabase.functions.invoke('microsoft-auth');
+      const { data, error } = await supabase.functions.invoke('microsoft-auth', {
+        body: { organization_id: orgId },
+      });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
       return data;

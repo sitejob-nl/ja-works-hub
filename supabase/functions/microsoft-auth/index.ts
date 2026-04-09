@@ -11,37 +11,12 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    const body = await req.json().catch(() => ({}));
+    const orgId = body.organization_id;
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
-
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("organization_id")
-      .eq("id", user.id)
-      .single();
-
-    if (!profile) {
-      return new Response(JSON.stringify({ error: "Profile not found" }), {
-        status: 404,
+    if (!orgId) {
+      return new Response(JSON.stringify({ error: "organization_id is required" }), {
+        status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -58,7 +33,7 @@ Deno.serve(async (req) => {
     const redirectUri = `${supabaseUrl}/functions/v1/microsoft-callback`;
 
     // Encode org_id in state so callback knows which org to update
-    const state = btoa(JSON.stringify({ org_id: profile.organization_id }));
+    const state = btoa(JSON.stringify({ org_id: orgId }));
 
     const params = new URLSearchParams({
       client_id: clientId,
