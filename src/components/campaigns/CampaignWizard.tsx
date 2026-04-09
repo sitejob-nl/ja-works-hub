@@ -13,7 +13,46 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
 import { nl } from "date-fns/locale";
-import { CalendarIcon } from "lucide-react";
+import { CalendarIcon, AlertTriangle } from "lucide-react";
+
+const EXAMPLE_VALUES: Record<string, string> = {
+  first_name: "Jan",
+  last_name: "de Vries",
+  full_name: "Jan de Vries",
+};
+
+function getMergeFieldWarnings(message: string): string[] {
+  const warnings: string[] = [];
+  // Detect malformed merge fields: single braces, or missing closing braces
+  const singleBrace = message.match(/\{(?!\{)[^}]*\}/g);
+  if (singleBrace) {
+    warnings.push(`Mogelijk fout samenvoegveld (gebruik {{ en }}): ${singleBrace.join(", ")}`);
+  }
+  const unclosed = message.match(/\{\{(?![^}]*\}\})[^}]*/g);
+  if (unclosed) {
+    warnings.push(`Niet afgesloten samenvoegveld: ${unclosed.join(", ")}`);
+  }
+  // Warn about unknown merge fields
+  const allFields = message.match(/\{\{(\w+)\}\}/g) || [];
+  const known = Object.keys(EXAMPLE_VALUES).map((k) => `{{${k}}}`);
+  const unknown = allFields.filter((f) => !known.includes(f));
+  if (unknown.length > 0) {
+    warnings.push(`Onbekende samenvoegvelden (worden niet vervangen): ${unknown.join(", ")}`);
+  }
+  return warnings;
+}
+
+function renderPreview(message: string): string {
+  let preview = message;
+  for (const [key, val] of Object.entries(EXAMPLE_VALUES)) {
+    preview = preview.replaceAll(`{{${key}}}`, val);
+  }
+  // Append STOP footer preview if not already present
+  if (!preview.includes("STOP")) {
+    preview += "\n\nWil je geen berichten meer ontvangen? Antwoord met STOP.";
+  }
+  return preview;
+}
 
 interface CampaignWizardProps {
   open: boolean;
@@ -140,7 +179,8 @@ export function CampaignWizard({ open, onOpenChange, onComplete }: CampaignWizar
           </div>
         );
 
-      case 3:
+      case 3: {
+        const warnings = getMergeFieldWarnings(message);
         return (
           <div className="space-y-4">
             <div>
@@ -165,17 +205,36 @@ export function CampaignWizard({ open, onOpenChange, onComplete }: CampaignWizar
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 placeholder="Hoi {{first_name}}, ..."
-                rows={8}
+                rows={6}
               />
               <p className="text-xs text-muted-foreground mt-1">
                 Gebruik merge velden om berichten te personaliseren
               </p>
             </div>
+            {warnings.length > 0 && (
+              <div className="space-y-1">
+                {warnings.map((w, i) => (
+                  <div key={i} className="flex items-start gap-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
+                    <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                    <span>{w}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {message && (
+              <div>
+                <Label className="text-xs text-muted-foreground">Voorbeeld bericht (met testwaarden)</Label>
+                <div className="mt-1 p-3 bg-muted rounded text-sm whitespace-pre-wrap border">
+                  {renderPreview(message)}
+                </div>
+              </div>
+            )}
             <div className="p-3 bg-muted rounded text-sm">
               <strong>Opt-out footer:</strong> Er wordt automatisch een "Antwoord met STOP" footer toegevoegd
             </div>
           </div>
         );
+      }
 
       case 4:
         return (

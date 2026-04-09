@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -14,13 +15,20 @@ import { toast } from 'sonner';
 import { Building2, FileText, Package, Plus, RefreshCw, Search, ExternalLink } from 'lucide-react';
 
 // Helper to call the exact-api proxy
-async function exactApi(endpoint: string, method = 'GET', payload?: unknown) {
+async function exactApi(endpoint: string, method = 'GET', payload?: unknown, organizationId?: string) {
   const { data, error } = await supabase.functions.invoke('exact-api', {
-    body: { endpoint, method, payload },
+    body: { endpoint, method, payload, organization_id: organizationId },
   });
   if (error) throw new Error(error.message);
   if (data?.error) throw new Error(data.error);
   return data;
+}
+
+function useExactApi() {
+  const orgId = useOrganizationId();
+  return useCallback((endpoint: string, method = 'GET', payload?: unknown) => {
+    return exactApi(endpoint, method, payload, orgId);
+  }, [orgId]);
 }
 
 function extractResults(data: unknown): unknown[] {
@@ -37,6 +45,7 @@ function AccountsTab() {
   const [search, setSearch] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const queryClient = useQueryClient();
+  const callExact = useExactApi();
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['exact-accounts', search],
@@ -44,7 +53,7 @@ function AccountsTab() {
       const filter = search
         ? `?$filter=substringof('${search}',Name)&$select=ID,Code,Name,City,Email,Phone,Status&$top=50`
         : '?$select=ID,Code,Name,City,Email,Phone,Status&$top=50';
-      return exactApi(`crm/Accounts${filter}`);
+      return callExact(`crm/Accounts${filter}`);
     },
   });
 
@@ -114,9 +123,10 @@ function AccountsTab() {
 
 function CreateAccountDialog({ open, onOpenChange, onSuccess }: { open: boolean; onOpenChange: (o: boolean) => void; onSuccess: () => void }) {
   const [form, setForm] = useState({ Name: '', Email: '', Phone: '', City: '', Status: 'C' });
+  const callExact = useExactApi();
 
   const mutation = useMutation({
-    mutationFn: () => exactApi('crm/Accounts', 'POST', form),
+    mutationFn: () => callExact('crm/Accounts', 'POST', form),
     onSuccess: () => { toast.success('Relatie aangemaakt in Exact'); onSuccess(); },
     onError: (e) => toast.error(e.message),
   });
@@ -147,10 +157,11 @@ function CreateAccountDialog({ open, onOpenChange, onSuccess }: { open: boolean;
 // ─── Invoices Tab ───
 function InvoicesTab() {
   const [search, setSearch] = useState('');
+  const callExact = useExactApi();
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['exact-invoices'],
-    queryFn: () => exactApi('salesinvoice/SalesInvoices?$select=InvoiceID,InvoiceNumber,AmountDC,Currency,Description,InvoiceDate,OrderDate,Status,YourRef&$top=50&$orderby=InvoiceDate desc'),
+    queryFn: () => callExact('salesinvoice/SalesInvoices?$select=InvoiceID,InvoiceNumber,AmountDC,Currency,Description,InvoiceDate,OrderDate,Status,YourRef&$top=50&$orderby=InvoiceDate desc'),
   });
 
   const invoices = extractResults(data) as Record<string, unknown>[];
@@ -229,6 +240,7 @@ function InvoicesTab() {
 function ItemsTab() {
   const [search, setSearch] = useState('');
   const [showCreate, setShowCreate] = useState(false);
+  const callExact = useExactApi();
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['exact-items', search],
@@ -236,7 +248,7 @@ function ItemsTab() {
       const filter = search
         ? `?$filter=substringof('${search}',Description)&$select=ID,Code,Description,IsSalesItem,IsPurchaseItem,IsStockItem&$top=50`
         : '?$select=ID,Code,Description,IsSalesItem,IsPurchaseItem,IsStockItem&$top=50';
-      return exactApi(`logistics/Items${filter}`);
+      return callExact(`logistics/Items${filter}`);
     },
   });
 
@@ -300,9 +312,10 @@ function ItemsTab() {
 
 function CreateItemDialog({ open, onOpenChange, onSuccess }: { open: boolean; onOpenChange: (o: boolean) => void; onSuccess: () => void }) {
   const [form, setForm] = useState({ Code: '', Description: '', IsSalesItem: true });
+  const callExact = useExactApi();
 
   const mutation = useMutation({
-    mutationFn: () => exactApi('logistics/Items', 'POST', form),
+    mutationFn: () => callExact('logistics/Items', 'POST', form),
     onSuccess: () => { toast.success('Artikel aangemaakt in Exact'); onSuccess(); },
     onError: (e) => toast.error(e.message),
   });

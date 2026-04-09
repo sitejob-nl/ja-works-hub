@@ -7,8 +7,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useExactActive } from '@/hooks/useExactActive';
 import { toast } from 'sonner';
 import { Save, BookOpen, RefreshCw } from 'lucide-react';
+
+// Helper to call exact-api proxy with org ID
+async function exactApiWithOrg(endpoint: string, orgId: string) {
+  const { data, error } = await supabase.functions.invoke('exact-api', {
+    body: { endpoint, method: 'GET', organization_id: orgId },
+  });
+  if (error) throw new Error(error.message);
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
 
 const HOUR_TYPES = [
   { code: 'normaal', label: 'Normaal' },
@@ -24,16 +35,6 @@ interface GLAccount {
   ID: string;
   Code: string;
   Description: string;
-}
-
-// Helper to call exact-api proxy
-async function exactApi(endpoint: string) {
-  const { data, error } = await supabase.functions.invoke('exact-api', {
-    body: { endpoint, method: 'GET' },
-  });
-  if (error) throw new Error(error.message);
-  if (data?.error) throw new Error(data.error);
-  return data;
 }
 
 export default function ExactGLAccountMappings() {
@@ -59,7 +60,7 @@ export default function ExactGLAccountMappings() {
   // Fetch GLAccounts from Exact (Type 20 = Revenue)
   const { data: glAccountsRaw, isLoading: glLoading, refetch: refetchGL } = useQuery({
     queryKey: ['exact-glaccounts'],
-    queryFn: () => exactApi("financial/GLAccounts?$filter=Type eq 20&$select=ID,Code,Description&$top=200&$orderby=Code"),
+    queryFn: () => exactApiWithOrg("financial/GLAccounts?$filter=Type eq 20&$select=ID,Code,Description&$top=200&$orderby=Code", orgId),
   });
 
   const glAccounts: GLAccount[] = (() => {

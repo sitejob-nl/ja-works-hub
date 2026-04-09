@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Plus, Send, Clock, CheckCircle, XCircle, AlertCircle } from "lucide-react";
+import { Plus, Send, Clock, CheckCircle, XCircle, AlertCircle, Pause, Play, Ban } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -84,9 +84,60 @@ export default function BulkCampaigns() {
   };
 
   const getProgress = (campaign: any) => {
-    if (campaign.total_recipients === 0) return 0;
+    if (!campaign.total_recipients || campaign.total_recipients === 0) return 0;
     const processed = (campaign.sent_count || 0) + (campaign.failed_count || 0) + (campaign.opted_out_count || 0);
-    return (processed / campaign.total_recipients) * 100;
+    return Math.min(100, (processed / campaign.total_recipients) * 100);
+  };
+
+  const handlePause = async (e: React.MouseEvent, campaignId: string) => {
+    e.stopPropagation();
+    const { error } = await supabase
+      .from("bulk_campaigns")
+      .update({ status: "paused", paused_at: new Date().toISOString() })
+      .eq("id", campaignId);
+    if (error) {
+      toast.error("Fout bij pauzeren campagne");
+    } else {
+      toast.success("Campagne gepauzeerd");
+      loadCampaigns();
+    }
+  };
+
+  const handleResume = async (e: React.MouseEvent, campaignId: string) => {
+    e.stopPropagation();
+    const { error } = await supabase
+      .from("bulk_campaigns")
+      .update({ status: "running", paused_at: null })
+      .eq("id", campaignId);
+    if (error) {
+      toast.error("Fout bij hervatten campagne");
+      return;
+    }
+    // Trigger processor to continue sending
+    const { error: processError } = await supabase.functions.invoke("bulk-campaign-processor", {
+      body: { campaign_id: campaignId },
+    });
+    if (processError) {
+      toast.error("Campagne hervat maar verwerking kon niet worden gestart");
+    } else {
+      toast.success("Campagne hervat");
+    }
+    loadCampaigns();
+  };
+
+  const handleCancel = async (e: React.MouseEvent, campaignId: string) => {
+    e.stopPropagation();
+    if (!window.confirm("Weet je zeker dat je deze campagne wilt annuleren? Dit kan niet ongedaan worden gemaakt.")) return;
+    const { error } = await supabase
+      .from("bulk_campaigns")
+      .update({ status: "cancelled", cancelled_at: new Date().toISOString() })
+      .eq("id", campaignId);
+    if (error) {
+      toast.error("Fout bij annuleren campagne");
+    } else {
+      toast.success("Campagne geannuleerd");
+      loadCampaigns();
+    }
   };
 
   if (loading) {
@@ -143,13 +194,67 @@ export default function BulkCampaigns() {
                       {campaign.channel === "whatsapp" && <Badge variant="outline">WhatsApp</Badge>}
                     </div>
                   </div>
-                  {getStatusBadge(campaign.status)}
+                  <div className="flex items-center gap-2">
+                    {getStatusBadge(campaign.status)}
+                    {campaign.status === "running" && (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={(e) => handlePause(e, campaign.id)}
+                        >
+                          <Pause className="w-3 h-3 mr-1" />
+                          Pauzeren
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-destructive hover:text-destructive"
+                          onClick={(e) => handleCancel(e, campaign.id)}
+                        >
+                          <Ban className="w-3 h-3 mr-1" />
+                          Annuleren
+                        </Button>
+                      </>
+                    )}
+                    {campaign.status === "paused" && (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-green-600 hover:text-green-600"
+                          onClick={(e) => handleResume(e, campaign.id)}
+                        >
+                          <Play className="w-3 h-3 mr-1" />
+                          Hervatten
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-destructive hover:text-destructive"
+                          onClick={(e) => handleCancel(e, campaign.id)}
+                        >
+                          <Ban className="w-3 h-3 mr-1" />
+                          Annuleren
+                        </Button>
+                      </>
+                    )}
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
                 {campaign.status !== "draft" && campaign.total_recipients > 0 && (
                   <>
-                    <Progress value={getProgress(campaign)} className="h-2" />
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>Voortgang</span>
+                        <span>
+                          {(campaign.sent_count || 0) + (campaign.failed_count || 0) + (campaign.opted_out_count || 0)}{" "}
+                          / {campaign.total_recipients}
+                        </span>
+                      </div>
+                      <Progress value={getProgress(campaign)} className="h-2" />
+                    </div>
                     <div className="grid grid-cols-4 gap-4 text-sm">
                       <div>
                         <div className="text-muted-foreground">Totaal</div>
@@ -161,7 +266,14 @@ export default function BulkCampaigns() {
                       </div>
                       <div>
                         <div className="text-muted-foreground">Mislukt</div>
-                        <div className="font-semibold text-red-600">{campaign.failed_count || 0}</div>
+                        <div className="font-semibold text-red-600">
+                          {campaign.failed_count || 0}
+                          {campaign.retry_count > 0 && (
+                            <span className="text-xs text-muted-foreground ml-1">
+                              ({campaign.retry_count} herp.)
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <div>
                         <div className="text-muted-foreground">Afgemeld</div>
