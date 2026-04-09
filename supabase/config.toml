@@ -79,3 +79,16 @@ verify_jwt = false
 
 [functions.portal-activate]
 verify_jwt = false
+
+[functions.microsoft-callback]
+verify_jwt = false
+
+# ============================================================
+# MICROSOFT GRAPH (beschermd)
+# ============================================================
+
+[functions.microsoft-auth]
+verify_jwt = true
+
+[functions.microsoft-api]
+verify_jwt = true

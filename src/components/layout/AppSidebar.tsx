@@ -6,7 +6,7 @@ import { applyBranding, type BrandingSettings } from '@/lib/branding';
 import { useQuery } from '@tanstack/react-query';
 import {
   LayoutDashboard, Building2, Users, UserCheck, UserRound, Home, Briefcase,
-  Calendar, Clock, Car, MessageSquare, BookOpen, Settings,
+  Calendar, Clock, Car, MessageSquare, BookOpen, Settings, Mail,
   ChevronLeft, ChevronRight, ChevronDown, Search, UserSearch, Calculator, ClipboardList, Fuel, FileText, BarChart3, CheckSquare, BarChart2, FolderHeart,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -63,6 +63,8 @@ const navGroups: NavGroup[] = [
     label: 'Communicatie',
     items: [
       { label: 'Communicatie', icon: MessageSquare, path: '/communicatie', moduleKey: 'communicatie', roles: ['intercedent', 'backoffice'] },
+      { label: 'E-mail', icon: Mail, path: '/email', moduleKey: 'email', roles: ['intercedent', 'backoffice'] },
+      { label: 'Agenda', icon: Calendar, path: '/agenda', moduleKey: 'agenda', roles: ['intercedent', 'backoffice'] },
       { label: 'WhatsApp', icon: MessageSquare, path: '/whatsapp', moduleKey: 'whatsapp', roles: ['intercedent', 'backoffice'] },
       { label: 'Bulk Campagnes', icon: Users, path: '/bulk-campaigns', moduleKey: 'bulk-campaigns', roles: ['intercedent'] },
     ],
