@@ -177,6 +177,7 @@ export type Database = {
       }
       bulk_campaigns: {
         Row: {
+          cancelled_at: string | null
           channel: Database["public"]["Enums"]["communication_channel"]
           completed_at: string | null
           created_at: string
@@ -189,6 +190,7 @@ export type Database = {
           name: string
           opted_out_count: number
           organization_id: string
+          paused_at: string | null
           rate_limit_per_hour: number
           rate_limit_per_minute: number
           scheduled_at: string | null
@@ -200,6 +202,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          cancelled_at?: string | null
           channel?: Database["public"]["Enums"]["communication_channel"]
           completed_at?: string | null
           created_at?: string
@@ -212,6 +215,7 @@ export type Database = {
           name: string
           opted_out_count?: number
           organization_id: string
+          paused_at?: string | null
           rate_limit_per_hour?: number
           rate_limit_per_minute?: number
           scheduled_at?: string | null
@@ -223,6 +227,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          cancelled_at?: string | null
           channel?: Database["public"]["Enums"]["communication_channel"]
           completed_at?: string | null
           created_at?: string
@@ -235,6 +240,7 @@ export type Database = {
           name?: string
           opted_out_count?: number
           organization_id?: string
+          paused_at?: string | null
           rate_limit_per_hour?: number
           rate_limit_per_minute?: number
           scheduled_at?: string | null
@@ -277,7 +283,9 @@ export type Database = {
           created_at: string
           error_message: string | null
           id: string
+          next_retry_at: string | null
           organization_id: string
+          retry_count: number
           sent_at: string | null
           status: Database["public"]["Enums"]["campaign_recipient_status"]
         }
@@ -288,7 +296,9 @@ export type Database = {
           created_at?: string
           error_message?: string | null
           id?: string
+          next_retry_at?: string | null
           organization_id: string
+          retry_count?: number
           sent_at?: string | null
           status?: Database["public"]["Enums"]["campaign_recipient_status"]
         }
@@ -299,7 +309,9 @@ export type Database = {
           created_at?: string
           error_message?: string | null
           id?: string
+          next_retry_at?: string | null
           organization_id?: string
+          retry_count?: number
           sent_at?: string | null
           status?: Database["public"]["Enums"]["campaign_recipient_status"]
         }
@@ -868,6 +880,8 @@ export type Database = {
           email_message_id: string | null
           email_to: string[] | null
           id: string
+          media_id: string | null
+          message_type: string | null
           organization_id: string
           recording_url: string | null
           sent_at: string
@@ -893,6 +907,8 @@ export type Database = {
           email_message_id?: string | null
           email_to?: string[] | null
           id?: string
+          media_id?: string | null
+          message_type?: string | null
           organization_id: string
           recording_url?: string | null
           sent_at?: string
@@ -918,6 +934,8 @@ export type Database = {
           email_message_id?: string | null
           email_to?: string[] | null
           id?: string
+          media_id?: string | null
+          message_type?: string | null
           organization_id?: string
           recording_url?: string | null
           sent_at?: string
@@ -2986,6 +3004,59 @@ export type Database = {
           },
         ]
       }
+      job_feed_configs: {
+        Row: {
+          created_at: string
+          filters_config: Json
+          id: string
+          is_active: boolean
+          last_run_at: string | null
+          last_run_job_count: number | null
+          last_run_status: string | null
+          name: string
+          organization_id: string
+          schedule: string
+          source_type: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          filters_config?: Json
+          id?: string
+          is_active?: boolean
+          last_run_at?: string | null
+          last_run_job_count?: number | null
+          last_run_status?: string | null
+          name: string
+          organization_id: string
+          schedule?: string
+          source_type?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          filters_config?: Json
+          id?: string
+          is_active?: boolean
+          last_run_at?: string | null
+          last_run_job_count?: number | null
+          last_run_status?: string | null
+          name?: string
+          organization_id?: string
+          schedule?: string
+          source_type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_feed_configs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       job_import_logs: {
         Row: {
           filters_used: Json | null
@@ -3321,6 +3392,57 @@ export type Database = {
           },
         ]
       }
+      match_proposal_tokens: {
+        Row: {
+          contact_email: string | null
+          created_at: string | null
+          expires_at: string
+          id: string
+          match_id: string
+          organization_id: string
+          response: string | null
+          token: string
+          used_at: string | null
+        }
+        Insert: {
+          contact_email?: string | null
+          created_at?: string | null
+          expires_at?: string
+          id?: string
+          match_id: string
+          organization_id: string
+          response?: string | null
+          token?: string
+          used_at?: string | null
+        }
+        Update: {
+          contact_email?: string | null
+          created_at?: string | null
+          expires_at?: string
+          id?: string
+          match_id?: string
+          organization_id?: string
+          response?: string | null
+          token?: string
+          used_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "match_proposal_tokens_match_id_fkey"
+            columns: ["match_id"]
+            isOneToOne: false
+            referencedRelation: "matches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "match_proposal_tokens_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       matches: {
         Row: {
           candidate_id: string
@@ -3428,6 +3550,7 @@ export type Database = {
           refreshing_at: string | null
           token_expires_at: string | null
           updated_at: string
+          user_id: string | null
         }
         Insert: {
           access_token?: string | null
@@ -3442,6 +3565,7 @@ export type Database = {
           refreshing_at?: string | null
           token_expires_at?: string | null
           updated_at?: string
+          user_id?: string | null
         }
         Update: {
           access_token?: string | null
@@ -3456,12 +3580,13 @@ export type Database = {
           refreshing_at?: string | null
           token_expires_at?: string | null
           updated_at?: string
+          user_id?: string | null
         }
         Relationships: [
           {
             foreignKeyName: "microsoft_config_organization_id_fkey"
             columns: ["organization_id"]
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -5331,6 +5456,100 @@ export type Database = {
         }
         Relationships: []
       }
+      talentpool_members: {
+        Row: {
+          added_at: string | null
+          added_by: string | null
+          candidate_id: string
+          talentpool_id: string
+        }
+        Insert: {
+          added_at?: string | null
+          added_by?: string | null
+          candidate_id: string
+          talentpool_id: string
+        }
+        Update: {
+          added_at?: string | null
+          added_by?: string | null
+          candidate_id?: string
+          talentpool_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "talentpool_members_added_by_fkey"
+            columns: ["added_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "talentpool_members_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "talentpool_members_talentpool_id_fkey"
+            columns: ["talentpool_id"]
+            isOneToOne: false
+            referencedRelation: "talentpools"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      talentpools: {
+        Row: {
+          color: string | null
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          filter_criteria: Json | null
+          id: string
+          name: string
+          organization_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          filter_criteria?: Json | null
+          id?: string
+          name: string
+          organization_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          color?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          filter_criteria?: Json | null
+          id?: string
+          name?: string
+          organization_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "talentpools_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "talentpools_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       termination_reasons: {
         Row: {
           created_at: string | null
@@ -6093,6 +6312,50 @@ export type Database = {
           },
         ]
       }
+      whatsapp_templates: {
+        Row: {
+          category: string
+          components: Json | null
+          created_at: string
+          id: string
+          language: string
+          last_synced_at: string | null
+          organization_id: string
+          status: string
+          template_name: string
+        }
+        Insert: {
+          category: string
+          components?: Json | null
+          created_at?: string
+          id?: string
+          language?: string
+          last_synced_at?: string | null
+          organization_id: string
+          status?: string
+          template_name: string
+        }
+        Update: {
+          category?: string
+          components?: Json | null
+          created_at?: string
+          id?: string
+          language?: string
+          last_synced_at?: string | null
+          organization_id?: string
+          status?: string
+          template_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_templates_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       v_active_placements: {
@@ -6217,23 +6480,40 @@ export type Database = {
           tenant_id: string
         }[]
       }
-      get_microsoft_token: {
-        Args: { p_org_id: string }
-        Returns: {
-          access_token: string
-          microsoft_email: string
-          microsoft_tenant_id: string
-          refresh_token: string
-          refreshing_at: string
-          token_expires_at: string
-        }[]
-      }
+      get_microsoft_token:
+        | {
+            Args: { p_org_id: string }
+            Returns: {
+              access_token: string
+              microsoft_email: string
+              microsoft_tenant_id: string
+              refresh_token: string
+              refreshing_at: string
+              token_expires_at: string
+            }[]
+          }
+        | {
+            Args: { p_org_id: string; p_user_id?: string }
+            Returns: {
+              access_token: string
+              is_personal: boolean
+              microsoft_email: string
+              microsoft_tenant_id: string
+              refresh_token: string
+              refreshing_at: string
+              token_expires_at: string
+            }[]
+          }
       get_my_sensitive_data: {
         Args: never
         Returns: {
           decrypted_bsn: string
           decrypted_iban: string
         }[]
+      }
+      get_termination_analytics: {
+        Args: { p_from?: string; p_org_id: string; p_to?: string }
+        Returns: Json
       }
       get_user_org_id: { Args: never; Returns: string }
       get_user_role: {
@@ -6358,6 +6638,10 @@ export type Database = {
         | "geplaatst"
         | "inactief"
         | "afgewezen"
+        | "werkzoekend"
+        | "in_screening"
+        | "niet_beschikbaar"
+        | "uitgeschreven"
       communication_channel: "whatsapp" | "email" | "voip" | "notitie" | "sms"
       compliance_status: "incompleet" | "compleet" | "verlopen"
       contact_role: "admin" | "plaatsing" | "hr" | "overig"
@@ -6400,6 +6684,7 @@ export type Database = {
         | "geaccepteerd"
         | "afgewezen"
         | "geplaatst"
+        | "voorgesteld_bij_klant"
       payroller_type: "flexpedia" | "brioworks" | "bromida" | "retiva"
       placement_status:
         | "gepland"
@@ -6587,6 +6872,10 @@ export const Constants = {
         "geplaatst",
         "inactief",
         "afgewezen",
+        "werkzoekend",
+        "in_screening",
+        "niet_beschikbaar",
+        "uitgeschreven",
       ],
       communication_channel: ["whatsapp", "email", "voip", "notitie", "sms"],
       compliance_status: ["incompleet", "compleet", "verlopen"],
@@ -6634,6 +6923,7 @@ export const Constants = {
         "geaccepteerd",
         "afgewezen",
         "geplaatst",
+        "voorgesteld_bij_klant",
       ],
       payroller_type: ["flexpedia", "brioworks", "bromida", "retiva"],
       placement_status: [
