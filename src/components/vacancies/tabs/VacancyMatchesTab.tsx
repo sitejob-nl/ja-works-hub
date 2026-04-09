@@ -15,12 +15,13 @@ import { formatDate } from '@/lib/format';
 import PlacementSheet from '@/components/vacancies/PlacementSheet';
 
 const matchStatusLabel: Record<string, string> = {
-  nieuwe_match: 'Nieuwe match', gescreend: 'Gescreend', voorgesteld: 'Voorgesteld', in_gesprek: 'In gesprek', geaccepteerd: 'Geaccepteerd', afgewezen: 'Afgewezen', geplaatst: 'Geplaatst',
+  nieuwe_match: 'Nieuwe match', gescreend: 'Gescreend', voorgesteld: 'Voorgesteld', voorgesteld_bij_klant: 'Voorgesteld bij klant', in_gesprek: 'In gesprek', geaccepteerd: 'Geaccepteerd', afgewezen: 'Afgewezen', geplaatst: 'Geplaatst',
 };
 const matchStatusBadge: Record<string, string> = {
   nieuwe_match: 'bg-amber-100 text-amber-700 border-0',
   gescreend: 'bg-cyan-100 text-cyan-700 border-0',
   voorgesteld: 'bg-muted text-muted-foreground border-0',
+  voorgesteld_bij_klant: 'bg-indigo-100 text-indigo-700 border-0',
   in_gesprek: 'bg-blue-100 text-blue-700 border-0',
   geaccepteerd: 'bg-stat-green/10 text-stat-green border-0',
   afgewezen: 'bg-red-100 text-red-600 border-0',
@@ -55,7 +56,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
     queryFn: async () => {
       const matchedIds = (matches ?? []).map((m: any) => m.candidate_id);
       let query = supabase.from('candidates').select('id, first_name, last_name, skills, compliance_status')
-        .in('status', ['beschikbaar', 'nieuw'] as any);
+        .in('status', ['werkzoekend', 'nieuw'] as any);
       if (candidateSearch) {
         query = query.or(`first_name.ilike.%${candidateSearch}%,last_name.ilike.%${candidateSearch}%`);
       }
@@ -121,10 +122,33 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
     onError: (e: any) => toast.error(e.message),
   });
 
+  const sendProposalMutation = useMutation({
+    mutationFn: async (matchId: string) => {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-match-proposal`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({ match_id: matchId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? 'Fout bij versturen');
+      return json;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['vacancy-matches', vacancy.id] });
+      toast.success('Voorstel verstuurd naar opdrachtgever');
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
   const grouped = {
     nieuwe_match: (matches ?? []).filter((m: any) => m.status === 'nieuwe_match'),
     gescreend: (matches ?? []).filter((m: any) => m.status === 'gescreend'),
     voorgesteld: (matches ?? []).filter((m: any) => m.status === 'voorgesteld'),
+    voorgesteld_bij_klant: (matches ?? []).filter((m: any) => m.status === 'voorgesteld_bij_klant'),
     in_gesprek: (matches ?? []).filter((m: any) => m.status === 'in_gesprek'),
     geaccepteerd: (matches ?? []).filter((m: any) => m.status === 'geaccepteerd'),
     afgewezen: (matches ?? []).filter((m: any) => m.status === 'afgewezen'),
@@ -188,8 +212,16 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
                             )}
                             {status === 'voorgesteld' && (
                               <div className="flex gap-1 justify-end">
-                                <Button size="sm" variant="outline" onClick={() => statusMutation.mutate({ matchId: m.id, status: 'in_gesprek' })}>Klant heeft interesse</Button>
+                                <Button size="sm" variant="outline" onClick={() => sendProposalMutation.mutate(m.id)} disabled={sendProposalMutation.isPending}>
+                                  {sendProposalMutation.isPending ? 'Versturen...' : 'Voorstel versturen'}
+                                </Button>
                                 <Button size="sm" variant="ghost" className="text-red-600" onClick={() => statusMutation.mutate({ matchId: m.id, status: 'afgewezen' })}>Afwijzen</Button>
+                              </div>
+                            )}
+                            {status === 'voorgesteld_bij_klant' && (
+                              <div className="flex gap-1 justify-end">
+                                <Button size="sm" variant="outline" onClick={() => statusMutation.mutate({ matchId: m.id, status: 'geaccepteerd' })}>Geaccepteerd</Button>
+                                <Button size="sm" variant="ghost" className="text-red-600" onClick={() => statusMutation.mutate({ matchId: m.id, status: 'afgewezen' })}>Afgewezen</Button>
                               </div>
                             )}
                             {status === 'in_gesprek' && (

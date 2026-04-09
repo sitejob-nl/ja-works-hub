@@ -21,7 +21,7 @@ export function SegmentBuilder({ filter, onChange }: SegmentBuilderProps) {
   const [skillInput, setSkillInput] = useState("");
   const [count, setCount] = useState(0);
 
-  const statuses = ["nieuw", "actief", "beschikbaar", "geplaatst", "inactief"];
+  const statuses = ["nieuw", "werkzoekend", "in_screening", "geplaatst", "niet_beschikbaar", "uitgeschreven"];
   const complianceStatuses = ["compleet", "incompleet", "verlopen"];
 
   useEffect(() => {

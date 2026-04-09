@@ -171,7 +171,31 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
       });
     } catch { /* non-blocking */ }
 
-    // 4. Show placement confirmation email dialog
+    // 4. Auto-activate portal if not yet active
+    try {
+      const { data: candData } = await supabase
+        .from('candidates')
+        .select('portal_enabled, email')
+        .eq('id', candidateId)
+        .single();
+
+      if (candData && !candData.portal_enabled && candData.email) {
+        await supabase.from('candidates')
+          .update({ portal_enabled: true })
+          .eq('id', candidateId);
+
+        await supabase.from('portal_invites')
+          .insert({
+            organization_id: orgId,
+            candidate_id: candidateId,
+            email: candData.email,
+          });
+
+        toast.info('Portaaltoegang automatisch geactiveerd');
+      }
+    } catch { /* non-blocking */ }
+
+    // 5. Show placement confirmation email dialog
     setConfirmationPlacementId(placement.id);
     setShowConfirmationDialog(true);
   };

@@ -17,11 +17,11 @@ interface ContactPanelProps {
 
 const statusLabels: Record<string, string> = {
   nieuw: 'Nieuw',
-  in_behandeling: 'In behandeling',
-  beschikbaar: 'Beschikbaar',
+  werkzoekend: 'Werkzoekend',
+  in_screening: 'In screening',
   geplaatst: 'Geplaatst',
-  inactief: 'Inactief',
-  afgewezen: 'Afgewezen',
+  niet_beschikbaar: 'Niet beschikbaar',
+  uitgeschreven: 'Uitgeschreven',
 };
 
 const complianceLabels: Record<string, string> = {

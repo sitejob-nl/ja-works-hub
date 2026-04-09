@@ -400,8 +400,8 @@ const ImportData = () => {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="nieuw">Nieuw</SelectItem>
-                      <SelectItem value="in_behandeling">In behandeling</SelectItem>
-                      <SelectItem value="beschikbaar">Beschikbaar</SelectItem>
+                      <SelectItem value="werkzoekend">Werkzoekend</SelectItem>
+                      <SelectItem value="in_screening">In screening</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

@@ -20,11 +20,11 @@ const PAGE_SIZE = 10;
 
 const statusBadge: Record<string, string> = {
   nieuw: 'bg-muted text-muted-foreground border-0',
-  in_behandeling: 'bg-yellow-100 text-yellow-700 border-0',
-  beschikbaar: 'bg-stat-green/10 text-stat-green border-0',
+  werkzoekend: 'bg-stat-green/10 text-stat-green border-0',
+  in_screening: 'bg-yellow-100 text-yellow-700 border-0',
   geplaatst: 'bg-blue-100 text-blue-700 border-0',
-  inactief: 'bg-orange-100 text-orange-600 border-0',
-  afgewezen: 'bg-red-100 text-red-600 border-0',
+  niet_beschikbaar: 'bg-orange-100 text-orange-600 border-0',
+  uitgeschreven: 'bg-red-100 text-red-600 border-0',
 };
 
 const complianceBadge: Record<string, string> = {
@@ -34,8 +34,8 @@ const complianceBadge: Record<string, string> = {
 };
 
 const statusLabel: Record<string, string> = {
-  nieuw: 'Nieuw', in_behandeling: 'In behandeling', beschikbaar: 'Beschikbaar',
-  geplaatst: 'Geplaatst', inactief: 'Inactief', afgewezen: 'Afgewezen',
+  nieuw: 'Nieuw', werkzoekend: 'Werkzoekend', in_screening: 'In screening',
+  geplaatst: 'Geplaatst', niet_beschikbaar: 'Niet beschikbaar', uitgeschreven: 'Uitgeschreven',
 };
 
 const employeeStatusBadge: Record<string, string> = {

@@ -36,7 +36,7 @@ const EmployeeNew = () => {
     queryFn: async () => {
       let query = supabase.from('candidates')
         .select('id, first_name, last_name, phone, compliance_status, status')
-        .in('status', ['beschikbaar', 'nieuw'] as any)
+        .in('status', ['werkzoekend', 'nieuw'] as any)
         .order('first_name');
       if (candidateSearch) {
         query = query.or(`first_name.ilike.%${candidateSearch}%,last_name.ilike.%${candidateSearch}%`);

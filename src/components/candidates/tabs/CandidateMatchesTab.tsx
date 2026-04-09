@@ -6,7 +6,10 @@ import { Progress } from '@/components/ui/progress';
 import { formatDate } from '@/lib/format';
 
 const statusBadge: Record<string, string> = {
+  nieuwe_match: 'bg-amber-100 text-amber-700 border-0',
+  gescreend: 'bg-cyan-100 text-cyan-700 border-0',
   voorgesteld: 'bg-muted text-muted-foreground border-0',
+  voorgesteld_bij_klant: 'bg-indigo-100 text-indigo-700 border-0',
   in_gesprek: 'bg-blue-100 text-blue-700 border-0',
   geaccepteerd: 'bg-stat-green/10 text-stat-green border-0',
   afgewezen: 'bg-red-100 text-red-600 border-0',

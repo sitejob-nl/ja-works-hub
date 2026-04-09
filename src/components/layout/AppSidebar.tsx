@@ -7,7 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   LayoutDashboard, Building2, Users, UserCheck, UserRound, Home, Briefcase,
   Calendar, Clock, Car, MessageSquare, BookOpen, Settings, Mail,
-  ChevronLeft, ChevronRight, ChevronDown, Search, UserSearch, Calculator, ClipboardList, Fuel, FileText, BarChart3, CheckSquare, BarChart2, FolderHeart,
+  ChevronLeft, ChevronRight, ChevronDown, Search, UserSearch, Calculator, ClipboardList, Fuel, FileText, BarChart3, CheckSquare, BarChart2, FolderHeart, GitCompareArrows,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useEffect } from 'react';
@@ -44,6 +44,7 @@ const navGroups: NavGroup[] = [
     label: 'Werk',
     items: [
       { label: 'Vacatures', icon: Briefcase, path: '/vacatures', moduleKey: 'vacatures', roles: ['intercedent'] },
+      { label: 'Match Pipeline', icon: GitCompareArrows, path: '/match-pipeline', moduleKey: 'vacatures', roles: ['intercedent'] },
       { label: 'Plaatsingen', icon: UserCheck, path: '/plaatsingen', moduleKey: 'plaatsingen', roles: ['intercedent', 'backoffice'] },
       { label: 'Planning', icon: Calendar, path: '/planning', moduleKey: 'planning', roles: ['intercedent', 'backoffice'] },
       { label: 'Uren', icon: Clock, path: '/uren', moduleKey: 'uren', roles: ['intercedent', 'backoffice', 'finance'] },

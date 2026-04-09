@@ -167,9 +167,9 @@ const CandidateScreeningTab = ({
       const isFirstCompletion = !candidate.screened_at;
       if (isFirstCompletion) {
         if (data.result === 'goedgekeurd') {
-          updates.status = 'beschikbaar';
+          updates.status = 'werkzoekend';
         } else if (data.result === 'afgekeurd') {
-          updates.status = 'afgewezen';
+          updates.status = 'uitgeschreven';
         }
       }
 

@@ -64,6 +64,8 @@ import FuelCardAnalysis from "@/pages/FuelCardAnalysis";
 import InvoicesPage from "@/pages/Invoices";
 import PlacementsPage from "@/pages/Placements";
 import PlacementDetail from "@/pages/PlacementDetail";
+import MatchPipeline from "@/pages/MatchPipeline";
+import MatchResponse from "@/pages/MatchResponse";
 import UitstroomAnalyse from "@/pages/UitstroomAnalyse";
 import Contacts from "@/pages/Contacts";
 import ContactDetail from "@/pages/ContactDetail";
@@ -149,6 +151,7 @@ const App = () => (
               <Route path="/vacatures/new" element={<VacancyNew />} />
               <Route path="/vacatures/:id" element={<VacancyDetail />} />
               <Route path="/vacatures/:id/bewerken" element={<VacancyEdit />} />
+              <Route path="/match-pipeline" element={<MatchPipeline />} />
               <Route path="/planning" element={<Planning />} />
               <Route path="/plaatsingen" element={<PlacementsPage />} />
               <Route path="/plaatsingen/:id" element={<PlacementDetail />} />
@@ -179,6 +182,7 @@ const App = () => (
             {/* Public routes */}
             <Route path="/onboarding/:token" element={<Onboarding />} />
             <Route path="/contract/sign/:token" element={<ContractSign />} />
+            <Route path="/match-response/:token" element={<MatchResponse />} />
             <Route path="/profiel/:token" element={<CandidateProfile />} />
             <Route path="/portaal/activeren/:token" element={<PortalActivate />} />
             <Route path="/portaal/login" element={<PortalLogin />} />

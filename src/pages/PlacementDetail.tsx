@@ -298,6 +298,7 @@ const PlacementDetail = () => {
         open={showTerminate}
         onOpenChange={setShowTerminate}
         placementId={id!}
+        candidateId={placement?.candidate_id}
         orgId={orgId}
         onSuccess={() => {
           qc.invalidateQueries({ queryKey: ['placement', id] });
@@ -309,8 +310,8 @@ const PlacementDetail = () => {
 };
 
 // ─── Termination Dialog ───
-function TerminationDialog({ open, onOpenChange, placementId, orgId, onSuccess }: {
-  open: boolean; onOpenChange: (o: boolean) => void; placementId: string; orgId: string; onSuccess: () => void;
+function TerminationDialog({ open, onOpenChange, placementId, candidateId, orgId, onSuccess }: {
+  open: boolean; onOpenChange: (o: boolean) => void; placementId: string; candidateId?: string; orgId: string; onSuccess: () => void;
 }) {
   const [terminatedBy, setTerminatedBy] = useState<string>('');
   const [reason, setReason] = useState('');
@@ -341,6 +342,14 @@ function TerminationDialog({ open, onOpenChange, placementId, orgId, onSuccess }
         end_date: new Date().toISOString().split('T')[0],
       }).eq('id', placementId);
       if (error) throw error;
+
+      // Reset candidate status to werkzoekend
+      if (candidateId) {
+        await supabase.from('candidates')
+          .update({ status: 'werkzoekend' as any })
+          .eq('id', candidateId);
+      }
+
       logAudit({ action: 'update', tableName: 'placements', recordId: placementId, newValues: { status: 'voortijdig_beeindigd', terminated_by: terminatedBy, termination_reason: reason } });
     },
     onSuccess: () => { toast.success('Plaatsing beëindigd'); onSuccess(); },
