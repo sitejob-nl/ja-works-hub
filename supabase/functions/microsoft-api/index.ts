@@ -21,7 +21,7 @@ async function refreshMicrosoftToken(
       refresh_token: currentRefreshToken,
       client_id: clientId,
       client_secret: clientSecret,
-      scope: "User.Read email Mail.Read Mail.ReadWrite Mail.Send MailboxFolder.Read MailboxFolder.ReadWrite MailboxItem.Read Calendars.Read Calendars.ReadWrite offline_access",
+      scope: "openid profile User.Read email Mail.Read Mail.ReadWrite Mail.Send MailboxFolder.Read MailboxFolder.ReadWrite MailboxItem.Read Calendars.Read Calendars.ReadWrite offline_access",
     }),
   });
 

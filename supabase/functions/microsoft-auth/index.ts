@@ -39,7 +39,7 @@ Deno.serve(async (req) => {
       client_id: clientId,
       response_type: "code",
       redirect_uri: redirectUri,
-      scope: "User.Read email Mail.Read Mail.ReadWrite Mail.Send MailboxFolder.Read MailboxFolder.ReadWrite MailboxItem.Read Calendars.Read Calendars.ReadWrite offline_access",
+      scope: "openid profile User.Read email Mail.Read Mail.ReadWrite Mail.Send MailboxFolder.Read MailboxFolder.ReadWrite MailboxItem.Read Calendars.Read Calendars.ReadWrite offline_access",
       state,
       response_mode: "query",
       prompt: "consent",
