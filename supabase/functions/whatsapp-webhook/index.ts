@@ -75,8 +75,12 @@ Deno.serve(async (req) => {
       return ok();
     }
 
-    // Validate webhook secret for the waba_id match path
-    if (wabaId && config.webhook_secret) {
+    // Validate webhook secret for the waba_id match path (always validate)
+    if (wabaId) {
+      if (!config.webhook_secret) {
+        console.error("No webhook_secret stored for config — rejecting");
+        return ok();
+      }
       const { data: decrypted } = await serviceClient.rpc("decrypt_sensitive", {
         ciphertext: config.webhook_secret,
       });

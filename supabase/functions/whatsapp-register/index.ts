@@ -71,16 +71,25 @@ Deno.serve(async (req) => {
 
     const { tenant_id, webhook_secret } = await response.json();
 
-    // Store config (webhook_secret encrypted by DB trigger)
+    // Encrypt webhook_secret before storing (no auto-trigger)
     const serviceClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
+    const { data: encryptedSecret, error: encError } = await serviceClient.rpc("encrypt_sensitive", {
+      plaintext: webhook_secret,
+    });
+
+    if (encError || !encryptedSecret) {
+      console.error("Failed to encrypt webhook_secret:", encError);
+      return jsonError("Encryptie mislukt", 500);
+    }
+
     const { error: upsertError } = await serviceClient
       .from("whatsapp_config")
       .upsert(
-        { organization_id: orgId, tenant_id, webhook_secret, is_active: false },
+        { organization_id: orgId, tenant_id, webhook_secret: encryptedSecret, is_active: false },
         { onConflict: "organization_id" }
       );
 

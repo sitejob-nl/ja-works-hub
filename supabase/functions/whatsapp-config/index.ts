@@ -69,11 +69,21 @@ Deno.serve(async (req) => {
       return jsonError("Missing credentials", 400);
     }
 
+    // Encrypt access_token before storing (no auto-trigger — must call encrypt_sensitive explicitly)
+    const { data: encryptedToken, error: encError } = await serviceClient.rpc("encrypt_sensitive", {
+      plaintext: access_token,
+    });
+
+    if (encError || !encryptedToken) {
+      console.error("Failed to encrypt access_token:", encError);
+      return jsonError("Encryption failed", 500);
+    }
+
     const { error: updateError } = await serviceClient
       .from("whatsapp_config")
       .update({
         phone_number_id,
-        access_token,
+        access_token: encryptedToken,
         display_phone: display_phone ?? null,
         waba_id: waba_id ?? null,
         is_active: true,

@@ -218,12 +218,24 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Update running totals on campaign after each batch
+      // Update progress — count actuals from DB to avoid stale snapshot issues
+      const { count: sentTotal } = await serviceClient
+        .from("campaign_recipients")
+        .select("id", { count: "exact", head: true })
+        .eq("campaign_id", campaign_id)
+        .eq("status", "sent");
+
+      const { count: failedTotal } = await serviceClient
+        .from("campaign_recipients")
+        .select("id", { count: "exact", head: true })
+        .eq("campaign_id", campaign_id)
+        .eq("status", "failed");
+
       await serviceClient
         .from("bulk_campaigns")
         .update({
-          sent_count: (campaign.sent_count ?? 0) + sentCount,
-          failed_count: (campaign.failed_count ?? 0) + failedCount,
+          sent_count: sentTotal ?? sentCount,
+          failed_count: failedTotal ?? failedCount,
         })
         .eq("id", campaign_id);
 
