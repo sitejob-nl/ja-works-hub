@@ -58,13 +58,17 @@ interface CampaignWizardProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onComplete: () => void;
+  talentpoolId?: string;
+  talentpoolName?: string;
 }
 
-export function CampaignWizard({ open, onOpenChange, onComplete }: CampaignWizardProps) {
+export function CampaignWizard({ open, onOpenChange, onComplete, talentpoolId, talentpoolName }: CampaignWizardProps) {
   const organizationId = useOrganizationId();
   const [step, setStep] = useState(1);
   const [name, setName] = useState("");
-  const [segmentFilter, setSegmentFilter] = useState<any>({});
+  const [segmentFilter, setSegmentFilter] = useState<any>(
+    talentpoolId ? { talentpool_id: talentpoolId } : {}
+  );
   const [recipientCount, setRecipientCount] = useState(0);
   const [message, setMessage] = useState("");
   const [scheduledAt, setScheduledAt] = useState<Date>();
@@ -165,10 +169,22 @@ export function CampaignWizard({ open, onOpenChange, onComplete }: CampaignWizar
       case 2:
         return (
           <div className="space-y-4">
+            {talentpoolId && talentpoolName && (
+              <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg">
+                <div className="text-sm font-medium">Ontvangers uit talentpool</div>
+                <div className="text-base font-semibold mt-0.5">{talentpoolName}</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Je kunt hieronder extra filters toevoegen om de selectie te verfijnen.
+                </p>
+              </div>
+            )}
             <SegmentBuilder
               filter={segmentFilter}
               onChange={(filter, count) => {
-                setSegmentFilter(filter);
+                const merged = talentpoolId
+                  ? { ...filter, talentpool_id: talentpoolId }
+                  : filter;
+                setSegmentFilter(merged);
                 setRecipientCount(count);
               }}
             />

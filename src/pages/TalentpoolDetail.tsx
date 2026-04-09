@@ -15,6 +15,13 @@ import { toast } from 'sonner';
 import NotesSection from '@/components/shared/NotesSection';
 import TasksSection from '@/components/shared/TasksSection';
 import AddCandidateSheet from '@/components/talentpools/AddCandidateSheet';
+import ExportPoolButton from '@/components/talentpools/ExportPoolButton';
+import PoolFilterBuilder, { type FilterCriteria } from '@/components/talentpools/PoolFilterBuilder';
+import FilterPreviewSheet from '@/components/talentpools/FilterPreviewSheet';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { CampaignWizard } from '@/components/campaigns/CampaignWizard';
+import VacancyMatchSheet from '@/components/talentpools/VacancyMatchSheet';
+import { Filter, RefreshCw, Save, Send, Sparkles } from 'lucide-react';
 
 const POOL_COLORS = [
   { label: 'Blauw', value: '#3b82f6' },
@@ -29,16 +36,16 @@ const POOL_COLORS = [
 
 const statusBadge: Record<string, string> = {
   nieuw: 'bg-muted text-muted-foreground border-0',
-  in_behandeling: 'bg-yellow-100 text-yellow-700 border-0',
-  beschikbaar: 'bg-stat-green/10 text-stat-green border-0',
+  werkzoekend: 'bg-stat-green/10 text-stat-green border-0',
+  in_screening: 'bg-yellow-100 text-yellow-700 border-0',
   geplaatst: 'bg-blue-100 text-blue-700 border-0',
-  inactief: 'bg-orange-100 text-orange-600 border-0',
-  afgewezen: 'bg-red-100 text-red-600 border-0',
+  niet_beschikbaar: 'bg-orange-100 text-orange-600 border-0',
+  uitgeschreven: 'bg-red-100 text-red-600 border-0',
 };
 
 const statusLabel: Record<string, string> = {
-  nieuw: 'Nieuw', in_behandeling: 'In behandeling', beschikbaar: 'Beschikbaar',
-  geplaatst: 'Geplaatst', inactief: 'Inactief', afgewezen: 'Afgewezen',
+  nieuw: 'Nieuw', werkzoekend: 'Werkzoekend', in_screening: 'In screening',
+  geplaatst: 'Geplaatst', niet_beschikbaar: 'Niet beschikbaar', uitgeschreven: 'Uitgeschreven',
 };
 
 const TalentpoolDetail = () => {
@@ -48,6 +55,11 @@ const TalentpoolDetail = () => {
   const orgId = useOrganizationId();
   const [editing, setEditing] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [filterCriteria, setFilterCriteria] = useState<FilterCriteria>({});
+  const [campaignOpen, setCampaignOpen] = useState(false);
+  const [matchOpen, setMatchOpen] = useState(false);
   const [form, setForm] = useState({ name: '', description: '', color: '' });
 
   const { data: pool, isLoading } = useQuery({
@@ -141,6 +153,25 @@ const TalentpoolDetail = () => {
     onError: (e: any) => toast.error(e.message),
   });
 
+  const saveFiltersMutation = useMutation({
+    mutationFn: async (criteria: FilterCriteria) => {
+      const { error } = await supabase
+        .from('talentpools' as any)
+        .update({ filter_criteria: Object.keys(criteria).length > 0 ? criteria : null })
+        .eq('id', id!);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['talentpool-detail', id] });
+      toast.success('Filters opgeslagen');
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  // Sync filter state from pool data
+  const poolFilterCriteria = pool?.filter_criteria ?? {};
+  const activeFilter = Object.keys(filterCriteria).length > 0 ? filterCriteria : poolFilterCriteria;
+
   const existingMemberIds = members.map((m: any) => m.candidate_id);
 
   if (isLoading) return <div className="p-8 text-muted-foreground">Laden...</div>;
@@ -172,6 +203,9 @@ const TalentpoolDetail = () => {
         <div className="flex gap-2 shrink-0">
           {!editing && (
             <>
+              {members.length > 0 && (
+                <ExportPoolButton members={members} poolName={pool.name} />
+              )}
               <Button variant="outline" size="sm" onClick={startEdit} className="gap-1.5">
                 <Pencil className="h-3.5 w-3.5" /> Bewerken
               </Button>
@@ -224,6 +258,48 @@ const TalentpoolDetail = () => {
         </div>
       )}
 
+      {/* Smart Filters */}
+      <Collapsible open={filtersOpen} onOpenChange={setFiltersOpen}>
+        <CollapsibleTrigger asChild>
+          <Button variant="outline" size="sm" className="gap-1.5">
+            <Filter className="h-3.5 w-3.5" />
+            Slimme filters
+            {Object.keys(activeFilter).length > 0 && (
+              <Badge variant="secondary" className="ml-1 text-[10px]">
+                {Object.keys(activeFilter).length}
+              </Badge>
+            )}
+          </Button>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="mt-3">
+          <div className="bg-card rounded-lg border p-4 space-y-4">
+            <PoolFilterBuilder
+              value={Object.keys(filterCriteria).length > 0 ? filterCriteria : poolFilterCriteria}
+              onChange={setFilterCriteria}
+            />
+            <div className="flex gap-2 pt-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5"
+                onClick={() => saveFiltersMutation.mutate(filterCriteria)}
+                disabled={saveFiltersMutation.isPending}
+              >
+                <Save className="h-3.5 w-3.5" /> Filters opslaan
+              </Button>
+              <Button
+                size="sm"
+                className="gap-1.5"
+                onClick={() => setPreviewOpen(true)}
+                disabled={Object.keys(activeFilter).length === 0}
+              >
+                <RefreshCw className="h-3.5 w-3.5" /> Ververs kandidaten
+              </Button>
+            </div>
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+
       {/* Tabs */}
       <Tabs defaultValue="leden" className="w-full">
         <TabsList>
@@ -233,7 +309,17 @@ const TalentpoolDetail = () => {
         </TabsList>
 
         <TabsContent value="leden" className="mt-4">
-          <div className="flex justify-end mb-3">
+          <div className="flex justify-end gap-2 mb-3 flex-wrap">
+            {members.length > 0 && (
+              <>
+                <Button size="sm" variant="outline" onClick={() => setMatchOpen(true)} className="gap-1.5">
+                  <Sparkles className="h-4 w-4" /> Match met vacature
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setCampaignOpen(true)} className="gap-1.5">
+                  <Send className="h-4 w-4" /> Campagne starten
+                </Button>
+              </>
+            )}
             <Button size="sm" onClick={() => setAddOpen(true)} className="gap-1.5">
               <Plus className="h-4 w-4" /> Kandidaat toevoegen
             </Button>
@@ -318,6 +404,28 @@ const TalentpoolDetail = () => {
         onOpenChange={setAddOpen}
         talentpoolId={id!}
         existingMemberIds={existingMemberIds}
+      />
+
+      <FilterPreviewSheet
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        filter={activeFilter}
+        talentpoolId={id!}
+        existingMemberIds={existingMemberIds}
+      />
+
+      <CampaignWizard
+        open={campaignOpen}
+        onOpenChange={setCampaignOpen}
+        onComplete={() => setCampaignOpen(false)}
+        talentpoolId={id!}
+        talentpoolName={pool.name}
+      />
+
+      <VacancyMatchSheet
+        open={matchOpen}
+        onOpenChange={setMatchOpen}
+        members={members}
       />
     </div>
   );
