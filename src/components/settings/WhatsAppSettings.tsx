@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
-import { MessageSquare, ExternalLink, Loader2, CheckCircle2, XCircle, RefreshCw } from 'lucide-react';
+import { MessageSquare, ExternalLink, Loader2, CheckCircle2, XCircle, RefreshCw, Unlink, RefreshCcw } from 'lucide-react';
 
 const WhatsAppSettings = () => {
   const orgId = useOrganizationId();
@@ -47,6 +47,47 @@ const WhatsAppSettings = () => {
       toast.error('Registratie mislukt: ' + err.message);
     },
     onSettled: () => setRegistering(false),
+  });
+
+  const disconnectMutation = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase
+        .from('whatsapp_config' as any)
+        .update({
+          is_active: false,
+          phone_number_id: null,
+          waba_id: null,
+          display_phone: null,
+        } as any)
+        .eq('organization_id', orgId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['whatsapp-config'] });
+      toast.success('WhatsApp ontkoppeld');
+    },
+    onError: (err: Error) => {
+      toast.error('Ontkoppelen mislukt: ' + err.message);
+    },
+  });
+
+  const templateSyncMutation = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke('whatsapp-templates-sync');
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      return data;
+    },
+    onSuccess: (data) => {
+      toast.success(
+        data?.synced != null
+          ? `${data.synced} templates gesynchroniseerd`
+          : 'Templates gesynchroniseerd'
+      );
+    },
+    onError: (err: Error) => {
+      toast.error('Synchronisatie mislukt: ' + err.message);
+    },
   });
 
   if (isLoading) {
@@ -110,7 +151,7 @@ const WhatsAppSettings = () => {
 
         {/* Actions */}
         <Separator />
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {!isRegistered ? (
             <Button
               onClick={() => registerMutation.mutate()}
@@ -134,19 +175,49 @@ const WhatsAppSettings = () => {
               <ExternalLink className="h-4 w-4" /> Setup voltooien
             </Button>
           ) : (
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-2"
-              onClick={() =>
-                window.open(
-                  `https://connect.sitejob.nl/whatsapp-setup?tenant_id=${config.tenant_id}`,
-                  '_blank'
-                )
-              }
-            >
-              <ExternalLink className="h-4 w-4" /> Beheer koppeling
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={() =>
+                  window.open(
+                    `https://connect.sitejob.nl/whatsapp-setup?tenant_id=${config.tenant_id}`,
+                    '_blank'
+                  )
+                }
+              >
+                <ExternalLink className="h-4 w-4" /> Beheer koppeling
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={() => templateSyncMutation.mutate()}
+                disabled={templateSyncMutation.isPending}
+              >
+                {templateSyncMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCcw className="h-4 w-4" />
+                )}
+                Templates synchroniseren
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 text-destructive hover:text-destructive"
+                onClick={() => disconnectMutation.mutate()}
+                disabled={disconnectMutation.isPending}
+              >
+                {disconnectMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Unlink className="h-4 w-4" />
+                )}
+                Ontkoppelen
+              </Button>
+            </>
           )}
         </div>
       </CardContent>
