@@ -32,6 +32,12 @@ verify_jwt = false
 [functions.apify-job-import]
 verify_jwt = true
 
+[functions.linkedin-job-search]
+verify_jwt = true
+
+[functions.job-feed-runner]
+verify_jwt = false
+
 [functions.exa-people-search]
 verify_jwt = true
 
@@ -41,11 +47,20 @@ verify_jwt = true
 [functions.whatsapp-send]
 verify_jwt = true
 
-[functions.exact-register]
+[functions.whatsapp-templates-sync]
 verify_jwt = true
 
+[functions.exact-register]
+verify_jwt = false
+
 [functions.exact-api]
-verify_jwt = true
+verify_jwt = false
+
+[functions.exact-sync-invoice]
+verify_jwt = false
+
+[functions.exact-sync-account]
+verify_jwt = false
 
 [functions.check-document-expiry]
 verify_jwt = true
