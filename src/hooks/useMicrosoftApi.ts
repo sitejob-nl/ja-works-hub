@@ -12,14 +12,15 @@ interface MicrosoftApiOptions {
 
 export function useMicrosoftApi() {
   const navigate = useNavigate();
-  const { profile } = useAuth();
+  const { user, profile } = useAuth();
   const orgId = profile?.organization_id;
+  const userId = user?.id;
 
   const callApi = useCallback(async ({ endpoint, method = 'GET', payload }: MicrosoftApiOptions) => {
     if (!orgId) throw new Error('Niet ingelogd');
 
     const { data, error } = await supabase.functions.invoke('microsoft-api', {
-      body: { endpoint, method, payload, organization_id: orgId },
+      body: { endpoint, method, payload, organization_id: orgId, user_id: userId },
     });
 
     if (error) throw new Error(error.message);

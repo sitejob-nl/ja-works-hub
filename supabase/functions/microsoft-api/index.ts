@@ -73,7 +73,7 @@ Deno.serve(async (req) => {
   try {
     // Parse request body — org_id comes from frontend
     const body = await req.json();
-    const { endpoint, method = "GET", payload, organization_id } = body;
+    const { endpoint, method = "GET", payload, organization_id, user_id } = body;
 
     if (!organization_id) {
       return new Response(JSON.stringify({ error: "organization_id is required" }), {
@@ -97,6 +97,7 @@ Deno.serve(async (req) => {
     // Get decrypted tokens via RPC
     const { data: tokenData, error: rpcError } = await serviceClient.rpc("get_microsoft_token", {
       p_org_id: organization_id,
+      p_user_id: user_id || null,
     });
 
     if (rpcError || !tokenData || tokenData.length === 0) {
