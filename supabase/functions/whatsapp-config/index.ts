@@ -1,9 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-webhook-secret",
-};
+import { corsHeaders, jsonOk, jsonError } from "../_shared/whatsapp-utils.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -13,37 +9,40 @@ Deno.serve(async (req) => {
   try {
     const webhookSecret = req.headers.get("X-Webhook-Secret");
     if (!webhookSecret) {
-      return new Response("Unauthorized", { status: 401 });
+      return jsonError("Unauthorized", 401);
     }
 
     const body = await req.json();
-    console.log("WhatsApp config received:", { action: body.action, tenant_id: body.tenant_id });
+    const tenantId = body.tenant_id;
+    if (!tenantId) {
+      return jsonError("Missing tenant_id", 400);
+    }
 
     const serviceClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Find org by tenant_id
+    // O(1) lookup by tenant_id
     const { data: config, error: findError } = await serviceClient
       .from("whatsapp_config")
-      .select("*")
-      .eq("tenant_id", body.tenant_id)
-      .single();
+      .select("id, organization_id, webhook_secret")
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
 
     if (findError || !config) {
-      console.error("Config not found for tenant:", body.tenant_id);
-      return new Response("Not found", { status: 404 });
+      console.error("Config not found for tenant:", tenantId);
+      return jsonError("Tenant not found", 404);
     }
 
-    // Decrypt and compare webhook_secret
-    const { data: decrypted } = await serviceClient.rpc('get_whatsapp_token', {
-      p_org_id: config.organization_id,
+    // Decrypt and validate webhook secret
+    const { data: decrypted } = await serviceClient.rpc("decrypt_sensitive", {
+      ciphertext: config.webhook_secret,
     });
 
-    if (!decrypted?.[0] || decrypted[0].decrypted_webhook_secret !== webhookSecret) {
-      console.error("Webhook secret mismatch");
-      return new Response("Unauthorized", { status: 401 });
+    if (decrypted !== webhookSecret) {
+      console.error("Webhook secret mismatch for tenant:", tenantId);
+      return jsonError("Unauthorized", 401);
     }
 
     // Handle disconnect
@@ -51,8 +50,8 @@ Deno.serve(async (req) => {
       await serviceClient
         .from("whatsapp_config")
         .update({
-          access_token: null,
           phone_number_id: null,
+          access_token: null,
           display_phone: null,
           waba_id: null,
           is_active: false,
@@ -61,37 +60,36 @@ Deno.serve(async (req) => {
         .eq("id", config.id);
 
       console.log("WhatsApp disconnected for org:", config.organization_id);
-      return new Response(JSON.stringify({ ok: true }), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonOk({ status: "disconnected" });
     }
 
-    // Handle config push (OAuth credentials)
+    // Handle credential push
+    const { phone_number_id, access_token, display_phone, waba_id } = body;
+    if (!phone_number_id || !access_token) {
+      return jsonError("Missing credentials", 400);
+    }
+
     const { error: updateError } = await serviceClient
       .from("whatsapp_config")
       .update({
-        phone_number_id: body.phone_number_id,
-        access_token: body.access_token,
-        display_phone: body.display_phone,
-        waba_id: body.waba_id,
+        phone_number_id,
+        access_token,
+        display_phone: display_phone ?? null,
+        waba_id: waba_id ?? null,
         is_active: true,
         updated_at: new Date().toISOString(),
       })
       .eq("id", config.id);
 
     if (updateError) {
-      console.error("Update error:", updateError);
-      return new Response("Internal error", { status: 500 });
+      console.error("Config update failed:", updateError);
+      return jsonError("Update failed", 500);
     }
 
-    console.log("WhatsApp config updated for org:", config.organization_id);
-    return new Response(JSON.stringify({ ok: true }), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    console.log("WhatsApp configured for org:", config.organization_id);
+    return jsonOk({ status: "configured" });
   } catch (err) {
-    console.error("Config error:", err);
-    return new Response("Internal error", { status: 500 });
+    console.error("whatsapp-config error:", err);
+    return jsonOk({ status: "error" }); // Always 200 for webhook endpoints
   }
 });
