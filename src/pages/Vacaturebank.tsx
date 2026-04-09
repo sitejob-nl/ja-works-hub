@@ -13,15 +13,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Separator } from '@/components/ui/separator';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import TagInput from '@/components/ui/tag-input';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Search, Download, ExternalLink, Globe, Building2, Briefcase, MapPin, Loader2, Plus, ChevronDown, X, DollarSign, Clock, Users, Tag, GraduationCap, Shield, Mail, User } from 'lucide-react';
-import { format } from 'date-fns';
+import { Search, Download, ExternalLink, Globe, Building2, Briefcase, MapPin, Loader2, Plus, ChevronDown, X, DollarSign, Clock, Users, Tag, GraduationCap, Shield, Mail, User, Linkedin, Check, ChevronsUpDown, Rss, Play, Pause, Trash2 } from 'lucide-react';
+import { format, subDays, subMonths } from 'date-fns';
 import { nl } from 'date-fns/locale';
+import { LINKEDIN_INDUSTRIES, LINKEDIN_INDUSTRIES_FEATURED } from '@/lib/linkedin-industries';
 
 const ATS_OPTIONS = [
   'adp','applicantpro','ashby','bamboohr','breezy','careerplug','comeet','csod',
@@ -61,6 +65,35 @@ const EXPERIENCE_LEVELS = [
   { value: '2-5', label: '2-5 jaar' },
   { value: '5-10', label: '5-10 jaar' },
   { value: '10+', label: '10+ jaar' },
+];
+
+const LINKEDIN_DATE_POSTED = [
+  { value: 'today', label: 'Vandaag' },
+  { value: 'past_week', label: 'Afgelopen week' },
+  { value: 'past_month', label: 'Afgelopen maand' },
+  { value: 'all', label: 'Alles' },
+];
+
+const COMPANY_SIZE_OPTIONS = [
+  { value: '1-10', label: '1-10', gte: 1, lte: 10 },
+  { value: '11-50', label: '11-50', gte: 11, lte: 50 },
+  { value: '51-200', label: '51-200', gte: 51, lte: 200 },
+  { value: '201-500', label: '201-500', gte: 201, lte: 500 },
+  { value: '501-1000', label: '501-1000', gte: 501, lte: 1000 },
+  { value: '1001-5000', label: '1001-5000', gte: 1001, lte: 5000 },
+  { value: '5001-10000', label: '5001-10000', gte: 5001, lte: 10000 },
+  { value: '10001+', label: '10001+', gte: 10001, lte: undefined },
+];
+
+const LINKEDIN_EMPLOYMENT_TYPES = [
+  { value: 'FULL_TIME', label: 'Fulltime' },
+  { value: 'PART_TIME', label: 'Parttime' },
+  { value: 'CONTRACTOR', label: 'Contractor' },
+  { value: 'TEMPORARY', label: 'Tijdelijk' },
+  { value: 'INTERN', label: 'Stage' },
+  { value: 'VOLUNTEER', label: 'Vrijwilliger' },
+  { value: 'PER_DIEM', label: 'Per diem' },
+  { value: 'OTHER', label: 'Overig' },
 ];
 
 const PAGE_SIZE = 25;
@@ -112,6 +145,28 @@ const Vacaturebank = () => {
   // Advanced sections
   const [showAdvanced, setShowAdvanced] = useState(false);
 
+  // LinkedIn import state
+  const [liKeywords, setLiKeywords] = useState('');
+  const [liLocations, setLiLocations] = useState<string[]>([]);
+  const [liIndustries, setLiIndustries] = useState<string[]>([]);
+  const [liIndustryOpen, setLiIndustryOpen] = useState(false);
+  const [liCompanySizes, setLiCompanySizes] = useState<string[]>([]);
+  const [liEmploymentType, setLiEmploymentType] = useState<string[]>([]);
+  const [liDatePosted, setLiDatePosted] = useState('past_week');
+  const [liRemoveAgency, setLiRemoveAgency] = useState(false);
+  const [liIncludeAi, setLiIncludeAi] = useState(true);
+  const [liLimit, setLiLimit] = useState('100');
+  const [liDescriptionSearch, setLiDescriptionSearch] = useState<string[]>([]);
+  const [liOrgSearch, setLiOrgSearch] = useState<string[]>([]);
+  const [importTab, setImportTab] = useState('career-sites');
+
+  // Feed config state
+  const [feedsOpen, setFeedsOpen] = useState(false);
+  const [feedFormOpen, setFeedFormOpen] = useState(false);
+  const [feedName, setFeedName] = useState('');
+  const [feedSchedule, setFeedSchedule] = useState('daily');
+  const [feedSourceType, setFeedSourceType] = useState('career_site');
+
   // Filter state
   const [search, setSearch] = useState('');
   const [filterCountry, setFilterCountry] = useState('');
@@ -150,6 +205,96 @@ const Vacaturebank = () => {
       if (error) throw error;
       return data ?? [];
     },
+  });
+
+  // Feed configs
+  const { data: feedConfigs = [], refetch: refetchFeeds } = useQuery({
+    queryKey: ['job-feed-configs', organizationId],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('job_feed_configs')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data as any[];
+    },
+    enabled: !!organizationId,
+  });
+
+  const createFeedMutation = useMutation({
+    mutationFn: async () => {
+      if (!feedName.trim()) throw new Error('Geef de feed een naam');
+
+      // Collect current filters based on source type
+      const filtersConfig: Record<string, unknown> = {};
+      if (feedSourceType === 'career_site') {
+        filtersConfig.timeRange = importTimeRange;
+        filtersConfig.limit = parseInt(importLimit) || 500;
+        if (importTitleSearch.length) filtersConfig.titleSearch = importTitleSearch;
+        if (importLocationSearch.length) filtersConfig.locationSearch = importLocationSearch;
+        if (importAts.length) filtersConfig.ats = importAts;
+        if (importTaxonomy.length) filtersConfig.aiTaxonomiesFilter = importTaxonomy;
+        if (importWorkArr.length) filtersConfig.aiWorkArrangementFilter = importWorkArr;
+        if (importEmploymentType.length) filtersConfig.aiEmploymentTypeFilter = importEmploymentType;
+        if (importRemoveAgency) filtersConfig.removeAgency = true;
+      } else {
+        filtersConfig.limit = parseInt(liLimit) || 500;
+        if (liKeywords.trim()) filtersConfig.keywords = liKeywords.trim();
+        if (liLocations.length) filtersConfig.locations = liLocations;
+        if (liIndustries.length) filtersConfig.linkedinIndustries = liIndustries;
+        if (liEmploymentType.length) filtersConfig.employmentTypeFilter = liEmploymentType;
+        if (liRemoveAgency) filtersConfig.removeAgency = true;
+        if (liCompanySizes.length) {
+          const sizes = liCompanySizes.map(v => COMPANY_SIZE_OPTIONS.find(o => o.value === v)).filter(Boolean);
+          filtersConfig.organizationEmployeesGte = Math.min(...sizes.map(s => s!.gte));
+          const maxLte = sizes.some(s => !s!.lte) ? undefined : Math.max(...sizes.map(s => s!.lte!));
+          if (maxLte) filtersConfig.organizationEmployeesLte = maxLte;
+        }
+      }
+
+      const { error } = await (supabase as any).from('job_feed_configs').insert({
+        organization_id: organizationId,
+        name: feedName.trim(),
+        schedule: feedSchedule,
+        source_type: feedSourceType,
+        filters_config: filtersConfig,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success('Feed aangemaakt');
+      refetchFeeds();
+      setFeedFormOpen(false);
+      setFeedName('');
+    },
+    onError: (e: any) => toast.error(e.message || 'Fout bij aanmaken feed'),
+  });
+
+  const toggleFeedMutation = useMutation({
+    mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
+      const { error } = await (supabase as any)
+        .from('job_feed_configs')
+        .update({ is_active })
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => refetchFeeds(),
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const deleteFeedMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await (supabase as any)
+        .from('job_feed_configs')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success('Feed verwijderd');
+      refetchFeeds();
+    },
+    onError: (e: any) => toast.error(e.message),
   });
 
   // Derived filter options
@@ -256,6 +401,57 @@ const Vacaturebank = () => {
     onError: (e: any) => toast.error(e.message || 'Import mislukt'),
   });
 
+  // LinkedIn import mutation
+  const linkedinMutation = useMutation({
+    mutationFn: async () => {
+      const body: Record<string, unknown> = {
+        limit: parseInt(liLimit) || 100,
+        includeAi: liIncludeAi,
+        includeLinkedIn: true,
+      };
+
+      if (liKeywords.trim()) body.keywords = liKeywords.trim();
+      if (liLocations.length) body.locations = liLocations;
+      if (liIndustries.length) body.linkedinIndustries = liIndustries;
+      if (liEmploymentType.length) body.employmentTypeFilter = liEmploymentType;
+      if (liRemoveAgency) body.removeAgency = true;
+      if (liDescriptionSearch.length) body.descriptionSearch = liDescriptionSearch;
+      if (liOrgSearch.length) body.organizationSearch = liOrgSearch;
+
+      // Company size → gte/lte
+      if (liCompanySizes.length) {
+        const sizes = liCompanySizes.map(v => COMPANY_SIZE_OPTIONS.find(o => o.value === v)).filter(Boolean);
+        const minGte = Math.min(...sizes.map(s => s!.gte));
+        const maxLte = sizes.some(s => !s!.lte) ? undefined : Math.max(...sizes.map(s => s!.lte!));
+        body.organizationEmployeesGte = minGte;
+        if (maxLte) body.organizationEmployeesLte = maxLte;
+      }
+
+      // Date posted → datePostedAfter
+      if (liDatePosted && liDatePosted !== 'all') {
+        const now = new Date();
+        let afterDate: Date;
+        switch (liDatePosted) {
+          case 'today': afterDate = subDays(now, 1); break;
+          case 'past_week': afterDate = subDays(now, 7); break;
+          case 'past_month': afterDate = subMonths(now, 1); break;
+          default: afterDate = subDays(now, 7);
+        }
+        body.datePostedAfter = afterDate.toISOString();
+      }
+
+      const { data, error } = await supabase.functions.invoke('linkedin-job-search', { body });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      toast.success(`${data.total} LinkedIn vacatures opgehaald, ${data.new_count} nieuw`);
+      queryClient.invalidateQueries({ queryKey: ['job-listings'] });
+      setImportOpen(false);
+    },
+    onError: (e: any) => toast.error(e.message || 'LinkedIn import mislukt'),
+  });
+
   // Convert to vacancies mutation
   const convertMutation = useMutation({
     mutationFn: async () => {
@@ -330,9 +526,128 @@ const Vacaturebank = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Vacaturebank</h1>
-          <p className="text-muted-foreground text-sm">Externe vacatures van career sites</p>
+          <p className="text-muted-foreground text-sm">Externe vacatures van career sites en LinkedIn</p>
         </div>
-        <Sheet open={importOpen} onOpenChange={setImportOpen}>
+        <div className="flex gap-2">
+          {/* Feeds dialog */}
+          <Dialog open={feedsOpen} onOpenChange={setFeedsOpen}>
+            <Button variant="outline" onClick={() => setFeedsOpen(true)}>
+              <Rss className="h-4 w-4 mr-2" />
+              Feeds
+              {feedConfigs.filter((f: any) => f.is_active).length > 0 && (
+                <Badge variant="secondary" className="ml-1.5 text-[10px]">
+                  {feedConfigs.filter((f: any) => f.is_active).length}
+                </Badge>
+              )}
+            </Button>
+            <DialogContent className="sm:max-w-lg">
+              <DialogHeader>
+                <DialogTitle>Automatische feeds</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Feeds importeren automatisch vacatures op een vast schema.
+                </p>
+
+                {feedConfigs.length === 0 ? (
+                  <div className="text-center py-6 text-muted-foreground text-sm">
+                    Nog geen feeds ingesteld.
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                    {feedConfigs.map((feed: any) => (
+                      <div key={feed.id} className="flex items-center justify-between rounded-lg border p-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium truncate">{feed.name}</span>
+                            <Badge variant="outline" className="text-[10px] shrink-0">
+                              {feed.source_type === 'linkedin' ? 'LinkedIn' : 'Career Sites'}
+                            </Badge>
+                            <Badge variant={feed.is_active ? 'default' : 'secondary'} className="text-[10px] shrink-0">
+                              {feed.schedule}
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {feed.last_run_at
+                              ? `Laatste run: ${format(new Date(feed.last_run_at), 'd MMM HH:mm', { locale: nl })} — ${feed.last_run_job_count} jobs (${feed.last_run_status})`
+                              : 'Nog niet gedraaid'}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1 ml-2">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => toggleFeedMutation.mutate({ id: feed.id, is_active: !feed.is_active })}
+                          >
+                            {feed.is_active ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-destructive"
+                            onClick={() => deleteFeedMutation.mutate(feed.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <Separator />
+
+                {feedFormOpen ? (
+                  <div className="space-y-3">
+                    <div>
+                      <Label>Naam</Label>
+                      <Input value={feedName} onChange={e => setFeedName(e.target.value)} placeholder="bijv. Dagelijks productie Brabant" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label>Bron</Label>
+                        <Select value={feedSourceType} onValueChange={setFeedSourceType}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="career_site">Career Sites</SelectItem>
+                            <SelectItem value="linkedin">LinkedIn</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label>Schema</Label>
+                        <Select value={feedSchedule} onValueChange={setFeedSchedule}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="hourly">Uurlijks</SelectItem>
+                            <SelectItem value="daily">Dagelijks</SelectItem>
+                            <SelectItem value="weekly">Wekelijks</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      De huidige filters uit het {feedSourceType === 'linkedin' ? 'LinkedIn' : 'Career Sites'} import-formulier worden opgeslagen.
+                      Stel eerst je filters in via "Importeren" en kom dan hier terug.
+                    </p>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" onClick={() => setFeedFormOpen(false)}>Annuleren</Button>
+                      <Button size="sm" onClick={() => createFeedMutation.mutate()} disabled={createFeedMutation.isPending}>
+                        {createFeedMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Feed aanmaken'}
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <Button variant="outline" className="w-full" onClick={() => setFeedFormOpen(true)}>
+                    <Plus className="h-4 w-4 mr-2" /> Nieuwe feed
+                  </Button>
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          <Sheet open={importOpen} onOpenChange={setImportOpen}>
           <SheetTrigger asChild>
             <Button><Download className="h-4 w-4 mr-2" /> Importeren</Button>
           </SheetTrigger>
@@ -340,7 +655,14 @@ const Vacaturebank = () => {
             <SheetHeader>
               <SheetTitle>Vacatures importeren</SheetTitle>
             </SheetHeader>
-            <div className="mt-6 space-y-5">
+            <Tabs value={importTab} onValueChange={setImportTab} className="mt-4">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="career-sites" className="gap-1.5"><Globe className="h-3.5 w-3.5" /> Career Sites</TabsTrigger>
+                <TabsTrigger value="linkedin" className="gap-1.5"><Linkedin className="h-3.5 w-3.5" /> LinkedIn</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="career-sites">
+            <div className="mt-4 space-y-5">
               {/* Basic settings */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -612,12 +934,212 @@ const Vacaturebank = () => {
                 {importMutation.isPending ? (
                   <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Importeren...</>
                 ) : (
-                  <><Download className="h-4 w-4 mr-2" /> Importeren</>
+                  <><Download className="h-4 w-4 mr-2" /> Career Sites importeren</>
                 )}
               </Button>
             </div>
+              </TabsContent>
+
+              <TabsContent value="linkedin">
+                <div className="mt-4 space-y-5">
+                  {/* Keywords */}
+                  <div>
+                    <Label>Zoektermen</Label>
+                    <Input
+                      value={liKeywords}
+                      onChange={e => setLiKeywords(e.target.value)}
+                      placeholder="bijv. Productiemedewerker, Magazijnmedewerker"
+                    />
+                    <p className="text-[10px] text-muted-foreground mt-1">Gebruik :* voor prefix matching (bijv. Soft:*)</p>
+                  </div>
+
+                  {/* Locations */}
+                  <div>
+                    <Label>Locaties</Label>
+                    <TagInput
+                      value={liLocations}
+                      onChange={setLiLocations}
+                      placeholder="bijv. Eindhoven, Netherlands + Enter"
+                    />
+                    <p className="text-[10px] text-muted-foreground mt-1">Formaat: City, Country (in het Engels)</p>
+                  </div>
+
+                  {/* Date posted */}
+                  <div>
+                    <Label>Geplaatst sinds</Label>
+                    <Select value={liDatePosted} onValueChange={setLiDatePosted}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {LINKEDIN_DATE_POSTED.map(d => (
+                          <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Industry combobox */}
+                  <div>
+                    <Label className="mb-2 block">Industrie (LinkedIn)</Label>
+                    <Popover open={liIndustryOpen} onOpenChange={setLiIndustryOpen}>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" role="combobox" className="w-full justify-between font-normal">
+                          {liIndustries.length
+                            ? `${liIndustries.length} industrie${liIndustries.length !== 1 ? 'ën' : ''} geselecteerd`
+                            : 'Selecteer industrieën...'}
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[350px] p-0" align="start">
+                        <Command>
+                          <CommandInput placeholder="Zoek industrie..." />
+                          <CommandList>
+                            <CommandEmpty>Geen industrie gevonden.</CommandEmpty>
+                            <CommandGroup heading="Aanbevolen voor uitzendwerk">
+                              {LINKEDIN_INDUSTRIES_FEATURED.map(ind => (
+                                <CommandItem
+                                  key={ind}
+                                  value={ind}
+                                  onSelect={() => setLiIndustries(prev =>
+                                    prev.includes(ind) ? prev.filter(i => i !== ind) : [...prev, ind]
+                                  )}
+                                >
+                                  <Check className={`mr-2 h-4 w-4 ${liIndustries.includes(ind) ? 'opacity-100' : 'opacity-0'}`} />
+                                  {ind}
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                            <CommandGroup heading="Alle industrieën">
+                              {LINKEDIN_INDUSTRIES.filter(i => !LINKEDIN_INDUSTRIES_FEATURED.includes(i)).map(ind => (
+                                <CommandItem
+                                  key={ind}
+                                  value={ind}
+                                  onSelect={() => setLiIndustries(prev =>
+                                    prev.includes(ind) ? prev.filter(i => i !== ind) : [...prev, ind]
+                                  )}
+                                >
+                                  <Check className={`mr-2 h-4 w-4 ${liIndustries.includes(ind) ? 'opacity-100' : 'opacity-0'}`} />
+                                  {ind}
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                    {liIndustries.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {liIndustries.map(ind => (
+                          <Badge key={ind} variant="secondary" className="text-xs gap-1">
+                            {ind}
+                            <X className="h-3 w-3 cursor-pointer" onClick={() => setLiIndustries(prev => prev.filter(i => i !== ind))} />
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Company size */}
+                  <div>
+                    <Label className="mb-2 block">Bedrijfsgrootte</Label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {COMPANY_SIZE_OPTIONS.map(s => (
+                        <Badge
+                          key={s.value}
+                          variant={liCompanySizes.includes(s.value) ? 'default' : 'outline'}
+                          className="cursor-pointer text-xs"
+                          onClick={() => setLiCompanySizes(prev => toggleArray(prev, s.value))}
+                        >
+                          {s.label}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Employment type */}
+                  <div>
+                    <Label className="mb-2 block">Dienstverband</Label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {LINKEDIN_EMPLOYMENT_TYPES.map(t => (
+                        <Badge
+                          key={t.value}
+                          variant={liEmploymentType.includes(t.value) ? 'default' : 'outline'}
+                          className="cursor-pointer text-xs"
+                          onClick={() => setLiEmploymentType(prev => toggleArray(prev, t.value))}
+                        >
+                          {t.label}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Toggles */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm">Uitzendbureaus uitsluiten</Label>
+                      <Switch checked={liRemoveAgency} onCheckedChange={setLiRemoveAgency} />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm">AI verrijking</Label>
+                      <Switch checked={liIncludeAi} onCheckedChange={setLiIncludeAi} />
+                    </div>
+                  </div>
+
+                  {/* Max results */}
+                  <div>
+                    <Label>Max resultaten</Label>
+                    <Select value={liLimit} onValueChange={setLiLimit}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="100">100</SelectItem>
+                        <SelectItem value="250">250</SelectItem>
+                        <SelectItem value="500">500</SelectItem>
+                        <SelectItem value="1000">1.000</SelectItem>
+                        <SelectItem value="2500">2.500</SelectItem>
+                        <SelectItem value="5000">5.000</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <Separator />
+
+                  {/* Advanced LinkedIn filters */}
+                  <Collapsible>
+                    <CollapsibleTrigger asChild>
+                      <Button variant="ghost" size="sm" className="gap-1 w-full justify-between text-muted-foreground">
+                        Geavanceerde filters
+                        <ChevronDown className="h-4 w-4" />
+                      </Button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="space-y-4 pt-3">
+                      <div>
+                        <Label>Zoek in beschrijving</Label>
+                        <TagInput value={liDescriptionSearch} onChange={setLiDescriptionSearch} placeholder="Keywords in beschrijving..." />
+                        <p className="text-[10px] text-muted-foreground mt-1">Zeer intensief — max 3-5 termen, combineer met zoektermen</p>
+                      </div>
+                      <div>
+                        <Label>Zoek op bedrijfsnaam</Label>
+                        <TagInput value={liOrgSearch} onChange={setLiOrgSearch} placeholder="bijv. ASML, Philips + Enter" />
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
+
+                  <Button
+                    onClick={() => linkedinMutation.mutate()}
+                    disabled={linkedinMutation.isPending}
+                    className="w-full"
+                  >
+                    {linkedinMutation.isPending ? (
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> LinkedIn importeren...</>
+                    ) : (
+                      <><Linkedin className="h-4 w-4 mr-2" /> LinkedIn importeren</>
+                    )}
+                  </Button>
+                </div>
+              </TabsContent>
+            </Tabs>
           </SheetContent>
         </Sheet>
+        </div>
       </div>
 
       {/* Stats */}

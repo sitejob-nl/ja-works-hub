@@ -44,11 +44,10 @@ Deno.serve(async (req) => {
       });
     }
 
-    const userId = user.id;
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("organization_id")
-      .eq("id", userId)
+      .eq("id", user.id)
       .single();
 
     if (profileError || !profile) {
@@ -61,53 +60,40 @@ Deno.serve(async (req) => {
     const organizationId = profile.organization_id;
     const body = await req.json();
     const {
-      timeRange = "7d",
-      limit = 100,
-      titleSearch, titleExclusionSearch,
-      locationSearch, locationExclusionSearch,
-      descriptionSearch, descriptionExclusionSearch,
-      organizationSearch, organizationExclusionSearch,
-      domainFilter, domainExclusionFilter,
-      ats, atsExclusionFilter,
-      aiTaxonomiesFilter, aiTaxonomiesPrimaryFilter, aiTaxonomiesExclusionFilter,
-      aiWorkArrangementFilter, aiEmploymentTypeFilter, aiExperienceLevelFilter,
-      aiHasSalary, aiVisaSponsorshipFilter,
-      liIndustryFilter, liOrganizationEmployeesLte, liOrganizationEmployeesGte,
+      keywords,
+      locations,
+      linkedinIndustries,
+      organizationEmployeesGte,
+      organizationEmployeesLte,
+      employmentTypeFilter,
+      datePostedAfter,
       removeAgency,
+      limit = 100,
       includeAi = true,
       includeLinkedIn = true,
+      descriptionSearch,
+      organizationSearch,
     } = body;
 
     const apifyInput: Record<string, unknown> = {
-      timeRange,
       limit: Math.min(Math.max(limit, 10), 5000),
       includeAi,
       includeLinkedIn,
       descriptionType: "text",
-      populateAiRemoteLocation: false,
-      populateAiRemoteLocationDerived: false,
     };
 
+    if (keywords) apifyInput.keywords = keywords;
+    if (typeof removeAgency === "boolean") apifyInput.removeAgency = removeAgency;
+    if (typeof organizationEmployeesGte === "number") apifyInput.organizationEmployeesGte = organizationEmployeesGte;
+    if (typeof organizationEmployeesLte === "number") apifyInput.organizationEmployeesLte = organizationEmployeesLte;
+    if (datePostedAfter) apifyInput.datePostedAfter = datePostedAfter;
+
     const arrayFields: [string, unknown][] = [
-      ["titleSearch", titleSearch],
-      ["titleExclusionSearch", titleExclusionSearch],
-      ["locationSearch", locationSearch],
-      ["locationExclusionSearch", locationExclusionSearch],
+      ["locations", locations],
+      ["linkedinIndustries", linkedinIndustries],
+      ["employmentTypeFilter", employmentTypeFilter],
       ["descriptionSearch", descriptionSearch],
-      ["descriptionExclusionSearch", descriptionExclusionSearch],
       ["organizationSearch", organizationSearch],
-      ["organizationExclusionSearch", organizationExclusionSearch],
-      ["domainFilter", domainFilter],
-      ["domainExclusionFilter", domainExclusionFilter],
-      ["ats", ats],
-      ["atsExclusionFilter", atsExclusionFilter],
-      ["aiTaxonomiesFilter", aiTaxonomiesFilter],
-      ["aiTaxonomiesPrimaryFilter", aiTaxonomiesPrimaryFilter],
-      ["aiTaxonomiesExclusionFilter", aiTaxonomiesExclusionFilter],
-      ["aiWorkArrangementFilter", aiWorkArrangementFilter],
-      ["aiEmploymentTypeFilter", aiEmploymentTypeFilter],
-      ["aiExperienceLevelFilter", aiExperienceLevelFilter],
-      ["liIndustryFilter", liIndustryFilter],
     ];
 
     for (const [key, value] of arrayFields) {
@@ -116,13 +102,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    if (typeof aiHasSalary === "boolean") apifyInput.aiHasSalary = aiHasSalary;
-    if (typeof aiVisaSponsorshipFilter === "boolean") apifyInput.aiVisaSponsorshipFilter = aiVisaSponsorshipFilter;
-    if (typeof removeAgency === "boolean") apifyInput.removeAgency = removeAgency;
-    if (typeof liOrganizationEmployeesLte === "number") apifyInput.liOrganizationEmployeesLte = liOrganizationEmployeesLte;
-    if (typeof liOrganizationEmployeesGte === "number") apifyInput.liOrganizationEmployeesGte = liOrganizationEmployeesGte;
-
-    const apifyUrl = `https://api.apify.com/v2/acts/fantastic-jobs~career-site-job-listing-api/run-sync-get-dataset-items?token=${apifyToken}`;
+    const apifyUrl = `https://api.apify.com/v2/acts/fantastic-jobs~advanced-linkedin-job-search-api/run-sync-get-dataset-items?token=${apifyToken}`;
 
     const apifyResponse = await fetch(apifyUrl, {
       method: "POST",
@@ -177,7 +157,7 @@ Deno.serve(async (req) => {
       organization_id: organizationId,
       total_jobs: jobs.length,
       new_jobs: newCount,
-      filters_used: apifyInput,
+      filters_used: { ...apifyInput, source: "linkedin_search" },
       status: "completed",
     });
 
