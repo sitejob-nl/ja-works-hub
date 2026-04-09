@@ -1,19 +1,32 @@
+// supabase/functions/whatsapp-webhook/index.ts
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { normalizePhone } from "../_shared/whatsapp-utils.ts";
+
+const OPT_OUT_KEYWORDS = ["stop", "afmelden", "uitschrijven", "stoppen", "unsubscribe"];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, {
       headers: {
         "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-webhook-secret",
+        "Access-Control-Allow-Headers":
+          "authorization, x-client-info, apikey, content-type, x-webhook-secret",
       },
     });
   }
 
+  // Always return 200 to prevent SiteJob Connect retries
+  const ok = () =>
+    new Response(JSON.stringify({ status: "ok" }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+
   try {
     const webhookSecret = req.headers.get("X-Webhook-Secret");
     if (!webhookSecret) {
-      return new Response("Unauthorized", { status: 401 });
+      console.error("Missing X-Webhook-Secret header");
+      return ok();
     }
 
     const body = await req.json();
@@ -23,223 +36,251 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Find config by webhook secret — need to decrypt and compare
-    // First get all active configs, then decrypt and match
-    const { data: configs, error: findError } = await serviceClient
-      .from("whatsapp_config")
-      .select("*")
-      .eq("is_active", true);
+    // O(1) org lookup: find config by waba_id from payload body.id field
+    const wabaId = body.id;
+    let config: any = null;
 
-    if (findError || !configs || configs.length === 0) {
-      console.error("No active configs found");
-      return new Response("OK", { status: 200 });
+    if (wabaId) {
+      const { data } = await serviceClient
+        .from("whatsapp_config")
+        .select("id, organization_id, webhook_secret")
+        .eq("waba_id", wabaId)
+        .eq("is_active", true)
+        .maybeSingle();
+      config = data;
     }
 
-    // Decrypt webhook_secret for each config and find match
-    let config = null;
-    for (const c of configs) {
-      const { data: decrypted } = await serviceClient.rpc('get_whatsapp_token', {
-        p_org_id: c.organization_id,
-      });
-      if (decrypted?.[0]?.decrypted_webhook_secret === webhookSecret) {
-        config = c;
-        break;
+    // Fallback: loop all active configs, decrypt each webhook_secret, compare
+    if (!config) {
+      const { data: configs } = await serviceClient
+        .from("whatsapp_config")
+        .select("id, organization_id, webhook_secret")
+        .eq("is_active", true);
+
+      if (configs) {
+        for (const c of configs) {
+          const { data: decrypted } = await serviceClient.rpc("decrypt_sensitive", {
+            ciphertext: c.webhook_secret,
+          });
+          if (decrypted === webhookSecret) {
+            config = c;
+            break;
+          }
+        }
       }
     }
 
     if (!config) {
-      console.error("No config found for webhook secret");
-      return new Response("OK", { status: 200 });
+      console.error("No matching config for webhook secret");
+      return ok();
     }
-    const orgId = config.organization_id;
 
-    // Process changes
-    const entry = body; // The body IS the entry object from SiteJob Connect
-    const changes = entry.changes || [];
+    // Validate webhook secret for the waba_id match path
+    if (wabaId && config.webhook_secret) {
+      const { data: decrypted } = await serviceClient.rpc("decrypt_sensitive", {
+        ciphertext: config.webhook_secret,
+      });
+      if (decrypted !== webhookSecret) {
+        console.error("Webhook secret mismatch");
+        return ok();
+      }
+    }
+
+    const orgId = config.organization_id;
+    const changes = body.changes || [];
 
     for (const change of changes) {
       const value = change.value;
+      if (!value) continue;
 
       // Process inbound messages
-      if (value?.messages) {
+      if (value.messages) {
         for (const msg of value.messages) {
-          const contact = value.contacts?.[0];
-          const senderName = contact?.profile?.name || msg.from;
-          const phoneNumberId = value.metadata?.phone_number_id;
-
-          // Extract body text based on message type
-          let bodyText = "";
-          switch (msg.type) {
-            case "text":
-              bodyText = msg.text?.body || "";
-              break;
-            case "image":
-              bodyText = `[Afbeelding] ${msg.image?.caption || ""}`.trim();
-              break;
-            case "video":
-              bodyText = `[Video] ${msg.video?.caption || ""}`.trim();
-              break;
-            case "audio":
-              bodyText = "[Spraakbericht]";
-              break;
-            case "document":
-              bodyText = `[Document: ${msg.document?.filename || "bestand"}] ${msg.document?.caption || ""}`.trim();
-              break;
-            case "sticker":
-              bodyText = "[Sticker]";
-              break;
-            case "location":
-              bodyText = `[Locatie: ${msg.location?.name || `${msg.location?.latitude}, ${msg.location?.longitude}`}]`;
-              break;
-            case "contacts":
-              bodyText = `[Contact: ${msg.contacts?.[0]?.name?.formatted_name || "onbekend"}]`;
-              break;
-            case "reaction":
-              bodyText = `[Reactie: ${msg.reaction?.emoji || ""}]`;
-              break;
-            case "interactive":
-              if (msg.interactive?.type === "button_reply") {
-                bodyText = msg.interactive.button_reply?.title || "";
-              } else if (msg.interactive?.type === "list_reply") {
-                bodyText = msg.interactive.list_reply?.title || "";
-              }
-              break;
-            case "button":
-              bodyText = msg.button?.text || "";
-              break;
-            default:
-              bodyText = `[${msg.type}]`;
-          }
-
-          // Check for duplicate
-          const { data: existing } = await serviceClient
-            .from("communications")
-            .select("id")
-            .eq("whatsapp_message_id", msg.id)
-            .eq("organization_id", orgId)
-            .maybeSingle();
-
-          if (existing) {
-            console.log("Duplicate message skipped:", msg.id);
-            continue;
-          }
-
-          // Try to find candidate by phone number
-          const fromNumber = msg.from;
-          let candidateId: string | null = null;
-
-          // Search by phone (try different formats)
-          const phoneVariants = [
-            fromNumber,
-            `+${fromNumber}`,
-            fromNumber.replace(/^31/, "+31"),
-            fromNumber.replace(/^31/, "0"),
-          ];
-
-          for (const phone of phoneVariants) {
-            const { data: candidate } = await serviceClient
-              .from("candidates")
-              .select("id")
-              .eq("organization_id", orgId)
-              .eq("phone", phone)
-              .maybeSingle();
-
-            if (candidate) {
-              candidateId = candidate.id;
-              break;
-            }
-          }
-
-          // Check for opt-out keywords
-          const optOutKeywords = ["stop", "afmelden", "unsubscribe", "uitschrijven", "stoppen"];
-          const messageText = bodyText.toLowerCase().trim();
-          const isOptOut = optOutKeywords.some(keyword => messageText === keyword || messageText.startsWith(keyword + " "));
-
-          // Insert communication
-          const { error: insertError } = await serviceClient
-            .from("communications")
-            .insert({
-              organization_id: orgId,
-              channel: "whatsapp",
-              direction: "inbound",
-              subject: `WhatsApp van ${senderName}`,
-              body: bodyText,
-              candidate_id: candidateId,
-              whatsapp_message_id: msg.id,
-              sent_at: new Date(parseInt(msg.timestamp) * 1000).toISOString(),
-            });
-
-          if (insertError) {
-            console.error("Insert error:", insertError);
-          } else {
-            console.log("Inbound message stored:", msg.id, "candidate:", candidateId);
-          }
-
-          // Handle opt-out if detected and candidate found
-          if (isOptOut && candidateId) {
-            console.log("Opt-out keyword detected, processing opt-out for:", candidateId);
-            
-            try {
-              // Upsert communication preference directly
-              await serviceClient
-                .from("communication_preferences")
-                .upsert(
-                  {
-                    organization_id: orgId,
-                    candidate_id: candidateId,
-                    channel: "whatsapp",
-                    opted_out: true,
-                    opted_out_at: new Date().toISOString(),
-                    opted_out_reason: "Auto opt-out via keyword: " + messageText,
-                  },
-                  { onConflict: "organization_id,candidate_id,channel" }
-                );
-
-              // Update pending campaign recipients
-              await serviceClient
-                .from("campaign_recipients")
-                .update({ status: "opted_out" })
-                .eq("organization_id", orgId)
-                .eq("candidate_id", candidateId)
-                .eq("status", "pending");
-
-              console.log("Opt-out processed for:", candidateId);
-            } catch (optOutError) {
-              console.error("Failed to process opt-out:", optOutError);
-            }
-          }
+          await processInboundMessage(
+            serviceClient,
+            orgId,
+            msg,
+            value.contacts,
+            value.metadata
+          );
         }
       }
 
       // Process status updates
-      if (value?.statuses) {
+      if (value.statuses) {
         for (const status of value.statuses) {
-          const { error: updateError } = await serviceClient
-            .from("communications")
-            .update({ whatsapp_status: status.status })
-            .eq("whatsapp_message_id", status.id)
-            .eq("organization_id", orgId);
-
-          if (updateError) {
-            console.error("Status update error:", updateError);
-          } else {
-            console.log("Status updated:", status.id, "->", status.status);
-          }
+          await processStatusUpdate(serviceClient, status);
         }
       }
     }
 
-    // Always return 200
-    return new Response(JSON.stringify({ ok: true }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
+    return ok();
   } catch (err) {
-    console.error("Webhook error:", err);
-    // Always return 200 to prevent retries
-    return new Response(JSON.stringify({ ok: true }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
+    console.error("whatsapp-webhook error:", err);
+    return ok();
   }
 });
+
+async function processInboundMessage(
+  supabase: any,
+  orgId: string,
+  msg: any,
+  contacts: any[],
+  metadata: any
+) {
+  const from = normalizePhone(msg.from);
+  const messageId = msg.id;
+  const messageType = msg.type;
+  const timestamp = msg.timestamp
+    ? new Date(parseInt(msg.timestamp) * 1000).toISOString()
+    : new Date().toISOString();
+
+  // Extract message body and media_id based on type
+  let body = "";
+  let mediaId: string | null = null;
+
+  switch (messageType) {
+    case "text":
+      body = msg.text?.body ?? "";
+      break;
+    case "image":
+      body = msg.image?.caption ?? "[Afbeelding]";
+      mediaId = msg.image?.id ?? null;
+      break;
+    case "video":
+      body = msg.video?.caption ?? "[Video]";
+      mediaId = msg.video?.id ?? null;
+      break;
+    case "audio":
+      body = "[Audio]";
+      mediaId = msg.audio?.id ?? null;
+      break;
+    case "document":
+      body = msg.document?.caption ?? `[Document: ${msg.document?.filename ?? "bestand"}]`;
+      mediaId = msg.document?.id ?? null;
+      break;
+    case "sticker":
+      body = "[Sticker]";
+      mediaId = msg.sticker?.id ?? null;
+      break;
+    case "location":
+      body = `[Locatie: ${
+        msg.location?.name ??
+        `${msg.location?.latitude}, ${msg.location?.longitude}`
+      }]`;
+      break;
+    case "contacts":
+      body = `[Contact: ${msg.contacts?.[0]?.name?.formatted_name ?? "onbekend"}]`;
+      break;
+    case "reaction":
+      body = `[Reactie: ${msg.reaction?.emoji ?? ""}]`;
+      break;
+    case "interactive": {
+      const ir = msg.interactive;
+      body =
+        ir?.button_reply?.title ?? ir?.list_reply?.title ?? "[Interactief antwoord]";
+      break;
+    }
+    case "button":
+      body = msg.button?.text ?? "[Button antwoord]";
+      break;
+    default:
+      body = `[${messageType}]`;
+  }
+
+  // Match candidate by normalized phone (E.164, without +, with leading 0)
+  const fromWithout = from.replace("+", ""); // e.g. 31612345678
+  const fromLocal = from.startsWith("+31")
+    ? "0" + from.substring(3) // e.g. 0612345678
+    : from;
+
+  const { data: candidate } = await supabase
+    .from("candidates")
+    .select("id")
+    .eq("organization_id", orgId)
+    .or(`phone.eq.${from},phone.eq.${fromWithout},phone.eq.${fromLocal}`)
+    .maybeSingle();
+
+  const candidateId = candidate?.id ?? null;
+  const contactName = contacts?.[0]?.profile?.name ?? from;
+
+  // Opt-out detection: text messages only, check start of message
+  if (messageType === "text" && body) {
+    const lowerBody = body.toLowerCase().trim();
+    const isOptOut = OPT_OUT_KEYWORDS.some(
+      (kw) =>
+        lowerBody === kw ||
+        lowerBody.startsWith(kw + " ") ||
+        lowerBody.startsWith(kw + ".")
+    );
+
+    if (isOptOut && candidateId) {
+      await supabase.from("communication_preferences").upsert(
+        {
+          organization_id: orgId,
+          candidate_id: candidateId,
+          channel: "whatsapp",
+          opted_out: true,
+          opted_out_at: new Date().toISOString(),
+          opted_out_reason: `Auto: "${body}"`,
+        },
+        { onConflict: "candidate_id,channel,organization_id" }
+      );
+
+      // Mark pending campaign recipients as opted_out
+      await supabase
+        .from("campaign_recipients")
+        .update({ status: "opted_out" })
+        .eq("candidate_id", candidateId)
+        .eq("status", "pending");
+    }
+  }
+
+  // Insert communication — unique index on whatsapp_message_id handles dedup (catches 23505)
+  const { error: insertError } = await supabase.from("communications").insert({
+    organization_id: orgId,
+    channel: "whatsapp",
+    direction: "inbound",
+    subject: `WhatsApp van ${contactName} (${from})`,
+    body,
+    candidate_id: candidateId,
+    sent_at: timestamp,
+    whatsapp_message_id: messageId,
+    whatsapp_status: "received",
+    message_type: messageType,
+    media_id: mediaId,
+  });
+
+  if (insertError) {
+    // 23505 = unique_violation — expected for duplicate delivery, safe to ignore
+    if (insertError.code !== "23505" && !insertError.message?.includes("unique")) {
+      console.error("Insert communication failed:", insertError);
+    } else {
+      console.log("Duplicate message skipped:", messageId);
+    }
+  }
+}
+
+async function processStatusUpdate(supabase: any, status: any) {
+  const messageId = status.id;
+  const newStatus = status.status; // sent, delivered, read, failed
+
+  const updateData: Record<string, unknown> = {
+    whatsapp_status: newStatus,
+  };
+
+  // Store error title in body for failed messages
+  if (newStatus === "failed" && status.errors?.length) {
+    const err = status.errors[0];
+    updateData.body = `[Mislukt: ${err.title ?? err.message ?? "onbekende fout"}]`;
+  }
+
+  const { error } = await supabase
+    .from("communications")
+    .update(updateData)
+    .eq("whatsapp_message_id", messageId);
+
+  if (error) {
+    console.error("Status update failed for message:", messageId, error);
+  }
+}
