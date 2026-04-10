@@ -21,6 +21,7 @@ import OnboardingFormSettings from '@/components/settings/OnboardingFormSettings
 import TerminationReasonsSettings from '@/components/settings/TerminationReasonsSettings';
 import CustomFieldsSettings from '@/components/settings/CustomFieldsSettings';
 import MicrosoftSettings from '@/components/settings/MicrosoftSettings';
+import VoysSettings from '@/components/settings/VoysSettings';
 import { applyBranding, BRANDING_DEFAULTS, type BrandingSettings } from '@/lib/branding';
 
 /* ---- Color conversion helpers ---- */
@@ -460,6 +461,9 @@ const Settings = () => {
 
           {/* Exact Online */}
           <ExactOnlineSettings />
+
+          {/* Voys Telefonie */}
+          <VoysSettings />
 
           {/* Microsoft 365 */}
           <MicrosoftSettings />

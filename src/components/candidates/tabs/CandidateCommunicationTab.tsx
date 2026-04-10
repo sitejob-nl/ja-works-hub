@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, MessageSquare, Mail, Phone, StickyNote } from 'lucide-react';
+import { Plus, MessageSquare, Mail, Phone, StickyNote, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { toast } from 'sonner';
 import type { Database } from '@/integrations/supabase/types';
@@ -24,6 +24,7 @@ const CandidateCommunicationTab = ({ candidateId }: { candidateId: string }) => 
   const qc = useQueryClient();
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({ channel: 'notitie' as Channel, subject: '', body: '' });
+  const [expandedTranscription, setExpandedTranscription] = useState<string | null>(null);
 
   const { data: comms = [] } = useQuery({
     queryKey: ['candidate-communications', candidateId],
@@ -100,8 +101,30 @@ const CandidateCommunicationTab = ({ candidateId }: { candidateId: string }) => 
                   <span className="text-xs text-muted-foreground">{c.sent_at ? format(parseISO(c.sent_at), 'dd-MM-yyyy HH:mm') : ''}</span>
                 </div>
                 {c.body && <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{c.body}</p>}
-                {c.channel === 'voip' && c.call_duration_seconds && (
+                {c.channel === 'voip' && c.call_duration_seconds != null && (
                   <p className="text-xs text-muted-foreground mt-1">Gespreksduur: {Math.floor(c.call_duration_seconds / 60)}:{String(c.call_duration_seconds % 60).padStart(2, '0')}</p>
+                )}
+                {c.channel === 'voip' && c.call_summary && (
+                  <div className="mt-2 p-2 bg-muted/50 rounded text-sm">
+                    <p className="text-xs font-medium text-muted-foreground flex items-center gap-1 mb-1">
+                      <Sparkles className="h-3 w-3" /> AI-samenvatting
+                    </p>
+                    <p className="text-sm">{c.call_summary}</p>
+                  </div>
+                )}
+                {c.channel === 'voip' && c.transcription && (
+                  <div className="mt-2">
+                    <button
+                      onClick={() => setExpandedTranscription(expandedTranscription === c.id ? null : c.id)}
+                      className="text-xs text-primary hover:underline flex items-center gap-1"
+                    >
+                      {expandedTranscription === c.id ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                      {expandedTranscription === c.id ? 'Transcriptie verbergen' : 'Transcriptie tonen'}
+                    </button>
+                    {expandedTranscription === c.id && (
+                      <pre className="mt-2 p-3 bg-muted/50 rounded text-xs whitespace-pre-wrap font-sans max-h-64 overflow-y-auto">{c.transcription}</pre>
+                    )}
+                  </div>
                 )}
                 {c.profiles?.full_name && <p className="text-xs text-muted-foreground mt-1">Door: {c.profiles.full_name}</p>}
               </div>
