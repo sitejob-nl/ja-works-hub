@@ -27,7 +27,7 @@ Deno.serve(async (req) => {
     const { orgId, userId } = auth;
 
     const body = await req.json();
-    const { to, type, text, template, image, video, audio, document, reaction, candidate_id, context } = body;
+    const { to, type, text, template, image, video, audio, document, reaction, interactive, candidate_id, context } = body;
 
     if (!to || !type) {
       return jsonError("Veld 'to' en 'type' zijn verplicht", 400);
@@ -150,6 +150,18 @@ Deno.serve(async (req) => {
         metaPayload.type = "reaction";
         metaPayload.reaction = reaction;
         messageBody = `[Reactie: ${reaction?.emoji}]`;
+        break;
+
+      case "interactive":
+        metaPayload.type = "interactive";
+        metaPayload.interactive = interactive;
+        if (interactive?.type === "button") {
+          messageBody = `[Knoppen: ${interactive?.body?.text ?? ""}]`;
+        } else if (interactive?.type === "list") {
+          messageBody = `[Lijst: ${interactive?.body?.text ?? ""}]`;
+        } else {
+          messageBody = "[Interactief bericht]";
+        }
         break;
 
       default:

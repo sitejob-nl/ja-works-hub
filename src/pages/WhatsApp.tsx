@@ -15,6 +15,7 @@ import { ChatThread } from '@/components/whatsapp/ChatThread';
 import { ContactPanel } from '@/components/whatsapp/ContactPanel';
 import { TemplatePicker } from '@/components/whatsapp/TemplatePicker';
 import { NewChatDialog } from '@/components/whatsapp/NewChatDialog';
+import type { InteractivePayload } from '@/components/whatsapp/InteractiveMessageBuilder';
 
 const WhatsAppPage = () => {
   const orgId = useOrganizationId();
@@ -127,6 +128,38 @@ const WhatsAppPage = () => {
     });
   };
 
+  const handleSendInteractive = (payload: InteractivePayload) => {
+    if (!selectedPhone) return;
+
+    const interactive: any = {
+      type: payload.type === 'button' ? 'button' : 'list',
+      body: { text: payload.body },
+    };
+
+    if (payload.footer) interactive.footer = { text: payload.footer };
+
+    if (payload.type === 'button') {
+      interactive.action = {
+        buttons: payload.buttons?.map((b) => ({
+          type: 'reply',
+          reply: { id: b.id, title: b.title },
+        })),
+      };
+    } else {
+      interactive.action = {
+        button: payload.button_text,
+        sections: payload.sections,
+      };
+    }
+
+    sendMutation.mutate({
+      to: selectedPhone,
+      type: 'interactive',
+      interactive,
+      candidate_id: selectedCandidateId ?? undefined,
+    });
+  };
+
   // Panel visibility logic (mobile: one panel at a time)
   const showConvList = !isMobile || !selectedPhone;
   const showChat = !isMobile || !!selectedPhone;
@@ -178,6 +211,7 @@ const WhatsAppPage = () => {
               onSendText={handleSendText}
               onSendMedia={handleSendMedia}
               onOpenTemplates={() => setShowTemplates(true)}
+              onSendInteractive={handleSendInteractive}
             />
           </div>
         )}

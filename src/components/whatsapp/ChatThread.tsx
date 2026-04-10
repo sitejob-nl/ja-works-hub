@@ -8,6 +8,7 @@ import { MessageBubble } from './MessageBubble';
 import { DateSeparator } from './DateSeparator';
 import { ChatEmpty } from './ChatEmpty';
 import type { WhatsAppMessage } from '@/hooks/useWhatsAppMessages';
+import type { InteractivePayload } from './InteractiveMessageBuilder';
 
 interface ChatThreadProps {
   phone: string | null;
@@ -22,6 +23,7 @@ interface ChatThreadProps {
   onSendText: (text: string) => void;
   onSendMedia: (file: File, type: string) => void;
   onOpenTemplates: () => void;
+  onSendInteractive: (payload: InteractivePayload) => void;
 }
 
 export function ChatThread({
@@ -37,6 +39,7 @@ export function ChatThread({
   onSendText,
   onSendMedia,
   onOpenTemplates,
+  onSendInteractive,
 }: ChatThreadProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -104,6 +107,7 @@ export function ChatThread({
         onSendText={onSendText}
         onSendMedia={onSendMedia}
         onOpenTemplates={onOpenTemplates}
+        onSendInteractive={onSendInteractive}
         isSending={isSending}
       />
     </div>
