@@ -1,6 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { usePortal } from '@/contexts/PortalContext';
-import { Home, Clock, FileText, Building, MoreHorizontal, LogOut, Globe, MapPin } from 'lucide-react';
+import { Home, Clock, FileText, Building, MoreHorizontal, LogOut, Globe, MapPin, Briefcase } from 'lucide-react';
 import PortalNotifications from '@/components/portal/PortalNotifications';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -12,6 +12,7 @@ const mainTabs = [
   { label: 'Uren', icon: Clock, path: '/portaal/uren' },
   { label: 'Plaatsingen', icon: MapPin, path: '/portaal/plaatsingen' },
   { label: 'Documenten', icon: FileText, path: '/portaal/documenten' },
+  { label: 'Vacatures', icon: Briefcase, path: '/portaal/vacatures' },
   { label: 'Huisvesting', icon: Building, path: '/portaal/huisvesting' },
 ];
 

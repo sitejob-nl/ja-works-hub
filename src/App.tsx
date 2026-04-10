@@ -81,6 +81,7 @@ import PortalLayout from "@/components/layout/PortalLayout";
 import { PortalProvider } from "@/contexts/PortalContext";
 import PortalTimesheets from "@/pages/portal/PortalTimesheets";
 import PortalDocuments from "@/pages/portal/PortalDocuments";
+import PortalJobMarket from "@/pages/portal/PortalJobMarket";
 import PortalProfile from "@/pages/portal/PortalProfile";
 import PortalSickReport from "@/pages/portal/PortalSickReport";
 import PortalHousing from "@/pages/portal/PortalHousing";
@@ -194,6 +195,7 @@ const App = () => (
               <Route path="uren" element={<PortalTimesheets />} />
               <Route path="plaatsingen" element={<PortalPlacements />} />
               <Route path="documenten" element={<PortalDocuments />} />
+              <Route path="vacatures" element={<PortalJobMarket />} />
               <Route path="profiel" element={<PortalProfile />} />
               <Route path="ziekmelding" element={<PortalSickReport />} />
               <Route path="huisvesting" element={<PortalHousing />} />
