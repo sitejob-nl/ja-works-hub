@@ -12,6 +12,8 @@ import { formatEUR } from '@/lib/format';
 import { toast } from 'sonner';
 import { Zap } from 'lucide-react';
 
+const WEEKS_PER_MONTH = 4.33;
+
 const CostsTab = ({ property }: { property: any }) => {
   const qc = useQueryClient();
   const units = property.units ?? [];
@@ -21,19 +23,20 @@ const CostsTab = ({ property }: { property: any }) => {
       .map((a: any) => ({ ...a, unitName: u.name }))
   );
 
-  // Calculate monthly-equivalent deductions (weekly × 4.33)
-  const getMonthlyDeduction = (a: any): number => {
+  // Get weekly deduction per assignment
+  const getWeeklyDeduction = (a: any): number => {
     if (a.deduction_amount != null) {
       return a.payment_frequency === 'wekelijks'
-        ? Number(a.deduction_amount) * 4.33
-        : Number(a.deduction_amount);
+        ? Number(a.deduction_amount)
+        : Number(a.deduction_amount) / WEEKS_PER_MONTH;
     }
-    return Number(a.monthly_deduction) || 0;
+    return (Number(a.monthly_deduction) || 0) / WEEKS_PER_MONTH;
   };
 
-  const totalDeductions = allActive.reduce((s: number, a: any) => s + getMonthlyDeduction(a), 0);
+  const totalWeeklyDeductions = allActive.reduce((s: number, a: any) => s + getWeeklyDeduction(a), 0);
   const unpaidDeposits = allActive.filter((a: any) => !a.deposit_paid).length;
 
+  // Pandkosten zijn maandelijks opgeslagen, omrekenen naar week
   const costItems = useMemo(() => [
     { label: 'Huur', value: property.monthly_rent },
     { label: 'Gas', value: property.cost_gas },
@@ -43,12 +46,13 @@ const CostsTab = ({ property }: { property: any }) => {
     { label: 'Overig', value: property.cost_other },
   ], [property]);
 
-  const totalPandkosten = useMemo(
+  const totalPandkostenMaand = useMemo(
     () => costItems.reduce((s, c) => s + (Number(c.value) || 0), 0),
     [costItems]
   );
+  const totalPandkostenWeek = totalPandkostenMaand / WEEKS_PER_MONTH;
 
-  const nettoResultaat = totalDeductions - totalPandkosten;
+  const nettoWeek = totalWeeklyDeductions - totalPandkostenWeek;
 
   const toggleDeposit = useMutation({
     mutationFn: async ({ id, paid }: { id: string; paid: boolean }) => {
@@ -76,9 +80,9 @@ const CostsTab = ({ property }: { property: any }) => {
 
   return (
     <div className="space-y-6">
-      {/* Pandkosten KPI cards */}
+      {/* Pandkosten KPI cards — per week */}
       <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3">Pandkosten per maand</h3>
+        <h3 className="text-sm font-semibold text-foreground mb-3">Pandkosten per week</h3>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
           {costItems.map((c) => (
             <Card key={c.label} className="p-4">
@@ -90,34 +94,36 @@ const CostsTab = ({ property }: { property: any }) => {
                   </Badge>
                 )}
               </div>
-              <p className="text-xl font-semibold mt-1">{formatEUR(c.value)}</p>
+              <p className="text-xl font-semibold mt-1">{formatEUR((Number(c.value) || 0) / WEEKS_PER_MONTH)}</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">{formatEUR(c.value)}/mnd</p>
             </Card>
           ))}
           <Card className="p-4 bg-primary/5 border-primary/20">
-            <p className="text-xs text-muted-foreground font-medium">Totale maandlasten</p>
-            <p className="text-xl font-bold mt-1 text-foreground">{formatEUR(totalPandkosten)}</p>
+            <p className="text-xs text-muted-foreground font-medium">Totaal per week</p>
+            <p className="text-xl font-bold mt-1 text-foreground">{formatEUR(totalPandkostenWeek)}</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">{formatEUR(totalPandkostenMaand)}/mnd</p>
           </Card>
         </div>
       </div>
 
       <Separator />
 
-      {/* Resultaat card */}
+      {/* Resultaat card — per week */}
       <Card className="p-5">
-        <h3 className="text-sm font-semibold text-foreground mb-3">Resultaat per maand</h3>
+        <h3 className="text-sm font-semibold text-foreground mb-3">Resultaat per week</h3>
         <div className="grid grid-cols-3 gap-4 text-center">
           <div>
             <p className="text-xs text-muted-foreground">Inhoudingen bewoners</p>
-            <p className="text-lg font-semibold mt-1">{formatEUR(totalDeductions)}</p>
+            <p className="text-lg font-semibold mt-1">{formatEUR(totalWeeklyDeductions)}</p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Pandkosten</p>
-            <p className="text-lg font-semibold mt-1">- {formatEUR(totalPandkosten)}</p>
+            <p className="text-lg font-semibold mt-1">- {formatEUR(totalPandkostenWeek)}</p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Netto resultaat</p>
-            <p className={`text-lg font-bold mt-1 ${nettoResultaat >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-              {formatEUR(nettoResultaat)}
+            <p className={`text-lg font-bold mt-1 ${nettoWeek >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {formatEUR(nettoWeek)}
             </p>
           </div>
         </div>
@@ -125,13 +131,13 @@ const CostsTab = ({ property }: { property: any }) => {
 
       <Separator />
 
-      {/* Existing residents costs */}
+      {/* Bewonerskosten */}
       <div>
         <h3 className="text-sm font-semibold text-foreground mb-3">Bewonerskosten</h3>
         <div className="grid grid-cols-2 gap-4 mb-4">
           <Card className="p-4">
-            <p className="text-xs text-muted-foreground">Totale inhoudingen</p>
-            <p className="text-xl font-semibold mt-1">{formatEUR(totalDeductions)}</p>
+            <p className="text-xs text-muted-foreground">Totale inhoudingen /week</p>
+            <p className="text-xl font-semibold mt-1">{formatEUR(totalWeeklyDeductions)}</p>
           </Card>
           <Card className="p-4">
             <p className="text-xs text-muted-foreground">Openstaande borg</p>
@@ -148,8 +154,7 @@ const CostsTab = ({ property }: { property: any }) => {
                 <TableRow>
                   <TableHead>Naam</TableHead>
                   <TableHead>Kamer</TableHead>
-                  <TableHead>Inhouding</TableHead>
-                  <TableHead>Per maand</TableHead>
+                  <TableHead>Per week</TableHead>
                   <TableHead>Borg</TableHead>
                   <TableHead>Huur betaald tot</TableHead>
                 </TableRow>
@@ -162,13 +167,11 @@ const CostsTab = ({ property }: { property: any }) => {
                     </TableCell>
                     <TableCell>{a.unitName}</TableCell>
                     <TableCell>
-                      {a.deduction_amount != null ? (
-                        <span>{formatEUR(a.deduction_amount)}/{a.payment_frequency === 'wekelijks' ? 'week' : 'mnd'}</span>
-                      ) : (
-                        <span>{formatEUR(a.monthly_deduction)}/mnd</span>
+                      <span className="font-medium">{formatEUR(getWeeklyDeduction(a))}</span>
+                      {a.deduction_amount != null && a.payment_frequency === 'maandelijks' && (
+                        <span className="text-[10px] text-muted-foreground ml-1">({formatEUR(a.deduction_amount)}/mnd)</span>
                       )}
                     </TableCell>
-                    <TableCell className="text-muted-foreground">{formatEUR(getMonthlyDeduction(a))}</TableCell>
                     <TableCell>
                       <Button
                         variant="ghost"
