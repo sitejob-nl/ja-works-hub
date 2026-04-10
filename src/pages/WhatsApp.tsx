@@ -14,6 +14,7 @@ import { ConversationList } from '@/components/whatsapp/ConversationList';
 import { ChatThread } from '@/components/whatsapp/ChatThread';
 import { ContactPanel } from '@/components/whatsapp/ContactPanel';
 import { TemplatePicker } from '@/components/whatsapp/TemplatePicker';
+import { NewChatDialog } from '@/components/whatsapp/NewChatDialog';
 
 const WhatsAppPage = () => {
   const orgId = useOrganizationId();
@@ -23,6 +24,7 @@ const WhatsAppPage = () => {
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
   const [showContactPanel, setShowContactPanel] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [showNewChat, setShowNewChat] = useState(false);
 
   // Realtime updates
   useWhatsAppRealtime(orgId);
@@ -49,6 +51,18 @@ const WhatsAppPage = () => {
     setSelectedPhone(phone);
     setSelectedCandidateId(candidateId);
     if (isMobile) setShowContactPanel(false);
+  };
+
+  const handleStartNewChat = (phone: string, candidateId: string | null) => {
+    setSelectedPhone(phone);
+    setSelectedCandidateId(candidateId);
+    setShowNewChat(false);
+    // First message to a new contact requires a template (outside the 24h window)
+    // Auto-open the template picker so the user can send the required template
+    const existingConv = conversations.find((c) => c.phone === phone);
+    if (!existingConv) {
+      setShowTemplates(true);
+    }
   };
 
   const handleBack = () => {
@@ -143,7 +157,7 @@ const WhatsAppPage = () => {
               isLoading={convsLoading}
               selectedPhone={selectedPhone}
               onSelect={handleSelectConversation}
-              onNewChat={() => toast.info('Nieuw gesprek — binnenkort beschikbaar')}
+              onNewChat={() => setShowNewChat(true)}
             />
           </div>
         )}
@@ -185,6 +199,14 @@ const WhatsAppPage = () => {
           </div>
         )}
       </div>
+
+      {/* New chat dialog */}
+      <NewChatDialog
+        open={showNewChat}
+        onOpenChange={setShowNewChat}
+        orgId={orgId}
+        onStartChat={handleStartNewChat}
+      />
 
       {/* Template picker modal */}
       <TemplatePicker
