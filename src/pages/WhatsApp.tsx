@@ -4,7 +4,9 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { MessageSquare, FileText, QrCode, BarChart3 } from 'lucide-react';
 
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useWhatsAppRealtime } from '@/hooks/useWhatsAppRealtime';
 import { useWhatsAppConversations } from '@/hooks/useWhatsAppConversations';
 import { useWhatsAppMessages } from '@/hooks/useWhatsAppMessages';
@@ -15,6 +17,9 @@ import { ChatThread } from '@/components/whatsapp/ChatThread';
 import { ContactPanel } from '@/components/whatsapp/ContactPanel';
 import { TemplatePicker } from '@/components/whatsapp/TemplatePicker';
 import { NewChatDialog } from '@/components/whatsapp/NewChatDialog';
+import { TemplateManager } from '@/components/whatsapp/TemplateManager';
+import { QRCodeManager } from '@/components/whatsapp/QRCodeManager';
+import { WhatsAppAnalytics } from '@/components/whatsapp/WhatsAppAnalytics';
 import type { InteractivePayload } from '@/components/whatsapp/InteractiveMessageBuilder';
 
 const WhatsAppPage = () => {
@@ -166,7 +171,7 @@ const WhatsAppPage = () => {
   const showContact = showContactPanel && (!isMobile || !!selectedPhone);
 
   return (
-    <div className="flex flex-col h-[calc(100vh-8rem)]">
+    <div className="flex flex-col h-[calc(100vh-4rem)]">
       {/* Page header — only show when not in a mobile chat */}
       {(!isMobile || !selectedPhone) && (
         <div className="mb-4 shrink-0">
@@ -175,64 +180,123 @@ const WhatsAppPage = () => {
         </div>
       )}
 
-      {/* Main 3-panel container */}
-      <div className="flex flex-1 min-h-0 border rounded-lg overflow-hidden bg-card">
-        {/* Left: Conversation list */}
-        {showConvList && (
-          <div
-            className={cn(
-              'flex flex-col shrink-0',
-              isMobile ? 'w-full' : 'w-[300px]'
-            )}
-          >
-            <ConversationList
-              conversations={conversations}
-              isLoading={convsLoading}
-              selectedPhone={selectedPhone}
-              onSelect={handleSelectConversation}
-              onNewChat={() => setShowNewChat(true)}
-            />
-          </div>
-        )}
+      <Tabs defaultValue="gesprekken" className="flex flex-col flex-1 min-h-0">
+        {/* Sticky tabs bar */}
+        <div className="shrink-0 sticky top-0 z-10 bg-background border-b">
+          <TabsList className="h-auto p-0 bg-transparent rounded-none w-full justify-start">
+            <TabsTrigger
+              value="gesprekken"
+              className="flex items-center gap-2 px-4 py-3 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+            >
+              <MessageSquare className="h-4 w-4" />
+              Gesprekken
+            </TabsTrigger>
+            <TabsTrigger
+              value="templates"
+              className="flex items-center gap-2 px-4 py-3 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+            >
+              <FileText className="h-4 w-4" />
+              Templates
+            </TabsTrigger>
+            <TabsTrigger
+              value="qrcodes"
+              className="flex items-center gap-2 px-4 py-3 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+            >
+              <QrCode className="h-4 w-4" />
+              QR Codes
+            </TabsTrigger>
+            <TabsTrigger
+              value="analytics"
+              className="flex items-center gap-2 px-4 py-3 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+            >
+              <BarChart3 className="h-4 w-4" />
+              Analytics
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
-        {/* Middle: Chat thread */}
-        {showChat && (
-          <div className="flex-1 flex min-w-0">
-            <ChatThread
-              phone={selectedPhone}
-              candidateName={candidateName}
-              candidateId={selectedCandidateId}
-              messages={messages}
-              isLoading={msgsLoading}
-              isSending={sendMutation.isPending}
-              showBackButton={isMobile}
-              onBack={handleBack}
-              onToggleContact={handleToggleContact}
-              onSendText={handleSendText}
-              onSendMedia={handleSendMedia}
-              onOpenTemplates={() => setShowTemplates(true)}
-              onSendInteractive={handleSendInteractive}
-            />
-          </div>
-        )}
-
-        {/* Right: Contact panel */}
-        {showContact && selectedPhone && (
-          <div
-            className={cn(
-              'flex flex-col shrink-0 border-l',
-              isMobile ? 'w-full absolute inset-y-0 right-0 z-10 bg-card' : 'w-[300px]'
+        {/* Gesprekken tab — full-height 3-panel chat layout */}
+        <TabsContent value="gesprekken" className="flex-1 min-h-0 mt-0 data-[state=active]:flex data-[state=active]:flex-col">
+          <div className="flex flex-1 min-h-0 border rounded-lg overflow-hidden bg-card mt-4">
+            {/* Left: Conversation list */}
+            {showConvList && (
+              <div
+                className={cn(
+                  'flex flex-col shrink-0',
+                  isMobile ? 'w-full' : 'w-[300px]'
+                )}
+              >
+                <ConversationList
+                  conversations={conversations}
+                  isLoading={convsLoading}
+                  selectedPhone={selectedPhone}
+                  onSelect={handleSelectConversation}
+                  onNewChat={() => setShowNewChat(true)}
+                />
+              </div>
             )}
-          >
-            <ContactPanel
-              candidateId={selectedCandidateId}
-              phone={selectedPhone}
-              orgId={orgId}
-              onClose={() => setShowContactPanel(false)}
-            />
+
+            {/* Middle: Chat thread */}
+            {showChat && (
+              <div className="flex-1 flex min-w-0">
+                <ChatThread
+                  phone={selectedPhone}
+                  candidateName={candidateName}
+                  candidateId={selectedCandidateId}
+                  messages={messages}
+                  isLoading={msgsLoading}
+                  isSending={sendMutation.isPending}
+                  showBackButton={isMobile}
+                  onBack={handleBack}
+                  onToggleContact={handleToggleContact}
+                  onSendText={handleSendText}
+                  onSendMedia={handleSendMedia}
+                  onOpenTemplates={() => setShowTemplates(true)}
+                  onSendInteractive={handleSendInteractive}
+                />
+              </div>
+            )}
+
+            {/* Right: Contact panel */}
+            {showContact && selectedPhone && (
+              <div
+                className={cn(
+                  'flex flex-col shrink-0 border-l',
+                  isMobile ? 'w-full absolute inset-y-0 right-0 z-10 bg-card' : 'w-[300px]'
+                )}
+              >
+                <ContactPanel
+                  candidateId={selectedCandidateId}
+                  phone={selectedPhone}
+                  orgId={orgId}
+                  onClose={() => setShowContactPanel(false)}
+                />
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </TabsContent>
+
+        {/* Templates tab */}
+        <TabsContent value="templates" className="flex-1 overflow-auto mt-0">
+          <div className="p-4">
+            <TemplateManager />
+          </div>
+        </TabsContent>
+
+        {/* QR Codes tab */}
+        <TabsContent value="qrcodes" className="flex-1 overflow-auto mt-0">
+          <div className="p-4">
+            <QRCodeManager />
+          </div>
+        </TabsContent>
+
+        {/* Analytics tab */}
+        <TabsContent value="analytics" className="flex-1 overflow-auto mt-0">
+          <div className="p-4">
+            <WhatsAppAnalytics />
+          </div>
+        </TabsContent>
+      </Tabs>
 
       {/* New chat dialog */}
       <NewChatDialog
