@@ -319,6 +319,7 @@ const Timesheets = () => {
                   <TableHead className="text-right">Overwerk</TableHead>
                   <TableHead>Bron</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Klant</TableHead>
                   <TableHead>Acties</TableHead>
                 </TableRow>
               </TableHeader>
@@ -347,6 +348,17 @@ const Timesheets = () => {
                           {t.status === 'rood' && <XCircle className="h-3 w-3" />}
                           {statusLabel[t.status] ?? t.status}
                         </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {t.client_approved === true && (
+                          <Badge variant="secondary" className="text-[10px] bg-stat-green/10 text-stat-green border-0">Goedgekeurd</Badge>
+                        )}
+                        {t.client_approved === false && (
+                          <Badge variant="secondary" className="text-[10px] bg-red-100 text-red-600 border-0" title={t.client_rejection_notes || undefined}>Afgekeurd</Badge>
+                        )}
+                        {t.client_approved == null && t.status !== 'concept' && (
+                          <span className="text-[10px] text-muted-foreground">—</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-1">

@@ -90,6 +90,13 @@ import PortalPayslips from "@/pages/portal/PortalPayslips";
 import PortalAnnualStatements from "@/pages/portal/PortalAnnualStatements";
 import PortalHourLetters from "@/pages/portal/PortalHourLetters";
 import PortalPlacements from "@/pages/portal/PortalPlacements";
+import ClientPortalActivate from "@/pages/ClientPortalActivate";
+import ClientPortalLogin from "@/pages/clientportal/ClientPortalLogin";
+import ClientPortalDashboard from "@/pages/clientportal/ClientPortalDashboard";
+import ClientPortalTimesheets from "@/pages/clientportal/ClientPortalTimesheets";
+import ClientPortalPlacements from "@/pages/clientportal/ClientPortalPlacements";
+import ClientPortalLayout from "@/components/layout/ClientPortalLayout";
+import { ClientPortalProvider } from "@/contexts/ClientPortalContext";
 
 const queryClient = new QueryClient();
 
@@ -187,6 +194,9 @@ const App = () => (
             <Route path="/profiel/:token" element={<CandidateProfile />} />
             <Route path="/portaal/activeren/:token" element={<PortalActivate />} />
             <Route path="/portaal/login" element={<PortalLogin />} />
+            {/* Client portal (opdrachtgever) public routes */}
+            <Route path="/klantportaal/activeren/:token" element={<ClientPortalActivate />} />
+            <Route path="/klantportaal/login" element={<ClientPortalLogin />} />
             {/* Portal (medewerker) routes */}
             <Route path="/portaal" element={
               <PortalProvider><PortalLayout /></PortalProvider>
@@ -203,6 +213,14 @@ const App = () => (
               <Route path="loonstroken" element={<PortalPayslips />} />
               <Route path="jaaropgaven" element={<PortalAnnualStatements />} />
               <Route path="urenbrieven" element={<PortalHourLetters />} />
+            </Route>
+            {/* Client portal (opdrachtgever) protected routes */}
+            <Route path="/klantportaal" element={
+              <ClientPortalProvider><ClientPortalLayout /></ClientPortalProvider>
+            }>
+              <Route index element={<ClientPortalDashboard />} />
+              <Route path="uren" element={<ClientPortalTimesheets />} />
+              <Route path="plaatsingen" element={<ClientPortalPlacements />} />
             </Route>
             <Route path="/installeren" element={<Installeren />} />
             <Route path="*" element={<NotFound />} />

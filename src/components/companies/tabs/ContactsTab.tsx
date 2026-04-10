@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Star, Trash2, Check, X } from 'lucide-react';
+import { Plus, Star, Trash2, Check, X, KeyRound } from 'lucide-react';
+import ClientPortalActivateSheet from '@/components/companies/ClientPortalActivateSheet';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { Link } from 'react-router-dom';
@@ -48,6 +49,7 @@ const ContactsTab = ({ companyId }: { companyId: string }) => {
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [showExtra, setShowExtra] = useState(false);
+  const [portalContact, setPortalContact] = useState<any>(null);
 
   const { data: contacts = [] } = useQuery({
     queryKey: ['contacts', companyId],
@@ -248,6 +250,12 @@ const ContactsTab = ({ companyId }: { companyId: string }) => {
                     </button>
                   </TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()}>
+                    <div className="flex gap-1">
+                    {c.email && (
+                      <Button size="icon" variant="ghost" className="h-7 w-7" title="Portaal activeren" onClick={() => setPortalContact(c)}>
+                        <KeyRound className={`h-3.5 w-3.5 ${c.portal_enabled ? 'text-stat-green' : 'text-muted-foreground'}`} />
+                      </Button>
+                    )}
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive"><Trash2 className="h-3.5 w-3.5" /></Button>
@@ -263,6 +271,7 @@ const ContactsTab = ({ companyId }: { companyId: string }) => {
                         </AlertDialogFooter>
                       </AlertDialogContent>
                     </AlertDialog>
+                    </div>
                   </TableCell>
                 </TableRow>
               )
@@ -273,6 +282,17 @@ const ContactsTab = ({ companyId }: { companyId: string }) => {
           </TableBody>
         </Table>
       </div>
+
+      {portalContact && (
+        <ClientPortalActivateSheet
+          open={!!portalContact}
+          onOpenChange={(open) => { if (!open) setPortalContact(null); }}
+          contactId={portalContact.id}
+          companyId={companyId}
+          contactEmail={portalContact.email}
+          contactName={portalContact.full_name || `${portalContact.first_name ?? ''} ${portalContact.last_name ?? ''}`.trim()}
+        />
+      )}
     </div>
   );
 };

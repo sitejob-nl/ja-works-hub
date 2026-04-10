@@ -95,6 +95,9 @@ verify_jwt = false
 [functions.portal-activate]
 verify_jwt = false
 
+[functions.client-portal-activate]
+verify_jwt = false
+
 [functions.microsoft-callback]
 verify_jwt = false
 

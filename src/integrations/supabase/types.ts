@@ -812,6 +812,64 @@ export type Database = {
           },
         ]
       }
+      client_portal_invites: {
+        Row: {
+          company_contact_id: string
+          company_id: string
+          created_at: string | null
+          email: string
+          expires_at: string | null
+          id: string
+          organization_id: string
+          token: string | null
+          used_at: string | null
+        }
+        Insert: {
+          company_contact_id: string
+          company_id: string
+          created_at?: string | null
+          email: string
+          expires_at?: string | null
+          id?: string
+          organization_id: string
+          token?: string | null
+          used_at?: string | null
+        }
+        Update: {
+          company_contact_id?: string
+          company_id?: string
+          created_at?: string | null
+          email?: string
+          expires_at?: string | null
+          id?: string
+          organization_id?: string
+          token?: string | null
+          used_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_portal_invites_company_contact_id_fkey"
+            columns: ["company_contact_id"]
+            isOneToOne: false
+            referencedRelation: "company_contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_portal_invites_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_portal_invites_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       communication_preferences: {
         Row: {
           candidate_id: string
@@ -1116,6 +1174,7 @@ export type Database = {
       }
       company_contacts: {
         Row: {
+          auth_user_id: string | null
           company_id: string
           created_at: string
           email: string | null
@@ -1129,9 +1188,13 @@ export type Database = {
           notes: string | null
           organization_id: string
           phone: string | null
+          portal_activated_at: string | null
+          portal_enabled: boolean | null
+          portal_last_login: string | null
           role: Database["public"]["Enums"]["contact_role"] | null
         }
         Insert: {
+          auth_user_id?: string | null
           company_id: string
           created_at?: string
           email?: string | null
@@ -1145,9 +1208,13 @@ export type Database = {
           notes?: string | null
           organization_id: string
           phone?: string | null
+          portal_activated_at?: string | null
+          portal_enabled?: boolean | null
+          portal_last_login?: string | null
           role?: Database["public"]["Enums"]["contact_role"] | null
         }
         Update: {
+          auth_user_id?: string | null
           company_id?: string
           created_at?: string
           email?: string | null
@@ -1161,6 +1228,9 @@ export type Database = {
           notes?: string | null
           organization_id?: string
           phone?: string | null
+          portal_activated_at?: string | null
+          portal_enabled?: boolean | null
+          portal_last_login?: string | null
           role?: Database["public"]["Enums"]["contact_role"] | null
         }
         Relationships: [
@@ -5598,6 +5668,8 @@ export type Database = {
           candidate_id: string | null
           client_approved: boolean | null
           client_approved_at: string | null
+          client_approved_by: string | null
+          client_rejection_notes: string | null
           created_at: string
           employee_confirmed: boolean | null
           employee_confirmed_at: string | null
@@ -5630,6 +5702,8 @@ export type Database = {
           candidate_id?: string | null
           client_approved?: boolean | null
           client_approved_at?: string | null
+          client_approved_by?: string | null
+          client_rejection_notes?: string | null
           created_at?: string
           employee_confirmed?: boolean | null
           employee_confirmed_at?: string | null
@@ -5662,6 +5736,8 @@ export type Database = {
           candidate_id?: string | null
           client_approved?: boolean | null
           client_approved_at?: string | null
+          client_approved_by?: string | null
+          client_rejection_notes?: string | null
           created_at?: string
           employee_confirmed?: boolean | null
           employee_confirmed_at?: string | null
@@ -6718,6 +6794,7 @@ export type Database = {
         | "backoffice"
         | "finance"
         | "medewerker"
+        | "opdrachtgever"
       vacancy_status: "open" | "on_hold" | "vervuld" | "gesloten"
       vehicle_status: "beschikbaar" | "toegewezen" | "onderhoud" | "uit_dienst"
     }
@@ -6962,6 +7039,7 @@ export const Constants = {
         "backoffice",
         "finance",
         "medewerker",
+        "opdrachtgever",
       ],
       vacancy_status: ["open", "on_hold", "vervuld", "gesloten"],
       vehicle_status: ["beschikbaar", "toegewezen", "onderhoud", "uit_dienst"],
