@@ -1,0 +1,207 @@
+// supabase/functions/whatsapp-api/index.ts
+// Generic proxy for ALL WhatsApp Cloud API (Meta Graph API v25.0) calls.
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  corsHeaders,
+  jsonOk,
+  jsonError,
+  getAuthenticatedOrg,
+  getWhatsAppCredentials,
+  META_API_BASE,
+} from "../_shared/whatsapp-utils.ts";
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: req.headers.get("Authorization")! } } }
+    );
+
+    const auth = await getAuthenticatedOrg(req, supabase);
+    if (auth instanceof Response) return auth;
+    const { orgId } = auth;
+
+    // Service client for Vault-decrypted credential access (bypasses RLS)
+    const serviceClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
+
+    const creds = await getWhatsAppCredentials(serviceClient, orgId);
+    if (!creds) return jsonError("WhatsApp niet geconfigureerd", 400);
+
+    const { action, ...params } = await req.json();
+    if (!action) return jsonError("Veld 'action' is verplicht", 400);
+
+    const { phone_number_id, waba_id, access_token } = creds;
+    const authHeader = { Authorization: `Bearer ${access_token}` };
+    const jsonHeaders = { ...authHeader, "Content-Type": "application/json" };
+
+    let url: string;
+    let method: string;
+    let body: string | undefined;
+
+    switch (action) {
+      // ── Business Profile ─────────────────────────────────────────────────
+
+      case "get_profile": {
+        url = `${META_API_BASE}/${phone_number_id}/whatsapp_business_profile` +
+          `?fields=about,address,description,email,profile_picture_url,websites,vertical`;
+        method = "GET";
+        break;
+      }
+
+      case "update_profile": {
+        url = `${META_API_BASE}/${phone_number_id}/whatsapp_business_profile`;
+        method = "POST";
+        body = JSON.stringify({ messaging_product: "whatsapp", ...params.data });
+        break;
+      }
+
+      // ── Account / Phone Status ────────────────────────────────────────────
+
+      case "get_phone_status": {
+        url = `${META_API_BASE}/${phone_number_id}` +
+          `?fields=verified_name,code_verification_status,quality_rating,platform_type,` +
+          `throughput,display_phone_number,name_status,is_official_business_account`;
+        method = "GET";
+        break;
+      }
+
+      // ── Message Templates ─────────────────────────────────────────────────
+
+      case "list_templates": {
+        const qs = new URLSearchParams({ limit: "100" });
+        if (params.status) qs.set("status", params.status);
+        url = `${META_API_BASE}/${waba_id}/message_templates?${qs}`;
+        method = "GET";
+        break;
+      }
+
+      case "create_template": {
+        url = `${META_API_BASE}/${waba_id}/message_templates`;
+        method = "POST";
+        body = JSON.stringify(params.data);
+        break;
+      }
+
+      case "delete_template": {
+        if (!params.name) return jsonError("Veld 'name' is verplicht voor delete_template", 400);
+        const qs = new URLSearchParams({ name: params.name });
+        if (params.hsm_id) qs.set("hsm_id", params.hsm_id);
+        url = `${META_API_BASE}/${waba_id}/message_templates?${qs}`;
+        method = "DELETE";
+        break;
+      }
+
+      case "get_template": {
+        if (!params.template_id) return jsonError("Veld 'template_id' is verplicht voor get_template", 400);
+        url = `${META_API_BASE}/${params.template_id}`;
+        method = "GET";
+        break;
+      }
+
+      // ── QR Codes ──────────────────────────────────────────────────────────
+
+      case "list_qr_codes": {
+        url = `${META_API_BASE}/${phone_number_id}/message_qrdls`;
+        method = "GET";
+        break;
+      }
+
+      case "create_qr_code": {
+        if (!params.prefilled_message) return jsonError("Veld 'prefilled_message' is verplicht voor create_qr_code", 400);
+        url = `${META_API_BASE}/${phone_number_id}/message_qrdls`;
+        method = "POST";
+        body = JSON.stringify({
+          prefilled_message: params.prefilled_message,
+          generate_qr_image: params.format ?? "SVG",
+        });
+        break;
+      }
+
+      case "update_qr_code": {
+        if (!params.qr_id) return jsonError("Veld 'qr_id' is verplicht voor update_qr_code", 400);
+        url = `${META_API_BASE}/${phone_number_id}/message_qrdls/${params.qr_id}`;
+        method = "POST";
+        body = JSON.stringify({ prefilled_message: params.prefilled_message });
+        break;
+      }
+
+      case "delete_qr_code": {
+        if (!params.qr_id) return jsonError("Veld 'qr_id' is verplicht voor delete_qr_code", 400);
+        url = `${META_API_BASE}/${phone_number_id}/message_qrdls/${params.qr_id}`;
+        method = "DELETE";
+        break;
+      }
+
+      // ── Analytics ─────────────────────────────────────────────────────────
+
+      case "get_analytics": {
+        const qs = new URLSearchParams();
+        if (params.start) qs.set("start", params.start);
+        if (params.end) qs.set("end", params.end);
+        if (params.granularity) qs.set("granularity", params.granularity);
+        url = `${META_API_BASE}/${waba_id}/analytics?${qs}`;
+        method = "GET";
+        break;
+      }
+
+      case "get_template_analytics": {
+        const qs = new URLSearchParams();
+        if (params.start) qs.set("start", params.start);
+        if (params.end) qs.set("end", params.end);
+        if (params.granularity) qs.set("granularity", params.granularity);
+        url = `${META_API_BASE}/${waba_id}/template_analytics?${qs}`;
+        method = "GET";
+        break;
+      }
+
+      // ── Media ─────────────────────────────────────────────────────────────
+
+      case "get_media_url": {
+        if (!params.media_id) return jsonError("Veld 'media_id' is verplicht voor get_media_url", 400);
+        url = `${META_API_BASE}/${params.media_id}`;
+        method = "GET";
+        break;
+      }
+
+      case "delete_media": {
+        if (!params.media_id) return jsonError("Veld 'media_id' is verplicht voor delete_media", 400);
+        url = `${META_API_BASE}/${params.media_id}`;
+        method = "DELETE";
+        break;
+      }
+
+      default:
+        return jsonError(`Onbekende action: '${action}'`, 400);
+    }
+
+    const fetchOptions: RequestInit = {
+      method,
+      headers: body ? jsonHeaders : authHeader,
+    };
+    if (body) fetchOptions.body = body;
+
+    const metaResponse = await fetch(url, fetchOptions);
+    const result = await metaResponse.json();
+
+    if (!metaResponse.ok) {
+      console.error(`whatsapp-api [${action}] Meta error:`, result);
+      return jsonError(
+        result?.error?.message ?? "Meta API aanroep mislukt",
+        metaResponse.status >= 500 ? 502 : metaResponse.status
+      );
+    }
+
+    return jsonOk(result);
+  } catch (err) {
+    console.error("whatsapp-api error:", err);
+    return jsonError("Interne fout", 500);
+  }
+});

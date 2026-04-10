@@ -118,5 +118,8 @@ verify_jwt = false
 [functions.microsoft-api]
 verify_jwt = false
 
+[functions.whatsapp-api]
+verify_jwt = false
+
 [functions.email-campaign-processor]
 verify_jwt = false
