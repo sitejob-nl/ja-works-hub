@@ -133,7 +133,7 @@ const UnitsTab = ({ property }: { property: any }) => {
                     <div className="mt-2 space-y-1">
                       {occupants.map((a: any) => (
                         <p key={a.id} className="text-xs">
-                          {a.employees?.candidates?.first_name} {a.employees?.candidates?.last_name}
+                          {a.candidates?.first_name} {a.candidates?.last_name}
                         </p>
                       ))}
                     </div>
@@ -150,7 +150,7 @@ const UnitsTab = ({ property }: { property: any }) => {
                   ) : (
                     assignments.map((a: any) => (
                       <div key={a.id} className="text-xs flex items-center justify-between">
-                        <span>{a.employees?.candidates?.first_name} {a.employees?.candidates?.last_name}</span>
+                        <span>{a.candidates?.first_name} {a.candidates?.last_name}</span>
                         <span className="text-muted-foreground">
                           {formatDate(a.check_in_date)} — {a.check_out_date ? formatDate(a.check_out_date) : 'heden'}
                           {' '}

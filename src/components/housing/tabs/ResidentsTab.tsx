@@ -32,18 +32,18 @@ const ResidentsTab = ({ property }: { property: any }) => {
   );
   const activeAssignments = allAssignments.filter((a: any) => a.status === 'ingecheckt' || a.status === 'gereserveerd');
 
-  // Query employees without active housing
+  // Query employees (candidates with employee_status) without active housing
   const { data: availableEmployees = [] } = useQuery({
     queryKey: ['available-employees-housing', empSearch],
     queryFn: async () => {
       const { data: activeAssigns } = await supabase.from('housing_assignments')
-        .select('employee_id')
+        .select('candidate_id')
         .eq('status', 'ingecheckt');
-      const occupiedIds = (activeAssigns ?? []).map((a: any) => a.employee_id);
+      const occupiedIds = (activeAssigns ?? []).map((a: any) => a.candidate_id).filter(Boolean);
 
-      let query = supabase.from('employees')
-        .select('id, employee_number, candidates!employees_candidate_id_fkey(first_name, last_name)')
-        .in('status', ['actief', 'onboarding'] as any)
+      let query = supabase.from('candidates')
+        .select('id, first_name, last_name, employee_number')
+        .in('employee_status', ['actief', 'onboarding'] as any)
         .limit(20);
 
       const { data, error } = await query;
@@ -51,10 +51,9 @@ const ResidentsTab = ({ property }: { property: any }) => {
       let results = (data ?? []).filter((e: any) => !occupiedIds.includes(e.id));
       if (empSearch) {
         const s = empSearch.toLowerCase();
-        results = results.filter((e: any) => {
-          const c = e.candidates;
-          return `${c?.first_name} ${c?.last_name}`.toLowerCase().includes(s);
-        });
+        results = results.filter((e: any) =>
+          `${e.first_name} ${e.last_name}`.toLowerCase().includes(s)
+        );
       }
       return results;
     },
@@ -73,7 +72,7 @@ const ResidentsTab = ({ property }: { property: any }) => {
       const { error } = await supabase.from('housing_assignments').insert({
         organization_id: orgId,
         unit_id: selectedUnit.id,
-        employee_id: selectedEmployee.id,
+        candidate_id: selectedEmployee.id,
         status: 'gereserveerd' as const,
         check_in_date: form.check_in_date,
         deduction_amount: deductionNum,
@@ -88,7 +87,7 @@ const ResidentsTab = ({ property }: { property: any }) => {
         action: 'create',
         tableName: 'housing_assignments',
         recordId: selectedEmployee?.id ?? 'new',
-        newValues: { unit: selectedUnit?.name, employee: `${selectedEmployee?.candidates?.first_name} ${selectedEmployee?.candidates?.last_name}`, ...form },
+        newValues: { unit: selectedUnit?.name, employee: `${selectedEmployee?.first_name} ${selectedEmployee?.last_name}`, ...form },
       });
       toast.success('Bewoner toegewezen');
       resetAssign();
@@ -153,7 +152,7 @@ const ResidentsTab = ({ property }: { property: any }) => {
                   {availableEmployees.map((e: any) => (
                     <button key={e.id} onClick={() => { setSelectedEmployee(e); setStep(2); }}
                       className="w-full text-left p-3 rounded-lg border hover:bg-muted/50 transition-colors">
-                      <p className="text-sm font-medium">{e.candidates?.first_name} {e.candidates?.last_name}</p>
+                      <p className="text-sm font-medium">{e.first_name} {e.last_name}</p>
                       {e.employee_number && <p className="text-xs text-muted-foreground">#{e.employee_number}</p>}
                     </button>
                   ))}
@@ -163,7 +162,7 @@ const ResidentsTab = ({ property }: { property: any }) => {
             {step === 2 && (
               <>
                 <div className="p-3 rounded-lg bg-muted/50 border flex justify-between items-center">
-                  <p className="text-sm font-medium">{selectedEmployee?.candidates?.first_name} {selectedEmployee?.candidates?.last_name}</p>
+                  <p className="text-sm font-medium">{selectedEmployee?.first_name} {selectedEmployee?.last_name}</p>
                   <Button variant="link" size="sm" onClick={() => setStep(1)} className="text-xs">Wijzig</Button>
                 </div>
                 {availableUnits.length === 0 && <p className="text-sm text-muted-foreground text-center py-6">Geen kamers met beschikbare capaciteit</p>}
@@ -188,7 +187,7 @@ const ResidentsTab = ({ property }: { property: any }) => {
             {step === 3 && (
               <>
                 <div className="p-3 rounded-lg bg-muted/50 border space-y-1">
-                  <p className="text-sm"><span className="text-muted-foreground">Medewerker:</span> {selectedEmployee?.candidates?.first_name} {selectedEmployee?.candidates?.last_name}</p>
+                  <p className="text-sm"><span className="text-muted-foreground">Medewerker:</span> {selectedEmployee?.first_name} {selectedEmployee?.last_name}</p>
                   <p className="text-sm"><span className="text-muted-foreground">Kamer:</span> {selectedUnit?.name}</p>
                 </div>
                 <div><Label>Check-in datum *</Label><Input type="date" value={form.check_in_date} onChange={(e) => setForm(f => ({ ...f, check_in_date: e.target.value }))} /></div>
@@ -251,8 +250,8 @@ const ResidentsTab = ({ property }: { property: any }) => {
                 return (
                   <TableRow key={a.id}>
                     <TableCell>
-                      <Link to={`/medewerkers/${a.employees?.id}`} className="font-medium text-foreground hover:text-primary transition-colors">
-                        {a.employees?.candidates?.first_name} {a.employees?.candidates?.last_name}
+                      <Link to={`/medewerkers/${a.candidates?.id}`} className="font-medium text-foreground hover:text-primary transition-colors">
+                        {a.candidates?.first_name} {a.candidates?.last_name}
                       </Link>
                     </TableCell>
                     <TableCell>{a.unitName}</TableCell>

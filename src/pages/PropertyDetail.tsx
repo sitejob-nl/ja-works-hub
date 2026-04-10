@@ -28,13 +28,10 @@ const PropertyDetail = () => {
       const { data, error } = await supabase.from('properties').select(`
         *,
         units!units_property_id_fkey(
-          id, name, capacity, status, floor, monthly_cost, deposit_amount, notes,
+          id, name, capacity, status, floor, monthly_cost, weekly_cost, deposit_amount, notes,
           housing_assignments!housing_assignments_unit_id_fkey(
-            id, status, check_in_date, check_out_date, monthly_deduction, deposit_paid, rent_paid_until,
-            employees!housing_assignments_employee_id_fkey(
-              id, employee_number,
-              candidates!employees_candidate_id_fkey(first_name, last_name)
-            )
+            id, status, check_in_date, check_out_date, monthly_deduction, deduction_amount, payment_frequency, deposit_paid, rent_paid_until,
+            candidates!housing_assignments_candidate_id_fkey(id, first_name, last_name)
           )
         )
       `).eq('id', id!).single();

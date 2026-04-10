@@ -158,7 +158,7 @@ const CostsTab = ({ property }: { property: any }) => {
                 {allActive.map((a: any) => (
                   <TableRow key={a.id}>
                     <TableCell className="font-medium">
-                      {a.employees?.candidates?.first_name} {a.employees?.candidates?.last_name}
+                      {a.candidates?.first_name} {a.candidates?.last_name}
                     </TableCell>
                     <TableCell>{a.unitName}</TableCell>
                     <TableCell>

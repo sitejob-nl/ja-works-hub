@@ -299,6 +299,7 @@ const PlacementDetail = () => {
         onOpenChange={setShowTerminate}
         placementId={id!}
         candidateId={placement?.candidate_id}
+        housingAssignmentId={placement?.housing_assignment_id}
         orgId={orgId}
         onSuccess={() => {
           qc.invalidateQueries({ queryKey: ['placement', id] });
@@ -310,8 +311,8 @@ const PlacementDetail = () => {
 };
 
 // ─── Termination Dialog ───
-function TerminationDialog({ open, onOpenChange, placementId, candidateId, orgId, onSuccess }: {
-  open: boolean; onOpenChange: (o: boolean) => void; placementId: string; candidateId?: string; orgId: string; onSuccess: () => void;
+function TerminationDialog({ open, onOpenChange, placementId, candidateId, housingAssignmentId, orgId, onSuccess }: {
+  open: boolean; onOpenChange: (o: boolean) => void; placementId: string; candidateId?: string; housingAssignmentId?: string; orgId: string; onSuccess: () => void;
 }) {
   const [terminatedBy, setTerminatedBy] = useState<string>('');
   const [reason, setReason] = useState('');
@@ -348,6 +349,16 @@ function TerminationDialog({ open, onOpenChange, placementId, candidateId, orgId
         await supabase.from('candidates')
           .update({ status: 'werkzoekend' as any })
           .eq('id', candidateId);
+      }
+
+      // Auto-release housing assignment
+      if (housingAssignmentId) {
+        await supabase.from('housing_assignments').update({
+          status: 'uitgecheckt' as any,
+          check_out_date: new Date().toISOString().split('T')[0],
+        }).eq('id', housingAssignmentId);
+
+        logAudit({ action: 'status_change', tableName: 'housing_assignments', recordId: housingAssignmentId, newValues: { status: 'uitgecheckt', reason: 'plaatsing_beeindigd' } });
       }
 
       logAudit({ action: 'update', tableName: 'placements', recordId: placementId, newValues: { status: 'voortijdig_beeindigd', terminated_by: terminatedBy, termination_reason: reason } });
