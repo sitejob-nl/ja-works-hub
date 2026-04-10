@@ -109,7 +109,8 @@ function AccountStatusSection() {
 // ── Section 3: Business Profile ────────────────────────────────────────────
 
 function BusinessProfileSection() {
-  const { data: profileData, isLoading } = useWhatsAppQuery('get_profile', undefined, { enabled: true });
+  const profileQuery = useWhatsAppQuery('get_profile', undefined, { enabled: true });
+  const { data: profileData, isLoading } = profileQuery;
   const updateMutation = useWhatsAppMutation('update_profile');
 
   const [about, setAbout] = useState<string>('');
@@ -171,10 +172,51 @@ function BusinessProfileSection() {
               )}
               <div>
                 <p className="text-sm font-medium">Profielfoto</p>
-                {/* TODO: Implement photo upload via WhatsApp Resumable Upload API */}
-                <p className="text-xs text-muted-foreground mt-1">
-                  Foto-upload via de WhatsApp Resumable Upload API — nog niet geïmplementeerd.
+                <p className="text-xs text-muted-foreground mt-1 mb-2">
+                  Vierkant, min. 640x640px, max 5MB (JPG/PNG)
                 </p>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png"
+                  className="hidden"
+                  id="wp-profile-photo"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    if (file.size > 5 * 1024 * 1024) {
+                      toast.error('Afbeelding is te groot (max 5MB)');
+                      return;
+                    }
+                    try {
+                      // Convert file to base64
+                      const buffer = await file.arrayBuffer();
+                      const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+
+                      const res = await supabase.functions.invoke('whatsapp-api', {
+                        body: {
+                          action: 'upload_profile_photo',
+                          image_base64: base64,
+                          mime_type: file.type,
+                        },
+                      });
+
+                      if (res.error) throw new Error(res.error.message);
+                      toast.success('Profielfoto bijgewerkt');
+                      // Refetch profile to show new photo
+                      profileQuery.refetch();
+                    } catch (err: any) {
+                      toast.error(err?.message ?? 'Profielfoto uploaden mislukt');
+                    }
+                    e.target.value = '';
+                  }}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => document.getElementById('wp-profile-photo')?.click()}
+                >
+                  Foto wijzigen
+                </Button>
               </div>
             </div>
 

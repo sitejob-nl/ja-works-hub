@@ -29,6 +29,7 @@ import { useWhatsAppQuery, useWhatsAppMutation } from '@/hooks/useWhatsAppApi';
 
 interface QRCode {
   id: string;
+  code: string;
   prefilled_message: string;
   deep_link_url?: string;
   qr_image_url?: string;
@@ -214,24 +215,25 @@ function QRCodeCard({ qrCode, onEdit, onDelete }: QRCodeCardProps) {
   };
 
   const handleDownload = () => {
-    const src = qrCode.qr_image;
-    if (!src) {
+    if (!imageSrc) {
       toast.error('Geen QR afbeelding beschikbaar');
       return;
     }
-    // src can be a base64 data URI or a URL
     const a = document.createElement('a');
-    a.href = src.startsWith('data:') ? src : `data:image/png;base64,${src}`;
+    a.href = imageSrc;
     a.download = `qr-code-${qrCode.id}.png`;
+    a.target = '_blank';
     a.click();
   };
 
-  // Determine image src
-  const imageSrc = qrCode.qr_image
-    ? qrCode.qr_image.startsWith('data:')
-      ? qrCode.qr_image
-      : `data:image/png;base64,${qrCode.qr_image}`
-    : null;
+  // Determine image src — Meta returns qr_image_url (URL) or qr_image (base64)
+  const imageSrc = qrCode.qr_image_url
+    ? qrCode.qr_image_url
+    : qrCode.qr_image
+      ? qrCode.qr_image.startsWith('data:')
+        ? qrCode.qr_image
+        : `data:image/png;base64,${qrCode.qr_image}`
+      : null;
 
   return (
     <Card className="flex flex-col overflow-hidden">
@@ -296,7 +298,7 @@ function QRCodeCard({ qrCode, onEdit, onDelete }: QRCodeCardProps) {
             size="sm"
             className="gap-1.5 flex-1"
             onClick={handleDownload}
-            disabled={!qrCode.qr_image}
+            disabled={!imageSrc}
           >
             <Download className="h-3.5 w-3.5" />
             Download

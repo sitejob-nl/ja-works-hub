@@ -63,6 +63,59 @@ Deno.serve(async (req) => {
         break;
       }
 
+      case "upload_profile_photo": {
+        // Accepts base64-encoded image data, uploads to Meta, then sets as profile photo
+        if (!params.image_base64 || !params.mime_type) {
+          return jsonError("image_base64 en mime_type zijn verplicht", 400);
+        }
+
+        // Decode base64 to binary
+        const binaryStr = atob(params.image_base64);
+        const bytes = new Uint8Array(binaryStr.length);
+        for (let i = 0; i < binaryStr.length; i++) {
+          bytes[i] = binaryStr.charCodeAt(i);
+        }
+
+        // Upload as media to get a handle
+        const formData = new FormData();
+        formData.append("messaging_product", "whatsapp");
+        formData.append("file", new Blob([bytes], { type: params.mime_type }), "profile.jpg");
+        formData.append("type", "image");
+
+        const uploadRes = await fetch(`${META_API_BASE}/${phone_number_id}/media`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${access_token}` },
+          body: formData,
+        });
+
+        const uploadData = await uploadRes.json();
+        if (!uploadRes.ok) {
+          console.error("Media upload failed:", uploadData);
+          return jsonError(uploadData?.error?.message ?? "Foto upload mislukt", 502);
+        }
+
+        // Now update profile with the media handle
+        const profileRes = await fetch(
+          `${META_API_BASE}/${phone_number_id}/whatsapp_business_profile`,
+          {
+            method: "POST",
+            headers: jsonHeaders,
+            body: JSON.stringify({
+              messaging_product: "whatsapp",
+              profile_picture_handle: uploadData.id,
+            }),
+          }
+        );
+
+        const profileResult = await profileRes.json();
+        if (!profileRes.ok) {
+          console.error("Profile photo update failed:", profileResult);
+          return jsonError(profileResult?.error?.message ?? "Profielfoto instellen mislukt", 502);
+        }
+
+        return jsonOk({ success: true, media_id: uploadData.id });
+      }
+
       // ── Account / Phone Status ────────────────────────────────────────────
 
       case "get_phone_status": {
