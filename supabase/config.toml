@@ -103,6 +103,12 @@ verify_jwt = false
 [functions.send-damage-report]
 verify_jwt = false
 
+[functions.process-sick-report]
+verify_jwt = false
+
+[functions.send-portal-invite]
+verify_jwt = false
+
 [functions.kvk-lookup]
 verify_jwt = false
 

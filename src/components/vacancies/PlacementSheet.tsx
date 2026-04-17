@@ -199,18 +199,35 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
           .maybeSingle();
 
         if (!existingInvite) {
-          const { error: inviteErr } = await supabase.from('portal_invites')
+          const { data: newInvite, error: inviteErr } = await supabase.from('portal_invites')
             .insert({
               organization_id: orgId,
               candidate_id: candidateId,
               email: candData.email,
-            });
+            })
+            .select('id')
+            .single();
           if (inviteErr) {
             console.warn('Portal invite aanmaken mislukt:', inviteErr.message);
+          } else if (newInvite?.id) {
+            // Verstuur welkomstemail met activatielink
+            try {
+              const { data: sendResult } = await supabase.functions.invoke('send-portal-invite', {
+                body: { invite_id: newInvite.id },
+              });
+              if ((sendResult as any)?.sent) {
+                toast.info(`Welkomstmail verstuurd naar ${candData.email}`);
+              } else {
+                toast.info('Portaaltoegang geactiveerd — welkomstmail niet verstuurd (geen Outlook koppeling)');
+              }
+            } catch (sendErr) {
+              console.warn('Welkomstmail mislukt:', sendErr);
+              toast.info('Portaaltoegang geactiveerd — welkomstmail moet handmatig verstuurd');
+            }
           }
+        } else {
+          toast.info('Portaaltoegang was al actief');
         }
-
-        toast.info('Portaaltoegang automatisch geactiveerd');
       }
     } catch { /* non-blocking */ }
 
