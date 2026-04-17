@@ -168,23 +168,46 @@ export async function getHousingSuggestions(
 
 /**
  * Send WhatsApp placement confirmation (if WhatsApp is configured).
+ * Returns { sent, skipped, reason } — callers can show a nette toast.
  */
+export interface WhatsAppSendResult {
+  sent: boolean;
+  skipped: boolean;
+  reason?: string;
+}
+
 export async function sendPlacementWhatsApp(
   input: PlacementTriggerInput
-): Promise<boolean> {
-  if (!input.candidatePhone) return false;
+): Promise<WhatsAppSendResult> {
+  if (!input.candidatePhone) {
+    return { sent: false, skipped: true, reason: 'Geen telefoonnummer' };
+  }
 
   try {
-    const { error } = await supabase.functions.invoke('whatsapp-send', {
+    const { data, error } = await supabase.functions.invoke('whatsapp-send', {
       body: {
         to: input.candidatePhone,
-        message: `Hoi ${input.candidateName ?? ''},\n\nJe plaatsing als ${input.functionName} is bevestigd. Je start op ${input.startDate}.\n\nSucces! 🎉\n\n— SiteJob`,
+        type: 'text',
+        text: {
+          body: `Hoi ${input.candidateName ?? ''},\n\nJe plaatsing als ${input.functionName} is bevestigd. Je start op ${input.startDate}.\n\nSucces! 🎉\n\n— SiteJob`,
+        },
+        candidate_id: input.candidateId,
       },
     });
-    if (error) return false;
-    return true;
-  } catch {
-    return false;
+    if (error) {
+      // Edge function geeft 400 "WhatsApp niet geconfigureerd" wanneer org geen
+      // WhatsApp-config heeft — dat is geen technische fout, maar skip
+      const msg = (error as any)?.message ?? '';
+      const ctx = (data as any)?.error ?? '';
+      const combined = `${msg} ${ctx}`.toLowerCase();
+      if (combined.includes('niet geconfigureerd') || combined.includes('afgemeld')) {
+        return { sent: false, skipped: true, reason: ctx || msg };
+      }
+      return { sent: false, skipped: false, reason: msg };
+    }
+    return { sent: true, skipped: false };
+  } catch (e: any) {
+    return { sent: false, skipped: false, reason: e?.message ?? 'Onbekende fout' };
   }
 }
 

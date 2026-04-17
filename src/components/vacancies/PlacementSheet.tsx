@@ -156,9 +156,9 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
       }
     } catch { /* non-blocking */ }
 
-    // 3. Send WhatsApp confirmation
+    // 3. Send WhatsApp confirmation (graceful degradation)
     try {
-      await sendPlacementWhatsApp({
+      const wa = await sendPlacementWhatsApp({
         placementId: placement.id,
         candidateId,
         companyId,
@@ -169,6 +169,11 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
         candidatePhone: candidate?.phone,
         candidateName: candidate?.first_name,
       });
+      if (wa.sent) {
+        toast.info('WhatsApp bevestiging verstuurd');
+      } else if (!wa.skipped && wa.reason) {
+        toast.warning(`WhatsApp niet verstuurd: ${wa.reason}`);
+      }
     } catch { /* non-blocking */ }
 
     // 4. Auto-activate portal if not yet active
@@ -184,12 +189,26 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
           .update({ portal_enabled: true })
           .eq('id', candidateId);
 
-        await supabase.from('portal_invites')
-          .insert({
-            organization_id: orgId,
-            candidate_id: candidateId,
-            email: candData.email,
-          });
+        // Skip als er al een actieve, niet-verlopen invite is
+        const { data: existingInvite } = await supabase
+          .from('portal_invites')
+          .select('id, used_at, expires_at')
+          .eq('candidate_id', candidateId)
+          .is('used_at', null)
+          .gt('expires_at', new Date().toISOString())
+          .maybeSingle();
+
+        if (!existingInvite) {
+          const { error: inviteErr } = await supabase.from('portal_invites')
+            .insert({
+              organization_id: orgId,
+              candidate_id: candidateId,
+              email: candData.email,
+            });
+          if (inviteErr) {
+            console.warn('Portal invite aanmaken mislukt:', inviteErr.message);
+          }
+        }
 
         toast.info('Portaaltoegang automatisch geactiveerd');
       }
