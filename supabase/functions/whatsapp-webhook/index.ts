@@ -1,8 +1,27 @@
 // supabase/functions/whatsapp-webhook/index.ts
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { normalizePhone } from "../_shared/whatsapp-utils.ts";
+import { cascadeSickReport } from "../_shared/sick-report-handler.ts";
 
 const OPT_OUT_KEYWORDS = ["stop", "afmelden", "uitschrijven", "stoppen", "unsubscribe"];
+// Substring match — any of these anywhere in the message triggers sick flow.
+// Intentionally permissive: false positives just create an extra sick_report
+// which the intercedent reviews and can cancel.
+const SICK_KEYWORDS = [
+  "ziekmelding",
+  "ziekgemeld",
+  "ziek gemeld",
+  "ik ben ziek",
+  "ben ziek",
+  "te ziek",
+  "niet komen",
+  "niet werken",
+  "thuisblijven",
+  "sick today",
+  "call in sick",
+  "im sick",
+  "i'm sick",
+];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -237,6 +256,41 @@ async function processInboundMessage(
         .update({ status: "opted_out" })
         .eq("candidate_id", candidateId)
         .eq("status", "pending");
+    }
+
+    // Sick-leave detection — auto-create sick_report + cascade notifications
+    const isSick = !isOptOut && SICK_KEYWORDS.some((kw) => lowerBody.includes(kw));
+    if (isSick && candidateId) {
+      // Prevent duplicate: skip als er al een open sick_report in laatste 12u is
+      const cutoff = new Date(Date.now() - 12 * 3600_000).toISOString();
+      const { data: recent } = await supabase
+        .from("sick_reports")
+        .select("id")
+        .eq("candidate_id", candidateId)
+        .is("actual_return_date", null)
+        .gte("reported_at", cutoff)
+        .limit(1);
+
+      if (!recent || recent.length === 0) {
+        const { data: inserted } = await supabase
+          .from("sick_reports")
+          .insert({
+            organization_id: orgId,
+            candidate_id: candidateId,
+            notes: `Automatisch uit WhatsApp: "${body.slice(0, 500)}"`,
+            reported_at: timestamp,
+          })
+          .select("id")
+          .single();
+
+        if (inserted?.id) {
+          try {
+            await cascadeSickReport(supabase, inserted.id, null);
+          } catch (e) {
+            console.error("cascadeSickReport failed:", e);
+          }
+        }
+      }
     }
   }
 
