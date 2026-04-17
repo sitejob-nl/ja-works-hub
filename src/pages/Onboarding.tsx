@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
 type PageState = 'loading' | 'ready' | 'submitted' | 'error';
 
@@ -69,18 +69,23 @@ const Onboarding = () => {
   }, [token]);
 
   const loadForm = async () => {
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+      setStatus('error');
+      setErrorMsg('Configuratiefout. Neem contact op met je intercedent.');
+      return;
+    }
     try {
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/onboarding-submit?token=${token}`, {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/onboarding-submit?token=${encodeURIComponent(token!)}`, {
         headers: {
           'apikey': SUPABASE_ANON_KEY,
           'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
         },
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
         setStatus('error');
-        setErrorMsg(data.error || 'Link ongeldig');
+        setErrorMsg(data.error || `Link ongeldig (${res.status}). Vraag je intercedent om een nieuwe link.`);
         return;
       }
 
@@ -92,10 +97,9 @@ const Onboarding = () => {
         setUseFallback(true);
       }
       setStatus('ready');
-    } catch {
-      // If the GET endpoint doesn't exist yet, fall back
-      setUseFallback(true);
-      setStatus('ready');
+    } catch (err) {
+      setStatus('error');
+      setErrorMsg('Kon de link niet openen. Controleer je internetverbinding en probeer opnieuw.');
     }
   };
 

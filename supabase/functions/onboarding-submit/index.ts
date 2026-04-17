@@ -24,7 +24,12 @@ Deno.serve(async (req) => {
     if (req.method === "GET") {
       const url = new URL(req.url);
       const token = url.searchParams.get("token");
-      if (!token) return json({ error: "Token required" }, 400);
+      const userAgent = req.headers.get("user-agent") ?? "unknown";
+      if (!token) {
+        console.log(`[onboarding-submit] GET missing token, ua=${userAgent}`);
+        return json({ error: "Token required" }, 400);
+      }
+      const tokenPrefix = token.slice(0, 8);
 
       const { data: tokenData, error: tErr } = await admin
         .from("onboarding_tokens")
@@ -32,9 +37,19 @@ Deno.serve(async (req) => {
         .eq("token", token)
         .maybeSingle();
 
-      if (tErr || !tokenData) return json({ error: "Ongeldige link" }, 404);
-      if (tokenData.used_at) return json({ error: "Deze link is al gebruikt" }, 400);
-      if (new Date(tokenData.expires_at) < new Date()) return json({ error: "Deze link is verlopen" }, 400);
+      if (tErr || !tokenData) {
+        console.log(`[onboarding-submit] GET token-not-found prefix=${tokenPrefix} err=${tErr?.message ?? "none"} ua=${userAgent}`);
+        return json({ error: "Ongeldige link" }, 404);
+      }
+      if (tokenData.used_at) {
+        console.log(`[onboarding-submit] GET token-already-used prefix=${tokenPrefix} used_at=${tokenData.used_at}`);
+        return json({ error: "Deze link is al gebruikt" }, 400);
+      }
+      if (new Date(tokenData.expires_at) < new Date()) {
+        console.log(`[onboarding-submit] GET token-expired prefix=${tokenPrefix} expires_at=${tokenData.expires_at}`);
+        return json({ error: "Deze link is verlopen" }, 400);
+      }
+      console.log(`[onboarding-submit] GET token-ok prefix=${tokenPrefix} candidate=${tokenData.candidate_id} form_id=${tokenData.form_id ?? "none"}`);
 
       // If a form_id is linked, load the dynamic form
       let form = null;
