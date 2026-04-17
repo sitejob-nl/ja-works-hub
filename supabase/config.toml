@@ -109,6 +109,9 @@ verify_jwt = false
 [functions.send-portal-invite]
 verify_jwt = false
 
+[functions.automated-messages]
+verify_jwt = false
+
 [functions.kvk-lookup]
 verify_jwt = false
 
