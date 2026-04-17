@@ -44,10 +44,13 @@ const Employees = () => {
         candidate_employment(*),
         housing_assignments!housing_assignments_candidate_id_fkey(id, status),
         placements!placements_candidate_id_fkey(id, status, company_id, companies!placements_company_id_fkey(name))
-      `, { count: 'exact' })
-        .not('employee_status', 'is', null);
+      `, { count: 'exact' });
 
-      if (statusFilter !== 'all') query = query.eq('employee_status', statusFilter as any);
+      if (statusFilter === 'all') {
+        query = query.in('employee_status', ['onboarding', 'actief', 'ziek'] as any);
+      } else {
+        query = query.eq('employee_status', statusFilter as any);
+      }
       if (search) {
         query = query.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%`);
       }

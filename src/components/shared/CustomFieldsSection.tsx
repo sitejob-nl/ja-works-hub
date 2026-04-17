@@ -14,19 +14,19 @@ interface Props {
 
 const CustomFieldsSection = ({ entityType, entityId }: Props) => {
   const { data: fields = [] } = useCustomFieldDefinitions(entityType);
-  const { data: values = {} } = useCustomFieldValues(entityType, entityId);
+  const { data: values } = useCustomFieldValues(entityType, entityId);
   const saveValue = useSaveCustomFieldValue();
   const [localValues, setLocalValues] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    setLocalValues(values);
+    if (values) setLocalValues(values);
   }, [values]);
 
   if (fields.length === 0) return null;
 
   const handleBlur = (field: CustomField) => {
     const current = localValues[field.id] ?? '';
-    const saved = values[field.id] ?? '';
+    const saved = values?.[field.id] ?? '';
     if (current !== saved) {
       saveValue.mutate(
         { fieldId: field.id, entityId, value: current },
