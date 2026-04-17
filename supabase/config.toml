@@ -97,6 +97,12 @@ verify_jwt = false
 [functions.send-match-proposal]
 verify_jwt = false
 
+[functions.send-timesheet-approval]
+verify_jwt = false
+
+[functions.send-damage-report]
+verify_jwt = false
+
 [functions.kvk-lookup]
 verify_jwt = false
 

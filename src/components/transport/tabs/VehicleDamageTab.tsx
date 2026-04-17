@@ -62,12 +62,20 @@ const VehicleDamageTab = ({ vehicle }: { vehicle: any }) => {
 
   const notifyGarageMutation = useMutation({
     mutationFn: async (id: string) => {
+      const { data, error: fnErr } = await supabase.functions.invoke('send-damage-report', {
+        body: { report_id: id },
+      });
+      if (fnErr) {
+        const msg = (data as any)?.error ?? fnErr.message;
+        throw new Error(msg);
+      }
       const { error } = await supabase.from('vehicle_damage_reports')
         .update({ garage_notified: true, garage_notified_at: new Date().toISOString() } as any)
         .eq('id', id);
       if (error) throw error;
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['vehicle-damage', vehicle.id] }); toast.success('Garage genotificeerd'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['vehicle-damage', vehicle.id] }); toast.success('Garage genotificeerd — email verstuurd'); },
+    onError: (e: any) => toast.error(`Notificatie mislukt: ${e.message}`),
   });
 
   const getPhotoUrl = (path: string) => {
@@ -212,12 +220,26 @@ const NewDamageSheet = ({ open, onOpenChange, vehicleId, orgId, onDone }: {
         photos: photoPaths,
         garage_email: form.garage_email || null,
         cost_estimate: form.cost_estimate ? parseFloat(form.cost_estimate) : null,
-        garage_notified: notifyGarage,
-        garage_notified_at: notifyGarage ? new Date().toISOString() : null,
+        garage_notified: false,
+        garage_notified_at: null,
       };
 
-      const { error } = await supabase.from('vehicle_damage_reports').insert(payload);
+      const { data: inserted, error } = await supabase.from('vehicle_damage_reports').insert(payload).select('id').single();
       if (error) throw error;
+
+      if (notifyGarage && inserted?.id && form.garage_email) {
+        const { data: notifyData, error: notifyErr } = await supabase.functions.invoke('send-damage-report', {
+          body: { report_id: inserted.id },
+        });
+        if (notifyErr) {
+          toast.error(`Email naar garage mislukt: ${(notifyData as any)?.error ?? notifyErr.message}`);
+        } else {
+          await supabase.from('vehicle_damage_reports')
+            .update({ garage_notified: true, garage_notified_at: new Date().toISOString() } as any)
+            .eq('id', inserted.id);
+          toast.info(`Email verstuurd naar ${form.garage_email}`);
+        }
+      }
 
       toast.success('Schademelding opgeslagen');
       onDone();

@@ -135,14 +135,30 @@ const Timesheets = () => {
       }
       const { error } = await supabase.from('timesheets').update(updates).in('id', ids);
       if (error) throw error;
+      return { ids, status };
     },
-    onSuccess: (_, { ids, status }) => {
+    onSuccess: async (_, { ids, status }) => {
       qc.invalidateQueries({ queryKey: ['timesheets'] });
       setSelected(new Set());
       for (const id of ids) {
         logAudit({ action: 'status_change', tableName: 'timesheets', recordId: id, newValues: { status } });
       }
       toast.success(`${ids.length} uren ${status === 'goedgekeurd' ? 'goedgekeurd' : status === 'afgekeurd' ? 'afgekeurd' : 'bijgewerkt'}`);
+
+      if (status === 'goedgekeurd') {
+        try {
+          const { data, error } = await supabase.functions.invoke('send-timesheet-approval', {
+            body: { timesheet_ids: ids },
+          });
+          if (error) throw error;
+          const sent = (data as any)?.sent ?? 0;
+          const skipped = (data as any)?.skipped ?? 0;
+          if (sent > 0) toast.info(`Urenbevestiging verstuurd naar ${sent} medewerker${sent === 1 ? '' : 's'}${skipped > 0 ? ` (${skipped} overgeslagen)` : ''}`);
+          else if (skipped > 0) toast.warning(`Geen bevestigingen verstuurd (${skipped} medewerker${skipped === 1 ? '' : 's'} zonder e-mail of Outlook-koppeling)`);
+        } catch (e: any) {
+          console.warn('Urenbevestiging email mislukt:', e.message);
+        }
+      }
     },
     onError: (e: any) => toast.error(e.message),
   });
