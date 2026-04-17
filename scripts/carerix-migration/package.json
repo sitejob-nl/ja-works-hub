@@ -1,0 +1,23 @@
+{
+  "name": "carerix-migration",
+  "version": "1.0.0",
+  "description": "Carerix → JA Werkt data migration tool",
+  "type": "module",
+  "scripts": {
+    "migrate": "tsx src/index.ts",
+    "migrate:dry": "tsx src/index.ts --dry-run",
+    "discover-fields": "tsx src/discover-fields.ts",
+    "verify": "tsx src/verify.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.98.0",
+    "dotenv": "^16.4.0",
+    "winston": "^3.11.0",
+    "p-limit": "^5.0.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.7.0",
+    "typescript": "^5.8.0",
+    "@types/node": "^22.0.0"
+  }
+}

@@ -26,20 +26,25 @@ verify_jwt = false
 verify_jwt = false
 
 # ============================================================
-# BESCHERMDE ENDPOINTS (JWT verplicht)
+# BESCHERMDE ENDPOINTS
 # ============================================================
+# NOTE: verify_jwt = false op protected functions is bewust.
+# Supabase gebruikt ES256 signing keys die de Edge Runtime
+# verifier niet kan valideren. Self-auth via supabase.auth.getUser()
+# in elke function verifieert de Bearer token via de Auth API.
+# Zie: https://supabase.com/docs/guides/auth/signing-keys
 
 [functions.apify-job-import]
-verify_jwt = true
+verify_jwt = false
 
 [functions.linkedin-job-search]
-verify_jwt = true
+verify_jwt = false
 
 [functions.job-feed-runner]
 verify_jwt = false
 
 [functions.exa-people-search]
-verify_jwt = true
+verify_jwt = false
 
 [functions.whatsapp-register]
 verify_jwt = false
@@ -63,31 +68,49 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.check-document-expiry]
-verify_jwt = true
+verify_jwt = false
 
 [functions.validate-timesheets]
-verify_jwt = true
+verify_jwt = false
 
 [functions.calculate-match]
-verify_jwt = true
+verify_jwt = false
 
 [functions.cv-rewrite]
-verify_jwt = true
+verify_jwt = false
 
 [functions.recruiter-priorities]
-verify_jwt = true
+verify_jwt = false
 
 [functions.opt-out-handler]
-verify_jwt = true
+verify_jwt = false
 
 [functions.bulk-campaign-processor]
 verify_jwt = false
 
 [functions.generate-notifications]
-verify_jwt = true
+verify_jwt = false
 
 [functions.send-placement-confirmation]
-verify_jwt = true
+verify_jwt = false
+
+[functions.send-match-proposal]
+verify_jwt = false
+
+[functions.kvk-lookup]
+verify_jwt = false
+
+[functions.rdw-lookup]
+verify_jwt = false
+
+[functions.analyze-cv]
+verify_jwt = false
+
+[functions.analyze-cv-callback]
+verify_jwt = false
+
+[functions.generate-invoice-pdf]
+verify_jwt = false
 
 [functions.candidate-profile]
 verify_jwt = false
@@ -106,10 +129,10 @@ verify_jwt = false
 # ============================================================
 
 [functions.voys-api]
-verify_jwt = true
+verify_jwt = false
 
 [functions.voys-sync-calls]
-verify_jwt = true
+verify_jwt = false
 
 # ============================================================
 # MICROSOFT GRAPH (beschermd)

@@ -1,0 +1,7 @@
+{
+  "_EXAMPLE_FIELD_ID": {
+    "target": "birth_place",
+    "transform": "direct",
+    "_comment": "Vul hier de veld-IDs in na het draaien van: npm run discover-fields"
+  }
+}
