@@ -11,6 +11,9 @@ node_modules
 dist
 dist-ssr
 *.local
+.env
+.env.*
+!.env.example
 
 # Editor directories and files
 .vscode/*
@@ -22,3 +25,17 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Playwright / QA
+test-results/
+.playwright-mcp/
+playwright-report/
+blob-report/
+playwright/.cache/
+scripts/.auth-state.json
+**/.auth-state.json
+/*.png
+!public/**/*.png
+/*.yml
+!pnpm-workspace.yaml
+supabase/.temp/
