@@ -35,72 +35,26 @@ const EmployeeSickTab = ({ candidateId, candidate }: { candidateId: string; cand
 
   const createReport = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.from('sick_reports').insert({
-        organization_id: orgId,
-        candidate_id: candidateId,
-        created_by: user?.id ?? null,
-        expected_return_date: form.expected_return_date || null,
-        notes: form.notes || null,
-      });
+      const { data: inserted, error } = await supabase
+        .from('sick_reports')
+        .insert({
+          organization_id: orgId,
+          candidate_id: candidateId,
+          created_by: user?.id ?? null,
+          expected_return_date: form.expected_return_date || null,
+          notes: form.notes || null,
+        })
+        .select('id')
+        .single();
       if (error) throw error;
-      const { error: e2 } = await supabase.from('candidates').update({ employee_status: 'ziek' as any }).eq('id', candidateId);
-      if (e2) throw e2;
 
-      // Auto-notify client via WhatsApp
+      // Trigger cascade: recruiter_task, status → ziek, email opdrachtgever, WhatsApp kandidaat
       try {
-        const { data: placements } = await supabase
-          .from('placements')
-          .select('company_id, companies!placements_company_id_fkey(name)')
-          .eq('candidate_id', candidateId)
-          .eq('status', 'actief' as any)
-          .limit(1);
-
-        const placement = placements?.[0] as any;
-        if (placement?.company_id) {
-          const { data: contacts } = await supabase
-            .from('company_contacts')
-            .select('full_name, phone')
-            .eq('company_id', placement.company_id)
-            .eq('is_primary', true)
-            .limit(1);
-
-          const contact = contacts?.[0];
-          if (contact?.phone) {
-            const empName = `${candidate?.first_name ?? ''} ${candidate?.last_name ?? ''}`.trim();
-            const companyName = placement.companies?.name ?? '';
-            const msg = `Beste ${contact.full_name}, hierbij informeren wij u dat ${empName} zich ziek heeft gemeld${form.expected_return_date ? `. Verwachte terugkeer: ${form.expected_return_date}` : ''}. Wij houden u op de hoogte. Met vriendelijke groet.`;
-
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session?.access_token) {
-              await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-send`, {
-                method: 'POST',
-                headers: {
-                  'Authorization': `Bearer ${session.access_token}`,
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  to: contact.phone,
-                  message: msg,
-                  company_id: placement.company_id,
-                }),
-              });
-              // Mark client_notified on the sick report
-              const { data: latestReport } = await supabase
-                .from('sick_reports')
-                .select('id')
-                .eq('candidate_id', candidateId)
-                .order('reported_at', { ascending: false })
-                .limit(1);
-              if (latestReport?.[0]) {
-                await supabase.from('sick_reports')
-                  .update({ client_notified: true })
-                  .eq('id', latestReport[0].id);
-              }
-            }
-          }
-        }
-      } catch (notifyErr) {
-        console.warn('Kon opdrachtgever niet automatisch informeren:', notifyErr);
+        await supabase.functions.invoke('process-sick-report', {
+          body: { sick_report_id: inserted.id },
+        });
+      } catch (cascadeErr) {
+        console.warn('Sick-report cascade mislukt:', cascadeErr);
       }
     },
     onSuccess: () => {

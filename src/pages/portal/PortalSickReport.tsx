@@ -56,21 +56,32 @@ const PortalSickReport = () => {
       if (!employeeId || !orgId) throw new Error('Geen sessie');
       if (!reason.trim()) throw new Error('Vul een reden in');
 
-      const { error } = await supabase.from('sick_reports').insert({
-        candidate_id: employeeId,
-        organization_id: orgId,
-        placement_id: placement?.id ?? null,
-        notes: reason.trim(),
-        expected_return_date: expectedReturn || null,
-        reported_at: new Date().toISOString(),
-      });
+      const { data: inserted, error } = await supabase
+        .from('sick_reports')
+        .insert({
+          candidate_id: employeeId,
+          organization_id: orgId,
+          placement_id: placement?.id ?? null,
+          notes: reason.trim(),
+          expected_return_date: expectedReturn || null,
+          reported_at: new Date().toISOString(),
+        })
+        .select('id')
+        .single();
       if (error) throw error;
+
+      // Trigger cascade: notify intercedent, email opdrachtgever, WhatsApp confirm
+      const { data: cascade } = await supabase.functions.invoke('process-sick-report', {
+        body: { sick_report_id: inserted.id },
+      });
+      return cascade;
     },
-    onSuccess: () => {
+    onSuccess: (cascade: any) => {
       qc.invalidateQueries({ queryKey: ['portal-sick-reports'] });
       setSubmitted(true);
       setReason('');
       setExpectedReturn('');
+      if (cascade?.email_sent) toast.success('Opdrachtgever is geïnformeerd');
     },
     onError: (err: any) => toast.error(err.message || 'Indienen mislukt'),
   });
