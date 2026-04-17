@@ -15,7 +15,6 @@ const VacancyDetailsTab = ({ vacancy }: { vacancy: any }) => {
           <CardHeader><CardTitle className="text-base">Vacature gegevens</CardTitle></CardHeader>
           <CardContent className="space-y-3 text-sm">
             <div className="flex justify-between"><span className="text-muted-foreground">Titel</span><span>{vacancy.title}</span></div>
-            {vacancy.description && <div><span className="text-muted-foreground">Beschrijving</span><p className="mt-1">{vacancy.description}</p></div>}
             <div className="flex justify-between"><span className="text-muted-foreground">Locatie</span><span>{vacancy.location ?? '—'}</span></div>
             <div className="flex justify-between"><span className="text-muted-foreground">Aantal nodig</span><span>{vacancy.required_count}</span></div>
             <div className="flex justify-between"><span className="text-muted-foreground">Urgentie</span><span>{vacancy.urgency}</span></div>
@@ -51,6 +50,15 @@ const VacancyDetailsTab = ({ vacancy }: { vacancy: any }) => {
           </CardContent>
         </Card>
       </div>
+
+      {vacancy.description && (
+        <Card>
+          <CardHeader><CardTitle className="text-base">Beschrijving</CardTitle></CardHeader>
+          <CardContent>
+            <p className="text-sm whitespace-pre-wrap leading-relaxed">{vacancy.description}</p>
+          </CardContent>
+        </Card>
+      )}
 
       {company && (
         <Card>

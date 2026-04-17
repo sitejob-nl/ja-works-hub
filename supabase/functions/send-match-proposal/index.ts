@@ -128,7 +128,7 @@ Deno.serve(async (req) => {
 
     // ── Parse input ──
     const body = await req.json();
-    const { match_id } = body;
+    const { match_id, preview } = body;
 
     if (!match_id) {
       return json({ error: "match_id is required" }, 400);
@@ -174,6 +174,27 @@ Deno.serve(async (req) => {
     const contactName = contacts?.[0]?.full_name ?? company.name;
     const contactEmail = contacts?.[0]?.email ?? company.email;
 
+    const subject = `Kandidaat voorstel: ${candidateName} voor ${vacancy.title}`;
+
+    // ── Preview mode: build HTML without creating token or sending ──
+    if (preview) {
+      const html = buildProposalEmailHtml({
+        contactName,
+        candidateName,
+        vacancyTitle: vacancy.title,
+        companyName: company.name,
+        summary: candidate.ai_summary ?? match.match_reasoning ?? null,
+        responseUrl: "#preview",
+      });
+      return json({
+        preview: true,
+        to: contactEmail,
+        contact_name: contactName,
+        subject,
+        html,
+      });
+    }
+
     // ── Create proposal token ──
     const { data: token, error: tokenErr } = await serviceClient
       .from("match_proposal_tokens")
@@ -194,7 +215,6 @@ Deno.serve(async (req) => {
     const responseUrl = `${siteUrl}/match-response/${token.token}`;
 
     // ── Build & send email ──
-    const subject = `Kandidaat voorstel: ${candidateName} voor ${vacancy.title}`;
     const html = buildProposalEmailHtml({
       contactName,
       candidateName,
@@ -206,14 +226,12 @@ Deno.serve(async (req) => {
 
     // Try sending via Outlook
     const outlookResult = await sendViaOutlook({
-      supabase: serviceClient,
       orgId,
       to: contactEmail,
       subject,
-      html,
-      userId: user.id,
-      recipientId: company.id,
-      recipientType: "company",
+      htmlBody: html,
+      sentBy: user.id,
+      companyId: company.id,
     });
 
     // ── Update match status ──
@@ -227,7 +245,8 @@ Deno.serve(async (req) => {
 
     return json({
       success: true,
-      sent_via: outlookResult?.sent ? "outlook" : "draft",
+      sent_via: outlookResult.success ? "outlook" : "draft",
+      outlook_error: outlookResult.success ? undefined : outlookResult.error,
       response_url: responseUrl,
     });
   } catch (err: any) {

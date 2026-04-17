@@ -59,19 +59,31 @@ const MatchPipeline = () => {
         .eq('id', matchId);
       if (error) throw error;
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['match-pipeline', orgId] });
+    onMutate: async ({ matchId, status }) => {
+      await qc.cancelQueries({ queryKey: ['match-pipeline', orgId] });
+      const previous = qc.getQueryData<any[]>(['match-pipeline', orgId]);
+      qc.setQueryData<any[]>(['match-pipeline', orgId], (old) =>
+        (old ?? []).map((m: any) => (m.id === matchId ? { ...m, status } : m))
+      );
+      return { previous };
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any, _vars, ctx) => {
+      if (ctx?.previous) qc.setQueryData(['match-pipeline', orgId], ctx.previous);
+      toast.error(e.message);
+    },
+    onSuccess: (_data, vars) => {
+      toast.success(`Status gewijzigd naar ${COLUMNS.find(c => c.key === vars.status)?.label ?? vars.status}`);
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['match-pipeline', orgId] });
+      qc.invalidateQueries({ queryKey: ['vacancy-matches'] });
+    },
   });
 
   const onDragEnd = (result: DropResult) => {
     const { draggableId, destination, source } = result;
     if (!destination || destination.droppableId === source.droppableId) return;
-
-    const newStatus = destination.droppableId;
-    statusMutation.mutate({ matchId: draggableId, status: newStatus });
-    toast.success(`Status gewijzigd naar ${COLUMNS.find(c => c.key === newStatus)?.label ?? newStatus}`);
+    statusMutation.mutate({ matchId: draggableId, status: destination.droppableId });
   };
 
   // Get unique vacancies for filter
