@@ -183,3 +183,6 @@ verify_jwt = false
 
 [functions.carerix-sync-cancel]
 verify_jwt = false
+
+[functions.carerix-introspect]
+verify_jwt = false

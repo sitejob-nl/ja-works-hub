@@ -247,6 +247,7 @@ function ConnectCard({ config, loading }: { config: CarerixConfig | null | undef
               {testMut.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}
               Test verbinding
             </Button>
+            <IntrospectButton />
             <Button variant="destructive" onClick={() => disconnectMut.mutate()} disabled={disconnectMut.isPending}>
               Ontkoppelen
             </Button>
@@ -513,6 +514,57 @@ function ProgressPanel({ jobId }: { jobId: string }) {
         );
       })}
     </div>
+  );
+}
+
+function IntrospectButton() {
+  const [result, setResult] = useState<{
+    company: { name: string; type: string }[];
+    contact: { name: string; type: string }[];
+    candidate: { name: string; type: string }[];
+  } | null>(null);
+  const [open, setOpen] = useState(false);
+
+  const introspectMut = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke('carerix-introspect', { body: {} });
+      if (error) throw new Error(error.message);
+      if ((data as any)?.error) throw new Error((data as any).error);
+      return data as any;
+    },
+    onSuccess: (d) => {
+      setResult({ company: d.company, contact: d.contact, candidate: d.candidate });
+      setOpen(true);
+      toast.success(
+        `Ontdekt: ${d.company?.length ?? 0} company-, ${d.contact?.length ?? 0} contact-, ${d.candidate?.length ?? 0} candidate-velden`,
+      );
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <>
+      <Button variant="outline" onClick={() => introspectMut.mutate()} disabled={introspectMut.isPending}>
+        {introspectMut.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null}
+        Ontdek beschikbare velden
+      </Button>
+      {open && result && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setOpen(false)}>
+          <div className="bg-background max-w-4xl w-full max-h-[80vh] overflow-auto p-6 rounded-lg" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">Beschikbare velden per type</h3>
+              <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>Sluiten</Button>
+            </div>
+            <p className="text-sm text-muted-foreground mb-4">
+              Stuur deze JSON naar Kas/developer, dan worden de import-queries hierop aangepast.
+            </p>
+            <pre className="bg-muted p-3 rounded text-xs overflow-auto max-h-[60vh]">
+              {JSON.stringify(result, null, 2)}
+            </pre>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
