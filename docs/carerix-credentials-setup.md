@@ -28,12 +28,30 @@ Resultaat: een `client_id` en `client_secret` + de Carerix instance-URL. Deze dr
 | **Code** | `urn:jawerkt/migration` |
 | **Type** | `Confidential` (heel belangrijk — niet Public!) |
 | **Grant type** | `client_credentials` |
-| **Default scope** | `urn:cx/cx5Wrapper:data:manage` |
 | **Active** | `YES` |
 
-3. **Permissions-sectie:** zet voor elke entiteit (Persons, Companies, Contacts, Publications, Matches, Attachments, ToDos, WorkHistories) **minimaal `all` read access**. Als er een "read-only" preset beschikbaar is, gebruik die.
+3. **Permissie-matrix — Default scopes (verplicht):**
 
-4. Klik op **Save**.
+   Vink in de scope-lijst álle onderstaande rijen aan. De `@all` varianten zijn cruciaal — zónder daarvan krijgen we alleen basisvelden (naam + email) en blijft KVK/BTW/BSN/IBAN/adres/telefoon leeg.
+
+   **Kern-data:**
+   - `urn:cx/core:data/companies`
+   - `urn:cx/core:data/companies/fields/@all`
+   - `urn:cx/core:data/contacts`
+   - `urn:cx/core:data/contacts/fields/@all`
+   - `urn:cx/core:data/candidates`
+   - `urn:cx/core:data/candidates/fields/@all`
+
+   **Nice-to-have (voor notities / taken / vacatures / plaatsingen als die alsnog mappable blijken):**
+   - `urn:cx/activities:data/notes`
+   - `urn:cx/activities:data/tasks`
+   - `urn:cx/core:data/vacancies`
+   - `urn:cx/core:data/placements`
+   - `urn:cx/core:data/matches`
+
+4. **Optional scopes:** leeg laten. Alles wat we gebruiken staat als default.
+
+5. Klik op **Save**.
 
 ## Stap 4 — Credentials kopiëren
 
@@ -80,5 +98,5 @@ A: Ga terug naar **Identity Access → Clients → [JA Werkt Migratie] → Regen
 **Q: Kan ik testen of de credentials werken zonder JA Werkt te openen?**  
 A: Ja, Kas doet dit met een curl-commando. Daarna is groen licht om in JA Werkt te verbinden.
 
-**Q: Hoe weet ik zeker dat de scope `urn:cx/cx5Wrapper:data:manage` klopt voor mijn omgeving?**  
-A: Standaard is dat de scope voor volledige data-toegang in Carerix 5. Als het bij je afwijkt (bv. `cx6Wrapper` voor Carerix 6) — geef dat door aan Kas, dan passen we het in de app aan.
+**Q: Moet ik de `urn:cx/cx5Wrapper:data:manage` scope ergens zetten?**  
+A: Nee, die bestaat niet in jouw Identity Access matrix. Gebruik de expliciete scopes zoals hierboven opgesomd. Het `@all` suffix ontsluit alle velden; zónder dat krijgt de API alleen basisvelden.

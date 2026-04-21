@@ -54,7 +54,18 @@ Deno.serve(async (req) => {
         return jsonError('client_id, client_secret en instance_url zijn verplicht', 400);
       }
 
-      const scope = body.scope || 'urn:cx/cx5Wrapper:data:manage';
+      const scope =
+        body.scope ||
+        [
+          'urn:cx/core:data/companies',
+          'urn:cx/core:data/companies/fields/@all',
+          'urn:cx/core:data/contacts',
+          'urn:cx/core:data/contacts/fields/@all',
+          'urn:cx/core:data/candidates',
+          'urn:cx/core:data/candidates/fields/@all',
+          'urn:cx/activities:data/notes',
+          'urn:cx/activities:data/tasks',
+        ].join(' ');
       const tokenEndpoint = body.token_endpoint || (await discoverTokenEndpoint(body.instance_url));
 
       // Validate credentials immediately.

@@ -19,7 +19,8 @@
       "Bash(./node_modules/.bin/tsc --noEmit -p tsconfig.app.json)",
       "mcp__claude_ai_Supabase__deploy_edge_function",
       "mcp__claude_ai_Supabase__execute_sql",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }
