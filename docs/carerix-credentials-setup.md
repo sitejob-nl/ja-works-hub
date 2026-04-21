@@ -30,26 +30,40 @@ Resultaat: een `client_id` en `client_secret` + de Carerix instance-URL. Deze dr
 | **Grant type** | `client_credentials` |
 | **Active** | `YES` |
 
-3. **Permissie-matrix — Default scopes (verplicht):**
+3. **Default scopes** (bovenste veld, los van de matrix):
 
-   Vink in de scope-lijst álle onderstaande rijen aan. De `@all` varianten zijn cruciaal — zónder daarvan krijgen we alleen basisvelden (naam + email) en blijft KVK/BTW/BSN/IBAN/adres/telefoon leeg.
+   Verwijder eerst de automatisch-gevulde scopes (`urn:cx/cx5Wrapper:data:manage`, `urn:cx/activities:data/meetingResources:manage` e.d.). Voeg dan deze `:read`-scopes toe (via de dropdown kun je ze zoeken/selecteren):
 
-   **Kern-data:**
-   - `urn:cx/core:data/companies`
-   - `urn:cx/core:data/companies/fields/@all`
-   - `urn:cx/core:data/contacts`
-   - `urn:cx/core:data/contacts/fields/@all`
-   - `urn:cx/core:data/candidates`
-   - `urn:cx/core:data/candidates/fields/@all`
+   - `urn:cx/core:data/companies:read`
+   - `urn:cx/core:data/contacts:read`
+   - `urn:cx/core:data/candidates:read`
+   - `urn:cx/activities:data/notes:read`
+   - `urn:cx/activities:data/tasks:read`
+   - `urn:cx/core:data/placements:read`
+   - `urn:cx/core:data/vacancies:read`
+   - `urn:cx/core:data/matches:read`
 
-   **Nice-to-have (voor notities / taken / vacatures / plaatsingen als die alsnog mappable blijken):**
-   - `urn:cx/activities:data/notes`
-   - `urn:cx/activities:data/tasks`
-   - `urn:cx/core:data/vacancies`
-   - `urn:cx/core:data/placements`
-   - `urn:cx/core:data/matches`
+   **Optional scopes:** leeg laten.
 
-4. **Optional scopes:** leeg laten. Alles wat we gebruiken staat als default.
+4. **Permissie-matrix** (onderaan): voor elke resource alleen **Access** + **Read** aanvinken. De `/fields/@all` rijen alleen **Read**. Bij candidates/contacts: **Anonymize UIT**. Bij placements: **Checkpoint UIT**.
+
+   Dit is de exacte tabel:
+
+   | Resource | Aanvinken |
+   |---|---|
+   | `core:data/companies` | Access, Read |
+   | `core:data/companies/fields/@all` | Read |
+   | `core:data/contacts` | Access, Read |
+   | `core:data/contacts/fields/@all` | Read |
+   | `core:data/candidates` | Access, Read |
+   | `core:data/candidates/fields/@all` | Read |
+   | `core:data/vacancies` | Access, Read |
+   | `core:data/placements` | Access, Read |
+   | `core:data/matches` | Access, Read |
+   | `activities:data/notes` | Access, Read |
+   | `activities:data/tasks` | Access, Read |
+
+   Als je een **Niveau / Level** dropdown ziet (`none / owner / office / all`): kies **`all`** — anders krijgt de client 0 records.
 
 5. Klik op **Save**.
 

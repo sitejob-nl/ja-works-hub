@@ -57,14 +57,14 @@ Deno.serve(async (req) => {
       const scope =
         body.scope ||
         [
-          'urn:cx/core:data/companies',
-          'urn:cx/core:data/companies/fields/@all',
-          'urn:cx/core:data/contacts',
-          'urn:cx/core:data/contacts/fields/@all',
-          'urn:cx/core:data/candidates',
-          'urn:cx/core:data/candidates/fields/@all',
-          'urn:cx/activities:data/notes',
-          'urn:cx/activities:data/tasks',
+          'urn:cx/core:data/companies:read',
+          'urn:cx/core:data/contacts:read',
+          'urn:cx/core:data/candidates:read',
+          'urn:cx/activities:data/notes:read',
+          'urn:cx/activities:data/tasks:read',
+          'urn:cx/core:data/placements:read',
+          'urn:cx/core:data/vacancies:read',
+          'urn:cx/core:data/matches:read',
         ].join(' ');
       const tokenEndpoint = body.token_endpoint || (await discoverTokenEndpoint(body.instance_url));
 
