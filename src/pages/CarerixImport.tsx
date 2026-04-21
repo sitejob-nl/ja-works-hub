@@ -41,11 +41,11 @@ const ENTITY_LABEL: Record<EntityName, string> = {
 };
 
 const UNSUPPORTED_REASON: Partial<Record<EntityName, string>> = {
-  documents: 'Niet beschikbaar in Carerix v1 publieke API.',
-  employment: 'Werkhistorie-veld bestaat niet in v1 schema.',
-  vacancies: 'Vacancy mist company-ref in v1 (JA Werkt vereist company).',
-  placements: 'Placement mist company-ref in v1 (JA Werkt vereist company).',
-  notes: 'Notities niet beschikbaar in v1 publieke API.',
+  documents: 'Niet via Carerix API — exporteer via Carerix CSV → upload onder Importeren.',
+  employment: 'Niet via Carerix API — exporteer via Carerix CSV → upload onder Importeren.',
+  vacancies: 'Niet via Carerix API — exporteer via Carerix CSV → upload onder Importeren.',
+  placements: 'Niet via Carerix API — exporteer via Carerix CSV → upload onder Importeren.',
+  notes: 'Niet via Carerix API — exporteer via Carerix CSV → upload onder Importeren.',
 };
 
 interface CarerixConfig {
@@ -114,10 +114,28 @@ export default function CarerixImport() {
       <div>
         <h1 className="text-2xl font-semibold">Carerix import</h1>
         <p className="text-muted-foreground">
-          Importeer alle data uit Carerix: opdrachtgevers, contactpersonen, kandidaten (met notities, documenten,
-          werkhistorie), vacatures en plaatsingen.
+          Bridge-import via Carerix GraphQL API: haalt bedrijfsnamen, contactpersonen (+ email), kandidaten (+ email)
+          op zodat Carerix-ID's al gemapt staan.
         </p>
       </div>
+
+      <Card className="border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-900">
+        <CardContent className="pt-4 text-sm space-y-2">
+          <p className="font-medium">Waarom maar namen + emails?</p>
+          <p className="text-muted-foreground">
+            Carerix' publieke GraphQL API exposeert alleen <code>name</code>, <code>email</code>, <code>_id</code> —
+            geen KVK, telefoon, adres, BSN, documenten, werkhistorie, vacatures, plaatsingen of notities.
+            (Introspection bevestigde dat <code>@all</code> geen extra velden geeft.)
+          </p>
+          <p className="text-muted-foreground">
+            <strong>Voor alle overige data:</strong> exporteer uit Carerix als CSV (admin → export) en upload via{' '}
+            <a href="/importeren" className="text-primary underline underline-offset-2">
+              Importeren
+            </a>
+            . De wizard daar heeft preset-mappings voor Carerix-kolomnamen en vult bestaande rows aan via email-matching.
+          </p>
+        </CardContent>
+      </Card>
 
       <Tabs defaultValue={isConnected ? 'import' : 'connect'}>
         <TabsList>
