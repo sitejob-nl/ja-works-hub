@@ -55,19 +55,24 @@ export async function discoverTokenEndpoint(instanceUrl: string): Promise<string
 }
 
 // Resolve whatever the user pasted into a concrete token_endpoint URL.
-// Accepts: a direct token endpoint OR a .well-known/openid-configuration URL.
+// Accepts: a direct token endpoint, an auth endpoint (auto-swapped), or a
+// .well-known/openid-configuration URL.
 export async function resolveTokenEndpoint(input: string): Promise<string> {
-  if (input.includes('/.well-known/openid-configuration')) {
-    const res = await fetch(input, { headers: { Accept: 'application/json' } });
-    if (!res.ok) {
-      throw new Error(`OpenID discovery faalde (${res.status}) op ${input}`);
-    }
+  const trimmed = input.trim().replace(/\/$/, '');
+
+  if (trimmed.includes('/.well-known/openid-configuration')) {
+    const res = await fetch(trimmed, { headers: { Accept: 'application/json' } });
+    if (!res.ok) throw new Error(`OpenID discovery faalde (${res.status}) op ${trimmed}`);
     const data = await res.json();
-    if (!data.token_endpoint) {
-      throw new Error(`OpenID config bevat geen token_endpoint`);
-    }
+    if (!data.token_endpoint) throw new Error(`OpenID config bevat geen token_endpoint`);
     return data.token_endpoint as string;
   }
-  // Assume it's already a token endpoint.
-  return input;
+
+  // Common Keycloak mistake: user pasted the authorization endpoint
+  // (.../openid-connect/auth) instead of the token endpoint. Auto-swap.
+  if (/\/openid-connect\/(auth|authorize)$/i.test(trimmed)) {
+    return trimmed.replace(/\/openid-connect\/(auth|authorize)$/i, '/openid-connect/token');
+  }
+
+  return trimmed;
 }

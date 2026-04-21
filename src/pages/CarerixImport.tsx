@@ -304,9 +304,10 @@ function ConnectCard({ config, loading }: { config: CarerixConfig | null | undef
             onChange={(e) => setForm({ ...form, token_endpoint: e.target.value })}
           />
           <p className="text-xs text-muted-foreground">
-            Klik in Carerix bij je client op "OpenID Configuration" — plak hier óf het direct gevonden{' '}
-            <code>token_endpoint</code> URL, óf de volledige <code>.well-known/openid-configuration</code>{' '}
-            URL. Laat leeg om auto-discovery op je instance-URL te proberen.
+            Klik in Carerix bij je client op "OpenID Configuration" — die opent een JSON-pagina. Plak hier het{' '}
+            <code>token_endpoint</code> veld daaruit (eindigt op <code>/openid-connect/token</code>).{' '}
+            Als je de <code>/auth</code> URL plakt zet de app hem automatisch om naar <code>/token</code>.
+            Óf plak de volledige <code>.well-known/openid-configuration</code> URL — app extract dan zelf.
           </p>
         </div>
         <Button
