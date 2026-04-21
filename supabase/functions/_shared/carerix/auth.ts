@@ -42,7 +42,9 @@ export async function discoverTokenEndpoint(instanceUrl: string): Promise<string
   const res = await fetch(url, { headers: { Accept: 'application/json' } });
 
   if (!res.ok) {
-    throw new Error(`OpenID discovery failed (${res.status}) at ${url}`);
+    throw new Error(
+      `OpenID discovery faalde (${res.status}) op ${url}. Vul het Token endpoint handmatig in — klik in Carerix bij je client op "OpenID Configuration" en plak die URL of het token_endpoint veld in de JA Werkt UI.`,
+    );
   }
 
   const data = await res.json();
@@ -50,4 +52,22 @@ export async function discoverTokenEndpoint(instanceUrl: string): Promise<string
     throw new Error(`OpenID config at ${url} has no token_endpoint`);
   }
   return data.token_endpoint as string;
+}
+
+// Resolve whatever the user pasted into a concrete token_endpoint URL.
+// Accepts: a direct token endpoint OR a .well-known/openid-configuration URL.
+export async function resolveTokenEndpoint(input: string): Promise<string> {
+  if (input.includes('/.well-known/openid-configuration')) {
+    const res = await fetch(input, { headers: { Accept: 'application/json' } });
+    if (!res.ok) {
+      throw new Error(`OpenID discovery faalde (${res.status}) op ${input}`);
+    }
+    const data = await res.json();
+    if (!data.token_endpoint) {
+      throw new Error(`OpenID config bevat geen token_endpoint`);
+    }
+    return data.token_endpoint as string;
+  }
+  // Assume it's already a token endpoint.
+  return input;
 }

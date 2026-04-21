@@ -67,12 +67,17 @@ Resultaat: een `client_id` en `client_secret` + de Carerix instance-URL. Deze dr
 
 5. Klik op **Save**.
 
-## Stap 4 — Credentials kopiëren
+## Stap 4 — Credentials + Token endpoint kopiëren
 
 Na opslaan toont Carerix:
 
 - **Client ID** — korte identifier (bv. `jawerkt-migration-abc123`)
 - **Client Secret** — lang token (bv. `xyz_...`)
+- **OpenID Configuration URL** — klik deze link; je krijgt een JSON terug. Kopieer ofwel:
+  - het volledige `token_endpoint` veld (bv. `https://identity.carerix.io/realms/.../openid-connect/token`), óf
+  - gewoon de URL van de OpenID Configuration pagina zelf (eindigt op `.well-known/openid-configuration`) — JA Werkt pakt dan automatisch het token_endpoint eruit.
+
+Deze URL is nodig omdat Carerix auth niet op je `{instance}.carerix.com` zit maar op een aparte identity-host.
 
 > **Let op:** de Client Secret wordt meestal **maar één keer** getoond. Kopieer hem direct en bewaar veilig (1Password of noteer ergens tijdelijk). Je kunt hem altijd opnieuw genereren, maar de oude vervalt dan.
 

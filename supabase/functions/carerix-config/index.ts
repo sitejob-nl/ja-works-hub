@@ -9,7 +9,11 @@ import {
   jsonError,
   jsonOk,
 } from '../_shared/carerix/helpers.ts';
-import { discoverTokenEndpoint, fetchCarerixAccessToken } from '../_shared/carerix/auth.ts';
+import {
+  discoverTokenEndpoint,
+  fetchCarerixAccessToken,
+  resolveTokenEndpoint,
+} from '../_shared/carerix/auth.ts';
 
 interface RequestBody {
   action: 'get' | 'connect' | 'disconnect';
@@ -66,7 +70,9 @@ Deno.serve(async (req) => {
           'urn:cx/core:data/vacancies:read',
           'urn:cx/core:data/matches:read',
         ].join(' ');
-      const tokenEndpoint = body.token_endpoint || (await discoverTokenEndpoint(body.instance_url));
+      const tokenEndpoint = body.token_endpoint
+        ? await resolveTokenEndpoint(body.token_endpoint)
+        : await discoverTokenEndpoint(body.instance_url);
 
       // Validate credentials immediately.
       try {

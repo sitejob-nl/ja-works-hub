@@ -151,7 +151,7 @@ export default function CarerixImport() {
 // ─────────────────────────────────────────────────────────────
 function ConnectCard({ config, loading }: { config: CarerixConfig | null | undefined; loading: boolean }) {
   const queryClient = useQueryClient();
-  const [form, setForm] = useState({ client_id: '', client_secret: '', instance_url: '' });
+  const [form, setForm] = useState({ client_id: '', client_secret: '', instance_url: '', token_endpoint: '' });
 
   const connectMut = useMutation({
     mutationFn: async () => {
@@ -294,6 +294,20 @@ function ConnectCard({ config, loading }: { config: CarerixConfig | null | undef
             onChange={(e) => setForm({ ...form, client_secret: e.target.value })}
           />
           <p className="text-xs text-muted-foreground">Wordt versleuteld opgeslagen via Supabase Vault.</p>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="token_endpoint">Token endpoint of OpenID Configuration URL</Label>
+          <Input
+            id="token_endpoint"
+            placeholder="https://identity.carerix.io/realms/.../openid-connect/token"
+            value={form.token_endpoint}
+            onChange={(e) => setForm({ ...form, token_endpoint: e.target.value })}
+          />
+          <p className="text-xs text-muted-foreground">
+            Klik in Carerix bij je client op "OpenID Configuration" — plak hier óf het direct gevonden{' '}
+            <code>token_endpoint</code> URL, óf de volledige <code>.well-known/openid-configuration</code>{' '}
+            URL. Laat leeg om auto-discovery op je instance-URL te proberen.
+          </p>
         </div>
         <Button
           onClick={() => connectMut.mutate()}
