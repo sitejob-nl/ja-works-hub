@@ -25,7 +25,7 @@ export function contactsQuery(page: number, size: number): string {
         lastName
         displayName
         company { _id name }
-        emailAddresses(pageable: { page: 0, size: 1 }) {
+        emailAddresses {
           items { value primary }
         }
       }
@@ -42,7 +42,7 @@ export function candidatesQuery(page: number, size: number): string {
         firstName
         lastName
         displayName
-        emailAddresses(pageable: { page: 0, size: 1 }) {
+        emailAddresses {
           items { value primary }
         }
       }
