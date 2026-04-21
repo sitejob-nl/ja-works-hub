@@ -164,3 +164,22 @@ verify_jwt = false
 
 [functions.email-campaign-processor]
 verify_jwt = false
+
+# ============================================================
+# CARERIX IMPORT (beschermd via self-auth)
+# ============================================================
+
+[functions.carerix-config]
+verify_jwt = false
+
+[functions.carerix-test]
+verify_jwt = false
+
+[functions.carerix-sync-start]
+verify_jwt = false
+
+[functions.carerix-sync-worker]
+verify_jwt = false
+
+[functions.carerix-sync-cancel]
+verify_jwt = false

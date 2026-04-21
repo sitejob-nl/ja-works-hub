@@ -7,7 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   LayoutDashboard, Building2, Users, UserCheck, UserRound, Home, Briefcase,
   Calendar, Clock, Car, MessageSquare, BookOpen, Settings, Mail,
-  ChevronLeft, ChevronRight, ChevronDown, Search, UserSearch, Calculator, ClipboardList, Fuel, FileText, BarChart3, CheckSquare, BarChart2, FolderHeart, GitCompareArrows,
+  ChevronLeft, ChevronRight, ChevronDown, Search, UserSearch, Calculator, ClipboardList, Fuel, FileText, BarChart3, CheckSquare, BarChart2, FolderHeart, GitCompareArrows, Database,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useEffect } from 'react';
@@ -78,6 +78,7 @@ const navGroups: NavGroup[] = [
       { label: 'Vacaturebank', icon: Search, path: '/vacaturebank', moduleKey: 'vacaturebank', roles: ['intercedent'] },
       { label: 'Kandidaten zoeken', icon: UserSearch, path: '/kandidaten-zoeken', moduleKey: 'kandidaten-zoeken', roles: ['intercedent'] },
       { label: 'Exact Online', icon: Calculator, path: '/exact-online', moduleKey: 'exact-online', roles: ['finance', 'backoffice'] },
+      { label: 'Carerix import', icon: Database, path: '/carerix-import', moduleKey: 'carerix-import', roles: ['admin'] },
     ],
   },
 ];

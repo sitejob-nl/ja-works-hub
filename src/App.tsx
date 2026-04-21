@@ -55,6 +55,7 @@ import Tasks from "@/pages/Tasks";
 import BulkCampaigns from "@/pages/BulkCampaigns";
 import BulkCampaignDetail from "@/pages/BulkCampaignDetail";
 import ImportData from "@/pages/ImportData";
+import CarerixImport from "@/pages/CarerixImport";
 import Installeren from "@/pages/Installeren";
 import ContractSign from "@/pages/ContractSign";
 import CandidateProfile from "@/pages/CandidateProfile";
@@ -184,6 +185,7 @@ const App = () => (
               <Route path="/exact-online" element={<ExactOnlinePage />} />
               <Route path="/cv-tool/:candidateId" element={<CvTool />} />
               <Route path="/importeren" element={<ImportData />} />
+              <Route path="/carerix-import" element={<CarerixImport />} />
               <Route path="/dashboards" element={<Dashboards />} />
               <Route path="/instellingen" element={<SettingsPage />} />
             </Route>

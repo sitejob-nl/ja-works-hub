@@ -10,7 +10,16 @@
       "Bash(npx vite:*)",
       "Bash(cp \"/c/Users/kas20/Downloads/AiAnalysisCard.tsx\" \"/c/Users/kas20/ja werkt/src/components/AiAnalysisCard.tsx\")",
       "Bash(cp \"/c/Users/kas20/Downloads/CandidateAiTab.tsx\" \"/c/Users/kas20/ja werkt/src/components/candidates/tabs/CandidateAiTab.tsx\")",
-      "Bash(cp \"/c/Users/kas20/Downloads/CandidateDetail.tsx\" \"/c/Users/kas20/ja werkt/src/pages/CandidateDetail.tsx\")"
+      "Bash(cp \"/c/Users/kas20/Downloads/CandidateDetail.tsx\" \"/c/Users/kas20/ja werkt/src/pages/CandidateDetail.tsx\")",
+      "WebFetch(domain:docs.carerix.io)",
+      "WebFetch(domain:help.carerix.com)",
+      "Bash(npm run *)",
+      "Bash(npx --no eslint src/pages/CarerixImport.tsx src/App.tsx src/components/layout/AppSidebar.tsx)",
+      "Bash(npx --no tsc --noEmit -p tsconfig.app.json)",
+      "Bash(./node_modules/.bin/tsc --noEmit -p tsconfig.app.json)",
+      "mcp__claude_ai_Supabase__deploy_edge_function",
+      "mcp__claude_ai_Supabase__execute_sql",
+      "Bash(git add *)"
     ]
   }
 }
