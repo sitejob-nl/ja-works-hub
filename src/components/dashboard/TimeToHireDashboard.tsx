@@ -19,7 +19,6 @@ const TimeToHireDashboard = () => {
       const { data: placements, error } = await supabase
         .from('placements')
         .select('id, start_date, created_at, vacancy_id, company_id, status, vacancies!placements_vacancy_id_fkey(created_at, title), companies!placements_company_id_fkey(name)')
-        .neq('status', 'concept' as any)
         .not('start_date', 'is', null)
         .eq('organization_id', organizationId);
 

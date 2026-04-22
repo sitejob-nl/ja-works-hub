@@ -87,6 +87,17 @@ const CalendarView = ({ selectedAccount }: { selectedAccount?: string }) => {
 
   const events: CalendarEvent[] = eventsData?.value || [];
 
+  // Group events by day for list view — declared before any early return to keep hook order stable
+  const groupedByDay = useMemo(() => {
+    const groups: Record<string, CalendarEvent[]> = {};
+    events.forEach(e => {
+      const dayKey = format(parseISO(e.start.dateTime), 'yyyy-MM-dd');
+      if (!groups[dayKey]) groups[dayKey] = [];
+      groups[dayKey].push(e);
+    });
+    return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
+  }, [events]);
+
   const navigate = (dir: 'prev' | 'next' | 'today') => {
     if (dir === 'today') { setCurrentDate(new Date()); return; }
     if (viewMode === 'week') setCurrentDate(d => dir === 'next' ? addWeeks(d, 1) : subWeeks(d, 1));
@@ -129,17 +140,6 @@ const CalendarView = ({ selectedAccount }: { selectedAccount?: string }) => {
   const monthDays = viewMode === 'month'
     ? eachDayOfInterval({ start: rangeStart, end: rangeEnd })
     : [];
-
-  // Group events by day for list view
-  const groupedByDay = useMemo(() => {
-    const groups: Record<string, CalendarEvent[]> = {};
-    events.forEach(e => {
-      const dayKey = format(parseISO(e.start.dateTime), 'yyyy-MM-dd');
-      if (!groups[dayKey]) groups[dayKey] = [];
-      groups[dayKey].push(e);
-    });
-    return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
-  }, [events]);
 
   return (
     <div className="space-y-4">

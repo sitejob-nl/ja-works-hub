@@ -31,14 +31,37 @@ const NotesSection = ({ entityId, entityType }: NotesSectionProps) => {
   const { data: notes = [] } = useQuery({
     queryKey: ['notes', entityType, entityId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data: rawNotes, error } = await supabase
         .from('notes')
-        .select('*, profiles:created_by(full_name)')
+        .select('*')
         .eq('related_entity_id', entityId)
         .eq('related_entity_type', entityType)
         .order('created_at', { ascending: false });
       if (error) throw error;
-      return data;
+      if (!rawNotes || rawNotes.length === 0) return [];
+
+      const uniqueIds = Array.from(
+        new Set(rawNotes.map((n: any) => n.created_by).filter(Boolean))
+      );
+
+      let profilesById: Record<string, { id: string; full_name: string | null }> = {};
+      if (uniqueIds.length > 0) {
+        const { data: profilesData, error: profilesError } = await supabase
+          .from('profiles')
+          .select('id, full_name')
+          .in('id', uniqueIds as string[]);
+        if (profilesError) throw profilesError;
+        profilesById = Object.fromEntries(
+          (profilesData ?? []).map((p: any) => [p.id, p])
+        );
+      }
+
+      return rawNotes.map((n: any) => ({
+        ...n,
+        profiles: n.created_by && profilesById[n.created_by]
+          ? { full_name: profilesById[n.created_by].full_name }
+          : null,
+      }));
     },
   });
 
