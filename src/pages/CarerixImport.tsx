@@ -537,9 +537,8 @@ function ProgressPanel({ jobId }: { jobId: string }) {
 
 function IntrospectButton() {
   const [result, setResult] = useState<{
-    company: { name: string; type: string }[];
-    contact: { name: string; type: string }[];
-    candidate: { name: string; type: string }[];
+    types: Record<string, { name: string; type: string }[] | null>;
+    queries: { name: string; type: string }[];
   } | null>(null);
   const [open, setOpen] = useState(false);
 
@@ -551,10 +550,13 @@ function IntrospectButton() {
       return data as any;
     },
     onSuccess: (d) => {
-      setResult({ company: d.company, contact: d.contact, candidate: d.candidate });
+      setResult({ types: d.types, queries: d.queries });
       setOpen(true);
+      const typesWithFields = Object.entries(d.types ?? {}).filter(
+        ([, v]) => Array.isArray(v) && v.length > 0,
+      );
       toast.success(
-        `Ontdekt: ${d.company?.length ?? 0} company-, ${d.contact?.length ?? 0} contact-, ${d.candidate?.length ?? 0} candidate-velden`,
+        `Ontdekt: ${typesWithFields.length} types zichtbaar, ${d.queries?.length ?? 0} queries beschikbaar`,
       );
     },
     onError: (e: Error) => toast.error(e.message),
@@ -568,15 +570,16 @@ function IntrospectButton() {
       </Button>
       {open && result && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setOpen(false)}>
-          <div className="bg-background max-w-4xl w-full max-h-[80vh] overflow-auto p-6 rounded-lg" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-background max-w-5xl w-full max-h-[85vh] overflow-auto p-6 rounded-lg" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold">Beschikbare velden per type</h3>
+              <h3 className="text-lg font-semibold">Carerix schema introspectie</h3>
               <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>Sluiten</Button>
             </div>
             <p className="text-sm text-muted-foreground mb-4">
-              Stuur deze JSON naar Kas/developer, dan worden de import-queries hierop aangepast.
+              Kopieer en deel deze JSON met Kas. Bevat alle types zichtbaar voor deze scope +
+              lijst van alle beschikbare top-level queries (voor schema-verificatie).
             </p>
-            <pre className="bg-muted p-3 rounded text-xs overflow-auto max-h-[60vh]">
+            <pre className="bg-muted p-3 rounded text-xs overflow-auto max-h-[65vh]">
               {JSON.stringify(result, null, 2)}
             </pre>
           </div>

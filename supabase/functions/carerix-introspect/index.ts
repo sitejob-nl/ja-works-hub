@@ -1,7 +1,11 @@
-// Returns the GraphQL field list for Company / Contact / Candidate types using
-// introspection. Helps discover which fields the current OAuth scope actually
-// exposes — critical because Carerix' public docs only show @preview fields
-// while the @all scope unlocks additional ones.
+// Returns the GraphQL field list for ALL relevant Carerix types + the list of
+// available page queries. Carerix exposes TWO parallel schemas:
+//  - "clean" types (Company, Contact, Candidate) — minimal @preview fields
+//  - legacy "cr*" types (CRCompany, CREmployee, CRContact, CRMatch, CRAttachment,
+//    CRToDo, CRWorkHistory, CRPublication) — richer field set matching the
+//    Carerix 5 data model.
+//
+// This endpoint dumps both so we can pick whichever schema has the data we need.
 
 import {
   corsHeaders,
@@ -14,26 +18,49 @@ import {
 import { fetchCarerixAccessToken } from '../_shared/carerix/auth.ts';
 import { CarerixGraphQLClient } from '../_shared/carerix/client.ts';
 
+const TARGET_TYPES = [
+  'Company',
+  'Contact',
+  'Candidate',
+  'CRCompany',
+  'CREmployee',
+  'CRContact',
+  'CRMatch',
+  'CRPublication',
+  'CRAttachment',
+  'CRAttachmentData',
+  'CRToDo',
+  'CRNote',
+  'CRTask',
+  'CRWorkHistory',
+  'CREmailAddress',
+  'CRPhoneNumber',
+  'CRAddress',
+  'CREmployeeAttachment',
+  'CREmployeeDocument',
+];
+
+const typeFragments = TARGET_TYPES.map(
+  (t, i) => `t${i}: __type(name: "${t}") {
+      name
+      fields {
+        name
+        type { name kind ofType { name kind } }
+      }
+    }`,
+).join('\n    ');
+
 const INTROSPECT_QUERY = `
   query {
-    company: __type(name: "Company") {
-      fields {
-        name
-        type { name kind ofType { name kind } }
+    queryRoot: __schema {
+      queryType {
+        fields {
+          name
+          type { name kind ofType { name kind } }
+        }
       }
     }
-    contact: __type(name: "Contact") {
-      fields {
-        name
-        type { name kind ofType { name kind } }
-      }
-    }
-    candidate: __type(name: "Candidate") {
-      fields {
-        name
-        type { name kind ofType { name kind } }
-      }
-    }
+    ${typeFragments}
   }
 `;
 
@@ -62,23 +89,24 @@ Deno.serve(async (req) => {
 
     const token = await fetchCarerixAccessToken(creds);
     const gql = new CarerixGraphQLClient(token);
-    const data = await gql.query<{
-      company: { fields: Array<{ name: string; type: any }> } | null;
-      contact: { fields: Array<{ name: string; type: any }> } | null;
-      candidate: { fields: Array<{ name: string; type: any }> } | null;
-    }>(INTROSPECT_QUERY);
+    const data = await gql.query<Record<string, any>>(INTROSPECT_QUERY);
 
-    const format = (fields: Array<{ name: string; type: any }> | undefined) =>
+    const formatFields = (fields: Array<{ name: string; type: any }> | undefined) =>
       (fields ?? [])
         .map((f) => ({ name: f.name, type: simplifyType(f.type) }))
         .sort((a, b) => a.name.localeCompare(b.name));
 
-    return jsonOk({
-      ok: true,
-      company: format(data.company?.fields),
-      contact: format(data.contact?.fields),
-      candidate: format(data.candidate?.fields),
+    const types: Record<string, unknown> = {};
+    TARGET_TYPES.forEach((name, i) => {
+      const node = data[`t${i}`];
+      types[name] = node ? formatFields(node.fields) : null;
     });
+
+    const allQueries = (data.queryRoot?.queryType?.fields ?? [])
+      .map((f: any) => ({ name: f.name, type: simplifyType(f.type) }))
+      .sort((a: any, b: any) => a.name.localeCompare(b.name));
+
+    return jsonOk({ ok: true, types, queries: allQueries });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return jsonError(`Introspect mislukt: ${msg}`, 400);
