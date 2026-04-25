@@ -80,7 +80,7 @@ export async function getHousingSuggestions(
   // Get all units with available capacity (view now includes weekly_cost + coords)
   const { data: units, error: unitErr } = await supabase
     .from('v_unit_occupancy')
-    .select('unit_id, unit_name, property_name, address_city, capacity, current_occupancy, weekly_cost, monthly_cost, address_lat, address_lng');
+    .select('unit_id, unit_name, property_name, address_city, capacity, current_occupancy, weekly_cost, address_lat, address_lng');
   if (unitErr) throw unitErr;
 
   const available = (units ?? []).filter(
@@ -146,7 +146,7 @@ export async function getHousingSuggestions(
       capacity: u.capacity,
       currentOccupancy: Number(u.current_occupancy),
       colleagueCount: colleagueMap[u.unit_id] ?? 0,
-      monthlyCost: u.monthly_cost,
+      monthlyCost: u.weekly_cost ? Math.round(u.weekly_cost * 4.33) : null,
       weeklyCost: u.weekly_cost,
       distanceKm: dist?.distanceKm ?? null,
       durationMin: dist?.durationMin ?? null,

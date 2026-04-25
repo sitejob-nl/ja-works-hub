@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Link, useNavigate } from 'react-router-dom';
-import { Briefcase, Plus, Search } from 'lucide-react';
+import { Briefcase, Plus, Search, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -10,6 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
 import { formatDate } from '@/lib/format';
+import { logAudit } from '@/lib/audit';
+import { toast } from 'sonner';
 
 const PAGE_SIZE = 10;
 
@@ -24,15 +26,18 @@ const statusLabel: Record<string, string> = {
   open: 'Open', on_hold: 'On hold', vervuld: 'Vervuld', gesloten: 'Gesloten',
 };
 
-const urgencyBadge = (u: number | null) => {
-  if (!u) return 'bg-muted text-muted-foreground border-0';
-  if (u <= 2) return 'bg-stat-green/10 text-stat-green border-0';
-  if (u === 3) return 'bg-yellow-100 text-yellow-700 border-0';
-  return 'bg-red-100 text-red-600 border-0';
+const urgencyMeta: Record<number, { label: string; className: string }> = {
+  1: { label: '1 — Laag', className: 'bg-stat-green/10 text-stat-green border-0' },
+  2: { label: '2 — Normaal', className: 'bg-yellow-100 text-yellow-700 border-0' },
+  3: { label: '3 — Hoog', className: 'bg-red-100 text-red-600 border-0' },
 };
+
+const isOverdue = (startDate: string | null, status: string) =>
+  status === 'open' && !!startDate && new Date(startDate) < new Date(new Date().toDateString());
 
 const Vacancies = () => {
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [urgencyFilter, setUrgencyFilter] = useState('all');
@@ -45,11 +50,27 @@ const Vacancies = () => {
       if (search) query = query.or(`title.ilike.%${search}%,location.ilike.%${search}%`);
       if (statusFilter !== 'all') query = query.eq('status', statusFilter as any);
       if (urgencyFilter !== 'all') query = query.eq('urgency', parseInt(urgencyFilter));
-      query = query.order('created_at', { ascending: false }).range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+      query = query
+        .order('urgency', { ascending: false, nullsFirst: false })
+        .order('start_date', { ascending: true, nullsFirst: false })
+        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
       const { data, count, error } = await query;
       if (error) throw error;
       return { vacancies: data ?? [], total: count ?? 0 };
     },
+  });
+
+  const updateStatus = useMutation({
+    mutationFn: async ({ id, status, oldStatus }: { id: string; status: string; oldStatus: string }) => {
+      const { error } = await supabase.from('vacancies').update({ status: status as any }).eq('id', id);
+      if (error) throw error;
+      logAudit({ action: 'status_change', tableName: 'vacancies', recordId: id, oldValues: { status: oldStatus }, newValues: { status } });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['vacancies'] });
+      toast.success('Status bijgewerkt');
+    },
+    onError: (e: any) => toast.error(e.message),
   });
 
   const vacancies = data?.vacancies ?? [];
@@ -84,11 +105,9 @@ const Vacancies = () => {
           <SelectTrigger className="w-36"><SelectValue placeholder="Urgentie" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Alle urgentie</SelectItem>
+            <SelectItem value="3">3 — Hoog</SelectItem>
+            <SelectItem value="2">2 — Normaal</SelectItem>
             <SelectItem value="1">1 — Laag</SelectItem>
-            <SelectItem value="2">2</SelectItem>
-            <SelectItem value="3">3 — Normaal</SelectItem>
-            <SelectItem value="4">4</SelectItem>
-            <SelectItem value="5">5 — Kritiek</SelectItem>
           </SelectContent>
         </Select>
         <span className="text-sm text-muted-foreground">{total} vacatures</span>
@@ -113,30 +132,59 @@ const Vacancies = () => {
                   <TableHead>Locatie</TableHead>
                   <TableHead>Aantal</TableHead>
                   <TableHead>Urgentie</TableHead>
+                  <TableHead>Startdatum</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Aangemaakt</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {vacancies.map((v: any, i: number) => (
-                  <TableRow key={v.id} className={i % 2 === 1 ? 'bg-background' : ''}>
-                    <TableCell>
-                      <Link to={`/vacatures/${v.id}`} className="font-medium text-foreground hover:text-primary transition-colors">
-                        {v.title}
-                      </Link>
-                    </TableCell>
-                    <TableCell>{(v.companies as any)?.name ?? '—'}</TableCell>
-                    <TableCell>{v.location ?? '—'}</TableCell>
-                    <TableCell>{v.filled_count}/{v.required_count}</TableCell>
-                    <TableCell>
-                      <Badge variant="secondary" className={urgencyBadge(v.urgency)}>{v.urgency ?? '—'}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary" className={statusBadge[v.status] ?? ''}>{statusLabel[v.status] ?? v.status}</Badge>
-                    </TableCell>
-                    <TableCell>{formatDate(v.created_at)}</TableCell>
-                  </TableRow>
-                ))}
+                {vacancies.map((v: any, i: number) => {
+                  const overdue = isOverdue(v.start_date, v.status);
+                  const meta = v.urgency ? urgencyMeta[v.urgency] : null;
+                  return (
+                    <TableRow key={v.id} className={i % 2 === 1 ? 'bg-background' : ''}>
+                      <TableCell>
+                        <Link to={`/vacatures/${v.id}`} className="font-medium text-foreground hover:text-primary transition-colors">
+                          {v.title}
+                        </Link>
+                      </TableCell>
+                      <TableCell>{(v.companies as any)?.name ?? '—'}</TableCell>
+                      <TableCell>{v.location ?? '—'}</TableCell>
+                      <TableCell>{v.filled_count}/{v.required_count}</TableCell>
+                      <TableCell>
+                        <Badge variant="secondary" className={meta?.className ?? 'bg-muted text-muted-foreground border-0'}>
+                          {meta?.label ?? '—'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {v.start_date_text ? (
+                          <Badge variant="secondary" className="bg-purple-100 text-purple-700 border-0">{v.start_date_text}</Badge>
+                        ) : v.start_date ? (
+                          <span className={`inline-flex items-center gap-1 ${overdue ? 'text-red-600 font-medium' : ''}`}>
+                            {overdue && <AlertTriangle className="h-3.5 w-3.5" />}
+                            {formatDate(v.start_date)}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Select
+                          value={v.status}
+                          onValueChange={(newStatus) => updateStatus.mutate({ id: v.id, status: newStatus, oldStatus: v.status })}
+                        >
+                          <SelectTrigger className={`h-7 px-2 text-xs border-0 w-32 ${statusBadge[v.status] ?? ''}`}>
+                            <SelectValue>{statusLabel[v.status] ?? v.status}</SelectValue>
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Object.entries(statusLabel).map(([k, label]) => (
+                              <SelectItem key={k} value={k}>{label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>

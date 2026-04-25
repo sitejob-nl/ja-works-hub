@@ -762,6 +762,225 @@ export type Database = {
           },
         ]
       }
+      carerix_config: {
+        Row: {
+          client_id: string | null
+          client_secret: string | null
+          connected_at: string | null
+          created_at: string
+          id: string
+          instance_url: string | null
+          is_connected: boolean
+          last_test_at: string | null
+          last_test_error: string | null
+          last_test_ok: boolean | null
+          last_test_total_companies: number | null
+          organization_id: string
+          scope: string
+          token_endpoint: string | null
+          updated_at: string
+        }
+        Insert: {
+          client_id?: string | null
+          client_secret?: string | null
+          connected_at?: string | null
+          created_at?: string
+          id?: string
+          instance_url?: string | null
+          is_connected?: boolean
+          last_test_at?: string | null
+          last_test_error?: string | null
+          last_test_ok?: boolean | null
+          last_test_total_companies?: number | null
+          organization_id: string
+          scope?: string
+          token_endpoint?: string | null
+          updated_at?: string
+        }
+        Update: {
+          client_id?: string | null
+          client_secret?: string | null
+          connected_at?: string | null
+          created_at?: string
+          id?: string
+          instance_url?: string | null
+          is_connected?: boolean
+          last_test_at?: string | null
+          last_test_error?: string | null
+          last_test_ok?: boolean | null
+          last_test_total_companies?: number | null
+          organization_id?: string
+          scope?: string
+          token_endpoint?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "carerix_config_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      carerix_import_entity_runs: {
+        Row: {
+          created: number
+          entity: string
+          failed: number
+          finished_at: string | null
+          found: number
+          job_id: string
+          last_error: string | null
+          page_cursor: number
+          skipped: number
+          started_at: string | null
+          status: string
+          total_elements: number | null
+          updated_at: string
+        }
+        Insert: {
+          created?: number
+          entity: string
+          failed?: number
+          finished_at?: string | null
+          found?: number
+          job_id: string
+          last_error?: string | null
+          page_cursor?: number
+          skipped?: number
+          started_at?: string | null
+          status?: string
+          total_elements?: number | null
+          updated_at?: string
+        }
+        Update: {
+          created?: number
+          entity?: string
+          failed?: number
+          finished_at?: string | null
+          found?: number
+          job_id?: string
+          last_error?: string | null
+          page_cursor?: number
+          skipped?: number
+          started_at?: string | null
+          status?: string
+          total_elements?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "carerix_import_entity_runs_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "carerix_import_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      carerix_import_failures: {
+        Row: {
+          carerix_id: string | null
+          created_at: string
+          entity: string
+          error: string
+          id: string
+          job_id: string
+          payload: Json | null
+        }
+        Insert: {
+          carerix_id?: string | null
+          created_at?: string
+          entity: string
+          error: string
+          id?: string
+          job_id: string
+          payload?: Json | null
+        }
+        Update: {
+          carerix_id?: string | null
+          created_at?: string
+          entity?: string
+          error?: string
+          id?: string
+          job_id?: string
+          payload?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "carerix_import_failures_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "carerix_import_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      carerix_import_jobs: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          finished_at: string | null
+          id: string
+          last_error: string | null
+          mode: string
+          modified_since: string | null
+          only_entities: string[] | null
+          organization_id: string
+          skip_entities: string[] | null
+          started_at: string | null
+          status: string
+          summary: Json | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          finished_at?: string | null
+          id?: string
+          last_error?: string | null
+          mode?: string
+          modified_since?: string | null
+          only_entities?: string[] | null
+          organization_id: string
+          skip_entities?: string[] | null
+          started_at?: string | null
+          status?: string
+          summary?: Json | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          finished_at?: string | null
+          id?: string
+          last_error?: string | null
+          mode?: string
+          modified_since?: string | null
+          only_entities?: string[] | null
+          organization_id?: string
+          skip_entities?: string[] | null
+          started_at?: string | null
+          status?: string
+          summary?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "carerix_import_jobs_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "carerix_import_jobs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       client_errors: {
         Row: {
           component_stack: string | null
@@ -4107,7 +4326,7 @@ export type Database = {
         Row: {
           candidate_id: string | null
           created_at: string
-          employee_id: string
+          employee_id: string | null
           expires_at: string
           form_id: string | null
           id: string
@@ -4118,7 +4337,7 @@ export type Database = {
         Insert: {
           candidate_id?: string | null
           created_at?: string
-          employee_id: string
+          employee_id?: string | null
           expires_at?: string
           form_id?: string | null
           id?: string
@@ -4129,7 +4348,7 @@ export type Database = {
         Update: {
           candidate_id?: string | null
           created_at?: string
-          employee_id?: string
+          employee_id?: string | null
           expires_at?: string
           form_id?: string | null
           id?: string
@@ -4662,7 +4881,7 @@ export type Database = {
           compliance_override_reason: string | null
           created_at: string
           created_by: string | null
-          employee_id: string
+          employee_id: string | null
           end_date: string | null
           expected_end_date: string | null
           function_name: string
@@ -4704,7 +4923,7 @@ export type Database = {
           compliance_override_reason?: string | null
           created_at?: string
           created_by?: string | null
-          employee_id: string
+          employee_id?: string | null
           end_date?: string | null
           expected_end_date?: string | null
           function_name: string
@@ -4746,7 +4965,7 @@ export type Database = {
           compliance_override_reason?: string | null
           created_at?: string
           created_by?: string | null
-          employee_id?: string
+          employee_id?: string | null
           end_date?: string | null
           expected_end_date?: string | null
           function_name?: string
@@ -4861,7 +5080,7 @@ export type Database = {
           candidate_id: string | null
           created_at: string
           email: string
-          employee_id: string
+          employee_id: string | null
           expires_at: string
           id: string
           organization_id: string
@@ -4872,7 +5091,7 @@ export type Database = {
           candidate_id?: string | null
           created_at?: string
           email: string
-          employee_id: string
+          employee_id?: string | null
           expires_at?: string
           id?: string
           organization_id: string
@@ -4883,7 +5102,7 @@ export type Database = {
           candidate_id?: string | null
           created_at?: string
           email?: string
-          employee_id?: string
+          employee_id?: string | null
           expires_at?: string
           id?: string
           organization_id?: string
@@ -4990,7 +5209,7 @@ export type Database = {
           is_active: boolean
           max_persons_permit: number | null
           monthly_rent: number | null
-          name: string
+          name: string | null
           notes: string | null
           organization_id: string
           owner_contact_person: string | null
@@ -5028,7 +5247,7 @@ export type Database = {
           is_active?: boolean
           max_persons_permit?: number | null
           monthly_rent?: number | null
-          name: string
+          name?: string | null
           notes?: string | null
           organization_id: string
           owner_contact_person?: string | null
@@ -5066,7 +5285,7 @@ export type Database = {
           is_active?: boolean
           max_persons_permit?: number | null
           monthly_rent?: number | null
-          name?: string
+          name?: string | null
           notes?: string | null
           organization_id?: string
           owner_contact_person?: string | null
@@ -5838,10 +6057,8 @@ export type Database = {
         Row: {
           capacity: number
           created_at: string
-          deposit_amount: number | null
           floor: number | null
           id: string
-          monthly_cost: number | null
           name: string
           notes: string | null
           organization_id: string
@@ -5853,10 +6070,8 @@ export type Database = {
         Insert: {
           capacity?: number
           created_at?: string
-          deposit_amount?: number | null
           floor?: number | null
           id?: string
-          monthly_cost?: number | null
           name: string
           notes?: string | null
           organization_id: string
@@ -5868,10 +6083,8 @@ export type Database = {
         Update: {
           capacity?: number
           created_at?: string
-          deposit_amount?: number | null
           floor?: number | null
           id?: string
-          monthly_cost?: number | null
           name?: string
           notes?: string | null
           organization_id?: string
@@ -5905,6 +6118,7 @@ export type Database = {
           description: string | null
           end_date: string | null
           filled_count: number
+          function_id: string | null
           hourly_rate: number | null
           id: string
           location: string | null
@@ -5919,10 +6133,11 @@ export type Database = {
           salary_min: number | null
           skills_required: string[] | null
           start_date: string | null
+          start_date_text: string | null
           status: Database["public"]["Enums"]["vacancy_status"]
           title: string
           updated_at: string
-          urgency: number | null
+          urgency: number
         }
         Insert: {
           company_id: string
@@ -5931,6 +6146,7 @@ export type Database = {
           description?: string | null
           end_date?: string | null
           filled_count?: number
+          function_id?: string | null
           hourly_rate?: number | null
           id?: string
           location?: string | null
@@ -5945,10 +6161,11 @@ export type Database = {
           salary_min?: number | null
           skills_required?: string[] | null
           start_date?: string | null
+          start_date_text?: string | null
           status?: Database["public"]["Enums"]["vacancy_status"]
           title: string
           updated_at?: string
-          urgency?: number | null
+          urgency?: number
         }
         Update: {
           company_id?: string
@@ -5957,6 +6174,7 @@ export type Database = {
           description?: string | null
           end_date?: string | null
           filled_count?: number
+          function_id?: string | null
           hourly_rate?: number | null
           id?: string
           location?: string | null
@@ -5971,10 +6189,11 @@ export type Database = {
           salary_min?: number | null
           skills_required?: string[] | null
           start_date?: string | null
+          start_date_text?: string | null
           status?: Database["public"]["Enums"]["vacancy_status"]
           title?: string
           updated_at?: string
-          urgency?: number | null
+          urgency?: number
         }
         Relationships: [
           {
@@ -5989,6 +6208,13 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vacancies_function_id_fkey"
+            columns: ["function_id"]
+            isOneToOne: false
+            referencedRelation: "company_functions"
             referencedColumns: ["id"]
           },
           {
@@ -6495,7 +6721,6 @@ export type Database = {
           available_spots: number | null
           capacity: number | null
           current_occupancy: number | null
-          monthly_cost: number | null
           organization_id: string | null
           property_name: string | null
           status: Database["public"]["Enums"]["unit_status"] | null
@@ -6543,6 +6768,16 @@ export type Database = {
         Returns: {
           decrypted_bsn: string
           decrypted_iban: string
+        }[]
+      }
+      get_carerix_token: {
+        Args: { p_org_id: string }
+        Returns: {
+          client_id: string
+          decrypted_client_secret: string
+          instance_url: string
+          scope: string
+          token_endpoint: string
         }[]
       }
       get_employee_id: { Args: never; Returns: string }
@@ -6606,6 +6841,7 @@ export type Database = {
         }[]
       }
       is_employee_user: { Args: never; Returns: boolean }
+      is_internal_user: { Args: never; Returns: boolean }
       is_superadmin: { Args: never; Returns: boolean }
       next_invoice_number: { Args: { org_id: string }; Returns: string }
       record_rate_limit: {

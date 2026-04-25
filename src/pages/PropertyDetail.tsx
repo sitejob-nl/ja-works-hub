@@ -28,7 +28,7 @@ const PropertyDetail = () => {
       const { data, error } = await supabase.from('properties').select(`
         *,
         units!units_property_id_fkey(
-          id, name, capacity, status, floor, monthly_cost, weekly_cost, deposit_amount, notes,
+          id, name, capacity, status, floor, weekly_cost, notes,
           housing_assignments!housing_assignments_unit_id_fkey(
             id, status, check_in_date, check_out_date, monthly_deduction, deduction_amount, payment_frequency, deposit_paid, rent_paid_until,
             candidates!housing_assignments_candidate_id_fkey(id, first_name, last_name)
@@ -75,12 +75,12 @@ const PropertyDetail = () => {
       <div className="flex items-center gap-1 text-sm text-muted-foreground">
         <Link to="/huisvesting" className="hover:text-foreground transition-colors">Huisvesting</Link>
         <ChevronRight className="h-3 w-3" />
-        <span className="text-foreground truncate">{property.name}</span>
+        <span className="text-foreground truncate">{property.name || [property.address_street, property.address_city].filter(Boolean).join(', ')}</span>
       </div>
 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex-1 min-w-0">
-          <h1 className="text-xl sm:text-2xl font-semibold truncate">{property.name}</h1>
+          <h1 className="text-xl sm:text-2xl font-semibold truncate">{property.name || [property.address_street, property.address_city].filter(Boolean).join(', ')}</h1>
           <p className="text-sm text-muted-foreground mt-1 truncate">
             {[property.address_street, property.address_postal, property.address_city].filter(Boolean).join(', ')}
           </p>

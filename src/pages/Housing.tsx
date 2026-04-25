@@ -90,7 +90,7 @@ const Housing = () => {
             <Link key={p.id} to={`/huisvesting/${p.id}`} className="bg-card rounded-lg border p-5 hover:shadow-md transition-shadow block">
               <div className="flex justify-between items-start mb-3">
                 <div>
-                  <p className="font-medium">{p.name}</p>
+                  <p className="font-medium">{p.name || [p.address_street, p.address_city].filter(Boolean).join(', ')}</p>
                   <p className="text-xs text-muted-foreground mt-0.5">
                     {[p.address_street, p.address_postal, p.address_city].filter(Boolean).join(', ')}
                   </p>
@@ -121,7 +121,7 @@ const Housing = () => {
               {properties.map((p: any) => (
                 <TableRow key={p.id}>
                   <TableCell>
-                    <Link to={`/huisvesting/${p.id}`} className="font-medium text-foreground hover:text-primary transition-colors">{p.name}</Link>
+                    <Link to={`/huisvesting/${p.id}`} className="font-medium text-foreground hover:text-primary transition-colors">{p.name || [p.address_street, p.address_city].filter(Boolean).join(', ')}</Link>
                   </TableCell>
                   <TableCell className="text-sm">{[p.address_street, p.address_city].filter(Boolean).join(', ') || '—'}</TableCell>
                   <TableCell className="text-right">{p.totalCapacity}</TableCell>

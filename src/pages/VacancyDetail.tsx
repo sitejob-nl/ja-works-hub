@@ -22,11 +22,10 @@ const statusBadge: Record<string, string> = {
   gesloten: 'bg-muted text-muted-foreground border-0',
 };
 const statusLabel: Record<string, string> = { open: 'Open', on_hold: 'On hold', vervuld: 'Vervuld', gesloten: 'Gesloten' };
-const urgencyBadge = (u: number | null) => {
-  if (!u) return 'bg-muted text-muted-foreground border-0';
-  if (u <= 2) return 'bg-stat-green/10 text-stat-green border-0';
-  if (u === 3) return 'bg-yellow-100 text-yellow-700 border-0';
-  return 'bg-red-100 text-red-600 border-0';
+const urgencyMeta: Record<number, { label: string; className: string }> = {
+  1: { label: '1 — Laag', className: 'bg-stat-green/10 text-stat-green border-0' },
+  2: { label: '2 — Normaal', className: 'bg-yellow-100 text-yellow-700 border-0' },
+  3: { label: '3 — Hoog', className: 'bg-red-100 text-red-600 border-0' },
 };
 
 const VacancyDetail = () => {
@@ -91,7 +90,9 @@ const VacancyDetail = () => {
           )}
           <div className="flex items-center gap-2 mt-2 flex-wrap">
             <Badge variant="secondary" className={statusBadge[vacancy.status] ?? ''}>{statusLabel[vacancy.status] ?? vacancy.status}</Badge>
-            <Badge variant="secondary" className={urgencyBadge(vacancy.urgency)}>Urgentie {vacancy.urgency}</Badge>
+            {vacancy.urgency && urgencyMeta[vacancy.urgency] && (
+              <Badge variant="secondary" className={urgencyMeta[vacancy.urgency].className}>Urgentie: {urgencyMeta[vacancy.urgency].label}</Badge>
+            )}
           </div>
           <div className="mt-3 max-w-64">
             <div className="text-xs text-muted-foreground mb-1">{vacancy.filled_count} van {vacancy.required_count} vervuld</div>

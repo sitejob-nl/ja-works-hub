@@ -272,14 +272,14 @@ const PlacementConfirmationDialog = ({
           </div>
         )}
 
-        {/* Warnings */}
+        {/* Warnings — telefoon is verplicht voor plaatsing (klantbeleid 03-26) */}
         {(missingEmail || missingPhone) && (
           <div className="flex flex-wrap gap-2">
             {missingEmail && (
               <Badge variant="destructive" className="gap-1"><AlertTriangle className="h-3 w-3" />Geen e-mailadres kandidaat</Badge>
             )}
             {missingPhone && (
-              <Badge variant="secondary" className="gap-1 border-orange-300 bg-orange-50 text-orange-700"><AlertTriangle className="h-3 w-3" />Geen telefoonnummer kandidaat</Badge>
+              <Badge variant="destructive" className="gap-1"><AlertTriangle className="h-3 w-3" />Telefoonnummer kandidaat ontbreekt — vereist voor plaatsing</Badge>
             )}
           </div>
         )}
@@ -337,7 +337,11 @@ const PlacementConfirmationDialog = ({
         <DialogFooter className="gap-2 sm:gap-0">
           <Button variant="ghost" onClick={handleClose}>{result ? 'Sluiten' : 'Overslaan'}</Button>
           {!result && (
-            <Button onClick={handleSend} disabled={sending || assigningHousing || (!sendToClient && !sendToEmployee)}>
+            <Button
+              onClick={handleSend}
+              disabled={sending || assigningHousing || (!sendToClient && !sendToEmployee) || missingPhone}
+              title={missingPhone ? 'Vul eerst het telefoonnummer van de kandidaat in' : undefined}
+            >
               {(sending || assigningHousing) && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               {sending ? 'Versturen...' : assigningHousing ? 'Toewijzen...' : 'Versturen'}
             </Button>

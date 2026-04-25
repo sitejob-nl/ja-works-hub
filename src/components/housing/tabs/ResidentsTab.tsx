@@ -172,7 +172,7 @@ const ResidentsTab = ({ property }: { property: any }) => {
                     return (
                       <button key={u.id} onClick={() => {
                           setSelectedUnit(u);
-                          setForm(f => ({ ...f, deduction_amount: u.weekly_cost ? String(u.weekly_cost) : u.monthly_cost ? String(u.monthly_cost) : '', payment_frequency: u.weekly_cost ? 'wekelijks' : 'maandelijks' }));
+                          setForm(f => ({ ...f, deduction_amount: u.weekly_cost ? String(u.weekly_cost) : '', payment_frequency: 'wekelijks' }));
                           setStep(3);
                         }}
                         className="w-full text-left p-3 rounded-lg border hover:bg-muted/50 transition-colors">
@@ -199,8 +199,8 @@ const ResidentsTab = ({ property }: { property: any }) => {
                       payment_frequency: v,
                       deduction_amount: v === 'wekelijks' && selectedUnit?.weekly_cost
                         ? String(selectedUnit.weekly_cost)
-                        : v === 'maandelijks' && selectedUnit?.monthly_cost
-                          ? String(selectedUnit.monthly_cost)
+                        : v === 'maandelijks' && selectedUnit?.weekly_cost
+                          ? String(Math.round(selectedUnit.weekly_cost * 4.33))
                           : f.deduction_amount,
                     }));
                   }}>

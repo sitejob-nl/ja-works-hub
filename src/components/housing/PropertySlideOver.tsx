@@ -89,7 +89,7 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
   const mutation = useMutation({
     mutationFn: async () => {
       const payload = {
-        name: form.name,
+        name: form.name?.trim() || null,
         address_street: form.address_street,
         address_postal: form.address_postal,
         address_city: form.address_city,
@@ -153,11 +153,14 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
           {/* Section 1: Address */}
           <div className="space-y-3">
             <SectionHeader>Adresgegevens</SectionHeader>
-            <div><Label>Pandnaam *</Label><Input value={form.name} onChange={(e) => set('name', e.target.value)} /></div>
             <div className="grid grid-cols-3 gap-3">
               <div className="col-span-1"><Label>Straat *</Label><Input value={form.address_street} onChange={(e) => set('address_street', e.target.value)} /></div>
               <div><Label>Postcode *</Label><Input value={form.address_postal} onChange={(e) => set('address_postal', e.target.value)} /></div>
               <div><Label>Stad *</Label><Input value={form.address_city} onChange={(e) => set('address_city', e.target.value)} /></div>
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Bijnaam (optioneel)</Label>
+              <Input value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Laat leeg om adres als naam te tonen" />
             </div>
           </div>
 
@@ -265,7 +268,7 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
 
           <div className="flex justify-end gap-3 pt-4">
             <Button variant="ghost" onClick={() => onOpenChange(false)}>Annuleren</Button>
-            <Button onClick={() => mutation.mutate()} disabled={!form.name || !form.address_street || !form.address_postal || !form.address_city || mutation.isPending}>
+            <Button onClick={() => mutation.mutate()} disabled={!form.address_street || !form.address_postal || !form.address_city || mutation.isPending}>
               {mutation.isPending ? 'Opslaan...' : 'Opslaan'}
             </Button>
           </div>
