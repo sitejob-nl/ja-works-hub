@@ -49,16 +49,18 @@ Path alias: `@/*` → `./src/*`
 
 ## Architecture
 
-### Three Authentication Zones
+### Four Authentication Zones
 
 | Zone | Path | Context | Layout | Hook |
 |------|------|---------|--------|------|
 | Main App | `/` | `AuthContext` | `AppLayout` | `useAuth()` → `{ session, user, profile, loading, signOut }` |
 | Employee Portal | `/portaal/` | `PortalContext` | `PortalLayout` | `usePortal()` → `{ session, profile, employee, candidate, loading, signOut }` |
+| Client Portal (opdrachtgever) | `/klantportaal/` | `ClientPortalContext` | `ClientPortalLayout` | Client contact access to own placements + timesheets |
 | Superadmin | `/superadmin/` | `SuperAdminContext` | `SuperAdminLayout` | `useSuperAdmin()` → `{ session, user, isSuperAdmin, loading, signOut }` |
 
 - Profile includes `organization_id` and `role`
-- Portal's `employee` and `candidate` both point to the same `candidates` row
+- Employee portal's `employee` and `candidate` both point to the same `candidates` row
+- Client portal is for opdrachtgever contacts — see their own placements and approve timesheets
 - SuperAdmin checks the `superadmins` table (no role field)
 - Public routes use token-based auth (no login required)
 
@@ -69,7 +71,7 @@ src/
 ├── App.tsx                    # Main router with all routes
 ├── components/
 │   ├── ui/                    # shadcn/ui primitives (40+ components)
-│   ├── layout/                # AppLayout, AppSidebar, TopBar, PortalLayout, SuperAdminLayout
+│   ├── layout/                # AppLayout, AppSidebar, TopBar, PortalLayout, ClientPortalLayout, SuperAdminLayout, NotificationBell, RecentItemsBar
 │   ├── candidates/            # SlideOver + 10 tabs (Ai, Communication, Documents, Matches, etc.)
 │   ├── companies/             # SlideOver + 6 tabs (Info, Contacts, Functions, Placements, etc.)
 │   ├── employees/             # 13 tabs (Contracts, Deductions, Housing, Onboarding, etc.)
@@ -96,6 +98,7 @@ src/
 ├── contexts/
 │   ├── AuthContext.tsx
 │   ├── PortalContext.tsx
+│   ├── ClientPortalContext.tsx
 │   ├── SuperAdminContext.tsx
 │   └── RecentItemsContext.tsx
 ├── hooks/
@@ -113,7 +116,9 @@ src/
 │   ├── tasks.ts               # Task utilities
 │   ├── termination-constants.ts  # Exit reason enums
 │   └── utils.ts               # cn() classname merger
-├── pages/                     # 57 page components (see Routes section)
+├── pages/                     # ~65 page components (see Routes section)
+│   ├── portal/                # Employee portal pages (12)
+│   └── clientportal/          # Client portal pages (4)
 ├── integrations/supabase/
 │   ├── client.ts              # Supabase client instance
 │   └── types.ts               # Auto-generated types (~6400 lines) — NEVER hand-edit
@@ -172,15 +177,21 @@ src/
 | `/kennisbank` | KnowledgeBasePage | Knowledge base |
 | `/cv-tool/:candidateId` | CvTool | CV generation |
 | `/importeren` | ImportData | Data import wizard |
+| `/importeren/carerix` | CarerixImport | Carerix live API sync (not just CSV) |
+| `/matches` | MatchPipeline | Kanban board (drag-drop) over match statuses |
+| `/agenda` | Agenda | Calendar / scheduling overview |
+| `/email` | Email | Outgoing email inbox/outbox UI |
+| `/email-templates` | EmailTemplates | Template editor |
 | `/instellingen` | SettingsPage | Organization settings |
 
-**Portal (11 routes, `PortalProvider` + `PortalLayout`):**
+**Employee Portal (12 routes, `PortalProvider` + `PortalLayout`):**
 
 | Route | Page |
 |-------|------|
 | `/portaal/` | PortalDashboard |
 | `/portaal/uren` | PortalTimesheets |
 | `/portaal/plaatsingen` | PortalPlacements |
+| `/portaal/jobmarket` | PortalJobMarket | Matched vacancies visible to employee |
 | `/portaal/documenten` | PortalDocuments |
 | `/portaal/profiel` | PortalProfile |
 | `/portaal/ziekmelding` | PortalSickReport |
@@ -189,6 +200,15 @@ src/
 | `/portaal/loonstroken` | PortalPayslips |
 | `/portaal/jaaropgaven` | PortalAnnualStatements |
 | `/portaal/urenbrieven` | PortalHourLetters |
+
+**Client Portal (4 routes, `ClientPortalProvider` + `ClientPortalLayout`):**
+
+| Route | Page |
+|-------|------|
+| `/klantportaal/` | ClientPortalDashboard |
+| `/klantportaal/login` | ClientPortalLogin |
+| `/klantportaal/plaatsingen` | ClientPortalPlacements |
+| `/klantportaal/uren` | ClientPortalTimesheets |
 
 **Superadmin (5 routes, `SuperAdminProvider` + `SuperAdminLayout`):**
 
@@ -207,8 +227,10 @@ src/
 | `/onboarding/:token` | Self-service onboarding form |
 | `/contract/sign/:token` | Digital contract signing |
 | `/profiel/:token` | Candidate profile view |
-| `/portaal/activeren/:token` | Portal account activation |
-| `/portaal/login` | Portal login page |
+| `/match/reageer/:token` | MatchResponse — opdrachtgever reageert op voorstelmail (accepteren/afwijzen) |
+| `/portaal/activeren/:token` | Employee portal account activation |
+| `/portaal/login` | Employee portal login page |
+| `/klantportaal/activeren/:token` | Client portal account activation |
 | `/registreren` | Organization registration |
 | `/installeren` | Setup/installation |
 
@@ -436,7 +458,7 @@ Database triggers encrypt sensitive fields (BSN, IBAN, webhook secrets, access t
 | `sa_update_org_active` | org_uuid, active | void | Superadmin: activate/deactivate org |
 | `sa_update_org_plan` | org_uuid, new_plan_id | void | Superadmin: change subscription |
 
-## Edge Functions (30 functions)
+## Edge Functions (~55 functions)
 
 ### Public (verify_jwt = false)
 
@@ -447,34 +469,79 @@ Database triggers encrypt sensitive fields (BSN, IBAN, webhook secrets, access t
 | `exact-webhook` | Receive Exact Online invoice notifications |
 | `whatsapp-config` | Receive WhatsApp credentials after OAuth setup |
 | `exact-config` | Receive Exact Online credentials after OAuth setup |
+| `carerix-config` | Receive Carerix credentials after OAuth setup |
 | `register-organization` | New organization self-registration |
 | `contract-sign` | Digital contract signing (token-based) |
 | `candidate-profile` | Public candidate profile endpoint |
 | `portal-activate` | Employee portal account activation |
+| `client-portal-activate` | Client portal (opdrachtgever) account activation |
+| `microsoft-callback` | Microsoft Graph OAuth callback |
 
 ### Protected (verify_jwt = true)
 
+**Communication & messaging**
 | Function | Purpose |
 |----------|---------|
 | `whatsapp-register` | Register WhatsApp Business Account via SiteJob Connect |
 | `whatsapp-send` | Send WhatsApp messages via Meta Graph API |
+| `whatsapp-api` | Generic WhatsApp API proxy |
+| `whatsapp-templates-sync` | Sync approved message templates from Meta |
+| `send-placement-confirmation` | Email placement confirmations (to klant + medewerker) |
+| `send-match-proposal` | Send candidate-voorstel email to opdrachtgever (supports preview-only mode) |
+| `send-damage-report` | Email vehicle damage report with photos + template |
+| `send-portal-invite` | Send employee portal activation link |
+| `send-timesheet-approval` | Notify approval/rejection of timesheets |
+| `automated-messages` | Scheduled/triggered automatic messaging (birthdays, expiries) |
+| `bulk-campaign-processor` | Process bulk WhatsApp campaigns (batch of 50, rate limited) |
+| `email-campaign-processor` | Process bulk email campaigns |
+| `opt-out-handler` | Process communication opt-outs |
+| `generate-notifications` | Create in-app notifications |
+| `microsoft-api` | Microsoft Graph API proxy (mail, calendar) |
+| `microsoft-auth` | Microsoft OAuth initiation |
+
+**Integrations — financial / ATS**
+| Function | Purpose |
+|----------|---------|
 | `exact-register` | Register Exact Online tenant via SiteJob Connect |
 | `exact-api` | Proxy for Exact Online API calls (OData) |
 | `exact-sync-invoice` | Sync invoices to/from Exact Online |
+| `exact-sync-account` | Sync companies / accounts to Exact |
+| `carerix-introspect` | Discover Carerix field schema |
+| `carerix-sync-start` | Start Carerix full/delta sync |
+| `carerix-sync-worker` | Worker that fetches pages from Carerix |
+| `carerix-sync-cancel` | Cancel running Carerix sync |
+| `carerix-test` | Test Carerix credentials/connection |
+| `generate-invoice-pdf` | Generate PDF invoices |
+
+**Sourcing / job data**
+| Function | Purpose |
+|----------|---------|
 | `apify-job-import` | Import job listings from web scraping (Apify) |
+| `job-feed-runner` | Scheduled runner to ingest configured feeds |
+| `linkedin-job-search` | LinkedIn job search |
 | `exa-people-search` | Search people using Exa AI |
+
+**AI**
+| Function | Purpose |
+|----------|---------|
 | `calculate-match` | AI candidate-vacancy matching score |
 | `cv-rewrite` | AI-powered CV improvement |
 | `analyze-cv` | Submit CV for LLM analysis (async, calls VPS) |
 | `analyze-cv-callback` | Receive async CV analysis results from LLM VPS |
 | `validate-timesheets` | AI validation of timesheet entries (6 rules) |
 | `recruiter-priorities` | Calculate recruiter task priorities |
-| `bulk-campaign-processor` | Process bulk WhatsApp campaigns (batch of 50, rate limited) |
-| `generate-notifications` | Create in-app notifications |
-| `send-placement-confirmation` | Email placement confirmations |
+
+**Telephony (Voys) — AI call support**
+| Function | Purpose |
+|----------|---------|
+| `voys-api` | Voys PBX API proxy |
+| `voys-sync-calls` | Pull call logs / recordings for transcript + summary |
+
+**Operations**
+| Function | Purpose |
+|----------|---------|
+| `process-sick-report` | Handle ziekmelding from portal (create record + notify) |
 | `check-document-expiry` | Scheduled document expiry validation |
-| `opt-out-handler` | Process communication opt-outs |
-| `generate-invoice-pdf` | Generate PDF invoices |
 
 ### No config entry (default: JWT required)
 
@@ -527,9 +594,39 @@ Similar to WhatsApp — tenant registration via SiteJob Connect → OAuth popup 
 
 **UI:** `src/components/candidates/tabs/CandidateAiTab.tsx` with realtime Supabase channel subscription
 
-### Carerix Import — Working CSV import wizard
+### Carerix — CSV wizard + live API sync
 
-`src/components/import/ImportWizard.tsx` — 4-step wizard: Upload → Map fields → Preview → Execute. Has preset field mappings for Carerix exports. Supports candidates and companies.
+**Two paths** (in active development, see `carerix-*` commits):
+1. **CSV import wizard** — `src/components/import/ImportWizard.tsx` — 4-step: Upload → Map → Preview → Execute. Preset mappings for Carerix exports. Supports candidates + companies.
+2. **Live API sync** — `src/pages/CarerixImport.tsx` + 6 edge functions:
+   - `carerix-config` — OAuth callback
+   - `carerix-test` — verify credentials
+   - `carerix-introspect` — discover available fields
+   - `carerix-sync-start` / `carerix-sync-worker` / `carerix-sync-cancel` — paginated sync pipeline
+   - Tokens decrypted via `get_carerix_token` RPC (hardened by `20260422120000_pre_handover_security_hardening.sql`)
+
+### Microsoft 365 / Outlook — OAuth + API proxy
+
+**Edge functions:** `microsoft-auth`, `microsoft-callback`, `microsoft-api`
+
+Used for mail/calendar integration. OAuth handshake + proxied API calls. Frontend: `src/pages/Email.tsx` + `src/pages/EmailTemplates.tsx`. NOTE: email triage / AI-classification layer on top of this is NOT built yet.
+
+### Voys — Call logs + AI call support
+
+**Edge functions:** `voys-api`, `voys-sync-calls`
+
+Pulls call logs (and potentially transcripts) from Voys PBX. Linked to candidate records via phone number. Supports the "AI call support" requirement from 03-20 meeting (less manual note-taking, post-call observations).
+
+### Match Proposal (voorstelmail met preview)
+
+**Edge function:** `send-match-proposal` (dual-mode: `preview=true` returns rendered HTML without sending)
+**Frontend:** `src/components/vacancies/tabs/VacancyMatchesTab.tsx` — preview dialog + send flow
+**Public response page:** `/match/reageer/:token` → `src/pages/MatchResponse.tsx` — opdrachtgever kan accepteren/afwijzen via unieke link
+**Security:** `match_proposal_tokens` table; public anon enumeration dropped by SEC-4 hardening migration — public validation flows through service-role edge function
+
+### Damage reports email
+
+`send-damage-report` edge function emails vehicle damage report (with photos) using a pre-filled template to the configured recipient.
 
 ### Flexpedia — No API integration built
 
@@ -541,7 +638,7 @@ Referenced only as payroller type in `src/lib/payroller.ts`. JA Werkt invoices f
 
 ### Google Calendar — Not implemented
 
-No code exists.
+No code exists. `src/pages/Agenda.tsx` is an internal calendar view, not a Google-synced calendar.
 
 ## Key Patterns & Conventions
 
@@ -608,14 +705,27 @@ const { data: { user } } = await supabaseClient.auth.getUser(authHeader.replace(
 - CV text cap: 15,000 chars
 - Campaign batch size: 50 recipients
 
+### Open gaps from client meetings (2026-03-20 / 03-26 / 04-10)
+- **Phone validation in PlacementConfirmation is a warning, not a hard block** — klant 03-26 wil blokkeren
+- **"Voordragen"** nog als label in `MatchPipeline.tsx` + `VacancyMatchesTab.tsx` (klant 04-10 wil "Nieuwe match maken")
+- **Km-verwachting + alarm**: `mileage_entries` tabel aanwezig, maar expected-km calculation + alarm + opvolg-WhatsApp ontbreken
+- **AI e-mail triage**: Microsoft-integratie staat (OAuth + API proxy), maar classificatie/voorstel-laag bovenop is niet gebouwd
+- **Indirecte facturatiestroom** (A1 → tussenlaag → eindklant) is niet expliciet in datamodel onderscheiden
+- **`useModuleEnabled`** wordt in slechts 3 files gebruikt — feature-flag systeem is aanwezig maar niet breed toegepast
+- **Welkomstvideo + i18n in medewerkerportaal** (03-20 FR-41)
+
 ### Missing Features (Fase 2)
 - Flexpedia API integration
-- Google Calendar sync
+- Google Calendar sync (internal `Agenda.tsx` exists, no sync)
 - SEPA XML export
 - Contract template engine with variables
 - Digital signatures
-- Transport GPS/kilometer registration
+- Transport GPS live tracking
 - Extended employee dossier (pension, vacation rights)
+- Energy Wizard (gas/water/energy for housing)
+- Camera integration on dashboard
+- WordPress lead webhook (can be routed via `candidate_signup_links`)
+- Partner portal for external recruiter CV uploads
 
 ## Development Setup
 
