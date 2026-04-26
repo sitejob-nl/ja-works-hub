@@ -16,6 +16,7 @@ import SuperAdminOrganizations from "@/pages/superadmin/SuperAdminOrganizations"
 import SuperAdminUsers from "@/pages/superadmin/SuperAdminUsers";
 import SuperAdminPlans from "@/pages/superadmin/SuperAdminPlans";
 import SuperAdminErrors from "@/pages/superadmin/SuperAdminErrors";
+import SuperAdminCvBackfill from "@/pages/superadmin/SuperAdminCvBackfill";
 import Dashboard from "@/pages/Dashboard";
 import NotFound from "./pages/NotFound";
 import SettingsPage from "@/pages/Settings";
@@ -119,6 +120,7 @@ const App = () => (
               <Route path="organisaties" element={<SuperAdminOrganizations />} />
               <Route path="gebruikers" element={<SuperAdminUsers />} />
               <Route path="abonnementen" element={<SuperAdminPlans />} />
+              <Route path="cv-backfill" element={<SuperAdminCvBackfill />} />
               <Route path="errors" element={<SuperAdminErrors />} />
             </Route>
 

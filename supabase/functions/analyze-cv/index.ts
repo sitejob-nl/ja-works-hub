@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { pseudonymizeCv } from "../_shared/cv-pseudonymize.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -87,7 +88,7 @@ Deno.serve(async (req) => {
 
     const { data: candidate } = await adminClient
       .from("candidates")
-      .select("id, organization_id, ai_status")
+      .select("id, organization_id, ai_status, first_name, last_name")
       .eq("id", candidate_id)
       .single();
 
@@ -113,6 +114,22 @@ Deno.serve(async (req) => {
       .eq("organization_id", orgId);
 
     const sanitizedText = sanitizeCvText(cv_text);
+
+    // AVG: pseudonimiseer naam/email/telefoon/BSN/IBAN vóór VPS-call
+    const { text: pseudonymizedText, meta: pseudoMeta } = pseudonymizeCv(
+      sanitizedText,
+      { first_name: candidate.first_name, last_name: candidate.last_name }
+    );
+
+    await adminClient
+      .from("candidates")
+      .update({
+        cv_pseudonymized_at: new Date().toISOString(),
+        cv_pseudonymization_meta: pseudoMeta,
+      })
+      .eq("id", candidate_id)
+      .eq("organization_id", orgId);
+
     const OLLAMA_BASE_URL = Deno.env.get("OLLAMA_BASE_URL");
     const OLLAMA_API_KEY = Deno.env.get("OLLAMA_API_KEY");
 
@@ -143,7 +160,7 @@ Deno.serve(async (req) => {
           "Authorization": `Bearer ${OLLAMA_API_KEY}`,
         },
         body: JSON.stringify({
-          cv_text: sanitizedText,
+          cv_text: pseudonymizedText,
           candidate_id,
           organization_id: orgId,
           user_id: user.id,

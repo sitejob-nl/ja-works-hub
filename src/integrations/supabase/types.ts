@@ -579,6 +579,9 @@ export type Database = {
           compliance_status: Database["public"]["Enums"]["compliance_status"]
           created_at: string
           cv_file_url: string | null
+          cv_has_photo: boolean | null
+          cv_pseudonymization_meta: Json | null
+          cv_pseudonymized_at: string | null
           cv_raw_text: string | null
           date_of_birth: string | null
           drivers_license_expiry: string | null
@@ -644,6 +647,9 @@ export type Database = {
           compliance_status?: Database["public"]["Enums"]["compliance_status"]
           created_at?: string
           cv_file_url?: string | null
+          cv_has_photo?: boolean | null
+          cv_pseudonymization_meta?: Json | null
+          cv_pseudonymized_at?: string | null
           cv_raw_text?: string | null
           date_of_birth?: string | null
           drivers_license_expiry?: string | null
@@ -709,6 +715,9 @@ export type Database = {
           compliance_status?: Database["public"]["Enums"]["compliance_status"]
           created_at?: string
           cv_file_url?: string | null
+          cv_has_photo?: boolean | null
+          cv_pseudonymization_meta?: Json | null
+          cv_pseudonymized_at?: string | null
           cv_raw_text?: string | null
           date_of_birth?: string | null
           drivers_license_expiry?: string | null

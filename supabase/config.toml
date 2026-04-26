@@ -121,6 +121,9 @@ verify_jwt = false
 [functions.analyze-cv]
 verify_jwt = false
 
+[functions.analyze-cv-batch]
+verify_jwt = false
+
 [functions.analyze-cv-callback]
 verify_jwt = false
 

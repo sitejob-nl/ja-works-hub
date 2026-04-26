@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useSuperAdmin } from '@/contexts/SuperAdminContext';
-import { Shield, Building2, AlertTriangle, Users, LogOut, LayoutDashboard, Package } from 'lucide-react';
+import { Shield, Building2, AlertTriangle, Users, LogOut, LayoutDashboard, Package, Brain } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
@@ -9,6 +9,7 @@ const navItems = [
   { label: 'Organisaties', icon: Building2, path: '/superadmin/organisaties' },
   { label: 'Gebruikers', icon: Users, path: '/superadmin/gebruikers' },
   { label: 'Abonnementen', icon: Package, path: '/superadmin/abonnementen' },
+  { label: 'AI CV Backfill', icon: Brain, path: '/superadmin/cv-backfill' },
   { label: 'Foutmeldingen', icon: AlertTriangle, path: '/superadmin/errors' },
 ];
 
