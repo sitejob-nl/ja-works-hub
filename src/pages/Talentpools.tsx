@@ -12,6 +12,10 @@ import { Pagination, PaginationContent, PaginationItem, PaginationLink, Paginati
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 
 const PAGE_SIZE = 20;
@@ -35,7 +39,13 @@ const Talentpools = () => {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const [createOpen, setCreateOpen] = useState(false);
-  const [form, setForm] = useState({ name: '', description: '', color: '#3b82f6' });
+  const [form, setForm] = useState({
+    name: '',
+    description: '',
+    color: '#3b82f6',
+    is_dynamic: false,
+    refresh_frequency: 'manual' as 'manual' | 'daily' | 'weekly',
+  });
 
   const { data, isLoading } = useQuery({
     queryKey: ['talentpools', orgId, search, page],
@@ -63,7 +73,7 @@ const Talentpools = () => {
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('talentpools' as any)
         .insert({
           organization_id: orgId,
@@ -71,14 +81,20 @@ const Talentpools = () => {
           description: form.description || null,
           color: form.color || null,
           created_by: profile?.id || null,
-        });
+          is_dynamic: form.is_dynamic,
+          refresh_frequency: form.is_dynamic ? form.refresh_frequency : 'manual',
+        })
+        .select('id')
+        .single();
       if (error) throw error;
+      return data;
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       qc.invalidateQueries({ queryKey: ['talentpools'] });
       setCreateOpen(false);
-      setForm({ name: '', description: '', color: '#3b82f6' });
-      toast.success('Talentpool aangemaakt');
+      setForm({ name: '', description: '', color: '#3b82f6', is_dynamic: false, refresh_frequency: 'manual' });
+      toast.success(form.is_dynamic ? 'Dynamische pool aangemaakt — stel filters in om te vullen' : 'Talentpool aangemaakt');
+      if (form.is_dynamic && data?.id) navigate(`/talentpools/${data.id}`);
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -124,9 +140,10 @@ const Talentpools = () => {
               <TableHeader>
                 <TableRow>
                   <TableHead>Naam</TableHead>
+                  <TableHead>Type</TableHead>
                   <TableHead>Beschrijving</TableHead>
                   <TableHead>Leden</TableHead>
-                  <TableHead>Aangemaakt</TableHead>
+                  <TableHead>Laatst ververst</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -152,10 +169,21 @@ const Talentpools = () => {
                           </Link>
                         </div>
                       </TableCell>
+                      <TableCell>
+                        {p.is_dynamic ? (
+                          <Badge variant="secondary" className="bg-purple-100 text-purple-700 border-0 gap-1">
+                            <Sparkles className="h-3 w-3" /> Dynamisch
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-muted-foreground">Statisch</Badge>
+                        )}
+                      </TableCell>
                       <TableCell className="text-muted-foreground max-w-xs truncate">{p.description ?? '—'}</TableCell>
                       <TableCell>{memberCount}</TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {new Date(p.created_at).toLocaleDateString('nl-NL')}
+                      <TableCell className="text-muted-foreground text-xs">
+                        {p.last_refreshed_at
+                          ? new Date(p.last_refreshed_at).toLocaleString('nl-NL', { dateStyle: 'short', timeStyle: 'short' })
+                          : p.is_dynamic ? 'Nog niet ververst' : `Aangemaakt ${new Date(p.created_at).toLocaleDateString('nl-NL')}`}
                       </TableCell>
                     </TableRow>
                   );
@@ -214,6 +242,40 @@ const Talentpools = () => {
                 ))}
               </div>
             </div>
+
+            <div className="rounded-md border bg-muted/30 p-3 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium flex items-center gap-1.5">
+                    <Sparkles className="h-4 w-4 text-purple-600" /> Dynamische pool
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Vult zichzelf op basis van filters (skills, status, plaats). Handmatig toegevoegde leden blijven behouden.
+                  </p>
+                </div>
+                <Switch
+                  checked={form.is_dynamic}
+                  onCheckedChange={(v) => setForm((f) => ({ ...f, is_dynamic: v }))}
+                />
+              </div>
+              {form.is_dynamic && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Refresh-frequentie</Label>
+                  <Select
+                    value={form.refresh_frequency}
+                    onValueChange={(v: 'manual' | 'daily' | 'weekly') => setForm((f) => ({ ...f, refresh_frequency: v }))}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="manual">Alleen handmatig</SelectItem>
+                      <SelectItem value="daily">Dagelijks (s'nachts)</SelectItem>
+                      <SelectItem value="weekly">Wekelijks (zondagnacht)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+
             <Button onClick={() => createMutation.mutate()} disabled={!form.name.trim() || createMutation.isPending} className="w-full mt-4">
               Aanmaken
             </Button>

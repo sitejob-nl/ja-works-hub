@@ -21,7 +21,9 @@ import FilterPreviewSheet from '@/components/talentpools/FilterPreviewSheet';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { CampaignWizard } from '@/components/campaigns/CampaignWizard';
 import VacancyMatchSheet from '@/components/talentpools/VacancyMatchSheet';
-import { Filter, RefreshCw, Save, Send, Sparkles } from 'lucide-react';
+import { Filter, RefreshCw, Save, Send, Sparkles, Loader2 } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const POOL_COLORS = [
   { label: 'Blauw', value: '#3b82f6' },
@@ -168,6 +170,46 @@ const TalentpoolDetail = () => {
     onError: (e: any) => toast.error(e.message),
   });
 
+  const dynamicMutation = useMutation({
+    mutationFn: async (patch: { is_dynamic?: boolean; refresh_frequency?: string }) => {
+      const { error } = await supabase
+        .from('talentpools' as any)
+        .update(patch)
+        .eq('id', id!);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['talentpool-detail', id] });
+      toast.success('Pool-instellingen bijgewerkt');
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const refreshNowMutation = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke('refresh-talentpool-members', {
+        body: { talentpool_id: id! },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      return data;
+    },
+    onSuccess: (data: any) => {
+      qc.invalidateQueries({ queryKey: ['talentpool-detail', id] });
+      qc.invalidateQueries({ queryKey: ['talentpool-members', id] });
+      qc.invalidateQueries({ queryKey: ['talentpools'] });
+      const r = data?.results?.[0];
+      if (r?.error) {
+        toast.error(r.error);
+      } else if (r) {
+        toast.success(`Ververst: +${r.added} toegevoegd, -${r.removed} verwijderd (totaal: ${r.total_after})`);
+      } else {
+        toast.success('Pool ververst');
+      }
+    },
+    onError: (e: any) => toast.error(e.message ?? 'Ververs mislukt'),
+  });
+
   // Sync filter state from pool data
   const poolFilterCriteria = pool?.filter_criteria ?? {};
   const activeFilter = Object.keys(filterCriteria).length > 0 ? filterCriteria : poolFilterCriteria;
@@ -198,7 +240,19 @@ const TalentpoolDetail = () => {
           {pool.description && (
             <p className="text-muted-foreground text-sm mt-1">{pool.description}</p>
           )}
-          <p className="text-sm text-muted-foreground mt-1">{members.length} lid{members.length !== 1 ? 'en' : ''}</p>
+          <div className="flex items-center gap-2 mt-2 flex-wrap">
+            {pool.is_dynamic && (
+              <Badge variant="secondary" className="bg-purple-100 text-purple-700 border-0 gap-1">
+                <Sparkles className="h-3 w-3" /> Dynamisch
+              </Badge>
+            )}
+            <p className="text-sm text-muted-foreground">{members.length} lid{members.length !== 1 ? 'en' : ''}</p>
+            {pool.is_dynamic && pool.last_refreshed_at && (
+              <p className="text-xs text-muted-foreground">
+                · Laatst ververst {new Date(pool.last_refreshed_at).toLocaleString('nl-NL', { dateStyle: 'short', timeStyle: 'short' })}
+              </p>
+            )}
+          </div>
         </div>
         <div className="flex gap-2 shrink-0">
           {!editing && (
@@ -257,6 +311,59 @@ const TalentpoolDetail = () => {
           </div>
         </div>
       )}
+
+      {/* Dynamic pool settings */}
+      <div className="bg-card rounded-lg border p-4 space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium flex items-center gap-1.5">
+              <Sparkles className="h-4 w-4 text-purple-600" /> Dynamische pool
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Vult zichzelf op basis van filter_criteria. Handmatig toegevoegde leden blijven behouden bij refresh.
+            </p>
+          </div>
+          <Switch
+            checked={!!pool.is_dynamic}
+            onCheckedChange={(v) => dynamicMutation.mutate({ is_dynamic: v, refresh_frequency: v ? (pool.refresh_frequency ?? 'manual') : 'manual' })}
+          />
+        </div>
+        {pool.is_dynamic && (
+          <div className="flex items-end gap-3 flex-wrap pt-2 border-t">
+            <div className="space-y-1.5 flex-1 min-w-[180px]">
+              <Label className="text-xs">Refresh-frequentie</Label>
+              <Select
+                value={pool.refresh_frequency ?? 'manual'}
+                onValueChange={(v) => dynamicMutation.mutate({ refresh_frequency: v })}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="manual">Alleen handmatig</SelectItem>
+                  <SelectItem value="daily">Dagelijks (s'nachts)</SelectItem>
+                  <SelectItem value="weekly">Wekelijks (zondagnacht)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button
+              size="sm"
+              onClick={() => refreshNowMutation.mutate()}
+              disabled={refreshNowMutation.isPending || !pool.filter_criteria}
+              className="gap-1.5"
+            >
+              {refreshNowMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+              Ververs nu
+            </Button>
+            {!pool.filter_criteria && (
+              <p className="text-xs text-amber-600 w-full">Stel eerst filters in via Slimme filters hieronder.</p>
+            )}
+            {pool.last_refresh_meta && (
+              <p className="text-xs text-muted-foreground w-full">
+                Laatste run: +{pool.last_refresh_meta.added} toegevoegd, -{pool.last_refresh_meta.removed} verwijderd, totaal {pool.last_refresh_meta.total}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Smart Filters */}
       <Collapsible open={filtersOpen} onOpenChange={setFiltersOpen}>
@@ -339,6 +446,7 @@ const TalentpoolDetail = () => {
                   <TableRow>
                     <TableHead>Naam</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Herkomst</TableHead>
                     <TableHead>Telefoon</TableHead>
                     <TableHead>E-mail</TableHead>
                     <TableHead>Vaardigheden</TableHead>
@@ -362,6 +470,15 @@ const TalentpoolDetail = () => {
                           <Badge variant="secondary" className={statusBadge[c.status] ?? ''}>
                             {statusLabel[c.status] ?? c.status}
                           </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {m.added_by_filter ? (
+                            <Badge variant="outline" className="border-purple-300 text-purple-700 gap-1 text-[10px]">
+                              <Sparkles className="h-2.5 w-2.5" /> Filter
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-[10px] text-muted-foreground">Handmatig</Badge>
+                          )}
                         </TableCell>
                         <TableCell>{c.phone ?? '—'}</TableCell>
                         <TableCell>{c.email ?? '—'}</TableCell>

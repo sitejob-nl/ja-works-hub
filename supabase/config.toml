@@ -124,6 +124,9 @@ verify_jwt = false
 [functions.analyze-cv-batch]
 verify_jwt = false
 
+[functions.refresh-talentpool-members]
+verify_jwt = false
+
 [functions.analyze-cv-callback]
 verify_jwt = false
 

@@ -5797,18 +5797,21 @@ export type Database = {
         Row: {
           added_at: string | null
           added_by: string | null
+          added_by_filter: boolean
           candidate_id: string
           talentpool_id: string
         }
         Insert: {
           added_at?: string | null
           added_by?: string | null
+          added_by_filter?: boolean
           candidate_id: string
           talentpool_id: string
         }
         Update: {
           added_at?: string | null
           added_by?: string | null
+          added_by_filter?: boolean
           candidate_id?: string
           talentpool_id?: string
         }
@@ -5844,8 +5847,12 @@ export type Database = {
           description: string | null
           filter_criteria: Json | null
           id: string
+          is_dynamic: boolean
+          last_refresh_meta: Json | null
+          last_refreshed_at: string | null
           name: string
           organization_id: string
+          refresh_frequency: string
           updated_at: string | null
         }
         Insert: {
@@ -5855,8 +5862,12 @@ export type Database = {
           description?: string | null
           filter_criteria?: Json | null
           id?: string
+          is_dynamic?: boolean
+          last_refresh_meta?: Json | null
+          last_refreshed_at?: string | null
           name: string
           organization_id: string
+          refresh_frequency?: string
           updated_at?: string | null
         }
         Update: {
@@ -5866,8 +5877,12 @@ export type Database = {
           description?: string | null
           filter_criteria?: Json | null
           id?: string
+          is_dynamic?: boolean
+          last_refresh_meta?: Json | null
+          last_refreshed_at?: string | null
           name?: string
           organization_id?: string
+          refresh_frequency?: string
           updated_at?: string | null
         }
         Relationships: [
