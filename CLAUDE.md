@@ -17,16 +17,21 @@ This file provides guidance to Claude Code when working with the JA Werkt codeba
 ## Commands
 
 ```bash
-npm run dev          # Dev server on port 8080
-npm run build        # Production build
-npm run build:dev    # Development build
-npm run lint         # ESLint
-npm run test         # Vitest (single run)
-npm run test:watch   # Vitest (watch mode)
+npm run dev              # Dev server on port 8080
+npm run build            # Production build
+npm run build:dev        # Development build
+npm run lint             # ESLint
+npm run test             # Vitest unit (single run)
+npm run test:watch       # Vitest unit (watch)
+npm run test:e2e         # Playwright e2e (all)
+npm run test:e2e:api     # Playwright e2e against API
+npm run test:e2e:flows   # Playwright e2e — full UI flows
 npx vitest run src/test/example.test.ts  # Run single test file
 ```
 
-Edge functions are Deno/TypeScript and deploy via Supabase CLI. They live in `supabase/functions/` and are configured in `supabase/config.toml`.
+Edge functions are Deno/TypeScript and live in `supabase/functions/` (configured in `supabase/config.toml`). Deploy via:
+- **Supabase MCP** (preferred for this project): `mcp__claude_ai_Supabase__deploy_edge_function` — see "Supabase MCP workflow" below
+- **Supabase CLI** (alternatief): `npx supabase functions deploy <name>`
 
 ## Tech Stack
 
@@ -35,7 +40,7 @@ Edge functions are Deno/TypeScript and deploy via Supabase CLI. They live in `su
 - **Backend**: Supabase (PostgreSQL + Auth + Edge Functions + Realtime + Storage)
 - **PWA**: vite-plugin-pwa, standalone mode, auto-update, 5MB cache limit
 - **CSV/Excel**: PapaParse (CSV), xlsx (Excel export)
-- **Testing**: Vitest + Testing Library + jsdom (minimal coverage — only placeholder test exists)
+- **Testing**: Vitest + Testing Library + jsdom (unit), Playwright (e2e via `tests/e2e/`)
 - **Build tooling**: lovable-tagger (dev only), autoprefixer, postcss
 
 ### TypeScript Config
@@ -257,13 +262,15 @@ Database triggers encrypt sensitive fields (BSN, IBAN, webhook secrets, access t
 
 `logAudit()` from `src/lib/audit.ts` records changes with `{ action, tableName, recordId, oldValues?, newValues?, reason? }`. It silent-fails (never throws). Actions: `create`, `update`, `delete`, `status_change`, `login`, `export`, `override`.
 
-## Database Schema (77 tables + 3 views)
+## Database Schema (~95 tables + 3 views)
+
+> Schema verifieer je via `mcp__claude_ai_Supabase__list_tables` of de gegenereerde `src/integrations/supabase/types.ts` (single source of truth voor TS-types).
 
 ### Candidates & HR
 
 | Table | Purpose | Key Columns |
 |-------|---------|-------------|
-| `candidates` | Core entity for candidates AND employees (merged) | id, first_name, last_name, email, phone, date_of_birth, gender, nationality, bsn (encrypted), iban (encrypted), skills[], languages[], certifications[], cv_file_url, cv_raw_text, ai_analysis, ai_status, ai_summary, ai_reliability_score, ai_classification, ai_function_group, ai_target_functions[], ai_positive_signals[], ai_red_flags[], ai_risk_factors[], ai_interview_questions[], employee_status, employee_number, status, compliance_status, onboarding_completed, portal_enabled, portal_activated_at, portal_last_login, organization_id, source, auth_user_id |
+| `candidates` | Core entity for candidates AND employees (merged) | id, first_name, last_name, email, phone, bsn (encrypted), iban (encrypted), skills[], languages[], certifications[], cv_file_url, cv_raw_text, **cv_has_photo**, **cv_pseudonymized_at**, **cv_pseudonymization_meta**, ai_analysis, ai_status, ai_summary, ai_reliability_score, ai_classification, ai_function_group, ai_target_functions[], ai_positive_signals[], ai_red_flags[], ai_risk_factors[], ai_interview_questions[], employee_status, status, compliance_status, organization_id |
 | `employees` | Legacy employee table (candidates is source of truth) | Similar to candidates |
 | `candidate_employment` | Employment history per candidate | candidate_id, start_date, end_date, end_reason, contract_type, contract_hours, pay_frequency, vacation_days_total/used, vacation_money_percentage, pension_scheme, insurance_type, is_current |
 | `candidate_profile_tokens` | Public profile access tokens | candidate_id, token, expires_at, organization_id |
@@ -298,7 +305,7 @@ Database triggers encrypt sensitive fields (BSN, IBAN, webhook secrets, access t
 | `placement_hour_types` | Hour categorizations per placement | placement_id, name, rate_multiplier |
 | `placement_travel_types` | Travel expense types per placement | placement_id, name, rate |
 | `matches` | AI candidate-vacancy matching results | candidate_id, vacancy_id, score, reliability_score, skills_match, languages_match, experience_level, cultural_fit, availability_match |
-| `vacancies` | Open positions | company_id, title, description, requirements, location, hourly_rate, status (open/on_hold/vervuld/gesloten), organization_id |
+| `vacancies` | Open positions | company_id, **function_id** (FK→company_functions, optional), title, description, location, hourly_rate, salary_min/max, status (open/on_hold/vervuld/gesloten), **urgency (1-3 NOT NULL CHECK)**, start_date, **start_date_text** (Direct/ZSM), end_date, organization_id |
 
 ### Timesheets & Invoicing
 
@@ -315,8 +322,9 @@ Database triggers encrypt sensitive fields (BSN, IBAN, webhook secrets, access t
 
 | Table | Purpose | Key Columns |
 |-------|---------|-------------|
-| `properties` | Housing properties (panden) | name, address fields, owner_name, owner_phone, total_units, max_occupancy, status, organization_id |
-| `units` | Rooms/units within properties | property_id, name, floor, capacity, status (beschikbaar/gereserveerd/bezet/onderhoud/geblokkeerd), monthly_rent |
+| `properties` | Housing properties (panden) | **name (nullable, optionele bijnaam)**, address_street/postal/city, **owner_id** (FK→property_owners), ownership_type (huur/eigendom/beheer), rental_contract_url, monthly_rent, cost_gas/water/electra/municipal_tax/other, max_persons_permit, has_rental_permit, has_snf_certificate, total_capacity, organization_id |
+| `property_owners` | **Master-data eigenaren** (1 rij per unieke owner per org) | name, contact_person, email, phone, notes, organization_id (UNIQUE op lower(name) per org) |
+| `units` | Rooms/units within properties | property_id, name, floor, capacity, status (beschikbaar/gereserveerd/bezet/onderhoud/geblokkeerd), weekly_cost. **monthly_cost + deposit_amount zijn DROPPED** — borg op org-level setting. |
 | `housing_assignments` | Resident assignments to units | unit_id, candidate_id, check_in_date, check_out_date, status (gereserveerd/ingecheckt/uitgecheckt), deposit_amount |
 | `housing_inspections` | Property inspections | property_id, inspection_date, inspected_by, type (check_in/check_out/periodiek/onderhoud/klacht), status, photos[], notes |
 | `key_registrations` | Key handout tracking | unit_id, candidate_id, key_number, handed_out_at, returned_at |
@@ -392,8 +400,8 @@ Database triggers encrypt sensitive fields (BSN, IBAN, webhook secrets, access t
 | `rate_limit_tracking` | Campaign rate limiting | organization_id, channel, window_type, count |
 | `recruiter_tasks` | Recruiter task items | organization_id, title, status, assigned_to, due_date |
 | `notes` | Notes on any entity | entity_type, entity_id, content, created_by |
-| `talentpools` | Candidate segment pools | organization_id, name, description, filter_criteria |
-| `talentpool_members` | Pool membership | talentpool_id, candidate_id |
+| `talentpools` | Candidate segment pools | organization_id, name, description, color, filter_criteria (JSONB), **is_dynamic** (auto-vullen via filter), **refresh_frequency** (manual/daily/weekly), **last_refreshed_at**, **last_refresh_meta** |
+| `talentpool_members` | Pool membership | talentpool_id, candidate_id, **added_by_filter** (true=auto, false=handmatig — handmatige blijven bij refresh) |
 
 ### Views
 
@@ -458,7 +466,9 @@ Database triggers encrypt sensitive fields (BSN, IBAN, webhook secrets, access t
 | `sa_update_org_active` | org_uuid, active | void | Superadmin: activate/deactivate org |
 | `sa_update_org_plan` | org_uuid, new_plan_id | void | Superadmin: change subscription |
 
-## Edge Functions (~55 functions)
+## Edge Functions (~57 functions)
+
+> **NB**: alle protected functions hebben `verify_jwt = false` in `config.toml` met **self-auth** in de function body (de Supabase Edge Runtime kan ES256 signing keys niet valideren). Dat is bewust en gedocumenteerd in config.toml.
 
 ### Public (verify_jwt = false)
 
@@ -526,8 +536,10 @@ Database triggers encrypt sensitive fields (BSN, IBAN, webhook secrets, access t
 |----------|---------|
 | `calculate-match` | AI candidate-vacancy matching score |
 | `cv-rewrite` | AI-powered CV improvement |
-| `analyze-cv` | Submit CV for LLM analysis (async, calls VPS) |
+| `analyze-cv` | Submit CV for LLM analysis (async, calls VPS). Pseudonimiseert naam/email/tel/BSN/IBAN vóór verzending |
 | `analyze-cv-callback` | Receive async CV analysis results from LLM VPS |
+| `analyze-cv-batch` | **Backfill** voor bestaande CV's: download PDF uit storage → unpdf-extract → pseudonimiseer → VPS. Superadmin-auth, throttle 1.5s/CV |
+| `refresh-talentpool-members` | **Dynamische talentpools**: past `filter_criteria` toe + diff vs huidige leden. Single-mode (user-JWT) of cron-mode (`x-cron-secret`) |
 | `validate-timesheets` | AI validation of timesheet entries (6 rules) |
 | `recruiter-priorities` | Calculate recruiter task priorities |
 
@@ -581,18 +593,25 @@ Similar to WhatsApp — tenant registration via SiteJob Connect → OAuth popup 
 
 ### AI / LLM — CV Analysis via external VPS
 
-**Edge functions:** `analyze-cv`, `analyze-cv-callback`
+**Edge functions:** `analyze-cv`, `analyze-cv-callback`, `analyze-cv-batch`
 
-**Flow:**
+**Single-CV flow (`analyze-cv`):**
 1. PDF uploaded → text extracted client-side (`file.text()`, text-based PDFs only, no OCR)
-2. Sanitization: removes prompt injection patterns
-3. Text capped at 15,000 chars → POST to `{OLLAMA_BASE_URL}/analyze` with callback URL
-4. VPS processes asynchronously → calls back to `analyze-cv-callback`
-5. Results stored in candidate: ai_analysis, ai_status, ai_reliability_score, ai_function_group, ai_classification, ai_interview_questions[], ai_risk_factors[], ai_summary
+2. Server-side sanitization: prompt-injection stripping
+3. **AVG-pseudonimisering** (`_shared/cv-pseudonymize.ts`): naam → `[KANDIDAAT]`, emails → `[EMAIL]`, NL-telefoon → `[TELEFOON]`, BSN met 11-proef → `[BSN]`, IBAN → `[IBAN]`. Counts in `cv_pseudonymization_meta`.
+4. Text capped at 15.000 chars → POST naar `{OLLAMA_BASE_URL}/analyze` met callback URL
+5. VPS verwerkt async → callt `analyze-cv-callback`
+6. Results in candidate: ai_analysis, ai_status, ai_reliability_score, ai_function_group, ai_classification, etc.
 
-**LLM:** Qwen3-14B on Hetzner VPS, accessed via `OLLAMA_BASE_URL` + `OLLAMA_API_KEY` env vars
+**Batch backfill (`analyze-cv-batch`):**
+- UI in `/superadmin/cv-backfill` (alleen superadmins)
+- Pakt N kandidaten met `cv_file_url` zonder voltooide analyse
+- Download PDF uit storage → **unpdf** text-extract → photo-detectie via `/Subtype /Image` byte-scan → pseudonimisering → VPS-call
+- Throttle 1.5s/CV. Max batch 25. Optie: mislukten opnieuw proberen.
 
-**UI:** `src/components/candidates/tabs/CandidateAiTab.tsx` with realtime Supabase channel subscription
+**LLM:** Qwen3-14B op Hetzner VPS via `OLLAMA_BASE_URL` + `OLLAMA_API_KEY` env vars
+
+**UI:** `src/components/candidates/tabs/CandidateAiTab.tsx` (realtime via Supabase channel) + `src/pages/superadmin/SuperAdminCvBackfill.tsx`
 
 ### Carerix — CSV wizard + live API sync
 
@@ -640,6 +659,33 @@ Referenced only as payroller type in `src/lib/payroller.ts`. JA Werkt invoices f
 
 No code exists. `src/pages/Agenda.tsx` is an internal calendar view, not a Google-synced calendar.
 
+### Dynamische talentpools
+
+**Edge function:** `refresh-talentpool-members` (single-mode via user-JWT, cron-mode via `x-cron-secret`)
+
+- `talentpools.is_dynamic = true` + `filter_criteria` jsonb → pool wordt auto-gevuld
+- Refresh past filter toe op candidates → diff vs `talentpool_members.added_by_filter = true`
+- Voegt missende toe (`added_by_filter = true`), verwijdert die niet meer matchen — handmatig toegevoegden (`added_by_filter = false`) blijven altijd staan
+- `last_refresh_meta` houdt `{ added, removed, total, matched }` bij
+- pg_cron schedules zijn opt-in via `supabase/migrations/20260425170000_d3_dynamic_talentpools_cron.sql` (vereist `CRON_SECRET` env var op edge function + `app.cron_secret` setting in DB)
+- UI: `/talentpools` lijst toont type + last_refreshed; detail-pagina heeft "Ververs nu" knop + frequency-selector
+
+## Working with Supabase MCP (preferred for this project)
+
+Voor DB- en edge-function-werk gebruiken we standaard de Supabase MCP-tools (vermijdt CLI-installatie + auth):
+
+| Taak | MCP tool |
+|------|----------|
+| Migration toepassen op productie | `mcp__claude_ai_Supabase__apply_migration` |
+| Edge function deployen | `mcp__claude_ai_Supabase__deploy_edge_function` |
+| Types regenereren | `mcp__claude_ai_Supabase__generate_typescript_types` (output in JSON-wrapper, extract via `python3 -c 'json.load...'` naar `src/integrations/supabase/types.ts`) |
+| Migration-historie | `mcp__claude_ai_Supabase__list_migrations` |
+| Tabellen / extensies | `mcp__claude_ai_Supabase__list_tables` / `list_extensions` |
+
+Project-id: `noaupcteygfvlyymqtew` (vermeld in CLAUDE.md "Team & Contact" hieronder).
+
+**Patroon na schema-wijziging**: apply_migration → generate_typescript_types → schrijf naar `src/integrations/supabase/types.ts` → spiegel-migration aanmaken in `supabase/migrations/` voor lokale dev/CI consistency.
+
 ## Key Patterns & Conventions
 
 ### Data Fetching
@@ -647,7 +693,7 @@ No code exists. `src/pages/Agenda.tsx` is an internal calendar view, not a Googl
 - All server state via **TanStack Query** + Supabase PostgREST
 - Query keys: `['table-name', orgId, ...filters]`
 - Supabase client: `src/integrations/supabase/client.ts`
-- Types: `src/integrations/supabase/types.ts` — regenerate with `supabase gen types typescript`
+- Types: `src/integrations/supabase/types.ts` — regenereer via Supabase MCP (zie sectie hierboven) of `npx supabase gen types typescript --project-id noaupcteygfvlyymqtew`
 
 ### Auth / Roles
 
@@ -686,33 +732,51 @@ const { data: { user } } = await supabaseClient.auth.getUser(authHeader.replace(
 ## Known Issues & Technical Debt
 
 ### Lovable Legacy
-- Package name is `vite_react_shadcn_ts` (generic Lovable default)
 - `lovable-tagger` in devDependencies (dev-only, harmless)
 - Some components may have verbose/duplicated code typical of AI-generated code
 
 ### Testing
-- Only a placeholder test exists — no real test coverage
-- Infrastructure (Vitest + Testing Library + jsdom) is set up and ready
+- Vitest + Testing Library + jsdom voor unit; **Playwright voor e2e** (`tests/e2e/`)
+- Coverage is nog beperkt — uitbouw lopend
 
 ### Integrations
 - WhatsApp: full code but not tested with real Meta credentials
 - Exact Online: depends on SiteJob Connect service
-- CV Analysis: text-based PDFs only (no OCR), basic prompt injection sanitization
+- CV Analysis: text-based PDFs only (no OCR), basic prompt injection sanitization, **server-side AVG-pseudonimisering actief**
 
 ### Hardcoded Values
 - SiteJob Connect URLs hardcoded in edge functions
 - Meta Graph API version: `v25.0`
-- CV text cap: 15,000 chars
+- CV text cap: 15.000 chars
 - Campaign batch size: 50 recipients
+- AI CV batch throttle: 1500 ms/CV, max 25 per call
 
-### Open gaps from client meetings (2026-03-20 / 03-26 / 04-10)
-- **Phone validation in PlacementConfirmation is a warning, not a hard block** — klant 03-26 wil blokkeren
-- **"Voordragen"** nog als label in `MatchPipeline.tsx` + `VacancyMatchesTab.tsx` (klant 04-10 wil "Nieuwe match maken")
-- **Km-verwachting + alarm**: `mileage_entries` tabel aanwezig, maar expected-km calculation + alarm + opvolg-WhatsApp ontbreken
-- **AI e-mail triage**: Microsoft-integratie staat (OAuth + API proxy), maar classificatie/voorstel-laag bovenop is niet gebouwd
-- **Indirecte facturatiestroom** (A1 → tussenlaag → eindklant) is niet expliciet in datamodel onderscheiden
-- **`useModuleEnabled`** wordt in slechts 3 files gebruikt — feature-flag systeem is aanwezig maar niet breed toegepast
-- **Welkomstvideo + i18n in medewerkerportaal** (03-20 FR-41)
+### Open gaps from client meetings (laatste meeting Jeroen 2026-04-25)
+
+**Closed na sprints 1/2/3/5/D3:**
+- ✅ Phone hard block in PlacementConfirmationDialog (B5)
+- ✅ "Voordragen" → "Nieuwe match" labels (al gedaan, geverifieerd)
+- ✅ Vacatures-overzicht: Aangemaakt → Startdatum, status-toggle, overdue, urgentie 1-3 (B1)
+- ✅ Functie-koppeling op vacatures + Direct/ZSM tekst (B2/C1)
+- ✅ Property naam optioneel + adres-gedreven (B3)
+- ✅ Units `monthly_cost` + `deposit_amount` verwijderd (B4)
+- ✅ Owners als master-data tabel (C2)
+- ✅ Housing dashboard: focus op vrije plekken + 12-weken-grafiek (C4)
+- ✅ AI CV pseudonimisering server-side (C8) + batch backfill 1100 CV's (C6) + photo-detectie (C7)
+- ✅ Talentpools dynamisch met filter-refresh (D3)
+
+**Nog open:**
+- **Schoonmaak-module** (C5) — `cleaning_schedules` + `cleaning_logs` + tab + dashboard widget
+- **Kosten-reminder edge function** (C3) — cron, 3 mnd → `recruiter_tasks`
+- **Buddy app CSV-import** (C9) — handmatig data uit Buddy migreren
+- **AI e-mail triage** (D1) — classificatie + reply-suggesties bovenop Microsoft Graph
+- **Carerix documenten/historie** (D2) — alternatieve CSV-route, want v1 API geen docs/employment/vacancies
+- **Outbound SMS** (D4) — provider-keuze (MessageBird/Twilio) eerst nodig
+- **WhatsApp inbound replies** (D5) — UI-check of webhook → chat-UI werkt
+- **Km-verwachting + alarm** (mileage_entries staat, expected-km + alarm + opvolg-WhatsApp niet)
+- **Indirecte facturatiestroom** (A1 → tussenlaag → eindklant) niet expliciet in datamodel
+- **`useModuleEnabled`** wordt in slechts 3 files gebruikt — niet breed toegepast
+- **Welkomstvideo + i18n medewerkerportaal** (FR-41)
 
 ### Missing Features (Fase 2)
 - Flexpedia API integration
@@ -743,6 +807,8 @@ const { data: { user } } = await supabaseClient.auth.getUser(authHeader.replace(
 - `EXA_API_KEY` — Exa people search
 
 ### Regenerate Types
+
+Voorkeur via Supabase MCP (zie "Working with Supabase MCP" sectie). CLI-fallback:
 
 ```bash
 npx supabase gen types typescript --project-id noaupcteygfvlyymqtew > src/integrations/supabase/types.ts
