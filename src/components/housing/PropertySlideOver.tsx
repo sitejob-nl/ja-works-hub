@@ -12,6 +12,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { geocodeAndSaveProperty } from '@/lib/distance';
+import OwnerSelector from '@/components/housing/OwnerSelector';
 
 interface Props {
   open: boolean;
@@ -30,8 +31,8 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
   const defaults = {
     name: '', address_street: '', address_postal: '', address_city: '',
     // owner
-    owner_name: '', owner_phone: '', owner_email: '', owner_contact_person: '',
-    rental_contract_url: '', ownership_type: '', owner_notes: '',
+    owner_id: null as string | null,
+    rental_contract_url: '', ownership_type: '',
     // permits
     has_rental_permit: false, rental_permit_number: '', rental_permit_expiry: '',
     has_snf_certificate: false, snf_certificate_number: '', snf_certificate_expiry: '',
@@ -52,11 +53,9 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
       setForm({
         name: property.name ?? '', address_street: property.address_street ?? '',
         address_postal: property.address_postal ?? '', address_city: property.address_city ?? '',
-        owner_name: property.owner_name ?? '', owner_phone: property.owner_phone ?? '',
-        owner_email: property.owner_email ?? '', owner_contact_person: property.owner_contact_person ?? '',
+        owner_id: property.owner_id ?? null,
         rental_contract_url: property.rental_contract_url ?? '',
         ownership_type: property.ownership_type ?? '',
-        owner_notes: property.owner_notes ?? '',
         has_rental_permit: property.has_rental_permit ?? false,
         rental_permit_number: property.rental_permit_number ?? '',
         rental_permit_expiry: property.rental_permit_expiry ?? '',
@@ -93,13 +92,9 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
         address_street: form.address_street,
         address_postal: form.address_postal,
         address_city: form.address_city,
-        owner_name: form.owner_name || null,
-        owner_phone: form.owner_phone || null,
-        owner_email: form.owner_email || null,
-        owner_contact_person: form.owner_contact_person || null,
+        owner_id: form.owner_id,
         rental_contract_url: form.rental_contract_url || null,
         ownership_type: form.ownership_type || null,
-        owner_notes: form.owner_notes || null,
         has_rental_permit: form.has_rental_permit,
         rental_permit_number: form.has_rental_permit ? (form.rental_permit_number || null) : null,
         rental_permit_expiry: form.has_rental_permit ? (form.rental_permit_expiry || null) : null,
@@ -169,13 +164,9 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
           {/* Section 2: Owner */}
           <div className="space-y-3">
             <SectionHeader>Eigenaar / Verhuurder</SectionHeader>
-            <div className="grid grid-cols-2 gap-3">
-              <div><Label>Naam eigenaar</Label><Input value={form.owner_name} onChange={(e) => set('owner_name', e.target.value)} /></div>
-              <div><Label>Contactpersoon</Label><Input value={form.owner_contact_person} onChange={(e) => set('owner_contact_person', e.target.value)} /></div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div><Label>Telefoon eigenaar</Label><Input type="tel" value={form.owner_phone} onChange={(e) => set('owner_phone', e.target.value)} /></div>
-              <div><Label>E-mail eigenaar</Label><Input type="email" value={form.owner_email} onChange={(e) => set('owner_email', e.target.value)} /></div>
+            <div>
+              <Label>Eigenaar</Label>
+              <OwnerSelector value={form.owner_id} onChange={(id) => set('owner_id', id)} showManageLink />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -191,7 +182,6 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
               </div>
               <div><Label>Link huurcontract</Label><Input value={form.rental_contract_url} onChange={(e) => set('rental_contract_url', e.target.value)} /></div>
             </div>
-            <div><Label>Notities eigenaar</Label><Textarea value={form.owner_notes} onChange={(e) => set('owner_notes', e.target.value)} rows={2} /></div>
           </div>
 
           <Separator />

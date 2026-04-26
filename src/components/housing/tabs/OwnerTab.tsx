@@ -26,52 +26,57 @@ const OwnerTab = ({ property }: { property: any }) => {
   const overCapacity = property.max_persons_permit && currentOccupancy > property.max_persons_permit;
 
   const ownershipLabels: Record<string, string> = { huur: 'Huur', eigendom: 'Eigendom', beheer: 'Beheer' };
+  const owner = property.property_owners ?? null;
 
   return (
     <div className="space-y-6">
       {/* Owner info */}
       <Card className="p-5 space-y-4">
         <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">Eigenaar / Verhuurder</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <InfoRow label="Naam" value={property.owner_name} />
-          <InfoRow label="Contactpersoon" value={property.owner_contact_person} />
-          {property.owner_phone && (
-            <div>
-              <p className="text-xs text-muted-foreground">Telefoon</p>
-              <a href={`tel:${property.owner_phone}`} className="text-sm font-medium text-primary hover:underline flex items-center gap-1">
-                <Phone className="h-3.5 w-3.5" /> {property.owner_phone}
-              </a>
-            </div>
-          )}
-          {property.owner_email && (
-            <div>
-              <p className="text-xs text-muted-foreground">E-mail</p>
-              <a href={`mailto:${property.owner_email}`} className="text-sm font-medium text-primary hover:underline flex items-center gap-1">
-                <Mail className="h-3.5 w-3.5" /> {property.owner_email}
-              </a>
-            </div>
-          )}
-          {property.ownership_type && (
-            <div>
-              <p className="text-xs text-muted-foreground">Type</p>
-              <Badge variant="secondary" className="mt-1">{ownershipLabels[property.ownership_type] ?? property.ownership_type}</Badge>
-            </div>
-          )}
-          {property.rental_contract_url && (
-            <div>
-              <p className="text-xs text-muted-foreground">Huurcontract</p>
-              <a href={property.rental_contract_url} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline flex items-center gap-1 mt-1">
-                <ExternalLink className="h-3.5 w-3.5" /> Bekijk contract
-              </a>
-            </div>
-          )}
-        </div>
-        {property.owner_notes && (
+        {!owner ? (
+          <p className="text-sm text-muted-foreground">Geen eigenaar gekoppeld.</p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <InfoRow label="Naam" value={owner.name} />
+            <InfoRow label="Contactpersoon" value={owner.contact_person} />
+            {owner.phone && (
+              <div>
+                <p className="text-xs text-muted-foreground">Telefoon</p>
+                <a href={`tel:${owner.phone}`} className="text-sm font-medium text-primary hover:underline flex items-center gap-1">
+                  <Phone className="h-3.5 w-3.5" /> {owner.phone}
+                </a>
+              </div>
+            )}
+            {owner.email && (
+              <div>
+                <p className="text-xs text-muted-foreground">E-mail</p>
+                <a href={`mailto:${owner.email}`} className="text-sm font-medium text-primary hover:underline flex items-center gap-1">
+                  <Mail className="h-3.5 w-3.5" /> {owner.email}
+                </a>
+              </div>
+            )}
+            {property.ownership_type && (
+              <div>
+                <p className="text-xs text-muted-foreground">Type</p>
+                <Badge variant="secondary" className="mt-1">{ownershipLabels[property.ownership_type] ?? property.ownership_type}</Badge>
+              </div>
+            )}
+            {property.rental_contract_url && (
+              <div>
+                <p className="text-xs text-muted-foreground">Huurcontract</p>
+                <a href={property.rental_contract_url} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline flex items-center gap-1 mt-1">
+                  <ExternalLink className="h-3.5 w-3.5" /> Bekijk contract
+                </a>
+              </div>
+            )}
+          </div>
+        )}
+        {owner?.notes && (
           <>
             <Separator />
             <div>
               <p className="text-xs text-muted-foreground mb-1">Notities</p>
-              <p className="text-sm whitespace-pre-wrap">{property.owner_notes}</p>
+              <p className="text-sm whitespace-pre-wrap">{owner.notes}</p>
             </div>
           </>
         )}

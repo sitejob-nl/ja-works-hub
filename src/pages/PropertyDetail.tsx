@@ -27,6 +27,7 @@ const PropertyDetail = () => {
     queryFn: async () => {
       const { data, error } = await supabase.from('properties').select(`
         *,
+        property_owners(id, name, contact_person, email, phone, notes),
         units!units_property_id_fkey(
           id, name, capacity, status, floor, weekly_cost, notes,
           housing_assignments!housing_assignments_unit_id_fkey(
@@ -91,8 +92,8 @@ const PropertyDetail = () => {
             <span className="text-sm font-medium">{pct}%</span>
           </div>
           <div className="flex items-center gap-4 mt-2 flex-wrap">
-            {property.owner_name && (
-              <span className="text-xs text-muted-foreground">Eigenaar: <span className="text-foreground font-medium">{property.owner_name}</span></span>
+            {property.property_owners?.name && (
+              <span className="text-xs text-muted-foreground">Eigenaar: <span className="text-foreground font-medium">{property.property_owners.name}</span></span>
             )}
             {property.ownership_type && (
               <Badge variant="secondary" className="text-xs">{ownershipLabels[property.ownership_type] ?? property.ownership_type}</Badge>

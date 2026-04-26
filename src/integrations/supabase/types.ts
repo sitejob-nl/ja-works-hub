@@ -5212,11 +5212,7 @@ export type Database = {
           name: string | null
           notes: string | null
           organization_id: string
-          owner_contact_person: string | null
-          owner_email: string | null
-          owner_name: string | null
-          owner_notes: string | null
-          owner_phone: string | null
+          owner_id: string | null
           ownership_type: string | null
           rental_contract_url: string | null
           rental_permit_expiry: string | null
@@ -5250,11 +5246,7 @@ export type Database = {
           name?: string | null
           notes?: string | null
           organization_id: string
-          owner_contact_person?: string | null
-          owner_email?: string | null
-          owner_name?: string | null
-          owner_notes?: string | null
-          owner_phone?: string | null
+          owner_id?: string | null
           ownership_type?: string | null
           rental_contract_url?: string | null
           rental_permit_expiry?: string | null
@@ -5288,11 +5280,7 @@ export type Database = {
           name?: string | null
           notes?: string | null
           organization_id?: string
-          owner_contact_person?: string | null
-          owner_email?: string | null
-          owner_name?: string | null
-          owner_notes?: string | null
-          owner_phone?: string | null
+          owner_id?: string | null
           ownership_type?: string | null
           rental_contract_url?: string | null
           rental_permit_expiry?: string | null
@@ -5305,6 +5293,57 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "properties_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "properties_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "property_owners"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      property_owners: {
+        Row: {
+          contact_person: string | null
+          created_at: string
+          email: string | null
+          id: string
+          name: string
+          notes: string | null
+          organization_id: string
+          phone: string | null
+          updated_at: string
+        }
+        Insert: {
+          contact_person?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          name: string
+          notes?: string | null
+          organization_id: string
+          phone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          contact_person?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          name?: string
+          notes?: string | null
+          organization_id?: string
+          phone?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "property_owners_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"

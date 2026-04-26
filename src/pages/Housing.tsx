@@ -2,14 +2,15 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Link } from 'react-router-dom';
-import { Home, Plus, Search, LayoutGrid, List } from 'lucide-react';
+import { Home, Plus, Search, LayoutGrid, List, Bed, Building2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Card, CardContent } from '@/components/ui/card';
 import PropertySlideOver from '@/components/housing/PropertySlideOver';
+import AvailabilityChart from '@/components/housing/AvailabilityChart';
 
 const Housing = () => {
   const [search, setSearch] = useState('');
@@ -52,6 +53,11 @@ const Housing = () => {
     return 'bg-stat-green/10 text-stat-green border-0';
   };
 
+  const totalCapacity = properties.reduce((s: number, p: any) => s + (p.totalCapacity ?? 0), 0);
+  const totalOccupancy = properties.reduce((s: number, p: any) => s + (p.currentOccupancy ?? 0), 0);
+  const totalAvailable = totalCapacity - totalOccupancy;
+  const overallPct = totalCapacity > 0 ? Math.round((totalOccupancy / totalCapacity) * 100) : 0;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -63,6 +69,49 @@ const Housing = () => {
           <Plus className="h-4 w-4" /> Nieuw pand
         </Button>
       </div>
+
+      {/* Top KPIs — focus op vrije plekken (klant-wens 2026-04-25) */}
+      {properties.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card>
+            <CardContent className="pt-6 flex items-center gap-4">
+              <div className="h-10 w-10 rounded-md bg-stat-green/10 flex items-center justify-center">
+                <Bed className="h-5 w-5 text-stat-green" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{totalAvailable}</p>
+                <p className="text-xs text-muted-foreground">Vrije plekken nu</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6 flex items-center gap-4">
+              <div className="h-10 w-10 rounded-md bg-blue-100 flex items-center justify-center">
+                <Building2 className="h-5 w-5 text-blue-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{totalCapacity}</p>
+                <p className="text-xs text-muted-foreground">Totale capaciteit · {properties.length} panden</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6 flex items-center gap-4">
+              <div className={`h-10 w-10 rounded-md flex items-center justify-center ${overallPct >= 90 ? 'bg-red-100' : overallPct >= 70 ? 'bg-orange-100' : 'bg-stat-green/10'}`}>
+                <Home className={`h-5 w-5 ${overallPct >= 90 ? 'text-red-600' : overallPct >= 70 ? 'text-orange-600' : 'text-stat-green'}`} />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{overallPct}%</p>
+                <p className="text-xs text-muted-foreground">Bezettingsgraad ({totalOccupancy}/{totalCapacity})</p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {properties.length > 0 && totalCapacity > 0 && (
+        <AvailabilityChart totalCapacity={totalCapacity} />
+      )}
 
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative flex-1 max-w-sm">
