@@ -122,27 +122,17 @@ export function mapCREmployee(e: CREmployee, orgId: string): Record<string, unkn
   };
 }
 
-export function mapCRJobToVacancy(
-  job: CRJob,
-  companyId: string,
-  orgId: string,
-  publication?: CRPublication,
-) {
-  const rawStatus = statusValue(publication?.toStatusNode) || statusValue(job.toStatusNode);
-  const status = mapStatus(statusMaps.vacancy, rawStatus, 'gesloten');
-  const startDate = isoDay(publication?.publicationStart) || isoDay(job.startDate);
-  const endDate = isoDay(publication?.publicationEnd) || isoDay(job.endDate);
-
+export function mapCRJobToVacancy(job: CRJob, companyId: string, orgId: string) {
+  const status = mapStatus(statusMaps.vacancy, job.statusDisplay, 'gesloten');
   return {
     company_id: companyId,
-    title: job.title || job.displayName || 'Onbekende vacature',
-    description: job.description ?? null,
-    location: job.city ?? null,
-    hourly_rate: job.hourlyRate ?? null,
-    required_count: job.numberOfPositions ?? 1,
+    title: job.name || job.templateName || 'Onbekende vacature',
+    description: job.jobInformation ?? null,
+    hourly_rate: job.hourlyTariffInvoice ?? null,
+    required_count: 1,
     status,
-    start_date: startDate,
-    end_date: endDate,
+    start_date: isoDay(job.startDate),
+    end_date: isoDay(job.endDate),
     organization_id: orgId,
   };
 }
@@ -153,18 +143,14 @@ export function mapCRMatch(
   vacancyId: string,
   orgId: string,
 ): Record<string, unknown> {
-  const rawStatus = m.toStatusInfo?.value || m.toStatusInfo?.label || statusValue(m.toStatusNode);
-  // JA Werkt match_status enum: nieuwe_match, gescreend, voorgesteld, in_gesprek,
-  // geaccepteerd, afgewezen, geplaatst.
+  const rawStatus = m.statusInfo?.value || m.statusInfo?.label || m.statusDisplay;
   const status = mapMatchStatus(rawStatus);
-
   return {
     candidate_id: candidateId,
     vacancy_id: vacancyId,
     organization_id: orgId,
     status,
-    notes: m.notes ?? null,
-    match_score: m.matchScore ?? null,
+    match_score: m.fitScore ?? null,
     source: m.applySource || 'carerix',
     proposed_at: isoDate(m.creationDate) ?? new Date().toISOString(),
   };

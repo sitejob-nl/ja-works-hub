@@ -103,7 +103,7 @@ export interface CREmployee {
   _id: string;
   firstName?: string;
   lastName?: string;
-  displayName?: string;
+  // Geen `displayName` op CREmployee — gebruik firstName + lastName.
   emailAddress?: string;
   phoneNumber?: string;
   emailAddresses?: { items: EmailAddress[] };
@@ -123,19 +123,20 @@ export interface CREmployee {
 
 export interface CRJob {
   _id: string;
-  title?: string;
-  displayName?: string;
-  description?: string;
-  toCompany?: CRRef;
-  toUser?: CRRef;
-  toStatusNode?: CRStatusNode;
+  // CRJob in Carerix gebruikt `name` (geen `title`) en `jobInformation`
+  // (geen `description`).
+  name?: string;
+  templateName?: string;
+  jobInformation?: string;
+  toCompany?: { _id: string; name?: string };
+  toUser?: { _id: string; name?: string };
+  status?: number;
+  statusDisplay?: string;
   modificationDate?: string;
   creationDate?: string;
   startDate?: string;
   endDate?: string;
-  hourlyRate?: number;
-  numberOfPositions?: number;
-  city?: string;
+  hourlyTariffInvoice?: number;
 }
 
 export interface CRPublication {
@@ -151,16 +152,17 @@ export interface CRPublication {
 
 export interface CRMatch {
   _id: string;
-  notes?: string;
+  // CRMatch gebruikt `fitScore` (geen matchScore) en `toVacancy` (geen
+  // toPublication/toJob). statusInfo zit direct op het object.
+  fitScore?: number;
   applySource?: string;
+  applyMedium?: string;
   applyTags?: string[] | { items: { value?: string }[] };
-  matchScore?: number;
-  toEmployee?: CRRef;
-  toPublication?: CRRef;
-  toJob?: CRRef;
-  toStatusInfo?: CRStatusInfo;
-  toStatusNode?: CRStatusNode;
-  toUser?: CRRef;
+  statusInfo?: CRStatusInfo;
+  statusDisplay?: string;
+  toEmployee?: { _id: string; firstName?: string; lastName?: string };
+  toVacancy?: { _id: string; name?: string };
+  owner?: { _id: string; name?: string };
   modificationDate?: string;
   creationDate?: string;
 }
@@ -239,26 +241,27 @@ export const ALL_ENTITIES: EntityName[] = [
   'notes',
 ];
 
-// All entities have runners. Whether a runner can actually fetch data
-// depends on the OAuth scope at sync time — runners gracefully mark themselves
-// "skipped" if their cr*Page query is rejected.
 export const SUPPORTED_ENTITIES: EntityName[] = [
   'companies',
   'contacts',
   'candidates',
   'vacancies',
-  'placements',
   'matches',
-  'documents',
   'notes',
+  // documents: CRAttachment heeft geen direct toEmployee in deze schema —
+  // moet via per-kandidaat traversal (CREmployee.attachments). 2-pass nodig.
+  // placements: crEmploymentPage bestaat niet in deze tenant — placements
+  // worden gemodelleerd als CRMatch (status=geplaatst) of CRJob met toEmployee.
+  // employment: CRWorkHistory bestaat niet als top-level query.
 ];
 
-// `employment` (CRWorkHistory = candidate's prior career history) has no target
-// table in JA Werkt — `candidate_employment` tracks employment AT the staffing
-// agency, not prior employers. We skip it explicitly.
 export const UNSUPPORTED_REASONS: Partial<Record<EntityName, string>> = {
   employment:
-    'Carerix CRWorkHistory beschrijft eerdere werkgevers van de kandidaat. JA Werkt heeft hier geen doel-tabel voor (candidate_employment is dienstverband bij uitzendbureau zelf).',
+    'Carerix CRWorkHistory beschrijft eerdere werkgevers van de kandidaat. JA Werkt heeft hier geen doel-tabel voor.',
+  placements:
+    'crEmploymentPage bestaat niet in Carerix schema. Plaatsingen worden gemodelleerd als CRMatch met status=geplaatst — wordt afgeleid uit matches-import.',
+  documents:
+    'CRAttachment in deze tenant heeft geen direct toEmployee-veld. Documenten moeten via per-kandidaat traversal opgehaald worden (CREmployee.attachments). Aparte 2e-pass nodig.',
 };
 
 // Order matters — dependencies are processed first.

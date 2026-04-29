@@ -228,6 +228,11 @@ export async function runCandidatesPage(
     }
     return stats;
   }
+  if (crResult.reason) {
+    // CR-query failed (unknown field, scope, etc.) — surface that instead of
+    // silently falling back to v1 which hides the actual problem.
+    return { ...emptyStats(0), skipReason: crResult.reason };
+  }
 
   // Fallback to v1.
   const data = await ctx.gql.query<{ candidatePage: PageResponse<CXCandidate> }>(
@@ -308,11 +313,7 @@ export async function runMatchesPage(
 
   for (const match of pageData.items) {
     const carerixCandidateId = match.toEmployee?._id ? String(match.toEmployee._id) : null;
-    // Vacancy ref can be either toPublication or toJob — try both.
-    const carerixVacancyId =
-      (match.toPublication?._id && String(match.toPublication._id)) ||
-      (match.toJob?._id && String(match.toJob._id)) ||
-      null;
+    const carerixVacancyId = match.toVacancy?._id ? String(match.toVacancy._id) : null;
 
     if (!carerixCandidateId || !carerixVacancyId) {
       stats.skipped++;
@@ -515,8 +516,10 @@ export const ENTITY_RUNNERS: Partial<Record<EntityName, Runner>> = {
   candidates: runCandidatesPage,
   vacancies: runVacanciesPage,
   matches: runMatchesPage,
-  placements: runPlacementsPage,
-  documents: runDocumentsPage,
   notes: runNotesPage,
-  // employment: no target table — see UNSUPPORTED_REASONS.
+  // placements / documents / employment: see UNSUPPORTED_REASONS in types.ts.
+  // - crEmploymentPage doesn't exist; placements live inside CRMatch.
+  // - CRAttachment has no direct candidate ref in this schema; needs 2-pass
+  //   via CREmployee.attachments.
+  // - CRWorkHistory not exposed as a top-level page query.
 };

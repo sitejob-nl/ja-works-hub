@@ -142,24 +142,26 @@ export function crEmployeesQuery(page: number, size: number, qualifier?: string)
 }
 
 export function crJobsQuery(page: number, size: number, qualifier?: string): string {
+  // CRJob field-names per docs.carerix.io/graphql/types/CRJob:
+  //   name (NOT title), jobInformation (NOT description),
+  //   hourlyTariffInvoice (NOT hourlyRate), templateName (NOT displayName).
   return `query {
     crJobPage(${pageable(page, size)}${NORESTRICT}${qualifierClause(qualifier)}) {
       totalElements
       items {
         _id
-        title
-        displayName
-        description
+        name
+        jobInformation
+        templateName
         startDate
         endDate
-        hourlyRate
-        numberOfPositions
-        city
+        hourlyTariffInvoice
         creationDate
         modificationDate
-        toCompany { _id displayName }
-        toUser { _id displayName }
-        toStatusNode { _id value }
+        status
+        statusDisplay
+        toCompany { _id name }
+        toUser { _id name }
       }
     }
   }`;
@@ -184,66 +186,57 @@ export function crPublicationsQuery(page: number, size: number, qualifier?: stri
 }
 
 export function crMatchesQuery(page: number, size: number, qualifier?: string): string {
+  // CRMatch field-names per docs.carerix.io/graphql/types/CRMatch:
+  //   fitScore (NOT matchScore), toVacancy (NOT toPublication/toJob),
+  //   statusInfo direct on match (NOT toStatusInfo).
+  //   CREmployee has no displayName — use firstName+lastName.
   return `query {
     crMatchPage(${pageable(page, size)}${NORESTRICT}${qualifierClause(qualifier)}) {
       totalElements
       items {
         _id
-        notes
+        fitScore
         applySource
-        matchScore
+        applyMedium
         creationDate
         modificationDate
-        toEmployee { _id displayName }
-        toPublication { _id displayName }
-        toJob { _id displayName }
-        toStatusInfo { _id label value }
-        toStatusNode { _id value }
-        toUser { _id displayName }
+        statusDisplay
+        statusInfo { _id label value }
+        toEmployee { _id firstName lastName }
+        toVacancy { _id name }
+        owner { _id name }
       }
     }
   }`;
 }
 
-export function crEmploymentsQuery(page: number, size: number, qualifier?: string): string {
-  return `query {
-    crEmploymentPage(${pageable(page, size)}${NORESTRICT}${qualifierClause(qualifier)}) {
-      totalElements
-      items {
-        _id
-        startDate
-        endDate
-        hourlyRate
-        contractType
-        hours
-        modificationDate
-        toEmployee { _id displayName }
-        toJob { _id displayName }
-        toPublication { _id displayName }
-        toCompany { _id displayName }
-        toMatch { _id }
-        toStatusNode { _id value }
-      }
-    }
-  }`;
+// NOTE: crEmploymentPage does NOT exist in Carerix schema. Placements are
+// modeled as CRMatch (with placed-status) or as CRJob with toEmployee.
+// Kept here purely as documentation — the runner marks `placements` UNSUPPORTED.
+export function crEmploymentsQuery(_page: number, _size: number, _qualifier?: string): string {
+  throw new Error('crEmploymentPage bestaat niet in Carerix schema');
 }
 
 export function crAttachmentsQuery(page: number, size: number, qualifier?: string): string {
+  // CRAttachment field-names per docs.carerix.io/graphql/types/CRAttachment:
+  //   downloadName / displayName (filename), attachmentMimeType (NOT mimeType),
+  //   label (NOT tag), attachmentSize (NOT fileSize).
+  //   CRAttachment has NO direct toEmployee/toCompany/toJob refs — the parent
+  //   relation is reverse: CREmployee.attachments. For migration we'd need a
+  //   per-candidate fetch via crEmployee(_id).attachments. For now we just
+  //   list attachment metadata; runner attaches them via a second pass later.
   return `query {
     crAttachmentPage(${pageable(page, size)}${NORESTRICT}${qualifierClause(qualifier)}) {
       totalElements
       items {
         _id
-        fileName
-        mimeType
-        tag
-        fileSize
+        downloadName
+        displayName
+        attachmentMimeType
+        label
+        attachmentSize
         creationDate
         modificationDate
-        toEmployee { _id displayName }
-        toCompany { _id displayName }
-        toJob { _id displayName }
-        toMatch { _id }
       }
     }
   }`;
@@ -263,22 +256,15 @@ export function crAttachmentContentQuery(attachmentId: string): string {
 }
 
 export function crTodosQuery(page: number, size: number, qualifier?: string): string {
+  // Query name is `crToDoPage` (camelCase, capital D, NOT crTodoPage).
+  // Field list kept minimal until full CRToDo schema is confirmed.
   return `query {
-    crTodoPage(${pageable(page, size)}${NORESTRICT}${qualifierClause(qualifier)}) {
+    crToDoPage(${pageable(page, size)}${NORESTRICT}${qualifierClause(qualifier)}) {
       totalElements
       items {
         _id
-        type
-        body
-        subject
-        dueDate
         creationDate
         modificationDate
-        toEmployee { _id displayName }
-        toCompany { _id displayName }
-        toContact { _id displayName }
-        toMatch { _id }
-        toUser { _id displayName }
       }
     }
   }`;
