@@ -209,9 +209,11 @@ Deno.serve(async (req) => {
     }
 
     pageCursor += 1;
-    const processedSoFar = pageCursor * PAGE_SIZE;
     const skipped = Boolean(stats.skipReason);
-    const done = skipped || stats.totalElements === 0 || processedSoFar >= stats.totalElements;
+    // Runner signaleert zelf via stats.done wanneer hij klaar is. Fallback:
+    // totalElements===0 betekent "niets te doen". Geen page-size arithmetic
+    // meer — die werkte niet voor de candidate-batch-runner (documents).
+    const done = skipped || stats.done === true || stats.totalElements === 0;
 
     const { data: current } = await admin
       .from('carerix_import_entity_runs')

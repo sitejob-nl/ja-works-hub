@@ -54,10 +54,13 @@ export interface PageStats {
   skipped: number;
   failed: number;
   failures: Array<{ carerix_id: string; error: string; payload?: unknown }>;
-  // Set when the cr*Page-query was rejected by Carerix (scope/permission). The
-  // worker uses this to mark the entity run as `skipped` instead of silently
-  // showing 0 elements as `completed`.
+  // Set when the cr*Page-query was rejected (scope/permission). Worker marks
+  // the entity run as `skipped`.
   skipReason?: string;
+  // Set when this page is the last one — runner signals this explicitly so the
+  // worker doesn't have to guess based on page-size arithmetic. Different
+  // runners (page-based vs candidate-batch-based) need different stop-conditions.
+  done?: boolean;
 }
 
 export interface RunnerContext {
@@ -77,6 +80,13 @@ const emptyStats = (total = 0): PageStats => ({
   failed: 0,
   failures: [],
 });
+
+// Helper: marks `stats.done` based on Carerix' `last` flag on the page response.
+// Runners signal explicitly when their last page is processed so the worker
+// doesn't need to guess based on page-size arithmetic.
+function markDone<T>(stats: PageStats, pageData: { last?: boolean; items: T[] }): void {
+  stats.done = pageData.last === true || pageData.items.length === 0;
+}
 
 // Result of a CR*-query that may be rejected by the tenant's scope-set.
 // On scope-rejection we don't throw — instead we surface the reason so the
@@ -163,6 +173,7 @@ export async function runCompaniesPage(
       name: company.name,
     });
   }
+  markDone(stats, pageData);
   return stats;
 }
 
@@ -201,6 +212,7 @@ export async function runContactsPage(
       last_name: contact.lastName,
     });
   }
+  markDone(stats, pageData);
   return stats;
 }
 
@@ -226,6 +238,7 @@ export async function runCandidatesPage(
         name: `${emp.firstName ?? ''} ${emp.lastName ?? ''}`.trim(),
       });
     }
+    markDone(stats, pageData);
     return stats;
   }
   if (crResult.reason) {
@@ -246,6 +259,7 @@ export async function runCandidatesPage(
       name: `${candidate.firstName ?? ''} ${candidate.lastName ?? ''}`.trim(),
     });
   }
+  markDone(stats, pageData);
   return stats;
 }
 
@@ -288,9 +302,10 @@ export async function runVacanciesPage(
 
     const payload = mapCRJobToVacancy(job, companyId, ctx.organizationId);
     await insertIfNew(ctx, 'vacancies', 'vacancy', String(job._id), payload, stats, {
-      title: job.title,
+      title: job.name,
     });
   }
+  markDone(stats, pageData);
   return stats;
 }
 
@@ -334,6 +349,7 @@ export async function runMatchesPage(
     const payload = mapCRMatch(match, candidateId, vacancyId, ctx.organizationId);
     await insertIfNew(ctx, 'matches', 'match', String(match._id), payload, stats);
   }
+  markDone(stats, pageData);
   return stats;
 }
 
@@ -383,6 +399,7 @@ export async function runPlacementsPage(
       stats.failures.push({ carerix_id: String(wh._id), error: msg });
     }
   }
+  markDone(stats, pageData);
   return stats;
 }
 
@@ -412,14 +429,12 @@ export async function runDocumentsPage(
 
   if (mErr) throw new Error(`candidate-mappings ophalen mislukt: ${mErr.message}`);
   if (!mappings || mappings.length === 0) {
-    // Geen kandidaten meer — totalElements=0 sluit de runner af.
-    return emptyStats(0);
+    return { ...emptyStats(0), done: true };
   }
 
-  // We kunnen geen exacte totalElements weten zonder COUNT — we melden het
-  // aantal candidate-mappings als pseudo-total om de worker-loop progress te
-  // laten tonen. De worker stopt zodra een batch leeg terugkomt.
-  const stats = emptyStats(offset + mappings.length + 1); // +1 zorgt dat done pas wordt na lege batch
+  // Pseudo-total om de UI progressie te tonen: we doen offset+batch maal
+  // candidates totdat de batch korter is dan CANDIDATES_PER_BATCH.
+  const stats = emptyStats(offset + mappings.length);
 
   for (const m of mappings) {
     const carerixEmployeeId = String(m.external_id);
@@ -440,14 +455,12 @@ export async function runDocumentsPage(
     const items = result.data?.crEmployee?.attachments?.items ?? [];
 
     for (const att of items) {
-      const payload = mapCRAttachmentToDocument(
-        att as CRAttachment & { downloadName?: string; attachmentMimeType?: string; label?: string },
-        candidateId,
-        ctx.organizationId,
-      );
+      const payload = mapCRAttachmentToDocument(att, candidateId, ctx.organizationId);
       await insertIfNew(ctx, 'documents', 'document', String(att._id), payload, stats);
     }
   }
+  // Klaar zodra de huidige candidate-batch korter is dan de page-grootte.
+  if (mappings.length < CANDIDATES_PER_BATCH) stats.done = true;
   return stats;
 }
 
@@ -463,15 +476,15 @@ export async function runNotesPage(
     };
   }
   const watermark = watermarkQualifier(ctx.modifiedSince);
-  const result = await tryQuery<{ crTodoPage: PageResponse<CRTodo> }>(
+  const result = await tryQuery<{ crToDoPage: PageResponse<CRTodo> }>(
     ctx,
     crTodosQuery(page, size, watermark),
   );
-  if (!result.data?.crTodoPage) {
-    return { ...emptyStats(0), skipReason: result.reason ?? 'crTodoPage onverwachts leeg' };
+  if (!result.data?.crToDoPage) {
+    return { ...emptyStats(0), skipReason: result.reason ?? 'crToDoPage onverwachts leeg' };
   }
 
-  const pageData = result.data.crTodoPage;
+  const pageData = result.data.crToDoPage;
   const stats = emptyStats(pageData.totalElements);
 
   for (const todo of pageData.items) {
@@ -513,6 +526,7 @@ export async function runNotesPage(
     }
     await insertIfNew(ctx, 'notes', 'note', String(todo._id), payload, stats);
   }
+  markDone(stats, pageData);
   return stats;
 }
 
