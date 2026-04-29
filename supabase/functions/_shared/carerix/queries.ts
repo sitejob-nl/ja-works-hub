@@ -116,6 +116,9 @@ export function crCompaniesQuery(page: number, size: number, qualifier?: string)
 }
 
 export function crEmployeesQuery(page: number, size: number, qualifier?: string): string {
+  // CREmployee: applySource/nationality/country bestaan NIET als directe
+  // velden — die zijn CRDataNode-refs (toSourceNode, toNationalityNode,
+  // toCountryNode). Voor nu houden we het minimaal en safe.
   return `query {
     crEmployeePage(${pageable(page, size)}${NORESTRICT}${qualifierClause(qualifier)}) {
       totalElements
@@ -123,19 +126,13 @@ export function crEmployeesQuery(page: number, size: number, qualifier?: string)
         _id
         firstName
         lastName
-        displayName
         emailAddress
         phoneNumber
-        applySource
         birthDate
-        nationality
         city
         postalCode
-        country
         creationDate
         modificationDate
-        toStatusNode { _id value }
-        toUser { _id displayName }
       }
     }
   }`;
@@ -186,10 +183,8 @@ export function crPublicationsQuery(page: number, size: number, qualifier?: stri
 }
 
 export function crMatchesQuery(page: number, size: number, qualifier?: string): string {
-  // CRMatch field-names per docs.carerix.io/graphql/types/CRMatch:
-  //   fitScore (NOT matchScore), toVacancy (NOT toPublication/toJob),
-  //   statusInfo direct on match (NOT toStatusInfo).
-  //   CREmployee has no displayName — use firstName+lastName.
+  // CRStatusInfo gebruikt `name` (geen `value`).
+  // CRVacancy gebruikt `jobTitle` (geen `name`).
   return `query {
     crMatchPage(${pageable(page, size)}${NORESTRICT}${qualifierClause(qualifier)}) {
       totalElements
@@ -201,10 +196,9 @@ export function crMatchesQuery(page: number, size: number, qualifier?: string): 
         creationDate
         modificationDate
         statusDisplay
-        statusInfo { _id label value }
+        statusInfo { _id label name }
         toEmployee { _id firstName lastName }
-        toVacancy { _id name }
-        owner { _id name }
+        toVacancy { _id jobTitle }
       }
     }
   }`;
@@ -256,15 +250,30 @@ export function crAttachmentContentQuery(attachmentId: string): string {
 }
 
 export function crTodosQuery(page: number, size: number, qualifier?: string): string {
-  // Query name is `crToDoPage` (camelCase, capital D, NOT crTodoPage).
-  // Field list kept minimal until full CRToDo schema is confirmed.
+  // CRToDo gebruikt `subject` + `message` (geen body), boolean is{Note/Task/
+  // Meeting/Email}-flags ipv een type-veld. Parent-refs:
+  //   toEmployee, toCompany, toContact (CRUser), toMatch, toJob.
   return `query {
     crToDoPage(${pageable(page, size)}${NORESTRICT}${qualifierClause(qualifier)}) {
       totalElements
       items {
         _id
+        subject
+        message
+        startDate
+        endDate
+        deadline
         creationDate
         modificationDate
+        statusDisplay
+        isNote
+        isTask
+        isMeeting
+        isEmail
+        toEmployee { _id }
+        toCompany { _id }
+        toMatch { _id }
+        toJob { _id }
       }
     }
   }`;

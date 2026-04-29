@@ -143,7 +143,7 @@ export function mapCRMatch(
   vacancyId: string,
   orgId: string,
 ): Record<string, unknown> {
-  const rawStatus = m.statusInfo?.value || m.statusInfo?.label || m.statusDisplay;
+  const rawStatus = m.statusInfo?.name || m.statusInfo?.label || m.statusDisplay;
   const status = mapMatchStatus(rawStatus);
   return {
     candidate_id: candidateId,
@@ -227,7 +227,9 @@ export function mapCRTodoToNote(
   createdByUserId: string,
   orgId: string,
 ): Record<string, unknown> | null {
-  const body = [t.subject, t.body].filter(Boolean).join('\n\n').trim();
+  // CRToDo gebruikt `message` ipv `body`. Geen subject/message → niets te
+  // migreren (mogelijk een leeg agendablokje).
+  const body = [t.subject, t.message].filter(Boolean).join('\n\n').trim();
   if (!body) return null;
 
   return {

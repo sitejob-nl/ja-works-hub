@@ -91,7 +91,7 @@ export interface CRStatusNode {
 export interface CRStatusInfo {
   _id: string;
   label?: string;
-  value?: string;
+  name?: string; // Carerix gebruikt `name`, niet `value`.
 }
 
 export interface CRMedium {
@@ -161,7 +161,7 @@ export interface CRMatch {
   statusInfo?: CRStatusInfo;
   statusDisplay?: string;
   toEmployee?: { _id: string; firstName?: string; lastName?: string };
-  toVacancy?: { _id: string; name?: string };
+  toVacancy?: { _id: string; jobTitle?: string };
   owner?: { _id: string; name?: string };
   modificationDate?: string;
   creationDate?: string;
@@ -201,15 +201,21 @@ export interface CRAttachment {
 
 export interface CRTodo {
   _id: string;
-  type?: string; // 'note' | 'task' | 'meeting' | 'campaign' | etc.
-  body?: string;
   subject?: string;
-  dueDate?: string;
+  message?: string; // body content (CRToDo gebruikt `message`, geen `body`)
+  startDate?: string;
+  endDate?: string;
+  deadline?: string;
+  statusDisplay?: string;
+  isNote?: boolean;
+  isTask?: boolean;
+  isMeeting?: boolean;
+  isEmail?: boolean;
   toEmployee?: CRRef;
   toCompany?: CRRef;
   toContact?: CRRef;
   toMatch?: CRRef;
-  toUser?: CRRef;
+  toJob?: CRRef;
   modificationDate?: string;
   creationDate?: string;
 }
