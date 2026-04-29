@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { Plus, CreditCard, Car, Award, FileText, FileCheck, File } from 'lucide-react';
+import { Plus, CreditCard, Car, Award, FileText, FileCheck, File, Download } from 'lucide-react';
 import { formatDate } from '@/lib/format';
 import { toast } from 'sonner';
 import type { Database } from '@/integrations/supabase/types';
@@ -52,6 +52,21 @@ const CandidateDocumentsTab = ({ candidateId }: { candidateId: string }) => {
       return data;
     },
   });
+
+  const openDoc = async (filePath: string | null) => {
+    if (!filePath) {
+      toast.error('Bestand nog niet gedownload uit bron');
+      return;
+    }
+    const { data, error } = await supabase.storage
+      .from('documents')
+      .createSignedUrl(filePath, 300);
+    if (error || !data?.signedUrl) {
+      toast.error(`Openen mislukt: ${error?.message ?? 'onbekend'}`);
+      return;
+    }
+    window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+  };
 
   const add = useMutation({
     mutationFn: async () => {
@@ -127,22 +142,32 @@ const CandidateDocumentsTab = ({ candidateId }: { candidateId: string }) => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {docs.map((d: any) => {
           const Icon = typeIcons[d.type as DocType] ?? File;
+          const hasFile = Boolean(d.file_path);
           return (
-            <div key={d.id} className="bg-card rounded-lg border p-4 flex gap-3">
+            <button
+              key={d.id}
+              type="button"
+              onClick={() => openDoc(d.file_path)}
+              disabled={!hasFile}
+              className="bg-card rounded-lg border p-4 flex gap-3 text-left transition hover:border-primary/40 hover:shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+              title={hasFile ? 'Open document' : 'Bestand nog niet gedownload uit bron'}
+            >
               <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
                 <Icon className="h-5 w-5 text-muted-foreground" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium">{d.name}</p>
+                <p className="text-sm font-medium truncate">{d.name}</p>
                 <p className="text-xs text-muted-foreground">{typeLabels[d.type as DocType] ?? d.type}</p>
-                <div className="flex items-center gap-2 mt-1.5">
+                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                   <Badge variant="secondary" className={`text-xs ${statusBadge[d.status] ?? ''}`}>{d.status}</Badge>
                   {d.ai_verification_result && <Badge variant="outline" className="text-xs">AI geverifieerd</Badge>}
+                  {!hasFile && <Badge variant="outline" className="text-xs">Geen bestand</Badge>}
                 </div>
                 {d.expiry_date && <p className="text-xs text-muted-foreground mt-1">Verloopt: {formatDate(d.expiry_date)}</p>}
                 <p className="text-xs text-muted-foreground">Geüpload: {formatDate(d.created_at)}</p>
               </div>
-            </div>
+              {hasFile && <Download className="h-4 w-4 text-muted-foreground shrink-0 self-start mt-1" />}
+            </button>
           );
         })}
       </div>

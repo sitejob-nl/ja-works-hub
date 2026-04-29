@@ -163,6 +163,24 @@ export function crWorkHistoriesQuery(page: number, size: number, qualifier?: str
   }`;
 }
 
+// Eén attachment ophalen INCL. base64 content. Voor de byte-download fase
+// (carerix-attachment-download function): hier wordt de eigenlijke file
+// binnengehaald en in Supabase Storage gezet.
+export function crAttachmentByIdQuery(attachmentId: string): string {
+  const safe = attachmentId.replace(/"/g, '\\"');
+  return `query {
+    crAttachment(_id: "${safe}") {
+      _id
+      downloadName
+      displayName
+      attachmentMimeType
+      label
+      attachmentSize
+      content
+    }
+  }`;
+}
+
 // Per-kandidaat attachments ophalen — CRAttachment heeft geen direct
 // toEmployee in deze schema; relatie via CREmployee.attachments.
 export function crEmployeeAttachmentsQuery(employeeId: string, page: number, size: number): string {

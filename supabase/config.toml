@@ -192,3 +192,6 @@ verify_jwt = false
 
 [functions.carerix-introspect]
 verify_jwt = false
+
+[functions.carerix-attachment-download]
+verify_jwt = false
