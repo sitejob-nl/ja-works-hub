@@ -113,45 +113,77 @@ async function tryQuery<T>(ctx: RunnerContext, gql: string): Promise<QueryResult
   }
 }
 
-// Enrich-helper voor bestaande candidates: vult alleen NULL-velden in.
-// Voorkomt overschrijven van handmatig aangevulde of via portaal binnengekomen
-// data. Telt als `skipped` zodat we runner-stats niet vervuilen.
-async function enrichCandidateIfNull(
+// Bulk-enrich helper voor bestaande candidates: één SELECT voor de hele
+// page, daarna parallel UPDATE-calls (Promise.all) voor candidates die echt
+// een NULL-veld hebben dat we kunnen vullen. Veel sneller dan per-candidate
+// SELECT+UPDATE — voorkomt soft-deadline timeouts.
+const ENRICH_FIELDS = [
+  'email',
+  'phone',
+  'date_of_birth',
+  'address_street',
+  'address_city',
+  'address_postal',
+];
+
+async function bulkEnrichCandidates(
   ctx: RunnerContext,
-  candidateId: string,
-  payload: Record<string, unknown>,
+  items: Array<{ candidateId: string; payload: Record<string, unknown> }>,
   stats: PageStats,
 ): Promise<void> {
-  if (ctx.dryRun) { stats.skipped++; return; }
-  // Velden die we mogen aanvullen wanneer NULL:
-  const enrichFields = ['email', 'phone', 'date_of_birth', 'address_street', 'address_city', 'address_postal'];
-  const { data: existing, error: selErr } = await ctx.admin
-    .from('candidates')
-    .select(enrichFields.join(','))
-    .eq('id', candidateId)
-    .single();
-  if (selErr || !existing) { stats.skipped++; return; }
-
-  const updates: Record<string, unknown> = {};
-  for (const field of enrichFields) {
-    const current = (existing as Record<string, unknown>)[field];
-    const incoming = payload[field];
-    if ((current === null || current === undefined || current === '') && incoming) {
-      updates[field] = incoming;
-    }
-  }
-  if (Object.keys(updates).length === 0) { stats.skipped++; return; }
-
-  const { error: updErr } = await ctx.admin
-    .from('candidates')
-    .update(updates)
-    .eq('id', candidateId);
-  if (updErr) {
-    stats.failed++;
-    stats.failures.push({ carerix_id: candidateId, error: `enrich: ${updErr.message}` });
+  if (items.length === 0) return;
+  if (ctx.dryRun) {
+    stats.skipped += items.length;
     return;
   }
-  stats.skipped++;
+
+  const ids = items.map((i) => i.candidateId);
+  const { data: existing, error: selErr } = await ctx.admin
+    .from('candidates')
+    .select(`id,${ENRICH_FIELDS.join(',')}`)
+    .in('id', ids);
+
+  if (selErr || !existing) {
+    stats.skipped += items.length;
+    return;
+  }
+
+  const byId = new Map<string, Record<string, unknown>>();
+  for (const row of existing) byId.set((row as { id: string }).id, row as Record<string, unknown>);
+
+  const updatePromises: Promise<{ candidateId: string; error: string | null }>[] = [];
+  for (const item of items) {
+    const current = byId.get(item.candidateId);
+    if (!current) { stats.skipped++; continue; }
+    const fieldUpdates: Record<string, unknown> = {};
+    for (const field of ENRICH_FIELDS) {
+      const c = current[field];
+      const i = item.payload[field];
+      if ((c === null || c === undefined || c === '') && i) fieldUpdates[field] = i;
+    }
+    if (Object.keys(fieldUpdates).length === 0) { stats.skipped++; continue; }
+
+    updatePromises.push(
+      ctx.admin
+        .from('candidates')
+        .update(fieldUpdates)
+        .eq('id', item.candidateId)
+        .then((res: { error: { message: string } | null }) => ({
+          candidateId: item.candidateId,
+          error: res.error?.message ?? null,
+        })),
+    );
+  }
+
+  const results = await Promise.all(updatePromises);
+  for (const r of results) {
+    if (r.error) {
+      stats.failed++;
+      stats.failures.push({ carerix_id: r.candidateId, error: `enrich: ${r.error}` });
+    } else {
+      stats.skipped++;
+    }
+  }
 }
 
 async function insertIfNew<T extends Record<string, unknown>>(
@@ -273,18 +305,21 @@ export async function runCandidatesPage(
   if (crResult.data?.crEmployeePage) {
     const pageData = crResult.data.crEmployeePage;
     const stats = emptyStats(pageData.totalElements);
+    // Verzamel bestaande candidates voor één bulk-enrich aan einde van page
+    // (was per-candidate SELECT+UPDATE — leverde page-tijd > soft-deadline op).
+    const enrichBatch: Array<{ candidateId: string; payload: Record<string, unknown> }> = [];
     for (const emp of pageData.items) {
       const payload = mapCREmployee(emp, ctx.organizationId);
       const existingId = ctx.idMapper.get('candidate', String(emp._id));
       if (existingId) {
-        // Bestaande candidate: enrich alleen NULL-velden (geen overschrijven).
-        await enrichCandidateIfNull(ctx, existingId, payload, stats);
+        enrichBatch.push({ candidateId: existingId, payload });
       } else {
         await insertIfNew(ctx, 'candidates', 'candidate', String(emp._id), payload, stats, {
           name: `${emp.firstName ?? ''} ${emp.lastName ?? ''}`.trim(),
         });
       }
     }
+    await bulkEnrichCandidates(ctx, enrichBatch, stats);
     markDone(stats, pageData);
     return stats;
   }
