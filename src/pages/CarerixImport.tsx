@@ -56,6 +56,10 @@ const ENTITY_LABEL: Record<EntityName, string> = {
 const UNSUPPORTED_REASON: Partial<Record<EntityName, string>> = {
   employment:
     'Carerix-werkhistorie (eerdere werkgevers van de kandidaat) heeft geen doel-tabel in JA Werkt.',
+  placements:
+    'crEmploymentPage bestaat niet in de Carerix-API — plaatsingen zitten in CRMatch (status=geplaatst) en worden afgeleid uit de matches-import.',
+  documents:
+    'CRAttachment heeft in deze Carerix-schema geen direct kandidaat-veld. Documenten vereisen een aparte 2e-pass per kandidaat (CREmployee.attachments).',
 };
 
 interface CarerixConfig {
