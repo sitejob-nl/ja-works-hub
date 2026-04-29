@@ -99,22 +99,24 @@ export function mapVacancyV1(v: CXVacancy, orgId: string) {
 // =====================================================================
 
 export function mapCREmployee(e: CREmployee, orgId: string): Record<string, unknown> {
-  const email = e.emailAddress || firstEmail(e.emailAddresses);
-  const phone = e.phoneNumber || firstPhone(e.phoneNumbers);
+  // Adres opbouwen: street + nummer + suffix
+  const addressStreet = [e.homeStreet, e.homeNumber, e.homeNumberSuffix]
+    .filter(Boolean)
+    .join(' ')
+    .trim() || null;
   const status = mapStatus(statusMaps.candidate, statusValue(e.toStatusNode), 'nieuw');
 
   return {
-    first_name: e.firstName || 'Onbekend',
+    first_name: e.firstName || e.fullFirstNames || 'Onbekend',
     last_name: e.lastName || 'Onbekend',
-    email,
-    phone,
+    email: e.emailAddress || e.emailAddressBusiness || null,
+    phone: e.phoneNumber || e.mobileNumber || e.phoneNumberBusiness || null,
     date_of_birth: isoDay(e.birthDate),
-    nationality: e.nationality ?? null,
-    address_city: e.city ?? null,
-    address_postal: e.postalCode ?? null,
-    address_country: e.country ?? null,
+    address_street: addressStreet,
+    address_city: e.homeCity ?? null,
+    address_postal: e.homePostalCode ?? null,
     status,
-    source: e.applySource || 'carerix',
+    source: 'carerix',
     compliance_status: 'incompleet',
     organization_id: orgId,
   };
@@ -125,8 +127,8 @@ export function mapCRJobToVacancy(job: CRJob, companyId: string, orgId: string) 
   return {
     company_id: companyId,
     title: job.name || job.templateName || 'Onbekende vacature',
-    description: job.jobInformation ?? null,
-    hourly_rate: job.hourlyTariffInvoice ?? null,
+    description: job.jobInformation || job.memoGeneral || null,
+    hourly_rate: job.hourlyTariffInvoice ?? job.hourlyWageGross ?? null,
     required_count: 1,
     status,
     start_date: isoDay(job.startDate),
@@ -143,12 +145,16 @@ export function mapCRMatch(
 ): Record<string, unknown> {
   const rawStatus = m.statusInfo?.name || m.statusInfo?.label || m.statusDisplay;
   const status = mapMatchStatus(rawStatus);
+  // Debug: bewaar de raw Carerix status in match_reasoning zodat we via SQL
+  // alle voorkomende waarden kunnen identificeren en de mapper kunnen bijwerken.
+  const debugReasoning = rawStatus ? `[carerix-status:${rawStatus}]` : null;
   return {
     candidate_id: candidateId,
     vacancy_id: vacancyId,
     organization_id: orgId,
     status,
     match_score: m.fitScore ?? null,
+    match_reasoning: debugReasoning,
     source: m.applySource || 'carerix',
     proposed_at: isoDate(m.creationDate) ?? new Date().toISOString(),
   };

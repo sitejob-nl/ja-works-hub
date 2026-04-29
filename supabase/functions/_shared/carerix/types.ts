@@ -103,31 +103,30 @@ export interface CREmployee {
   _id: string;
   firstName?: string;
   lastName?: string;
-  // Geen `displayName` op CREmployee — gebruik firstName + lastName.
+  fullFirstNames?: string;
   emailAddress?: string;
+  emailAddressBusiness?: string;
   phoneNumber?: string;
-  emailAddresses?: { items: EmailAddress[] };
-  phoneNumbers?: { items: PhoneNumber[] };
-  applySource?: string;
-  applyTags?: string[] | { items: { value?: string }[] };
+  mobileNumber?: string;
+  phoneNumberBusiness?: string;
   toStatusNode?: CRStatusNode;
   toUser?: CRRef;
   modificationDate?: string;
   creationDate?: string;
   birthDate?: string;
-  nationality?: string;
-  city?: string;
-  postalCode?: string;
-  country?: string;
+  homeStreet?: string;
+  homeNumber?: string;
+  homeNumberSuffix?: string;
+  homePostalCode?: string;
+  homeCity?: string;
 }
 
 export interface CRJob {
   _id: string;
-  // CRJob in Carerix gebruikt `name` (geen `title`) en `jobInformation`
-  // (geen `description`).
   name?: string;
   templateName?: string;
   jobInformation?: string;
+  memoGeneral?: string;
   toCompany?: { _id: string; name?: string };
   toUser?: { _id: string; name?: string };
   status?: number;
@@ -137,6 +136,7 @@ export interface CRJob {
   startDate?: string;
   endDate?: string;
   hourlyTariffInvoice?: number;
+  hourlyWageGross?: number;
 }
 
 export interface CRPublication {

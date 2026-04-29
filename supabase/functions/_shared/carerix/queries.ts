@@ -1,16 +1,14 @@
 // Carerix GraphQL queries.
 //
 // Two query families:
-//   1. v1 public schema: companyPage, contactPage, candidatePage, vacancyPage.
-//      Minimal fields, low scope requirements.
-//   2. CR*-schema (legacy but rich): crCompanyPage, crEmployeePage, crMatchPage,
-//      crJobPage, crPublicationPage, crEmploymentPage, crAttachmentPage,
-//      crTodoPage. Requires `urn:cx/cx5Wrapper:data:manage` (or equivalent
-//      per-resource manage scope).
+//   1. v1 public schema: companyPage, contactPage, candidatePage. Minimal fields.
+//   2. CR*-schema (legacy maar rijk): crEmployeePage, crMatchPage, crJobPage,
+//      crWorkHistoryPage, crToDoPage. Vereist `urn:cx/cx5Wrapper:data:manage`
+//      (of equivalent per-resource manage scope).
 //
-// All cr*Page-queries accept an optional `qualifier` for filtering. We use that
-// for delta-syncs: `modificationDate >= (NSCalendarDate) '2026-04-28 00:00:00 +0200'`.
-// Page hard limit on Carerix side is 100 — keep `size` <= 100.
+// Alle cr*Page-queries accepteren een optionele `qualifier` voor delta-syncs
+// en `norestrict: true` om soft-deleted/archived records mee te krijgen
+// (cruciaal voor migratie).
 
 function pageable(page: number, size: number): string {
   return `pageable: { page: ${page}, size: ${size} }`;
@@ -18,27 +16,19 @@ function pageable(page: number, size: number): string {
 
 function qualifierClause(qualifier?: string): string {
   if (!qualifier) return '';
-  // Escape any double-quotes in the qualifier itself.
   const safe = qualifier.replace(/"/g, '\\"');
   return `, qualifier: "${safe}"`;
 }
 
-// For migration we want soft-deleted/archived records too — vervulde vacatures,
-// afgeronde plaatsingen, gesloten matches. Default is false on Carerix side
-// which silently filters them out, leading to surprising "0 found" results.
 const NORESTRICT = ', norestrict: true';
 
-// ---------- v1 public schema ----------
+// ---------- v1 public schema (minimaal) ----------
 
 export function companiesQuery(page: number, size: number): string {
   return `query {
     companyPage(${pageable(page, size)}) {
-      totalElements
-      items {
-        _id
-        name
-        displayName
-      }
+      totalElements last
+      items { _id name displayName }
     }
   }`;
 }
@@ -46,16 +36,11 @@ export function companiesQuery(page: number, size: number): string {
 export function contactsQuery(page: number, size: number): string {
   return `query {
     contactPage(${pageable(page, size)}) {
-      totalElements
+      totalElements last
       items {
-        _id
-        firstName
-        lastName
-        displayName
+        _id firstName lastName displayName
         company { _id name }
-        emailAddresses {
-          items { value primary }
-        }
+        emailAddresses { items { value primary } }
       }
     }
   }`;
@@ -64,73 +49,43 @@ export function contactsQuery(page: number, size: number): string {
 export function candidatesQuery(page: number, size: number): string {
   return `query {
     candidatePage(${pageable(page, size)}) {
-      totalElements
+      totalElements last
       items {
-        _id
-        firstName
-        lastName
-        displayName
-        emailAddresses {
-          items { value primary }
-        }
-      }
-    }
-  }`;
-}
-
-export function vacanciesV1Query(page: number, size: number): string {
-  return `query {
-    vacancyPage(${pageable(page, size)}) {
-      totalElements
-      items {
-        _id
-        jobTitle
-        displayName
+        _id firstName lastName displayName
+        emailAddresses { items { value primary } }
       }
     }
   }`;
 }
 
 export function connectionTestQuery(): string {
-  return `query {
-    companyPage(pageable: { page: 0, size: 1 }) {
-      totalElements
-    }
-  }`;
+  return `query { companyPage(pageable: { page: 0, size: 1 }) { totalElements } }`;
 }
 
-// ---------- CR*-schema (rich) ----------
-
-export function crCompaniesQuery(page: number, size: number, qualifier?: string): string {
-  return `query {
-    crCompanyPage(${pageable(page, size)}${NORESTRICT}${qualifierClause(qualifier)}) {
-      totalElements
-      items {
-        _id
-        name
-        displayName
-        modificationDate
-      }
-    }
-  }`;
-}
+// ---------- CR*-schema (rijk) ----------
 
 export function crEmployeesQuery(page: number, size: number, qualifier?: string): string {
-  // CREmployee: applySource/nationality/country bestaan NIET als directe
-  // velden — die zijn CRDataNode-refs (toSourceNode, toNationalityNode,
-  // toCountryNode). Voor nu houden we het minimaal en safe.
+  // Uitgebreid met home*-adresvelden, mobileNumber/businessEmail. Carerix slaat
+  // adres/telefoon op de TOP-level CREmployee, niet in subobjects.
   return `query {
     crEmployeePage(${pageable(page, size)}${NORESTRICT}${qualifierClause(qualifier)}) {
-      totalElements
+      totalElements last
       items {
         _id
         firstName
         lastName
+        fullFirstNames
         emailAddress
+        emailAddressBusiness
         phoneNumber
+        mobileNumber
+        phoneNumberBusiness
         birthDate
-        city
-        postalCode
+        homeStreet
+        homeNumber
+        homeNumberSuffix
+        homePostalCode
+        homeCity
         creationDate
         modificationDate
       }
@@ -139,20 +94,21 @@ export function crEmployeesQuery(page: number, size: number, qualifier?: string)
 }
 
 export function crJobsQuery(page: number, size: number, qualifier?: string): string {
-  // CRJob field-names per docs.carerix.io/graphql/types/CRJob:
-  //   name (NOT title), jobInformation (NOT description),
-  //   hourlyTariffInvoice (NOT hourlyRate), templateName (NOT displayName).
+  // jobInformation, hourlyTariffInvoice zijn @qualifiable scalars in CRJob.
+  // memoGeneral als description-fallback.
   return `query {
     crJobPage(${pageable(page, size)}${NORESTRICT}${qualifierClause(qualifier)}) {
-      totalElements
+      totalElements last
       items {
         _id
         name
         jobInformation
+        memoGeneral
         templateName
         startDate
         endDate
         hourlyTariffInvoice
+        hourlyWageGross
         creationDate
         modificationDate
         status
@@ -164,30 +120,12 @@ export function crJobsQuery(page: number, size: number, qualifier?: string): str
   }`;
 }
 
-export function crPublicationsQuery(page: number, size: number, qualifier?: string): string {
-  return `query {
-    crPublicationPage(${pageable(page, size)}${NORESTRICT}${qualifierClause(qualifier)}) {
-      totalElements
-      items {
-        _id
-        publicationStart
-        publicationEnd
-        modificationDate
-        toMedium { _id name }
-        toStatusNode { _id value }
-        toJob { _id displayName }
-        toVacancy { _id displayName }
-      }
-    }
-  }`;
-}
-
 export function crMatchesQuery(page: number, size: number, qualifier?: string): string {
   // CRStatusInfo gebruikt `name` (geen `value`).
   // CRVacancy gebruikt `jobTitle` (geen `name`).
   return `query {
     crMatchPage(${pageable(page, size)}${NORESTRICT}${qualifierClause(qualifier)}) {
-      totalElements
+      totalElements last
       items {
         _id
         fitScore
@@ -204,13 +142,10 @@ export function crMatchesQuery(page: number, size: number, qualifier?: string): 
   }`;
 }
 
-// Plaatsingen worden in Carerix gemodelleerd als CRWorkHistory: één record
-// per dienstverband bij een klant via JA Werkt. Heeft toEmployee + toCompany
-// directe refs.
 export function crWorkHistoriesQuery(page: number, size: number, qualifier?: string): string {
   return `query {
     crWorkHistoryPage(${pageable(page, size)}${NORESTRICT}${qualifierClause(qualifier)}) {
-      totalElements
+      totalElements last
       items {
         _id
         startDate
@@ -229,14 +164,14 @@ export function crWorkHistoriesQuery(page: number, size: number, qualifier?: str
 }
 
 // Per-kandidaat attachments ophalen — CRAttachment heeft geen direct
-// toEmployee in deze schema; de relatie is omgekeerd via CREmployee.attachments.
+// toEmployee in deze schema; relatie via CREmployee.attachments.
 export function crEmployeeAttachmentsQuery(employeeId: string, page: number, size: number): string {
-  const safeId = employeeId.replace(/"/g, '\\"');
+  const safe = employeeId.replace(/"/g, '\\"');
   return `query {
-    crEmployee(_id: "${safeId}") {
+    crEmployee(_id: "${safe}") {
       _id
       attachments(${pageable(page, size)}) {
-        totalElements
+        totalElements last
         items {
           _id
           downloadName
@@ -252,51 +187,13 @@ export function crEmployeeAttachmentsQuery(employeeId: string, page: number, siz
   }`;
 }
 
-export function crAttachmentsQuery(page: number, size: number, qualifier?: string): string {
-  // CRAttachment field-names per docs.carerix.io/graphql/types/CRAttachment:
-  //   downloadName / displayName (filename), attachmentMimeType (NOT mimeType),
-  //   label (NOT tag), attachmentSize (NOT fileSize).
-  //   CRAttachment has NO direct toEmployee/toCompany/toJob refs — the parent
-  //   relation is reverse: CREmployee.attachments. For migration we'd need a
-  //   per-candidate fetch via crEmployee(_id).attachments. For now we just
-  //   list attachment metadata; runner attaches them via a second pass later.
-  return `query {
-    crAttachmentPage(${pageable(page, size)}${NORESTRICT}${qualifierClause(qualifier)}) {
-      totalElements
-      items {
-        _id
-        downloadName
-        displayName
-        attachmentMimeType
-        label
-        attachmentSize
-        creationDate
-        modificationDate
-      }
-    }
-  }`;
-}
-
-// Single-attachment fetch (separate call because base64 payloads are large).
-export function crAttachmentContentQuery(attachmentId: string): string {
-  const safe = attachmentId.replace(/"/g, '\\"');
-  return `query {
-    crAttachment(_id: "${safe}") {
-      _id
-      fileName
-      mimeType
-      content
-    }
-  }`;
-}
-
 export function crTodosQuery(page: number, size: number, qualifier?: string): string {
-  // CRToDo gebruikt `subject` + `message` (geen body), boolean is{Note/Task/
-  // Meeting/Email}-flags ipv een type-veld. Parent-refs:
-  //   toEmployee, toCompany, toContact (CRUser), toMatch, toJob.
+  // Query name is `crToDoPage` (camelCase, capital D).
+  // CRToDo: subject + message (NIET body), boolean is{Note/Task/Meeting/Email}
+  // ipv type-veld. Parents: toEmployee/toCompany/toContact/toMatch/toJob.
   return `query {
     crToDoPage(${pageable(page, size)}${NORESTRICT}${qualifierClause(qualifier)}) {
-      totalElements
+      totalElements last
       items {
         _id
         subject
@@ -313,6 +210,7 @@ export function crTodosQuery(page: number, size: number, qualifier?: string): st
         isEmail
         toEmployee { _id }
         toCompany { _id }
+        toContact { _id }
         toMatch { _id }
         toJob { _id }
       }
@@ -320,11 +218,9 @@ export function crTodosQuery(page: number, size: number, qualifier?: string): st
   }`;
 }
 
-// Helper: build a `modificationDate >= '<watermark>'` qualifier for delta-sync.
+// Helper: build a `modificationDate >= '<watermark>'` qualifier voor delta-sync.
 export function watermarkQualifier(modifiedSince: string | null | undefined): string | undefined {
   if (!modifiedSince) return undefined;
-  // Carerix REST docs say datums need explicit timezone; for GraphQL it accepts
-  // ISO-8601 with offset just fine (we format in UTC with +0000).
   const d = new Date(modifiedSince);
   if (isNaN(d.getTime())) return undefined;
   const pad = (n: number) => String(n).padStart(2, '0');

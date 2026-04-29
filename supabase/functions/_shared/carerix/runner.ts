@@ -113,6 +113,47 @@ async function tryQuery<T>(ctx: RunnerContext, gql: string): Promise<QueryResult
   }
 }
 
+// Enrich-helper voor bestaande candidates: vult alleen NULL-velden in.
+// Voorkomt overschrijven van handmatig aangevulde of via portaal binnengekomen
+// data. Telt als `skipped` zodat we runner-stats niet vervuilen.
+async function enrichCandidateIfNull(
+  ctx: RunnerContext,
+  candidateId: string,
+  payload: Record<string, unknown>,
+  stats: PageStats,
+): Promise<void> {
+  if (ctx.dryRun) { stats.skipped++; return; }
+  // Velden die we mogen aanvullen wanneer NULL:
+  const enrichFields = ['email', 'phone', 'date_of_birth', 'address_street', 'address_city', 'address_postal'];
+  const { data: existing, error: selErr } = await ctx.admin
+    .from('candidates')
+    .select(enrichFields.join(','))
+    .eq('id', candidateId)
+    .single();
+  if (selErr || !existing) { stats.skipped++; return; }
+
+  const updates: Record<string, unknown> = {};
+  for (const field of enrichFields) {
+    const current = (existing as Record<string, unknown>)[field];
+    const incoming = payload[field];
+    if ((current === null || current === undefined || current === '') && incoming) {
+      updates[field] = incoming;
+    }
+  }
+  if (Object.keys(updates).length === 0) { stats.skipped++; return; }
+
+  const { error: updErr } = await ctx.admin
+    .from('candidates')
+    .update(updates)
+    .eq('id', candidateId);
+  if (updErr) {
+    stats.failed++;
+    stats.failures.push({ carerix_id: candidateId, error: `enrich: ${updErr.message}` });
+    return;
+  }
+  stats.skipped++;
+}
+
 async function insertIfNew<T extends Record<string, unknown>>(
   ctx: RunnerContext,
   table: string,
@@ -234,9 +275,15 @@ export async function runCandidatesPage(
     const stats = emptyStats(pageData.totalElements);
     for (const emp of pageData.items) {
       const payload = mapCREmployee(emp, ctx.organizationId);
-      await insertIfNew(ctx, 'candidates', 'candidate', String(emp._id), payload, stats, {
-        name: `${emp.firstName ?? ''} ${emp.lastName ?? ''}`.trim(),
-      });
+      const existingId = ctx.idMapper.get('candidate', String(emp._id));
+      if (existingId) {
+        // Bestaande candidate: enrich alleen NULL-velden (geen overschrijven).
+        await enrichCandidateIfNull(ctx, existingId, payload, stats);
+      } else {
+        await insertIfNew(ctx, 'candidates', 'candidate', String(emp._id), payload, stats, {
+          name: `${emp.firstName ?? ''} ${emp.lastName ?? ''}`.trim(),
+        });
+      }
     }
     markDone(stats, pageData);
     return stats;
@@ -488,24 +535,26 @@ export async function runNotesPage(
   const stats = emptyStats(pageData.totalElements);
 
   for (const todo of pageData.items) {
-    // Resolve relation: candidate first, then company.
-    const carerixCandidateId = todo.toEmployee?._id ? String(todo.toEmployee._id) : null;
-    const carerixCompanyId = todo.toCompany?._id ? String(todo.toCompany._id) : null;
+    // Resolve relation in volgorde: candidate → company → match → vacancy → contact.
+    // De eerste parent die in onze idMapper voorkomt wint. Hierdoor redden we
+    // todos die in Carerix alleen aan een match/job/contact hangen.
+    const tryParents: Array<[string, string, 'candidate' | 'company' | 'match' | 'vacancy' | 'contact']> = [
+      [todo.toEmployee?._id ?? '', 'candidate', 'candidate'],
+      [todo.toCompany?._id ?? '', 'company', 'company'],
+      [todo.toMatch?._id ?? '', 'match', 'match'],
+      [todo.toJob?._id ?? '', 'vacancy', 'vacancy'],
+      [todo.toContact?._id ?? '', 'contact', 'contact'],
+    ];
 
     let relatedEntityId: string | null = null;
     let relatedEntityType: string | null = null;
-    if (carerixCandidateId) {
-      const id = ctx.idMapper.get('candidate', carerixCandidateId);
+    for (const [carerixId, mapperType, entityType] of tryParents) {
+      if (!carerixId) continue;
+      const id = ctx.idMapper.get(mapperType, String(carerixId));
       if (id) {
         relatedEntityId = id;
-        relatedEntityType = 'candidate';
-      }
-    }
-    if (!relatedEntityId && carerixCompanyId) {
-      const id = ctx.idMapper.get('company', carerixCompanyId);
-      if (id) {
-        relatedEntityId = id;
-        relatedEntityType = 'company';
+        relatedEntityType = entityType;
+        break;
       }
     }
     if (!relatedEntityId || !relatedEntityType) {

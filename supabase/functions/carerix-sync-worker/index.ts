@@ -29,9 +29,9 @@ const REQUIRED_MAPPINGS: Record<EntityName, string[]> = {
   candidates: ['candidate'],
   vacancies: ['company', 'vacancy'],
   matches: ['candidate', 'vacancy', 'match'],
-  placements: ['candidate', 'company', 'vacancy', 'match', 'placement'],
+  placements: ['candidate', 'company', 'placement'],
   documents: ['candidate', 'document'],
-  notes: ['candidate', 'company', 'note'],
+  notes: ['candidate', 'company', 'match', 'vacancy', 'contact', 'note'],
   employment: [],
 };
 
