@@ -210,7 +210,8 @@ Deno.serve(async (req) => {
 
     pageCursor += 1;
     const processedSoFar = pageCursor * PAGE_SIZE;
-    const done = stats.totalElements === 0 || processedSoFar >= stats.totalElements;
+    const skipped = Boolean(stats.skipReason);
+    const done = skipped || stats.totalElements === 0 || processedSoFar >= stats.totalElements;
 
     const { data: current } = await admin
       .from('carerix_import_entity_runs')
@@ -228,7 +229,8 @@ Deno.serve(async (req) => {
         skipped: (current?.skipped ?? 0) + stats.skipped,
         failed: (current?.failed ?? 0) + stats.failed,
         found: Math.max(current?.found ?? 0, stats.totalElements),
-        status: done ? 'completed' : 'running',
+        status: skipped ? 'skipped' : done ? 'completed' : 'running',
+        last_error: stats.skipReason ?? null,
         finished_at: done ? new Date().toISOString() : null,
         updated_at: new Date().toISOString(),
       })
@@ -237,7 +239,7 @@ Deno.serve(async (req) => {
 
     if (done) {
       selfTrigger(job_id).catch(() => {});
-      return jsonOk({ ok: true, entity_done: nextEntity });
+      return jsonOk({ ok: true, entity_done: nextEntity, skipped });
     }
   }
 });

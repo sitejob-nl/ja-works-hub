@@ -652,7 +652,9 @@ function JobCard({ job }: { job: CarerixJob }) {
       if (error) throw error;
       return data as any as Array<{ entity: string; carerix_id: string; error: string }>;
     },
-    enabled: job.status === 'failed' || (job.summary && Object.values(job.summary).some((s) => s.failed > 0)),
+    enabled:
+      job.status === 'failed' ||
+      Boolean(job.summary && Object.values(job.summary).some((s) => s.failed > 0)),
   });
 
   return (

@@ -54,6 +54,10 @@ export interface PageStats {
   skipped: number;
   failed: number;
   failures: Array<{ carerix_id: string; error: string; payload?: unknown }>;
+  // Set when the cr*Page-query was rejected by Carerix (scope/permission). The
+  // worker uses this to mark the entity run as `skipped` instead of silently
+  // showing 0 elements as `completed`.
+  skipReason?: string;
 }
 
 export interface RunnerContext {
@@ -74,24 +78,26 @@ const emptyStats = (total = 0): PageStats => ({
   failures: [],
 });
 
-// Wraps a query that may not be available in the tenant's scope.
-// Returns null if the schema rejects the query (so the runner can mark "skipped"
-// without failing the job).
-async function queryOrNull<T>(
-  ctx: RunnerContext,
-  gql: string,
-): Promise<T | null> {
+// Result of a CR*-query that may be rejected by the tenant's scope-set.
+// On scope-rejection we don't throw — instead we surface the reason so the
+// runner can mark the entity as `skipped` with a human-readable explanation.
+type QueryResult<T> =
+  | { data: T; reason: null }
+  | { data: null; reason: string };
+
+async function tryQuery<T>(ctx: RunnerContext, gql: string): Promise<QueryResult<T>> {
   try {
-    return await ctx.gql.query<T>(gql);
+    const data = await ctx.gql.query<T>(gql);
+    return { data, reason: null };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    // GraphQL schema rejection signals: field not found / not queryable / forbidden / 403.
     if (
       /Cannot query field|FieldUndefined|undefined field|Validation error|GraphQLError.*not allowed|access denied|forbidden|insufficient_scope|403|401/i.test(
         msg,
       )
     ) {
-      return null;
+      console.warn(`[carerix] Query rejected (likely scope): ${msg.slice(0, 300)}`);
+      return { data: null, reason: msg };
     }
     throw err;
   }
@@ -206,13 +212,13 @@ export async function runCandidatesPage(
   // Try the rich CR-schema first; fall back to the v1 candidatePage if scope
   // doesn't allow CR* — both populate the same `candidate` mapping in idMapper.
   const watermark = watermarkQualifier(ctx.modifiedSince);
-  const crData = await queryOrNull<{ crEmployeePage: PageResponse<CREmployee> }>(
+  const crResult = await tryQuery<{ crEmployeePage: PageResponse<CREmployee> }>(
     ctx,
     crEmployeesQuery(page, size, watermark),
   );
 
-  if (crData?.crEmployeePage) {
-    const pageData = crData.crEmployeePage;
+  if (crResult.data?.crEmployeePage) {
+    const pageData = crResult.data.crEmployeePage;
     const stats = emptyStats(pageData.totalElements);
     for (const emp of pageData.items) {
       const payload = mapCREmployee(emp, ctx.organizationId);
@@ -248,16 +254,15 @@ export async function runVacanciesPage(
   size: number,
 ): Promise<PageStats> {
   const watermark = watermarkQualifier(ctx.modifiedSince);
-  const data = await queryOrNull<{ crJobPage: PageResponse<CRJob> }>(
+  const result = await tryQuery<{ crJobPage: PageResponse<CRJob> }>(
     ctx,
     crJobsQuery(page, size, watermark),
   );
-  if (!data?.crJobPage) {
-    // Mark as skipped — caller treats null as no work (totalElements=0 finishes the entity).
-    return emptyStats(0);
+  if (!result.data?.crJobPage) {
+    return { ...emptyStats(0), skipReason: result.reason ?? 'crJobPage onverwachts leeg' };
   }
 
-  const pageData = data.crJobPage;
+  const pageData = result.data.crJobPage;
   const stats = emptyStats(pageData.totalElements);
 
   for (const job of pageData.items) {
@@ -290,13 +295,15 @@ export async function runMatchesPage(
   size: number,
 ): Promise<PageStats> {
   const watermark = watermarkQualifier(ctx.modifiedSince);
-  const data = await queryOrNull<{ crMatchPage: PageResponse<CRMatch> }>(
+  const result = await tryQuery<{ crMatchPage: PageResponse<CRMatch> }>(
     ctx,
     crMatchesQuery(page, size, watermark),
   );
-  if (!data?.crMatchPage) return emptyStats(0);
+  if (!result.data?.crMatchPage) {
+    return { ...emptyStats(0), skipReason: result.reason ?? 'crMatchPage onverwachts leeg' };
+  }
 
-  const pageData = data.crMatchPage;
+  const pageData = result.data.crMatchPage;
   const stats = emptyStats(pageData.totalElements);
 
   for (const match of pageData.items) {
@@ -335,13 +342,15 @@ export async function runPlacementsPage(
   size: number,
 ): Promise<PageStats> {
   const watermark = watermarkQualifier(ctx.modifiedSince);
-  const data = await queryOrNull<{ crEmploymentPage: PageResponse<CREmployment> }>(
+  const result = await tryQuery<{ crEmploymentPage: PageResponse<CREmployment> }>(
     ctx,
     crEmploymentsQuery(page, size, watermark),
   );
-  if (!data?.crEmploymentPage) return emptyStats(0);
+  if (!result.data?.crEmploymentPage) {
+    return { ...emptyStats(0), skipReason: result.reason ?? 'crEmploymentPage onverwachts leeg' };
+  }
 
-  const pageData = data.crEmploymentPage;
+  const pageData = result.data.crEmploymentPage;
   const stats = emptyStats(pageData.totalElements);
 
   for (const emp of pageData.items) {
@@ -396,13 +405,15 @@ export async function runDocumentsPage(
   size: number,
 ): Promise<PageStats> {
   const watermark = watermarkQualifier(ctx.modifiedSince);
-  const data = await queryOrNull<{ crAttachmentPage: PageResponse<CRAttachment> }>(
+  const result = await tryQuery<{ crAttachmentPage: PageResponse<CRAttachment> }>(
     ctx,
     crAttachmentsQuery(page, size, watermark),
   );
-  if (!data?.crAttachmentPage) return emptyStats(0);
+  if (!result.data?.crAttachmentPage) {
+    return { ...emptyStats(0), skipReason: result.reason ?? 'crAttachmentPage onverwachts leeg' };
+  }
 
-  const pageData = data.crAttachmentPage;
+  const pageData = result.data.crAttachmentPage;
   const stats = emptyStats(pageData.totalElements);
 
   for (const att of pageData.items) {
@@ -437,17 +448,21 @@ export async function runNotesPage(
   size: number,
 ): Promise<PageStats> {
   if (!ctx.createdByUserId) {
-    // Without a created_by we can't insert into `notes` (NOT NULL).
-    return emptyStats(0);
+    return {
+      ...emptyStats(0),
+      skipReason: 'Geen created_by (job zonder user) — notes vereist NOT NULL created_by.',
+    };
   }
   const watermark = watermarkQualifier(ctx.modifiedSince);
-  const data = await queryOrNull<{ crTodoPage: PageResponse<CRTodo> }>(
+  const result = await tryQuery<{ crTodoPage: PageResponse<CRTodo> }>(
     ctx,
     crTodosQuery(page, size, watermark),
   );
-  if (!data?.crTodoPage) return emptyStats(0);
+  if (!result.data?.crTodoPage) {
+    return { ...emptyStats(0), skipReason: result.reason ?? 'crTodoPage onverwachts leeg' };
+  }
 
-  const pageData = data.crTodoPage;
+  const pageData = result.data.crTodoPage;
   const stats = emptyStats(pageData.totalElements);
 
   for (const todo of pageData.items) {
