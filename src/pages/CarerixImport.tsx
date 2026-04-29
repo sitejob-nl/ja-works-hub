@@ -46,20 +46,16 @@ const ENTITY_LABEL: Record<EntityName, string> = {
   contacts: 'Contactpersonen',
   candidates: 'Kandidaten',
   vacancies: 'Vacatures',
-  placements: 'Plaatsingen',
+  placements: 'Plaatsingen (werkhistorie)',
   matches: 'Matches (pipeline)',
-  documents: 'Documenten (metadata)',
-  employment: 'Werkhistorie',
+  documents: 'Documenten (per kandidaat)',
+  employment: 'Werkhistorie (zit in plaatsingen)',
   notes: 'Notities & taken',
 };
 
 const UNSUPPORTED_REASON: Partial<Record<EntityName, string>> = {
   employment:
-    'Carerix-werkhistorie (eerdere werkgevers van de kandidaat) heeft geen doel-tabel in JA Werkt.',
-  placements:
-    'crEmploymentPage bestaat niet in de Carerix-API — plaatsingen zitten in CRMatch (status=geplaatst) en worden afgeleid uit de matches-import.',
-  documents:
-    'CRAttachment heeft in deze Carerix-schema geen direct kandidaat-veld. Documenten vereisen een aparte 2e-pass per kandidaat (CREmployee.attachments).',
+    'Werkhistorie wordt al gemigreerd via Plaatsingen (CRWorkHistory bevat alle JA Werkt-plaatsingen).',
 };
 
 interface CarerixConfig {

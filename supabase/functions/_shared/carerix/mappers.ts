@@ -7,15 +7,13 @@
 import type {
   CRAttachment,
   CREmployee,
-  CREmployment,
   CRJob,
   CRMatch,
-  CRPublication,
   CRTodo,
+  CRWorkHistory,
   CXCandidate,
   CXCompany,
   CXContact,
-  CXVacancy,
 } from './types.ts';
 import { isCvType, mapDocumentType, mapStatus, statusMaps } from './status-maps.ts';
 
@@ -172,50 +170,58 @@ function mapMatchStatus(raw: string | undefined | null): string {
   return 'nieuwe_match';
 }
 
-export function mapCREmployment(
-  e: CREmployment,
+export function mapCRWorkHistoryToPlacement(
+  w: CRWorkHistory,
   candidateId: string,
   companyId: string,
   orgId: string,
-  vacancyId?: string,
-  matchId?: string,
 ): Record<string, unknown> {
-  const status = mapStatus(statusMaps.placement, statusValue(e.toStatusNode), 'afgerond');
-  const startDate = isoDay(e.startDate);
+  const startDate = isoDay(w.startDate);
   if (!startDate) {
-    throw new Error('CREmployment zonder startDate kan niet als placement geïmporteerd worden');
+    throw new Error('CRWorkHistory zonder startDate kan niet als placement geïmporteerd worden');
   }
+  const endDate = isoDay(w.endDate);
+  // Status afgeleid uit endDate: als er een endDate in het verleden is →
+  // afgerond, anders actief. Carerix endReason kunnen we later gebruiken om
+  // voortijdig_beeindigd te markeren (bv. endReason='cancelled').
+  const now = Date.now();
+  const isFinished = endDate && new Date(endDate).getTime() < now;
+  const isCancelled = (w.endReason || '').toLowerCase().includes('cancel');
+  const status = isCancelled ? 'voortijdig_beeindigd' : isFinished ? 'afgerond' : 'actief';
 
   return {
     candidate_id: candidateId,
     company_id: companyId,
-    vacancy_id: vacancyId ?? null,
-    match_id: matchId ?? null,
-    function_name: e.toJob?.displayName || 'Onbekende functie',
-    hourly_rate: e.hourlyRate ?? 0,
-    cao_hours: e.hours ?? null,
+    function_name: w.function || w.employer || 'Onbekende functie',
+    hourly_rate: 0, // CRWorkHistory exposeert geen rate; in JA Werkt later aan te vullen
     start_date: startDate,
-    end_date: isoDay(e.endDate),
+    end_date: endDate,
     status,
+    work_location: w.workLocation ?? null,
+    termination_reason: w.endReason ?? null,
     organization_id: orgId,
   };
 }
 
-export function mapCRAttachmentMetadata(
-  a: CRAttachment,
+export function mapCRAttachmentToDocument(
+  a: CRAttachment & { downloadName?: string; attachmentMimeType?: string; label?: string },
   candidateId: string,
   orgId: string,
 ): Record<string, unknown> {
-  const isCv = isCvType(a.tag) || isCvType(a.fileName);
-  const docType = isCv ? 'overig' : mapDocumentType(a.tag);
+  // Carerix-veldnamen op CRAttachment: downloadName (filename), label (tag),
+  // attachmentMimeType (mime), attachmentSize.
+  const fileName = (a as { downloadName?: string }).downloadName || a.displayName;
+  const tag = (a as { label?: string }).label;
+  const isCv = isCvType(tag) || isCvType(fileName);
+  const docType = isCv ? 'overig' : mapDocumentType(tag);
 
   return {
     candidate_id: candidateId,
-    name: a.fileName || a.tag || 'Carerix bijlage',
+    name: fileName || tag || 'Carerix bijlage',
     type: docType,
     status: 'geldig',
     source: 'carerix',
-    file_path: null, // filled in by a separate content-fetch pass
+    file_path: null, // bytes-download in 2e ronde
     organization_id: orgId,
   };
 }

@@ -14,10 +14,10 @@ import type { IdMapper } from './id-mapper.ts';
 import type {
   CRAttachment,
   CREmployee,
-  CREmployment,
   CRJob,
   CRMatch,
   CRTodo,
+  CRWorkHistory,
   CXCandidate,
   CXCompany,
   CXContact,
@@ -28,21 +28,21 @@ import {
   candidatesQuery,
   companiesQuery,
   contactsQuery,
-  crAttachmentsQuery,
+  crEmployeeAttachmentsQuery,
   crEmployeesQuery,
-  crEmploymentsQuery,
   crJobsQuery,
   crMatchesQuery,
   crTodosQuery,
+  crWorkHistoriesQuery,
   watermarkQualifier,
 } from './queries.ts';
 import {
-  mapCRAttachmentMetadata,
+  mapCRAttachmentToDocument,
   mapCREmployee,
-  mapCREmployment,
   mapCRJobToVacancy,
   mapCRMatch,
   mapCRTodoToNote,
+  mapCRWorkHistoryToPlacement,
   mapCandidate,
   mapCompany,
   mapContact,
@@ -337,32 +337,27 @@ export async function runMatchesPage(
   return stats;
 }
 
+// Placements via crWorkHistoryPage: één CRWorkHistory-record per dienstverband.
 export async function runPlacementsPage(
   ctx: RunnerContext,
   page: number,
   size: number,
 ): Promise<PageStats> {
   const watermark = watermarkQualifier(ctx.modifiedSince);
-  const result = await tryQuery<{ crEmploymentPage: PageResponse<CREmployment> }>(
+  const result = await tryQuery<{ crWorkHistoryPage: PageResponse<CRWorkHistory> }>(
     ctx,
-    crEmploymentsQuery(page, size, watermark),
+    crWorkHistoriesQuery(page, size, watermark),
   );
-  if (!result.data?.crEmploymentPage) {
-    return { ...emptyStats(0), skipReason: result.reason ?? 'crEmploymentPage onverwachts leeg' };
+  if (!result.data?.crWorkHistoryPage) {
+    return { ...emptyStats(0), skipReason: result.reason ?? 'crWorkHistoryPage onverwachts leeg' };
   }
 
-  const pageData = result.data.crEmploymentPage;
+  const pageData = result.data.crWorkHistoryPage;
   const stats = emptyStats(pageData.totalElements);
 
-  for (const emp of pageData.items) {
-    const carerixCandidateId = emp.toEmployee?._id ? String(emp.toEmployee._id) : null;
-    const carerixCompanyId = emp.toCompany?._id ? String(emp.toCompany._id) : null;
-    const carerixVacancyId =
-      (emp.toJob?._id && String(emp.toJob._id)) ||
-      (emp.toPublication?._id && String(emp.toPublication._id)) ||
-      null;
-    const carerixMatchId = emp.toMatch?._id ? String(emp.toMatch._id) : null;
-
+  for (const wh of pageData.items) {
+    const carerixCandidateId = wh.toEmployee?._id ? String(wh.toEmployee._id) : null;
+    const carerixCompanyId = wh.toCompany?._id ? String(wh.toCompany._id) : null;
     if (!carerixCandidateId || !carerixCompanyId) {
       stats.skipped++;
       continue;
@@ -373,72 +368,85 @@ export async function runPlacementsPage(
     if (!candidateId || !companyId) {
       stats.failed++;
       stats.failures.push({
-        carerix_id: String(emp._id),
+        carerix_id: String(wh._id),
         error: `dependency not imported (candidate=${carerixCandidateId} company=${carerixCompanyId})`,
       });
       continue;
     }
-    const vacancyId = carerixVacancyId ? ctx.idMapper.get('vacancy', carerixVacancyId) : null;
-    const matchId = carerixMatchId ? ctx.idMapper.get('match', carerixMatchId) : null;
 
     try {
-      const payload = mapCREmployment(
-        emp,
-        candidateId,
-        companyId,
-        ctx.organizationId,
-        vacancyId ?? undefined,
-        matchId ?? undefined,
-      );
-      await insertIfNew(ctx, 'placements', 'placement', String(emp._id), payload, stats);
+      const payload = mapCRWorkHistoryToPlacement(wh, candidateId, companyId, ctx.organizationId);
+      await insertIfNew(ctx, 'placements', 'placement', String(wh._id), payload, stats);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       stats.failed++;
-      stats.failures.push({ carerix_id: String(emp._id), error: msg });
+      stats.failures.push({ carerix_id: String(wh._id), error: msg });
     }
   }
   return stats;
 }
 
+// Documenten via per-kandidaat traversal: CRAttachment heeft geen direct
+// toEmployee, dus we itereren over de gemapped candidates en halen voor
+// elk de attachments op via crEmployee(_id).attachments.
+//
+// "page" hier is een kandidaat-batch. CANDIDATES_PER_BATCH kandidaten per
+// worker-call. Worker self-trigger blijft werken: na batch komt volgende.
+const CANDIDATES_PER_BATCH = 25;
+
 export async function runDocumentsPage(
   ctx: RunnerContext,
   page: number,
-  size: number,
+  _size: number,
 ): Promise<PageStats> {
-  const watermark = watermarkQualifier(ctx.modifiedSince);
-  const result = await tryQuery<{ crAttachmentPage: PageResponse<CRAttachment> }>(
-    ctx,
-    crAttachmentsQuery(page, size, watermark),
-  );
-  if (!result.data?.crAttachmentPage) {
-    return { ...emptyStats(0), skipReason: result.reason ?? 'crAttachmentPage onverwachts leeg' };
+  // Haal candidate-mappings op (volgorde op entity_id voor deterministische pagination).
+  const offset = page * CANDIDATES_PER_BATCH;
+  const { data: mappings, error: mErr } = await ctx.admin
+    .from('external_mappings')
+    .select('entity_id, external_id')
+    .eq('external_system', 'carerix')
+    .eq('organization_id', ctx.organizationId)
+    .eq('entity_type', 'candidate')
+    .order('entity_id', { ascending: true })
+    .range(offset, offset + CANDIDATES_PER_BATCH - 1);
+
+  if (mErr) throw new Error(`candidate-mappings ophalen mislukt: ${mErr.message}`);
+  if (!mappings || mappings.length === 0) {
+    // Geen kandidaten meer — totalElements=0 sluit de runner af.
+    return emptyStats(0);
   }
 
-  const pageData = result.data.crAttachmentPage;
-  const stats = emptyStats(pageData.totalElements);
+  // We kunnen geen exacte totalElements weten zonder COUNT — we melden het
+  // aantal candidate-mappings als pseudo-total om de worker-loop progress te
+  // laten tonen. De worker stopt zodra een batch leeg terugkomt.
+  const stats = emptyStats(offset + mappings.length + 1); // +1 zorgt dat done pas wordt na lege batch
 
-  for (const att of pageData.items) {
-    const carerixCandidateId = att.toEmployee?._id ? String(att.toEmployee._id) : null;
-    if (!carerixCandidateId) {
-      // Attachment hangs off a non-candidate (company logo etc.) — skip for now.
-      stats.skipped++;
-      continue;
-    }
-    const candidateId = ctx.idMapper.get('candidate', carerixCandidateId);
-    if (!candidateId) {
+  for (const m of mappings) {
+    const carerixEmployeeId = String(m.external_id);
+    const candidateId = String(m.entity_id);
+
+    // Per kandidaat alle attachments ophalen (max 100 per kandidaat — zou ruim
+    // moeten zijn). Voor zeer veel attachments per kandidaat kan een 2e
+    // GraphQL-call nodig zijn — nu houden we het op één page.
+    const result = await tryQuery<{
+      crEmployee: { _id: string; attachments?: { items: CRAttachment[]; totalElements: number } } | null;
+    }>(ctx, crEmployeeAttachmentsQuery(carerixEmployeeId, 0, 100));
+
+    if (result.reason) {
       stats.failed++;
-      stats.failures.push({
-        carerix_id: String(att._id),
-        error: `candidate ${carerixCandidateId} not yet imported`,
-      });
+      stats.failures.push({ carerix_id: carerixEmployeeId, error: result.reason.slice(0, 200) });
       continue;
     }
+    const items = result.data?.crEmployee?.attachments?.items ?? [];
 
-    const payload = mapCRAttachmentMetadata(att, candidateId, ctx.organizationId);
-    await insertIfNew(ctx, 'documents', 'document', String(att._id), payload, stats, {
-      file_name: att.fileName,
-      tag: att.tag,
-    });
+    for (const att of items) {
+      const payload = mapCRAttachmentToDocument(
+        att as CRAttachment & { downloadName?: string; attachmentMimeType?: string; label?: string },
+        candidateId,
+        ctx.organizationId,
+      );
+      await insertIfNew(ctx, 'documents', 'document', String(att._id), payload, stats);
+    }
   }
   return stats;
 }
@@ -516,10 +524,9 @@ export const ENTITY_RUNNERS: Partial<Record<EntityName, Runner>> = {
   candidates: runCandidatesPage,
   vacancies: runVacanciesPage,
   matches: runMatchesPage,
+  placements: runPlacementsPage, // via crWorkHistoryPage
+  documents: runDocumentsPage,   // per-kandidaat via CREmployee.attachments
   notes: runNotesPage,
-  // placements / documents / employment: see UNSUPPORTED_REASONS in types.ts.
-  // - crEmploymentPage doesn't exist; placements live inside CRMatch.
-  // - CRAttachment has no direct candidate ref in this schema; needs 2-pass
-  //   via CREmployee.attachments.
-  // - CRWorkHistory not exposed as a top-level page query.
+  // employment is in deze tenant gelijk aan placements (zelfde data via
+  // CRWorkHistory) — daarom UNSUPPORTED in types.ts.
 };

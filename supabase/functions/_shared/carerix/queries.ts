@@ -204,11 +204,52 @@ export function crMatchesQuery(page: number, size: number, qualifier?: string): 
   }`;
 }
 
-// NOTE: crEmploymentPage does NOT exist in Carerix schema. Placements are
-// modeled as CRMatch (with placed-status) or as CRJob with toEmployee.
-// Kept here purely as documentation — the runner marks `placements` UNSUPPORTED.
-export function crEmploymentsQuery(_page: number, _size: number, _qualifier?: string): string {
-  throw new Error('crEmploymentPage bestaat niet in Carerix schema');
+// Plaatsingen worden in Carerix gemodelleerd als CRWorkHistory: één record
+// per dienstverband bij een klant via JA Werkt. Heeft toEmployee + toCompany
+// directe refs.
+export function crWorkHistoriesQuery(page: number, size: number, qualifier?: string): string {
+  return `query {
+    crWorkHistoryPage(${pageable(page, size)}${NORESTRICT}${qualifierClause(qualifier)}) {
+      totalElements
+      items {
+        _id
+        startDate
+        endDate
+        employer
+        function
+        workLocation
+        endReason
+        creationDate
+        modificationDate
+        toEmployee { _id }
+        toCompany { _id }
+      }
+    }
+  }`;
+}
+
+// Per-kandidaat attachments ophalen — CRAttachment heeft geen direct
+// toEmployee in deze schema; de relatie is omgekeerd via CREmployee.attachments.
+export function crEmployeeAttachmentsQuery(employeeId: string, page: number, size: number): string {
+  const safeId = employeeId.replace(/"/g, '\\"');
+  return `query {
+    crEmployee(_id: "${safeId}") {
+      _id
+      attachments(${pageable(page, size)}) {
+        totalElements
+        items {
+          _id
+          downloadName
+          displayName
+          attachmentMimeType
+          label
+          attachmentSize
+          creationDate
+          modificationDate
+        }
+      }
+    }
+  }`;
 }
 
 export function crAttachmentsQuery(page: number, size: number, qualifier?: string): string {

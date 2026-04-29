@@ -167,20 +167,20 @@ export interface CRMatch {
   creationDate?: string;
 }
 
-export interface CREmployment {
+// CRWorkHistory in Carerix = één plaatsing/dienstverband-record voor JA Werkt
+// (kandidaat heeft via JA Werkt bij klant X gewerkt van Y tot Z).
+export interface CRWorkHistory {
   _id: string;
   startDate?: string;
   endDate?: string;
-  hourlyRate?: number;
-  contractType?: string;
-  hours?: number;
-  toEmployee?: CRRef;
-  toJob?: CRRef;
-  toPublication?: CRRef;
-  toCompany?: CRRef;
-  toMatch?: CRRef;
-  toStatusNode?: CRStatusNode;
+  employer?: string;
+  function?: string;
+  workLocation?: string;
+  endReason?: string;
+  creationDate?: string;
   modificationDate?: string;
+  toEmployee?: { _id: string };
+  toCompany?: { _id: string };
 }
 
 export interface CRAttachment {
@@ -253,21 +253,17 @@ export const SUPPORTED_ENTITIES: EntityName[] = [
   'candidates',
   'vacancies',
   'matches',
+  'placements',
+  'documents',
   'notes',
-  // documents: CRAttachment heeft geen direct toEmployee in deze schema —
-  // moet via per-kandidaat traversal (CREmployee.attachments). 2-pass nodig.
-  // placements: crEmploymentPage bestaat niet in deze tenant — placements
-  // worden gemodelleerd als CRMatch (status=geplaatst) of CRJob met toEmployee.
-  // employment: CRWorkHistory bestaat niet als top-level query.
 ];
 
+// `employment` als aparte entiteit hebben we niet meer nodig: in JA Werkt's
+// Carerix-tenant is alle historie eigen plaatsings-historie, en die zit in
+// CRWorkHistory → wordt geïmporteerd als `placements`.
 export const UNSUPPORTED_REASONS: Partial<Record<EntityName, string>> = {
   employment:
-    'Carerix CRWorkHistory beschrijft eerdere werkgevers van de kandidaat. JA Werkt heeft hier geen doel-tabel voor.',
-  placements:
-    'crEmploymentPage bestaat niet in Carerix schema. Plaatsingen worden gemodelleerd als CRMatch met status=geplaatst — wordt afgeleid uit matches-import.',
-  documents:
-    'CRAttachment in deze tenant heeft geen direct toEmployee-veld. Documenten moeten via per-kandidaat traversal opgehaald worden (CREmployee.attachments). Aparte 2e-pass nodig.',
+    'Werkhistorie wordt gemigreerd via de Plaatsingen-import (CRWorkHistory bevat alle JA Werkt-plaatsingen).',
 };
 
 // Order matters — dependencies are processed first.
@@ -277,8 +273,8 @@ export const ENTITY_DEPENDENCIES: Record<EntityName, EntityName[]> = {
   candidates: [],
   vacancies: ['companies'],
   matches: ['candidates', 'vacancies'],
-  placements: ['candidates', 'vacancies', 'companies'],
+  placements: ['candidates', 'companies'],
   documents: ['candidates'],
   notes: ['candidates', 'companies'],
-  employment: ['candidates'],
+  employment: [],
 };
