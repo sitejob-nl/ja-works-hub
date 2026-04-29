@@ -23,6 +23,11 @@ function qualifierClause(qualifier?: string): string {
   return `, qualifier: "${safe}"`;
 }
 
+// For migration we want soft-deleted/archived records too — vervulde vacatures,
+// afgeronde plaatsingen, gesloten matches. Default is false on Carerix side
+// which silently filters them out, leading to surprising "0 found" results.
+const NORESTRICT = ', norestrict: true';
+
 // ---------- v1 public schema ----------
 
 export function companiesQuery(page: number, size: number): string {
@@ -98,7 +103,7 @@ export function connectionTestQuery(): string {
 
 export function crCompaniesQuery(page: number, size: number, qualifier?: string): string {
   return `query {
-    crCompanyPage(${pageable(page, size)}${qualifierClause(qualifier)}) {
+    crCompanyPage(${pageable(page, size)}${NORESTRICT}${qualifierClause(qualifier)}) {
       totalElements
       items {
         _id
@@ -112,7 +117,7 @@ export function crCompaniesQuery(page: number, size: number, qualifier?: string)
 
 export function crEmployeesQuery(page: number, size: number, qualifier?: string): string {
   return `query {
-    crEmployeePage(${pageable(page, size)}${qualifierClause(qualifier)}) {
+    crEmployeePage(${pageable(page, size)}${NORESTRICT}${qualifierClause(qualifier)}) {
       totalElements
       items {
         _id
@@ -138,7 +143,7 @@ export function crEmployeesQuery(page: number, size: number, qualifier?: string)
 
 export function crJobsQuery(page: number, size: number, qualifier?: string): string {
   return `query {
-    crJobPage(${pageable(page, size)}${qualifierClause(qualifier)}) {
+    crJobPage(${pageable(page, size)}${NORESTRICT}${qualifierClause(qualifier)}) {
       totalElements
       items {
         _id
@@ -162,7 +167,7 @@ export function crJobsQuery(page: number, size: number, qualifier?: string): str
 
 export function crPublicationsQuery(page: number, size: number, qualifier?: string): string {
   return `query {
-    crPublicationPage(${pageable(page, size)}${qualifierClause(qualifier)}) {
+    crPublicationPage(${pageable(page, size)}${NORESTRICT}${qualifierClause(qualifier)}) {
       totalElements
       items {
         _id
@@ -180,7 +185,7 @@ export function crPublicationsQuery(page: number, size: number, qualifier?: stri
 
 export function crMatchesQuery(page: number, size: number, qualifier?: string): string {
   return `query {
-    crMatchPage(${pageable(page, size)}${qualifierClause(qualifier)}) {
+    crMatchPage(${pageable(page, size)}${NORESTRICT}${qualifierClause(qualifier)}) {
       totalElements
       items {
         _id
@@ -202,7 +207,7 @@ export function crMatchesQuery(page: number, size: number, qualifier?: string): 
 
 export function crEmploymentsQuery(page: number, size: number, qualifier?: string): string {
   return `query {
-    crEmploymentPage(${pageable(page, size)}${qualifierClause(qualifier)}) {
+    crEmploymentPage(${pageable(page, size)}${NORESTRICT}${qualifierClause(qualifier)}) {
       totalElements
       items {
         _id
@@ -225,7 +230,7 @@ export function crEmploymentsQuery(page: number, size: number, qualifier?: strin
 
 export function crAttachmentsQuery(page: number, size: number, qualifier?: string): string {
   return `query {
-    crAttachmentPage(${pageable(page, size)}${qualifierClause(qualifier)}) {
+    crAttachmentPage(${pageable(page, size)}${NORESTRICT}${qualifierClause(qualifier)}) {
       totalElements
       items {
         _id
@@ -259,7 +264,7 @@ export function crAttachmentContentQuery(attachmentId: string): string {
 
 export function crTodosQuery(page: number, size: number, qualifier?: string): string {
   return `query {
-    crTodoPage(${pageable(page, size)}${qualifierClause(qualifier)}) {
+    crTodoPage(${pageable(page, size)}${NORESTRICT}${qualifierClause(qualifier)}) {
       totalElements
       items {
         _id
