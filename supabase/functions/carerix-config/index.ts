@@ -61,14 +61,20 @@ Deno.serve(async (req) => {
       const scope =
         body.scope ||
         [
+          // Wrapper-scope ontsluit het volledige CR*-schema (cr*Page-queries).
+          // Vereist door Carerix admin per tenant; als de tenant 'm niet heeft
+          // krijgt OAuth een fout — gebruiker moet 'm aanvragen of via UI een
+          // smallere scope-set invullen.
+          'urn:cx/cx5Wrapper:data:manage',
+          // Per-resource read-scopes als fallback voor tenants zonder wrapper.
           'urn:cx/core:data/companies:read',
           'urn:cx/core:data/contacts:read',
           'urn:cx/core:data/candidates:read',
-          'urn:cx/activities:data/notes:read',
-          'urn:cx/activities:data/tasks:read',
           'urn:cx/core:data/placements:read',
           'urn:cx/core:data/vacancies:read',
           'urn:cx/core:data/matches:read',
+          'urn:cx/activities:data/notes:read',
+          'urn:cx/activities:data/tasks:read',
         ].join(' ');
       const tokenEndpoint = body.token_endpoint
         ? await resolveTokenEndpoint(body.token_endpoint)

@@ -27,11 +27,12 @@ const REQUIRED_MAPPINGS: Record<EntityName, string[]> = {
   companies: ['company'],
   contacts: ['company', 'contact'],
   candidates: ['candidate'],
-  documents: [],
+  vacancies: ['company', 'vacancy'],
+  matches: ['candidate', 'vacancy', 'match'],
+  placements: ['candidate', 'company', 'vacancy', 'match', 'placement'],
+  documents: ['candidate', 'document'],
+  notes: ['candidate', 'company', 'note'],
   employment: [],
-  vacancies: [],
-  placements: [],
-  notes: [],
 };
 
 function selfTrigger(jobId: string): Promise<Response> {
@@ -141,6 +142,8 @@ Deno.serve(async (req) => {
     idMapper,
     organizationId: orgId,
     dryRun: job.mode === 'dry_run',
+    modifiedSince: job.modified_since ?? null,
+    createdByUserId: job.created_by ?? null,
   };
 
   const { data: run } = await admin

@@ -19,33 +19,43 @@ const ENTITIES = [
   'companies',
   'contacts',
   'candidates',
-  'documents',
-  'employment',
   'vacancies',
   'placements',
+  'matches',
+  'documents',
+  'employment',
   'notes',
 ] as const;
 type EntityName = (typeof ENTITIES)[number];
 
-const SUPPORTED_ENTITIES: EntityName[] = ['companies', 'contacts', 'candidates'];
+// Entities with a working runner. CR*-entities require the wrapper-scope on the
+// Carerix tenant; if not granted the runner gracefully marks them skipped.
+const SUPPORTED_ENTITIES: EntityName[] = [
+  'companies',
+  'contacts',
+  'candidates',
+  'vacancies',
+  'placements',
+  'matches',
+  'documents',
+  'notes',
+];
 
 const ENTITY_LABEL: Record<EntityName, string> = {
   companies: 'Opdrachtgevers',
   contacts: 'Contactpersonen',
   candidates: 'Kandidaten',
-  documents: 'Documenten',
-  employment: 'Werkhistorie',
   vacancies: 'Vacatures',
   placements: 'Plaatsingen',
+  matches: 'Matches (pipeline)',
+  documents: 'Documenten (metadata)',
+  employment: 'Werkhistorie',
   notes: 'Notities & taken',
 };
 
 const UNSUPPORTED_REASON: Partial<Record<EntityName, string>> = {
-  documents: 'Niet via Carerix API — exporteer via Carerix CSV → upload onder Importeren.',
-  employment: 'Niet via Carerix API — exporteer via Carerix CSV → upload onder Importeren.',
-  vacancies: 'Niet via Carerix API — exporteer via Carerix CSV → upload onder Importeren.',
-  placements: 'Niet via Carerix API — exporteer via Carerix CSV → upload onder Importeren.',
-  notes: 'Niet via Carerix API — exporteer via Carerix CSV → upload onder Importeren.',
+  employment:
+    'Carerix-werkhistorie (eerdere werkgevers van de kandidaat) heeft geen doel-tabel in JA Werkt.',
 };
 
 interface CarerixConfig {
