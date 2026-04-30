@@ -53,6 +53,35 @@ const CandidateDocumentsTab = ({ candidateId }: { candidateId: string }) => {
     },
   });
 
+  const IMAGE_EXT = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'];
+  const isImagePath = (path: string | null) => {
+    if (!path) return false;
+    const ext = path.split('.').pop()?.toLowerCase();
+    return ext ? IMAGE_EXT.includes(ext) : false;
+  };
+
+  // Bulk-genereer signed URLs voor alle image-docs in één call (TTL 1u).
+  const imagePaths = (docs as Array<{ file_path: string | null }>)
+    .filter((d) => isImagePath(d.file_path))
+    .map((d) => d.file_path as string);
+
+  const { data: previewMap = {} } = useQuery({
+    queryKey: ['document-previews', candidateId, imagePaths.length, imagePaths.join('|')],
+    queryFn: async () => {
+      if (imagePaths.length === 0) return {} as Record<string, string>;
+      const { data, error } = await supabase.storage
+        .from('documents')
+        .createSignedUrls(imagePaths, 3600);
+      if (error || !data) return {} as Record<string, string>;
+      const map: Record<string, string> = {};
+      for (const item of data) {
+        if (item.path && item.signedUrl) map[item.path] = item.signedUrl;
+      }
+      return map;
+    },
+    enabled: imagePaths.length > 0,
+  });
+
   const openDoc = async (filePath: string | null) => {
     if (!filePath) {
       toast.error('Bestand nog niet gedownload uit bron');
@@ -143,17 +172,27 @@ const CandidateDocumentsTab = ({ candidateId }: { candidateId: string }) => {
         {docs.map((d: any) => {
           const Icon = typeIcons[d.type as DocType] ?? File;
           const hasFile = Boolean(d.file_path);
+          const previewUrl = isImagePath(d.file_path) ? previewMap[d.file_path] : undefined;
           return (
             <button
               key={d.id}
               type="button"
               onClick={() => openDoc(d.file_path)}
               disabled={!hasFile}
-              className="bg-card rounded-lg border p-4 flex gap-3 text-left transition hover:border-primary/40 hover:shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+              className="bg-card rounded-lg border p-3 flex gap-3 text-left transition hover:border-primary/40 hover:shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
               title={hasFile ? 'Open document' : 'Bestand nog niet gedownload uit bron'}
             >
-              <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
-                <Icon className="h-5 w-5 text-muted-foreground" />
+              <div className="h-16 w-16 rounded-md bg-muted flex items-center justify-center shrink-0 overflow-hidden">
+                {previewUrl ? (
+                  <img
+                    src={previewUrl}
+                    alt={d.name}
+                    className="h-full w-full object-cover"
+                    loading="lazy"
+                  />
+                ) : (
+                  <Icon className="h-6 w-6 text-muted-foreground" />
+                )}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate">{d.name}</p>

@@ -573,11 +573,13 @@ export async function runNotesPage(
     // Resolve relation in volgorde: candidate → company → match → vacancy → contact.
     // De eerste parent die in onze idMapper voorkomt wint. Hierdoor redden we
     // todos die in Carerix alleen aan een match/job/contact hangen.
-    const tryParents: Array<[string, string, 'candidate' | 'company' | 'match' | 'vacancy' | 'contact']> = [
-      [todo.toEmployee?._id ?? '', 'candidate', 'candidate'],
-      [todo.toCompany?._id ?? '', 'company', 'company'],
+    // entityType matcht de UI-conventie (kandidaat/opdrachtgever/vacature/etc.),
+    // mapperType is de interne idMapper-key.
+    const tryParents: Array<[string, string, string]> = [
+      [todo.toEmployee?._id ?? '', 'candidate', 'kandidaat'],
+      [todo.toCompany?._id ?? '', 'company', 'opdrachtgever'],
       [todo.toMatch?._id ?? '', 'match', 'match'],
-      [todo.toJob?._id ?? '', 'vacancy', 'vacancy'],
+      [todo.toJob?._id ?? '', 'vacancy', 'vacature'],
       [todo.toContact?._id ?? '', 'contact', 'contact'],
     ];
 
