@@ -1,10 +1,20 @@
 import { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { ChevronRight, MoreHorizontal, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
@@ -19,8 +29,10 @@ import OwnerTab from '@/components/housing/tabs/OwnerTab';
 
 const PropertyDetail = () => {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const [editOpen, setEditOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const { data: property, isLoading } = useQuery({
     queryKey: ['property', id],
@@ -51,6 +63,32 @@ const PropertyDetail = () => {
       qc.invalidateQueries({ queryKey: ['property', id] });
       qc.invalidateQueries({ queryKey: ['properties'] });
       toast.success('Pand gedeactiveerd');
+    },
+  });
+
+  const hardDelete = useMutation({
+    mutationFn: async () => {
+      // Pre-check: weiger als er bewoner-records (actief of historisch) hangen aan units van dit pand
+      const { count, error: countErr } = await supabase
+        .from('housing_assignments')
+        .select('id, units!inner(property_id)', { count: 'exact', head: true })
+        .eq('units.property_id', id!);
+      if (countErr) throw countErr;
+      if ((count ?? 0) > 0) {
+        throw new Error(`Pand heeft nog ${count} bewoner-record(s). Verwijder die eerst of gebruik 'Deactiveren'.`);
+      }
+      // Cascades naar units, housing_inspections, key_registrations via FK
+      const { error } = await supabase.from('properties').delete().eq('id', id!);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['properties'] });
+      toast.success('Pand verwijderd');
+      navigate('/huisvesting');
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || 'Verwijderen mislukt');
+      setDeleteOpen(false);
     },
   });
 
@@ -112,7 +150,11 @@ const PropertyDetail = () => {
               <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => deactivate.mutate()} className="text-destructive">Deactiveren</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => deactivate.mutate()}>Deactiveren</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setDeleteOpen(true)} className="text-destructive">
+                Verwijderen
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -138,6 +180,29 @@ const PropertyDetail = () => {
       </Tabs>
 
       <PropertySlideOver open={editOpen} onOpenChange={setEditOpen} property={property} />
+
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Pand verwijderen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Dit verwijdert het pand inclusief alle kamers, inspecties en sleutelregistraties.
+              Bewoner-records (housing assignments) blokkeren de verwijdering — gebruik dan eerst 'Deactiveren'.
+              Deze actie kan niet ongedaan worden gemaakt.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuleren</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); hardDelete.mutate(); }}
+              disabled={hardDelete.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {hardDelete.isPending ? 'Verwijderen...' : 'Verwijderen'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
