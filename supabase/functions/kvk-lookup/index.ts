@@ -5,7 +5,9 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const KVK_BASE_URL = "https://api.kvk.nl/api/v1";
+// Zoeken API zit op v2, Basisprofiel API op v1 — bewust gescheiden URLs.
+const KVK_ZOEKEN_URL = "https://api.kvk.nl/api/v2/zoeken";
+const KVK_BASISPROFIEL_URL = "https://api.kvk.nl/api/v1/basisprofielen";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -58,11 +60,9 @@ Deno.serve(async (req) => {
     // Build KVK API request
     let url: string;
     if (kvk_number) {
-      // Direct lookup by KVK number — basisprofiel endpoint
-      url = `${KVK_BASE_URL}/basisprofielen/${kvk_number}`;
+      url = `${KVK_BASISPROFIEL_URL}/${kvk_number}`;
     } else {
-      // Search by name
-      url = `${KVK_BASE_URL}/zoeken?naam=${encodeURIComponent(name!)}&pagina=1&resultatenPerPagina=10`;
+      url = `${KVK_ZOEKEN_URL}?naam=${encodeURIComponent(name!)}&pagina=1&resultatenPerPagina=10`;
     }
 
     const kvkRes = await fetch(url, {
@@ -143,8 +143,9 @@ Deno.serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
     console.error("KVK lookup error:", err);
-    return new Response(JSON.stringify({ error: "Internal server error" }), {
+    return new Response(JSON.stringify({ error: "Internal server error", details: msg }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
