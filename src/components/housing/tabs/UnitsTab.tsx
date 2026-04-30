@@ -19,7 +19,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Plus, ChevronDown, ChevronUp, Trash2, Pencil } from 'lucide-react';
+import { Plus, ChevronDown, ChevronUp, Trash2, Pencil, Layers, X } from 'lucide-react';
 import { formatDate, formatEUR } from '@/lib/format';
 import { toast } from 'sonner';
 import type { Database } from '@/integrations/supabase/types';
@@ -38,6 +38,15 @@ const emptyForm = {
   name: '', capacity: '1', floor: '', weekly_cost: '', status: 'beschikbaar' as UnitStatus, notes: '',
 };
 
+interface BulkRow {
+  name: string;
+  capacity: string;
+  floor: string;
+  weekly_cost: string;
+}
+
+const emptyBulkRow = (): BulkRow => ({ name: '', capacity: '1', floor: '', weekly_cost: '' });
+
 const UnitsTab = ({ property }: { property: any }) => {
   const orgId = useOrganizationId();
   const qc = useQueryClient();
@@ -46,6 +55,8 @@ const UnitsTab = ({ property }: { property: any }) => {
   const [expandedUnit, setExpandedUnit] = useState<string | null>(null);
   const [unitToDelete, setUnitToDelete] = useState<{ id: string; name: string } | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkRows, setBulkRows] = useState<BulkRow[]>(() => [emptyBulkRow(), emptyBulkRow(), emptyBulkRow()]);
 
   const openAdd = () => {
     setEditingId(null);
@@ -127,16 +138,136 @@ const UnitsTab = ({ property }: { property: any }) => {
     },
   });
 
+  const bulkAdd = useMutation({
+    mutationFn: async () => {
+      const valid = bulkRows
+        .map((r) => ({ ...r, name: r.name.trim() }))
+        .filter((r) => r.name.length > 0);
+      if (valid.length === 0) throw new Error('Geef minstens één kamernaam op.');
+
+      const names = valid.map((r) => r.name);
+      if (new Set(names).size !== names.length) {
+        throw new Error('Dubbele kamernamen — elke kamer moet uniek zijn binnen dit pand.');
+      }
+
+      const existing = (property.units ?? []).map((u: any) => u.name);
+      const conflict = names.filter((n) => existing.includes(n));
+      if (conflict.length > 0) {
+        throw new Error(`Kamer(s) bestaan al in dit pand: ${conflict.join(', ')}`);
+      }
+
+      const payload = valid.map((r) => ({
+        organization_id: orgId,
+        property_id: property.id,
+        name: r.name,
+        capacity: Number(r.capacity) || 1,
+        floor: r.floor ? Number(r.floor) : null,
+        weekly_cost: r.weekly_cost ? Number(r.weekly_cost) : null,
+        status: 'beschikbaar' as UnitStatus,
+      }));
+      const { error } = await supabase.from('units').insert(payload);
+      if (error) throw error;
+      return valid.length;
+    },
+    onSuccess: (count) => {
+      qc.invalidateQueries({ queryKey: ['property', property.id] });
+      qc.invalidateQueries({ queryKey: ['properties'] });
+      setBulkOpen(false);
+      setBulkRows([emptyBulkRow(), emptyBulkRow(), emptyBulkRow()]);
+      toast.success(`${count} kamer${count === 1 ? '' : 's'} aangemaakt`);
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const updateBulkRow = (i: number, patch: Partial<BulkRow>) => {
+    setBulkRows((rows) => rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  };
+  const addBulkRow = () => setBulkRows((rows) => [...rows, emptyBulkRow()]);
+  const removeBulkRow = (i: number) => setBulkRows((rows) => rows.length === 1 ? [emptyBulkRow()] : rows.filter((_, idx) => idx !== i));
+
   const units = property.units ?? [];
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center gap-2 flex-wrap">
         <h3 className="font-medium">Kamers ({units.length})</h3>
-        <Button size="sm" variant="outline" onClick={openAdd} className="gap-1">
-          <Plus className="h-3.5 w-3.5" /> Nieuwe kamer
-        </Button>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => setBulkOpen(true)} className="gap-1">
+            <Layers className="h-3.5 w-3.5" /> Meerdere kamers
+          </Button>
+          <Button size="sm" variant="outline" onClick={openAdd} className="gap-1">
+            <Plus className="h-3.5 w-3.5" /> Nieuwe kamer
+          </Button>
+        </div>
       </div>
+
+      <Sheet open={bulkOpen} onOpenChange={(o) => { if (!o) setBulkRows([emptyBulkRow(), emptyBulkRow(), emptyBulkRow()]); setBulkOpen(o); }}>
+        <SheetContent className="sm:max-w-2xl overflow-y-auto">
+          <SheetHeader><SheetTitle>Meerdere kamers toevoegen</SheetTitle></SheetHeader>
+          <div className="space-y-4 mt-6">
+            <p className="text-sm text-muted-foreground">
+              Voeg meerdere kamers tegelijk toe. Alleen rijen met een ingevulde naam worden opgeslagen.
+              Status wordt 'beschikbaar' — pas aan via de kamerkaart na opslaan.
+            </p>
+            <div className="space-y-2">
+              <div className="grid grid-cols-[1fr_80px_80px_120px_32px] gap-2 text-xs text-muted-foreground font-medium px-1">
+                <span>Naam *</span>
+                <span>Capaciteit</span>
+                <span>Verdieping</span>
+                <span>Weekprijs (€)</span>
+                <span></span>
+              </div>
+              {bulkRows.map((r, i) => (
+                <div key={i} className="grid grid-cols-[1fr_80px_80px_120px_32px] gap-2 items-center">
+                  <Input
+                    value={r.name}
+                    onChange={(e) => updateBulkRow(i, { name: e.target.value })}
+                    placeholder="Bijv. 1.1"
+                  />
+                  <Input
+                    type="number"
+                    value={r.capacity}
+                    onChange={(e) => updateBulkRow(i, { capacity: e.target.value })}
+                    min="1"
+                  />
+                  <Input
+                    type="number"
+                    value={r.floor}
+                    onChange={(e) => updateBulkRow(i, { floor: e.target.value })}
+                    placeholder="0=BG"
+                  />
+                  <Input
+                    type="number"
+                    value={r.weekly_cost}
+                    onChange={(e) => updateBulkRow(i, { weekly_cost: e.target.value })}
+                    placeholder="optioneel"
+                  />
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => removeBulkRow(i)}
+                    className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                    title="Rij verwijderen"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <Button size="sm" variant="ghost" onClick={addBulkRow} className="gap-1">
+              <Plus className="h-3.5 w-3.5" /> Rij toevoegen
+            </Button>
+            <div className="flex justify-end gap-3 pt-4 border-t">
+              <Button variant="ghost" onClick={() => { setBulkOpen(false); setBulkRows([emptyBulkRow(), emptyBulkRow(), emptyBulkRow()]); }}>
+                Annuleren
+              </Button>
+              <Button onClick={() => bulkAdd.mutate()} disabled={bulkAdd.isPending}>
+                {bulkAdd.isPending ? 'Opslaan...' : `Opslaan (${bulkRows.filter((r) => r.name.trim()).length})`}
+              </Button>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
 
       <Sheet open={sheetOpen} onOpenChange={(o) => { if (!o) { setEditingId(null); setForm(emptyForm); } setSheetOpen(o); }}>
         <SheetContent className="sm:max-w-md overflow-y-auto">

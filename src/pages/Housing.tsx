@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Link } from 'react-router-dom';
@@ -9,26 +9,30 @@ import { Badge } from '@/components/ui/badge';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import PropertySlideOver from '@/components/housing/PropertySlideOver';
 import AvailabilityChart from '@/components/housing/AvailabilityChart';
 
+const ALL_CITIES = '__all__';
+
 const Housing = () => {
   const [search, setSearch] = useState('');
+  const [city, setCity] = useState<string>(ALL_CITIES);
   const [view, setView] = useState<string>('cards');
   const [sheetOpen, setSheetOpen] = useState(false);
 
-  const { data: properties = [], isLoading } = useQuery({
-    queryKey: ['properties', search],
+  // Fetch alle panden eenmaal — filtering doen we client-side voor snappy UX en
+  // omdat de tellers (capaciteit/bezetting) altijd over de complete set moeten.
+  const { data: allProperties = [], isLoading } = useQuery({
+    queryKey: ['properties'],
     queryFn: async () => {
-      let query = supabase.from('properties').select(`
+      const { data, error } = await supabase.from('properties').select(`
         *,
         units!units_property_id_fkey(
           id, capacity, status,
           housing_assignments!housing_assignments_unit_id_fkey(id, status)
         )
-      `).order('name');
-      if (search) query = query.or(`name.ilike.%${search}%,address_city.ilike.%${search}%`);
-      const { data, error } = await query;
+      `).order('address_city').order('address_street');
       if (error) throw error;
       return (data ?? []).map((p: any) => {
         const units = p.units ?? [];
@@ -40,6 +44,25 @@ const Housing = () => {
       });
     },
   });
+
+  const cities = useMemo(() => {
+    const set = new Set<string>();
+    allProperties.forEach((p: any) => { if (p.address_city) set.add(p.address_city); });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'nl'));
+  }, [allProperties]);
+
+  const properties = useMemo(() => {
+    const s = search.trim().toLowerCase();
+    return allProperties.filter((p: any) => {
+      if (city !== ALL_CITIES && p.address_city !== city) return false;
+      if (s) {
+        const haystack = [p.name, p.address_street, p.address_city, p.address_postal]
+          .filter(Boolean).join(' ').toLowerCase();
+        if (!haystack.includes(s)) return false;
+      }
+      return true;
+    });
+  }, [allProperties, search, city]);
 
   const getBarColor = (pct: number) => {
     if (pct >= 90) return 'bg-red-500';
@@ -116,13 +139,25 @@ const Housing = () => {
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Zoek op naam of stad..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
+          <Input placeholder="Zoek op naam, straat of stad..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
         </div>
+        <Select value={city} onValueChange={setCity}>
+          <SelectTrigger className="w-44">
+            <SelectValue placeholder="Plaats" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL_CITIES}>Alle plaatsen</SelectItem>
+            {cities.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+          </SelectContent>
+        </Select>
         <ToggleGroup type="single" value={view} onValueChange={(v) => v && setView(v)}>
           <ToggleGroupItem value="cards" aria-label="Kaarten"><LayoutGrid className="h-4 w-4" /></ToggleGroupItem>
           <ToggleGroupItem value="list" aria-label="Lijst"><List className="h-4 w-4" /></ToggleGroupItem>
         </ToggleGroup>
-        <span className="text-sm text-muted-foreground">{properties.length} panden</span>
+        <span className="text-sm text-muted-foreground">
+          {properties.length} {properties.length === 1 ? 'pand' : 'panden'}
+          {properties.length !== allProperties.length && ` van ${allProperties.length}`}
+        </span>
       </div>
 
       {!isLoading && properties.length === 0 ? (
