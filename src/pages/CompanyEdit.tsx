@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { logAudit } from '@/lib/audit';
+import KvkNameSearchInput from '@/components/companies/KvkNameSearchInput';
 
 const CompanyEdit = () => {
   const { id } = useParams<{ id: string }>();
@@ -101,7 +102,25 @@ const CompanyEdit = () => {
 
       <div className="bg-card rounded-lg border p-6 max-w-3xl">
         <div className="space-y-5">
-          <div className="space-y-1.5"><Label>Bedrijfsnaam *</Label><Input value={form.name} onChange={(e) => set('name', e.target.value)} /></div>
+          <div className="space-y-1.5">
+            <Label>Bedrijfsnaam *</Label>
+            <KvkNameSearchInput
+              value={form.name}
+              onChange={(v) => {
+                set('name', v);
+                if (form.kvk_number) set('kvk_number', '');
+              }}
+              onSelect={(p) => setForm((f) => ({
+                ...f,
+                name: p.name,
+                kvk_number: p.kvk_number,
+                address_street: p.address_street ?? f.address_street,
+                address_postal: p.address_postal ?? f.address_postal,
+                address_city: p.address_city ?? f.address_city,
+              }))}
+              placeholder="Typ om te zoeken in KVK..."
+            />
+          </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5"><Label>KVK-nummer</Label><Input value={form.kvk_number} onChange={(e) => set('kvk_number', e.target.value)} /></div>
             <div className="space-y-1.5"><Label>BTW-nummer</Label><Input value={form.btw_number} onChange={(e) => set('btw_number', e.target.value)} /></div>
