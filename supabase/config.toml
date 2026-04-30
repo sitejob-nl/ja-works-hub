@@ -130,6 +130,9 @@ verify_jwt = false
 [functions.housing-reminder-cron]
 verify_jwt = false
 
+[functions.check-vehicle-apk]
+verify_jwt = false
+
 [functions.send-ai-analysis]
 verify_jwt = false
 

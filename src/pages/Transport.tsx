@@ -9,6 +9,8 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
+import { formatDate } from '@/lib/format';
+import { differenceInCalendarDays, parseISO } from 'date-fns';
 
 
 const PAGE_SIZE = 10;
@@ -167,6 +169,7 @@ const Transport = () => {
                   <TableHead>Bouwjaar</TableHead>
                   <TableHead>Brandstof</TableHead>
                    <TableHead className="text-right">KM-stand</TableHead>
+                   <TableHead>APK</TableHead>
                    <TableHead>Tankpas</TableHead>
                    <TableHead>Status</TableHead>
                   <TableHead>Toegewezen aan</TableHead>
@@ -185,6 +188,19 @@ const Transport = () => {
                       <TableCell>{v.year ?? '—'}</TableCell>
                       <TableCell>{v.fuel_type ?? '—'}</TableCell>
                       <TableCell className="text-right">{v.current_mileage != null ? v.current_mileage.toLocaleString('nl-NL') : '—'}</TableCell>
+                      <TableCell>
+                        {(() => {
+                          if (!v.apk_expiry) return <span className="text-muted-foreground">—</span>;
+                          const days = (() => { try { return differenceInCalendarDays(parseISO(v.apk_expiry), new Date()); } catch { return null; } })();
+                          const variant = days != null && days < 0 ? 'destructive' : days != null && days < 60 ? 'secondary' : null;
+                          return (
+                            <span className="flex items-center gap-2 text-xs">
+                              <span>{formatDate(v.apk_expiry)}</span>
+                              {variant && <Badge variant={variant} className="text-[10px]">{days! < 0 ? `${Math.abs(days!)}d verlopen` : `${days}d`}</Badge>}
+                            </span>
+                          );
+                        })()}
+                      </TableCell>
                       <TableCell className="font-mono text-xs">{v.fuel_card_reference ?? '—'}</TableCell>
                       <TableCell><Badge variant="secondary" className={statusBadge[v.status] ?? ''}>{statusLabel[v.status] ?? v.status}</Badge></TableCell>
                       <TableCell>{assignee ? `${assignee.first_name} ${assignee.last_name}` : '—'}</TableCell>

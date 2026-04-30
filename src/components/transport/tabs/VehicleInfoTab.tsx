@@ -3,9 +3,12 @@ import { Link } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatDate } from '@/lib/format';
+import { differenceInCalendarDays, parseISO } from 'date-fns';
 import { logAudit } from '@/lib/audit';
+import { normalizeRdwFuel, yearFromRdwDate } from '@/lib/rdw';
 import { toast } from 'sonner';
 import { Car, Check, X } from 'lucide-react';
 
@@ -38,15 +41,15 @@ const VehicleInfoTab = ({ vehicle, activeAssignment }: { vehicle: any; activeAss
       const payload: any = {};
       if (rdwPreview.brand) payload.brand = rdwPreview.brand;
       if (rdwPreview.model) payload.model = rdwPreview.model;
-      if (rdwPreview.fuel_type) payload.fuel_type = rdwPreview.fuel_type;
+      const fuel = normalizeRdwFuel(rdwPreview.fuel_type);
+      if (fuel) payload.fuel_type = fuel;
       if (rdwPreview.color) payload.color = rdwPreview.color;
-      if (rdwPreview.first_registration) {
-        const year = rdwPreview.first_registration.substring(0, 4);
-        if (year) payload.year = parseInt(year);
-      }
+      const year = yearFromRdwDate(rdwPreview.first_registration);
+      if (year) payload.year = year;
       if (rdwPreview.apk_expiry) payload.apk_expiry = rdwPreview.apk_expiry;
       if (rdwPreview.seats) payload.seats = rdwPreview.seats;
       if (rdwPreview.weight) payload.weight = rdwPreview.weight;
+      if (rdwPreview.fuel_consumption != null) payload.avg_consumption_per_100km = rdwPreview.fuel_consumption;
       const { error } = await supabase.from('vehicles').update(payload).eq('id', vehicle.id);
       if (error) throw error;
     },
@@ -77,8 +80,9 @@ const VehicleInfoTab = ({ vehicle, activeAssignment }: { vehicle: any; activeAss
             {rdwPreview.model && <div><span className="text-muted-foreground">Model:</span> {rdwPreview.model}</div>}
             {rdwPreview.color && <div><span className="text-muted-foreground">Kleur:</span> {rdwPreview.color}</div>}
             {rdwPreview.fuel_type && <div><span className="text-muted-foreground">Brandstof:</span> {rdwPreview.fuel_type}</div>}
-            {rdwPreview.first_registration && <div><span className="text-muted-foreground">1e toelating:</span> {rdwPreview.first_registration}</div>}
-            {rdwPreview.apk_expiry && <div><span className="text-muted-foreground">APK vervalt:</span> {rdwPreview.apk_expiry}</div>}
+            {rdwPreview.first_registration && <div><span className="text-muted-foreground">1e toelating:</span> {formatDate(rdwPreview.first_registration)}</div>}
+            {rdwPreview.apk_expiry && <div><span className="text-muted-foreground">APK vervalt:</span> {formatDate(rdwPreview.apk_expiry)}</div>}
+            {rdwPreview.fuel_consumption != null && <div><span className="text-muted-foreground">Verbruik:</span> {rdwPreview.fuel_consumption} l/100km</div>}
             {rdwPreview.seats && <div><span className="text-muted-foreground">Zitplaatsen:</span> {rdwPreview.seats}</div>}
             {rdwPreview.co2_emission && <div><span className="text-muted-foreground">CO2:</span> {rdwPreview.co2_emission} g/km</div>}
             {rdwPreview.stolen && <div className="text-red-600 font-medium">Gestolen!</div>}
@@ -104,6 +108,20 @@ const VehicleInfoTab = ({ vehicle, activeAssignment }: { vehicle: any; activeAss
           <div className="flex justify-between"><span className="text-muted-foreground">Model</span><span>{vehicle.model ?? '—'}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">Bouwjaar</span><span>{vehicle.year ?? '—'}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">Brandstof</span><span>{vehicle.fuel_type ?? '—'}</span></div>
+          <div className="flex justify-between items-center">
+            <span className="text-muted-foreground">APK vervalt</span>
+            {(() => {
+              if (!vehicle.apk_expiry) return <span>—</span>;
+              const days = (() => { try { return differenceInCalendarDays(parseISO(vehicle.apk_expiry), new Date()); } catch { return null; } })();
+              const variant = days != null && days < 0 ? 'destructive' : days != null && days < 60 ? 'secondary' : null;
+              return (
+                <span className="flex items-center gap-2">
+                  <span>{formatDate(vehicle.apk_expiry)}</span>
+                  {variant && <Badge variant={variant} className="text-[10px]">{days! < 0 ? `${Math.abs(days!)}d verlopen` : `${days}d`}</Badge>}
+                </span>
+              );
+            })()}
+          </div>
           <div className="flex justify-between"><span className="text-muted-foreground">Kilometerstand</span><span>{vehicle.current_mileage != null ? vehicle.current_mileage.toLocaleString('nl-NL') + ' km' : '—'}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">Tankcapaciteit</span><span>{vehicle.tank_capacity_liters != null ? vehicle.tank_capacity_liters + ' liter' : '—'}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">Tankpas referentie</span><span>{vehicle.fuel_card_reference ?? '—'}</span></div>

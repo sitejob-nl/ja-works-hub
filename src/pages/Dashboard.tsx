@@ -22,6 +22,7 @@ import {
   BirthdaysCard,
   PendingHoursCard,
 } from '@/components/dashboard/DashboardWidgets';
+import { ApkExpiryWidget } from '@/components/dashboard/ApkExpiryWidget';
 
 interface StatCardProps {
   icon: React.ElementType;
@@ -390,6 +391,7 @@ const Dashboard = () => {
         <ContractStatusChart />
         <BirthdaysCard />
         <PendingHoursCard />
+        <ApkExpiryWidget />
       </div>
 
       {/* Divider */}
