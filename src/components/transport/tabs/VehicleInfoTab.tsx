@@ -47,6 +47,8 @@ const VehicleInfoTab = ({ vehicle, activeAssignment }: { vehicle: any; activeAss
       const year = yearFromRdwDate(rdwPreview.first_registration);
       if (year) payload.year = year;
       if (rdwPreview.apk_expiry) payload.apk_expiry = rdwPreview.apk_expiry;
+      if (rdwPreview.first_registration) payload.first_registration = rdwPreview.first_registration;
+      if (rdwPreview.first_registration_nl) payload.first_registration_nl = rdwPreview.first_registration_nl;
       if (rdwPreview.seats) payload.seats = rdwPreview.seats;
       if (rdwPreview.weight) payload.weight = rdwPreview.weight;
       if (rdwPreview.fuel_consumption != null) payload.avg_consumption_per_100km = rdwPreview.fuel_consumption;
@@ -81,8 +83,9 @@ const VehicleInfoTab = ({ vehicle, activeAssignment }: { vehicle: any; activeAss
             {rdwPreview.color && <div><span className="text-muted-foreground">Kleur:</span> {rdwPreview.color}</div>}
             {rdwPreview.fuel_type && <div><span className="text-muted-foreground">Brandstof:</span> {rdwPreview.fuel_type}</div>}
             {rdwPreview.first_registration && <div><span className="text-muted-foreground">1e toelating:</span> {formatDate(rdwPreview.first_registration)}</div>}
+            {rdwPreview.first_registration_nl && <div><span className="text-muted-foreground">Tenaamstelling NL:</span> {formatDate(rdwPreview.first_registration_nl)}</div>}
             {rdwPreview.apk_expiry && <div><span className="text-muted-foreground">APK vervalt:</span> {formatDate(rdwPreview.apk_expiry)}</div>}
-            {rdwPreview.fuel_consumption != null && <div><span className="text-muted-foreground">Verbruik:</span> {rdwPreview.fuel_consumption} l/100km</div>}
+            {rdwPreview.fuel_consumption != null && <div><span className="text-muted-foreground">Gemengd verbruik:</span> {rdwPreview.fuel_consumption} l/100km</div>}
             {rdwPreview.seats && <div><span className="text-muted-foreground">Zitplaatsen:</span> {rdwPreview.seats}</div>}
             {rdwPreview.co2_emission && <div><span className="text-muted-foreground">CO2:</span> {rdwPreview.co2_emission} g/km</div>}
             {rdwPreview.stolen && <div className="text-red-600 font-medium">Gestolen!</div>}
@@ -107,6 +110,7 @@ const VehicleInfoTab = ({ vehicle, activeAssignment }: { vehicle: any; activeAss
           <div className="flex justify-between"><span className="text-muted-foreground">Merk</span><span>{vehicle.brand ?? '—'}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">Model</span><span>{vehicle.model ?? '—'}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">Bouwjaar</span><span>{vehicle.year ?? '—'}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Tenaamstelling NL</span><span>{vehicle.first_registration_nl ? formatDate(vehicle.first_registration_nl) : '—'}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">Brandstof</span><span>{vehicle.fuel_type ?? '—'}</span></div>
           <div className="flex justify-between items-center">
             <span className="text-muted-foreground">APK vervalt</span>
@@ -125,7 +129,7 @@ const VehicleInfoTab = ({ vehicle, activeAssignment }: { vehicle: any; activeAss
           <div className="flex justify-between"><span className="text-muted-foreground">Kilometerstand</span><span>{vehicle.current_mileage != null ? vehicle.current_mileage.toLocaleString('nl-NL') + ' km' : '—'}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">Tankcapaciteit</span><span>{vehicle.tank_capacity_liters != null ? vehicle.tank_capacity_liters + ' liter' : '—'}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">Tankpas referentie</span><span>{vehicle.fuel_card_reference ?? '—'}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Gem. verbruik</span><span>{vehicle.avg_consumption_per_100km != null ? vehicle.avg_consumption_per_100km + ' l/100km' : '—'}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Gemengd verbruik</span><span>{vehicle.avg_consumption_per_100km != null ? vehicle.avg_consumption_per_100km + ' l/100km' : '—'}</span></div>
         </CardContent>
       </Card>
 

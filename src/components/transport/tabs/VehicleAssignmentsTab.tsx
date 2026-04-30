@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { Link } from 'react-router-dom';
-import { Plus } from 'lucide-react';
+import { Plus, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -12,8 +12,20 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { formatDate } from '@/lib/format';
+import { logAudit } from '@/lib/audit';
 
 const VehicleAssignmentsTab = ({ vehicle }: { vehicle: any }) => {
   const orgId = useOrganizationId();
@@ -24,6 +36,15 @@ const VehicleAssignmentsTab = ({ vehicle }: { vehicle: any }) => {
   const [assignedDate, setAssignedDate] = useState('');
   const [startMileage, setStartMileage] = useState(vehicle.current_mileage?.toString() ?? '');
   const [endMileage, setEndMileage] = useState('');
+
+  const [editingAssignment, setEditingAssignment] = useState<any | null>(null);
+  const [editForm, setEditForm] = useState({
+    assigned_date: '',
+    returned_date: '',
+    start_mileage: '',
+    end_mileage: '',
+  });
+  const [assignmentToDelete, setAssignmentToDelete] = useState<any | null>(null);
 
   const { data: assignments } = useQuery({
     queryKey: ['vehicle-assignments', vehicle.id],
@@ -99,6 +120,58 @@ const VehicleAssignmentsTab = ({ vehicle }: { vehicle: any }) => {
     onError: (e: any) => toast.error(e.message),
   });
 
+  const editMutation = useMutation({
+    mutationFn: async () => {
+      if (!editingAssignment) throw new Error('Geen toewijzing geselecteerd');
+      const update: any = {
+        assigned_date: editForm.assigned_date,
+        returned_date: editForm.returned_date || null,
+        start_mileage: editForm.start_mileage ? parseInt(editForm.start_mileage) : null,
+        end_mileage: editForm.end_mileage ? parseInt(editForm.end_mileage) : null,
+      };
+      const { error } = await supabase.from('vehicle_assignments').update(update).eq('id', editingAssignment.id);
+      if (error) throw error;
+      return update;
+    },
+    onSuccess: (update) => {
+      qc.invalidateQueries({ queryKey: ['vehicle-assignments', vehicle.id] });
+      qc.invalidateQueries({ queryKey: ['vehicle', vehicle.id] });
+      logAudit({ action: 'update', tableName: 'vehicle_assignments', recordId: editingAssignment?.id ?? '', newValues: update });
+      toast.success('Toewijzing bijgewerkt');
+      setEditingAssignment(null);
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (a: any) => {
+      if (!a.returned_date) {
+        throw new Error('Voertuig is nog niet ingeleverd — eerst inleveren voordat de toewijzing verwijderd kan worden.');
+      }
+      const { error } = await supabase.from('vehicle_assignments').delete().eq('id', a.id);
+      if (error) throw error;
+      return a;
+    },
+    onSuccess: (a) => {
+      qc.invalidateQueries({ queryKey: ['vehicle-assignments', vehicle.id] });
+      qc.invalidateQueries({ queryKey: ['vehicle', vehicle.id] });
+      logAudit({ action: 'delete', tableName: 'vehicle_assignments', recordId: a.id });
+      toast.success('Toewijzing verwijderd');
+      setAssignmentToDelete(null);
+    },
+    onError: (e: any) => { toast.error(e.message); setAssignmentToDelete(null); },
+  });
+
+  const openEdit = (a: any) => {
+    setEditingAssignment(a);
+    setEditForm({
+      assigned_date: a.assigned_date ?? '',
+      returned_date: a.returned_date ?? '',
+      start_mileage: a.start_mileage != null ? String(a.start_mileage) : '',
+      end_mileage: a.end_mileage != null ? String(a.end_mileage) : '',
+    });
+  };
+
   return (
     <div className="space-y-4 mt-4">
       <div className="flex justify-end">
@@ -133,7 +206,23 @@ const VehicleAssignmentsTab = ({ vehicle }: { vehicle: any }) => {
                   <TableCell className="text-right">{a.end_mileage?.toLocaleString('nl-NL') ?? '—'}</TableCell>
                   <TableCell className="text-right">{totalKm != null ? totalKm.toLocaleString('nl-NL') : '—'}</TableCell>
                   <TableCell>
-                    {!a.returned_date && <Button size="sm" variant="outline" onClick={() => { setReturnDialog(a); setEndMileage(''); }}>Inleveren</Button>}
+                    <div className="flex gap-1 items-center">
+                      {!a.returned_date && <Button size="sm" variant="outline" onClick={() => { setReturnDialog(a); setEndMileage(''); }}>Inleveren</Button>}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="icon" variant="ghost" className="h-8 w-8"><MoreHorizontal className="h-4 w-4" /></Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => openEdit(a)}>
+                            <Pencil className="h-3.5 w-3.5 mr-2" /> Bewerken
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => setAssignmentToDelete(a)} className="text-destructive">
+                            <Trash2 className="h-3.5 w-3.5 mr-2" /> Verwijderen
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </TableCell>
                 </TableRow>
               );
@@ -173,6 +262,56 @@ const VehicleAssignmentsTab = ({ vehicle }: { vehicle: any }) => {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Edit assignment Sheet */}
+      <Sheet open={!!editingAssignment} onOpenChange={(o) => { if (!o) setEditingAssignment(null); }}>
+        <SheetContent className="sm:max-w-md">
+          <SheetHeader><SheetTitle>Toewijzing bewerken</SheetTitle></SheetHeader>
+          {editingAssignment && (
+            <div className="space-y-4 mt-6">
+              <div className="p-3 rounded-lg bg-muted/50 border text-sm">
+                {editingAssignment.employees?.candidates?.first_name} {editingAssignment.employees?.candidates?.last_name}
+              </div>
+              <div><Label>Startdatum *</Label><Input type="date" value={editForm.assigned_date} onChange={(e) => setEditForm(f => ({ ...f, assigned_date: e.target.value }))} /></div>
+              <div><Label>Einddatum (leeg = nog actief)</Label><Input type="date" value={editForm.returned_date} onChange={(e) => setEditForm(f => ({ ...f, returned_date: e.target.value }))} /></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label>Begin km</Label><Input type="number" value={editForm.start_mileage} onChange={(e) => setEditForm(f => ({ ...f, start_mileage: e.target.value }))} /></div>
+                <div><Label>Eind km</Label><Input type="number" value={editForm.end_mileage} onChange={(e) => setEditForm(f => ({ ...f, end_mileage: e.target.value }))} /></div>
+              </div>
+              <div className="flex justify-end gap-3 pt-4">
+                <Button variant="ghost" onClick={() => setEditingAssignment(null)}>Annuleren</Button>
+                <Button onClick={() => editMutation.mutate()} disabled={!editForm.assigned_date || editMutation.isPending}>
+                  {editMutation.isPending ? 'Opslaan...' : 'Opslaan'}
+                </Button>
+              </div>
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
+
+      {/* Delete assignment confirm */}
+      <AlertDialog open={!!assignmentToDelete} onOpenChange={(o) => { if (!o) setAssignmentToDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Toewijzing verwijderen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {assignmentToDelete && !assignmentToDelete.returned_date
+                ? 'Voertuig is nog niet ingeleverd. Eerst inleveren voordat je de toewijzing kunt verwijderen.'
+                : 'Verwijdert de historische toewijzing permanent. Deze actie kan niet ongedaan worden gemaakt.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuleren</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); if (assignmentToDelete) deleteMutation.mutate(assignmentToDelete); }}
+              disabled={deleteMutation.isPending || (assignmentToDelete && !assignmentToDelete.returned_date)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteMutation.isPending ? 'Verwijderen...' : 'Verwijderen'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Return dialog */}
       <Dialog open={!!returnDialog} onOpenChange={(o) => !o && setReturnDialog(null)}>

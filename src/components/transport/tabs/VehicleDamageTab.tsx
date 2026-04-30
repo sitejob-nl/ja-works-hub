@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
@@ -11,9 +11,21 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { formatDate, formatEUR } from '@/lib/format';
-import { Plus, ShieldAlert, CheckCircle2, Bell } from 'lucide-react';
+import { Plus, ShieldAlert, CheckCircle2, Bell, MoreHorizontal, Pencil, Trash2, RotateCcw } from 'lucide-react';
+import { logAudit } from '@/lib/audit';
 
 const DAMAGE_TYPES = [
   { value: 'lekke_band', label: 'Lekke band' },
@@ -35,6 +47,8 @@ const VehicleDamageTab = ({ vehicle }: { vehicle: any }) => {
   const orgId = useOrganizationId();
   const qc = useQueryClient();
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [editingReport, setEditingReport] = useState<any | null>(null);
+  const [reportToDelete, setReportToDelete] = useState<any | null>(null);
   const [lightbox, setLightbox] = useState<string | null>(null);
 
   const { data: reports = [] } = useQuery({
@@ -58,6 +72,39 @@ const VehicleDamageTab = ({ vehicle }: { vehicle: any }) => {
       if (error) throw error;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['vehicle-damage', vehicle.id] }); toast.success('Markeerd als opgelost'); },
+  });
+
+  const reopenMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('vehicle_damage_reports')
+        .update({ resolved: false, resolved_at: null } as any)
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: (_, id) => {
+      qc.invalidateQueries({ queryKey: ['vehicle-damage', vehicle.id] });
+      logAudit({ action: 'status_change', tableName: 'vehicle_damage_reports', recordId: id, newValues: { resolved: false } });
+      toast.success('Schademelding heropend');
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (r: any) => {
+      // Best-effort photo cleanup
+      if (r.photos && r.photos.length > 0) {
+        await supabase.storage.from('documents').remove(r.photos);
+      }
+      const { error } = await supabase.from('vehicle_damage_reports').delete().eq('id', r.id);
+      if (error) throw error;
+      return r;
+    },
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ['vehicle-damage', vehicle.id] });
+      logAudit({ action: 'delete', tableName: 'vehicle_damage_reports', recordId: r.id });
+      toast.success('Schademelding verwijderd');
+      setReportToDelete(null);
+    },
+    onError: (e: any) => { toast.error(e.message); setReportToDelete(null); },
   });
 
   const notifyGarageMutation = useMutation({
@@ -148,11 +195,31 @@ const VehicleDamageTab = ({ vehicle }: { vehicle: any }) => {
                 {r.resolution_notes && <p className="text-xs text-muted-foreground bg-muted rounded p-2">{r.resolution_notes}</p>}
 
                 {/* Actions */}
-                {!r.resolved && (
-                  <Button size="sm" variant="outline" onClick={() => resolveMutation.mutate(r.id)}>
-                    <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Markeer als opgelost
-                  </Button>
-                )}
+                <div className="flex items-center gap-1 flex-wrap">
+                  {!r.resolved ? (
+                    <Button size="sm" variant="outline" onClick={() => resolveMutation.mutate(r.id)}>
+                      <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Markeer als opgelost
+                    </Button>
+                  ) : (
+                    <Button size="sm" variant="ghost" onClick={() => reopenMutation.mutate(r.id)}>
+                      <RotateCcw className="h-3.5 w-3.5 mr-1" /> Heropenen
+                    </Button>
+                  )}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button size="icon" variant="ghost" className="h-8 w-8 ml-auto"><MoreHorizontal className="h-4 w-4" /></Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => setEditingReport(r)}>
+                        <Pencil className="h-3.5 w-3.5 mr-2" /> Bewerken
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => setReportToDelete(r)} className="text-destructive">
+                        <Trash2 className="h-3.5 w-3.5 mr-2" /> Verwijderen
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               </CardContent>
             </Card>
           );
@@ -167,19 +234,78 @@ const VehicleDamageTab = ({ vehicle }: { vehicle: any }) => {
       </Dialog>
 
       {/* New report sheet */}
-      <NewDamageSheet open={sheetOpen} onOpenChange={setSheetOpen} vehicleId={vehicle.id} orgId={orgId} onDone={() => qc.invalidateQueries({ queryKey: ['vehicle-damage', vehicle.id] })} />
+      <DamageSheet
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+        vehicleId={vehicle.id}
+        orgId={orgId}
+        onDone={() => qc.invalidateQueries({ queryKey: ['vehicle-damage', vehicle.id] })}
+      />
+
+      {/* Edit existing report sheet */}
+      <DamageSheet
+        open={!!editingReport}
+        onOpenChange={(o) => { if (!o) setEditingReport(null); }}
+        vehicleId={vehicle.id}
+        orgId={orgId}
+        onDone={() => qc.invalidateQueries({ queryKey: ['vehicle-damage', vehicle.id] })}
+        existing={editingReport}
+      />
+
+      <AlertDialog open={!!reportToDelete} onOpenChange={(o) => { if (!o) setReportToDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Schademelding verwijderen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Verwijdert de melding van {reportToDelete && formatDate(reportToDelete.reported_at)}
+              {reportToDelete?.photos?.length > 0 && ` inclusief ${reportToDelete.photos.length} foto's uit de opslag`}.
+              Deze actie kan niet ongedaan worden gemaakt.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuleren</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); if (reportToDelete) deleteMutation.mutate(reportToDelete); }}
+              disabled={deleteMutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteMutation.isPending ? 'Verwijderen...' : 'Verwijderen'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
 
-/* ─── New Damage Sheet ──────────────────────────────────── */
+/* ─── Damage Sheet (create + edit) ─────────────────────── */
 
-const NewDamageSheet = ({ open, onOpenChange, vehicleId, orgId, onDone }: {
+const DamageSheet = ({ open, onOpenChange, vehicleId, orgId, onDone, existing }: {
   open: boolean; onOpenChange: (o: boolean) => void; vehicleId: string; orgId: string | null; onDone: () => void;
+  existing?: any;
 }) => {
+  const isEdit = !!existing;
   const [form, setForm] = useState({ employee_id: '', damage_type: 'overig', description: '', garage_email: '', cost_estimate: '' });
   const [files, setFiles] = useState<File[]>([]);
   const [saving, setSaving] = useState(false);
+
+  // Pre-fill form when opening in edit mode
+  useEffect(() => {
+    if (!open) return;
+    if (existing) {
+      setForm({
+        employee_id: existing.employee_id ?? '',
+        damage_type: existing.damage_type ?? 'overig',
+        description: existing.description ?? '',
+        garage_email: existing.garage_email ?? '',
+        cost_estimate: existing.cost_estimate != null ? String(existing.cost_estimate) : '',
+      });
+    } else {
+      setForm({ employee_id: '', damage_type: 'overig', description: '', garage_email: '', cost_estimate: '' });
+    }
+    setFiles([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, existing?.id]);
 
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
 
@@ -201,47 +327,67 @@ const NewDamageSheet = ({ open, onOpenChange, vehicleId, orgId, onDone }: {
     setSaving(true);
 
     try {
-      // Upload photos
-      const photoPaths: string[] = [];
+      // Upload nieuwe foto's
+      const newPhotoPaths: string[] = [];
       for (const file of files) {
         const ext = file.name.split('.').pop() ?? 'jpg';
         const path = `${orgId}/damage/${vehicleId}/${crypto.randomUUID()}.${ext}`;
         const { error } = await supabase.storage.from('documents').upload(path, file);
         if (error) throw error;
-        photoPaths.push(path);
+        newPhotoPaths.push(path);
       }
 
-      const payload: any = {
-        organization_id: orgId,
-        vehicle_id: vehicleId,
+      const corePayload: any = {
         employee_id: form.employee_id,
         damage_type: form.damage_type,
         description: form.description,
-        photos: photoPaths,
         garage_email: form.garage_email || null,
         cost_estimate: form.cost_estimate ? parseFloat(form.cost_estimate) : null,
-        garage_notified: false,
-        garage_notified_at: null,
       };
 
-      const { data: inserted, error } = await supabase.from('vehicle_damage_reports').insert(payload).select('id').single();
-      if (error) throw error;
+      let reportId: string | null = null;
 
-      if (notifyGarage && inserted?.id && form.garage_email) {
+      if (isEdit && existing) {
+        // Append nieuwe foto's aan bestaande array
+        const existingPhotos: string[] = (existing.photos ?? []) as string[];
+        const updatePayload = {
+          ...corePayload,
+          photos: [...existingPhotos, ...newPhotoPaths],
+        };
+        const { error } = await supabase.from('vehicle_damage_reports').update(updatePayload).eq('id', existing.id);
+        if (error) throw error;
+        reportId = existing.id;
+        logAudit({ action: 'update', tableName: 'vehicle_damage_reports', recordId: existing.id });
+      } else {
+        const insertPayload = {
+          ...corePayload,
+          organization_id: orgId,
+          vehicle_id: vehicleId,
+          photos: newPhotoPaths,
+          garage_notified: false,
+          garage_notified_at: null,
+        };
+        const { data: inserted, error } = await supabase.from('vehicle_damage_reports').insert(insertPayload).select('id').single();
+        if (error) throw error;
+        reportId = inserted?.id ?? null;
+        logAudit({ action: 'create', tableName: 'vehicle_damage_reports', recordId: reportId ?? 'new' });
+      }
+
+      if (notifyGarage && reportId && form.garage_email) {
         const { data: notifyData, error: notifyErr } = await supabase.functions.invoke('send-damage-report', {
-          body: { report_id: inserted.id },
+          body: { report_id: reportId },
         });
         if (notifyErr) {
           toast.error(`Email naar garage mislukt: ${(notifyData as any)?.error ?? notifyErr.message}`);
         } else {
           await supabase.from('vehicle_damage_reports')
             .update({ garage_notified: true, garage_notified_at: new Date().toISOString() } as any)
-            .eq('id', inserted.id);
+            .eq('id', reportId);
           toast.info(`Email verstuurd naar ${form.garage_email}`);
         }
       }
 
-      toast.success('Schademelding opgeslagen');
+      toast.success(isEdit ? 'Schademelding bijgewerkt' : 'Schademelding opgeslagen');
       onDone();
       onOpenChange(false);
       setForm({ employee_id: '', damage_type: 'overig', description: '', garage_email: '', cost_estimate: '' });
@@ -256,7 +402,7 @@ const NewDamageSheet = ({ open, onOpenChange, vehicleId, orgId, onDone }: {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="sm:max-w-md overflow-y-auto">
-        <SheetHeader><SheetTitle>Nieuwe schademelding</SheetTitle></SheetHeader>
+        <SheetHeader><SheetTitle>{isEdit ? 'Schademelding bewerken' : 'Nieuwe schademelding'}</SheetTitle></SheetHeader>
         <div className="space-y-4 mt-6">
           <div>
             <Label>Medewerker *</Label>
@@ -286,12 +432,15 @@ const NewDamageSheet = ({ open, onOpenChange, vehicleId, orgId, onDone }: {
           </div>
 
           <div>
-            <Label>Foto's (max 4)</Label>
+            <Label>{isEdit ? "Extra foto's toevoegen (max 4)" : "Foto's (max 4)"}</Label>
             <Input type="file" accept="image/*" multiple onChange={e => {
               const selected = Array.from(e.target.files ?? []).slice(0, 4);
               setFiles(selected);
             }} />
             {files.length > 0 && <p className="text-xs text-muted-foreground mt-1">{files.length} bestand(en) geselecteerd</p>}
+            {isEdit && existing?.photos?.length > 0 && (
+              <p className="text-xs text-muted-foreground mt-1">{existing.photos.length} bestaande foto('s) blijven bewaard.</p>
+            )}
           </div>
 
           <div>

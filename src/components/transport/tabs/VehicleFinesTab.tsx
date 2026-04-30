@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
-import { Plus } from 'lucide-react';
+import { Plus, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,19 +11,45 @@ import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { formatDate, formatEUR } from '@/lib/format';
+import { logAudit } from '@/lib/audit';
+
+const emptyFine = {
+  fine_date: '',
+  amount: '',
+  description: '',
+  reference_number: '',
+  employee_id: '',
+  notes: '',
+};
 
 const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
   const orgId = useOrganizationId();
   const qc = useQueryClient();
-  const [addOpen, setAddOpen] = useState(false);
-  const [fineDate, setFineDate] = useState('');
-  const [amount, setAmount] = useState('');
-  const [description, setDescription] = useState('');
-  const [referenceNumber, setReferenceNumber] = useState('');
-  const [employeeId, setEmployeeId] = useState('');
-  const [notes, setNotes] = useState('');
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState(emptyFine);
+  const [fineToDelete, setFineToDelete] = useState<any | null>(null);
+
+  // Backwards-compatible aliases for inline form-binding (less code churn)
+  const fineDate = form.fine_date; const setFineDate = (v: string) => setForm(f => ({ ...f, fine_date: v }));
+  const amount = form.amount; const setAmount = (v: string) => setForm(f => ({ ...f, amount: v }));
+  const description = form.description; const setDescription = (v: string) => setForm(f => ({ ...f, description: v }));
+  const referenceNumber = form.reference_number; const setReferenceNumber = (v: string) => setForm(f => ({ ...f, reference_number: v }));
+  const employeeId = form.employee_id; const setEmployeeId = (v: string) => setForm(f => ({ ...f, employee_id: v }));
+  const notes = form.notes; const setNotes = (v: string) => setForm(f => ({ ...f, notes: v }));
 
   const { data: fines } = useQuery({
     queryKey: ['vehicle-fines', vehicle.id],
@@ -46,30 +72,75 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
       (data ?? []).forEach((a: any) => { if (a.employees) unique.set(a.employees.id, a.employees); });
       return Array.from(unique.values());
     },
-    enabled: addOpen,
+    enabled: sheetOpen,
   });
 
-  const addMutation = useMutation({
+  const closeSheet = () => {
+    setSheetOpen(false);
+    setEditingId(null);
+    setForm(emptyFine);
+  };
+
+  const openAdd = () => {
+    setEditingId(null);
+    setForm(emptyFine);
+    setSheetOpen(true);
+  };
+
+  const openEdit = (f: any) => {
+    setEditingId(f.id);
+    setForm({
+      fine_date: f.fine_date ?? '',
+      amount: f.amount != null ? String(f.amount) : '',
+      description: f.description ?? '',
+      reference_number: f.reference_number ?? '',
+      employee_id: f.employee_id ?? '',
+      notes: f.notes ?? '',
+    });
+    setSheetOpen(true);
+  };
+
+  const saveMutation = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.from('vehicle_fines').insert({
-        organization_id: orgId,
-        vehicle_id: vehicle.id,
+      const payload: any = {
         fine_date: fineDate,
         amount: parseFloat(amount),
         description: description || null,
         reference_number: referenceNumber || null,
         employee_id: employeeId || null,
         notes: notes || null,
-      });
-      if (error) throw error;
+      };
+      if (editingId) {
+        const { error } = await supabase.from('vehicle_fines').update(payload).eq('id', editingId);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('vehicle_fines').insert({
+          ...payload, organization_id: orgId, vehicle_id: vehicle.id,
+        });
+        if (error) throw error;
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['vehicle-fines', vehicle.id] });
-      toast.success('Boete geregistreerd');
-      setAddOpen(false);
-      setFineDate(''); setAmount(''); setDescription(''); setReferenceNumber(''); setEmployeeId(''); setNotes('');
+      logAudit({ action: editingId ? 'update' : 'create', tableName: 'vehicle_fines', recordId: editingId ?? 'new' });
+      toast.success(editingId ? 'Boete bijgewerkt' : 'Boete geregistreerd');
+      closeSheet();
     },
     onError: (e: any) => toast.error(e.message),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (fineId: string) => {
+      const { error } = await supabase.from('vehicle_fines').delete().eq('id', fineId);
+      if (error) throw error;
+    },
+    onSuccess: (_, fineId) => {
+      qc.invalidateQueries({ queryKey: ['vehicle-fines', vehicle.id] });
+      logAudit({ action: 'delete', tableName: 'vehicle_fines', recordId: fineId });
+      toast.success('Boete verwijderd');
+      setFineToDelete(null);
+    },
+    onError: (e: any) => { toast.error(e.message); setFineToDelete(null); },
   });
 
   const paidMutation = useMutation({
@@ -90,7 +161,7 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
   return (
     <div className="space-y-4 mt-4">
       <div className="flex justify-end">
-        <Button size="sm" onClick={() => setAddOpen(true)} className="gap-1"><Plus className="h-4 w-4" /> Nieuwe boete</Button>
+        <Button size="sm" onClick={openAdd} className="gap-1"><Plus className="h-4 w-4" /> Nieuwe boete</Button>
       </div>
 
       <div className="bg-card rounded-lg border">
@@ -103,6 +174,7 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
               <TableHead>Referentie</TableHead>
               <TableHead>Medewerker</TableHead>
               <TableHead>Betaald</TableHead>
+              <TableHead></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -124,19 +196,35 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
                       {f.paid ? 'Betaald' : 'Niet betaald'}
                     </Badge>
                   </TableCell>
+                  <TableCell>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button size="icon" variant="ghost" className="h-8 w-8"><MoreHorizontal className="h-4 w-4" /></Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => openEdit(f)}>
+                          <Pencil className="h-3.5 w-3.5 mr-2" /> Bewerken
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => setFineToDelete(f)} className="text-destructive">
+                          <Trash2 className="h-3.5 w-3.5 mr-2" /> Verwijderen
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
                 </TableRow>
               );
             })}
             {(fines ?? []).length === 0 && (
-              <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">Geen boetes geregistreerd</TableCell></TableRow>
+              <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">Geen boetes geregistreerd</TableCell></TableRow>
             )}
           </TableBody>
         </Table>
       </div>
 
-      <Sheet open={addOpen} onOpenChange={setAddOpen}>
+      <Sheet open={sheetOpen} onOpenChange={(o) => { if (!o) closeSheet(); else setSheetOpen(o); }}>
         <SheetContent className="sm:max-w-md">
-          <SheetHeader><SheetTitle>Nieuwe boete</SheetTitle></SheetHeader>
+          <SheetHeader><SheetTitle>{editingId ? 'Boete bewerken' : 'Nieuwe boete'}</SheetTitle></SheetHeader>
           <div className="space-y-4 mt-6">
             <div><Label>Datum *</Label><Input type="date" value={fineDate} onChange={(e) => setFineDate(e.target.value)} /></div>
             <div><Label>Bedrag (€) *</Label><Input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
@@ -156,14 +244,35 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
             </div>
             <div><Label>Notities</Label><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} /></div>
             <div className="flex justify-end gap-3 pt-4">
-              <Button variant="ghost" onClick={() => setAddOpen(false)}>Annuleren</Button>
-              <Button onClick={() => addMutation.mutate()} disabled={!fineDate || !amount || addMutation.isPending}>
-                {addMutation.isPending ? 'Opslaan...' : 'Opslaan'}
+              <Button variant="ghost" onClick={closeSheet}>Annuleren</Button>
+              <Button onClick={() => saveMutation.mutate()} disabled={!fineDate || !amount || saveMutation.isPending}>
+                {saveMutation.isPending ? 'Opslaan...' : 'Opslaan'}
               </Button>
             </div>
           </div>
         </SheetContent>
       </Sheet>
+
+      <AlertDialog open={!!fineToDelete} onOpenChange={(o) => { if (!o) setFineToDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Boete verwijderen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Verwijdert de boete van {fineToDelete && formatDate(fineToDelete.fine_date)} ({fineToDelete && formatEUR(fineToDelete.amount)}). Deze actie kan niet ongedaan worden gemaakt.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuleren</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); if (fineToDelete) deleteMutation.mutate(fineToDelete.id); }}
+              disabled={deleteMutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteMutation.isPending ? 'Verwijderen...' : 'Verwijderen'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
