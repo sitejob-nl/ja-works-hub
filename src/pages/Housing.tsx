@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Link } from 'react-router-dom';
-import { Home, Plus, Search, LayoutGrid, List, Bed, Building2 } from 'lucide-react';
+import { Home, Plus, Search, LayoutGrid, List, Bed, Building2, ArrowUpDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -16,9 +16,33 @@ import ExportPropertiesButton from '@/components/housing/ExportPropertiesButton'
 
 const ALL_CITIES = '__all__';
 
+type SortKey =
+  | 'address_asc'
+  | 'address_desc'
+  | 'name_asc'
+  | 'free_desc'
+  | 'free_asc'
+  | 'occupancy_desc'
+  | 'occupancy_asc'
+  | 'capacity_desc'
+  | 'capacity_asc';
+
+const SORT_LABELS: Record<SortKey, string> = {
+  address_asc: 'Adres (A → Z)',
+  address_desc: 'Adres (Z → A)',
+  name_asc: 'Naam (A → Z)',
+  free_desc: 'Vrije plekken (meeste)',
+  free_asc: 'Vrije plekken (minste)',
+  occupancy_desc: 'Bezetting % (hoog)',
+  occupancy_asc: 'Bezetting % (laag)',
+  capacity_desc: 'Capaciteit (groot)',
+  capacity_asc: 'Capaciteit (klein)',
+};
+
 const Housing = () => {
   const [search, setSearch] = useState('');
   const [city, setCity] = useState<string>(ALL_CITIES);
+  const [sort, setSort] = useState<SortKey>('address_asc');
   const [view, setView] = useState<string>('cards');
   const [sheetOpen, setSheetOpen] = useState(false);
 
@@ -55,7 +79,7 @@ const Housing = () => {
 
   const properties = useMemo(() => {
     const s = search.trim().toLowerCase();
-    return allProperties.filter((p: any) => {
+    const filtered = allProperties.filter((p: any) => {
       if (city !== ALL_CITIES && p.address_city !== city) return false;
       if (s) {
         const haystack = [p.name, p.address_street, p.address_city, p.address_postal]
@@ -64,7 +88,29 @@ const Housing = () => {
       }
       return true;
     });
-  }, [allProperties, search, city]);
+
+    const cmpAddress = (a: any, b: any) => {
+      const cityCmp = (a.address_city ?? '').localeCompare(b.address_city ?? '', 'nl');
+      if (cityCmp !== 0) return cityCmp;
+      return (a.address_street ?? '').localeCompare(b.address_street ?? '', 'nl');
+    };
+    const free = (p: any) => (p.totalCapacity ?? 0) - (p.currentOccupancy ?? 0);
+    const labelOf = (p: any) => p.name || `${p.address_street ?? ''} ${p.address_city ?? ''}`;
+
+    const sorted = [...filtered];
+    switch (sort) {
+      case 'address_asc': sorted.sort(cmpAddress); break;
+      case 'address_desc': sorted.sort((a, b) => -cmpAddress(a, b)); break;
+      case 'name_asc': sorted.sort((a, b) => labelOf(a).localeCompare(labelOf(b), 'nl')); break;
+      case 'free_desc': sorted.sort((a, b) => free(b) - free(a) || cmpAddress(a, b)); break;
+      case 'free_asc': sorted.sort((a, b) => free(a) - free(b) || cmpAddress(a, b)); break;
+      case 'occupancy_desc': sorted.sort((a, b) => (b.percentage ?? 0) - (a.percentage ?? 0) || cmpAddress(a, b)); break;
+      case 'occupancy_asc': sorted.sort((a, b) => (a.percentage ?? 0) - (b.percentage ?? 0) || cmpAddress(a, b)); break;
+      case 'capacity_desc': sorted.sort((a, b) => (b.totalCapacity ?? 0) - (a.totalCapacity ?? 0) || cmpAddress(a, b)); break;
+      case 'capacity_asc': sorted.sort((a, b) => (a.totalCapacity ?? 0) - (b.totalCapacity ?? 0) || cmpAddress(a, b)); break;
+    }
+    return sorted;
+  }, [allProperties, search, city, sort]);
 
   const getBarColor = (pct: number) => {
     if (pct >= 90) return 'bg-red-500';
@@ -156,6 +202,17 @@ const Housing = () => {
           <SelectContent>
             <SelectItem value={ALL_CITIES}>Alle plaatsen</SelectItem>
             {cities.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
+          <SelectTrigger className="w-52 gap-1.5">
+            <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {(Object.keys(SORT_LABELS) as SortKey[]).map((k) => (
+              <SelectItem key={k} value={k}>{SORT_LABELS[k]}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
         <ToggleGroup type="single" value={view} onValueChange={(v) => v && setView(v)}>
