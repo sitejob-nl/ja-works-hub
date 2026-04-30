@@ -33,6 +33,7 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
     // owner
     owner_id: null as string | null,
     rental_contract_url: '', ownership_type: '',
+    rental_contract_start_date: '', rental_contract_end_date: '', rental_contract_notes: '',
     // permits
     has_rental_permit: false, rental_permit_number: '', rental_permit_expiry: '',
     has_snf_certificate: false, snf_certificate_number: '', snf_certificate_expiry: '',
@@ -56,6 +57,9 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
         owner_id: property.owner_id ?? null,
         rental_contract_url: property.rental_contract_url ?? '',
         ownership_type: property.ownership_type ?? '',
+        rental_contract_start_date: property.rental_contract_start_date ?? '',
+        rental_contract_end_date: property.rental_contract_end_date ?? '',
+        rental_contract_notes: property.rental_contract_notes ?? '',
         has_rental_permit: property.has_rental_permit ?? false,
         rental_permit_number: property.rental_permit_number ?? '',
         rental_permit_expiry: property.rental_permit_expiry ?? '',
@@ -95,6 +99,9 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
         owner_id: form.owner_id,
         rental_contract_url: form.rental_contract_url || null,
         ownership_type: form.ownership_type || null,
+        rental_contract_start_date: form.rental_contract_start_date || null,
+        rental_contract_end_date: form.rental_contract_end_date || null,
+        rental_contract_notes: form.rental_contract_notes || null,
         has_rental_permit: form.has_rental_permit,
         rental_permit_number: form.has_rental_permit ? (form.rental_permit_number || null) : null,
         rental_permit_expiry: form.has_rental_permit ? (form.rental_permit_expiry || null) : null,
@@ -181,6 +188,14 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
                 </Select>
               </div>
               <div><Label>Link huurcontract</Label><Input value={form.rental_contract_url} onChange={(e) => set('rental_contract_url', e.target.value)} /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>Huurcontract begindatum</Label><Input type="date" value={form.rental_contract_start_date} onChange={(e) => set('rental_contract_start_date', e.target.value)} /></div>
+              <div><Label>Huurcontract einddatum</Label><Input type="date" value={form.rental_contract_end_date} onChange={(e) => set('rental_contract_end_date', e.target.value)} /></div>
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Notities huurcontract</Label>
+              <Textarea value={form.rental_contract_notes} onChange={(e) => set('rental_contract_notes', e.target.value)} rows={2} placeholder="Bijv. opzegtermijn, kosten bij verlenging..." />
             </div>
           </div>
 

@@ -127,6 +127,12 @@ verify_jwt = false
 [functions.refresh-talentpool-members]
 verify_jwt = false
 
+[functions.housing-reminder-cron]
+verify_jwt = false
+
+[functions.send-ai-analysis]
+verify_jwt = false
+
 [functions.analyze-cv-callback]
 verify_jwt = false
 

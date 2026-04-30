@@ -5,10 +5,11 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Brain, Upload, Loader2, CheckCircle2, XCircle, FileText, Clock, ArrowDownToLine } from 'lucide-react';
+import { Brain, Upload, Loader2, CheckCircle2, XCircle, FileText, Clock, ArrowDownToLine, Share2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDate } from '@/lib/format';
 import AiAnalysisCard from '@/components/AiAnalysisCard';
+import AiAnalysisShareDialog from '@/components/candidates/AiAnalysisShareDialog';
 import { logAudit } from '@/lib/audit';
 
 const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => {
@@ -17,6 +18,7 @@ const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => 
   const [cvText, setCvText] = useState(initialCandidate.cv_raw_text || '');
   const [candidate, setCandidate] = useState(initialCandidate);
   const [extracting, setExtracting] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
 
   // Realtime subscription on this candidate's ai_status
   useEffect(() => {
@@ -176,19 +178,38 @@ const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => 
                 </p>
               </div>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => analyzeMutation.mutate()}
-              disabled={isAnalyzing}
-              className="gap-1.5"
-            >
-              <Brain className="h-3.5 w-3.5" />
-              Opnieuw analyseren
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShareOpen(true)}
+                disabled={isAnalyzing}
+                className="gap-1.5"
+              >
+                <Share2 className="h-3.5 w-3.5" />
+                Deel met opdrachtgever
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => analyzeMutation.mutate()}
+                disabled={isAnalyzing}
+                className="gap-1.5"
+              >
+                <Brain className="h-3.5 w-3.5" />
+                Opnieuw analyseren
+              </Button>
+            </div>
           </div>
         </Card>
       )}
+
+      <AiAnalysisShareDialog
+        open={shareOpen}
+        onOpenChange={setShareOpen}
+        candidate={candidate}
+      />
+
 
       {/* CV Input section */}
       <Card className="p-5 space-y-4">

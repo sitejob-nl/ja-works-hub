@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMicrosoftApi } from '@/hooks/useMicrosoftApi';
+import { useAuth } from '@/contexts/AuthContext';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { Send, Loader2, X, Paperclip } from 'lucide-react';
+import { buildEmailHtmlWithSignature } from '@/lib/email-signature';
 
 interface EmailComposeProps {
   open: boolean;
@@ -26,7 +28,9 @@ interface EmailComposeProps {
 
 const EmailCompose = ({ open, onOpenChange, replyTo, defaultTo, defaultSubject }: EmailComposeProps) => {
   const { callApi } = useMicrosoftApi();
+  const { profile } = useAuth();
   const queryClient = useQueryClient();
+  const senderName = profile?.full_name?.trim() || '';
 
   const isReply = !!replyTo;
   const isForward = replyTo?.mode === 'forward';
@@ -52,6 +56,8 @@ const EmailCompose = ({ open, onOpenChange, replyTo, defaultTo, defaultSubject }
 
       if (toRecipients.length === 0) throw new Error('Vul minimaal één ontvanger in');
 
+      const htmlBody = buildEmailHtmlWithSignature(body, senderName);
+
       if (isReply && replyTo?.messageId) {
         const endpoint = isForward
           ? `me/messages/${replyTo.messageId}/forward`
@@ -67,7 +73,7 @@ const EmailCompose = ({ open, onOpenChange, replyTo, defaultTo, defaultSubject }
               toRecipients: isForward ? toRecipients : undefined,
               ccRecipients: ccRecipients.length > 0 ? ccRecipients : undefined,
             },
-            comment: body,
+            comment: htmlBody,
           },
         });
       }
@@ -78,7 +84,7 @@ const EmailCompose = ({ open, onOpenChange, replyTo, defaultTo, defaultSubject }
         payload: {
           message: {
             subject,
-            body: { contentType: 'Text', content: body },
+            body: { contentType: 'HTML', content: htmlBody },
             toRecipients,
             ...(ccRecipients.length > 0 ? { ccRecipients } : {}),
           },
@@ -161,6 +167,11 @@ const EmailCompose = ({ open, onOpenChange, replyTo, defaultTo, defaultSubject }
             rows={10}
             className="resize-none"
           />
+
+          <p className="text-xs text-muted-foreground">
+            Onderaan wordt automatisch toegevoegd:{' '}
+            <span className="font-medium">Met vriendelijke groet, {senderName || 'Het JA Werkt team'}</span>
+          </p>
         </div>
 
         <div className="flex justify-between items-center pt-3 border-t">

@@ -1488,6 +1488,9 @@ export type Database = {
           is_active: boolean | null
           name: string
           organization_id: string
+          required_skills: string[] | null
+          salary_max: number | null
+          salary_min: number | null
         }
         Insert: {
           company_id: string
@@ -1498,6 +1501,9 @@ export type Database = {
           is_active?: boolean | null
           name: string
           organization_id: string
+          required_skills?: string[] | null
+          salary_max?: number | null
+          salary_min?: number | null
         }
         Update: {
           company_id?: string
@@ -1508,6 +1514,9 @@ export type Database = {
           is_active?: boolean | null
           name?: string
           organization_id?: string
+          required_skills?: string[] | null
+          salary_max?: number | null
+          salary_min?: number | null
         }
         Relationships: [
           {
@@ -5223,6 +5232,9 @@ export type Database = {
           organization_id: string
           owner_id: string | null
           ownership_type: string | null
+          rental_contract_end_date: string | null
+          rental_contract_notes: string | null
+          rental_contract_start_date: string | null
           rental_contract_url: string | null
           rental_permit_expiry: string | null
           rental_permit_number: string | null
@@ -5257,6 +5269,9 @@ export type Database = {
           organization_id: string
           owner_id?: string | null
           ownership_type?: string | null
+          rental_contract_end_date?: string | null
+          rental_contract_notes?: string | null
+          rental_contract_start_date?: string | null
           rental_contract_url?: string | null
           rental_permit_expiry?: string | null
           rental_permit_number?: string | null
@@ -5291,6 +5306,9 @@ export type Database = {
           organization_id?: string
           owner_id?: string | null
           ownership_type?: string | null
+          rental_contract_end_date?: string | null
+          rental_contract_notes?: string | null
+          rental_contract_start_date?: string | null
           rental_contract_url?: string | null
           rental_permit_expiry?: string | null
           rental_permit_number?: string | null

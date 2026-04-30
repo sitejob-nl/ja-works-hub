@@ -21,6 +21,36 @@ interface SendViaOutlookParams {
   companyId?: string;
   /** Optional: who triggered the send */
   sentBy?: string;
+  /**
+   * Display name used in the email signature ("namens X").
+   * If omitted, looked up via `sentBy`. If neither is provided, falls back to "Het JA Werkt team".
+   * Pass `null` to suppress the signature entirely.
+   */
+  senderName?: string | null;
+}
+
+const SIGNATURE_MARKER = "ja-werkt-signature";
+
+export function buildSignatureBlock(senderName: string): string {
+  return `<div data-signature="${SIGNATURE_MARKER}" style="margin-top:24px;padding-top:12px;border-top:1px solid #e5e7eb;color:#334155;font-size:14px;line-height:1.5;">
+  <p style="margin:0;">Met vriendelijke groet,</p>
+  <p style="margin:4px 0 0;font-weight:600;">${escapeHtml(senderName)}</p>
+  <p style="margin:8px 0 0;color:#94a3b8;font-size:12px;">Verstuurd via JA Werkt</p>
+</div>`;
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function appendSignatureIfMissing(html: string, senderName: string): string {
+  if (html.includes(`data-signature="${SIGNATURE_MARKER}"`)) return html;
+  return html + buildSignatureBlock(senderName);
 }
 
 interface SendResult {
@@ -30,12 +60,30 @@ interface SendResult {
 }
 
 export async function sendViaOutlook(params: SendViaOutlookParams): Promise<SendResult> {
-  const { orgId, to, cc, subject, htmlBody, candidateId, companyId, sentBy } = params;
+  const { orgId, to, cc, subject, htmlBody, candidateId, companyId, sentBy, senderName } = params;
 
   const serviceClient = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
   );
+
+  // Resolve signature: explicit `senderName` wins. `null` suppresses. Otherwise look up via `sentBy`.
+  let resolvedName: string | null = null;
+  if (senderName === null) {
+    resolvedName = null;
+  } else if (typeof senderName === "string" && senderName.trim()) {
+    resolvedName = senderName.trim();
+  } else if (sentBy) {
+    const { data: profile } = await serviceClient
+      .from("profiles")
+      .select("full_name")
+      .eq("id", sentBy)
+      .maybeSingle();
+    if (profile?.full_name) resolvedName = profile.full_name;
+  }
+  const finalBody = resolvedName === null
+    ? htmlBody
+    : appendSignatureIfMissing(htmlBody, resolvedName ?? "Het JA Werkt team");
 
   // Get Microsoft token for org
   const { data: msToken, error: msError } = await serviceClient.rpc("get_microsoft_token", {
@@ -112,7 +160,7 @@ export async function sendViaOutlook(params: SendViaOutlookParams): Promise<Send
     body: JSON.stringify({
       message: {
         subject,
-        body: { contentType: "HTML", content: htmlBody },
+        body: { contentType: "HTML", content: finalBody },
         toRecipients,
         ...(ccRecipients && ccRecipients.length > 0 ? { ccRecipients } : {}),
       },
@@ -135,7 +183,7 @@ export async function sendViaOutlook(params: SendViaOutlookParams): Promise<Send
     channel: "email",
     direction: "outbound",
     subject,
-    body: htmlBody,
+    body: finalBody,
     email_to: toEmails,
     email_from: msToken[0].microsoft_email || null,
     status: "sent",

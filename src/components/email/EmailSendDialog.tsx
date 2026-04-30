@@ -13,6 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 import { Send, Loader2, Eye, Pencil } from 'lucide-react';
 import { format } from 'date-fns';
+import { buildSignatureBlock } from '@/lib/email-signature';
 
 interface EmailSendDialogProps {
   open: boolean;
@@ -126,6 +127,11 @@ const EmailSendDialog = ({
     }
   }, [selectedTemplateId, JSON.stringify(variableMap)]);
 
+  const senderName = profile?.full_name?.trim() || '';
+  const finalHtml = bodyHtml.includes('data-signature="ja-werkt-signature"')
+    ? bodyHtml
+    : bodyHtml + buildSignatureBlock(senderName);
+
   const sendMutation = useMutation({
     mutationFn: async () => {
       if (!toEmail.trim()) throw new Error('Vul een e-mailadres in');
@@ -137,7 +143,7 @@ const EmailSendDialog = ({
         payload: {
           message: {
             subject,
-            body: { contentType: 'HTML', content: bodyHtml },
+            body: { contentType: 'HTML', content: finalHtml },
             toRecipients: [{ emailAddress: { address: toEmail.trim() } }],
           },
         },
@@ -156,7 +162,7 @@ const EmailSendDialog = ({
           channel: 'email',
           direction: 'outbound',
           subject,
-          body: bodyHtml,
+          body: finalHtml,
           email_to: [toEmail],
           email_from: profile?.email || '',
           status: 'sent',
@@ -219,7 +225,7 @@ const EmailSendDialog = ({
 
           {showPreview ? (
             <div className="border rounded-md p-4 bg-white dark:bg-zinc-950 min-h-[200px]">
-              <div className="prose prose-sm dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: bodyHtml }} />
+              <div className="prose prose-sm dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: finalHtml }} />
             </div>
           ) : (
             <textarea
@@ -230,6 +236,11 @@ const EmailSendDialog = ({
               placeholder="HTML content..."
             />
           )}
+
+          <p className="text-xs text-muted-foreground">
+            Onderaan wordt automatisch toegevoegd:{' '}
+            <span className="font-medium">Met vriendelijke groet, {senderName || 'Het JA Werkt team'}</span>
+          </p>
         </div>
 
         <div className="flex justify-between items-center pt-3 border-t">

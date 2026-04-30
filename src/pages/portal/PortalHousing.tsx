@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import { Home, Star, Camera, Wrench, CheckCircle2 } from 'lucide-react';
+import { Home, Star, Camera, Wrench, CheckCircle2, ImagePlus, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { nl } from 'date-fns/locale';
@@ -22,6 +22,17 @@ const PortalHousing = () => {
   const [complaintOpen, setComplaintOpen] = useState(false);
   const [description, setDescription] = useState('');
   const [photos, setPhotos] = useState<File[]>([]);
+
+  const [checkInOpen, setCheckInOpen] = useState(false);
+  const [checkInPhotos, setCheckInPhotos] = useState<Record<string, File | null>>({
+    photo_room_overview: null,
+    photo_mattress: null,
+    photo_kitchen: null,
+    photo_bathroom: null,
+    photo_damage: null,
+  });
+  const [checkInRating, setCheckInRating] = useState<number>(0);
+  const [checkInNotes, setCheckInNotes] = useState('');
 
   // Fetch active housing assignment with unit + property
   const { data: assignment, isLoading } = useQuery({
@@ -51,6 +62,67 @@ const PortalHousing = () => {
       return data;
     },
     enabled: !!assignment?.id,
+  });
+
+  const submitCheckIn = useMutation({
+    mutationFn: async () => {
+      if (!assignment || !employeeId || !orgId) throw new Error('Geen huisvesting');
+      const unit = assignment.units as any;
+      const property = unit?.properties;
+
+      const uploadOne = async (file: File): Promise<string> => {
+        const ext = file.name.split('.').pop() || 'jpg';
+        const path = `${orgId}/checkin/${assignment.id}/${crypto.randomUUID()}.${ext}`;
+        const { error } = await supabase.storage.from('documents').upload(path, file, { upsert: false });
+        if (error) throw error;
+        const { data: urlData } = supabase.storage.from('documents').getPublicUrl(path);
+        return urlData.publicUrl;
+      };
+
+      const photoUrls: Record<string, string | null> = {};
+      const allUrls: string[] = [];
+      for (const [key, file] of Object.entries(checkInPhotos)) {
+        if (!file) {
+          photoUrls[key] = null;
+          continue;
+        }
+        const url = await uploadOne(file);
+        photoUrls[key] = url;
+        allUrls.push(url);
+      }
+
+      const { error } = await supabase.from('housing_inspections').insert({
+        organization_id: orgId,
+        inspection_type: 'check_in' as any,
+        unit_id: unit?.id,
+        property_id: property?.id,
+        housing_assignment_id: assignment.id,
+        description: 'Check-in inspectie door bewoner',
+        inspection_date: new Date().toISOString().split('T')[0],
+        condition_rating: checkInRating > 0 ? checkInRating : null,
+        condition_notes: checkInNotes.trim() || null,
+        confirmed_by_resident: true,
+        confirmed_at: new Date().toISOString(),
+        photos: allUrls.length > 0 ? allUrls : null,
+        ...photoUrls,
+      } as any);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success('Check-in vastgelegd, dankjewel!');
+      setCheckInOpen(false);
+      setCheckInPhotos({
+        photo_room_overview: null,
+        photo_mattress: null,
+        photo_kitchen: null,
+        photo_bathroom: null,
+        photo_damage: null,
+      });
+      setCheckInRating(0);
+      setCheckInNotes('');
+      qc.invalidateQueries({ queryKey: ['portal-checkin-inspection', assignment?.id] });
+    },
+    onError: (err: any) => toast.error(err.message || 'Indienen mislukt'),
   });
 
   const submitComplaint = useMutation({
@@ -176,6 +248,93 @@ const PortalHousing = () => {
           )}
         </div>
       </div>
+
+      {/* Check-in CTA — only when no check-in inspection exists yet */}
+      {!checkInInspection && (
+        <Sheet open={checkInOpen} onOpenChange={setCheckInOpen}>
+          <SheetTrigger asChild>
+            <button className="w-full text-left bg-primary/5 border border-primary/20 rounded-xl p-4 flex items-center gap-3 hover:bg-primary/10 transition">
+              <div className="rounded-full bg-primary/10 p-2">
+                <Camera className="h-4 w-4 text-primary" />
+              </div>
+              <div className="flex-1">
+                <p className="font-medium text-sm">Doe je check-in</p>
+                <p className="text-xs text-muted-foreground">Upload foto's van je kamer bij aankomst zodat we de staat vastleggen.</p>
+              </div>
+              <ImagePlus className="h-4 w-4 text-muted-foreground" />
+            </button>
+          </SheetTrigger>
+          <SheetContent className="overflow-y-auto">
+            <SheetHeader>
+              <SheetTitle>Check-in inspectie</SheetTitle>
+            </SheetHeader>
+            <div className="space-y-4 mt-6">
+              <p className="text-sm text-muted-foreground">
+                Maak een foto van elk onderdeel zodat we de staat van de kamer vastleggen op de dag dat je intrekt.
+              </p>
+
+              {photoFields.map(({ key, label }) => {
+                const file = checkInPhotos[key];
+                return (
+                  <div key={key} className="space-y-1.5">
+                    <Label className="flex items-center justify-between">
+                      <span>{label}</span>
+                      {file && <span className="text-xs text-stat-green">✓ gekozen</span>}
+                    </Label>
+                    <Input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0] ?? null;
+                        setCheckInPhotos((prev) => ({ ...prev, [key]: f }));
+                      }}
+                    />
+                  </div>
+                );
+              })}
+
+              <div className="space-y-1.5">
+                <Label>Algemene staat</Label>
+                <div className="flex items-center gap-2">
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => setCheckInRating(n)}
+                      className="p-1"
+                      aria-label={`${n} sterren`}
+                    >
+                      <Star
+                        className={`h-6 w-6 ${n <= checkInRating ? 'text-yellow-500 fill-yellow-500' : 'text-muted-foreground/40'}`}
+                      />
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Notities (optioneel)</Label>
+                <Textarea
+                  value={checkInNotes}
+                  onChange={(e) => setCheckInNotes(e.target.value)}
+                  rows={3}
+                  placeholder="Bijv. krasje op deur, vlek op matras..."
+                />
+              </div>
+
+              <Button
+                onClick={() => submitCheckIn.mutate()}
+                disabled={submitCheckIn.isPending}
+                className="w-full gap-2"
+              >
+                {submitCheckIn.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                Check-in bevestigen
+              </Button>
+            </div>
+          </SheetContent>
+        </Sheet>
+      )}
 
       {/* Check-in photos */}
       {checkInInspection && (
