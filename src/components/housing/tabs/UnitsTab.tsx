@@ -9,7 +9,17 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { Plus, ChevronDown, ChevronUp } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Plus, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 import { formatDate, formatEUR } from '@/lib/format';
 import { toast } from 'sonner';
 import type { Database } from '@/integrations/supabase/types';
@@ -29,6 +39,7 @@ const UnitsTab = ({ property }: { property: any }) => {
   const qc = useQueryClient();
   const [adding, setAdding] = useState(false);
   const [expandedUnit, setExpandedUnit] = useState<string | null>(null);
+  const [unitToDelete, setUnitToDelete] = useState<{ id: string; name: string } | null>(null);
   const [form, setForm] = useState({
     name: '', capacity: '1', floor: '', weekly_cost: '', status: 'beschikbaar' as UnitStatus, notes: '',
   });
@@ -54,6 +65,33 @@ const UnitsTab = ({ property }: { property: any }) => {
       toast.success('Kamer aangemaakt');
     },
     onError: (e: any) => toast.error(e.message),
+  });
+
+  const deleteUnit = useMutation({
+    mutationFn: async (unitId: string) => {
+      // Pre-check: weiger als er bewoner-records (actief of historisch) hangen
+      const { count, error: countErr } = await supabase
+        .from('housing_assignments')
+        .select('id', { count: 'exact', head: true })
+        .eq('unit_id', unitId);
+      if (countErr) throw countErr;
+      if ((count ?? 0) > 0) {
+        throw new Error(`Kamer heeft nog ${count} bewoner-record(s). Deze blokkeren de verwijdering.`);
+      }
+      // Cascades naar housing_inspections + key_registrations via FK
+      const { error } = await supabase.from('units').delete().eq('id', unitId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['property', property.id] });
+      qc.invalidateQueries({ queryKey: ['properties'] });
+      toast.success('Kamer verwijderd');
+      setUnitToDelete(null);
+    },
+    onError: (e: any) => {
+      toast.error(e.message);
+      setUnitToDelete(null);
+    },
   });
 
   const units = property.units ?? [];
@@ -154,6 +192,18 @@ const UnitsTab = ({ property }: { property: any }) => {
                       </div>
                     ))
                   )}
+                  <div className="flex justify-end pt-2 border-t">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setUnitToDelete({ id: u.id, name: u.name })}
+                      disabled={assignments.length > 0}
+                      className="text-destructive hover:text-destructive hover:bg-destructive/10 h-7 gap-1.5 text-xs"
+                      title={assignments.length > 0 ? 'Kan niet verwijderen — kamer heeft toewijzingshistorie' : 'Kamer verwijderen'}
+                    >
+                      <Trash2 className="h-3 w-3" /> Kamer verwijderen
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>
@@ -161,6 +211,28 @@ const UnitsTab = ({ property }: { property: any }) => {
         })}
       </div>
       {units.length === 0 && <p className="text-center text-muted-foreground py-8">Nog geen kamers. Voeg een kamer toe.</p>}
+
+      <AlertDialog open={!!unitToDelete} onOpenChange={(o) => !o && setUnitToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Kamer "{unitToDelete?.name}" verwijderen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Dit verwijdert de kamer inclusief eventuele inspecties en sleutelregistraties.
+              Bewoner-records blokkeren de verwijdering. Deze actie kan niet ongedaan worden gemaakt.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuleren</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); if (unitToDelete) deleteUnit.mutate(unitToDelete.id); }}
+              disabled={deleteUnit.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteUnit.isPending ? 'Verwijderen...' : 'Verwijderen'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
