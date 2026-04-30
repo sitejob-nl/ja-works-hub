@@ -19,7 +19,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Plus, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
+import { Plus, ChevronDown, ChevronUp, Trash2, Pencil } from 'lucide-react';
 import { formatDate, formatEUR } from '@/lib/format';
 import { toast } from 'sonner';
 import type { Database } from '@/integrations/supabase/types';
@@ -34,35 +34,68 @@ const statusBadge: Record<string, string> = {
   geblokkeerd: 'bg-muted text-muted-foreground border-0',
 };
 
+const emptyForm = {
+  name: '', capacity: '1', floor: '', weekly_cost: '', status: 'beschikbaar' as UnitStatus, notes: '',
+};
+
 const UnitsTab = ({ property }: { property: any }) => {
   const orgId = useOrganizationId();
   const qc = useQueryClient();
-  const [adding, setAdding] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [expandedUnit, setExpandedUnit] = useState<string | null>(null);
   const [unitToDelete, setUnitToDelete] = useState<{ id: string; name: string } | null>(null);
-  const [form, setForm] = useState({
-    name: '', capacity: '1', floor: '', weekly_cost: '', status: 'beschikbaar' as UnitStatus, notes: '',
-  });
+  const [form, setForm] = useState(emptyForm);
 
-  const addUnit = useMutation({
+  const openAdd = () => {
+    setEditingId(null);
+    setForm(emptyForm);
+    setSheetOpen(true);
+  };
+
+  const openEdit = (u: any) => {
+    setEditingId(u.id);
+    setForm({
+      name: u.name ?? '',
+      capacity: String(u.capacity ?? 1),
+      floor: u.floor != null ? String(u.floor) : '',
+      weekly_cost: u.weekly_cost != null ? String(u.weekly_cost) : '',
+      status: (u.status ?? 'beschikbaar') as UnitStatus,
+      notes: u.notes ?? '',
+    });
+    setSheetOpen(true);
+  };
+
+  const saveUnit = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.from('units').insert({
-        organization_id: orgId,
-        property_id: property.id,
+      const payload = {
         name: form.name,
         capacity: Number(form.capacity) || 1,
         floor: form.floor ? Number(form.floor) : null,
         weekly_cost: form.weekly_cost ? Number(form.weekly_cost) : null,
         status: form.status,
         notes: form.notes || null,
-      });
-      if (error) throw error;
+      };
+      if (editingId) {
+        const { error } = await supabase.from('units').update(payload).eq('id', editingId);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('units').insert({
+          ...payload,
+          organization_id: orgId,
+          property_id: property.id,
+        });
+        if (error) throw error;
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['property', property.id] });
-      setAdding(false);
-      setForm({ name: '', capacity: '1', floor: '', weekly_cost: '', status: 'beschikbaar', notes: '' });
-      toast.success('Kamer aangemaakt');
+      qc.invalidateQueries({ queryKey: ['properties'] });
+      const wasEdit = editingId !== null;
+      setSheetOpen(false);
+      setEditingId(null);
+      setForm(emptyForm);
+      toast.success(wasEdit ? 'Kamer bijgewerkt' : 'Kamer aangemaakt');
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -100,14 +133,14 @@ const UnitsTab = ({ property }: { property: any }) => {
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h3 className="font-medium">Kamers ({units.length})</h3>
-        <Button size="sm" variant="outline" onClick={() => setAdding(true)} className="gap-1">
+        <Button size="sm" variant="outline" onClick={openAdd} className="gap-1">
           <Plus className="h-3.5 w-3.5" /> Nieuwe kamer
         </Button>
       </div>
 
-      <Sheet open={adding} onOpenChange={setAdding}>
+      <Sheet open={sheetOpen} onOpenChange={(o) => { if (!o) { setEditingId(null); setForm(emptyForm); } setSheetOpen(o); }}>
         <SheetContent className="sm:max-w-md overflow-y-auto">
-          <SheetHeader><SheetTitle>Nieuwe kamer</SheetTitle></SheetHeader>
+          <SheetHeader><SheetTitle>{editingId ? 'Kamer bewerken' : 'Nieuwe kamer'}</SheetTitle></SheetHeader>
           <div className="space-y-4 mt-6">
             <div><Label>Kamernaam *</Label><Input value={form.name} onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))} /></div>
             <div className="grid grid-cols-2 gap-3">
@@ -130,9 +163,9 @@ const UnitsTab = ({ property }: { property: any }) => {
             </div>
             <div><Label>Notities</Label><Textarea value={form.notes} onChange={(e) => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} /></div>
             <div className="flex justify-end gap-3 pt-4">
-              <Button variant="ghost" onClick={() => setAdding(false)}>Annuleren</Button>
-              <Button onClick={() => addUnit.mutate()} disabled={!form.name || addUnit.isPending}>
-                {addUnit.isPending ? 'Opslaan...' : 'Opslaan'}
+              <Button variant="ghost" onClick={() => { setSheetOpen(false); setEditingId(null); setForm(emptyForm); }}>Annuleren</Button>
+              <Button onClick={() => saveUnit.mutate()} disabled={!form.name || saveUnit.isPending}>
+                {saveUnit.isPending ? 'Opslaan...' : 'Opslaan'}
               </Button>
             </div>
           </div>
@@ -192,7 +225,15 @@ const UnitsTab = ({ property }: { property: any }) => {
                       </div>
                     ))
                   )}
-                  <div className="flex justify-end pt-2 border-t">
+                  <div className="flex justify-end gap-2 pt-2 border-t">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => openEdit(u)}
+                      className="h-7 gap-1.5 text-xs"
+                    >
+                      <Pencil className="h-3 w-3" /> Bewerken
+                    </Button>
                     <Button
                       size="sm"
                       variant="ghost"
@@ -201,7 +242,7 @@ const UnitsTab = ({ property }: { property: any }) => {
                       className="text-destructive hover:text-destructive hover:bg-destructive/10 h-7 gap-1.5 text-xs"
                       title={assignments.length > 0 ? 'Kan niet verwijderen — kamer heeft toewijzingshistorie' : 'Kamer verwijderen'}
                     >
-                      <Trash2 className="h-3 w-3" /> Kamer verwijderen
+                      <Trash2 className="h-3 w-3" /> Verwijderen
                     </Button>
                   </div>
                 </div>

@@ -3671,6 +3671,7 @@ export type Database = {
           id: string
           issued_at: string
           key_number: string
+          lost_at: string | null
           notes: string | null
           organization_id: string
           returned_at: string | null
@@ -3682,6 +3683,7 @@ export type Database = {
           id?: string
           issued_at?: string
           key_number: string
+          lost_at?: string | null
           notes?: string | null
           organization_id: string
           returned_at?: string | null
@@ -3693,6 +3695,7 @@ export type Database = {
           id?: string
           issued_at?: string
           key_number?: string
+          lost_at?: string | null
           notes?: string | null
           organization_id?: string
           returned_at?: string | null

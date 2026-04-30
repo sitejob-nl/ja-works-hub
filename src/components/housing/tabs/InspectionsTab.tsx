@@ -12,9 +12,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
-import { Plus, Star } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Plus, Star, MoreHorizontal, Pencil, Trash2, RotateCcw } from 'lucide-react';
 import { formatDate } from '@/lib/format';
 import { toast } from 'sonner';
+import { logAudit } from '@/lib/audit';
 
 type InspectionType = 'check_in' | 'check_out' | 'periodiek' | 'onderhoud' | 'klacht';
 
@@ -57,12 +69,14 @@ const InspectionsTab = ({ propertyId }: { propertyId: string }) => {
   const { user } = useAuth();
   const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
-  const [adding, setAdding] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<string>('alle');
   const [files, setFiles] = useState<File[]>([]);
   const [photoFiles, setPhotoFiles] = useState<Record<string, File | null>>({
     photo_mattress: null, photo_room_overview: null, photo_bathroom: null, photo_kitchen: null, photo_damage: null,
   });
+  const [inspectionToDelete, setInspectionToDelete] = useState<any | null>(null);
 
   const defaultForm = {
     inspection_date: new Date().toISOString().split('T')[0],
@@ -104,7 +118,7 @@ const InspectionsTab = ({ propertyId }: { propertyId: string }) => {
       if (error) throw error;
       return data;
     },
-    enabled: adding,
+    enabled: sheetOpen,
   });
 
   const { data: assignments = [] } = useQuery({
@@ -121,8 +135,42 @@ const InspectionsTab = ({ propertyId }: { propertyId: string }) => {
       const unitIds = units.map((u: any) => u.id);
       return (data ?? []).filter((a: any) => unitIds.includes(a.unit_id));
     },
-    enabled: adding && isCheckInOut && units.length > 0,
+    enabled: sheetOpen && isCheckInOut && units.length > 0,
   });
+
+  // Open/close helpers
+  const resetSheet = () => {
+    setSheetOpen(false);
+    setEditingId(null);
+    setForm(defaultForm);
+    setFiles([]);
+    setPhotoFiles({ photo_mattress: null, photo_room_overview: null, photo_bathroom: null, photo_kitchen: null, photo_damage: null });
+  };
+
+  const openAdd = () => {
+    setEditingId(null);
+    setForm(defaultForm);
+    setFiles([]);
+    setPhotoFiles({ photo_mattress: null, photo_room_overview: null, photo_bathroom: null, photo_kitchen: null, photo_damage: null });
+    setSheetOpen(true);
+  };
+
+  const openEdit = (insp: any) => {
+    setEditingId(insp.id);
+    setForm({
+      inspection_date: insp.inspection_date ?? new Date().toISOString().split('T')[0],
+      unit_id: insp.unit_id ?? '',
+      description: insp.description ?? '',
+      notes: insp.notes ?? '',
+      inspection_type: (insp.inspection_type ?? 'periodiek') as InspectionType,
+      housing_assignment_id: insp.housing_assignment_id ?? '',
+      condition_rating: insp.condition_rating ?? 0,
+      condition_notes: insp.condition_notes ?? '',
+    });
+    setFiles([]);
+    setPhotoFiles({ photo_mattress: null, photo_room_overview: null, photo_bathroom: null, photo_kitchen: null, photo_damage: null });
+    setSheetOpen(true);
+  };
 
   // Filtered inspections
   const filtered = useMemo(() => {
@@ -146,55 +194,78 @@ const InspectionsTab = ({ propertyId }: { propertyId: string }) => {
     return path;
   };
 
-  const addInspection = useMutation({
+  const saveInspection = useMutation({
     mutationFn: async () => {
-      let photoPaths: string[] = [];
-      const photoColumns: Record<string, string | null> = {
-        photo_mattress: null, photo_room_overview: null, photo_bathroom: null, photo_kitchen: null, photo_damage: null,
-      };
+      const newPhotoPaths: string[] = [];
+      const newPhotoColumns: Record<string, string | null> = {};
 
       if (isCheckInOut) {
-        // Upload specific photos
+        // Specific check-in/out photo slots: a new file replaces the old slot
         for (const field of PHOTO_FIELDS) {
           const file = photoFiles[field.key];
           if (file) {
             const path = await uploadPhoto(file, field.key);
-            photoColumns[field.key] = path;
-            photoPaths.push(path);
+            newPhotoColumns[field.key] = path;
+            newPhotoPaths.push(path);
           }
         }
       } else {
-        // Generic upload
+        // Generic upload — append to photos[] array
         for (const file of files) {
           const path = await uploadPhoto(file, 'generic');
-          photoPaths.push(path);
+          newPhotoPaths.push(path);
         }
       }
 
-      const { error } = await supabase.from('housing_inspections').insert({
-        organization_id: orgId,
-        property_id: propertyId,
-        unit_id: form.unit_id || null,
-        inspection_date: form.inspection_date,
-        description: form.description,
-        notes: form.notes || null,
-        inspected_by: user?.id ?? null,
-        photos: photoPaths.length > 0 ? photoPaths : null,
-        inspection_type: form.inspection_type,
-        housing_assignment_id: isCheckInOut && form.housing_assignment_id ? form.housing_assignment_id : null,
-        condition_rating: isCheckInOut && form.condition_rating > 0 ? form.condition_rating : null,
-        condition_notes: isCheckInOut && form.condition_notes ? form.condition_notes : null,
-        ...photoColumns,
-      });
-      if (error) throw error;
+      if (editingId) {
+        // Update: append new generic photos to existing array; replace specific slots if new file uploaded
+        const existing = inspections.find((i: any) => i.id === editingId);
+        const existingPhotos: string[] = existing?.photos ?? [];
+        const merged: any = {
+          unit_id: form.unit_id || null,
+          inspection_date: form.inspection_date,
+          description: form.description,
+          notes: form.notes || null,
+          inspection_type: form.inspection_type,
+          housing_assignment_id: isCheckInOut && form.housing_assignment_id ? form.housing_assignment_id : null,
+          condition_rating: isCheckInOut && form.condition_rating > 0 ? form.condition_rating : null,
+          condition_notes: isCheckInOut && form.condition_notes ? form.condition_notes : null,
+          photos: isCheckInOut
+            ? existingPhotos
+            : [...existingPhotos, ...newPhotoPaths],
+          ...newPhotoColumns,
+        };
+        const { error } = await supabase.from('housing_inspections').update(merged).eq('id', editingId);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('housing_inspections').insert({
+          organization_id: orgId,
+          property_id: propertyId,
+          unit_id: form.unit_id || null,
+          inspection_date: form.inspection_date,
+          description: form.description,
+          notes: form.notes || null,
+          inspected_by: user?.id ?? null,
+          photos: newPhotoPaths.length > 0 ? newPhotoPaths : null,
+          inspection_type: form.inspection_type,
+          housing_assignment_id: isCheckInOut && form.housing_assignment_id ? form.housing_assignment_id : null,
+          condition_rating: isCheckInOut && form.condition_rating > 0 ? form.condition_rating : null,
+          condition_notes: isCheckInOut && form.condition_notes ? form.condition_notes : null,
+          ...newPhotoColumns,
+        });
+        if (error) throw error;
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['inspections', propertyId] });
-      setAdding(false);
-      setForm(defaultForm);
-      setFiles([]);
-      setPhotoFiles({ photo_mattress: null, photo_room_overview: null, photo_bathroom: null, photo_kitchen: null, photo_damage: null });
-      toast.success('Inspectie aangemaakt');
+      logAudit({
+        action: editingId ? 'update' : 'create',
+        tableName: 'housing_inspections',
+        recordId: editingId ?? 'new',
+        newValues: { type: form.inspection_type, description: form.description },
+      });
+      toast.success(editingId ? 'Inspectie bijgewerkt' : 'Inspectie aangemaakt');
+      resetSheet();
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -206,10 +277,48 @@ const InspectionsTab = ({ propertyId }: { propertyId: string }) => {
         .eq('id', inspectionId);
       if (error) throw error;
     },
-    onSuccess: () => {
+    onSuccess: (_, id) => {
       qc.invalidateQueries({ queryKey: ['inspections', propertyId] });
+      logAudit({ action: 'status_change', tableName: 'housing_inspections', recordId: id, newValues: { resolved: true } });
       toast.success('Inspectie opgelost');
     },
+  });
+
+  const reopen = useMutation({
+    mutationFn: async (inspectionId: string) => {
+      const { error } = await supabase.from('housing_inspections')
+        .update({ resolved: false, resolved_at: null })
+        .eq('id', inspectionId);
+      if (error) throw error;
+    },
+    onSuccess: (_, id) => {
+      qc.invalidateQueries({ queryKey: ['inspections', propertyId] });
+      logAudit({ action: 'status_change', tableName: 'housing_inspections', recordId: id, newValues: { resolved: false } });
+      toast.success('Inspectie heropend');
+    },
+  });
+
+  const deleteInspection = useMutation({
+    mutationFn: async (insp: any) => {
+      const photoPaths: string[] = [
+        ...((insp.photos ?? []) as string[]),
+        ...PHOTO_FIELDS.map((f) => insp[f.key]).filter(Boolean) as string[],
+      ];
+      // Best-effort cleanup; don't block delete on storage error
+      if (photoPaths.length > 0) {
+        await supabase.storage.from('documents').remove(photoPaths);
+      }
+      const { error } = await supabase.from('housing_inspections').delete().eq('id', insp.id);
+      if (error) throw error;
+      return insp;
+    },
+    onSuccess: (insp) => {
+      qc.invalidateQueries({ queryKey: ['inspections', propertyId] });
+      logAudit({ action: 'delete', tableName: 'housing_inspections', recordId: insp.id });
+      toast.success('Inspectie verwijderd');
+      setInspectionToDelete(null);
+    },
+    onError: (e: any) => { toast.error(e.message); setInspectionToDelete(null); },
   });
 
   const getResidentName = (insp: any) => {
@@ -222,7 +331,7 @@ const InspectionsTab = ({ propertyId }: { propertyId: string }) => {
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h3 className="font-medium">Inspecties</h3>
-        <Button size="sm" variant="outline" onClick={() => setAdding(true)} className="gap-1">
+        <Button size="sm" variant="outline" onClick={openAdd} className="gap-1">
           <Plus className="h-3.5 w-3.5" /> Nieuwe inspectie
         </Button>
       </div>
@@ -239,9 +348,9 @@ const InspectionsTab = ({ propertyId }: { propertyId: string }) => {
       </Tabs>
 
       {/* New inspection sheet */}
-      <Sheet open={adding} onOpenChange={setAdding}>
+      <Sheet open={sheetOpen} onOpenChange={(o) => { if (!o) resetSheet(); else setSheetOpen(o); }}>
         <SheetContent className="sm:max-w-lg overflow-y-auto">
-          <SheetHeader><SheetTitle>Nieuwe inspectie</SheetTitle></SheetHeader>
+          <SheetHeader><SheetTitle>{editingId ? 'Inspectie bewerken' : 'Nieuwe inspectie'}</SheetTitle></SheetHeader>
           <div className="space-y-4 mt-6">
             <div>
               <Label>Type inspectie</Label>
@@ -320,10 +429,20 @@ const InspectionsTab = ({ propertyId }: { propertyId: string }) => {
             <div><Label>Beschrijving *</Label><Textarea value={form.description} onChange={(e) => set('description', e.target.value)} rows={3} /></div>
             <div><Label>Notities</Label><Textarea value={form.notes} onChange={(e) => set('notes', e.target.value)} rows={2} /></div>
 
+            {editingId && isCheckInOut && (
+              <p className="text-xs text-muted-foreground italic">
+                Tip: een nieuwe foto in een check-in/out slot vervangt de oude. Bestaande foto's kun je hier nog niet verwijderen.
+              </p>
+            )}
+            {editingId && !isCheckInOut && (
+              <p className="text-xs text-muted-foreground italic">
+                Nieuwe foto's worden toegevoegd. Bestaande foto's blijven staan.
+              </p>
+            )}
             <div className="flex justify-end gap-3 pt-4">
-              <Button variant="ghost" onClick={() => setAdding(false)}>Annuleren</Button>
-              <Button onClick={() => addInspection.mutate()} disabled={!form.description || addInspection.isPending}>
-                {addInspection.isPending ? 'Opslaan...' : 'Opslaan'}
+              <Button variant="ghost" onClick={resetSheet}>Annuleren</Button>
+              <Button onClick={() => saveInspection.mutate()} disabled={!form.description || saveInspection.isPending}>
+                {saveInspection.isPending ? 'Opslaan...' : 'Opslaan'}
               </Button>
             </div>
           </div>
@@ -415,17 +534,61 @@ const InspectionsTab = ({ propertyId }: { propertyId: string }) => {
                     )}
                   </div>
 
-                  {!insp.resolved && (
-                    <Button size="sm" variant="outline" onClick={() => resolve.mutate(insp.id)} disabled={resolve.isPending}>
-                      Opgelost
-                    </Button>
-                  )}
+                  <div className="flex items-start gap-1">
+                    {!insp.resolved ? (
+                      <Button size="sm" variant="outline" onClick={() => resolve.mutate(insp.id)} disabled={resolve.isPending}>
+                        Opgelost
+                      </Button>
+                    ) : (
+                      <Button size="sm" variant="ghost" onClick={() => reopen.mutate(insp.id)} disabled={reopen.isPending} className="gap-1.5 text-xs">
+                        <RotateCcw className="h-3 w-3" /> Heropenen
+                      </Button>
+                    )}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button size="icon" variant="ghost" className="h-8 w-8">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => openEdit(insp)}>
+                          <Pencil className="h-3.5 w-3.5 mr-2" /> Bewerken
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => setInspectionToDelete(insp)} className="text-destructive">
+                          <Trash2 className="h-3.5 w-3.5 mr-2" /> Verwijderen
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 </div>
               </div>
             );
           })}
         </div>
       )}
+
+      <AlertDialog open={!!inspectionToDelete} onOpenChange={(o) => { if (!o) setInspectionToDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Inspectie verwijderen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Verwijdert de inspectie van {inspectionToDelete && formatDate(inspectionToDelete.inspection_date)} inclusief alle gekoppelde foto's uit de opslag.
+              Deze actie kan niet ongedaan worden gemaakt.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuleren</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); if (inspectionToDelete) deleteInspection.mutate(inspectionToDelete); }}
+              disabled={deleteInspection.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteInspection.isPending ? 'Verwijderen...' : 'Verwijderen'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
