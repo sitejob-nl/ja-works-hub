@@ -12,6 +12,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import PropertySlideOver from '@/components/housing/PropertySlideOver';
 import AvailabilityChart from '@/components/housing/AvailabilityChart';
+import ExportPropertiesButton from '@/components/housing/ExportPropertiesButton';
 
 const ALL_CITIES = '__all__';
 
@@ -28,6 +29,7 @@ const Housing = () => {
     queryFn: async () => {
       const { data, error } = await supabase.from('properties').select(`
         *,
+        property_owners(name),
         units!units_property_id_fkey(
           id, capacity, status,
           housing_assignments!housing_assignments_unit_id_fkey(id, status)
@@ -83,14 +85,20 @@ const Housing = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-semibold">Huisvesting</h1>
           <p className="text-muted-foreground text-sm mt-1">Beheer panden, kamers en toewijzingen</p>
         </div>
-        <Button onClick={() => setSheetOpen(true)} className="gap-2">
-          <Plus className="h-4 w-4" /> Nieuw pand
-        </Button>
+        <div className="flex items-center gap-2">
+          <ExportPropertiesButton
+            properties={properties}
+            filenameSuffix={city !== ALL_CITIES ? city : undefined}
+          />
+          <Button onClick={() => setSheetOpen(true)} className="gap-2">
+            <Plus className="h-4 w-4" /> Nieuw pand
+          </Button>
+        </div>
       </div>
 
       {/* Top KPIs — focus op vrije plekken (klant-wens 2026-04-25) */}
