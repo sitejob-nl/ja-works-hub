@@ -1,16 +1,40 @@
 import { useState, useEffect, useRef } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Brain, Upload, Loader2, CheckCircle2, XCircle, FileText, Clock, ArrowDownToLine, Share2 } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Brain,
+  Upload,
+  Loader2,
+  CheckCircle2,
+  XCircle,
+  FileText,
+  Clock,
+  ArrowDownToLine,
+  Share2,
+  ChevronDown,
+  Server,
+  Cloud,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDate } from '@/lib/format';
 import AiAnalysisCard from '@/components/AiAnalysisCard';
 import AiAnalysisShareDialog from '@/components/candidates/AiAnalysisShareDialog';
 import { logAudit } from '@/lib/audit';
+
+const formatEuro = (cents: number) =>
+  (cents / 100).toLocaleString('nl-NL', { style: 'currency', currency: 'EUR' });
 
 const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => {
   const qc = useQueryClient();
@@ -110,26 +134,88 @@ const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => 
     }
   };
 
-  // Trigger AI analysis
+  // Org-default provider + saldo voor UI-keuzes
+  const { data: orgSettings } = useQuery({
+    queryKey: ['ai-provider-settings', candidate.organization_id],
+    queryFn: async () => {
+      const { data: org } = await supabase
+        .from('organizations')
+        .select('settings')
+        .eq('id', candidate.organization_id)
+        .single();
+      const { data: credits } = await supabase
+        .from('organization_credits')
+        .select('balance_cents')
+        .eq('organization_id', candidate.organization_id)
+        .maybeSingle();
+      const settings = (org?.settings as Record<string, unknown> | null) ?? {};
+      return {
+        defaultProvider: (settings.cv_ai_provider === 'cloud' ? 'cloud' : 'vps') as 'vps' | 'cloud',
+        balanceCents: credits?.balance_cents ?? 0,
+      };
+    },
+  });
+
+  const defaultProvider = orgSettings?.defaultProvider ?? 'vps';
+  const balanceCents = orgSettings?.balanceCents ?? 0;
+  const cloudAvailable = balanceCents >= 25;
+
+  // Trigger AI analysis (provider optioneel; null = org-default)
   const analyzeMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (provider: 'vps' | 'cloud' | null) => {
       if (!cvText || cvText.trim().length < 50) {
         throw new Error('CV tekst is te kort (minimaal 50 tekens)');
       }
 
-      const { data, error } = await supabase.functions.invoke('analyze-cv', {
-        body: { cv_text: cvText, candidate_id: candidate.id },
-      });
+      const body: Record<string, unknown> = {
+        cv_text: cvText,
+        candidate_id: candidate.id,
+      };
+      if (provider) body.provider = provider;
 
-      if (error) throw error;
+      const { data, error } = await supabase.functions.invoke('analyze-cv', { body });
+
+      if (error) {
+        // Edge runtime mapt non-2xx naar FunctionsHttpError. context.body bevat ons JSON-foutbericht.
+        const ctxBody = (error as { context?: { body?: unknown } }).context?.body;
+        let parsed: { error?: string; balance_cents?: number; required_cents?: number } | null = null;
+        if (typeof ctxBody === 'string') {
+          try { parsed = JSON.parse(ctxBody); } catch { /* ignore */ }
+        } else if (ctxBody && typeof ctxBody === 'object') {
+          parsed = ctxBody as typeof parsed;
+        }
+        if (parsed?.error) {
+          const err = new Error(parsed.error) as Error & { balance_cents?: number };
+          if (typeof parsed.balance_cents === 'number') err.balance_cents = parsed.balance_cents;
+          throw err;
+        }
+        throw error;
+      }
       if (data?.error) throw new Error(data.error);
       return data;
     },
-    onSuccess: () => {
-      setCandidate((prev: any) => ({ ...prev, ai_status: 'analyzing' }));
-      toast.success('Analyse gestart — resultaat verschijnt automatisch');
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['ai-provider-settings', candidate.organization_id] });
+      if (data?.status === 'completed') {
+        // Cloud-pad — direct klaar
+        toast.success(
+          `Analyse voltooid (Cloud, ${formatEuro(data.cost_cents ?? 0)} verbruikt)`,
+        );
+      } else {
+        // VPS-pad — wachten op realtime callback
+        setCandidate((prev: any) => ({ ...prev, ai_status: 'analyzing' }));
+        toast.success('Analyse gestart — resultaat verschijnt automatisch (1-3 min)');
+      }
     },
-    onError: (e: any) => {
+    onError: (e: Error & { balance_cents?: number }) => {
+      // 402: Cloud-saldo onvoldoende
+      if (e.message?.toLowerCase().includes('saldo')) {
+        toast.error(
+          `${e.message}. Kies VPS of vraag SiteJob om bijvullen.`,
+        );
+        qc.invalidateQueries({ queryKey: ['ai-provider-settings', candidate.organization_id] });
+        return;
+      }
       toast.error(e.message || 'Kon analyse niet starten');
     },
   });
@@ -189,16 +275,37 @@ const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => 
                 <Share2 className="h-3.5 w-3.5" />
                 Deel met opdrachtgever
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => analyzeMutation.mutate()}
-                disabled={isAnalyzing}
-                className="gap-1.5"
-              >
-                <Brain className="h-3.5 w-3.5" />
-                Opnieuw analyseren
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" disabled={isAnalyzing} className="gap-1.5">
+                    <Brain className="h-3.5 w-3.5" />
+                    Opnieuw analyseren
+                    <ChevronDown className="h-3 w-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel className="text-xs">Provider</DropdownMenuLabel>
+                  <DropdownMenuItem onClick={() => analyzeMutation.mutate(null)}>
+                    <Brain className="h-4 w-4 mr-2" />
+                    Standaard ({defaultProvider === 'cloud' ? 'Cloud' : 'VPS'})
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => analyzeMutation.mutate('vps')}>
+                    <Server className="h-4 w-4 mr-2" />
+                    VPS (gratis, 1-3 min)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => analyzeMutation.mutate('cloud')}
+                    disabled={!cloudAvailable}
+                  >
+                    <Cloud className="h-4 w-4 mr-2" />
+                    Cloud (~10s, {formatEuro(balanceCents)})
+                    {!cloudAvailable && (
+                      <span className="ml-auto text-[10px] text-muted-foreground">saldo op</span>
+                    )}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
         </Card>
@@ -252,23 +359,59 @@ const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => 
             {cvText.length > 0 ? `${cvText.length} tekens` : 'Nog geen tekst'}
             {cvText.length > 0 && cvText.length < 50 && ' — minimaal 50 tekens nodig'}
           </p>
-          <Button
-            onClick={() => analyzeMutation.mutate()}
-            disabled={isAnalyzing || cvText.trim().length < 50}
-            className="gap-2"
-          >
-            {isAnalyzing ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Analyseren...
-              </>
-            ) : (
-              <>
-                <Brain className="h-4 w-4" />
-                AI Analyse starten
-              </>
-            )}
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                disabled={isAnalyzing || cvText.trim().length < 50}
+                className="gap-2"
+              >
+                {isAnalyzing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Analyseren...
+                  </>
+                ) : (
+                  <>
+                    <Brain className="h-4 w-4" />
+                    AI Analyse starten
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  </>
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuLabel className="text-xs">
+                Standaard: {defaultProvider === 'cloud' ? 'Cloud' : 'VPS'}
+              </DropdownMenuLabel>
+              <DropdownMenuItem onClick={() => analyzeMutation.mutate(null)}>
+                <Brain className="h-4 w-4 mr-2" />
+                Analyse starten (standaard)
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => analyzeMutation.mutate('vps')}>
+                <Server className="h-4 w-4 mr-2" />
+                <div className="flex-1">
+                  <div className="text-sm">VPS</div>
+                  <div className="text-[10px] text-muted-foreground">gratis, 1-3 min</div>
+                </div>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => analyzeMutation.mutate('cloud')}
+                disabled={!cloudAvailable}
+              >
+                <Cloud className="h-4 w-4 mr-2" />
+                <div className="flex-1">
+                  <div className="text-sm">Cloud</div>
+                  <div className="text-[10px] text-muted-foreground">
+                    ~10 sec — saldo {formatEuro(balanceCents)}
+                  </div>
+                </div>
+                {!cloudAvailable && (
+                  <span className="text-[10px] text-orange-600 ml-2">op</span>
+                )}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </Card>
 

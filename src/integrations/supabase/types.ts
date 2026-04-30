@@ -14,6 +14,66 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_usage_log: {
+        Row: {
+          candidate_id: string | null
+          cost_cents: number
+          created_at: string
+          duration_ms: number | null
+          feature: string
+          id: string
+          input_tokens: number | null
+          model: string | null
+          organization_id: string
+          output_tokens: number | null
+          provider: string
+          user_id: string | null
+        }
+        Insert: {
+          candidate_id?: string | null
+          cost_cents?: number
+          created_at?: string
+          duration_ms?: number | null
+          feature?: string
+          id?: string
+          input_tokens?: number | null
+          model?: string | null
+          organization_id: string
+          output_tokens?: number | null
+          provider: string
+          user_id?: string | null
+        }
+        Update: {
+          candidate_id?: string | null
+          cost_cents?: number
+          created_at?: string
+          duration_ms?: number | null
+          feature?: string
+          id?: string
+          input_tokens?: number | null
+          model?: string | null
+          organization_id?: string
+          output_tokens?: number | null
+          provider?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_usage_log_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_usage_log_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       annual_statements: {
         Row: {
           candidate_id: string | null
@@ -1768,6 +1828,41 @@ export type Database = {
             columns: ["template_id"]
             isOneToOne: false
             referencedRelation: "contract_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      credit_topups: {
+        Row: {
+          amount_cents: number
+          created_at: string
+          id: string
+          note: string | null
+          organization_id: string
+          superadmin_id: string | null
+        }
+        Insert: {
+          amount_cents: number
+          created_at?: string
+          id?: string
+          note?: string | null
+          organization_id: string
+          superadmin_id?: string | null
+        }
+        Update: {
+          amount_cents?: number
+          created_at?: string
+          id?: string
+          note?: string | null
+          organization_id?: string
+          superadmin_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_topups_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -4412,6 +4507,41 @@ export type Database = {
           },
         ]
       }
+      organization_credits: {
+        Row: {
+          balance_cents: number
+          lifetime_topped_up_cents: number
+          organization_id: string
+          pricing_input_cents_per_mtok: number
+          pricing_output_cents_per_mtok: number
+          updated_at: string
+        }
+        Insert: {
+          balance_cents?: number
+          lifetime_topped_up_cents?: number
+          organization_id: string
+          pricing_input_cents_per_mtok?: number
+          pricing_output_cents_per_mtok?: number
+          updated_at?: string
+        }
+        Update: {
+          balance_cents?: number
+          lifetime_topped_up_cents?: number
+          organization_id?: string
+          pricing_input_cents_per_mtok?: number
+          pricing_output_cents_per_mtok?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organization_credits_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organization_modules: {
         Row: {
           enabled: boolean | null
@@ -6829,6 +6959,13 @@ export type Database = {
         }
         Returns: boolean
       }
+      consume_ai_credits: {
+        Args: { p_amount_cents: number; p_org_id: string }
+        Returns: {
+          new_balance_cents: number
+          ok: boolean
+        }[]
+      }
       decrypt_sensitive: { Args: { ciphertext: string }; Returns: string }
       encrypt_sensitive: { Args: { plaintext: string }; Returns: string }
       get_campaign_candidates: {
@@ -6925,6 +7062,7 @@ export type Database = {
       is_internal_user: { Args: never; Returns: boolean }
       is_superadmin: { Args: never; Returns: boolean }
       next_invoice_number: { Args: { org_id: string }; Returns: string }
+      peek_credit_balance: { Args: { p_org_id: string }; Returns: number }
       record_rate_limit: {
         Args: {
           p_channel: Database["public"]["Enums"]["communication_channel"]
@@ -7006,6 +7144,10 @@ export type Database = {
       }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
+      topup_ai_credits: {
+        Args: { p_amount_cents: number; p_note?: string; p_org_id: string }
+        Returns: number
+      }
     }
     Enums: {
       audit_action:

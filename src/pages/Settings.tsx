@@ -23,6 +23,7 @@ import CustomFieldsSettings from '@/components/settings/CustomFieldsSettings';
 import MicrosoftSettings from '@/components/settings/MicrosoftSettings';
 import VoysSettings from '@/components/settings/VoysSettings';
 import PropertyOwnersSettings from '@/components/settings/PropertyOwnersSettings';
+import AiCvProviderSettings from '@/components/settings/AiCvProviderSettings';
 import { applyBranding, BRANDING_DEFAULTS, type BrandingSettings } from '@/lib/branding';
 
 /* ---- Color conversion helpers ---- */
@@ -465,6 +466,9 @@ const Settings = () => {
 
           {/* Voys Telefonie */}
           <VoysSettings />
+
+          {/* AI CV-analyse provider + saldo */}
+          <AiCvProviderSettings />
 
           {/* Microsoft 365 */}
           <MicrosoftSettings />

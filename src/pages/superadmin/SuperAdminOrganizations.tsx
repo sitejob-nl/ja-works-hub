@@ -7,8 +7,12 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { Building2, Search, Settings2 } from 'lucide-react';
+import { Building2, Search, Settings2, Wallet } from 'lucide-react';
+
+const formatEuro = (cents: number) =>
+  (cents / 100).toLocaleString('nl-NL', { style: 'currency', currency: 'EUR' });
 
 const ALL_MODULES = [
   { key: 'workbench', label: 'Workbench', group: 'Kern' },
@@ -38,6 +42,9 @@ const ALL_MODULES = [
 const SuperAdminOrganizations = () => {
   const [search, setSearch] = useState('');
   const [selectedOrg, setSelectedOrg] = useState<any>(null);
+  const [creditsOrg, setCreditsOrg] = useState<any>(null);
+  const [topupAmount, setTopupAmount] = useState('');
+  const [topupNote, setTopupNote] = useState('');
   const queryClient = useQueryClient();
 
   const { data: orgs, isLoading } = useQuery({
@@ -70,6 +77,78 @@ const SuperAdminOrganizations = () => {
       return data;
     },
   });
+
+  const { data: allCredits } = useQuery({
+    queryKey: ['sa-all-credits'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('organization_credits')
+        .select('organization_id, balance_cents, lifetime_topped_up_cents');
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const { data: creditDetails } = useQuery({
+    queryKey: ['sa-credit-detail', creditsOrg?.id],
+    enabled: !!creditsOrg,
+    queryFn: async () => {
+      const [creditsRes, topupsRes, usageRes] = await Promise.all([
+        supabase
+          .from('organization_credits')
+          .select('balance_cents, lifetime_topped_up_cents, pricing_input_cents_per_mtok, pricing_output_cents_per_mtok, updated_at')
+          .eq('organization_id', creditsOrg.id)
+          .maybeSingle(),
+        supabase
+          .from('credit_topups')
+          .select('id, amount_cents, note, created_at')
+          .eq('organization_id', creditsOrg.id)
+          .order('created_at', { ascending: false })
+          .limit(20),
+        supabase
+          .from('ai_usage_log')
+          .select('id, provider, model, input_tokens, output_tokens, cost_cents, duration_ms, created_at')
+          .eq('organization_id', creditsOrg.id)
+          .order('created_at', { ascending: false })
+          .limit(20),
+      ]);
+      return {
+        credits: creditsRes.data,
+        topups: topupsRes.data ?? [],
+        usage: usageRes.data ?? [],
+      };
+    },
+  });
+
+  const topup = useMutation({
+    mutationFn: async ({ orgId, amountCents, note }: { orgId: string; amountCents: number; note: string }) => {
+      const { data, error } = await supabase.rpc('topup_ai_credits', {
+        p_org_id: orgId,
+        p_amount_cents: amountCents,
+        p_note: note || null,
+      });
+      if (error) throw error;
+      return data as number;
+    },
+    onSuccess: (newBalance) => {
+      queryClient.invalidateQueries({ queryKey: ['sa-credit-detail', creditsOrg?.id] });
+      queryClient.invalidateQueries({ queryKey: ['sa-all-credits'] });
+      toast.success(`Saldo bijgewerkt: ${formatEuro(newBalance)}`);
+      setTopupAmount('');
+      setTopupNote('');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const handleTopup = () => {
+    const euros = parseFloat(topupAmount.replace(',', '.'));
+    if (!isFinite(euros) || euros === 0) {
+      toast.error('Vul een geldig bedrag in (kan negatief zijn voor correctie)');
+      return;
+    }
+    const cents = Math.round(euros * 100);
+    topup.mutate({ orgId: creditsOrg.id, amountCents: cents, note: topupNote });
+  };
 
   const toggleActive = useMutation({
     mutationFn: async ({ orgId, active }: { orgId: string; active: boolean }) => {
@@ -152,6 +231,7 @@ const SuperAdminOrganizations = () => {
               <th className="px-4 py-3 font-medium">Organisatie</th>
               <th className="px-4 py-3 font-medium">Slug</th>
               <th className="px-4 py-3 font-medium">Abonnement</th>
+              <th className="px-4 py-3 font-medium">Saldo</th>
               <th className="px-4 py-3 font-medium">Status</th>
               <th className="px-4 py-3 font-medium">Acties</th>
             </tr>
@@ -159,6 +239,9 @@ const SuperAdminOrganizations = () => {
           <tbody className="divide-y divide-zinc-800">
             {filtered.map((org) => {
               const plan = plans?.find(p => p.id === org.plan_id);
+              const orgCredits = allCredits?.find(c => c.organization_id === org.id);
+              const balance = orgCredits?.balance_cents ?? 0;
+              const lowBalance = balance < 100;
               return (
                 <tr key={org.id} className="hover:bg-zinc-800/50">
                   <td className="px-4 py-3">
@@ -190,6 +273,16 @@ const SuperAdminOrganizations = () => {
                     </Select>
                   </td>
                   <td className="px-4 py-3">
+                    <button
+                      onClick={() => setCreditsOrg(org)}
+                      className={`text-sm font-mono hover:underline ${
+                        lowBalance ? 'text-orange-400' : 'text-zinc-300'
+                      }`}
+                    >
+                      {formatEuro(balance)}
+                    </button>
+                  </td>
+                  <td className="px-4 py-3">
                     <Badge variant={org.is_active ? 'default' : 'secondary'}
                       className={org.is_active ? 'bg-green-900/50 text-green-400 hover:bg-green-900/70' : 'bg-red-900/50 text-red-400'}>
                       {org.is_active ? 'Actief' : 'Inactief'}
@@ -205,7 +298,17 @@ const SuperAdminOrganizations = () => {
                         variant="ghost"
                         size="sm"
                         className="text-zinc-400 hover:text-white"
+                        onClick={() => setCreditsOrg(org)}
+                        title="Credits beheren"
+                      >
+                        <Wallet className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-zinc-400 hover:text-white"
                         onClick={() => setSelectedOrg(org)}
+                        title="Modules beheren"
                       >
                         <Settings2 className="h-4 w-4" />
                       </Button>
@@ -251,6 +354,157 @@ const SuperAdminOrganizations = () => {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* Credits sheet */}
+      <Sheet open={!!creditsOrg} onOpenChange={() => setCreditsOrg(null)}>
+        <SheetContent className="bg-zinc-900 border-zinc-800 text-white sm:max-w-xl overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle className="text-white flex items-center gap-2">
+              <Wallet className="h-4 w-4" /> Credits — {creditsOrg?.name}
+            </SheetTitle>
+          </SheetHeader>
+
+          <div className="mt-6 space-y-6 pb-6">
+            {/* Saldo + lifetime */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
+                <p className="text-xs text-zinc-500 uppercase tracking-wider">Huidig saldo</p>
+                <p className="text-2xl font-bold text-white mt-1">
+                  {formatEuro(creditDetails?.credits?.balance_cents ?? 0)}
+                </p>
+              </div>
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
+                <p className="text-xs text-zinc-500 uppercase tracking-wider">Lifetime toegekend</p>
+                <p className="text-2xl font-bold text-white mt-1">
+                  {formatEuro(creditDetails?.credits?.lifetime_topped_up_cents ?? 0)}
+                </p>
+              </div>
+            </div>
+
+            {/* Pricing */}
+            {creditDetails?.credits && (
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4 space-y-1">
+                <p className="text-xs text-zinc-500 uppercase tracking-wider mb-2">Pricing per 1M tokens</p>
+                <div className="flex justify-between text-sm">
+                  <span className="text-zinc-400">Input</span>
+                  <span className="text-white font-mono">
+                    {formatEuro(creditDetails.credits.pricing_input_cents_per_mtok)}
+                  </span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-zinc-400">Output</span>
+                  <span className="text-white font-mono">
+                    {formatEuro(creditDetails.credits.pricing_output_cents_per_mtok)}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Top-up form */}
+            <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4 space-y-3">
+              <p className="text-sm font-medium text-white">Saldo aanpassen</p>
+              <div className="flex gap-2">
+                <Input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="50,00"
+                  value={topupAmount}
+                  onChange={(e) => setTopupAmount(e.target.value)}
+                  className="bg-zinc-800 border-zinc-700 text-white w-28"
+                />
+                <span className="text-zinc-400 self-center text-sm">euro</span>
+              </div>
+              <Textarea
+                placeholder="Notitie (bv. 'Top-up factuur 2026-04-30')"
+                value={topupNote}
+                onChange={(e) => setTopupNote(e.target.value)}
+                className="bg-zinc-800 border-zinc-700 text-white text-sm"
+                rows={2}
+              />
+              <div className="flex gap-2">
+                <Button
+                  onClick={handleTopup}
+                  disabled={topup.isPending || !topupAmount}
+                  className="bg-red-600 hover:bg-red-700"
+                >
+                  Boeken
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => { setTopupAmount('50'); setTopupNote('Standaard top-up €50'); }}
+                  className="text-zinc-400"
+                >
+                  +€50 invullen
+                </Button>
+              </div>
+              <p className="text-xs text-zinc-500">Negatieve bedragen toegestaan voor correcties.</p>
+            </div>
+
+            {/* Top-up history */}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">
+                Recente top-ups
+              </p>
+              {(creditDetails?.topups?.length ?? 0) === 0 ? (
+                <p className="text-zinc-500 text-sm">Nog geen top-ups (alleen starter-bonus).</p>
+              ) : (
+                <div className="space-y-1">
+                  {creditDetails?.topups?.map((t) => (
+                    <div key={t.id} className="flex items-center justify-between py-2 px-3 bg-zinc-800 rounded text-sm">
+                      <div>
+                        <span className={`font-mono font-semibold ${t.amount_cents > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {t.amount_cents > 0 ? '+' : ''}{formatEuro(t.amount_cents)}
+                        </span>
+                        {t.note && <span className="text-zinc-400 ml-2">— {t.note}</span>}
+                      </div>
+                      <span className="text-zinc-500 text-xs">
+                        {new Date(t.created_at).toLocaleDateString('nl-NL')}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Recent usage */}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">
+                Recent gebruik (laatste 20)
+              </p>
+              {(creditDetails?.usage?.length ?? 0) === 0 ? (
+                <p className="text-zinc-500 text-sm">Nog geen gebruik.</p>
+              ) : (
+                <div className="space-y-1">
+                  {creditDetails?.usage?.map((u) => (
+                    <div key={u.id} className="flex items-center justify-between py-2 px-3 bg-zinc-800 rounded text-xs">
+                      <div className="flex items-center gap-2">
+                        <Badge
+                          variant="secondary"
+                          className={u.provider === 'cloud' ? 'bg-blue-900/50 text-blue-300' : 'bg-zinc-700 text-zinc-300'}
+                        >
+                          {u.provider}
+                        </Badge>
+                        <span className="text-zinc-400">
+                          {u.input_tokens ?? '?'}→{u.output_tokens ?? '?'} tok
+                        </span>
+                        {typeof u.duration_ms === 'number' && (
+                          <span className="text-zinc-500">{(u.duration_ms / 1000).toFixed(1)}s</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="font-mono text-white">{formatEuro(u.cost_cents)}</span>
+                        <span className="text-zinc-500">
+                          {new Date(u.created_at).toLocaleDateString('nl-NL')}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </SheetContent>
