@@ -49,13 +49,33 @@ const CompanyNew = () => {
     let cancelled = false;
     const t = setTimeout(async () => {
       setKvkSearching(true);
-      const { data, error } = await supabase.functions.invoke('kvk-lookup', { body: { name: term } });
-      if (cancelled) return;
-      setKvkSearching(false);
-      if (error) return;
-      const list: any[] = data?.resultaten || [];
-      setKvkResults(list.slice(0, 8));
-      setShowResults(list.length > 0);
+      try {
+        const { data, error } = await supabase.functions.invoke('kvk-lookup', { body: { name: term } });
+        if (cancelled) return;
+        if (error) {
+          // FunctionsHttpError bevat de response — probeer die uit te lezen
+          let detail = error.message || 'KVK-zoek mislukt';
+          try {
+            const ctx = (error as any).context;
+            if (ctx && typeof ctx.json === 'function') {
+              const body = await ctx.json();
+              if (body?.error) detail = body.error;
+            }
+          } catch { /* ignore */ }
+          console.error('[kvk-lookup] error:', error, 'detail:', detail);
+          toast.error(`KVK-zoek mislukt: ${detail}`);
+          return;
+        }
+        console.log('[kvk-lookup] response:', data);
+        const list: any[] = data?.resultaten || data?._embedded?.resultaten || [];
+        setKvkResults(list.slice(0, 8));
+        setShowResults(list.length > 0);
+        if (list.length === 0) {
+          toast.info(`Geen KVK-resultaten voor "${term}"`);
+        }
+      } finally {
+        if (!cancelled) setKvkSearching(false);
+      }
     }, 600);
     return () => { cancelled = true; clearTimeout(t); };
   }, [form.name, form.kvk_number]);
