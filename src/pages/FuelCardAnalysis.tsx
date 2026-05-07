@@ -26,6 +26,16 @@ import { startOfMonth, endOfMonth, format } from 'date-fns';
 
 /* ─── helpers ────────────────────────────────────────────── */
 
+// Toon-versie van het kenteken: bij voorkeur de origineel uit Q8 (met streepjes),
+// anders de opgeslagen license_plate, anders die van het gematchte voertuig.
+const displayPlate = (t: any): string => {
+  const raw = (t?.raw_data?.['Kentekenplaat'] as string | undefined)?.trim();
+  if (raw) return raw;
+  if (t?.license_plate) return t.license_plate;
+  if (t?.vehicles?.license_plate) return t.vehicles.license_plate;
+  return '';
+};
+
 const now = new Date();
 const monthStart = format(startOfMonth(now), 'yyyy-MM-dd');
 const monthEnd = format(endOfMonth(now), 'yyyy-MM-dd');
@@ -270,7 +280,7 @@ const FlagCard = ({ t, onReview, onSaveNote }: { t: any; onReview: () => void; o
   // Count same-day transactions
   const sameDayCount = t.flag_multiple_same_day ? '2+' : null;
 
-  const plate = t.license_plate || t.vehicles?.license_plate || '';
+  const plate = displayPlate(t);
 
   return (
     <Card className="border-destructive/30">
@@ -279,15 +289,15 @@ const FlagCard = ({ t, onReview, onSaveNote }: { t: any; onReview: () => void; o
           <span className="font-medium">{formatDate(t.transaction_date)}</span>
 
           {t.vehicles ? (
-            <Link to={`/transport/${t.vehicles.id}`} className="text-primary hover:underline font-mono inline-flex items-center gap-1.5">
+            <Link to={`/transport/${t.vehicles.id}`} className="text-primary hover:underline font-mono font-semibold inline-flex items-center gap-1.5">
               <Car className="h-3.5 w-3.5" />
               {plate}
             </Link>
           ) : plate ? (
-            <span className="font-mono inline-flex items-center gap-1.5 text-muted-foreground">
+            <span className="font-mono font-semibold inline-flex items-center gap-1.5">
               <Car className="h-3.5 w-3.5" />
               {plate}
-              <span className="text-xs italic ml-1">(geen voertuig-record)</span>
+              <span className="text-xs italic ml-1 font-normal text-muted-foreground">(geen voertuig-record)</span>
             </span>
           ) : (
             <span className="text-muted-foreground italic inline-flex items-center gap-1.5">
@@ -370,18 +380,18 @@ const AllTransactionsTable = ({ data }: { data: any[] }) => (
         {data.map(t => {
           const emp = t.employees?.candidates;
           const empName = emp ? `${emp.first_name} ${emp.last_name}` : null;
-          const plate = t.license_plate || t.vehicles?.license_plate || '';
+          const plate = displayPlate(t);
           const hasFlag = t.flag_over_capacity || t.flag_multiple_same_day || t.flag_excessive_consumption;
           return (
             <TableRow key={t.id}>
               <TableCell>{formatDate(t.transaction_date)}</TableCell>
-              <TableCell className="font-mono">
+              <TableCell className="font-mono font-semibold">
                 {t.vehicles ? (
                   <Link to={`/transport/${t.vehicles.id}`} className="text-primary hover:underline">{plate}</Link>
                 ) : plate ? (
-                  <span className="text-muted-foreground">{plate}</span>
+                  <span>{plate}</span>
                 ) : (
-                  <span className="text-xs italic text-muted-foreground">Kaart {t.fuel_card_reference || '—'}</span>
+                  <span className="text-xs italic text-muted-foreground font-normal">Kaart {t.fuel_card_reference || '—'}</span>
                 )}
               </TableCell>
               <TableCell>
@@ -592,11 +602,18 @@ const ImportSheet = ({ open, onOpenChange, orgId, onDone }: { open: boolean; onO
           flagOverCap = true;
         }
 
+        // raw_data krijgt de forward-filled kenteken zodat blanco rijen ook
+        // het juiste kenteken (met streepjes) tonen in de UI.
+        const filledRow = rawRef && !row['Kentekenplaat']
+          ? { ...row, Kentekenplaat: rawRef }
+          : row;
+
         inserts.push({
           organization_id: orgId,
           import_batch_id: batchId,
           fuel_card_reference: rawRef.trim() || rawCard,
-          license_plate: vehicle?.license_plate ?? (rawRef.trim().toUpperCase() || null),
+          // Kenteken-met-streepjes uit Q8 prefereren boven de stripped form in DB.
+          license_plate: rawRef.trim().toUpperCase() || vehicle?.license_plate || null,
           transaction_date: parsedDate,
           liters,
           amount_eur: amount,
@@ -605,7 +622,7 @@ const ImportSheet = ({ open, onOpenChange, orgId, onDone }: { open: boolean; onO
           vehicle_id: vehicleId,
           employee_id: employeeId,
           flag_over_capacity: flagOverCap,
-          raw_data: row,
+          raw_data: filledRow,
         });
 
         if (vehicleId) {
