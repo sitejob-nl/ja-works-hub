@@ -14,7 +14,11 @@ test('P1.4 — timesheet entry sheet toont placement-dropdown', async ({ page })
   page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
   page.on('response', async res => {
     if (res.url().includes('/functions/v1/') && res.status() >= 400) {
-      try { edgeFnErrors.push({ url: res.url(), status: res.status(), body: (await res.text()).slice(0, 200) }); } catch {}
+      try {
+        edgeFnErrors.push({ url: res.url(), status: res.status(), body: (await res.text()).slice(0, 200) });
+      } catch {
+        return;
+      }
     }
   });
 
@@ -77,7 +81,11 @@ test('P1.2/P1.3 — vacatures overzicht laadt zonder placement-gerelateerde erro
   const edgeFnErrors: { url: string; status: number; body: string }[] = [];
   page.on('response', async res => {
     if (res.url().includes('/functions/v1/') && res.status() >= 400) {
-      try { edgeFnErrors.push({ url: res.url(), status: res.status(), body: (await res.text()).slice(0, 200) }); } catch {}
+      try {
+        edgeFnErrors.push({ url: res.url(), status: res.status(), body: (await res.text()).slice(0, 200) });
+      } catch {
+        return;
+      }
     }
   });
 

@@ -1,5 +1,5 @@
 // API contract tests — verifieren dat edge functions goed reageren op
-// invalide input. Geen auth nodig; voeren geen destructieve acties uit.
+// ontbrekende/ongeldige auth. Voeren geen destructieve acties uit.
 
 import { test, expect } from "@playwright/test";
 
@@ -14,6 +14,11 @@ const EDGE_FUNCTIONS = [
   "send-damage-report",
   "send-match-proposal",
   "send-placement-confirmation",
+  "microsoft-api",
+  "email-campaign-processor",
+  "cv-rewrite",
+  "carerix-attachment-download",
+  "data-export",
 ];
 
 test.describe("Edge function auth gates", () => {

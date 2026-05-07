@@ -13,6 +13,14 @@ export default defineConfig({
   retries: 0,
   workers: 1,
   reporter: [['list']],
+  webServer: process.env.PLAYWRIGHT_SKIP_WEBSERVER === '1'
+    ? undefined
+    : {
+        command: 'npm run dev -- --host 127.0.0.1 --port 8081',
+        url: 'http://127.0.0.1:8081',
+        reuseExistingServer: true,
+        timeout: 120_000,
+      },
   use: {
     baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:8081',
     headless: process.env.HEADED !== '1',
