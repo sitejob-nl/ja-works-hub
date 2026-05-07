@@ -17,7 +17,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { toast } from 'sonner';
 import { formatDate, formatEUR } from '@/lib/format';
 import { logAudit } from '@/lib/audit';
-import { Upload, AlertTriangle, Fuel, CheckCircle2, StickyNote, Link as LinkIcon, Info } from 'lucide-react';
+import { Upload, AlertTriangle, Fuel, CheckCircle2, StickyNote, Link as LinkIcon, Info, Car, UserRound, CreditCard } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
@@ -184,21 +184,46 @@ const FlagCard = ({ t, onReview, onSaveNote }: { t: any; onReview: () => void; o
   // Count same-day transactions
   const sameDayCount = t.flag_multiple_same_day ? '2+' : null;
 
+  const plate = t.license_plate || t.vehicles?.license_plate || '';
+
   return (
     <Card className="border-destructive/30">
       <CardContent className="pt-5 pb-4 space-y-3">
-        <div className="flex flex-wrap items-center gap-3 text-sm">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
           <span className="font-medium">{formatDate(t.transaction_date)}</span>
+
           {t.vehicles ? (
-            <Link to={`/transport/${t.vehicles.id}`} className="text-primary hover:underline font-mono">{t.license_plate ?? t.vehicles.license_plate}</Link>
+            <Link to={`/transport/${t.vehicles.id}`} className="text-primary hover:underline font-mono inline-flex items-center gap-1.5">
+              <Car className="h-3.5 w-3.5" />
+              {plate}
+            </Link>
+          ) : plate ? (
+            <span className="font-mono inline-flex items-center gap-1.5 text-muted-foreground">
+              <Car className="h-3.5 w-3.5" />
+              {plate}
+              <span className="text-xs italic ml-1">(geen voertuig-record)</span>
+            </span>
           ) : (
-            <span className="font-mono">{t.license_plate ?? '—'}</span>
+            <span className="text-muted-foreground italic inline-flex items-center gap-1.5">
+              <CreditCard className="h-3.5 w-3.5" />
+              Kaart {t.fuel_card_reference || '—'}
+            </span>
           )}
-          {empName && t.employees?.id && (
-            <Link to={`/medewerkers/${t.employees.id}`} className="text-primary hover:underline">{empName}</Link>
+
+          {empName && t.employees?.id ? (
+            <Link to={`/medewerkers/${t.employees.id}`} className="text-primary hover:underline inline-flex items-center gap-1.5">
+              <UserRound className="h-3.5 w-3.5" />
+              {empName}
+            </Link>
+          ) : (
+            <span className="text-muted-foreground italic inline-flex items-center gap-1.5">
+              <UserRound className="h-3.5 w-3.5" />
+              Geen toewijzing
+            </span>
           )}
-          <span>{t.liters}L · {formatEUR(t.amount_eur)}</span>
-          {t.station_name && <span className="text-muted-foreground">{t.station_name}</span>}
+
+          <span className="ml-auto">{t.liters}L · {formatEUR(t.amount_eur)}</span>
+          {t.station_name && <span className="text-xs text-muted-foreground">{t.station_name}</span>}
         </div>
 
         {/* Flags */}
@@ -258,15 +283,31 @@ const AllTransactionsTable = ({ data }: { data: any[] }) => (
       <TableBody>
         {data.map(t => {
           const emp = t.employees?.candidates;
+          const empName = emp ? `${emp.first_name} ${emp.last_name}` : null;
+          const plate = t.license_plate || t.vehicles?.license_plate || '';
           const hasFlag = t.flag_over_capacity || t.flag_multiple_same_day || t.flag_excessive_consumption;
           return (
             <TableRow key={t.id}>
               <TableCell>{formatDate(t.transaction_date)}</TableCell>
-              <TableCell className="font-mono">{t.license_plate ?? '—'}</TableCell>
-              <TableCell>{emp ? `${emp.first_name} ${emp.last_name}` : '—'}</TableCell>
+              <TableCell className="font-mono">
+                {t.vehicles ? (
+                  <Link to={`/transport/${t.vehicles.id}`} className="text-primary hover:underline">{plate}</Link>
+                ) : plate ? (
+                  <span className="text-muted-foreground">{plate}</span>
+                ) : (
+                  <span className="text-xs italic text-muted-foreground">Kaart {t.fuel_card_reference || '—'}</span>
+                )}
+              </TableCell>
+              <TableCell>
+                {empName && t.employees?.id ? (
+                  <Link to={`/medewerkers/${t.employees.id}`} className="text-primary hover:underline">{empName}</Link>
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                )}
+              </TableCell>
               <TableCell className="text-right">{t.liters}</TableCell>
               <TableCell className="text-right">{formatEUR(t.amount_eur)}</TableCell>
-              <TableCell>{t.station_name ?? '—'}</TableCell>
+              <TableCell>{t.station_name || <span className="text-muted-foreground">—</span>}</TableCell>
               <TableCell>
                 {hasFlag ? (
                   <div className="flex flex-wrap gap-1">
@@ -379,9 +420,14 @@ const ImportSheet = ({ open, onOpenChange, orgId, onDone }: { open: boolean; onO
 
       const inserts: any[] = [];
       const maxKmByVehicle: Record<string, number> = {};
+      // Q8 herhaalt het kenteken niet op vervolg-rijen — blanco kentekens
+      // erven van de eerstvolgende niet-blanco rij erboven (forward-fill).
+      let lastPlate = '';
       for (const row of rows) {
         const rawDate = row[colMap.datum] ?? '';
-        const rawRef = row[colMap.kenteken] ?? '';
+        const rowPlate = (row[colMap.kenteken] ?? '').trim();
+        if (rowPlate) lastPlate = rowPlate;
+        const rawRef = rowPlate || lastPlate;
         const rawLiters = row[colMap.liters] ?? '0';
         const rawAmount = row[colMap.bedrag] ?? '0';
         const rawPrice = colMap.prijs ? (row[colMap.prijs] ?? null) : null;
@@ -423,8 +469,8 @@ const ImportSheet = ({ open, onOpenChange, orgId, onDone }: { open: boolean; onO
         inserts.push({
           organization_id: orgId,
           import_batch_id: batchId,
-          fuel_card_reference: rawRef.trim(),
-          license_plate: rawRef.trim().toUpperCase(),
+          fuel_card_reference: rawRef.trim() || rawCard,
+          license_plate: vehicle?.license_plate ?? (rawRef.trim().toUpperCase() || null),
           transaction_date: parsedDate,
           liters,
           amount_eur: amount,
