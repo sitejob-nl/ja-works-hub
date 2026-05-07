@@ -22,7 +22,7 @@ const VehicleNew = () => {
   const [form, setForm] = useState({
     license_plate: '', brand: '', model: '', year: '', fuel_type: '',
     current_mileage: '', tank_capacity_liters: '', fuel_card_reference: '',
-    avg_consumption_per_100km: '', apk_expiry: '', doors: '', notes: '',
+    avg_consumption_per_100km: '', apk_expiry: '', first_registration_nl: '', doors: '', notes: '',
   });
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
@@ -38,6 +38,7 @@ const VehicleNew = () => {
         year: yearFromRdwDate(data.first_registration)?.toString() ?? f.year,
         fuel_type: normalizeRdwFuel(data.fuel_type) ?? f.fuel_type,
         apk_expiry: data.apk_expiry ?? f.apk_expiry,
+        first_registration_nl: data.first_registration_nl ?? f.first_registration_nl,
         avg_consumption_per_100km: data.fuel_consumption != null ? data.fuel_consumption.toString() : f.avg_consumption_per_100km,
         doors: data.doors != null ? String(data.doors) : f.doors,
       }));
@@ -60,6 +61,7 @@ const VehicleNew = () => {
         fuel_card_reference: form.fuel_card_reference || null,
         avg_consumption_per_100km: form.avg_consumption_per_100km ? parseFloat(form.avg_consumption_per_100km) : null,
         apk_expiry: form.apk_expiry || null,
+        first_registration_nl: form.first_registration_nl || null,
         doors: form.doors ? Number(form.doors) : null,
         status: 'beschikbaar' as const,
         notes: form.notes || null,
@@ -118,7 +120,15 @@ const VehicleNew = () => {
             <div className="space-y-1.5"><Label>APK vervalt</Label><Input type="date" value={form.apk_expiry} onChange={(e) => set('apk_expiry', e.target.value)} /></div>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5"><Label>Aantal deuren</Label><Input type="number" min={0} max={12} value={form.doors} onChange={(e) => set('doors', e.target.value)} className="max-w-xs" /></div>
+            <div className="space-y-1.5">
+              <Label>Datum tenaamstelling NL</Label>
+              <Input type="date" value={form.first_registration_nl} onChange={(e) => set('first_registration_nl', e.target.value)} />
+              <p className="text-xs text-muted-foreground">Datum waarop het voertuig in NL op naam is gezet (~aankoopdatum).</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Aantal deuren</Label>
+              <Input type="number" min={0} max={12} value={form.doors} onChange={(e) => set('doors', e.target.value)} />
+            </div>
           </div>
 
           <div className="pt-2">
