@@ -31,7 +31,7 @@ const VehicleEdit = () => {
   const [form, setForm] = useState({
     license_plate: '', brand: '', model: '', year: '', fuel_type: '',
     current_mileage: '', tank_capacity_liters: '', fuel_card_reference: '',
-    avg_consumption_per_100km: '', apk_expiry: '', notes: '',
+    avg_consumption_per_100km: '', apk_expiry: '', doors: '', notes: '',
   });
 
   useEffect(() => {
@@ -47,6 +47,7 @@ const VehicleEdit = () => {
         fuel_card_reference: vehicle.fuel_card_reference ?? '',
         avg_consumption_per_100km: vehicle.avg_consumption_per_100km?.toString() ?? '',
         apk_expiry: vehicle.apk_expiry ?? '',
+        doors: vehicle.doors != null ? String(vehicle.doors) : '',
         notes: vehicle.notes ?? '',
       });
     }
@@ -66,6 +67,7 @@ const VehicleEdit = () => {
         fuel_type: normalizeRdwFuel(data.fuel_type) ?? f.fuel_type,
         apk_expiry: data.apk_expiry ?? f.apk_expiry,
         avg_consumption_per_100km: data.fuel_consumption != null ? data.fuel_consumption.toString() : f.avg_consumption_per_100km,
+        doors: data.doors != null ? String(data.doors) : f.doors,
       }));
       toast.success('RDW-gegevens overgenomen');
     },
@@ -85,6 +87,7 @@ const VehicleEdit = () => {
         fuel_card_reference: form.fuel_card_reference || null,
         avg_consumption_per_100km: form.avg_consumption_per_100km ? parseFloat(form.avg_consumption_per_100km) : null,
         apk_expiry: form.apk_expiry || null,
+        doors: form.doors ? Number(form.doors) : null,
         notes: form.notes || null,
       };
       const { error } = await supabase.from('vehicles').update(payload).eq('id', id!);
@@ -144,6 +147,9 @@ const VehicleEdit = () => {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5"><Label>Kilometerstand</Label><Input type="number" value={form.current_mileage} onChange={(e) => set('current_mileage', e.target.value)} /></div>
             <div className="space-y-1.5"><Label>APK vervalt</Label><Input type="date" value={form.apk_expiry} onChange={(e) => set('apk_expiry', e.target.value)} /></div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5"><Label>Aantal deuren</Label><Input type="number" min={0} max={12} value={form.doors} onChange={(e) => set('doors', e.target.value)} className="max-w-xs" /></div>
           </div>
           <div className="pt-2">
             <p className="text-sm font-medium text-muted-foreground mb-3">Tankgegevens</p>

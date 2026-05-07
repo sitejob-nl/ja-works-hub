@@ -18,15 +18,20 @@ type DocType = Database['public']['Enums']['document_type'];
 type DocStatus = Database['public']['Enums']['document_status'];
 
 const typeLabels: Record<DocType, string> = {
+  cv: 'CV',
+  pasfoto: 'Pasfoto',
+  onboarding_formulier: 'Onboarding-formulier',
   id_bewijs: 'ID Bewijs',
   rijbewijs: 'Rijbewijs',
   certificaat: 'Certificaat',
+  diploma: 'Diploma',
   contract: 'Contract',
   reglement: 'Reglement',
   bankbewijs: 'Bankbewijs',
   loonstrook: 'Loonstrook',
   jaaropgave: 'Jaaropgave',
   urenbrief: 'Urenbrief',
+  werkfoto: 'Werkfoto',
   overig: 'Overig',
 };
 

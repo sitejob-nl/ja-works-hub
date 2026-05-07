@@ -444,9 +444,14 @@ const OnboardingFormSettings = () => {
                 <Select value={editingField.document_type ?? ''} onValueChange={v => setEditingField(f => ({ ...f, document_type: v }))}>
                   <SelectTrigger><SelectValue placeholder="Kies type" /></SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="cv">CV</SelectItem>
+                    <SelectItem value="pasfoto">Pasfoto</SelectItem>
+                    <SelectItem value="onboarding_formulier">Onboarding-formulier</SelectItem>
                     <SelectItem value="id_bewijs">ID Bewijs</SelectItem>
                     <SelectItem value="rijbewijs">Rijbewijs</SelectItem>
                     <SelectItem value="certificaat">Certificaat</SelectItem>
+                    <SelectItem value="diploma">Diploma</SelectItem>
+                    <SelectItem value="werkfoto">Werkfoto</SelectItem>
                     <SelectItem value="overig">Overig</SelectItem>
                   </SelectContent>
                 </Select>

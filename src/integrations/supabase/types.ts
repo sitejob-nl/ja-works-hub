@@ -6709,7 +6709,9 @@ export type Database = {
           color: string | null
           created_at: string
           current_mileage: number | null
+          doors: number | null
           first_registration: string | null
+          first_registration_nl: string | null
           fuel_card_reference: string | null
           fuel_type: string | null
           id: string
@@ -6731,7 +6733,9 @@ export type Database = {
           color?: string | null
           created_at?: string
           current_mileage?: number | null
+          doors?: number | null
           first_registration?: string | null
+          first_registration_nl?: string | null
           fuel_card_reference?: string | null
           fuel_type?: string | null
           id?: string
@@ -6753,7 +6757,9 @@ export type Database = {
           color?: string | null
           created_at?: string
           current_mileage?: number | null
+          doors?: number | null
           first_registration?: string | null
+          first_registration_nl?: string | null
           fuel_card_reference?: string | null
           fuel_type?: string | null
           id?: string
@@ -7200,6 +7206,11 @@ export type Database = {
         | "loonstrook"
         | "jaaropgave"
         | "urenbrief"
+        | "cv"
+        | "onboarding_formulier"
+        | "diploma"
+        | "werkfoto"
+        | "pasfoto"
       employee_status: "onboarding" | "actief" | "ziek" | "uit_dienst"
       housing_assignment_status: "gereserveerd" | "ingecheckt" | "uitgecheckt"
       inspection_type:
@@ -7437,6 +7448,11 @@ export const Constants = {
         "loonstrook",
         "jaaropgave",
         "urenbrief",
+        "cv",
+        "onboarding_formulier",
+        "diploma",
+        "werkfoto",
+        "pasfoto",
       ],
       employee_status: ["onboarding", "actief", "ziek", "uit_dienst"],
       housing_assignment_status: ["gereserveerd", "ingecheckt", "uitgecheckt"],

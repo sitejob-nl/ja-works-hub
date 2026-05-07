@@ -16,6 +16,10 @@ const FIELD_LABELS: Record<string, string> = {
 const DOC_LABELS: Record<string, string> = {
   id_bewijs: 'ID Bewijs', contract: 'Contract', reglement: 'Reglement',
   rijbewijs: 'Rijbewijs', vca: 'VCA', overig: 'Overig',
+  cv: 'CV', pasfoto: 'Pasfoto', onboarding_formulier: 'Onboarding-formulier',
+  diploma: 'Diploma', werkfoto: 'Werkfoto',
+  certificaat: 'Certificaat', bankbewijs: 'Bankbewijs',
+  loonstrook: 'Loonstrook', jaaropgave: 'Jaaropgave', urenbrief: 'Urenbrief',
 };
 
 interface CheckItem {

@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { Plus, CreditCard, Car, Award, FileText, FileCheck, File, Download } from 'lucide-react';
+import { Plus, CreditCard, Car, Award, FileText, FileCheck, File, Download, FileSignature, ClipboardCheck, GraduationCap, Camera, UserSquare } from 'lucide-react';
 import { formatDate } from '@/lib/format';
 import { toast } from 'sonner';
 import type { Database } from '@/integrations/supabase/types';
@@ -18,15 +18,19 @@ import type { Database } from '@/integrations/supabase/types';
 type DocType = Database['public']['Enums']['document_type'];
 
 const typeIcons: Record<DocType, any> = {
-  id_bewijs: CreditCard, rijbewijs: Car, certificaat: Award,
+  cv: FileSignature, pasfoto: UserSquare, onboarding_formulier: ClipboardCheck,
+  id_bewijs: CreditCard, rijbewijs: Car, certificaat: Award, diploma: GraduationCap,
   contract: FileText, reglement: FileCheck, bankbewijs: CreditCard,
-  loonstrook: FileText, jaaropgave: FileText, urenbrief: FileText, overig: File,
+  loonstrook: FileText, jaaropgave: FileText, urenbrief: FileText,
+  werkfoto: Camera, overig: File,
 };
 
 const typeLabels: Record<DocType, string> = {
-  id_bewijs: 'ID Bewijs', rijbewijs: 'Rijbewijs', certificaat: 'Certificaat',
+  cv: 'CV', pasfoto: 'Pasfoto', onboarding_formulier: 'Onboarding-formulier',
+  id_bewijs: 'ID Bewijs', rijbewijs: 'Rijbewijs', certificaat: 'Certificaat', diploma: 'Diploma',
   contract: 'Contract', reglement: 'Reglement', bankbewijs: 'Bankbewijs',
-  loonstrook: 'Loonstrook', jaaropgave: 'Jaaropgave', urenbrief: 'Urenbrief', overig: 'Overig',
+  loonstrook: 'Loonstrook', jaaropgave: 'Jaaropgave', urenbrief: 'Urenbrief',
+  werkfoto: 'Werkfoto', overig: 'Overig',
 };
 
 const statusBadge: Record<string, string> = {

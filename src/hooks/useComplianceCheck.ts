@@ -23,6 +23,16 @@ const DOC_LABELS: Record<string, string> = {
   rijbewijs: 'Rijbewijs',
   vca: 'VCA',
   overig: 'Overig document',
+  cv: 'CV',
+  pasfoto: 'Pasfoto',
+  onboarding_formulier: 'Onboarding-formulier',
+  diploma: 'Diploma',
+  werkfoto: 'Werkfoto',
+  certificaat: 'Certificaat',
+  bankbewijs: 'Bankbewijs',
+  loonstrook: 'Loonstrook',
+  jaaropgave: 'Jaaropgave',
+  urenbrief: 'Urenbrief',
 };
 
 export const checkCompliance = async (

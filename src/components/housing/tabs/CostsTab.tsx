@@ -16,7 +16,7 @@ const WEEKS_PER_MONTH = 4.33;
 
 const CostsTab = ({ property }: { property: any }) => {
   const qc = useQueryClient();
-  const units = property.units ?? [];
+  const units = useMemo(() => property.units ?? [], [property.units]);
   const allActive = units.flatMap((u: any) =>
     (u.housing_assignments ?? [])
       .filter((a: any) => a.status === 'ingecheckt')
@@ -53,6 +53,60 @@ const CostsTab = ({ property }: { property: any }) => {
   const totalPandkostenWeek = totalPandkostenMaand / WEEKS_PER_MONTH;
 
   const nettoWeek = totalWeeklyDeductions - totalPandkostenWeek;
+
+  // Verdeel pand-kosten over kamers naar rato van capaciteit
+  const perUnitRows = useMemo(() => {
+    if (units.length === 0) return [];
+    const totalCapacity = units.reduce((s: number, u) => s + (Number(u.capacity) || 0), 0);
+    const rentMonth = Number(property.monthly_rent) || 0;
+    const gwlMonth = (Number(property.cost_gas) || 0) + (Number(property.cost_water) || 0) + (Number(property.cost_electra) || 0);
+    const taxMonth = Number(property.cost_municipal_tax) || 0;
+    const otherMonth = Number(property.cost_other) || 0;
+
+    return [...units]
+      .sort((a, b) => String(a.name ?? '').localeCompare(String(b.name ?? ''), undefined, { numeric: true }))
+      .map((u) => {
+        const share = totalCapacity > 0
+          ? (Number(u.capacity) || 0) / totalCapacity
+          : 1 / units.length;
+        const rentWeek = (rentMonth * share) / WEEKS_PER_MONTH;
+        const gwlWeek = (gwlMonth * share) / WEEKS_PER_MONTH;
+        const taxWeek = (taxMonth * share) / WEEKS_PER_MONTH;
+        const otherWeek = (otherMonth * share) / WEEKS_PER_MONTH;
+        const totalCostWeek = rentWeek + gwlWeek + taxWeek + otherWeek;
+        const active = (u.housing_assignments ?? []).filter((a) => a.status === 'ingecheckt');
+        const deductionWeek = active.reduce((s: number, a) => s + getWeeklyDeduction(a), 0);
+        const margin = deductionWeek - totalCostWeek;
+        return {
+          id: u.id,
+          name: u.name ?? '—',
+          capacity: Number(u.capacity) || 0,
+          occupied: active.length,
+          rentWeek,
+          gwlWeek,
+          taxWeek,
+          otherWeek,
+          totalCostWeek,
+          deductionWeek,
+          margin,
+        };
+      });
+  }, [units, property.monthly_rent, property.cost_gas, property.cost_water, property.cost_electra, property.cost_municipal_tax, property.cost_other]);
+
+  const perUnitTotals = useMemo(() => perUnitRows.reduce(
+    (acc, r) => ({
+      capacity: acc.capacity + r.capacity,
+      occupied: acc.occupied + r.occupied,
+      rentWeek: acc.rentWeek + r.rentWeek,
+      gwlWeek: acc.gwlWeek + r.gwlWeek,
+      taxWeek: acc.taxWeek + r.taxWeek,
+      otherWeek: acc.otherWeek + r.otherWeek,
+      totalCostWeek: acc.totalCostWeek + r.totalCostWeek,
+      deductionWeek: acc.deductionWeek + r.deductionWeek,
+      margin: acc.margin + r.margin,
+    }),
+    { capacity: 0, occupied: 0, rentWeek: 0, gwlWeek: 0, taxWeek: 0, otherWeek: 0, totalCostWeek: 0, deductionWeek: 0, margin: 0 }
+  ), [perUnitRows]);
 
   const toggleDeposit = useMutation({
     mutationFn: async ({ id, paid }: { id: string; paid: boolean }) => {
@@ -128,6 +182,65 @@ const CostsTab = ({ property }: { property: any }) => {
           </div>
         </div>
       </Card>
+
+      <Separator />
+
+      {/* Per kamer — verdeling van pand-kosten naar rato van capaciteit */}
+      {perUnitRows.length > 0 && (
+        <div>
+          <h3 className="text-sm font-semibold text-foreground mb-3">Per kamer</h3>
+          <div className="bg-card rounded-lg border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Kamer</TableHead>
+                  <TableHead>Capaciteit</TableHead>
+                  <TableHead>Bezet</TableHead>
+                  <TableHead>Huur/wk</TableHead>
+                  <TableHead>GWL/wk</TableHead>
+                  <TableHead>Belasting/wk</TableHead>
+                  <TableHead>Overig/wk</TableHead>
+                  <TableHead>Totaal kosten/wk</TableHead>
+                  <TableHead>Inhouding/wk</TableHead>
+                  <TableHead>Marge/wk</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {perUnitRows.map((r) => (
+                  <TableRow key={r.id}>
+                    <TableCell className="font-medium">{r.name}</TableCell>
+                    <TableCell>{r.capacity}</TableCell>
+                    <TableCell>{r.occupied}</TableCell>
+                    <TableCell>{formatEUR(r.rentWeek)}</TableCell>
+                    <TableCell>{formatEUR(r.gwlWeek)}</TableCell>
+                    <TableCell>{formatEUR(r.taxWeek)}</TableCell>
+                    <TableCell>{formatEUR(r.otherWeek)}</TableCell>
+                    <TableCell className="font-medium">{formatEUR(r.totalCostWeek)}</TableCell>
+                    <TableCell>{formatEUR(r.deductionWeek)}</TableCell>
+                    <TableCell className={`font-semibold ${r.margin >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {formatEUR(r.margin)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+                <TableRow className="bg-muted/40 font-semibold">
+                  <TableCell>Totaal</TableCell>
+                  <TableCell>{perUnitTotals.capacity}</TableCell>
+                  <TableCell>{perUnitTotals.occupied}</TableCell>
+                  <TableCell>{formatEUR(perUnitTotals.rentWeek)}</TableCell>
+                  <TableCell>{formatEUR(perUnitTotals.gwlWeek)}</TableCell>
+                  <TableCell>{formatEUR(perUnitTotals.taxWeek)}</TableCell>
+                  <TableCell>{formatEUR(perUnitTotals.otherWeek)}</TableCell>
+                  <TableCell>{formatEUR(perUnitTotals.totalCostWeek)}</TableCell>
+                  <TableCell>{formatEUR(perUnitTotals.deductionWeek)}</TableCell>
+                  <TableCell className={perUnitTotals.margin >= 0 ? 'text-green-600' : 'text-red-600'}>
+                    {formatEUR(perUnitTotals.margin)}
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      )}
 
       <Separator />
 
