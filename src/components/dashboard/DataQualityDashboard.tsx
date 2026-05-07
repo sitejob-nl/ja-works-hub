@@ -7,6 +7,7 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
+import CandidateQualityFlags from '@/components/candidates/CandidateQualityFlags';
 
 const FIELDS = [
   { key: 'email', label: 'E-mail' },
@@ -70,6 +71,8 @@ const DataQualityDashboard = () => {
 
   return (
     <div className="space-y-6">
+      <CandidateQualityFlags limit={20} />
+
       {/* Big KPI */}
       <div className="bg-card rounded-lg border p-4">
         <p className="text-3xl font-bold">{overallPct}%</p>

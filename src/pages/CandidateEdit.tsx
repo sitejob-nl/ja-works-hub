@@ -12,6 +12,7 @@ import TagInput from '@/components/ui/tag-input';
 import { ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { logAudit } from '@/lib/audit';
+import { useDecryptedCandidate } from '@/hooks/useDecryptedCandidate';
 
 const sources = [
   { value: 'website', label: 'Website' },
@@ -30,12 +31,17 @@ const CandidateEdit = () => {
   const { data: candidate, isLoading } = useQuery({
     queryKey: ['candidate', id],
     queryFn: async () => {
-      const { data, error } = await supabase.from('candidates').select('*').eq('id', id!).single();
+      const { data, error } = await supabase
+        .from('candidates')
+        .select('id, first_name, last_name, date_of_birth, nationality, email, phone, address_street, address_postal, address_city, has_drivers_license, drivers_license_expiry, skills, languages, source, notes')
+        .eq('id', id!)
+        .single();
       if (error) throw error;
       return data;
     },
     enabled: !!id,
   });
+  const { data: sensitiveData, isLoading: sensitiveLoading } = useDecryptedCandidate(id);
 
   const [form, setForm] = useState({
     first_name: '', last_name: '', date_of_birth: '', nationality: '',
@@ -56,8 +62,8 @@ const CandidateEdit = () => {
         address_street: candidate.address_street ?? '',
         address_postal: candidate.address_postal ?? '',
         address_city: candidate.address_city ?? '',
-        bsn: candidate.bsn ?? '',
-        iban: candidate.iban ?? '',
+        bsn: sensitiveData?.decrypted_bsn ?? '',
+        iban: sensitiveData?.decrypted_iban ?? '',
         has_drivers_license: candidate.has_drivers_license ?? false,
         drivers_license_expiry: candidate.drivers_license_expiry ?? '',
         skills: candidate.skills ?? [],
@@ -66,7 +72,7 @@ const CandidateEdit = () => {
         notes: candidate.notes ?? '',
       });
     }
-  }, [candidate]);
+  }, [candidate, sensitiveData]);
 
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -104,7 +110,7 @@ const CandidateEdit = () => {
     onError: (e: any) => toast.error(e.message),
   });
 
-  if (isLoading) return <div className="p-8 text-muted-foreground">Laden...</div>;
+  if (isLoading || sensitiveLoading) return <div className="p-8 text-muted-foreground">Laden...</div>;
   if (!candidate) return <div className="p-8 text-muted-foreground">Niet gevonden</div>;
 
   return (

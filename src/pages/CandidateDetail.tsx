@@ -19,6 +19,7 @@ import { CandidatePreferencesTab } from '@/components/candidates/tabs/CandidateP
 import CandidateAiTab from '@/components/candidates/tabs/CandidateAiTab';
 import CandidateScreeningTab from '@/components/candidates/tabs/CandidateScreeningTab';
 import CandidateTalentpoolsTab from '@/components/candidates/tabs/CandidateTalentpoolsTab';
+import CandidateQualityFlags from '@/components/candidates/CandidateQualityFlags';
 import NotesSection from '@/components/shared/NotesSection';
 import TasksSection from '@/components/shared/TasksSection';
 import EmployeeEmploymentTab from '@/components/employees/tabs/EmployeeEmploymentTab';
@@ -256,6 +257,7 @@ const CandidateDetail = () => {
             <TabsTrigger value="plaatsingen">Plaatsingen</TabsTrigger>
             <TabsTrigger value="voorkeuren">Voorkeuren</TabsTrigger>
             <TabsTrigger value="screening" className="gap-1.5"><ClipboardCheck className="h-3.5 w-3.5" />Screening</TabsTrigger>
+            <TabsTrigger value="datakwaliteit">Datakwaliteit</TabsTrigger>
             <TabsTrigger value="notities">Notities</TabsTrigger>
             <TabsTrigger value="taken">Taken</TabsTrigger>
             <TabsTrigger value="talentpools">Pools</TabsTrigger>
@@ -284,7 +286,8 @@ const CandidateDetail = () => {
         <TabsContent value="matches"><CandidateMatchesTab candidateId={id!} /></TabsContent>
         <TabsContent value="plaatsingen"><CandidatePlacementsTab candidateId={id!} /></TabsContent>
         <TabsContent value="voorkeuren"><CandidatePreferencesTab candidateId={id!} /></TabsContent>
-        <TabsContent value="screening"><CandidateScreeningTab key={candidate?.screened_at ?? 'unsaved'} candidate={candidate} onUpdate={() => qc.invalidateQueries({ queryKey: ['candidate', id] })} /></TabsContent>
+        <TabsContent value="screening"><CandidateScreeningTab key={(candidate as any)?.screened_at ?? 'unsaved'} candidate={candidate} onUpdate={() => qc.invalidateQueries({ queryKey: ['candidate', id] })} /></TabsContent>
+        <TabsContent value="datakwaliteit"><CandidateQualityFlags candidateId={id!} /></TabsContent>
         <TabsContent value="notities"><NotesSection entityId={id!} entityType="kandidaat" /></TabsContent>
         <TabsContent value="taken"><TasksSection entityId={id!} entityType="kandidaat" /></TabsContent>
         <TabsContent value="talentpools"><CandidateTalentpoolsTab candidateId={id!} /></TabsContent>
