@@ -14,10 +14,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { formatDate, formatEUR } from '@/lib/format';
 import { logAudit } from '@/lib/audit';
-import { Upload, AlertTriangle, Fuel, CheckCircle2, StickyNote, Link as LinkIcon, Info, Car, UserRound, CreditCard } from 'lucide-react';
+import { Upload, AlertTriangle, Fuel, CheckCircle2, StickyNote, Link as LinkIcon, Info, Car, UserRound, CreditCard, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
@@ -81,18 +82,49 @@ const FuelCardAnalysis = () => {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['fuel-transactions'] }); toast.success('Notitie opgeslagen'); },
   });
 
-  /* ── Import history grouped ──────────────────────── */
+  /* ── Import history (uit fuel_card_imports tabel) ─ */
 
-  const importHistory = useMemo(() => {
-    const groups: Record<string, { batch: string; count: number; flagCount: number; date: string }> = {};
+  const { data: imports = [] } = useQuery({
+    queryKey: ['fuel-card-imports', orgId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('fuel_card_imports')
+        .select('*')
+        .eq('organization_id', orgId!)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!orgId,
+  });
+
+  const flagsByBatch = useMemo(() => {
+    const m: Record<string, number> = {};
     transactions.forEach(t => {
-      const b = t.import_batch_id ?? 'onbekend';
-      if (!groups[b]) groups[b] = { batch: b, count: 0, flagCount: 0, date: t.created_at };
-      groups[b].count++;
-      if (t.flag_over_capacity || t.flag_multiple_same_day || t.flag_excessive_consumption) groups[b].flagCount++;
+      if (!t.import_batch_id) return;
+      if (t.flag_over_capacity || t.flag_multiple_same_day || t.flag_excessive_consumption) {
+        m[t.import_batch_id] = (m[t.import_batch_id] ?? 0) + 1;
+      }
     });
-    return Object.values(groups).sort((a, b) => b.date.localeCompare(a.date));
+    return m;
   }, [transactions]);
+
+  const [deleteImportId, setDeleteImportId] = useState<string | null>(null);
+  const deleteImport = useMutation({
+    mutationFn: async (id: string) => {
+      const { error: txErr } = await supabase.from('fuel_card_transactions').delete().eq('import_batch_id', id);
+      if (txErr) throw txErr;
+      const { error: impErr } = await supabase.from('fuel_card_imports').delete().eq('id', id);
+      if (impErr) throw impErr;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['fuel-transactions'] });
+      qc.invalidateQueries({ queryKey: ['fuel-card-imports'] });
+      toast.success('Import verwijderd');
+      setDeleteImportId(null);
+    },
+    onError: (e: any) => toast.error(e.message ?? 'Verwijderen mislukt'),
+  });
 
   return (
     <div>
@@ -137,27 +169,81 @@ const FuelCardAnalysis = () => {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Import batch</TableHead>
+                <TableHead>Bestand</TableHead>
+                <TableHead>Geïmporteerd</TableHead>
+                <TableHead>Periode</TableHead>
                 <TableHead className="text-right">Transacties</TableHead>
+                <TableHead className="text-right">Liters</TableHead>
+                <TableHead className="text-right">Bedrag</TableHead>
                 <TableHead className="text-right">Afwijkingen</TableHead>
+                <TableHead className="w-12"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {importHistory.map(h => (
-                <TableRow key={h.batch}>
-                  <TableCell className="font-mono text-xs">{h.batch.length > 20 ? h.batch.slice(0, 8) + '…' : h.batch}</TableCell>
-                  <TableCell className="text-right">{h.count}</TableCell>
-                  <TableCell className="text-right">{h.flagCount > 0 ? <Badge variant="destructive">{h.flagCount}</Badge> : '0'}</TableCell>
-                </TableRow>
-              ))}
-              {importHistory.length === 0 && <TableRow><TableCell colSpan={3} className="text-muted-foreground text-center">Geen imports</TableCell></TableRow>}
+              {imports.map(imp => {
+                const flags = flagsByBatch[imp.id] ?? 0;
+                const periodLabel = imp.period_start && imp.period_end
+                  ? `${formatDate(imp.period_start)} – ${formatDate(imp.period_end)}`
+                  : '—';
+                return (
+                  <TableRow key={imp.id}>
+                    <TableCell className="font-medium">{imp.file_name || '—'}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{formatDate(imp.created_at)}</TableCell>
+                    <TableCell className="text-xs">{periodLabel}</TableCell>
+                    <TableCell className="text-right">{imp.transaction_count}</TableCell>
+                    <TableCell className="text-right">{Number(imp.total_liters).toFixed(1)}</TableCell>
+                    <TableCell className="text-right">{formatEUR(Number(imp.total_amount_eur))}</TableCell>
+                    <TableCell className="text-right">{flags > 0 ? <Badge variant="destructive">{flags}</Badge> : '0'}</TableCell>
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-destructive hover:bg-destructive/10"
+                        onClick={() => setDeleteImportId(imp.id)}
+                        title="Import verwijderen"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+              {imports.length === 0 && <TableRow><TableCell colSpan={8} className="text-muted-foreground text-center">Geen imports</TableCell></TableRow>}
             </TableBody>
           </Table>
         </TabsContent>
       </Tabs>
 
       {/* Import Sheet */}
-      <ImportSheet open={importOpen} onOpenChange={setImportOpen} orgId={orgId} onDone={() => { qc.invalidateQueries({ queryKey: ['fuel-transactions'] }); }} />
+      <ImportSheet
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        orgId={orgId}
+        onDone={() => {
+          qc.invalidateQueries({ queryKey: ['fuel-transactions'] });
+          qc.invalidateQueries({ queryKey: ['fuel-card-imports'] });
+        }}
+      />
+
+      <AlertDialog open={!!deleteImportId} onOpenChange={(o) => !o && setDeleteImportId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Import verwijderen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Alle transacties uit deze import worden ook verwijderd. Dit kan niet ongedaan gemaakt worden.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuleren</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteImportId && deleteImport.mutate(deleteImportId)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Verwijderen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
@@ -342,6 +428,13 @@ const Q8_PRESET = {
   station: 'Site',
 } satisfies ColMap;
 
+type ExistingImport = { id: string; file_name: string | null; transaction_count: number; created_at: string };
+
+async function sha256Hex(buffer: ArrayBuffer): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', buffer);
+  return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 const ImportSheet = ({ open, onOpenChange, orgId, onDone }: { open: boolean; onOpenChange: (o: boolean) => void; orgId: string | null; onDone: () => void }) => {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [rows, setRows] = useState<Record<string, string>[]>([]);
@@ -350,14 +443,37 @@ const ImportSheet = ({ open, onOpenChange, orgId, onDone }: { open: boolean; onO
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<{ imported: number; flags: number; kmUpdates: number } | null>(null);
   const [autoDetected, setAutoDetected] = useState(false);
+  const [fileMeta, setFileMeta] = useState<{ name: string; hash: string } | null>(null);
+  const [existing, setExisting] = useState<ExistingImport | null>(null);
 
-  const reset = () => { setStep(1); setRows([]); setHeaders([]); setColMap({ datum: '', kenteken: '', liters: '', bedrag: '', prijs: '', station: '' }); setResult(null); setAutoDetected(false); };
+  const reset = () => {
+    setStep(1); setRows([]); setHeaders([]);
+    setColMap({ datum: '', kenteken: '', liters: '', bedrag: '', prijs: '', station: '' });
+    setResult(null); setAutoDetected(false); setFileMeta(null); setExisting(null);
+  };
 
   const handleFile = async (file: File) => {
+    if (!orgId) return;
+    const buffer = await file.arrayBuffer();
+    const hash = await sha256Hex(buffer);
+    setFileMeta({ name: file.name, hash });
+
+    // Duplicate-check tegen fuel_card_imports
+    const { data: dup } = await supabase
+      .from('fuel_card_imports')
+      .select('id, file_name, transaction_count, created_at')
+      .eq('organization_id', orgId)
+      .eq('file_hash', hash)
+      .maybeSingle();
+    if (dup) {
+      setExisting(dup as ExistingImport);
+    } else {
+      setExisting(null);
+    }
+
     const isExcel = /\.(xlsx|xls)$/i.test(file.name);
     if (isExcel) {
       try {
-        const buffer = await file.arrayBuffer();
         const wb = XLSX.read(buffer, { type: 'array' });
         const sheet = wb.Sheets[wb.SheetNames[0]];
         const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '', raw: false });
@@ -379,13 +495,15 @@ const ImportSheet = ({ open, onOpenChange, orgId, onDone }: { open: boolean; onO
           setAutoDetected(false);
           setStep(2);
         }
-      } catch (e) {
+      } catch {
         toast.error('Excel parse fout');
       }
       return;
     }
 
-    Papa.parse(file, {
+    // CSV-pad
+    const text = new TextDecoder().decode(buffer);
+    Papa.parse(text, {
       header: true,
       skipEmptyLines: true,
       complete: (res) => {
@@ -404,6 +522,14 @@ const ImportSheet = ({ open, onOpenChange, orgId, onDone }: { open: boolean; onO
     const batchId = crypto.randomUUID();
 
     try {
+      // Vervang oude import als duplicate werd gedetecteerd
+      if (existing) {
+        const { error: delTxErr } = await supabase.from('fuel_card_transactions').delete().eq('import_batch_id', existing.id);
+        if (delTxErr) throw delTxErr;
+        const { error: delImpErr } = await supabase.from('fuel_card_imports').delete().eq('id', existing.id);
+        if (delImpErr) throw delImpErr;
+      }
+
       // Fetch vehicles for matching
       const { data: vehicles } = await supabase.from('vehicles').select('id, license_plate, fuel_card_reference, tank_capacity_liters, avg_consumption_per_100km, current_mileage').eq('organization_id', orgId);
       // Fetch active assignments
@@ -520,6 +646,25 @@ const ImportSheet = ({ open, onOpenChange, orgId, onDone }: { open: boolean; onO
         });
       }
 
+      // Maak fuel_card_imports row met aggregaten — id wordt batchId
+      if (inserts.length > 0 && fileMeta) {
+        const totalLiters = inserts.reduce((s, i) => s + (Number(i.liters) || 0), 0);
+        const totalAmount = inserts.reduce((s, i) => s + (Number(i.amount_eur) || 0), 0);
+        const dates = inserts.map(i => i.transaction_date).filter(Boolean).sort();
+        const { error: impErr } = await supabase.from('fuel_card_imports').insert({
+          id: batchId,
+          organization_id: orgId,
+          file_hash: fileMeta.hash,
+          file_name: fileMeta.name,
+          transaction_count: inserts.length,
+          total_liters: Math.round(totalLiters * 100) / 100,
+          total_amount_eur: Math.round(totalAmount * 100) / 100,
+          period_start: dates[0] ?? null,
+          period_end: dates[dates.length - 1] ?? null,
+        });
+        if (impErr) throw impErr;
+      }
+
       // Insert in batches of 100
       let totalInserted = 0;
       for (let i = 0; i < inserts.length; i += 100) {
@@ -634,6 +779,15 @@ const ImportSheet = ({ open, onOpenChange, orgId, onDone }: { open: boolean; onO
                 <Info className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
                 <div className="text-xs text-blue-900">
                   <strong>Q8-formaat herkend</strong> — kolom-mapping is automatisch ingesteld. Klik <strong>Vorige</strong> om handmatig aan te passen.
+                </div>
+              </div>
+            )}
+            {existing && (
+              <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-700 mt-0.5 shrink-0" />
+                <div className="text-xs text-amber-900">
+                  <strong>Dit bestand is eerder geïmporteerd</strong> — {existing.file_name ?? 'onbekend bestand'} op {formatDate(existing.created_at)} ({existing.transaction_count} transacties).
+                  Bij <strong>Importeren</strong> wordt de oude import vervangen door deze nieuwe.
                 </div>
               </div>
             )}

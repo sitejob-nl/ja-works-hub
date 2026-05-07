@@ -2703,6 +2703,63 @@ export type Database = {
           },
         ]
       }
+      fuel_card_imports: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          file_hash: string
+          file_name: string | null
+          id: string
+          organization_id: string
+          period_end: string | null
+          period_start: string | null
+          total_amount_eur: number
+          total_liters: number
+          transaction_count: number
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          file_hash: string
+          file_name?: string | null
+          id?: string
+          organization_id: string
+          period_end?: string | null
+          period_start?: string | null
+          total_amount_eur?: number
+          total_liters?: number
+          transaction_count?: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          file_hash?: string
+          file_name?: string | null
+          id?: string
+          organization_id?: string
+          period_end?: string | null
+          period_start?: string | null
+          total_amount_eur?: number
+          total_liters?: number
+          transaction_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fuel_card_imports_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fuel_card_imports_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       fuel_card_transactions: {
         Row: {
           amount_eur: number
