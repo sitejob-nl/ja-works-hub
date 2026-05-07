@@ -64,10 +64,27 @@ Deno.serve(async (req) => {
   const scope = body.scope === "personal" ? "personal" : "organization";
   if (scope === "organization" && auth.role !== "admin") return json({ error: "Alleen admins kunnen bedrijfsmail koppelen" }, 403, corsHeaders);
 
+  let targetUserId = auth.userId;
+  if (scope === "personal" && body.target_user_id && body.target_user_id !== auth.userId) {
+    if (auth.role !== "admin") return json({ error: "Alleen admins kunnen voor een andere medewerker koppelen" }, 403, corsHeaders);
+    const admin = createAdminClient();
+    const { data: targetProfile, error: targetError } = await admin
+      .from("profiles")
+      .select("id")
+      .eq("id", String(body.target_user_id))
+      .eq("organization_id", auth.organizationId)
+      .in("role", ["admin", "intercedent", "backoffice", "finance"])
+      .maybeSingle();
+    if (targetError) return json({ error: targetError.message }, 400, corsHeaders);
+    if (!targetProfile?.id) return json({ error: "Medewerker niet gevonden" }, 404, corsHeaders);
+    targetUserId = targetProfile.id;
+  }
+
   const nonce = crypto.randomUUID();
   const payload = {
     organization_id: auth.organizationId,
     user_id: auth.userId,
+    target_user_id: targetUserId,
     scope,
     return_to: safeReturnTo(body.return_to),
     nonce,

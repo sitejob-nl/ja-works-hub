@@ -60,7 +60,7 @@ const OutlookSettings = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [sharedName, setSharedName] = useState('');
   const [sharedEmail, setSharedEmail] = useState('');
-  const [connectingScope, setConnectingScope] = useState<'organization' | 'personal' | null>(null);
+  const [connectingKey, setConnectingKey] = useState<string | null>(null);
 
   const visible = useOutlookAccounts('any');
   const adminList = useQuery({
@@ -81,16 +81,20 @@ const OutlookSettings = () => {
   }, [queryClient, searchParams, setSearchParams]);
 
   const connect = useMutation({
-    mutationFn: async (scope: 'organization' | 'personal') => {
-      setConnectingScope(scope);
+    mutationFn: async ({ scope, targetUserId }: { scope: 'organization' | 'personal'; targetUserId?: string }) => {
+      setConnectingKey(targetUserId ? `${scope}:${targetUserId}` : scope);
       const returnTo = `${window.location.origin}${window.location.pathname}`;
-      return invokeOutlookFunction<{ authorization_url: string }>('outlook-start', { scope, return_to: returnTo });
+      return invokeOutlookFunction<{ authorization_url: string }>('outlook-start', {
+        scope,
+        target_user_id: targetUserId,
+        return_to: returnTo,
+      });
     },
     onSuccess: (data) => {
       window.location.href = data.authorization_url;
     },
     onError: (error: Error) => {
-      setConnectingScope(null);
+      setConnectingKey(null);
       toast.error(`Outlook koppelen mislukt: ${error.message}`);
     },
   });
@@ -108,7 +112,16 @@ const OutlookSettings = () => {
   const users = adminList.data?.users || [];
   const orgCredential = accounts.find((account) => account.scope === 'organization' && account.mode === 'user');
   const personalAccount = visible.accounts.find((account) => account.scope === 'personal');
+  const personalAccounts = accounts.filter((account) => account.scope === 'personal');
   const sharedAccounts = accounts.filter((account) => account.scope === 'organization' && account.mode === 'shared');
+  const personalByUser = useMemo(() => {
+    const map = new Map<string, AdminAccount>();
+    for (const account of personalAccounts as AdminAccount[]) {
+      const ownerId = account.raw?.owner_user_id;
+      if (ownerId) map.set(ownerId, account);
+    }
+    return map;
+  }, [personalAccounts]);
 
   const grantByAccount = useMemo(() => {
     const map = new Map<string, Map<string, Grant>>();
@@ -231,8 +244,8 @@ const OutlookSettings = () => {
                   </p>
                 </div>
                 {isAdmin && (
-                  <Button size="sm" onClick={() => connect.mutate('organization')} disabled={connectingScope === 'organization'} className="gap-2">
-                    {connectingScope === 'organization' ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                  <Button size="sm" onClick={() => connect.mutate({ scope: 'organization' })} disabled={connectingKey === 'organization'} className="gap-2">
+                    {connectingKey === 'organization' ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
                     {orgCredential ? 'Hoofdaccount herkoppelen' : 'Hoofdaccount koppelen'}
                   </Button>
                 )}
@@ -326,17 +339,50 @@ const OutlookSettings = () => {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2 text-sm font-medium">
-                    <User className="h-4 w-4 text-muted-foreground" /> Mijn mailbox
+                    <User className="h-4 w-4 text-muted-foreground" /> {isAdmin ? 'Persoonlijke mailboxen' : 'Mijn mailbox'}
                   </div>
-                  <p className="text-xs text-muted-foreground">Koppel je eigen Outlook inbox en agenda voor persoonlijk gebruik.</p>
+                  <p className="text-xs text-muted-foreground">
+                    {isAdmin
+                      ? 'Koppel een persoonlijke Outlook mailbox aan de juiste JA-medewerker.'
+                      : 'Koppel je eigen Outlook inbox en agenda voor persoonlijk gebruik.'}
+                  </p>
                 </div>
-                <Button size="sm" variant="outline" onClick={() => connect.mutate('personal')} disabled={connectingScope === 'personal'} className="gap-2">
-                  {connectingScope === 'personal' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
-                  {personalAccount ? 'Mijn mailbox herkoppelen' : 'Mijn mailbox koppelen'}
-                </Button>
+                {!isAdmin && (
+                  <Button size="sm" variant="outline" onClick={() => connect.mutate({ scope: 'personal' })} disabled={connectingKey === 'personal'} className="gap-2">
+                    {connectingKey === 'personal' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+                    {personalAccount ? 'Mijn mailbox herkoppelen' : 'Mijn mailbox koppelen'}
+                  </Button>
+                )}
               </div>
 
-              {personalAccount ? (
+              {isAdmin ? (
+                <div className="space-y-2">
+                  {users.map((user) => {
+                    const account = personalByUser.get(user.id);
+                    const key = `personal:${user.id}`;
+                    return (
+                      <div key={user.id} className="rounded-md border p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-medium">{user.full_name || user.email || 'Gebruiker'}</span>
+                              {account && statusBadge(account)}
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                              {account ? accountEmail(account) : user.email || 'Nog niet gekoppeld'}
+                            </p>
+                            {account?.status_reason && <p className="mt-1 text-xs text-destructive">{account.status_reason}</p>}
+                          </div>
+                          <Button size="sm" variant="outline" onClick={() => connect.mutate({ scope: 'personal', targetUserId: user.id })} disabled={connectingKey === key} className="gap-2">
+                            {connectingKey === key ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+                            {account ? 'Herkoppelen' : 'Koppelen'}
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : personalAccount ? (
                 <div className="rounded-md border p-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-medium">{accountName(personalAccount)}</span>

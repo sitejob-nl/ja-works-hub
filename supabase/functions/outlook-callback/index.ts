@@ -7,6 +7,7 @@ const GRAPH_ME_URL = "https://graph.microsoft.com/v1.0/me?$select=id,displayName
 type StatePayload = {
   organization_id: string;
   user_id: string;
+  target_user_id?: string;
   scope: "organization" | "personal";
   return_to: string;
   nonce: string;
@@ -132,13 +133,14 @@ Deno.serve(async (req) => {
   const now = new Date().toISOString();
   let accountId: string | undefined;
   if (state.scope === "personal") {
+    const ownerUserId = state.target_user_id || state.user_id;
     const { data: existing } = await admin
       .from("mail_accounts")
       .select("id")
       .eq("organization_id", state.organization_id)
       .eq("provider", "outlook")
       .eq("scope", "personal")
-      .eq("owner_user_id", state.user_id)
+      .eq("owner_user_id", ownerUserId)
       .is("deleted_at", null)
       .maybeSingle();
 
@@ -147,14 +149,14 @@ Deno.serve(async (req) => {
       .update({ is_default_for_user: false })
       .eq("organization_id", state.organization_id)
       .eq("scope", "personal")
-      .eq("owner_user_id", state.user_id)
+      .eq("owner_user_id", ownerUserId)
       .is("deleted_at", null);
 
     const payload = {
       organization_id: state.organization_id,
       provider: "outlook",
       scope: "personal",
-      owner_user_id: state.user_id,
+      owner_user_id: ownerUserId,
       display_name: me.displayName || email,
       from_email: email,
       mailbox_mode: "user",
@@ -252,7 +254,13 @@ Deno.serve(async (req) => {
     action: "create",
     table_name: "mail_accounts",
     record_id: accountId,
-    new_values: { event: "outlook_connected", scope: state.scope, microsoft_email: email },
+    new_values: {
+      event: "outlook_connected",
+      scope: state.scope,
+      microsoft_email: email,
+      actor_user_id: state.user_id,
+      owner_user_id: state.scope === "personal" ? state.target_user_id || state.user_id : null,
+    },
   } as any).then(() => {});
 
   return connectedRedirect(state.return_to || `${Deno.env.get("FRONTEND_URL") || "https://ja-werkt.lovable.app"}/instellingen`, state.scope);
