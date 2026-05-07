@@ -204,8 +204,6 @@ const AppSidebar = ({ onNavigate }: AppSidebarProps) => {
       {/* Nav */}
       <nav className="flex-1 py-3 px-2 overflow-y-auto">
         {filteredGroups.map((group, gi) => {
-          const hasActiveItem = group.items.some(item => location.pathname === item.path);
-
           if (!group.label || collapsed) {
             return (
               <div key={gi} className={cn(group.label && 'mt-4')}>
@@ -243,7 +241,7 @@ const AppSidebar = ({ onNavigate }: AppSidebarProps) => {
           }
 
           return (
-            <Collapsible key={gi} defaultOpen={hasActiveItem || gi <= 2} className="mt-3">
+            <Collapsible key={gi} defaultOpen={true} className="mt-3">
               <CollapsibleTrigger className="flex items-center justify-between w-full px-3 py-1 group cursor-pointer">
                 <span className="text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/50 group-hover:text-sidebar-foreground/70 transition-colors">
                   {group.label}

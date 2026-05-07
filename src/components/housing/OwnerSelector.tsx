@@ -13,6 +13,24 @@ import { toast } from 'sonner';
 
 const NEW_OWNER = '__new__';
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+type OwnerForm = { name: string; contact_person: string; email: string; phone: string; notes: string };
+type OwnerErrors = { name?: string; email?: string; phone?: string };
+
+const validateOwner = (f: OwnerForm): OwnerErrors => {
+  const errors: OwnerErrors = {};
+  if (!f.name.trim()) errors.name = 'Naam is verplicht';
+  if (f.email.trim() && !EMAIL_RE.test(f.email.trim())) errors.email = 'Ongeldig e-mailadres';
+  if (f.phone.trim()) {
+    const digits = f.phone.replace(/[\s\-+()]/g, '');
+    if (digits.length < 8 || !/^\d+$/.test(digits)) {
+      errors.phone = 'Vul een geldig telefoonnummer in (min. 8 cijfers)';
+    }
+  }
+  return errors;
+};
+
 interface Props {
   value: string | null;
   onChange: (ownerId: string | null) => void;
@@ -23,7 +41,10 @@ const OwnerSelector = ({ value, onChange, showManageLink }: Props) => {
   const orgId = useOrganizationId();
   const qc = useQueryClient();
   const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState({ name: '', contact_person: '', email: '', phone: '', notes: '' });
+  const [form, setForm] = useState<OwnerForm>({ name: '', contact_person: '', email: '', phone: '', notes: '' });
+  const [touched, setTouched] = useState<{ [k: string]: boolean }>({});
+  const errors = validateOwner(form);
+  const hasErrors = Object.keys(errors).length > 0;
 
   const { data: owners = [] } = useQuery({
     queryKey: ['property-owners', orgId],
@@ -60,6 +81,7 @@ const OwnerSelector = ({ value, onChange, showManageLink }: Props) => {
       onChange(newId);
       setCreating(false);
       setForm({ name: '', contact_person: '', email: '', phone: '', notes: '' });
+      setTouched({});
       toast.success('Eigenaar aangemaakt');
     },
     onError: (e: any) => toast.error(e.message ?? 'Aanmaken mislukt'),
@@ -103,17 +125,43 @@ const OwnerSelector = ({ value, onChange, showManageLink }: Props) => {
         <DialogContent className="sm:max-w-md">
           <DialogHeader><DialogTitle>Nieuwe eigenaar</DialogTitle></DialogHeader>
           <div className="space-y-3 mt-4">
-            <div><Label>Naam *</Label><Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} /></div>
+            <div>
+              <Label>Naam *</Label>
+              <Input
+                value={form.name}
+                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                onBlur={() => setTouched((t) => ({ ...t, name: true }))}
+              />
+              {touched.name && errors.name && <p className="text-xs text-destructive mt-1">{errors.name}</p>}
+            </div>
             <div><Label>Contactpersoon</Label><Input value={form.contact_person} onChange={(e) => setForm((f) => ({ ...f, contact_person: e.target.value }))} /></div>
             <div className="grid grid-cols-2 gap-3">
-              <div><Label>Telefoon</Label><Input type="tel" value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} /></div>
-              <div><Label>E-mail</Label><Input type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} /></div>
+              <div>
+                <Label>Telefoon</Label>
+                <Input
+                  type="tel"
+                  value={form.phone}
+                  onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+                  onBlur={() => setTouched((t) => ({ ...t, phone: true }))}
+                />
+                {touched.phone && errors.phone && <p className="text-xs text-destructive mt-1">{errors.phone}</p>}
+              </div>
+              <div>
+                <Label>E-mail</Label>
+                <Input
+                  type="email"
+                  value={form.email}
+                  onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                  onBlur={() => setTouched((t) => ({ ...t, email: true }))}
+                />
+                {touched.email && errors.email && <p className="text-xs text-destructive mt-1">{errors.email}</p>}
+              </div>
             </div>
             <div><Label>Notities</Label><Textarea rows={2} value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} /></div>
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setCreating(false)}>Annuleren</Button>
-            <Button onClick={() => createOwner.mutate()} disabled={!form.name.trim() || createOwner.isPending}>
+            <Button onClick={() => createOwner.mutate()} disabled={hasErrors || createOwner.isPending}>
               {createOwner.isPending ? 'Opslaan...' : 'Aanmaken'}
             </Button>
           </DialogFooter>

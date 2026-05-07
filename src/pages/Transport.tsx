@@ -173,6 +173,7 @@ const Transport = () => {
                    <TableHead>Tankpas</TableHead>
                    <TableHead>Status</TableHead>
                   <TableHead>Toegewezen aan</TableHead>
+                  <TableHead>Notitie</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -204,6 +205,13 @@ const Transport = () => {
                       <TableCell className="font-mono text-xs">{v.fuel_card_reference ?? '—'}</TableCell>
                       <TableCell><Badge variant="secondary" className={statusBadge[v.status] ?? ''}>{statusLabel[v.status] ?? v.status}</Badge></TableCell>
                       <TableCell>{assignee ? `${assignee.first_name} ${assignee.last_name}` : '—'}</TableCell>
+                      <TableCell className="max-w-[200px]">
+                        {v.notes ? (
+                          <span className="text-xs text-muted-foreground truncate block" title={v.notes}>{v.notes}</span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
                     </TableRow>
                   );
                 })}

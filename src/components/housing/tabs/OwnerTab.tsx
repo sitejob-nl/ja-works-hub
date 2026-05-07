@@ -69,16 +69,16 @@ const OwnerTab = ({ property }: { property: any }) => {
                 </a>
               </div>
             )}
-          </div>
-        )}
-        {owner?.notes && (
-          <>
-            <Separator />
-            <div>
+            <div className="md:col-span-2">
+              <Separator className="my-2" />
               <p className="text-xs text-muted-foreground mb-1">Notities</p>
-              <p className="text-sm whitespace-pre-wrap">{owner.notes}</p>
+              {owner.notes ? (
+                <p className="text-sm whitespace-pre-wrap">{owner.notes}</p>
+              ) : (
+                <p className="text-sm text-muted-foreground italic">Geen notities</p>
+              )}
             </div>
-          </>
+          </div>
         )}
       </Card>
 

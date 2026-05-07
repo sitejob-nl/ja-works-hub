@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
@@ -19,7 +19,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Plus, ChevronDown, ChevronUp, Trash2, Pencil, Layers, X } from 'lucide-react';
+import { Plus, ChevronDown, ChevronUp, Trash2, Pencil, Layers, X, LayoutGrid, List } from 'lucide-react';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { formatDate, formatEUR } from '@/lib/format';
 import { toast } from 'sonner';
 import type { Database } from '@/integrations/supabase/types';
@@ -57,6 +59,8 @@ const UnitsTab = ({ property }: { property: any }) => {
   const [form, setForm] = useState(emptyForm);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkRows, setBulkRows] = useState<BulkRow[]>(() => [emptyBulkRow(), emptyBulkRow(), emptyBulkRow()]);
+  const [view, setView] = useState<'cards' | 'list'>('list');
+  const [expandedRow, setExpandedRow] = useState<string | null>(null);
 
   const openAdd = () => {
     setEditingId(null);
@@ -185,13 +189,19 @@ const UnitsTab = ({ property }: { property: any }) => {
   const addBulkRow = () => setBulkRows((rows) => [...rows, emptyBulkRow()]);
   const removeBulkRow = (i: number) => setBulkRows((rows) => rows.length === 1 ? [emptyBulkRow()] : rows.filter((_, idx) => idx !== i));
 
-  const units = property.units ?? [];
+  const units = [...(property.units ?? [])].sort((a: any, b: any) =>
+    String(a.name ?? '').localeCompare(String(b.name ?? ''), undefined, { numeric: true, sensitivity: 'base' })
+  );
 
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center gap-2 flex-wrap">
         <h3 className="font-medium">Kamers ({units.length})</h3>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+          <ToggleGroup type="single" value={view} onValueChange={(v) => v && setView(v as 'cards' | 'list')}>
+            <ToggleGroupItem value="cards" aria-label="Kaarten"><LayoutGrid className="h-4 w-4" /></ToggleGroupItem>
+            <ToggleGroupItem value="list" aria-label="Lijst"><List className="h-4 w-4" /></ToggleGroupItem>
+          </ToggleGroup>
           <Button size="sm" variant="outline" onClick={() => setBulkOpen(true)} className="gap-1">
             <Layers className="h-3.5 w-3.5" /> Meerdere kamers
           </Button>
@@ -303,85 +313,191 @@ const UnitsTab = ({ property }: { property: any }) => {
         </SheetContent>
       </Sheet>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {units.map((u: any) => {
-          const assignments = u.housing_assignments ?? [];
-          const occupants = assignments.filter((a: any) => a.status === 'ingecheckt');
-          const occupied = occupants.length;
-          const isExpanded = expandedUnit === u.id;
+      {view === 'cards' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {units.map((u: any) => {
+            const assignments = u.housing_assignments ?? [];
+            const occupants = assignments.filter((a: any) => a.status === 'ingecheckt');
+            const occupied = occupants.length;
+            const isExpanded = expandedUnit === u.id;
 
-          return (
-            <div key={u.id} className="bg-card rounded-lg border">
-              <button
-                onClick={() => setExpandedUnit(isExpanded ? null : u.id)}
-                className="w-full text-left p-4 flex items-start justify-between"
-              >
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <p className="font-medium text-sm">{u.name}</p>
-                    <Badge variant="secondary" className={`text-xs ${statusBadge[u.status] ?? ''}`}>{u.status}</Badge>
-                  </div>
-                  <p className="text-xs text-muted-foreground">{occupied}/{u.capacity} bezet</p>
-                  {u.weekly_cost && <p className="text-xs text-muted-foreground">{formatEUR(u.weekly_cost)}/week</p>}
-                  {u.floor != null && <p className="text-xs text-muted-foreground">Verdieping {u.floor}</p>}
-                  {occupants.length > 0 && (
-                    <div className="mt-2 space-y-1">
-                      {occupants.map((a: any) => (
-                        <p key={a.id} className="text-xs">
-                          {a.candidates?.first_name} {a.candidates?.last_name}
-                        </p>
-                      ))}
+            return (
+              <div key={u.id} className="bg-card rounded-lg border">
+                <button
+                  onClick={() => setExpandedUnit(isExpanded ? null : u.id)}
+                  className="w-full text-left p-4 flex items-start justify-between"
+                >
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <p className="font-medium text-sm">{u.name}</p>
+                      <Badge variant="secondary" className={`text-xs ${statusBadge[u.status] ?? ''}`}>{u.status}</Badge>
                     </div>
-                  )}
-                </div>
-                {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" /> : <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />}
-              </button>
-
-              {isExpanded && (
-                <div className="border-t px-4 py-3 space-y-3">
-                  <p className="text-xs font-medium text-muted-foreground uppercase">Toewijzingshistorie</p>
-                  {assignments.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">Geen toewijzingen</p>
-                  ) : (
-                    assignments.map((a: any) => (
-                      <div key={a.id} className="text-xs flex items-center justify-between">
-                        <span>{a.candidates?.first_name} {a.candidates?.last_name}</span>
-                        <span className="text-muted-foreground">
-                          {formatDate(a.check_in_date)} — {a.check_out_date ? formatDate(a.check_out_date) : 'heden'}
-                          {' '}
-                          <Badge variant="secondary" className={`text-[10px] ${a.status === 'ingecheckt' ? 'bg-stat-green/10 text-stat-green border-0' : a.status === 'gereserveerd' ? 'bg-blue-100 text-blue-700 border-0' : 'bg-muted text-muted-foreground border-0'}`}>
-                            {a.status}
-                          </Badge>
-                        </span>
+                    <p className="text-xs text-muted-foreground">{occupied}/{u.capacity} bezet</p>
+                    {u.weekly_cost && <p className="text-xs text-muted-foreground">{formatEUR(u.weekly_cost)}/week</p>}
+                    {u.floor != null && <p className="text-xs text-muted-foreground">Verdieping {u.floor}</p>}
+                    {occupants.length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        {occupants.map((a: any) => (
+                          <p key={a.id} className="text-xs">
+                            {a.candidates?.first_name} {a.candidates?.last_name}
+                          </p>
+                        ))}
                       </div>
-                    ))
-                  )}
-                  <div className="flex justify-end gap-2 pt-2 border-t">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => openEdit(u)}
-                      className="h-7 gap-1.5 text-xs"
-                    >
-                      <Pencil className="h-3 w-3" /> Bewerken
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setUnitToDelete({ id: u.id, name: u.name })}
-                      disabled={assignments.length > 0}
-                      className="text-destructive hover:text-destructive hover:bg-destructive/10 h-7 gap-1.5 text-xs"
-                      title={assignments.length > 0 ? 'Kan niet verwijderen — kamer heeft toewijzingshistorie' : 'Kamer verwijderen'}
-                    >
-                      <Trash2 className="h-3 w-3" /> Verwijderen
-                    </Button>
+                    )}
                   </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+                  {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" /> : <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />}
+                </button>
+
+                {isExpanded && (
+                  <div className="border-t px-4 py-3 space-y-3">
+                    <p className="text-xs font-medium text-muted-foreground uppercase">Toewijzingshistorie</p>
+                    {assignments.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">Geen toewijzingen</p>
+                    ) : (
+                      assignments.map((a: any) => (
+                        <div key={a.id} className="text-xs flex items-center justify-between">
+                          <span>{a.candidates?.first_name} {a.candidates?.last_name}</span>
+                          <span className="text-muted-foreground">
+                            {formatDate(a.check_in_date)} — {a.check_out_date ? formatDate(a.check_out_date) : 'heden'}
+                            {' '}
+                            <Badge variant="secondary" className={`text-[10px] ${a.status === 'ingecheckt' ? 'bg-stat-green/10 text-stat-green border-0' : a.status === 'gereserveerd' ? 'bg-blue-100 text-blue-700 border-0' : 'bg-muted text-muted-foreground border-0'}`}>
+                              {a.status}
+                            </Badge>
+                          </span>
+                        </div>
+                      ))
+                    )}
+                    <div className="flex justify-end gap-2 pt-2 border-t">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => openEdit(u)}
+                        className="h-7 gap-1.5 text-xs"
+                      >
+                        <Pencil className="h-3 w-3" /> Bewerken
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setUnitToDelete({ id: u.id, name: u.name })}
+                        disabled={assignments.length > 0}
+                        className="text-destructive hover:text-destructive hover:bg-destructive/10 h-7 gap-1.5 text-xs"
+                        title={assignments.length > 0 ? 'Kan niet verwijderen — kamer heeft toewijzingshistorie' : 'Kamer verwijderen'}
+                      >
+                        <Trash2 className="h-3 w-3" /> Verwijderen
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {view === 'list' && units.length > 0 && (
+        <div className="rounded-lg border bg-card overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Kamer</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Bezet</TableHead>
+                <TableHead className="text-right">Verdieping</TableHead>
+                <TableHead className="text-right">Per week</TableHead>
+                <TableHead>Bewoners</TableHead>
+                <TableHead className="text-right">Acties</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {units.map((u: any) => {
+                const assignments = u.housing_assignments ?? [];
+                const occupants = assignments.filter((a: any) => a.status === 'ingecheckt');
+                const occupied = occupants.length;
+                const isExpanded = expandedRow === u.id;
+
+                return (
+                  <Fragment key={u.id}>
+                    <TableRow
+                      className="cursor-pointer"
+                      onClick={() => setExpandedRow(isExpanded ? null : u.id)}
+                    >
+                      <TableCell className="font-medium">
+                        <div className="flex items-center gap-1.5">
+                          {isExpanded ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
+                          {u.name}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="secondary" className={`text-xs ${statusBadge[u.status] ?? ''}`}>{u.status}</Badge>
+                      </TableCell>
+                      <TableCell className="text-right text-sm">{occupied}/{u.capacity}</TableCell>
+                      <TableCell className="text-right text-sm">{u.floor != null ? u.floor : '—'}</TableCell>
+                      <TableCell className="text-right text-sm">{u.weekly_cost ? formatEUR(u.weekly_cost) : '—'}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {occupants.length === 0
+                          ? '—'
+                          : occupants
+                              .map((a: any) => `${a.candidates?.first_name ?? ''} ${a.candidates?.last_name ?? ''}`.trim())
+                              .filter(Boolean)
+                              .join(', ')}
+                      </TableCell>
+                      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex justify-end gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => openEdit(u)}
+                            className="h-7 gap-1.5 text-xs"
+                          >
+                            <Pencil className="h-3 w-3" /> Bewerken
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setUnitToDelete({ id: u.id, name: u.name })}
+                            disabled={assignments.length > 0}
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10 h-7 gap-1.5 text-xs"
+                            title={assignments.length > 0 ? 'Kan niet verwijderen — kamer heeft toewijzingshistorie' : 'Kamer verwijderen'}
+                          >
+                            <Trash2 className="h-3 w-3" /> Verwijderen
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                    {isExpanded && (
+                      <TableRow className="bg-muted/30 hover:bg-muted/30">
+                        <TableCell colSpan={7} className="py-3">
+                          <p className="text-xs font-medium text-muted-foreground uppercase mb-2">Toewijzingshistorie</p>
+                          {assignments.length === 0 ? (
+                            <p className="text-xs text-muted-foreground">Geen toewijzingen</p>
+                          ) : (
+                            <div className="space-y-1">
+                              {assignments.map((a: any) => (
+                                <div key={a.id} className="text-xs flex items-center justify-between">
+                                  <span>{a.candidates?.first_name} {a.candidates?.last_name}</span>
+                                  <span className="text-muted-foreground">
+                                    {formatDate(a.check_in_date)} — {a.check_out_date ? formatDate(a.check_out_date) : 'heden'}
+                                    {' '}
+                                    <Badge variant="secondary" className={`text-[10px] ${a.status === 'ingecheckt' ? 'bg-stat-green/10 text-stat-green border-0' : a.status === 'gereserveerd' ? 'bg-blue-100 text-blue-700 border-0' : 'bg-muted text-muted-foreground border-0'}`}>
+                                      {a.status}
+                                    </Badge>
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </Fragment>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+
       {units.length === 0 && <p className="text-center text-muted-foreground py-8">Nog geen kamers. Voeg een kamer toe.</p>}
 
       <AlertDialog open={!!unitToDelete} onOpenChange={(o) => !o && setUnitToDelete(null)}>
