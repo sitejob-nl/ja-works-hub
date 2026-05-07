@@ -16,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
 import { formatDate, formatEUR } from '@/lib/format';
+import { logAudit } from '@/lib/audit';
 import { Upload, AlertTriangle, Fuel, CheckCircle2, StickyNote, Link as LinkIcon, Info } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import Papa from 'papaparse';
@@ -306,7 +307,7 @@ const ImportSheet = ({ open, onOpenChange, orgId, onDone }: { open: boolean; onO
   const [headers, setHeaders] = useState<string[]>([]);
   const [colMap, setColMap] = useState<ColMap>({ datum: '', kenteken: '', liters: '', bedrag: '', prijs: '', station: '' });
   const [importing, setImporting] = useState(false);
-  const [result, setResult] = useState<{ imported: number; flags: number } | null>(null);
+  const [result, setResult] = useState<{ imported: number; flags: number; kmUpdates: number } | null>(null);
   const [autoDetected, setAutoDetected] = useState(false);
 
   const reset = () => { setStep(1); setRows([]); setHeaders([]); setColMap({ datum: '', kenteken: '', liters: '', bedrag: '', prijs: '', station: '' }); setResult(null); setAutoDetected(false); };
@@ -363,7 +364,7 @@ const ImportSheet = ({ open, onOpenChange, orgId, onDone }: { open: boolean; onO
 
     try {
       // Fetch vehicles for matching
-      const { data: vehicles } = await supabase.from('vehicles').select('id, license_plate, fuel_card_reference, tank_capacity_liters, avg_consumption_per_100km').eq('organization_id', orgId);
+      const { data: vehicles } = await supabase.from('vehicles').select('id, license_plate, fuel_card_reference, tank_capacity_liters, avg_consumption_per_100km, current_mileage').eq('organization_id', orgId);
       // Fetch active assignments
       const { data: assignments } = await supabase.from('vehicle_assignments').select('vehicle_id, employee_id').is('returned_date', null);
 
@@ -377,6 +378,7 @@ const ImportSheet = ({ open, onOpenChange, orgId, onDone }: { open: boolean; onO
       (assignments ?? []).forEach(a => { assignmentByVehicle[a.vehicle_id] = a.employee_id; });
 
       const inserts: any[] = [];
+      const maxKmByVehicle: Record<string, number> = {};
       for (const row of rows) {
         const rawDate = row[colMap.datum] ?? '';
         const rawRef = row[colMap.kenteken] ?? '';
@@ -384,21 +386,22 @@ const ImportSheet = ({ open, onOpenChange, orgId, onDone }: { open: boolean; onO
         const rawAmount = row[colMap.bedrag] ?? '0';
         const rawPrice = colMap.prijs ? (row[colMap.prijs] ?? null) : null;
         const rawStation = colMap.station ? (row[colMap.station] ?? null) : null;
+        const rawKm = String(row['Kilometerstand'] ?? '').replace(',', '.').trim();
 
         const liters = parseFloat(rawLiters.replace(',', '.')) || 0;
         const amount = parseFloat(rawAmount.replace(',', '.')) || 0;
         const price = rawPrice ? parseFloat(rawPrice.replace(',', '.')) || null : null;
 
-        // Parse date — try multiple formats
+        // Parse date — strip optional time-suffix (na spatie of T) voor regex/split.
         let parsedDate = '';
-        const trimDate = rawDate.trim();
-        if (/^\d{4}-\d{2}-\d{2}/.test(trimDate)) {
-          parsedDate = trimDate.slice(0, 10);
-        } else if (/^\d{2}-\d{2}-\d{4}/.test(trimDate)) {
-          const [d, m, y] = trimDate.split('-');
+        const dateOnly = rawDate.trim().split(/[\sT]+/)[0];
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) {
+          parsedDate = dateOnly;
+        } else if (/^\d{2}-\d{2}-\d{4}$/.test(dateOnly)) {
+          const [d, m, y] = dateOnly.split('-');
           parsedDate = `${y}-${m}-${d}`;
-        } else if (/^\d{2}\/\d{2}\/\d{4}/.test(trimDate)) {
-          const [d, m, y] = trimDate.split('/');
+        } else if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateOnly)) {
+          const [d, m, y] = dateOnly.split('/');
           parsedDate = `${y}-${m}-${d}`;
         }
         if (!parsedDate) continue;
@@ -432,6 +435,13 @@ const ImportSheet = ({ open, onOpenChange, orgId, onDone }: { open: boolean; onO
           flag_over_capacity: flagOverCap,
           raw_data: row,
         });
+
+        if (vehicleId) {
+          const km = parseFloat(rawKm);
+          if (Number.isFinite(km) && km > 0) {
+            maxKmByVehicle[vehicleId] = Math.max(maxKmByVehicle[vehicleId] ?? 0, km);
+          }
+        }
       }
 
       // Detect same-day multiples
@@ -473,8 +483,29 @@ const ImportSheet = ({ open, onOpenChange, orgId, onDone }: { open: boolean; onO
         totalInserted += batch.length;
       }
 
+      // Update vehicles.current_mileage waar Q8 hoger is dan huidige stand
+      let kmUpdates = 0;
+      for (const [vehicleId, km] of Object.entries(maxKmByVehicle)) {
+        const v = (vehicles ?? []).find(x => x.id === vehicleId);
+        const current = Number(v?.current_mileage) || 0;
+        if (km > current) {
+          const { error } = await supabase.from('vehicles').update({ current_mileage: km }).eq('id', vehicleId);
+          if (!error) {
+            kmUpdates += 1;
+            void logAudit({
+              action: 'update',
+              tableName: 'vehicles',
+              recordId: vehicleId,
+              oldValues: { current_mileage: current },
+              newValues: { current_mileage: km },
+              reason: 'q8-import-km-update',
+            });
+          }
+        }
+      }
+
       const flagCount = inserts.filter(i => i.flag_over_capacity || i.flag_multiple_same_day || i.flag_excessive_consumption).length;
-      setResult({ imported: totalInserted, flags: flagCount });
+      setResult({ imported: totalInserted, flags: flagCount, kmUpdates });
       setStep(3);
       onDone();
     } catch (e: any) {
@@ -591,6 +622,9 @@ const ImportSheet = ({ open, onOpenChange, orgId, onDone }: { open: boolean; onO
               <Badge variant="destructive" className="text-sm">{result.flags} afwijkingen gedetecteerd</Badge>
             ) : (
               <p className="text-sm text-muted-foreground">Geen afwijkingen gevonden</p>
+            )}
+            {result.kmUpdates > 0 && (
+              <p className="text-sm text-muted-foreground">{result.kmUpdates} voertuig{result.kmUpdates === 1 ? '' : 'en'} kilometerstand bijgewerkt</p>
             )}
             <Button className="mt-4" onClick={() => { reset(); onOpenChange(false); }}>Sluiten</Button>
           </div>
