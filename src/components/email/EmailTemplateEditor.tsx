@@ -21,6 +21,7 @@ import {
   Heading1, Heading2, Heading3, Undo, Redo, Eye, Variable, Code,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { sanitizeHtml } from '@/lib/sanitize-html';
 
 const TEMPLATE_VARIABLES = [
   { group: 'Persoon', items: [
@@ -328,11 +329,11 @@ const EmailTemplateEditor = ({
             <div className="mb-3 pb-3 border-b">
               <p className="text-xs text-muted-foreground">Onderwerp</p>
               <p className="font-medium" dangerouslySetInnerHTML={{
-                __html: replaceVariables(subject || '(Geen onderwerp)')
+                __html: sanitizeHtml(replaceVariables(subject || '(Geen onderwerp)'))
               }} />
             </div>
             <div className="prose prose-sm dark:prose-invert max-w-none" dangerouslySetInnerHTML={{
-              __html: replaceVariables(editor.getHTML())
+              __html: sanitizeHtml(replaceVariables(editor.getHTML()))
             }} />
           </div>
           <p className="text-xs text-muted-foreground mt-2">Preview met voorbeelddata. Variabelen worden bij verzending vervangen door echte waarden.</p>

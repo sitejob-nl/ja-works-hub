@@ -22,11 +22,14 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { TYPE_LABELS, TYPE_BADGE_COLORS } from '@/lib/termination-constants';
+import type { Database } from '@/integrations/supabase/types';
+
+type TerminatedByType = Database['public']['Enums']['terminated_by_type'];
 
 interface TerminationReason {
   id: string;
   organization_id: string;
-  terminated_by: string;
+  terminated_by: TerminatedByType;
   reason: string;
   sort_order: number | null;
   is_active: boolean;
@@ -37,7 +40,7 @@ const TerminationReasonsSettings = () => {
   const queryClient = useQueryClient();
 
   const [newReason, setNewReason] = useState('');
-  const [newType, setNewType] = useState<string>('opdrachtgever');
+  const [newType, setNewType] = useState<TerminatedByType>('opdrachtgever');
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const { data: reasons = [], isLoading } = useQuery({
@@ -164,7 +167,7 @@ const TerminationReasonsSettings = () => {
       <CardContent className="space-y-6">
         {/* Add new reason */}
         <div className="flex flex-col sm:flex-row gap-2">
-          <Select value={newType} onValueChange={setNewType}>
+          <Select value={newType} onValueChange={(value) => setNewType(value as TerminatedByType)}>
             <SelectTrigger className="w-[180px]">
               <SelectValue />
             </SelectTrigger>

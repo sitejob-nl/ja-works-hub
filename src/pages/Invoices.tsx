@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -19,6 +20,12 @@ import { formatDate, formatEUR } from '@/lib/format';
 import { logAudit } from '@/lib/audit';
 import { payrollerLabel, payrollerBadgeClass, JA_WERKT_PAYROLLERS } from '@/lib/payroller';
 
+type PayrollerType = Database['public']['Enums']['payroller_type'];
+type PayrollerFilter = PayrollerType | 'all';
+type PayrollerCreateFilter = PayrollerFilter | 'ja_werkt';
+
+const jaWerktPayrollers = JA_WERKT_PAYROLLERS as readonly PayrollerType[];
+
 const statusBadge: Record<string, { class: string; label: string }> = {
   concept: { class: 'bg-muted text-muted-foreground border-0', label: 'Concept' },
   definitief: { class: 'bg-blue-100 text-blue-700 border-0', label: 'Definitief' },
@@ -32,7 +39,7 @@ export default function InvoicesPage() {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [payrollerFilter, setPayrollerFilter] = useState<string>('all');
+  const [payrollerFilter, setPayrollerFilter] = useState<PayrollerFilter>('all');
   const [showCreate, setShowCreate] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<string>('eigen');
@@ -187,7 +194,7 @@ export default function InvoicesPage() {
                 <SelectItem value="gecrediteerd">Gecrediteerd</SelectItem>
               </SelectContent>
             </Select>
-            <Select value={payrollerFilter} onValueChange={setPayrollerFilter}>
+            <Select value={payrollerFilter} onValueChange={(v) => setPayrollerFilter(v as PayrollerFilter)}>
               <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Alle payrollers</SelectItem>
@@ -332,7 +339,7 @@ function CreateInvoiceSheet({ open, onOpenChange, orgId, onSuccess }: { open: bo
   const [reference, setReference] = useState('');
   const [preview, setPreview] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [payrollerCreateFilter, setPayrollerCreateFilter] = useState<string>('ja_werkt');
+  const [payrollerCreateFilter, setPayrollerCreateFilter] = useState<PayrollerCreateFilter>('ja_werkt');
 
   // Manual lines state
   const [manualLines, setManualLines] = useState<ManualLine[]>([{ description: '', hours: 0, hourly_rate: 0, line_total: 0 }]);
@@ -379,7 +386,7 @@ function CreateInvoiceSheet({ open, onOpenChange, orgId, onSuccess }: { open: bo
 
       // Apply payroller filter
       if (payrollerCreateFilter === 'ja_werkt') {
-        q = q.in('placements.payroller', JA_WERKT_PAYROLLERS);
+        q = q.in('placements.payroller', jaWerktPayrollers);
       } else if (payrollerCreateFilter !== 'all') {
         q = q.eq('placements.payroller', payrollerCreateFilter);
       }
@@ -497,7 +504,7 @@ function CreateInvoiceSheet({ open, onOpenChange, orgId, onSuccess }: { open: bo
           {mode === 'uren' && (
             <div>
               <Label>Payroller filter</Label>
-              <Select value={payrollerCreateFilter} onValueChange={(v) => { setPayrollerCreateFilter(v); setPreview([]); }}>
+              <Select value={payrollerCreateFilter} onValueChange={(v) => { setPayrollerCreateFilter(v as PayrollerCreateFilter); setPreview([]); }}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="ja_werkt">Eigen facturatie (BrioWorks, Bromida, Retiva)</SelectItem>

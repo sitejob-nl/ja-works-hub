@@ -129,8 +129,27 @@ const TimesheetEntrySheet = ({ open, onOpenChange }: Props) => {
 
   const mutation = useMutation({
     mutationFn: async () => {
+      const placementEmployeeId = (selectedPlacement as any)?.employee_id as string | null | undefined;
+      let resolvedEmployeeId = placementEmployeeId ?? null;
+
+      if (!resolvedEmployeeId) {
+        const { data: employee, error: employeeError } = await supabase
+          .from('employees')
+          .select('id')
+          .eq('candidate_id', employeeId)
+          .eq('organization_id', orgId)
+          .maybeSingle();
+        if (employeeError) throw employeeError;
+        resolvedEmployeeId = employee?.id ?? null;
+      }
+
+      if (!resolvedEmployeeId) {
+        throw new Error('Geen medewerkerrecord gevonden voor deze kandidaat');
+      }
+
       const { error } = await supabase.from('timesheets').insert({
         organization_id: orgId,
+        employee_id: resolvedEmployeeId,
         candidate_id: employeeId,
         placement_id: placementId,
         work_date: workDate,

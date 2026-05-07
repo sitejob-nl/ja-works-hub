@@ -26,7 +26,7 @@ class ErrorBoundary extends Component<Props, State> {
       const { data: { session } } = await supabase.auth.getSession();
       // Try to get org id from profile
       let orgId: string | null = null;
-      let email: string | null = session?.user?.email ?? null;
+      const email: string | null = session?.user?.email ?? null;
       if (session?.user) {
         const { data: profile } = await supabase
           .from('profiles')

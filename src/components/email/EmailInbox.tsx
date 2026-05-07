@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils';
 import EmailCompose from './EmailCompose';
 import { format, isToday, isYesterday, parseISO } from 'date-fns';
 import { nl } from 'date-fns/locale';
+import { sanitizeHtml } from '@/lib/sanitize-html';
 
 interface EmailMessage {
   id: string;
@@ -366,7 +367,7 @@ const EmailInbox = ({ selectedAccount }: { selectedAccount?: string }) => {
               {selectedMessage.body?.contentType === 'html' ? (
                 <div
                   className="prose prose-sm dark:prose-invert max-w-none"
-                  dangerouslySetInnerHTML={{ __html: selectedMessage.body.content }}
+                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(selectedMessage.body.content) }}
                 />
               ) : (
                 <pre className="text-sm whitespace-pre-wrap font-sans">{selectedMessage.body?.content}</pre>

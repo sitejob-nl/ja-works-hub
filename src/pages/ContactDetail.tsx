@@ -90,7 +90,7 @@ const ContactDetail = () => {
     queryKey: ['contact-tasks', id],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('tasks')
+        .from('recruiter_tasks')
         .select('*')
         .eq('related_entity_type', 'contactpersoon')
         .eq('related_entity_id', id!)

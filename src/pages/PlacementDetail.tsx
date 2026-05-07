@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -24,6 +25,8 @@ import PlacementAllowancesTab from '@/components/placements/tabs/PlacementAllowa
 import { useTrackPageVisit } from '@/hooks/useTrackPageVisit';
 import NotesSection from '@/components/shared/NotesSection';
 import TasksSection from '@/components/shared/TasksSection';
+
+type TerminatedByType = Database['public']['Enums']['terminated_by_type'];
 
 const statusBadge: Record<string, string> = {
   gepland: 'bg-blue-100 text-blue-700 border-0',
@@ -314,7 +317,7 @@ const PlacementDetail = () => {
 function TerminationDialog({ open, onOpenChange, placementId, candidateId, housingAssignmentId, orgId, onSuccess }: {
   open: boolean; onOpenChange: (o: boolean) => void; placementId: string; candidateId?: string; housingAssignmentId?: string; orgId: string; onSuccess: () => void;
 }) {
-  const [terminatedBy, setTerminatedBy] = useState<string>('');
+  const [terminatedBy, setTerminatedBy] = useState<TerminatedByType | ''>('');
   const [reason, setReason] = useState('');
   const [notes, setNotes] = useState('');
   const [confirm, setConfirm] = useState(false);
@@ -334,6 +337,8 @@ function TerminationDialog({ open, onOpenChange, placementId, candidateId, housi
 
   const mutation = useMutation({
     mutationFn: async () => {
+      if (!terminatedBy) throw new Error('Selecteer door wie de plaatsing is beëindigd');
+
       const { error } = await supabase.from('placements').update({
         status: 'voortijdig_beeindigd',
         terminated_by: terminatedBy,
@@ -377,7 +382,7 @@ function TerminationDialog({ open, onOpenChange, placementId, candidateId, housi
         <div className="space-y-4">
           <div>
             <Label>Door wie beëindigd? *</Label>
-            <Select value={terminatedBy} onValueChange={v => { setTerminatedBy(v); setReason(''); }}>
+            <Select value={terminatedBy} onValueChange={v => { setTerminatedBy(v as TerminatedByType); setReason(''); }}>
               <SelectTrigger><SelectValue placeholder="Selecteer..." /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="opdrachtgever">Opdrachtgever</SelectItem>

@@ -15,6 +15,17 @@ interface Props {
   onAssigned?: () => void;
 }
 
+const resolveEmployeeId = async (candidateId: string) => {
+  const { data, error } = await supabase
+    .from('employees')
+    .select('id')
+    .eq('candidate_id', candidateId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data?.id) throw new Error('Geen medewerkerrecord gevonden voor deze kandidaat');
+  return data.id;
+};
+
 const HousingSuggestionsCard = ({ suggestions, candidateId, startDate, onAssigned }: Props) => {
   const orgId = useOrganizationId();
   const [assigning, setAssigning] = useState<string | null>(null);
@@ -23,9 +34,11 @@ const HousingSuggestionsCard = ({ suggestions, candidateId, startDate, onAssigne
   const handleAssign = async (s: HousingSuggestion) => {
     setAssigning(s.unitId);
     try {
+      const employeeId = await resolveEmployeeId(candidateId);
       const { error } = await supabase.from('housing_assignments').insert({
         organization_id: orgId,
         unit_id: s.unitId,
+        employee_id: employeeId,
         candidate_id: candidateId,
         check_in_date: startDate,
         status: 'ingecheckt' as any,

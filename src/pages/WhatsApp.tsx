@@ -22,6 +22,22 @@ import { QRCodeManager } from '@/components/whatsapp/QRCodeManager';
 import { WhatsAppAnalytics } from '@/components/whatsapp/WhatsAppAnalytics';
 import type { InteractivePayload } from '@/components/whatsapp/InteractiveMessageBuilder';
 
+type WhatsAppInteractiveMessage = {
+  type: 'button' | 'list';
+  body: { text: string };
+  footer?: { text: string };
+  action?:
+    | { buttons: Array<{ type: 'reply'; reply: { id: string; title: string } }> }
+    | { button?: string; sections?: InteractivePayload['sections'] };
+};
+
+type WhatsAppInteractiveSend = {
+  to: string;
+  type: 'interactive';
+  interactive: WhatsAppInteractiveMessage;
+  candidate_id?: string;
+};
+
 const WhatsAppPage = () => {
   const orgId = useOrganizationId();
   const isMobile = useIsMobile();
@@ -136,7 +152,7 @@ const WhatsAppPage = () => {
   const handleSendInteractive = (payload: InteractivePayload) => {
     if (!selectedPhone) return;
 
-    const interactive: any = {
+    const interactive: WhatsAppInteractiveMessage = {
       type: payload.type === 'button' ? 'button' : 'list',
       body: { text: payload.body },
     };
@@ -145,7 +161,7 @@ const WhatsAppPage = () => {
 
     if (payload.type === 'button') {
       interactive.action = {
-        buttons: payload.buttons?.map((b) => ({
+        buttons: (payload.buttons ?? []).map((b) => ({
           type: 'reply',
           reply: { id: b.id, title: b.title },
         })),
@@ -157,12 +173,14 @@ const WhatsAppPage = () => {
       };
     }
 
-    sendMutation.mutate({
+    const message: WhatsAppInteractiveSend = {
       to: selectedPhone,
       type: 'interactive',
       interactive,
       candidate_id: selectedCandidateId ?? undefined,
-    });
+    };
+
+    sendMutation.mutate(message);
   };
 
   // Panel visibility logic (mobile: one panel at a time)

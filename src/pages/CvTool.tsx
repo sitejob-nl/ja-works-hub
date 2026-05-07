@@ -34,7 +34,11 @@ const CvTool = () => {
   const { data: candidate, isLoading } = useQuery({
     queryKey: ['candidate', candidateId],
     queryFn: async () => {
-      const { data, error } = await supabase.from('candidates').select('*').eq('id', candidateId!).single();
+      const { data, error } = await supabase
+        .from('candidates')
+        .select('id, first_name, last_name, email, phone, address_city, date_of_birth, nationality, skills, languages, certifications')
+        .eq('id', candidateId!)
+        .single();
       if (error) throw error;
       return data;
     },
@@ -72,7 +76,7 @@ const CvTool = () => {
     setIsRewriting(true);
     try {
       const { data, error } = await supabase.functions.invoke('cv-rewrite', {
-        body: { candidate, placements: placements || [], language, anonymous },
+        body: { candidate_id: candidate.id, language, anonymous },
       });
       if (error) throw error;
       if (data.error) throw new Error(data.error);

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -14,6 +15,9 @@ import { Search, Users, CalendarClock, TrendingUp } from 'lucide-react';
 import { formatDate, formatEUR } from '@/lib/format';
 import { payrollerLabel } from '@/lib/payroller';
 
+type PlacementStatus = Database['public']['Enums']['placement_status'];
+type PayrollerType = Database['public']['Enums']['payroller_type'];
+
 const statusBadge: Record<string, { class: string; label: string }> = {
   gepland: { class: 'bg-blue-100 text-blue-700 border-0', label: 'Gepland' },
   actief: { class: 'bg-stat-green/10 text-stat-green border-0', label: 'Actief' },
@@ -24,8 +28,8 @@ const statusBadge: Record<string, { class: string; label: string }> = {
 export default function PlacementsPage() {
   const orgId = useOrganizationId();
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [payrollerFilter, setPayrollerFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<PlacementStatus | 'all'>('all');
+  const [payrollerFilter, setPayrollerFilter] = useState<PayrollerType | 'all'>('all');
 
   const { data: placements, isLoading } = useQuery({
     queryKey: ['placements-list', orgId, statusFilter, payrollerFilter],
@@ -93,7 +97,7 @@ export default function PlacementsPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input placeholder="Zoek op naam, functie, bedrijf..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
+        <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as PlacementStatus | 'all')}>
           <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Alle statussen</SelectItem>
@@ -103,7 +107,7 @@ export default function PlacementsPage() {
             <SelectItem value="voortijdig_beeindigd">Voortijdig beëindigd</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={payrollerFilter} onValueChange={setPayrollerFilter}>
+        <Select value={payrollerFilter} onValueChange={(v) => setPayrollerFilter(v as PayrollerType | 'all')}>
           <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Alle payrollers</SelectItem>

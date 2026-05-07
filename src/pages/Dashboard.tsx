@@ -134,9 +134,9 @@ const Dashboard = () => {
       ]);
 
       const totalCap = unitRes.data?.reduce((s, u) => s + (u.capacity ?? 0), 0) ?? 0;
-      const totalOcc = unitRes.data?.reduce((s, u) => s + (Number(u.current_occupancy) ?? 0), 0) ?? 0;
+      const totalOcc = unitRes.data?.reduce((s, u) => s + Number(u.current_occupancy ?? 0), 0) ?? 0;
       const occ = totalCap > 0 ? Math.round((totalOcc / totalCap) * 100) : 0;
-      const weekHours = tsRes.data?.reduce((s, t) => s + (Number(t.hours) ?? 0), 0) ?? 0;
+      const weekHours = tsRes.data?.reduce((s, t) => s + Number(t.hours ?? 0), 0) ?? 0;
 
       setStats({
         activeEmployees: empRes.count ?? 0,

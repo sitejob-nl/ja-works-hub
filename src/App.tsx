@@ -195,6 +195,7 @@ const App = () => (
             <Route path="/onboarding/:token" element={<Onboarding />} />
             <Route path="/contract/sign/:token" element={<ContractSign />} />
             <Route path="/match-response/:token" element={<MatchResponse />} />
+            <Route path="/match/reageer/:token" element={<MatchResponse />} />
             <Route path="/profiel/:token" element={<CandidateProfile />} />
             <Route path="/portaal/activeren/:token" element={<PortalActivate />} />
             <Route path="/portaal/login" element={<PortalLogin />} />

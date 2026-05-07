@@ -73,13 +73,17 @@ const ClientPortalActivateSheet = ({ open, onOpenChange, contactId, companyId, c
         <p>Deze link is 7 dagen geldig.</p>
         <p>Met vriendelijke groet,<br/>JA Werkt</p>
       `;
-      await callApi('me/sendMail', 'POST', {
-        message: {
-          subject: 'Uitnodiging Opdrachtgeverportaal',
-          body: { contentType: 'HTML', content: html },
-          toRecipients: [{ emailAddress: { address: email } }],
+      await callApi({
+        endpoint: 'me/sendMail',
+        method: 'POST',
+        payload: {
+          message: {
+            subject: 'Uitnodiging Opdrachtgeverportaal',
+            body: { contentType: 'HTML', content: html },
+            toRecipients: [{ emailAddress: { address: email } }],
+          },
+          saveToSentItems: true,
         },
-        saveToSentItems: true,
       });
       setEmailSent(true);
       toast.success('Uitnodiging verstuurd per e-mail');

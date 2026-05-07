@@ -43,6 +43,10 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     return <Navigate to="/portaal" replace />;
   }
 
+  if (profile.role === 'opdrachtgever') {
+    return <Navigate to="/klantportaal" replace />;
+  }
+
   return <>{children}</>;
 };
 

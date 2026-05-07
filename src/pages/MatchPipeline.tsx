@@ -87,8 +87,11 @@ const MatchPipeline = () => {
   };
 
   // Get unique vacancies for filter
+  const vacancyEntries = (matches as any[])
+    .map((m: any): [string, any] | null => (m.vacancies?.id ? [m.vacancies.id, m.vacancies] : null))
+    .filter((entry): entry is [string, any] => entry !== null);
   const vacancies = Array.from(
-    new Map((matches as any[]).map((m: any) => [m.vacancies?.id, m.vacancies]).filter(([id]: any) => id)).values()
+    new Map<string, any>(vacancyEntries).values()
   );
 
   // Filter matches

@@ -31,7 +31,7 @@ export function ConversationList({
     if (search) {
       const q = search.toLowerCase();
       const matchName = conv.candidateName?.toLowerCase().includes(q);
-      const matchPhone = conv.phone.includes(search.replace(/[\s\-]/g, ''));
+      const matchPhone = conv.phone.includes(search.replace(/[\s-]/g, ''));
       if (!matchName && !matchPhone) return false;
     }
 

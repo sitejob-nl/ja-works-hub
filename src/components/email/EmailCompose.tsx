@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { Send, Loader2, X, Paperclip } from 'lucide-react';
 import { buildEmailHtmlWithSignature } from '@/lib/email-signature';
+import { sanitizeHtml } from '@/lib/sanitize-html';
 
 interface EmailComposeProps {
   open: boolean;
@@ -156,7 +157,7 @@ const EmailCompose = ({ open, onOpenChange, replyTo, defaultTo, defaultSubject }
           {replyTo?.body && (
             <div className="border rounded-md p-3 bg-muted/50 text-sm text-muted-foreground max-h-32 overflow-y-auto">
               <p className="text-xs font-medium mb-1">Origineel bericht van {replyTo.from}:</p>
-              <div dangerouslySetInnerHTML={{ __html: replyTo.body }} className="prose prose-sm max-w-none" />
+              <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(replyTo.body) }} className="prose prose-sm max-w-none" />
             </div>
           )}
 

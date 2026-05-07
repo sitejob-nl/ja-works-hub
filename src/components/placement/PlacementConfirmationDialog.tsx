@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { Mail, AlertTriangle, Building2, User, Loader2, Home, Navigation, Users, MapPin } from 'lucide-react';
 import { sendPlacementConfirmation, getHousingSuggestions, type PlacementConfirmationResult, type HousingSuggestion } from './PlacementTriggers';
 import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { logAudit } from '@/lib/audit';
 
@@ -17,15 +18,17 @@ interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   placementId: string;
-  candidateId: string;
+  candidateId?: string;
   candidateName: string;
   candidateEmail: string | null;
   candidatePhone: string | null;
-  companyId: string;
+  companyId?: string;
   companyName: string;
   functionName: string;
   startDate: string;
 }
+
+type HousingAssignmentStatus = Database['public']['Enums']['housing_assignment_status'];
 
 /**
  * Renders server-generated HTML preview inside a sandboxed iframe.
@@ -109,14 +112,24 @@ const PlacementConfirmationDialog = ({
 
   const handleAssignHousing = async () => {
     if (noHousingNeeded || !selectedSuggestion) return;
+    if (!candidateId) throw new Error('Geen kandidaat gevonden voor huisvesting');
     setAssigningHousing(true);
     try {
+      const { data: employee, error: employeeError } = await supabase
+        .from('employees')
+        .select('id')
+        .eq('candidate_id', candidateId)
+        .maybeSingle();
+      if (employeeError) throw employeeError;
+      if (!employee?.id) throw new Error('Geen medewerkerrecord gevonden voor huisvesting');
+
       const { data: assignment, error } = await supabase.from('housing_assignments').insert({
         organization_id: orgId,
         unit_id: selectedSuggestion.unitId,
+        employee_id: employee.id,
         candidate_id: candidateId,
         check_in_date: startDate,
-        status: 'ingecheckt' as any,
+        status: 'ingecheckt' satisfies HousingAssignmentStatus,
         deduction_amount: selectedSuggestion.weeklyCost ?? selectedSuggestion.monthlyCost,
         payment_frequency: selectedSuggestion.weeklyCost ? 'wekelijks' : 'maandelijks',
         monthly_deduction: selectedSuggestion.monthlyCost,

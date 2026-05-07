@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
@@ -21,6 +22,8 @@ const CONTACT_ROLES = [
   { value: 'overig', label: 'Overig' },
 ] as const;
 
+type ContactRole = Database['public']['Enums']['contact_role'];
+
 const ROLE_COLORS: Record<string, string> = {
   admin: 'bg-blue-50 text-blue-700',
   plaatsing: 'bg-green-50 text-green-700',
@@ -33,7 +36,7 @@ interface FormState {
   first_name: string;
   last_name: string;
   function_title: string;
-  role: string;
+  role: ContactRole;
   phone: string;
   email: string;
   linkedin_url: string;
@@ -60,7 +63,7 @@ const ContactsTab = ({ companyId }: { companyId: string }) => {
     },
   });
 
-  const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
+  const set = <K extends keyof FormState>(k: K, v: FormState[K]) => setForm((f) => ({ ...f, [k]: v }));
 
   const buildPayload = () => {
     const full_name = [form.first_name, form.last_name].filter(Boolean).join(' ') || form.full_name;
@@ -149,7 +152,7 @@ const ContactsTab = ({ companyId }: { companyId: string }) => {
       <TableCell><Input value={form.first_name} onChange={(e) => set('first_name', e.target.value)} placeholder="Voornaam" className="h-8" onClick={(e) => e.stopPropagation()} /></TableCell>
       <TableCell><Input value={form.last_name} onChange={(e) => set('last_name', e.target.value)} placeholder="Achternaam" className="h-8" onClick={(e) => e.stopPropagation()} /></TableCell>
       <TableCell>
-        <Select value={form.role} onValueChange={(v) => set('role', v)}>
+        <Select value={form.role} onValueChange={(v) => set('role', v as ContactRole)}>
           <SelectTrigger className="h-8" onClick={(e) => e.stopPropagation()}><SelectValue /></SelectTrigger>
           <SelectContent>
             {CONTACT_ROLES.map(r => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}
@@ -163,7 +166,18 @@ const ContactsTab = ({ companyId }: { companyId: string }) => {
       <TableCell>
         <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
           <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => isInline ? updateMutation.mutate() : addMutation.mutate()} disabled={!hasName}><Check className="h-3.5 w-3.5" /></Button>
-          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { isInline ? setEditId(null) : setAdding(false); setShowExtra(false); }}><X className="h-3.5 w-3.5" /></Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-7 w-7"
+            onClick={() => {
+              if (isInline) setEditId(null);
+              else setAdding(false);
+              setShowExtra(false);
+            }}
+          >
+            <X className="h-3.5 w-3.5" />
+          </Button>
         </div>
       </TableCell>
     </>
