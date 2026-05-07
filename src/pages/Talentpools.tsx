@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { useAuth } from '@/contexts/AuthContext';
 import { Link, useNavigate } from 'react-router-dom';
-import { FolderHeart, Plus, Search, Trash2 } from 'lucide-react';
+import { FolderHeart, Plus, Search, Trash2, Wand2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -39,12 +39,75 @@ const Talentpools = () => {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const [createOpen, setCreateOpen] = useState(false);
+  const [genFnOpen, setGenFnOpen] = useState(false);
+  const [genForm, setGenForm] = useState({ company_id: '', function_id: '' });
   const [form, setForm] = useState({
     name: '',
     description: '',
     color: '#3b82f6',
     is_dynamic: false,
     refresh_frequency: 'manual' as 'manual' | 'daily' | 'weekly',
+  });
+
+  const { data: genCompanies = [] } = useQuery({
+    queryKey: ['gen-companies', orgId],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('companies').select('id, name').eq('is_active', true).order('name');
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: genFnOpen,
+  });
+
+  const { data: genFunctions = [] } = useQuery({
+    queryKey: ['gen-functions', genForm.company_id],
+    queryFn: async () => {
+      if (!genForm.company_id) return [];
+      const { data, error } = await supabase
+        .from('company_functions')
+        .select('id, name, required_skills')
+        .eq('company_id', genForm.company_id)
+        .eq('is_active', true)
+        .order('name');
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: genFnOpen && !!genForm.company_id,
+  });
+
+  const generateMutation = useMutation({
+    mutationFn: async () => {
+      const fn = genFunctions.find((f: any) => f.id === genForm.function_id) as any;
+      const company = genCompanies.find((c: any) => c.id === genForm.company_id) as any;
+      if (!fn || !company) throw new Error('Selecteer opdrachtgever en functie');
+      const skills: string[] = Array.isArray(fn.required_skills) ? fn.required_skills : [];
+      if (skills.length === 0) throw new Error('Functie heeft geen standaard-vaardigheden — voeg eerst skills toe op de functie');
+
+      const { data, error } = await supabase
+        .from('talentpools' as any)
+        .insert({
+          organization_id: orgId,
+          name: `${fn.name} — ${company.name}`,
+          description: `Auto-gegenereerd uit functie "${fn.name}" van ${company.name}. Vult zichzelf op basis van vaardigheden.`,
+          color: '#a855f7',
+          created_by: profile?.id || null,
+          is_dynamic: true,
+          refresh_frequency: 'manual',
+          filter_criteria: { skills },
+        })
+        .select('id')
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data: any) => {
+      qc.invalidateQueries({ queryKey: ['talentpools'] });
+      setGenFnOpen(false);
+      setGenForm({ company_id: '', function_id: '' });
+      toast.success('Pool gegenereerd uit functie — open en klik "Ververs nu" om te vullen');
+      if (data?.id) navigate(`/talentpools/${data.id}`);
+    },
+    onError: (e: any) => toast.error(e.message),
   });
 
   const { data, isLoading } = useQuery({
@@ -106,9 +169,14 @@ const Talentpools = () => {
           <h1 className="text-2xl font-semibold">Talentpools</h1>
           <p className="text-muted-foreground text-sm mt-1 hidden sm:block">Groepeer kandidaten in herbruikbare lijsten</p>
         </div>
-        <Button size="sm" onClick={() => setCreateOpen(true)} className="gap-1.5">
-          <Plus className="h-4 w-4" /> Nieuwe talentpool
-        </Button>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => setGenFnOpen(true)} className="gap-1.5">
+            <Wand2 className="h-4 w-4" /> Genereer uit functie
+          </Button>
+          <Button size="sm" onClick={() => setCreateOpen(true)} className="gap-1.5">
+            <Plus className="h-4 w-4" /> Nieuwe talentpool
+          </Button>
+        </div>
       </div>
 
       <div className="flex items-center gap-3">
@@ -211,6 +279,68 @@ const Talentpools = () => {
           )}
         </>
       )}
+
+      {/* Genereer uit functie Sheet */}
+      <Sheet open={genFnOpen} onOpenChange={setGenFnOpen}>
+        <SheetContent>
+          <SheetHeader>
+            <SheetTitle>Genereer pool uit functie</SheetTitle>
+          </SheetHeader>
+          <div className="space-y-4 mt-6">
+            <p className="text-sm text-muted-foreground">
+              Maakt een dynamische pool die zich vult op basis van de vaardigheden die op de functie staan.
+              Pas vaardigheden aan op de functie en de pool past zich automatisch aan bij de volgende refresh.
+            </p>
+            <div className="space-y-1.5">
+              <Label>Opdrachtgever *</Label>
+              <Select value={genForm.company_id} onValueChange={(v) => setGenForm({ company_id: v, function_id: '' })}>
+                <SelectTrigger><SelectValue placeholder="Selecteer opdrachtgever" /></SelectTrigger>
+                <SelectContent>
+                  {genCompanies.map((c: any) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            {genForm.company_id && (
+              <div className="space-y-1.5">
+                <Label>Functie *</Label>
+                <Select value={genForm.function_id} onValueChange={(v) => setGenForm((g) => ({ ...g, function_id: v }))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder={genFunctions.length ? 'Selecteer functie' : 'Geen functies — voeg eerst toe op opdrachtgever'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {genFunctions.map((fn: any) => {
+                      const skills: string[] = Array.isArray(fn.required_skills) ? fn.required_skills : [];
+                      return (
+                        <SelectItem key={fn.id} value={fn.id}>
+                          {fn.name} {skills.length > 0 ? `(${skills.length} skills)` : '(geen skills)'}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+                {genForm.function_id && (() => {
+                  const fn = genFunctions.find((f: any) => f.id === genForm.function_id) as any;
+                  const skills: string[] = Array.isArray(fn?.required_skills) ? fn.required_skills : [];
+                  return skills.length > 0 ? (
+                    <div className="flex flex-wrap gap-1 pt-2">
+                      {skills.map((s) => <Badge key={s} variant="secondary" className="text-xs">{s}</Badge>)}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-amber-600 pt-1">Deze functie heeft geen standaard-vaardigheden. Voeg eerst skills toe op de functie.</p>
+                  );
+                })()}
+              </div>
+            )}
+            <Button
+              onClick={() => generateMutation.mutate()}
+              disabled={!genForm.function_id || generateMutation.isPending}
+              className="w-full mt-4"
+            >
+              {generateMutation.isPending ? 'Aanmaken...' : 'Pool aanmaken'}
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {/* Create Sheet */}
       <Sheet open={createOpen} onOpenChange={setCreateOpen}>

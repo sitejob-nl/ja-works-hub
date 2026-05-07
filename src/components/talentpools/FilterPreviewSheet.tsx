@@ -10,6 +10,10 @@ import { Badge } from '@/components/ui/badge';
 import { Plus, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { FilterCriteria } from './PoolFilterBuilder';
+import type { Database } from '@/integrations/supabase/types';
+
+type CandidateStatus = Database['public']['Enums']['candidate_status'];
+type ComplianceStatus = Database['public']['Enums']['compliance_status'];
 
 interface FilterPreviewSheetProps {
   open: boolean;
@@ -44,10 +48,10 @@ export default function FilterPreviewSheet({
         .limit(200);
 
       if (filter.status?.length) {
-        query = query.in('status', filter.status);
+        query = query.in('status', filter.status as CandidateStatus[]);
       }
       if (filter.compliance_status?.length) {
-        query = query.in('compliance_status', filter.compliance_status);
+        query = query.in('compliance_status', filter.compliance_status as ComplianceStatus[]);
       }
       if (filter.skills?.length) {
         query = query.overlaps('skills', filter.skills);

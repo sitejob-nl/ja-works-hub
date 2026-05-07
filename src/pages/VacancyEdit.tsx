@@ -52,6 +52,8 @@ const VacancyEdit = () => {
     start_date_kind: 'date' as 'date' | 'asap',
     end_date: '',
     hourly_rate: '',
+    salary_min: '',
+    salary_max: '',
     required_skills: [] as string[],
     required_certifications: [] as string[],
     requires_drivers_license: false,
@@ -75,6 +77,8 @@ const VacancyEdit = () => {
         start_date_kind: v.start_date_text ? 'asap' : 'date',
         end_date: v.end_date ?? '',
         hourly_rate: v.hourly_rate?.toString() ?? '',
+        salary_min: v.salary_min?.toString() ?? '',
+        salary_max: v.salary_max?.toString() ?? '',
         required_skills: v.required_skills ?? [],
         required_certifications: v.required_certifications ?? [],
         requires_drivers_license: v.requires_drivers_license ?? false,
@@ -90,7 +94,7 @@ const VacancyEdit = () => {
       if (!form.company_id) return [];
       const { data, error } = await supabase
         .from('company_functions')
-        .select('id, name, default_hourly_rate')
+        .select('id, name, default_hourly_rate, salary_min, salary_max, required_skills')
         .eq('company_id', form.company_id)
         .eq('is_active', true)
         .order('name');
@@ -107,12 +111,15 @@ const VacancyEdit = () => {
       setForm((f) => ({ ...f, function_id: FUNCTION_FREE_TEXT }));
       return;
     }
-    const fn = companyFunctions.find((f) => f.id === value);
+    const fn = companyFunctions.find((f) => f.id === value) as any;
     setForm((f) => ({
       ...f,
       function_id: value,
       title: fn?.name ?? f.title,
-      hourly_rate: fn?.default_hourly_rate ? String(fn.default_hourly_rate) : f.hourly_rate,
+      hourly_rate: f.hourly_rate || (fn?.default_hourly_rate ? String(fn.default_hourly_rate) : ''),
+      salary_min: f.salary_min || (fn?.salary_min != null ? String(fn.salary_min) : ''),
+      salary_max: f.salary_max || (fn?.salary_max != null ? String(fn.salary_max) : ''),
+      required_skills: f.required_skills.length ? f.required_skills : (Array.isArray(fn?.required_skills) ? fn.required_skills : []),
     }));
   };
 
@@ -129,6 +136,9 @@ const VacancyEdit = () => {
             company_id: form.company_id,
             name: form.title.trim(),
             default_hourly_rate: form.hourly_rate ? parseFloat(form.hourly_rate) : null,
+            salary_min: form.salary_min ? parseFloat(form.salary_min) : null,
+            salary_max: form.salary_max ? parseFloat(form.salary_max) : null,
+            required_skills: form.required_skills,
             is_active: true,
           })
           .select('id')
@@ -150,6 +160,8 @@ const VacancyEdit = () => {
         start_date_text: isAsap ? (form.start_date_text || 'Direct') : null,
         end_date: form.end_date || null,
         hourly_rate: form.hourly_rate ? parseFloat(form.hourly_rate) : null,
+        salary_min: form.salary_min ? parseFloat(form.salary_min) : null,
+        salary_max: form.salary_max ? parseFloat(form.salary_max) : null,
         required_skills: form.required_skills.length ? form.required_skills : null,
         required_certifications: form.required_certifications.length ? form.required_certifications : null,
         requires_drivers_license: form.requires_drivers_license,
@@ -272,7 +284,20 @@ const VacancyEdit = () => {
             </div>
           </div>
 
-          <div className="space-y-1.5"><Label>Uurtarief (€)</Label><Input type="number" step="0.01" value={form.hourly_rate} onChange={(e) => set('hourly_rate', e.target.value)} className="max-w-xs" /></div>
+          <div className="grid grid-cols-3 gap-4">
+            <div className="space-y-1.5">
+              <Label>Salaris min (€/u)</Label>
+              <Input type="number" step="0.01" value={form.salary_min} onChange={(e) => set('salary_min', e.target.value)} placeholder="bv. 22.50" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Salaris max (€/u)</Label>
+              <Input type="number" step="0.01" value={form.salary_max} onChange={(e) => set('salary_max', e.target.value)} placeholder="bv. 28.00" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Uurtarief (€)</Label>
+              <Input type="number" step="0.01" value={form.hourly_rate} onChange={(e) => set('hourly_rate', e.target.value)} placeholder="optioneel" />
+            </div>
+          </div>
           <div className="space-y-1.5"><Label>Vereiste vaardigheden</Label><TagInput value={form.required_skills} onChange={(v) => set('required_skills', v)} placeholder="Typ vaardigheid + Enter" /></div>
           <div className="space-y-1.5"><Label>Vereiste certificaten</Label><TagInput value={form.required_certifications} onChange={(v) => set('required_certifications', v)} placeholder="Typ certificaat + Enter" /></div>
           <div className="flex items-center gap-2">

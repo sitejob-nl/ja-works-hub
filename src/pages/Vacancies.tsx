@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
-import { formatDate } from '@/lib/format';
+import { formatDate, formatEUR } from '@/lib/format';
 import { logAudit } from '@/lib/audit';
 import { toast } from 'sonner';
 
@@ -34,6 +34,14 @@ const urgencyMeta: Record<number, { label: string; className: string }> = {
 
 const isOverdue = (startDate: string | null, status: string) =>
   status === 'open' && !!startDate && new Date(startDate) < new Date(new Date().toDateString());
+
+const renderSalary = (v: any): string => {
+  if (v.salary_min != null && v.salary_max != null) return `${formatEUR(v.salary_min)} – ${formatEUR(v.salary_max)}`;
+  if (v.salary_min != null) return `vanaf ${formatEUR(v.salary_min)}`;
+  if (v.salary_max != null) return `tot ${formatEUR(v.salary_max)}`;
+  if (v.hourly_rate != null) return formatEUR(v.hourly_rate);
+  return '—';
+};
 
 const Vacancies = () => {
   const navigate = useNavigate();
@@ -131,6 +139,7 @@ const Vacancies = () => {
                   <TableHead>Opdrachtgever</TableHead>
                   <TableHead>Locatie</TableHead>
                   <TableHead>Aantal</TableHead>
+                  <TableHead>Salaris</TableHead>
                   <TableHead>Urgentie</TableHead>
                   <TableHead>Startdatum</TableHead>
                   <TableHead>Status</TableHead>
@@ -150,6 +159,7 @@ const Vacancies = () => {
                       <TableCell>{(v.companies as any)?.name ?? '—'}</TableCell>
                       <TableCell>{v.location ?? '—'}</TableCell>
                       <TableCell>{v.filled_count}/{v.required_count}</TableCell>
+                      <TableCell className="whitespace-nowrap text-sm">{renderSalary(v)}</TableCell>
                       <TableCell>
                         <Badge variant="secondary" className={meta?.className ?? 'bg-muted text-muted-foreground border-0'}>
                           {meta?.label ?? '—'}

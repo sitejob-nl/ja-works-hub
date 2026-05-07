@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, type ComponentProps } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import type { Json } from '@/integrations/supabase/types';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,6 +25,15 @@ import VacancyMatchSheet from '@/components/talentpools/VacancyMatchSheet';
 import { Filter, RefreshCw, Save, Send, Sparkles, Loader2 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+
+type TalentpoolEntityType = ComponentProps<typeof NotesSection>['entityType'];
+type LastRefreshMeta = {
+  added?: number;
+  removed?: number;
+  total?: number;
+};
+
+const TALENTPOOL_ENTITY_TYPE = 'talentpool' as TalentpoolEntityType;
 
 const POOL_COLORS = [
   { label: 'Blauw', value: '#3b82f6' },
@@ -68,7 +78,7 @@ const TalentpoolDetail = () => {
     queryKey: ['talentpool-detail', id],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('talentpools' as any)
+        .from('talentpools')
         .select('*')
         .eq('id', id!)
         .single();
@@ -82,7 +92,7 @@ const TalentpoolDetail = () => {
     queryKey: ['talentpool-members', id],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('talentpool_members' as any)
+        .from('talentpool_members')
         .select('*, candidates!talentpool_members_candidate_id_fkey(id, first_name, last_name, email, phone, status, skills)')
         .eq('talentpool_id', id!);
       if (error) throw error;
@@ -104,7 +114,7 @@ const TalentpoolDetail = () => {
   const updateMutation = useMutation({
     mutationFn: async () => {
       const { error } = await supabase
-        .from('talentpools' as any)
+        .from('talentpools')
         .update({
           name: form.name,
           description: form.description || null,
@@ -125,7 +135,7 @@ const TalentpoolDetail = () => {
   const removeMutation = useMutation({
     mutationFn: async (candidateId: string) => {
       const { error } = await supabase
-        .from('talentpool_members' as any)
+        .from('talentpool_members')
         .delete()
         .eq('talentpool_id', id!)
         .eq('candidate_id', candidateId);
@@ -142,7 +152,7 @@ const TalentpoolDetail = () => {
   const deleteMutation = useMutation({
     mutationFn: async () => {
       const { error } = await supabase
-        .from('talentpools' as any)
+        .from('talentpools')
         .delete()
         .eq('id', id!);
       if (error) throw error;
@@ -157,9 +167,10 @@ const TalentpoolDetail = () => {
 
   const saveFiltersMutation = useMutation({
     mutationFn: async (criteria: FilterCriteria) => {
+      const nextCriteria: Json | null = Object.keys(criteria).length > 0 ? { ...criteria } : null;
       const { error } = await supabase
-        .from('talentpools' as any)
-        .update({ filter_criteria: Object.keys(criteria).length > 0 ? criteria : null })
+        .from('talentpools')
+        .update({ filter_criteria: nextCriteria })
         .eq('id', id!);
       if (error) throw error;
     },
@@ -173,7 +184,7 @@ const TalentpoolDetail = () => {
   const dynamicMutation = useMutation({
     mutationFn: async (patch: { is_dynamic?: boolean; refresh_frequency?: string }) => {
       const { error } = await supabase
-        .from('talentpools' as any)
+        .from('talentpools')
         .update(patch)
         .eq('id', id!);
       if (error) throw error;
@@ -211,8 +222,9 @@ const TalentpoolDetail = () => {
   });
 
   // Sync filter state from pool data
-  const poolFilterCriteria = pool?.filter_criteria ?? {};
-  const activeFilter = Object.keys(filterCriteria).length > 0 ? filterCriteria : poolFilterCriteria;
+  const poolFilterCriteria = (pool?.filter_criteria as FilterCriteria | null) ?? {};
+  const activeFilter: FilterCriteria = Object.keys(filterCriteria).length > 0 ? filterCriteria : poolFilterCriteria;
+  const lastRefreshMeta = pool?.last_refresh_meta as LastRefreshMeta | null | undefined;
 
   const existingMemberIds = members.map((m: any) => m.candidate_id);
 
@@ -356,9 +368,9 @@ const TalentpoolDetail = () => {
             {!pool.filter_criteria && (
               <p className="text-xs text-amber-600 w-full">Stel eerst filters in via Slimme filters hieronder.</p>
             )}
-            {pool.last_refresh_meta && (
+            {lastRefreshMeta && (
               <p className="text-xs text-muted-foreground w-full">
-                Laatste run: +{pool.last_refresh_meta.added} toegevoegd, -{pool.last_refresh_meta.removed} verwijderd, totaal {pool.last_refresh_meta.total}
+                Laatste run: +{lastRefreshMeta.added} toegevoegd, -{lastRefreshMeta.removed} verwijderd, totaal {lastRefreshMeta.total}
               </p>
             )}
           </div>
@@ -512,8 +524,8 @@ const TalentpoolDetail = () => {
           )}
         </TabsContent>
 
-        <TabsContent value="notities"><NotesSection entityId={id!} entityType="talentpool" /></TabsContent>
-        <TabsContent value="taken"><TasksSection entityId={id!} entityType="talentpool" /></TabsContent>
+        <TabsContent value="notities"><NotesSection entityId={id!} entityType={TALENTPOOL_ENTITY_TYPE} /></TabsContent>
+        <TabsContent value="taken"><TasksSection entityId={id!} entityType={TALENTPOOL_ENTITY_TYPE} /></TabsContent>
       </Tabs>
 
       <AddCandidateSheet

@@ -17,6 +17,12 @@ interface AddToPoolSheetProps {
   onDone?: () => void;
 }
 
+type TalentpoolOption = {
+  id: string;
+  name: string;
+  color: string | null;
+};
+
 const AddToPoolSheet = ({ open, onOpenChange, candidateIds, onDone }: AddToPoolSheetProps) => {
   const orgId = useOrganizationId();
   const { profile } = useAuth();
@@ -34,13 +40,13 @@ const AddToPoolSheet = ({ open, onOpenChange, candidateIds, onDone }: AddToPoolS
         .eq('organization_id', orgId)
         .order('name');
       if (error) throw error;
-      return data ?? [];
+      return ((data ?? []) as unknown) as TalentpoolOption[];
     },
     enabled: open,
   });
 
   const filteredPools = search
-    ? pools.filter((p: any) => p.name.toLowerCase().includes(search.toLowerCase()))
+    ? pools.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()))
     : pools;
 
   const addToPoolMutation = useMutation({
@@ -76,9 +82,11 @@ const AddToPoolSheet = ({ open, onOpenChange, candidateIds, onDone }: AddToPoolS
         .select('id')
         .single();
       if (createError) throw createError;
+      const poolId = (((pool as unknown) as { id: string } | null)?.id);
+      if (!poolId) throw new Error('Nieuwe talentpool kon niet worden bepaald');
 
       const rows = candidateIds.map((candidate_id) => ({
-        talentpool_id: pool.id,
+        talentpool_id: poolId,
         candidate_id,
         added_by: profile?.id || null,
       }));
@@ -126,7 +134,7 @@ const AddToPoolSheet = ({ open, onOpenChange, candidateIds, onDone }: AddToPoolS
               ) : filteredPools.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-8">Geen pools gevonden</p>
               ) : (
-                filteredPools.map((p: any) => (
+                filteredPools.map((p) => (
                   <button
                     key={p.id}
                     type="button"
