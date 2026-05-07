@@ -50,7 +50,7 @@ const EmployeePortalTab = ({ candidateId, candidate }: { candidateId: string; ca
       <PortalActivateSheet
         open={sheetOpen}
         onOpenChange={setSheetOpen}
-        employeeId={candidateId}
+        candidateId={candidateId}
         candidateEmail={c?.email}
       />
     </div>

@@ -21,7 +21,7 @@ export function useWhatsAppMessages(orgId: string, phone: string | null) {
       if (!phone) return [];
 
       // Build phone variants for matching
-      const cleanPhone = phone.replace(/[\s\-\+]/g, '');
+      const cleanPhone = phone.replace(/[\s+.-]/g, '');
       const phoneVariants = [
         phone,
         `+${cleanPhone}`,

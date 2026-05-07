@@ -14,6 +14,17 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { nl } from 'date-fns/locale';
 
+const resolveEmployeeRecordId = async (candidateId: string) => {
+  const { data, error } = await supabase
+    .from('employees')
+    .select('id')
+    .eq('candidate_id', candidateId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data?.id) throw new Error('Geen medewerkerrecord gevonden voor deze kandidaat');
+  return data.id;
+};
+
 const damageTypes = [
   'Lekke band',
   'Motorstoring',
@@ -69,6 +80,7 @@ const PortalVehicle = () => {
       if (!description.trim()) throw new Error('Vul een beschrijving in');
 
       const vehicle = assignment.vehicles as any;
+      const employeeRecordId = assignment.employee_id ?? await resolveEmployeeRecordId(employeeId);
 
       // Upload photos
       const uploadedPaths: string[] = [];
@@ -83,6 +95,7 @@ const PortalVehicle = () => {
       const { error } = await supabase.from('vehicle_damage_reports').insert({
         vehicle_id: vehicle.id,
         candidate_id: employeeId,
+        employee_id: employeeRecordId,
         organization_id: orgId,
         damage_type: damageType,
         description: description.trim(),

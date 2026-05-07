@@ -43,7 +43,7 @@ export const checkCompliance = async (
 
   // 1. Try to load dynamic rules
   let rulesApplied = 'standaard';
-  let query = supabase.from('compliance_rules' as any).select('*').eq('is_active', true);
+  const query = supabase.from('compliance_rules' as any).select('*').eq('is_active', true);
 
   const { data: allRules } = await query;
   const rules = (allRules as any[] || []).filter((r: any) => {
@@ -59,17 +59,24 @@ export const checkCompliance = async (
   const applicableRules = [...new Map([...globalRules, ...rules].map(r => [r.id, r])).values()];
 
   // 2. Get candidate + docs
-  const [{ data: candidate }, { data: docs }] = await Promise.all([
+  const [{ data: candidate }, { data: docs }, { data: sensitiveData }] = await Promise.all([
     supabase.from('candidates')
-      .select('first_name, last_name, bsn, iban, date_of_birth, nationality, has_drivers_license, drivers_license_expiry, phone, email, address_street')
+      .select('first_name, last_name, date_of_birth, nationality, has_drivers_license, drivers_license_expiry, phone, email, address_street')
       .eq('id', candidateId)
       .single(),
     supabase.from('documents')
       .select('type, status')
       .eq('candidate_id', candidateId),
+    supabase.rpc('get_candidate_decrypted', { p_candidate_id: candidateId } as any),
   ]);
 
   const docTypes = (docs ?? []).map(d => d.type);
+  const sensitive = Array.isArray(sensitiveData) ? sensitiveData[0] : sensitiveData;
+  const hasSensitiveField = (field: string) => {
+    if (field === 'bsn') return Boolean((sensitive as any)?.decrypted_bsn);
+    if (field === 'iban') return Boolean((sensitive as any)?.decrypted_iban);
+    return Boolean(candidate && (candidate as any)[field]);
+  };
 
   if (applicableRules.length > 0) {
     // Use dynamic rules
@@ -95,7 +102,7 @@ export const checkCompliance = async (
 
     // Check fields
     for (const field of requiredFields) {
-      if (!candidate || !(candidate as any)[field]) {
+      if (!hasSensitiveField(field)) {
         issues.push(`${FIELD_LABELS[field] || field} niet ingevuld`);
       }
     }
@@ -108,8 +115,8 @@ export const checkCompliance = async (
     if (!hasValidId) issues.push('Geen geldig ID bewijs');
     if (!hasContract) issues.push('Contract niet getekend');
     if (!hasReglement) issues.push('Reglement niet afgetekend');
-    if (!candidate?.bsn) issues.push('BSN niet ingevuld');
-    if (!candidate?.iban) issues.push('IBAN niet ingevuld');
+    if (!hasSensitiveField('bsn')) issues.push('BSN niet ingevuld');
+    if (!hasSensitiveField('iban')) issues.push('IBAN niet ingevuld');
     if (!candidate?.date_of_birth) issues.push('Geboortedatum ontbreekt');
   }
 

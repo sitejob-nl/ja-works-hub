@@ -12,6 +12,17 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { nl } from 'date-fns/locale';
 
+const resolveEmployeeRecordId = async (candidateId: string) => {
+  const { data, error } = await supabase
+    .from('employees')
+    .select('id')
+    .eq('candidate_id', candidateId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data?.id) throw new Error('Geen medewerkerrecord gevonden voor deze kandidaat');
+  return data.id;
+};
+
 const PortalSickReport = () => {
   const { employee } = usePortal();
   const qc = useQueryClient();
@@ -28,7 +39,7 @@ const PortalSickReport = () => {
     queryFn: async () => {
       const { data } = await supabase
         .from('placements')
-        .select('id')
+        .select('id, employee_id')
         .eq('candidate_id', employeeId!)
         .eq('status', 'actief' as any)
         .maybeSingle();
@@ -55,11 +66,13 @@ const PortalSickReport = () => {
     mutationFn: async () => {
       if (!employeeId || !orgId) throw new Error('Geen sessie');
       if (!reason.trim()) throw new Error('Vul een reden in');
+      const employeeRecordId = placement?.employee_id ?? await resolveEmployeeRecordId(employeeId);
 
       const { data: inserted, error } = await supabase
         .from('sick_reports')
         .insert({
           candidate_id: employeeId,
+          employee_id: employeeRecordId,
           organization_id: orgId,
           placement_id: placement?.id ?? null,
           notes: reason.trim(),

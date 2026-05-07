@@ -26,6 +26,17 @@ const typeBadge: Record<string, string> = { liv: 'bg-green-100 text-green-700 bo
 
 const emptyForm = { type: 'overig', description: '', amount_per_hour: '', max_annual_amount: '', start_date: '', end_date: '', is_active: true, notes: '' };
 
+const resolveEmployeeId = async (candidateId: string) => {
+  const { data, error } = await supabase
+    .from('employees')
+    .select('id')
+    .eq('candidate_id', candidateId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data?.id) throw new Error('Geen medewerkerrecord gevonden voor deze kandidaat');
+  return data.id;
+};
+
 const EmployeeSubsidiesTab = ({ candidateId }: { candidateId: string }) => {
   const orgId = useOrganizationId();
   const qc = useQueryClient();
@@ -62,7 +73,8 @@ const EmployeeSubsidiesTab = ({ candidateId }: { candidateId: string }) => {
         const { error } = await supabase.from('employee_subsidies').update(payload).eq('id', editItem.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('employee_subsidies').insert({ ...payload, candidate_id: candidateId, organization_id: orgId });
+        const employeeId = await resolveEmployeeId(candidateId);
+        const { error } = await supabase.from('employee_subsidies').insert({ ...payload, employee_id: employeeId, candidate_id: candidateId, organization_id: orgId });
         if (error) throw error;
       }
     },

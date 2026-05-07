@@ -23,6 +23,17 @@ const statusColors: Record<string, string> = {
   verlopen: 'bg-red-100 text-red-600 border-0',
 };
 
+const resolveEmployeeId = async (candidateId: string) => {
+  const { data, error } = await supabase
+    .from('employees')
+    .select('id')
+    .eq('candidate_id', candidateId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data?.id) throw new Error('Geen medewerkerrecord gevonden voor deze kandidaat');
+  return data.id;
+};
+
 const EmployeeContractsTab = ({ candidateId, candidate, employment }: { candidateId: string; candidate: any; employment?: any }) => {
   const orgId = useOrganizationId();
   const { user } = useAuth();
@@ -113,8 +124,10 @@ const EmployeeContractsTab = ({ candidateId, candidate, employment }: { candidat
   const createContract = useMutation({
     mutationFn: async () => {
       const token = crypto.randomUUID();
+      const employeeId = await resolveEmployeeId(candidateId);
       const { error } = await supabase.from('contracts').insert({
         organization_id: orgId,
+        employee_id: employeeId,
         candidate_id: candidateId,
         template_id: selectedTemplate || null,
         title: contractTitle,

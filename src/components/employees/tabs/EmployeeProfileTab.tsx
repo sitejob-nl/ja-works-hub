@@ -121,7 +121,7 @@ const EmployeeProfileTab = ({ candidateId, candidate, employment }: { candidateI
       <PortalActivateSheet
         open={sheetOpen}
         onOpenChange={setSheetOpen}
-        employeeId={candidateId}
+        candidateId={candidateId}
         candidateEmail={c?.email}
       />
     </div>

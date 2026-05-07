@@ -70,7 +70,7 @@ export function useWhatsAppConversations(orgId: string) {
 
 function extractPhone(subject: string): string | null {
   // "WhatsApp van/naar +316xxxxxxxx" or "WhatsApp van Name (phone)"
-  const match = subject.match(/[\+]?\d[\d\s\-]{8,}/);
+  const match = subject.match(/[+]?\d[\d\s-]{8,}/);
   if (!match) return null;
-  return match[0].replace(/[\s\-]/g, '');
+  return match[0].replace(/[\s-]/g, '');
 }

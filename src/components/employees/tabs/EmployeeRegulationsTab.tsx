@@ -12,6 +12,17 @@ import { toast } from 'sonner';
 import { useState } from 'react';
 import { logAudit } from '@/lib/audit';
 
+const resolveEmployeeId = async (candidateId: string) => {
+  const { data, error } = await supabase
+    .from('employees')
+    .select('id')
+    .eq('candidate_id', candidateId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data?.id) throw new Error('Geen medewerkerrecord gevonden voor deze kandidaat');
+  return data.id;
+};
+
 const EmployeeRegulationsTab = ({ candidateId }: { candidateId: string }) => {
   const orgId = useOrganizationId();
   const qc = useQueryClient();
@@ -46,9 +57,11 @@ const EmployeeRegulationsTab = ({ candidateId }: { candidateId: string }) => {
 
   const sign = useMutation({
     mutationFn: async (regulationId: string) => {
+      const employeeId = await resolveEmployeeId(candidateId);
       const { error } = await supabase.from('regulation_acknowledgements').insert({
         organization_id: orgId,
         regulation_id: regulationId,
+        employee_id: employeeId,
         candidate_id: candidateId,
       });
       if (error) throw error;

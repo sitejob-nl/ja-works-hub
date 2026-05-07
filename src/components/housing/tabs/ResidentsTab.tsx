@@ -28,6 +28,17 @@ import { logAudit } from '@/lib/audit';
 
 const WEEKS_PER_MONTH = 4.33;
 
+const resolveEmployeeId = async (candidateId: string) => {
+  const { data, error } = await supabase
+    .from('employees')
+    .select('id')
+    .eq('candidate_id', candidateId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data?.id) throw new Error('Geen medewerkerrecord gevonden voor deze kandidaat');
+  return data.id;
+};
+
 const ResidentsTab = ({ property }: { property: any }) => {
   const orgId = useOrganizationId();
   const qc = useQueryClient();
@@ -99,9 +110,11 @@ const ResidentsTab = ({ property }: { property: any }) => {
   const assign = useMutation({
     mutationFn: async () => {
       const deductionNum = form.deduction_amount ? Number(form.deduction_amount) : null;
+      const employeeId = await resolveEmployeeId(selectedEmployee.id);
       const { error } = await supabase.from('housing_assignments').insert({
         organization_id: orgId,
         unit_id: selectedUnit.id,
+        employee_id: employeeId,
         candidate_id: selectedEmployee.id,
         status: 'gereserveerd' as const,
         check_in_date: form.check_in_date,

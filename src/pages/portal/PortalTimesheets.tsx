@@ -13,6 +13,17 @@ import { toast } from 'sonner';
 import { format, startOfWeek, endOfWeek, addWeeks, eachDayOfInterval, isSameDay, getISOWeek } from 'date-fns';
 import { nl } from 'date-fns/locale';
 
+const resolveEmployeeRecordId = async (candidateId: string) => {
+  const { data, error } = await supabase
+    .from('employees')
+    .select('id')
+    .eq('candidate_id', candidateId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data?.id) throw new Error('Geen medewerkerrecord gevonden voor deze kandidaat');
+  return data.id;
+};
+
 const statusBadge: Record<string, string> = {
   concept: 'bg-muted text-muted-foreground border-0',
   ingediend: 'bg-yellow-100 text-yellow-700 border-0',
@@ -54,7 +65,7 @@ const PortalTimesheets = () => {
     queryFn: async () => {
       const { data } = await supabase
         .from('placements')
-        .select('id, company_id')
+        .select('id, company_id, employee_id')
         .eq('candidate_id', employeeId!)
         .eq('status', 'actief' as any)
         .maybeSingle();
@@ -93,8 +104,10 @@ const PortalTimesheets = () => {
     mutationFn: async () => {
       if (!editDay || !placement || !employeeId || !orgId) throw new Error('Geen actieve plaatsing');
       const workDate = format(editDay, 'yyyy-MM-dd');
+      const employeeRecordId = placement.employee_id ?? await resolveEmployeeRecordId(employeeId);
       const { error } = await supabase.from('timesheets').insert({
         candidate_id: employeeId,
+        employee_id: employeeRecordId,
         organization_id: orgId,
         placement_id: placement.id,
         work_date: workDate,

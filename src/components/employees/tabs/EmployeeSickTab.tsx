@@ -14,6 +14,17 @@ import { formatDate } from '@/lib/format';
 import { toast } from 'sonner';
 import { logAudit } from '@/lib/audit';
 
+const resolveEmployeeId = async (candidateId: string) => {
+  const { data, error } = await supabase
+    .from('employees')
+    .select('id')
+    .eq('candidate_id', candidateId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data?.id) throw new Error('Geen medewerkerrecord gevonden voor deze kandidaat');
+  return data.id;
+};
+
 const EmployeeSickTab = ({ candidateId, candidate }: { candidateId: string; candidate: any }) => {
   const orgId = useOrganizationId();
   const { user } = useAuth();
@@ -35,10 +46,12 @@ const EmployeeSickTab = ({ candidateId, candidate }: { candidateId: string; cand
 
   const createReport = useMutation({
     mutationFn: async () => {
+      const employeeId = await resolveEmployeeId(candidateId);
       const { data: inserted, error } = await supabase
         .from('sick_reports')
         .insert({
           organization_id: orgId,
+          employee_id: employeeId,
           candidate_id: candidateId,
           created_by: user?.id ?? null,
           expected_return_date: form.expected_return_date || null,
