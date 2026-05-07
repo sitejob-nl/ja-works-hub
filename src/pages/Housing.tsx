@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Link } from 'react-router-dom';
-import { Home, Plus, Search, LayoutGrid, List, Bed, Building2, ArrowUpDown } from 'lucide-react';
+import { Home, Plus, Search, LayoutGrid, List, Bed, Building2, ArrowUpDown, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -68,6 +68,20 @@ const Housing = () => {
         const percentage = totalCapacity > 0 ? Math.round((currentOccupancy / totalCapacity) * 100) : 0;
         return { ...p, totalCapacity, currentOccupancy, percentage };
       });
+    },
+  });
+
+  const { data: cleaningTasks = [] } = useQuery({
+    queryKey: ['housing-cleaning-overview'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('housing_cleaning_tasks' as any)
+        .select('id, title, due_date, priority, property_id, properties(name, address_street, address_city)')
+        .in('status', ['open', 'in_progress'])
+        .order('due_date', { ascending: true, nullsFirst: false })
+        .limit(5);
+      if (error) throw error;
+      return data as any[];
     },
   });
 
@@ -188,6 +202,37 @@ const Housing = () => {
 
       {properties.length > 0 && totalCapacity > 0 && (
         <AvailabilityChart totalCapacity={totalCapacity} />
+      )}
+
+      {cleaningTasks.length > 0 && (
+        <Card>
+          <CardContent className="pt-5">
+            <div className="flex items-center gap-2 mb-3">
+              <CheckCircle2 className="h-4 w-4 text-primary" />
+              <h2 className="text-sm font-semibold">Open schoonmaaktaken</h2>
+            </div>
+            <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
+              {cleaningTasks.map((task: any) => {
+                const property = task.properties;
+                const label = property?.name || [property?.address_street, property?.address_city].filter(Boolean).join(', ');
+                return (
+                  <Link key={task.id} to={`/huisvesting/${task.property_id}`} className="rounded-md border p-3 hover:bg-muted/50 transition">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-medium">{task.title}</p>
+                        <p className="text-xs text-muted-foreground">{label || 'Pand'}</p>
+                      </div>
+                      <Badge variant="secondary" className={task.priority === 'high' ? 'bg-red-100 text-red-700 border-0' : 'bg-yellow-100 text-yellow-700 border-0'}>
+                        {task.priority}
+                      </Badge>
+                    </div>
+                    {task.due_date && <p className="text-xs text-muted-foreground mt-2">Deadline {new Date(task.due_date).toLocaleDateString('nl-NL')}</p>}
+                  </Link>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       <div className="flex items-center gap-3 flex-wrap">

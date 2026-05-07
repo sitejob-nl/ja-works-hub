@@ -26,6 +26,8 @@ import CostsTab from '@/components/housing/tabs/CostsTab';
 import KeysTab from '@/components/housing/tabs/KeysTab';
 import InspectionsTab from '@/components/housing/tabs/InspectionsTab';
 import OwnerTab from '@/components/housing/tabs/OwnerTab';
+import CleaningTab from '@/components/housing/tabs/CleaningTab';
+import PropertyContractsTab from '@/components/housing/tabs/PropertyContractsTab';
 
 const PropertyDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -166,6 +168,8 @@ const PropertyDetail = () => {
             <TabsTrigger value="kamers">Kamers</TabsTrigger>
             <TabsTrigger value="bewoners">Bewoners</TabsTrigger>
             <TabsTrigger value="kosten">Kosten</TabsTrigger>
+            <TabsTrigger value="schoonmaak">Schoonmaak</TabsTrigger>
+            <TabsTrigger value="contracten">Contracten</TabsTrigger>
             <TabsTrigger value="sleutels">Sleutels</TabsTrigger>
             <TabsTrigger value="inspecties">Inspecties</TabsTrigger>
             <TabsTrigger value="eigenaar">Eigenaar</TabsTrigger>
@@ -174,6 +178,8 @@ const PropertyDetail = () => {
         <TabsContent value="kamers"><UnitsTab property={property} /></TabsContent>
         <TabsContent value="bewoners"><ResidentsTab property={property} /></TabsContent>
         <TabsContent value="kosten"><CostsTab property={property} /></TabsContent>
+        <TabsContent value="schoonmaak"><CleaningTab property={property} /></TabsContent>
+        <TabsContent value="contracten"><PropertyContractsTab property={property} /></TabsContent>
         <TabsContent value="sleutels"><KeysTab propertyId={id!} /></TabsContent>
         <TabsContent value="inspecties"><InspectionsTab propertyId={id!} /></TabsContent>
         <TabsContent value="eigenaar"><OwnerTab property={property} /></TabsContent>
