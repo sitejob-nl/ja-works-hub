@@ -14,6 +14,7 @@ import type {
   CXCandidate,
   CXCompany,
   CXContact,
+  CXVacancy,
 } from './types.ts';
 import { isCvType, mapDocumentType, mapStatus, statusMaps } from './status-maps.ts';
 

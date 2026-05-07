@@ -8,6 +8,7 @@ import {
   jsonOk,
   loadCarerixCredentials,
 } from '../_shared/carerix/helpers.ts';
+import { isServiceRoleRequest } from '../_shared/auth.ts';
 import { fetchCarerixAccessToken } from '../_shared/carerix/auth.ts';
 import { CarerixGraphQLClient } from '../_shared/carerix/client.ts';
 import { IdMapper } from '../_shared/carerix/id-mapper.ts';
@@ -50,6 +51,7 @@ function selfTrigger(jobId: string): Promise<Response> {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
   if (req.method !== 'POST') return jsonError('Method not allowed', 405);
+  if (!isServiceRoleRequest(req)) return jsonError('Unauthorized', 401);
 
   const started = Date.now();
   const admin = createAdminClient();
@@ -276,20 +278,59 @@ async function pickNextEntity(
 async function finalizeJob(admin: ReturnType<typeof createAdminClient>, jobId: string) {
   const { data: runs } = await admin
     .from('carerix_import_entity_runs')
-    .select('entity, created, skipped, failed, found, status')
+    .select('entity, created, skipped, failed, found, status, last_error')
     .eq('job_id', jobId);
 
   const anyFailed = runs?.some((r) => r.status === 'failed') ?? false;
 
   const summary: Record<string, unknown> = {};
   for (const r of runs ?? []) {
+    const { data: failures } = await admin
+      .from('carerix_import_failures')
+      .select('error')
+      .eq('job_id', jobId)
+      .eq('entity', r.entity);
+
+    const topFailureReasons = summarizeFailureReasons((failures ?? []).map((f) => String(f.error ?? 'Onbekende fout')));
+    const errorText = [r.last_error, ...((failures ?? []).map((f) => String(f.error ?? '')))].join('\n').toLowerCase();
+
     summary[r.entity as string] = {
       status: r.status,
       found: r.found,
       created: r.created,
       skipped: r.skipped,
       failed: r.failed,
+      missing_scope: errorText.includes('scope') || errorText.includes('query rejected'),
+      dependency_missing: errorText.includes('dependency not imported') || errorText.includes('not yet imported'),
+      top_failure_reasons: topFailureReasons,
     };
+  }
+
+  const { data: job } = await admin
+    .from('carerix_import_jobs')
+    .select('organization_id')
+    .eq('id', jobId)
+    .single();
+
+  if (job?.organization_id) {
+    const { data: docs } = await admin
+      .from('v_carerix_document_validation')
+      .select('download_status')
+      .eq('organization_id', job.organization_id);
+
+    const documentBytes = {
+      downloaded: 0,
+      pending: 0,
+      failed: 0,
+      total: docs?.length ?? 0,
+    };
+    for (const d of docs ?? []) {
+      if (d.download_status === 'downloaded') documentBytes.downloaded += 1;
+      else if (d.download_status === 'failed') documentBytes.failed += 1;
+      else documentBytes.pending += 1;
+    }
+
+    summary._document_bytes = documentBytes;
   }
 
   await admin
@@ -300,6 +341,28 @@ async function finalizeJob(admin: ReturnType<typeof createAdminClient>, jobId: s
       summary,
     })
     .eq('id', jobId);
+}
+
+function summarizeFailureReasons(errors: string[]) {
+  const counts = new Map<string, number>();
+  for (const raw of errors) {
+    const normalized = normalizeFailureReason(raw);
+    counts.set(normalized, (counts.get(normalized) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([reason, count]) => ({ reason, count }));
+}
+
+function normalizeFailureReason(error: string) {
+  const lower = error.toLowerCase();
+  if (lower.includes('scope') || lower.includes('query rejected')) return 'Ontbrekende Carerix CR*-scope';
+  if (lower.includes('dependency not imported') || lower.includes('not yet imported')) return 'Dependency niet geïmporteerd';
+  if (lower.includes('duplicate') || lower.includes('unique')) return 'Dubbel record';
+  if (lower.includes('document') || lower.includes('attachment')) return 'Document/attachment fout';
+  if (lower.includes('required') || lower.includes('zonder')) return 'Verplicht veld ontbreekt';
+  return error.slice(0, 160);
 }
 
 async function markJobFailed(

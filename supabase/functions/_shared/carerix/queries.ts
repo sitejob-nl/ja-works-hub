@@ -62,6 +62,14 @@ export function connectionTestQuery(): string {
   return `query { companyPage(pageable: { page: 0, size: 1 }) { totalElements } }`;
 }
 
+export function richSchemaConnectionTestQuery(): string {
+  return `query {
+    crEmployeePage(pageable: { page: 0, size: 1 }, norestrict: true) {
+      totalElements
+    }
+  }`;
+}
+
 // ---------- CR*-schema (rijk) ----------
 
 export function crEmployeesQuery(page: number, size: number, qualifier?: string): string {

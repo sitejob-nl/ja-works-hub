@@ -13,7 +13,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
-import { CheckCircle2, XCircle, Loader2, RefreshCw, Plug, PlugZap, Play, OctagonX } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, RefreshCw, Plug, PlugZap, Play, OctagonX, Download, AlertTriangle, FileCheck2 } from 'lucide-react';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 const ENTITIES = [
   'companies',
@@ -81,7 +82,16 @@ interface CarerixJob {
   status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
   only_entities: string[] | null;
   skip_entities: string[] | null;
-  summary: Record<string, { status: string; found: number; created: number; skipped: number; failed: number }> | null;
+  summary: Record<string, {
+    status: string;
+    found: number;
+    created: number;
+    skipped: number;
+    failed: number;
+    missing_scope?: boolean;
+    dependency_missing?: boolean;
+    top_failure_reasons?: Array<{ reason: string; count: number }>;
+  }> | null;
   last_error: string | null;
 }
 
@@ -124,25 +134,26 @@ export default function CarerixImport() {
       <div>
         <h1 className="text-2xl font-semibold">Carerix import</h1>
         <p className="text-muted-foreground">
-          Bridge-import via Carerix GraphQL API: haalt bedrijfsnamen, contactpersonen (+ email), kandidaten (+ email)
-          op zodat Carerix-ID's al gemapt staan.
+          Live import via Carerix GraphQL: basisgegevens via het publieke schema, rijke migratiedata via het
+          CR*-schema met aparte documentdownload naar Supabase Storage.
         </p>
       </div>
 
       <Card className="border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-900">
         <CardContent className="pt-4 text-sm space-y-2">
-          <p className="font-medium">Waarom maar namen + emails?</p>
+          <p className="font-medium">Belangrijk voor volledige migratie</p>
           <p className="text-muted-foreground">
-            Carerix' publieke GraphQL API exposeert alleen <code>name</code>, <code>email</code>, <code>_id</code> —
-            geen KVK, telefoon, adres, BSN, documenten, werkhistorie, vacatures, plaatsingen of notities.
-            (Introspection bevestigde dat <code>@all</code> geen extra velden geeft.)
+            Kandidaten, vacatures, matches, werkhistorie, documenten en notities komen uit Carerix' rijke
+            <code> CR*</code>-schema. Daarvoor moet de OAuth-client de scope{' '}
+            <code>urn:cx/cx5Wrapper:data:manage</code> hebben.
           </p>
           <p className="text-muted-foreground">
-            <strong>Voor alle overige data:</strong> exporteer uit Carerix als CSV (admin → export) en upload via{' '}
+            Als die scope ontbreekt, werkt de basisverbinding nog wel, maar blijven de rijke runners overslaan.
+            Gebruik dan tijdelijk de CSV-wizard via{' '}
             <a href="/importeren" className="text-primary underline underline-offset-2">
               Importeren
             </a>
-            . De wizard daar heeft preset-mappings voor Carerix-kolomnamen en vult bestaande rows aan via email-matching.
+            .
           </p>
         </CardContent>
       </Card>
@@ -156,6 +167,9 @@ export default function CarerixImport() {
           <TabsTrigger value="history" disabled={!isConnected}>
             Geschiedenis
           </TabsTrigger>
+          <TabsTrigger value="acceptance" disabled={!isConnected}>
+            Acceptatie
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="connect">
@@ -168,6 +182,10 @@ export default function CarerixImport() {
 
         <TabsContent value="history">
           <HistoryTab />
+        </TabsContent>
+
+        <TabsContent value="acceptance">
+          <AcceptanceTab config={config} />
         </TabsContent>
       </Tabs>
     </div>
@@ -192,7 +210,7 @@ function ConnectCard({ config, loading }: { config: CarerixConfig | null | undef
     },
     onSuccess: () => {
       toast.success('Carerix gekoppeld');
-      setForm({ client_id: '', client_secret: '', instance_url: '' });
+      setForm({ client_id: '', client_secret: '', instance_url: '', token_endpoint: '' });
       queryClient.invalidateQueries({ queryKey: ['carerix-config'] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -203,10 +221,12 @@ function ConnectCard({ config, loading }: { config: CarerixConfig | null | undef
       const { data, error } = await supabase.functions.invoke('carerix-test', { body: {} });
       if (error) throw new Error(error.message);
       if ((data as any)?.error) throw new Error((data as any).error);
-      return data as { ok: boolean; totalCompanies: number };
+      return data as { ok: boolean; totalCompanies: number; richSchemaOk?: boolean };
     },
     onSuccess: (d) => {
-      toast.success(`Verbinding werkt — ${d.totalCompanies} opdrachtgevers zichtbaar`);
+      toast.success(
+        `Verbinding werkt — ${d.totalCompanies} opdrachtgevers zichtbaar, CR*-scope actief`,
+      );
       queryClient.invalidateQueries({ queryKey: ['carerix-config'] });
     },
     onError: (e: Error) => toast.error(`Test mislukt: ${e.message}`),
@@ -599,6 +619,235 @@ function IntrospectButton() {
   );
 }
 
+// ─────────────────────────────────────────────────────────────
+// Acceptance / go-no-go
+// ─────────────────────────────────────────────────────────────
+function AcceptanceTab({ config }: { config: CarerixConfig | null | undefined }) {
+  const orgId = useOrganizationId();
+
+  const { data: latestJob } = useQuery({
+    queryKey: ['carerix-acceptance-latest-job', orgId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('carerix_import_jobs' as any)
+        .select('*')
+        .eq('organization_id', orgId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data as any as CarerixJob | null;
+    },
+    enabled: !!orgId,
+  });
+
+  const { data: runs = [] } = useQuery({
+    queryKey: ['carerix-acceptance-runs', latestJob?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('carerix_import_entity_runs' as any)
+        .select('*')
+        .eq('job_id', latestJob!.id);
+      if (error) throw error;
+      return data as any as EntityRun[];
+    },
+    enabled: !!latestJob?.id,
+  });
+
+  const { data: failures = [] } = useQuery({
+    queryKey: ['carerix-acceptance-failures', latestJob?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('carerix_import_failures' as any)
+        .select('entity, carerix_id, error')
+        .eq('job_id', latestJob!.id)
+        .order('entity');
+      if (error) throw error;
+      return data as any as Array<{ entity: string; carerix_id: string | null; error: string }>;
+    },
+    enabled: !!latestJob?.id,
+  });
+
+  const { data: documents = [] } = useQuery({
+    queryKey: ['carerix-document-validation', orgId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('v_carerix_document_validation' as any)
+        .select('*')
+        .eq('organization_id', orgId)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data as any[];
+    },
+    enabled: !!orgId,
+  });
+
+  const requiredEntities: EntityName[] = ['candidates', 'vacancies', 'placements', 'matches', 'documents', 'notes'];
+  const crScopeOk = Boolean(config?.last_test_ok);
+  const entityCoverageOk = requiredEntities.every((e) => {
+    const run = runs.find((r) => r.entity === e);
+    return run?.status === 'completed' && (run.found > 0 || run.created > 0 || run.skipped === 0);
+  });
+  const documentStats = documents.reduce(
+    (acc, d: any) => {
+      acc.total += 1;
+      if (d.download_status === 'downloaded') acc.downloaded += 1;
+      else if (d.download_status === 'failed') acc.failed += 1;
+      else acc.pending += 1;
+      if (d.is_cv) acc.cv += 1;
+      return acc;
+    },
+    { total: 0, downloaded: 0, pending: 0, failed: 0, cv: 0 },
+  );
+  const documentBytesOk = documentStats.total === 0 || (documentStats.failed === 0 && documentStats.pending === 0);
+  const failuresOk = failures.length === 0;
+  const goNoGo = crScopeOk && entityCoverageOk && documentBytesOk && failuresOk;
+
+  const exportFailures = () => {
+    const header = ['entity', 'carerix_id', 'error'];
+    const lines = failures.map((f) => [f.entity, f.carerix_id ?? '', f.error].map(csvCell).join(','));
+    const blob = new Blob([[header.join(','), ...lines].join('\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `carerix-failures-${latestJob?.id?.slice(0, 8) ?? 'export'}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            {goNoGo ? <CheckCircle2 className="h-5 w-5 text-green-600" /> : <AlertTriangle className="h-5 w-5 text-amber-600" />}
+            {goNoGo ? 'Go voor productie-import' : 'Nog niet productie-klaar'}
+          </CardTitle>
+          <CardDescription>
+            Laatste job: {latestJob ? `${latestJob.id.slice(0, 8)} · ${latestJob.mode} · ${latestJob.status}` : 'geen importgeschiedenis'}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 md:grid-cols-4">
+          <AcceptanceCheck ok={crScopeOk} label="CR*-scope" detail={config?.last_test_ok ? 'Laatste test OK' : config?.last_test_error ?? 'Nog niet getest'} />
+          <AcceptanceCheck ok={entityCoverageOk} label="Entiteiten" detail={`${runs.filter((r) => r.status === 'completed').length}/${SUPPORTED_ENTITIES.length} afgerond`} />
+          <AcceptanceCheck ok={documentBytesOk} label="Document bytes" detail={`${documentStats.downloaded}/${documentStats.total} gedownload · ${documentStats.failed} fout`} />
+          <AcceptanceCheck ok={failuresOk} label="Failures" detail={`${failures.length} open importfouten`} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Entiteitdekking</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Entiteit</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Gevonden</TableHead>
+                <TableHead className="text-right">Aangemaakt</TableHead>
+                <TableHead className="text-right">Overgeslagen</TableHead>
+                <TableHead className="text-right">Fout</TableHead>
+                <TableHead>Signaal</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {SUPPORTED_ENTITIES.map((entity) => {
+                const run = runs.find((r) => r.entity === entity);
+                const summary = latestJob?.summary?.[entity];
+                const signal = summary?.missing_scope
+                  ? 'Scope ontbreekt'
+                  : summary?.dependency_missing
+                    ? 'Dependency ontbreekt'
+                    : run?.last_error ?? '—';
+                return (
+                  <TableRow key={entity}>
+                    <TableCell>{ENTITY_LABEL[entity]}</TableCell>
+                    <TableCell><StatusBadge status={run?.status ?? 'queued'} /></TableCell>
+                    <TableCell className="text-right">{run?.found ?? 0}</TableCell>
+                    <TableCell className="text-right">{run?.created ?? 0}</TableCell>
+                    <TableCell className="text-right">{run?.skipped ?? 0}</TableCell>
+                    <TableCell className="text-right">{run?.failed ?? 0}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{signal}</TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <CardTitle className="text-base flex items-center gap-2"><FileCheck2 className="h-4 w-4" /> Documentvalidatie</CardTitle>
+              <CardDescription>{documentStats.total} Carerix-documenten · {documentStats.cv} CV's</CardDescription>
+            </div>
+            <Button variant="outline" size="sm" onClick={exportFailures} disabled={failures.length === 0} className="gap-1.5">
+              <Download className="h-3.5 w-3.5" /> Failure CSV
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Kandidaat</TableHead>
+                <TableHead>Document</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Carerix ID</TableHead>
+                <TableHead>Foutreden</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {documents.slice(0, 50).map((d: any) => (
+                <TableRow key={d.document_id}>
+                  <TableCell>{[d.first_name, d.last_name].filter(Boolean).join(' ')}</TableCell>
+                  <TableCell>{d.name}{d.is_cv && <Badge variant="secondary" className="ml-2 text-[10px]">CV</Badge>}</TableCell>
+                  <TableCell><DocumentStatusBadge status={d.download_status} /></TableCell>
+                  <TableCell className="font-mono text-xs">{d.carerix_id ?? '—'}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{d.failure_reason ?? '—'}</TableCell>
+                </TableRow>
+              ))}
+              {documents.length === 0 && (
+                <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground">Geen Carerix-documenten gevonden</TableCell></TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function AcceptanceCheck({ ok, label, detail }: { ok: boolean; label: string; detail: string }) {
+  return (
+    <div className={`rounded-lg border p-3 ${ok ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
+      <div className="flex items-center gap-2 text-sm font-medium">
+        {ok ? <CheckCircle2 className="h-4 w-4 text-green-600" /> : <AlertTriangle className="h-4 w-4 text-amber-600" />}
+        {label}
+      </div>
+      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{detail}</p>
+    </div>
+  );
+}
+
+function DocumentStatusBadge({ status }: { status: string }) {
+  const meta: Record<string, string> = {
+    downloaded: 'bg-green-100 text-green-700 border-0',
+    pending: 'bg-yellow-100 text-yellow-700 border-0',
+    failed: 'bg-red-100 text-red-700 border-0',
+  };
+  const label: Record<string, string> = { downloaded: 'Gedownload', pending: 'Wacht', failed: 'Fout' };
+  return <Badge variant="secondary" className={meta[status] ?? 'bg-muted text-muted-foreground border-0'}>{label[status] ?? status}</Badge>;
+}
+
+function csvCell(value: string) {
+  return `"${String(value).replaceAll('"', '""')}"`;
+}
+
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
     queued: 'bg-gray-200 text-gray-700',
@@ -673,12 +922,17 @@ function JobCard({ job }: { job: CarerixJob }) {
       <CardContent className="space-y-2 text-sm">
         {job.summary ? (
           <div className="grid grid-cols-4 gap-2">
-            {Object.entries(job.summary).map(([entity, s]) => (
+            {Object.entries(job.summary).filter(([entity]) => !entity.startsWith('_')).map(([entity, s]) => (
               <div key={entity} className="border rounded px-2 py-1">
                 <div className="font-medium">{ENTITY_LABEL[entity as EntityName] ?? entity}</div>
                 <div className="text-xs text-muted-foreground">
                   +{s.created} ={s.skipped} ✕{s.failed} · {s.status}
                 </div>
+                {s.top_failure_reasons && s.top_failure_reasons.length > 0 && (
+                  <div className="text-[11px] text-muted-foreground mt-1">
+                    {s.top_failure_reasons[0].reason} ({s.top_failure_reasons[0].count})
+                  </div>
+                )}
               </div>
             ))}
           </div>

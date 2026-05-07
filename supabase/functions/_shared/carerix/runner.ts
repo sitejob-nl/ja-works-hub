@@ -148,10 +148,13 @@ async function bulkEnrichCandidates(
     return;
   }
 
+  const existingRows = existing as unknown as Array<Record<string, unknown>>;
   const byId = new Map<string, Record<string, unknown>>();
-  for (const row of existing) byId.set((row as { id: string }).id, row as Record<string, unknown>);
+  for (const row of existingRows) {
+    if (typeof row.id === 'string') byId.set(row.id, row);
+  }
 
-  const updatePromises: Promise<{ candidateId: string; error: string | null }>[] = [];
+  const updatePromises: PromiseLike<{ candidateId: string; error: string | null }>[] = [];
   for (const item of items) {
     const current = byId.get(item.candidateId);
     if (!current) { stats.skipped++; continue; }
@@ -522,23 +525,30 @@ export async function runDocumentsPage(
     const carerixEmployeeId = String(m.external_id);
     const candidateId = String(m.entity_id);
 
-    // Per kandidaat alle attachments ophalen (max 100 per kandidaat — zou ruim
-    // moeten zijn). Voor zeer veel attachments per kandidaat kan een 2e
-    // GraphQL-call nodig zijn — nu houden we het op één page.
-    const result = await tryQuery<{
-      crEmployee: { _id: string; attachments?: { items: CRAttachment[]; totalElements: number } } | null;
-    }>(ctx, crEmployeeAttachmentsQuery(carerixEmployeeId, 0, 100));
+    let attachmentPage = 0;
+    while (true) {
+      const result = await tryQuery<{
+        crEmployee: {
+          _id: string;
+          attachments?: { items: CRAttachment[]; totalElements: number; last?: boolean };
+        } | null;
+      }>(ctx, crEmployeeAttachmentsQuery(carerixEmployeeId, attachmentPage, 100));
 
-    if (result.reason) {
-      stats.failed++;
-      stats.failures.push({ carerix_id: carerixEmployeeId, error: result.reason.slice(0, 200) });
-      continue;
-    }
-    const items = result.data?.crEmployee?.attachments?.items ?? [];
+      if (result.reason) {
+        stats.failed++;
+        stats.failures.push({ carerix_id: carerixEmployeeId, error: result.reason.slice(0, 200) });
+        break;
+      }
+      const attachmentData = result.data?.crEmployee?.attachments;
+      const items = attachmentData?.items ?? [];
 
-    for (const att of items) {
-      const payload = mapCRAttachmentToDocument(att, candidateId, ctx.organizationId);
-      await insertIfNew(ctx, 'documents', 'document', String(att._id), payload, stats);
+      for (const att of items) {
+        const payload = mapCRAttachmentToDocument(att, candidateId, ctx.organizationId);
+        await insertIfNew(ctx, 'documents', 'document', String(att._id), payload, stats);
+      }
+
+      if (attachmentData?.last === true || items.length < 100) break;
+      attachmentPage++;
     }
   }
   // Klaar zodra de huidige candidate-batch korter is dan de page-grootte.

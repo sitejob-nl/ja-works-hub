@@ -186,9 +186,14 @@ export interface CRWorkHistory {
 export interface CRAttachment {
   _id: string;
   fileName?: string;
+  downloadName?: string;
+  displayName?: string;
   mimeType?: string;
+  attachmentMimeType?: string;
   tag?: string;
+  label?: string;
   fileSize?: number;
+  attachmentSize?: number;
   toEmployee?: CRRef;
   toCompany?: CRRef;
   toJob?: CRRef;

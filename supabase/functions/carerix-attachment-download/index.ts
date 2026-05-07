@@ -11,13 +11,16 @@
 import {
   corsHeaders,
   createAdminClient,
+  getCallerProfile,
   jsonError,
   jsonOk,
   loadCarerixCredentials,
 } from '../_shared/carerix/helpers.ts';
+import { isServiceRoleRequest } from '../_shared/auth.ts';
 import { fetchCarerixAccessToken } from '../_shared/carerix/auth.ts';
 import { CarerixGraphQLClient } from '../_shared/carerix/client.ts';
 import { crAttachmentByIdQuery } from '../_shared/carerix/queries.ts';
+import { isCvType } from '../_shared/carerix/status-maps.ts';
 
 const BATCH_SIZE = 25;
 const SOFT_DEADLINE_MS = 75_000;
@@ -89,8 +92,16 @@ Deno.serve(async (req) => {
   const admin = createAdminClient();
 
   const body = (await req.json().catch(() => ({}))) as { organization_id?: string };
-  const orgId = body.organization_id;
-  if (!orgId) return jsonError('organization_id is verplicht', 400);
+  let orgId = body.organization_id;
+  if (isServiceRoleRequest(req)) {
+    if (!orgId) return jsonError('organization_id is verplicht voor interne jobs', 400);
+  } else {
+    const caller = await getCallerProfile(req);
+    if (!caller) return jsonError('Ongeldige of ontbrekende sessie', 401);
+    if (caller.profile.role !== 'admin') return jsonError('Alleen admins mogen Carerix-bijlagen downloaden', 403);
+    orgId = caller.profile.organization_id;
+  }
+  if (!orgId) return jsonError('organization_id kon niet worden bepaald', 400);
 
   const creds = await loadCarerixCredentials(admin, orgId);
   if (!creds) return jsonError('Carerix-config niet gevonden voor organisatie', 404);
@@ -106,7 +117,7 @@ Deno.serve(async (req) => {
 
   let totalDownloaded = 0;
   let totalFailed = 0;
-  let totalSkipped = 0;
+  const totalSkipped = 0;
   let batchesRun = 0;
 
   while (true) {
@@ -260,6 +271,19 @@ Deno.serve(async (req) => {
           );
           totalFailed++;
           continue;
+        }
+
+        const isPdfCv = ext === 'pdf' && (isCvType(att.label) || isCvType(newName) || isCvType(row.name));
+        if (isPdfCv) {
+          const { data: urlData } = admin.storage.from('documents').getPublicUrl(path);
+          if (urlData.publicUrl) {
+            await admin
+              .from('candidates')
+              .update({ cv_file_url: urlData.publicUrl })
+              .eq('id', row.candidate_id)
+              .eq('organization_id', row.organization_id)
+              .is('cv_file_url', null);
+          }
         }
 
         totalDownloaded++;

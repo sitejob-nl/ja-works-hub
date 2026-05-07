@@ -11,7 +11,10 @@ import {
 } from '../_shared/carerix/helpers.ts';
 import { fetchCarerixAccessToken } from '../_shared/carerix/auth.ts';
 import { CarerixGraphQLClient } from '../_shared/carerix/client.ts';
-import { connectionTestQuery } from '../_shared/carerix/queries.ts';
+import {
+  connectionTestQuery,
+  richSchemaConnectionTestQuery,
+} from '../_shared/carerix/queries.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
@@ -45,9 +48,31 @@ Deno.serve(async (req) => {
     const data = await gql.query<{ companyPage: { totalElements: number } }>(connectionTestQuery());
 
     const total = data.companyPage?.totalElements ?? 0;
+    let richSchemaError: string | null = null;
+    try {
+      await gql.query<{ crEmployeePage: { totalElements: number } }>(
+        richSchemaConnectionTestQuery(),
+      );
+    } catch (err) {
+      richSchemaError = err instanceof Error ? err.message : String(err);
+    }
+
+    if (richSchemaError) {
+      const message =
+        'Basisverbinding werkt, maar de rijke Carerix CR*-scope ontbreekt of is geblokkeerd. ' +
+        'Voor kandidaten, vacatures, matches, werkhistorie, documenten en notities is ' +
+        '`urn:cx/cx5Wrapper:data:manage` nodig.';
+      await recordResult(false, `${message} ${richSchemaError}`, total);
+      return jsonError(message, 400, {
+        totalCompanies: total,
+        richSchemaOk: false,
+        richSchemaError,
+      });
+    }
+
     await recordResult(true, undefined, total);
 
-    return jsonOk({ ok: true, totalCompanies: total });
+    return jsonOk({ ok: true, totalCompanies: total, richSchemaOk: true });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     await recordResult(false, msg);
