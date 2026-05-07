@@ -39,3 +39,12 @@ scripts/.auth-state.json
 /*.yml
 !pnpm-workspace.yaml
 supabase/.temp/
+
+# Claude Code per-user/per-project state
+.claude/settings.local.json
+.claude/worktrees/
+
+# Project-management assets (niet in repo — Notion/Drive)
+Meetings/
+Offerte/
+Panden/
