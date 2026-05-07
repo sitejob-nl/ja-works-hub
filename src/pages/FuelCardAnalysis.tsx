@@ -289,12 +289,12 @@ const FlagCard = ({ t, onReview, onSaveNote }: { t: any; onReview: () => void; o
           <span className="font-medium">{formatDate(t.transaction_date)}</span>
 
           {t.vehicles ? (
-            <Link to={`/transport/${t.vehicles.id}`} className="text-primary hover:underline font-mono font-semibold inline-flex items-center gap-1.5">
+            <Link to={`/transport/${t.vehicles.id}`} className="text-foreground hover:text-primary hover:underline font-mono font-semibold inline-flex items-center gap-1.5">
               <Car className="h-3.5 w-3.5" />
               {plate}
             </Link>
           ) : plate ? (
-            <span className="font-mono font-semibold inline-flex items-center gap-1.5">
+            <span className="font-mono font-semibold text-foreground inline-flex items-center gap-1.5">
               <Car className="h-3.5 w-3.5" />
               {plate}
               <span className="text-xs italic ml-1 font-normal text-muted-foreground">(geen voertuig-record)</span>
@@ -385,9 +385,9 @@ const AllTransactionsTable = ({ data }: { data: any[] }) => (
           return (
             <TableRow key={t.id}>
               <TableCell>{formatDate(t.transaction_date)}</TableCell>
-              <TableCell className="font-mono font-semibold">
+              <TableCell className="font-mono font-semibold text-foreground">
                 {t.vehicles ? (
-                  <Link to={`/transport/${t.vehicles.id}`} className="text-primary hover:underline">{plate}</Link>
+                  <Link to={`/transport/${t.vehicles.id}`} className="text-foreground hover:text-primary hover:underline">{plate}</Link>
                 ) : plate ? (
                   <span>{plate}</span>
                 ) : (
@@ -396,7 +396,7 @@ const AllTransactionsTable = ({ data }: { data: any[] }) => (
               </TableCell>
               <TableCell>
                 {empName && t.employees?.id ? (
-                  <Link to={`/medewerkers/${t.employees.id}`} className="text-primary hover:underline">{empName}</Link>
+                  <Link to={`/medewerkers/${t.employees.id}`} className="text-foreground hover:text-primary hover:underline font-medium">{empName}</Link>
                 ) : (
                   <span className="text-muted-foreground">—</span>
                 )}
