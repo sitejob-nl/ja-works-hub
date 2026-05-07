@@ -9,12 +9,13 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
+import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import ImportWizard from '@/components/import/ImportWizard';
 import AddToPoolSheet from '@/components/talentpools/AddToPoolSheet';
 import { formatDate } from '@/lib/format';
+import { getPaginationRange } from '@/lib/pagination';
 
 const PAGE_SIZE = 10;
 
@@ -415,9 +416,13 @@ const Candidates = () => {
                     <PaginationItem>
                       <PaginationPrevious onClick={() => setPage(Math.max(0, page - 1))} className={page === 0 ? 'pointer-events-none opacity-50' : 'cursor-pointer'} />
                     </PaginationItem>
-                    {Array.from({ length: totalPages }, (_, i) => (
-                      <PaginationItem key={i}>
-                        <PaginationLink isActive={i === page} onClick={() => setPage(i)} className="cursor-pointer">{i + 1}</PaginationLink>
+                    {getPaginationRange(page, totalPages).map((item, i) => (
+                      <PaginationItem key={`${item}-${i}`}>
+                        {typeof item === 'number' ? (
+                          <PaginationLink isActive={item === page} onClick={() => setPage(item)} className="cursor-pointer">{item + 1}</PaginationLink>
+                        ) : (
+                          <PaginationEllipsis />
+                        )}
                       </PaginationItem>
                     ))}
                     <PaginationItem>
@@ -507,9 +512,13 @@ const Candidates = () => {
                     <PaginationItem>
                       <PaginationPrevious onClick={() => setPage(Math.max(0, page - 1))} className={page === 0 ? 'pointer-events-none opacity-50' : 'cursor-pointer'} />
                     </PaginationItem>
-                    {Array.from({ length: employeeTotalPages }, (_, i) => (
-                      <PaginationItem key={i}>
-                        <PaginationLink isActive={i === page} onClick={() => setPage(i)} className="cursor-pointer">{i + 1}</PaginationLink>
+                    {getPaginationRange(page, employeeTotalPages).map((item, i) => (
+                      <PaginationItem key={`${item}-${i}`}>
+                        {typeof item === 'number' ? (
+                          <PaginationLink isActive={item === page} onClick={() => setPage(item)} className="cursor-pointer">{item + 1}</PaginationLink>
+                        ) : (
+                          <PaginationEllipsis />
+                        )}
                       </PaginationItem>
                     ))}
                     <PaginationItem>
