@@ -16,9 +16,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
 import { formatDate, formatEUR } from '@/lib/format';
-import { Upload, AlertTriangle, Fuel, CheckCircle2, StickyNote, Link as LinkIcon } from 'lucide-react';
+import { Upload, AlertTriangle, Fuel, CheckCircle2, StickyNote, Link as LinkIcon, Info } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import Papa from 'papaparse';
+import * as XLSX from 'xlsx';
 import { startOfMonth, endOfMonth, format } from 'date-fns';
 
 /* ─── helpers ────────────────────────────────────────────── */
@@ -99,7 +100,7 @@ const FuelCardAnalysis = () => {
           <h1 className="text-2xl font-semibold">Q8 Tankpas Analyse</h1>
           <p className="text-sm text-muted-foreground">Upload transactielijsten en detecteer afwijkingen</p>
         </div>
-        <Button onClick={() => setImportOpen(true)}><Upload className="h-4 w-4 mr-2" /> CSV Importeren</Button>
+        <Button onClick={() => setImportOpen(true)}><Upload className="h-4 w-4 mr-2" /> Importeren</Button>
       </div>
 
       {/* KPIs */}
@@ -289,6 +290,16 @@ const AllTransactionsTable = ({ data }: { data: any[] }) => (
 
 type ColMap = { datum: string; kenteken: string; liters: string; bedrag: string; prijs: string; station: string };
 
+const Q8_SIGNATURE = ['Kentekenplaat', 'Hoeveelheid', 'transactie datum'];
+const Q8_PRESET = {
+  datum: 'transactie datum',
+  kenteken: 'Kentekenplaat',
+  liters: 'Hoeveelheid',
+  bedrag: 'Bedrag incl BTW',
+  prijs: 'Pompprijs incl. BTW',
+  station: 'Site',
+} satisfies ColMap;
+
 const ImportSheet = ({ open, onOpenChange, orgId, onDone }: { open: boolean; onOpenChange: (o: boolean) => void; orgId: string | null; onDone: () => void }) => {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [rows, setRows] = useState<Record<string, string>[]>([]);
@@ -296,16 +307,49 @@ const ImportSheet = ({ open, onOpenChange, orgId, onDone }: { open: boolean; onO
   const [colMap, setColMap] = useState<ColMap>({ datum: '', kenteken: '', liters: '', bedrag: '', prijs: '', station: '' });
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<{ imported: number; flags: number } | null>(null);
+  const [autoDetected, setAutoDetected] = useState(false);
 
-  const reset = () => { setStep(1); setRows([]); setHeaders([]); setColMap({ datum: '', kenteken: '', liters: '', bedrag: '', prijs: '', station: '' }); setResult(null); };
+  const reset = () => { setStep(1); setRows([]); setHeaders([]); setColMap({ datum: '', kenteken: '', liters: '', bedrag: '', prijs: '', station: '' }); setResult(null); setAutoDetected(false); };
 
-  const handleFile = (file: File) => {
+  const handleFile = async (file: File) => {
+    const isExcel = /\.(xlsx|xls)$/i.test(file.name);
+    if (isExcel) {
+      try {
+        const buffer = await file.arrayBuffer();
+        const wb = XLSX.read(buffer, { type: 'array' });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '', raw: false });
+        if (json.length === 0) {
+          toast.error('Excel-bestand bevat geen data');
+          return;
+        }
+        const headersList = Object.keys(json[0]);
+        const stringRows = json.map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, String(v ?? '')])));
+        setHeaders(headersList);
+        setRows(stringRows);
+
+        const isQ8 = Q8_SIGNATURE.every((h) => headersList.includes(h));
+        if (isQ8) {
+          setColMap(Q8_PRESET);
+          setAutoDetected(true);
+          setStep(3);
+        } else {
+          setAutoDetected(false);
+          setStep(2);
+        }
+      } catch (e) {
+        toast.error('Excel parse fout');
+      }
+      return;
+    }
+
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
       complete: (res) => {
         setHeaders(res.meta.fields ?? []);
         setRows(res.data as Record<string, string>[]);
+        setAutoDetected(false);
         setStep(2);
       },
       error: () => toast.error('CSV parse fout'),
@@ -360,7 +404,10 @@ const ImportSheet = ({ open, onOpenChange, orgId, onDone }: { open: boolean; onO
         if (!parsedDate) continue;
 
         const normalRef = rawRef.toUpperCase().replace(/[^A-Z0-9]/g, '');
-        const vehicle = vehicleByRef[rawRef.toUpperCase().trim()] ?? vehicleByPlate[normalRef] ?? null;
+        const rawCard = String(row['Kaartnummer'] ?? '').trim();
+        const vehicle = vehicleByPlate[normalRef]
+          ?? vehicleByRef[rawRef.toUpperCase().trim()]
+          ?? (rawCard ? vehicleByRef[rawCard.toUpperCase()] : null);
         const vehicleId = vehicle?.id ?? null;
         const employeeId = vehicleId ? (assignmentByVehicle[vehicleId] ?? null) : null;
 
@@ -451,13 +498,13 @@ const ImportSheet = ({ open, onOpenChange, orgId, onDone }: { open: boolean; onO
   return (
     <Sheet open={open} onOpenChange={(o) => { if (!o) reset(); onOpenChange(o); }}>
       <SheetContent className="sm:max-w-lg overflow-y-auto">
-        <SheetHeader><SheetTitle>CSV Importeren</SheetTitle></SheetHeader>
+        <SheetHeader><SheetTitle>Transactielijst importeren</SheetTitle></SheetHeader>
 
         {step === 1 && (
           <div className="mt-6 space-y-4">
-            <Label>Selecteer CSV bestand</Label>
-            <Input type="file" accept=".csv,.txt" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
-            <p className="text-xs text-muted-foreground">Upload de Q8 Liberty transactielijst (.csv)</p>
+            <Label>Selecteer bestand</Label>
+            <Input type="file" accept=".csv,.txt,.xlsx,.xls" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+            <p className="text-xs text-muted-foreground">Q8 Liberty wekelijkse export (.csv of .xlsx)</p>
           </div>
         )}
 
@@ -496,6 +543,39 @@ const ImportSheet = ({ open, onOpenChange, orgId, onDone }: { open: boolean; onO
 
             <div className="flex justify-end gap-3 pt-4">
               <Button variant="ghost" onClick={() => { reset(); onOpenChange(false); }}>Annuleren</Button>
+              <Button onClick={handleImport} disabled={!canImport || importing}>
+                {importing ? 'Importeren...' : `Importeer ${rows.length} rijen`}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {step === 3 && !result && (
+          <div className="mt-6 space-y-6">
+            {autoDetected && (
+              <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 flex items-start gap-2">
+                <Info className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
+                <div className="text-xs text-blue-900">
+                  <strong>Q8-formaat herkend</strong> — kolom-mapping is automatisch ingesteld. Klik <strong>Vorige</strong> om handmatig aan te passen.
+                </div>
+              </div>
+            )}
+            <div>
+              <p className="text-sm font-medium mb-2">Preview ({rows.length} rijen)</p>
+              <div className="rounded border overflow-auto max-h-40 text-xs">
+                <table className="w-full">
+                  <thead><tr className="bg-muted">{headers.map(h => <th key={h} className="px-2 py-1 text-left font-medium">{h}</th>)}</tr></thead>
+                  <tbody>
+                    {rows.slice(0, 5).map((r, i) => (
+                      <tr key={i} className="border-t">{headers.map(h => <td key={h} className="px-2 py-1 truncate max-w-[120px]">{r[h]}</td>)}</tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4">
+              <Button variant="ghost" onClick={() => setStep(2)}>Vorige</Button>
               <Button onClick={handleImport} disabled={!canImport || importing}>
                 {importing ? 'Importeren...' : `Importeer ${rows.length} rijen`}
               </Button>
