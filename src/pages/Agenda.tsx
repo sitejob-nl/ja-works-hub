@@ -1,11 +1,21 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import CalendarView from '@/components/calendar/CalendarView';
-import MicrosoftAccountPicker, { useMicrosoftAccounts } from '@/components/email/MicrosoftAccountPicker';
+import OutlookAccountPicker from '@/components/email/OutlookAccountPicker';
+import { useOutlookAccounts } from '@/hooks/useOutlookAccounts';
 
 const Agenda = () => {
-  const { accounts } = useMicrosoftAccounts();
-  const defaultAccount = accounts.find(a => a.isOrg)?.key || accounts[0]?.key || 'org';
-  const [selectedAccount, setSelectedAccount] = useState(defaultAccount);
+  const { accounts, defaultAccountId } = useOutlookAccounts('calendar_read');
+  const [selectedAccount, setSelectedAccount] = useState<string | undefined>();
+
+  useEffect(() => {
+    if (!selectedAccount && defaultAccountId) {
+      setSelectedAccount(defaultAccountId);
+      return;
+    }
+    if (selectedAccount && accounts.length > 0 && !accounts.some((account) => account.account_id === selectedAccount)) {
+      setSelectedAccount(defaultAccountId);
+    }
+  }, [accounts, defaultAccountId, selectedAccount]);
 
   return (
     <div className="space-y-4">
@@ -14,7 +24,7 @@ const Agenda = () => {
           <h1 className="text-2xl font-bold">Agenda</h1>
           <p className="text-muted-foreground text-sm">Beheer je Outlook agenda</p>
         </div>
-        <MicrosoftAccountPicker value={selectedAccount} onChange={setSelectedAccount} />
+        <OutlookAccountPicker value={selectedAccount} onChange={setSelectedAccount} capability="calendar_read" />
       </div>
       <CalendarView selectedAccount={selectedAccount} />
     </div>

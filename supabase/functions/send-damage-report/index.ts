@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { sendViaOutlook } from "../_shared/outlook-send.ts";
+import { sendViaOutlookAccount } from "../_shared/outlook-send.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -195,7 +195,7 @@ Deno.serve(async (req) => {
       photoUrls,
     });
 
-    const result = await sendViaOutlook({
+    const result = await sendViaOutlookAccount({
       orgId,
       to: r.garage_email,
       subject,

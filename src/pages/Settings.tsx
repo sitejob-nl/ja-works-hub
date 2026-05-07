@@ -20,7 +20,7 @@ import ContractTemplatesSettings from '@/components/settings/ContractTemplatesSe
 import OnboardingFormSettings from '@/components/settings/OnboardingFormSettings';
 import TerminationReasonsSettings from '@/components/settings/TerminationReasonsSettings';
 import CustomFieldsSettings from '@/components/settings/CustomFieldsSettings';
-import MicrosoftSettings from '@/components/settings/MicrosoftSettings';
+import OutlookSettings from '@/components/settings/OutlookSettings';
 import VoysSettings from '@/components/settings/VoysSettings';
 import PropertyOwnersSettings from '@/components/settings/PropertyOwnersSettings';
 import AiCvProviderSettings from '@/components/settings/AiCvProviderSettings';
@@ -471,7 +471,7 @@ const Settings = () => {
           <AiCvProviderSettings />
 
           {/* Microsoft 365 */}
-          <MicrosoftSettings />
+          <OutlookSettings />
 
           {/* Data Export */}
           <DataExport />

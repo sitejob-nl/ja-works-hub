@@ -1,32 +1,34 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createAdminClient } from "./auth.ts";
+import {
+  auditOutlookAction,
+  graphJson,
+  loadProviderForAccount,
+  mailboxBasePath,
+  type OutlookCapability,
+} from "./outlook-accounts.ts";
 
-/**
- * Send an email via the organization's Microsoft Outlook connection.
- * Falls back gracefully if no Microsoft connection exists.
- *
- * Usage from any edge function:
- *   import { sendViaOutlook } from "../_shared/outlook-send.ts";
- *   const result = await sendViaOutlook({ orgId, to, subject, htmlBody });
- */
-
-interface SendViaOutlookParams {
+interface SendViaOutlookAccountParams {
   orgId: string;
   to: string | string[];
   cc?: string[];
   subject: string;
   htmlBody: string;
-  /** Optional: candidate ID for logging in communications */
+  accountId?: string | null;
   candidateId?: string;
-  /** Optional: company ID for logging in communications */
   companyId?: string;
-  /** Optional: who triggered the send */
+  companyContactId?: string;
   sentBy?: string;
-  /**
-   * Display name used in the email signature ("namens X").
-   * If omitted, looked up via `sentBy`. If neither is provided, falls back to "Het JA Werkt team".
-   * Pass `null` to suppress the signature entirely.
-   */
   senderName?: string | null;
+  logCommunication?: boolean;
+  require?: OutlookCapability;
+}
+
+interface SendResult {
+  success: boolean;
+  method: "outlook" | "none";
+  error?: string;
+  accountId?: string;
+  from?: string | null;
 }
 
 const SIGNATURE_MARKER = "ja-werkt-signature";
@@ -53,143 +55,101 @@ function appendSignatureIfMissing(html: string, senderName: string): string {
   return html + buildSignatureBlock(senderName);
 }
 
-interface SendResult {
-  success: boolean;
-  method: "outlook" | "none";
-  error?: string;
+function recipientList(value: string | string[]) {
+  return (Array.isArray(value) ? value : [value])
+    .map((email) => String(email ?? "").trim())
+    .filter(Boolean)
+    .map((address) => ({ emailAddress: { address } }));
 }
 
-export async function sendViaOutlook(params: SendViaOutlookParams): Promise<SendResult> {
-  const { orgId, to, cc, subject, htmlBody, candidateId, companyId, sentBy, senderName } = params;
+async function resolveSenderName(admin: ReturnType<typeof createAdminClient>, sentBy?: string, senderName?: string | null) {
+  if (senderName === null) return null;
+  if (typeof senderName === "string" && senderName.trim()) return senderName.trim();
+  if (!sentBy) return "Het JA Werkt team";
 
-  const serviceClient = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-  );
+  const { data: profile } = await admin
+    .from("profiles")
+    .select("full_name")
+    .eq("id", sentBy)
+    .maybeSingle();
 
-  // Resolve signature: explicit `senderName` wins. `null` suppresses. Otherwise look up via `sentBy`.
-  let resolvedName: string | null = null;
-  if (senderName === null) {
-    resolvedName = null;
-  } else if (typeof senderName === "string" && senderName.trim()) {
-    resolvedName = senderName.trim();
-  } else if (sentBy) {
-    const { data: profile } = await serviceClient
-      .from("profiles")
-      .select("full_name")
-      .eq("id", sentBy)
-      .maybeSingle();
-    if (profile?.full_name) resolvedName = profile.full_name;
-  }
-  const finalBody = resolvedName === null
-    ? htmlBody
-    : appendSignatureIfMissing(htmlBody, resolvedName ?? "Het JA Werkt team");
+  return profile?.full_name?.trim() || "Het JA Werkt team";
+}
 
-  // Get Microsoft token for org
-  const { data: msToken, error: msError } = await serviceClient.rpc("get_microsoft_token", {
-    p_org_id: orgId,
-  });
+export async function sendViaOutlookAccount(params: SendViaOutlookAccountParams): Promise<SendResult> {
+  const admin = createAdminClient();
+  const toRecipients = recipientList(params.to);
+  const ccRecipients = params.cc?.length ? recipientList(params.cc) : [];
+  if (toRecipients.length === 0) return { success: false, method: "none", error: "Geen ontvanger opgegeven" };
 
-  if (msError || !msToken || msToken.length === 0 || !msToken[0].access_token) {
-    console.warn(`No Microsoft connection for org ${orgId}, email not sent`);
-    return { success: false, method: "none", error: "Microsoft 365 niet geconfigureerd voor deze organisatie" };
-  }
+  try {
+    const provider = await loadProviderForAccount(admin, params.orgId, {
+      accountId: params.accountId,
+      userId: params.sentBy ?? null,
+      require: params.require ?? "mail_send",
+      allowSystemDefault: !params.accountId,
+      bypassJaGrants: true,
+    });
 
-  let accessToken = msToken[0].access_token;
+    const senderName = await resolveSenderName(admin, params.sentBy, params.senderName);
+    const finalBody = senderName === null
+      ? params.htmlBody
+      : appendSignatureIfMissing(params.htmlBody, senderName);
+    const from = provider.account.mailbox_email || provider.account.from_email;
 
-  // Check token expiry, refresh if needed
-  const expiresAt = new Date(msToken[0].token_expires_at).getTime();
-  const now = Date.now();
-  if (expiresAt - now <= 60_000) {
-    // Refresh token
-    const clientId = Deno.env.get("MICROSOFT_CLIENT_ID")!;
-    const clientSecret = Deno.env.get("MICROSOFT_CLIENT_SECRET")!;
-
-    const refreshRes = await fetch("https://login.microsoftonline.com/common/oauth2/v2.0/token", {
+    await graphJson(admin, provider, `${mailboxBasePath(provider.account)}/sendMail`, {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        grant_type: "refresh_token",
-        refresh_token: msToken[0].refresh_token,
-        client_id: clientId,
-        client_secret: clientSecret,
-        scope: "openid profile User.Read email Mail.Send offline_access",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: {
+          subject: params.subject,
+          body: { contentType: "HTML", content: finalBody },
+          toRecipients,
+          ...(ccRecipients.length ? { ccRecipients } : {}),
+        },
+        saveToSentItems: true,
       }),
     });
 
-    if (!refreshRes.ok) {
-      console.error("Token refresh failed:", await refreshRes.text());
-      return { success: false, method: "outlook", error: "Token refresh mislukt" };
+    if (params.logCommunication !== false) {
+      await admin.from("communications").insert({
+        organization_id: params.orgId,
+        candidate_id: params.candidateId ?? null,
+        company_id: params.companyId ?? null,
+        company_contact_id: params.companyContactId ?? null,
+        channel: "email",
+        direction: "outbound",
+        subject: params.subject,
+        body: finalBody,
+        email_to: toRecipients.map((r) => r.emailAddress.address),
+        email_cc: ccRecipients.map((r) => r.emailAddress.address),
+        email_from: from,
+        sent_at: new Date().toISOString(),
+        sent_by: params.sentBy ?? null,
+      } as any).then(() => {});
     }
 
-    const tokenData = await refreshRes.json();
-    accessToken = tokenData.access_token;
-
-    // Store new tokens
-    const { data: encAccess } = await serviceClient.rpc("encrypt_sensitive", { plaintext: tokenData.access_token });
-    const { data: encRefresh } = await serviceClient.rpc("encrypt_sensitive", { plaintext: tokenData.refresh_token });
-
-    await serviceClient
-      .from("microsoft_config")
-      .update({
-        access_token: encAccess,
-        refresh_token: encRefresh,
-        token_expires_at: new Date(Date.now() + tokenData.expires_in * 1000).toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq("organization_id", orgId)
-      .is("user_id", null);
-  }
-
-  // Build recipients
-  const toRecipients = (Array.isArray(to) ? to : [to]).map(email => ({
-    emailAddress: { address: email.trim() },
-  }));
-
-  const ccRecipients = cc?.map(email => ({
-    emailAddress: { address: email.trim() },
-  }));
-
-  // Send via Graph API
-  const graphRes = await fetch("https://graph.microsoft.com/v1.0/me/sendMail", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      message: {
-        subject,
-        body: { contentType: "HTML", content: finalBody },
-        toRecipients,
-        ...(ccRecipients && ccRecipients.length > 0 ? { ccRecipients } : {}),
+    await auditOutlookAction(admin, {
+      organizationId: params.orgId,
+      userId: params.sentBy ?? null,
+      action: "create",
+      accountId: provider.account.id,
+      values: {
+        action: "send_mail",
+        to: toRecipients.map((r) => r.emailAddress.address),
+        subject: params.subject,
+        from,
       },
-    }),
-  });
+    });
 
-  if (!graphRes.ok && graphRes.status !== 202) {
-    const errText = await graphRes.text();
-    console.error("Graph sendMail failed:", errText);
-    return { success: false, method: "outlook", error: `Graph API error: ${graphRes.status}` };
+    return { success: true, method: "outlook", accountId: provider.account.id, from };
+  } catch (error) {
+    const err = error as any;
+    const missingDefault = err?.code === "outlook_account_not_found";
+    return {
+      success: false,
+      method: missingDefault ? "none" : "outlook",
+      error: missingDefault ? "Geen standaard Outlook-afzender ingesteld" : err?.message || "Outlook verzenden mislukt",
+    };
   }
-
-  // Log in communications
-  const toEmails = Array.isArray(to) ? to : [to];
-  await serviceClient.from("communications").insert({
-    organization_id: orgId,
-    recipient_id: candidateId || null,
-    recipient_type: candidateId ? "candidate" : null,
-    company_id: companyId || null,
-    channel: "email",
-    direction: "outbound",
-    subject,
-    body: finalBody,
-    email_to: toEmails,
-    email_from: msToken[0].microsoft_email || null,
-    status: "sent",
-    sent_at: new Date().toISOString(),
-    sent_by: sentBy || null,
-  } as any);
-
-  return { success: true, method: "outlook" };
 }

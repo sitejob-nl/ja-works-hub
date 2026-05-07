@@ -2,8 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
-import { useMicrosoftApi } from '@/hooks/useMicrosoftApi';
-import { useMicrosoftConfig } from '@/hooks/useMicrosoftConfig';
+import { useOutlookAccounts, useOutlookInvoke } from '@/hooks/useOutlookAccounts';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,8 +21,9 @@ interface Props {
 
 const ClientPortalActivateSheet = ({ open, onOpenChange, contactId, companyId, contactEmail, contactName }: Props) => {
   const orgId = useOrganizationId();
-  const { callApi } = useMicrosoftApi();
-  const { isConnected } = useMicrosoftConfig();
+  const callOutlook = useOutlookInvoke();
+  const { hasUsableAccounts } = useOutlookAccounts('mail_send');
+  const isConnected = hasUsableAccounts;
   const qc = useQueryClient();
   const [email, setEmail] = useState(contactEmail ?? '');
   const [inviteLink, setInviteLink] = useState<string | null>(null);
@@ -73,17 +73,12 @@ const ClientPortalActivateSheet = ({ open, onOpenChange, contactId, companyId, c
         <p>Deze link is 7 dagen geldig.</p>
         <p>Met vriendelijke groet,<br/>JA Werkt</p>
       `;
-      await callApi({
-        endpoint: 'me/sendMail',
-        method: 'POST',
-        payload: {
-          message: {
-            subject: 'Uitnodiging Opdrachtgeverportaal',
-            body: { contentType: 'HTML', content: html },
-            toRecipients: [{ emailAddress: { address: email } }],
-          },
-          saveToSentItems: true,
-        },
+      await callOutlook('outlook-send-mail', {
+        to: [email],
+        subject: 'Uitnodiging Opdrachtgeverportaal',
+        html,
+        company_id: companyId,
+        company_contact_id: contactId,
       });
       setEmailSent(true);
       toast.success('Uitnodiging verstuurd per e-mail');

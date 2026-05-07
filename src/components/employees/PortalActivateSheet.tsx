@@ -2,9 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
-import { useAuth } from '@/contexts/AuthContext';
-import { useMicrosoftApi } from '@/hooks/useMicrosoftApi';
-import { useMicrosoftConfig } from '@/hooks/useMicrosoftConfig';
+import { useOutlookAccounts, useOutlookInvoke } from '@/hooks/useOutlookAccounts';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -35,9 +33,9 @@ function replaceVars(text: string, vars: Record<string, string>): string {
 const PortalActivateSheet = ({ open, onOpenChange, candidateId: candidateIdProp, employeeId, candidateEmail }: Props) => {
   const candidateId = candidateIdProp ?? employeeId!;
   const orgId = useOrganizationId();
-  const { profile } = useAuth();
-  const { callApi } = useMicrosoftApi();
-  const { isConnected } = useMicrosoftConfig();
+  const callOutlook = useOutlookInvoke();
+  const { hasUsableAccounts } = useOutlookAccounts('mail_send');
+  const isConnected = hasUsableAccounts;
   const qc = useQueryClient();
   const [email, setEmail] = useState(candidateEmail ?? '');
   const [language, setLanguage] = useState('nl');
@@ -164,16 +162,11 @@ const PortalActivateSheet = ({ open, onOpenChange, candidateId: candidateIdProp,
         }
 
         try {
-          await callApi({
-            endpoint: 'me/sendMail',
-            method: 'POST',
-            payload: {
-              message: {
-                subject,
-                body: { contentType: 'HTML', content: htmlBody },
-                toRecipients: [{ emailAddress: { address: email } }],
-              },
-            },
+          await callOutlook('outlook-send-mail', {
+            to: [email],
+            subject,
+            html: htmlBody,
+            candidate_id: candidateId,
           });
           setEmailSent(true);
         } catch (err) {
@@ -231,16 +224,11 @@ const PortalActivateSheet = ({ open, onOpenChange, candidateId: candidateIdProp,
         }
 
         try {
-          await callApi({
-            endpoint: 'me/sendMail',
-            method: 'POST',
-            payload: {
-              message: {
-                subject,
-                body: { contentType: 'HTML', content: htmlBody },
-                toRecipients: [{ emailAddress: { address: email } }],
-              },
-            },
+          await callOutlook('outlook-send-mail', {
+            to: [email],
+            subject,
+            html: htmlBody,
+            candidate_id: candidateId,
           });
           setEmailSent(true);
         } catch { /* silent */ }

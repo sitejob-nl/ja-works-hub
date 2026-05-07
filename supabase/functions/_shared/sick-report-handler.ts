@@ -1,5 +1,5 @@
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { sendViaOutlook } from "./outlook-send.ts";
+import { sendViaOutlookAccount } from "./outlook-send.ts";
 import { getWhatsAppCredentials, normalizePhone, META_API_BASE } from "./whatsapp-utils.ts";
 
 export interface SickReportCascadeResult {
@@ -185,7 +185,7 @@ export async function cascadeSickReport(
         notes: report.notes,
       });
 
-      const sendResult = await sendViaOutlook({
+      const sendResult = await sendViaOutlookAccount({
         orgId,
         to: contact.email,
         subject,

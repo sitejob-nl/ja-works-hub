@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useMicrosoftApi } from '@/hooks/useMicrosoftApi';
+import { useOutlookInvoke } from '@/hooks/useOutlookAccounts';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,6 +28,7 @@ interface CalendarEventFormProps {
   onOpenChange: (open: boolean) => void;
   event?: CalendarEvent | null;
   defaultDate?: string; // YYYY-MM-DD
+  selectedAccount?: string;
 }
 
 function toLocalDatetime(isoStr: string) {
@@ -43,8 +44,8 @@ function toDateOnly(isoStr: string) {
   return isoStr.slice(0, 10);
 }
 
-const CalendarEventForm = ({ open, onOpenChange, event, defaultDate }: CalendarEventFormProps) => {
-  const { callApi } = useMicrosoftApi();
+const CalendarEventForm = ({ open, onOpenChange, event, defaultDate, selectedAccount }: CalendarEventFormProps) => {
+  const callOutlook = useOutlookInvoke();
   const queryClient = useQueryClient();
   const isEditing = !!event?.id;
 
@@ -110,13 +111,13 @@ const CalendarEventForm = ({ open, onOpenChange, event, defaultDate }: CalendarE
       };
 
       if (isEditing) {
-        return callApi({ endpoint: `me/calendar/events/${event!.id}`, method: 'PATCH', payload });
+        return callOutlook('outlook-calendar', { action: 'update', account_id: selectedAccount, event_id: event!.id, payload });
       }
-      return callApi({ endpoint: 'me/calendar/events', method: 'POST', payload });
+      return callOutlook('outlook-calendar', { action: 'create', account_id: selectedAccount, payload });
     },
     onSuccess: () => {
       toast.success(isEditing ? 'Afspraak bijgewerkt' : 'Afspraak aangemaakt');
-      queryClient.invalidateQueries({ queryKey: ['microsoft-calendar'] });
+      queryClient.invalidateQueries({ queryKey: ['outlook-calendar'] });
       onOpenChange(false);
     },
     onError: (err: Error) => {
@@ -127,10 +128,10 @@ const CalendarEventForm = ({ open, onOpenChange, event, defaultDate }: CalendarE
   });
 
   const deleteMutation = useMutation({
-    mutationFn: () => callApi({ endpoint: `me/calendar/events/${event!.id}`, method: 'DELETE' }),
+    mutationFn: () => callOutlook('outlook-calendar', { action: 'delete', account_id: selectedAccount, event_id: event!.id }),
     onSuccess: () => {
       toast.success('Afspraak verwijderd');
-      queryClient.invalidateQueries({ queryKey: ['microsoft-calendar'] });
+      queryClient.invalidateQueries({ queryKey: ['outlook-calendar'] });
       onOpenChange(false);
     },
     onError: (err: Error) => {

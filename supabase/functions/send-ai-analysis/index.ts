@@ -10,7 +10,7 @@
 // aanroepende UI bepaalt of het rapport echte naam of pseudonimisering laat zien.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { sendViaOutlook } from "../_shared/outlook-send.ts";
+import { sendViaOutlookAccount } from "../_shared/outlook-send.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -229,7 +229,7 @@ Deno.serve(async (req) => {
       : `kandidaat ${candidate.employee_number ?? candidate.id?.slice(0, 6) ?? ""}`.trim();
     const subject = `AI-profielanalyse: ${subjectName}`;
 
-    const sendResult = await sendViaOutlook({
+    const sendResult = await sendViaOutlookAccount({
       orgId,
       to: recipient_email.trim(),
       subject,

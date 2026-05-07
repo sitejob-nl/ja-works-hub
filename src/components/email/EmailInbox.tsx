@@ -1,7 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useMicrosoftApi } from '@/hooks/useMicrosoftApi';
-import { useMicrosoftConfig } from '@/hooks/useMicrosoftConfig';
+import { useOutlookAccounts, useOutlookInvoke } from '@/hooks/useOutlookAccounts';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -21,16 +20,18 @@ import { sanitizeHtml } from '@/lib/sanitize-html';
 interface EmailMessage {
   id: string;
   subject: string;
-  bodyPreview: string;
-  body?: { content: string; contentType: string };
-  from?: { emailAddress: { name: string; address: string } };
-  toRecipients?: { emailAddress: { name: string; address: string } }[];
-  ccRecipients?: { emailAddress: { name: string; address: string } }[];
-  receivedDateTime: string;
-  isRead: boolean;
-  hasAttachments: boolean;
+  preview: string;
+  body_html?: string;
+  body_type?: string;
+  from?: { name: string | null; address: string | null };
+  to?: { name: string | null; address: string | null }[];
+  cc?: { name: string | null; address: string | null }[];
+  received_at: string | null;
+  sent_at?: string | null;
+  is_read: boolean;
+  has_attachments: boolean;
   importance: string;
-  flag?: { flagStatus: string };
+  attachments?: { id: string; name: string; size: number; is_inline: boolean }[];
 }
 
 type FolderKey = 'inbox' | 'sentitems' | 'drafts' | 'deleteditems' | 'archive';
@@ -51,12 +52,19 @@ function formatEmailDate(dateStr: string) {
 }
 
 function senderName(msg: EmailMessage) {
-  return msg.from?.emailAddress?.name || msg.from?.emailAddress?.address || 'Onbekend';
+  return msg.from?.name || msg.from?.address || 'Onbekend';
 }
 
 const EmailInbox = ({ selectedAccount }: { selectedAccount?: string }) => {
-  const { callApi } = useMicrosoftApi(selectedAccount);
-  const { isConnected } = useMicrosoftConfig();
+  const callOutlook = useOutlookInvoke();
+  const { accounts } = useOutlookAccounts('mail_read');
+  const activeAccount = accounts.find((account) => account.account_id === selectedAccount);
+  const canRead = Boolean(
+    selectedAccount &&
+      activeAccount?.microsoft_access_ok &&
+      activeAccount?.capabilities.mail_read &&
+      activeAccount?.ja_grants.mail_read,
+  );
   const [activeFolder, setActiveFolder] = useState<FolderKey>('inbox');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -65,45 +73,55 @@ const EmailInbox = ({ selectedAccount }: { selectedAccount?: string }) => {
   const [page, setPage] = useState(0);
   const pageSize = 25;
 
+  useEffect(() => {
+    setSelectedId(null);
+    setPage(0);
+  }, [selectedAccount]);
+
   // Fetch messages
   const { data: messagesData, isLoading, refetch, isFetching } = useQuery({
-    queryKey: ['microsoft-emails', activeFolder, searchQuery, page, selectedAccount],
+    queryKey: ['outlook-emails', activeFolder, searchQuery, page, selectedAccount],
     queryFn: async () => {
-      if (searchQuery) {
-        return callApi({
-          endpoint: `me/messages?$search="${searchQuery}"&$top=${pageSize}&$skip=${page * pageSize}&$select=id,subject,bodyPreview,from,toRecipients,receivedDateTime,isRead,hasAttachments,importance,flag&$orderby=receivedDateTime desc`,
-        });
-      }
-      return callApi({
-        endpoint: `me/mailFolders/${activeFolder}/messages?$top=${pageSize}&$skip=${page * pageSize}&$select=id,subject,bodyPreview,from,toRecipients,receivedDateTime,isRead,hasAttachments,importance,flag&$orderby=receivedDateTime desc`,
+      return callOutlook<{ messages: EmailMessage[]; next_link: string | null }>('outlook-mail', {
+        action: 'list',
+        account_id: selectedAccount,
+        folder_id: activeFolder,
+        search: searchQuery || undefined,
+        top: pageSize,
+        skip: page * pageSize,
       });
     },
-    enabled: isConnected,
+    enabled: canRead,
     refetchInterval: 30_000,
   });
 
-  const messages: EmailMessage[] = messagesData?.value || [];
-  const hasNextPage = !!messagesData?.['@odata.nextLink'];
+  const messages: EmailMessage[] = messagesData?.messages || [];
+  const hasNextPage = !!messagesData?.next_link;
 
   // Fetch selected message detail
   const { data: selectedMessage, isLoading: loadingDetail } = useQuery({
-    queryKey: ['microsoft-email-detail', selectedId, selectedAccount],
-    queryFn: () => callApi({
-      endpoint: `me/messages/${selectedId}?$select=id,subject,body,from,toRecipients,ccRecipients,receivedDateTime,isRead,hasAttachments,importance,attachments`,
-    }),
-    enabled: !!selectedId && isConnected,
+    queryKey: ['outlook-email-detail', selectedId, selectedAccount],
+    queryFn: async () => {
+      const data = await callOutlook<{ message: EmailMessage }>('outlook-mail', {
+        action: 'detail',
+        account_id: selectedAccount,
+        message_id: selectedId,
+      });
+      return data.message;
+    },
+    enabled: !!selectedId && canRead,
   });
 
   // Mark as read
   const markAsRead = async (msgId: string) => {
     try {
-      await callApi({ endpoint: `me/messages/${msgId}`, method: 'PATCH', payload: { isRead: true } });
+      await callOutlook('outlook-mail', { action: 'mark_read', account_id: selectedAccount, message_id: msgId });
     } catch { /* silent */ }
   };
 
   const handleSelectMessage = (msg: EmailMessage) => {
     setSelectedId(msg.id);
-    if (!msg.isRead) markAsRead(msg.id);
+    if (!msg.is_read) markAsRead(msg.id);
   };
 
   const handleReply = (mode: 'reply' | 'replyAll' | 'forward') => {
@@ -111,9 +129,9 @@ const EmailInbox = ({ selectedAccount }: { selectedAccount?: string }) => {
     setReplyData({
       messageId: selectedMessage.id,
       subject: selectedMessage.subject,
-      from: selectedMessage.from?.emailAddress?.address,
-      toAll: selectedMessage.toRecipients?.map((r: any) => r.emailAddress.address),
-      body: selectedMessage.body?.content,
+      from: selectedMessage.from?.address,
+      toAll: selectedMessage.to?.map((r: any) => r.address),
+      body: selectedMessage.body_html,
       mode,
     });
     setComposeOpen(true);
@@ -122,7 +140,7 @@ const EmailInbox = ({ selectedAccount }: { selectedAccount?: string }) => {
   const handleDelete = async () => {
     if (!selectedId) return;
     try {
-      await callApi({ endpoint: `me/messages/${selectedId}`, method: 'DELETE' });
+      await callOutlook('outlook-mail', { action: 'delete', account_id: selectedAccount, message_id: selectedId });
       setSelectedId(null);
       refetch();
     } catch { /* silent */ }
@@ -131,18 +149,18 @@ const EmailInbox = ({ selectedAccount }: { selectedAccount?: string }) => {
   const handleArchive = async () => {
     if (!selectedId) return;
     try {
-      await callApi({ endpoint: `me/messages/${selectedId}/move`, method: 'POST', payload: { destinationId: 'archive' } });
+      await callOutlook('outlook-mail', { action: 'move', account_id: selectedAccount, message_id: selectedId, destination_id: 'archive' });
       setSelectedId(null);
       refetch();
     } catch { /* silent */ }
   };
 
-  if (!isConnected) {
+  if (!canRead) {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] gap-4 text-muted-foreground">
         <AlertCircle className="h-12 w-12" />
-        <p className="text-lg">Microsoft 365 is nog niet gekoppeld</p>
-        <p className="text-sm">Ga naar Instellingen om je Microsoft account te koppelen</p>
+        <p className="text-lg">Geen leesbare Outlook mailbox geselecteerd</p>
+        <p className="text-sm">{activeAccount?.status_reason || 'Ga naar Instellingen om Outlook accounts en rechten te beheren'}</p>
         <Button variant="outline" onClick={() => window.location.href = '/instellingen'}>
           Naar Instellingen
         </Button>
@@ -237,26 +255,26 @@ const EmailInbox = ({ selectedAccount }: { selectedAccount?: string }) => {
                   className={cn(
                     'w-full text-left px-3 py-2.5 border-b hover:bg-muted/50 transition-colors',
                     selectedId === msg.id && 'bg-primary/5',
-                    !msg.isRead && 'bg-blue-50/50 dark:bg-blue-950/20'
+                    !msg.is_read && 'bg-blue-50/50 dark:bg-blue-950/20'
                   )}
                 >
                   <div className="flex items-center gap-2 mb-0.5">
-                    <span className={cn('text-sm truncate flex-1', !msg.isRead && 'font-semibold')}>
+                    <span className={cn('text-sm truncate flex-1', !msg.is_read && 'font-semibold')}>
                       {senderName(msg)}
                     </span>
                     <span className="text-[11px] text-muted-foreground shrink-0">
-                      {formatEmailDate(msg.receivedDateTime)}
+                      {msg.received_at ? formatEmailDate(msg.received_at) : ''}
                     </span>
                   </div>
                   <div className="flex items-center gap-1">
-                    {!msg.isRead && <div className="h-2 w-2 rounded-full bg-primary shrink-0" />}
-                    <p className={cn('text-sm truncate', !msg.isRead ? 'font-medium' : 'text-muted-foreground')}>
+                    {!msg.is_read && <div className="h-2 w-2 rounded-full bg-primary shrink-0" />}
+                    <p className={cn('text-sm truncate', !msg.is_read ? 'font-medium' : 'text-muted-foreground')}>
                       {msg.subject || '(Geen onderwerp)'}
                     </p>
                   </div>
                   <div className="flex items-center gap-1 mt-0.5">
-                    <p className="text-xs text-muted-foreground truncate flex-1">{msg.bodyPreview}</p>
-                    {msg.hasAttachments && <Paperclip className="h-3 w-3 text-muted-foreground shrink-0" />}
+                    <p className="text-xs text-muted-foreground truncate flex-1">{msg.preview}</p>
+                    {msg.has_attachments && <Paperclip className="h-3 w-3 text-muted-foreground shrink-0" />}
                     {msg.importance === 'high' && <Star className="h-3 w-3 text-orange-500 shrink-0" />}
                   </div>
                 </button>
@@ -323,35 +341,35 @@ const EmailInbox = ({ selectedAccount }: { selectedAccount?: string }) => {
               <div className="flex items-start gap-3">
                 <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                   <span className="text-sm font-medium text-primary">
-                    {(selectedMessage.from?.emailAddress?.name || '?').charAt(0).toUpperCase()}
+                    {(selectedMessage.from?.name || '?').charAt(0).toUpperCase()}
                   </span>
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium">
-                    {selectedMessage.from?.emailAddress?.name}
+                    {selectedMessage.from?.name}
                     <span className="text-muted-foreground font-normal ml-2 text-xs">
-                      &lt;{selectedMessage.from?.emailAddress?.address}&gt;
+                      &lt;{selectedMessage.from?.address}&gt;
                     </span>
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Aan: {selectedMessage.toRecipients?.map((r: any) => r.emailAddress.name || r.emailAddress.address).join(', ')}
+                    Aan: {selectedMessage.to?.map((r: any) => r.name || r.address).join(', ')}
                   </p>
-                  {selectedMessage.ccRecipients?.length > 0 && (
+                  {(selectedMessage.cc?.length || 0) > 0 && (
                     <p className="text-xs text-muted-foreground">
-                      CC: {selectedMessage.ccRecipients.map((r: any) => r.emailAddress.name || r.emailAddress.address).join(', ')}
+                      CC: {selectedMessage.cc?.map((r: any) => r.name || r.address).join(', ')}
                     </p>
                   )}
                 </div>
                 <span className="text-xs text-muted-foreground shrink-0">
-                  {selectedMessage.receivedDateTime && format(parseISO(selectedMessage.receivedDateTime), 'd MMM yyyy HH:mm', { locale: nl })}
+                  {selectedMessage.received_at && format(parseISO(selectedMessage.received_at), 'd MMM yyyy HH:mm', { locale: nl })}
                 </span>
               </div>
 
               {/* Attachments */}
-              {selectedMessage.attachments?.length > 0 && (
+              {(selectedMessage.attachments?.length || 0) > 0 && (
                 <div className="flex flex-wrap gap-2 pt-1">
                   {selectedMessage.attachments
-                    .filter((a: any) => !a.isInline)
+                    .filter((a: any) => !a.is_inline)
                     .map((att: any) => (
                       <Badge key={att.id} variant="secondary" className="gap-1 text-xs">
                         <Paperclip className="h-3 w-3" /> {att.name}
@@ -364,13 +382,13 @@ const EmailInbox = ({ selectedAccount }: { selectedAccount?: string }) => {
 
             {/* Body */}
             <ScrollArea className="flex-1 px-4 py-3">
-              {selectedMessage.body?.contentType === 'html' ? (
+              {selectedMessage.body_type === 'html' ? (
                 <div
                   className="prose prose-sm dark:prose-invert max-w-none"
-                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(selectedMessage.body.content) }}
+                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(selectedMessage.body_html || '') }}
                 />
               ) : (
-                <pre className="text-sm whitespace-pre-wrap font-sans">{selectedMessage.body?.content}</pre>
+                <pre className="text-sm whitespace-pre-wrap font-sans">{selectedMessage.body_html}</pre>
               )}
             </ScrollArea>
           </>
@@ -382,6 +400,7 @@ const EmailInbox = ({ selectedAccount }: { selectedAccount?: string }) => {
         open={composeOpen}
         onOpenChange={setComposeOpen}
         replyTo={replyData}
+        selectedAccount={selectedAccount}
       />
     </div>
   );

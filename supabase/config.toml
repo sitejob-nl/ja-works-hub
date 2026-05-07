@@ -154,9 +154,6 @@ verify_jwt = false
 [functions.client-portal-activate]
 verify_jwt = false
 
-[functions.microsoft-callback]
-verify_jwt = false
-
 # ============================================================
 # VOYS TELEFONIE (beschermd)
 # ============================================================
@@ -168,13 +165,25 @@ verify_jwt = false
 verify_jwt = false
 
 # ============================================================
-# MICROSOFT GRAPH (beschermd)
+# OUTLOOK MAIL & AGENDA (self-auth)
 # ============================================================
 
-[functions.microsoft-auth]
+[functions.outlook-start]
 verify_jwt = false
 
-[functions.microsoft-api]
+[functions.outlook-callback]
+verify_jwt = false
+
+[functions.outlook-accounts]
+verify_jwt = false
+
+[functions.outlook-mail]
+verify_jwt = false
+
+[functions.outlook-send-mail]
+verify_jwt = false
+
+[functions.outlook-calendar]
 verify_jwt = false
 
 [functions.whatsapp-api]

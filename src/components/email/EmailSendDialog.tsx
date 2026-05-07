@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { useMicrosoftApi } from '@/hooks/useMicrosoftApi';
+import { useOutlookInvoke } from '@/hooks/useOutlookAccounts';
 import { useAuth } from '@/contexts/AuthContext';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -59,7 +59,7 @@ function replaceVars(text: string, vars: Record<string, string>): string {
 const EmailSendDialog = ({
   open, onOpenChange, candidateId, candidateEmail, candidateData, templateCategory, extraVariables,
 }: EmailSendDialogProps) => {
-  const { callApi } = useMicrosoftApi();
+  const callOutlook = useOutlookInvoke();
   const { profile } = useAuth();
   const orgId = profile?.organization_id;
   const qc = useQueryClient();
@@ -138,40 +138,16 @@ const EmailSendDialog = ({
       if (!toEmail.trim()) throw new Error('Vul een e-mailadres in');
       if (!subject.trim()) throw new Error('Vul een onderwerp in');
 
-      return callApi({
-        endpoint: 'me/sendMail',
-        method: 'POST',
-        payload: {
-          message: {
-            subject,
-            body: { contentType: 'HTML', content: finalHtml },
-            toRecipients: [{ emailAddress: { address: toEmail.trim() } }],
-          },
-        },
+      return callOutlook('outlook-send-mail', {
+        to: [toEmail.trim()],
+        subject,
+        html: finalHtml,
+        candidate_id: candidateId,
       });
     },
     onSuccess: () => {
       toast.success('E-mail verzonden');
-      qc.invalidateQueries({ queryKey: ['microsoft-emails'] });
-
-      // Log in communications table
-      if (candidateId && orgId) {
-        supabase.from('communications').insert({
-          organization_id: orgId,
-          recipient_id: candidateId,
-          recipient_type: 'candidate',
-          channel: 'email',
-          direction: 'outbound',
-          subject,
-          body: finalHtml,
-          email_to: [toEmail],
-          email_from: profile?.email || '',
-          status: 'sent',
-          sent_at: new Date().toISOString(),
-          sent_by: profile?.id,
-        } as any).then(() => {});
-      }
-
+      qc.invalidateQueries({ queryKey: ['outlook-emails'] });
       onOpenChange(false);
     },
     onError: (err: Error) => {

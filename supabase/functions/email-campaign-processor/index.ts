@@ -1,4 +1,5 @@
 import { createAdminClient, requireInternalProfile } from "../_shared/auth.ts";
+import { sendViaOutlookAccount } from "../_shared/outlook-send.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -104,20 +105,6 @@ Deno.serve(async (req) => {
       .single();
     const orgName = org?.name || "";
 
-    // Get Microsoft token
-    const { data: msToken, error: msError } = await serviceClient.rpc("get_microsoft_token", {
-      p_org_id: organization_id,
-    });
-
-    if (msError || !msToken || msToken.length === 0) {
-      return new Response(
-        JSON.stringify({ error: "Microsoft 365 niet geconfigureerd" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    const accessToken = msToken[0].access_token;
-
     // Get candidates
     const { data: candidates, error: candidatesError } = await serviceClient.rpc(
       "get_campaign_candidates",
@@ -188,23 +175,16 @@ Deno.serve(async (req) => {
 
           const merged = mergeTemplate(emailBody, emailSubject, fullCandidate || candidate, orgName);
 
-          // Send via Microsoft Graph
-          const graphRes = await fetch("https://graph.microsoft.com/v1.0/me/sendMail", {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              message: {
-                subject: merged.subject,
-                body: { contentType: "HTML", content: merged.html },
-                toRecipients: [{ emailAddress: { address: candidate.email } }],
-              },
-            }),
+          const sendResult = await sendViaOutlookAccount({
+            orgId: organization_id,
+            to: candidate.email,
+            subject: merged.subject,
+            htmlBody: merged.html,
+            candidateId: candidate.candidate_id,
+            sentBy: auth.userId,
           });
 
-          if (graphRes.ok || graphRes.status === 202) {
+          if (sendResult.success) {
             sentCount++;
 
             // Record rate limit
@@ -220,22 +200,8 @@ Deno.serve(async (req) => {
               .eq("campaign_id", campaign_id)
               .eq("candidate_id", candidate.candidate_id);
 
-            // Log in communications
-            await serviceClient.from("communications").insert({
-              organization_id,
-              recipient_id: candidate.candidate_id,
-              recipient_type: "candidate",
-              channel: "email",
-              direction: "outbound",
-              subject: merged.subject,
-              body: merged.html,
-              email_to: [candidate.email],
-              status: "sent",
-              sent_at: new Date().toISOString(),
-            });
           } else {
-            const errBody = await graphRes.text();
-            throw new Error(`Graph API ${graphRes.status}: ${errBody}`);
+            throw new Error(sendResult.error || "Outlook verzenden mislukt");
           }
         } catch (err) {
           failedCount++;

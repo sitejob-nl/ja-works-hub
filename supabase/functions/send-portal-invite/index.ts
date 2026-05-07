@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { sendViaOutlook } from "../_shared/outlook-send.ts";
+import { sendViaOutlookAccount } from "../_shared/outlook-send.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -123,7 +123,7 @@ Deno.serve(async (req) => {
     const subject = `Welkom — activeer je medewerkersportaal`;
     const html = buildInviteEmailHtml({ firstName, orgName, activationUrl });
 
-    const sendResult = await sendViaOutlook({
+    const sendResult = await sendViaOutlookAccount({
       orgId: invite.organization_id,
       to: invite.email,
       subject,

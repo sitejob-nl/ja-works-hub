@@ -1,7 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useMicrosoftApi } from '@/hooks/useMicrosoftApi';
-import { useMicrosoftConfig } from '@/hooks/useMicrosoftConfig';
+import { useOutlookAccounts, useOutlookInvoke } from '@/hooks/useOutlookAccounts';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -50,8 +49,15 @@ function eventTime(evt: CalendarEvent) {
 }
 
 const CalendarView = ({ selectedAccount }: { selectedAccount?: string }) => {
-  const { callApi } = useMicrosoftApi(selectedAccount);
-  const { isConnected } = useMicrosoftConfig();
+  const callOutlook = useOutlookInvoke();
+  const { accounts } = useOutlookAccounts('calendar_read');
+  const activeAccount = accounts.find((account) => account.account_id === selectedAccount);
+  const canRead = Boolean(
+    selectedAccount &&
+      activeAccount?.microsoft_access_ok &&
+      activeAccount?.capabilities.calendar_read &&
+      activeAccount?.ja_grants.calendar_read,
+  );
   const [viewMode, setViewMode] = useState<ViewMode>('week');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [formOpen, setFormOpen] = useState(false);
@@ -77,11 +83,15 @@ const CalendarView = ({ selectedAccount }: { selectedAccount?: string }) => {
   }, [currentDate, viewMode]);
 
   const { data: eventsData, isLoading, isFetching } = useQuery({
-    queryKey: ['microsoft-calendar', rangeStart.toISOString(), rangeEnd.toISOString(), selectedAccount],
-    queryFn: () => callApi({
-      endpoint: `me/calendar/calendarView?startDateTime=${rangeStart.toISOString()}&endDateTime=${rangeEnd.toISOString()}&$top=100&$select=id,subject,start,end,location,isAllDay,showAs,organizer,attendees,body,importance&$orderby=start/dateTime`,
+    queryKey: ['outlook-calendar', rangeStart.toISOString(), rangeEnd.toISOString(), selectedAccount],
+    queryFn: () => callOutlook('outlook-calendar', {
+      action: 'list',
+      account_id: selectedAccount,
+      startDateTime: rangeStart.toISOString(),
+      endDateTime: rangeEnd.toISOString(),
+      top: 100,
     }),
-    enabled: isConnected,
+    enabled: canRead,
     refetchInterval: 60_000,
   });
 
@@ -120,12 +130,12 @@ const CalendarView = ({ selectedAccount }: { selectedAccount?: string }) => {
     setFormOpen(true);
   };
 
-  if (!isConnected) {
+  if (!canRead) {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] gap-4 text-muted-foreground">
         <AlertCircle className="h-12 w-12" />
-        <p className="text-lg">Microsoft 365 is nog niet gekoppeld</p>
-        <p className="text-sm">Ga naar Instellingen om je Microsoft account te koppelen</p>
+        <p className="text-lg">Geen leesbare Outlook agenda geselecteerd</p>
+        <p className="text-sm">{activeAccount?.status_reason || 'Ga naar Instellingen om agenda accounts en rechten te beheren'}</p>
         <Button variant="outline" onClick={() => window.location.href = '/instellingen'}>
           Naar Instellingen
         </Button>
@@ -341,6 +351,7 @@ const CalendarView = ({ selectedAccount }: { selectedAccount?: string }) => {
         onOpenChange={setFormOpen}
         event={selectedEvent}
         defaultDate={defaultDate}
+        selectedAccount={selectedAccount}
       />
     </div>
   );

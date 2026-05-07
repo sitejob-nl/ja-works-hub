@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { sendViaOutlook } from "../_shared/outlook-send.ts";
+import { sendViaOutlookAccount } from "../_shared/outlook-send.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -331,9 +331,9 @@ Deno.serve(async (req) => {
       });
 
       // Send via Outlook if connected, otherwise store as concept
-      let sendResult = { success: false, method: "none" as const };
+      let sendResult: { success: boolean; method: "outlook" | "none"; error?: string } = { success: false, method: "none" };
       if (clientEmail) {
-        sendResult = await sendViaOutlook({
+        sendResult = await sendViaOutlookAccount({
           orgId,
           to: clientEmail,
           subject,
@@ -381,7 +381,7 @@ Deno.serve(async (req) => {
       });
 
       // Send via Outlook if connected
-      const empSendResult = await sendViaOutlook({
+      const empSendResult = await sendViaOutlookAccount({
         orgId,
         to: candidate.email,
         subject,

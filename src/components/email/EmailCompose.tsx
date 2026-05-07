@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useMicrosoftApi } from '@/hooks/useMicrosoftApi';
+import { useOutlookInvoke } from '@/hooks/useOutlookAccounts';
 import { useAuth } from '@/contexts/AuthContext';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -25,10 +25,11 @@ interface EmailComposeProps {
   };
   defaultTo?: string;
   defaultSubject?: string;
+  selectedAccount?: string;
 }
 
-const EmailCompose = ({ open, onOpenChange, replyTo, defaultTo, defaultSubject }: EmailComposeProps) => {
-  const { callApi } = useMicrosoftApi();
+const EmailCompose = ({ open, onOpenChange, replyTo, defaultTo, defaultSubject, selectedAccount }: EmailComposeProps) => {
+  const callOutlook = useOutlookInvoke();
   const { profile } = useAuth();
   const queryClient = useQueryClient();
   const senderName = profile?.full_name?.trim() || '';
@@ -48,53 +49,24 @@ const EmailCompose = ({ open, onOpenChange, replyTo, defaultTo, defaultSubject }
 
   const sendMutation = useMutation({
     mutationFn: async () => {
-      const toRecipients = to.split(/[,;]/).map(e => e.trim()).filter(Boolean).map(email => ({
-        emailAddress: { address: email },
-      }));
-      const ccRecipients = cc.split(/[,;]/).map(e => e.trim()).filter(Boolean).map(email => ({
-        emailAddress: { address: email },
-      }));
+      const toRecipients = to.split(/[,;]/).map(e => e.trim()).filter(Boolean);
+      const ccRecipients = cc.split(/[,;]/).map(e => e.trim()).filter(Boolean);
 
       if (toRecipients.length === 0) throw new Error('Vul minimaal één ontvanger in');
 
       const htmlBody = buildEmailHtmlWithSignature(body, senderName);
 
-      if (isReply && replyTo?.messageId) {
-        const endpoint = isForward
-          ? `me/messages/${replyTo.messageId}/forward`
-          : replyTo.mode === 'replyAll'
-            ? `me/messages/${replyTo.messageId}/replyAll`
-            : `me/messages/${replyTo.messageId}/reply`;
-
-        return callApi({
-          endpoint,
-          method: 'POST',
-          payload: {
-            message: {
-              toRecipients: isForward ? toRecipients : undefined,
-              ccRecipients: ccRecipients.length > 0 ? ccRecipients : undefined,
-            },
-            comment: htmlBody,
-          },
-        });
-      }
-
-      return callApi({
-        endpoint: 'me/sendMail',
-        method: 'POST',
-        payload: {
-          message: {
-            subject,
-            body: { contentType: 'HTML', content: htmlBody },
-            toRecipients,
-            ...(ccRecipients.length > 0 ? { ccRecipients } : {}),
-          },
-        },
+      return callOutlook('outlook-send-mail', {
+        account_id: selectedAccount,
+        to: toRecipients,
+        cc: ccRecipients,
+        subject,
+        html: htmlBody,
       });
     },
     onSuccess: () => {
       toast.success('E-mail verzonden');
-      queryClient.invalidateQueries({ queryKey: ['microsoft-emails'] });
+      queryClient.invalidateQueries({ queryKey: ['outlook-emails'] });
       onOpenChange(false);
       setTo(''); setCc(''); setSubject(''); setBody('');
     },
