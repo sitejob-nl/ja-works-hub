@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createAdminClient, requireInternalProfile } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -46,20 +46,21 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const body = await req.json();
-    const { campaign_id, organization_id } = body;
+    const auth = await requireInternalProfile(req, corsHeaders);
+    if (auth instanceof Response) return auth;
 
-    if (!campaign_id || !organization_id) {
+    const body = await req.json();
+    const { campaign_id } = body;
+    const organization_id = auth.organizationId;
+
+    if (!campaign_id) {
       return new Response(
-        JSON.stringify({ error: "campaign_id and organization_id are required" }),
+        JSON.stringify({ error: "campaign_id is required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const serviceClient = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
+    const serviceClient = createAdminClient();
 
     // Load campaign
     const { data: campaign, error: campaignError } = await serviceClient
@@ -180,8 +181,9 @@ Deno.serve(async (req) => {
           // Get full candidate data for merge
           const { data: fullCandidate } = await serviceClient
             .from("candidates")
-            .select("*")
+            .select("first_name, last_name, email, phone, date_of_birth, nationality, employee_number, employee_status, status, address_street, address_postal, address_city")
             .eq("id", candidate.candidate_id)
+            .eq("organization_id", organization_id)
             .single();
 
           const merged = mergeTemplate(emailBody, emailSubject, fullCandidate || candidate, orgName);

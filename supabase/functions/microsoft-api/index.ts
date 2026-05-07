@@ -1,9 +1,26 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createAdminClient, requireInternalProfile } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+function buildGraphUrl(endpoint: string): string | null {
+  if (endpoint.startsWith("http")) {
+    try {
+      const url = new URL(endpoint);
+      return url.hostname === "graph.microsoft.com" ? url.toString() : null;
+    } catch {
+      return null;
+    }
+  }
+
+  const cleanEndpoint = endpoint.replace(/^\/+/, "");
+  if (cleanEndpoint.startsWith("v1.0/") || cleanEndpoint.startsWith("beta/")) {
+    return `https://graph.microsoft.com/${cleanEndpoint}`;
+  }
+  return `https://graph.microsoft.com/v1.0/${cleanEndpoint}`;
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -14,21 +31,25 @@ Deno.serve(async (req) => {
     new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   try {
+    const auth = await requireInternalProfile(req, corsHeaders);
+    if (auth instanceof Response) return auth;
+
     const body = await req.json();
-    const { endpoint, method = "GET", payload, organization_id, user_id } = body;
+    const { endpoint, method = "GET", payload, user_id } = body;
+    const organization_id = auth.organizationId;
+    const requestedUserId = user_id || null;
 
-    if (!organization_id) return json({ error: "organization_id is required" }, 400);
     if (!endpoint) return json({ error: "endpoint is required" }, 400);
+    if (requestedUserId && requestedUserId !== auth.userId && auth.role !== "admin") {
+      return json({ error: "Je mag alleen je eigen Microsoft-account gebruiken" }, 403);
+    }
 
-    const serviceClient = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
+    const serviceClient = createAdminClient();
 
     // Get decrypted tokens via RPC (tries user-specific first, falls back to org)
     const { data: tokenData, error: rpcError } = await serviceClient.rpc("get_microsoft_token", {
       p_org_id: organization_id,
-      p_user_id: user_id || null,
+      p_user_id: requestedUserId,
     });
 
     if (rpcError || !tokenData || tokenData.length === 0) {
@@ -43,7 +64,7 @@ Deno.serve(async (req) => {
     // Also get the config row ID for targeted updates
     let configQuery = serviceClient.from("microsoft_config").select("id").eq("organization_id", organization_id).eq("is_active", true);
     if (config.is_personal) {
-      configQuery = configQuery.eq("user_id", user_id);
+      configQuery = configQuery.eq("user_id", requestedUserId);
     } else {
       configQuery = configQuery.is("user_id", null);
     }
@@ -107,13 +128,12 @@ Deno.serve(async (req) => {
     }
 
     // Build Graph API URL
-    const fullUrl = endpoint.startsWith("http")
-      ? endpoint
-      : `https://graph.microsoft.com/v1.0/${endpoint}`;
+    const fullUrl = buildGraphUrl(String(endpoint));
+    if (!fullUrl) return json({ error: "Alleen Microsoft Graph endpoints zijn toegestaan" }, 400);
 
     // Call Microsoft Graph API
     const graphRes = await fetch(fullUrl, {
-      method: method.toUpperCase(),
+      method: String(method).toUpperCase(),
       headers: {
         Authorization: `Bearer ${accessToken}`,
         Accept: "application/json",

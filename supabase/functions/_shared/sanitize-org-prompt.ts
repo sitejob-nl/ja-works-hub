@@ -42,7 +42,20 @@ const FORBIDDEN_PATTERNS: Array<{ pattern: RegExp; replacement: string }> = [
 
 // Strip null bytes en non-printable control chars.
 // Behoud: \t (0x09), \n (0x0A), \r (0x0D)
-const CONTROL_CHARS_RE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g;
+function stripControlChars(input: string): { text: string; removed: number } {
+  let output = "";
+  let removed = 0;
+  for (const char of input) {
+    const code = char.charCodeAt(0);
+    const isDisallowedControl = code < 32 && code !== 9 && code !== 10 && code !== 13;
+    if (isDisallowedControl) {
+      removed += 1;
+      continue;
+    }
+    output += char;
+  }
+  return { text: output, removed };
+}
 
 export interface SanitizeResult {
   text: string;
@@ -57,7 +70,9 @@ export function sanitizeOrgPrompt(input: string | null | undefined): SanitizeRes
   let removed = 0;
 
   // 1. Strip null bytes en non-printable control chars
-  text = text.replace(CONTROL_CHARS_RE, "");
+  const stripped = stripControlChars(text);
+  text = stripped.text;
+  removed += stripped.removed;
 
   // 2. Strip forbidden patterns
   for (const { pattern, replacement } of FORBIDDEN_PATTERNS) {
