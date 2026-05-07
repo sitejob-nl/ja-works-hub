@@ -142,6 +142,9 @@ verify_jwt = false
 [functions.generate-invoice-pdf]
 verify_jwt = false
 
+[functions.data-export]
+verify_jwt = false
+
 [functions.candidate-profile]
 verify_jwt = false
 

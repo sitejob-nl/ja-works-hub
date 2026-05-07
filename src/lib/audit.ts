@@ -1,5 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import type { Database } from '@/integrations/supabase/types';
+import { redactAuditValues } from '@/lib/audit-redaction';
 
 type AuditAction = Database['public']['Enums']['audit_action'];
 
@@ -27,8 +28,8 @@ export const logAudit = async (params: {
       action: params.action,
       table_name: params.tableName,
       record_id: params.recordId,
-      old_values: (params.oldValues as any) ?? null,
-      new_values: (params.newValues as any) ?? null,
+      old_values: (redactAuditValues(params.oldValues) as any) ?? null,
+      new_values: (redactAuditValues(params.newValues) as any) ?? null,
       reason: params.reason ?? null,
     });
   } catch {

@@ -5,7 +5,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Download } from 'lucide-react';
 import { toast } from 'sonner';
-import { logAudit } from '@/lib/audit';
 
 const ENTITIES = [
   { key: 'candidates', label: 'Kandidaten' },
@@ -30,9 +29,14 @@ const DataExport = () => {
   const handleExport = async () => {
     setExporting(true);
     try {
-      const { data, error } = await supabase.from(entity).select('*');
+      const { data, error } = await supabase.functions.invoke('data-export', {
+        body: { entity },
+      });
       if (error) throw error;
-      if (!data || data.length === 0) {
+      if (data?.error) throw new Error(data.error);
+
+      const rows = (data?.rows ?? []) as Array<Record<string, unknown>>;
+      if (rows.length === 0) {
         toast.info('Geen data om te exporteren');
         return;
       }
@@ -42,17 +46,17 @@ const DataExport = () => {
       let ext: string;
 
       if (fmt === 'json') {
-        content = JSON.stringify(data, null, 2);
+        content = JSON.stringify(rows, null, 2);
         mimeType = 'application/json';
         ext = 'json';
       } else {
         // CSV
-        const headers = Object.keys(data[0]);
+        const headers = Object.keys(rows[0]);
         const csvRows = [
           headers.join(';'),
-          ...data.map(row =>
+          ...rows.map(row =>
             headers.map(h => {
-              const val = (row as any)[h];
+              const val = row[h];
               if (val === null || val === undefined) return '';
               const str = typeof val === 'object' ? JSON.stringify(val) : String(val);
               return `"${str.replace(/"/g, '""')}"`;
@@ -72,14 +76,7 @@ const DataExport = () => {
       a.click();
       URL.revokeObjectURL(url);
 
-      logAudit({
-        action: 'export',
-        tableName: entity,
-        recordId: null as any,
-        newValues: { format: fmt, count: data.length },
-      });
-
-      toast.success(`${data.length} records geëxporteerd`);
+      toast.success(`${rows.length} records geëxporteerd`);
     } catch (e: any) {
       toast.error(e.message);
     } finally {

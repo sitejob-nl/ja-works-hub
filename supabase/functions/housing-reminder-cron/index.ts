@@ -3,6 +3,7 @@
 // Two checks per organization:
 //   1. Properties whose `rental_contract_end_date` is within 90 days from today.
 //   2. Units whose `current_occupancy` exceeds `capacity` (overbooking).
+//   3. Active properties older than 90 days whose monthly cost fields are still empty.
 //
 // Modes:
 //   - **User mode** (default): caller is an authenticated user, runs only for their org.
@@ -27,11 +28,13 @@ const json = (body: unknown, status = 200) =>
 const REMINDER_WINDOW_DAYS = 90;
 const CATEGORY_CONTRACT = "huisvesting_huurcontract";
 const CATEGORY_OVERBOOKING = "huisvesting_overbezetting";
+const CATEGORY_MISSING_COSTS = "huisvesting_kosten_ontbreken";
 
 interface CheckResult {
   org_id: string;
   contract_tasks_created: number;
   overbooking_tasks_created: number;
+  missing_cost_tasks_created: number;
   skipped_existing: number;
 }
 
@@ -43,6 +46,7 @@ async function runForOrg(admin: any, orgId: string): Promise<CheckResult> {
 
   let contractTasks = 0;
   let overbookingTasks = 0;
+  let missingCostTasks = 0;
   let skipped = 0;
 
   // 1) Rental contracts expiring within window
@@ -121,10 +125,61 @@ async function runForOrg(admin: any, orgId: string): Promise<CheckResult> {
     overbookingTasks++;
   }
 
+  // 3) Properties without cost fields after the initial onboarding window.
+  const costCutoff = new Date(today);
+  costCutoff.setDate(costCutoff.getDate() - 90);
+  const costCutoffIso = costCutoff.toISOString();
+
+  const { data: missingCostProperties } = await admin
+    .from("properties")
+    .select("id, name, address_street, address_city, created_at, monthly_rent, cost_gas, cost_water, cost_electra, cost_municipal_tax, cost_other")
+    .eq("organization_id", orgId)
+    .eq("is_active", true)
+    .lte("created_at", costCutoffIso)
+    .is("monthly_rent", null)
+    .is("cost_gas", null)
+    .is("cost_water", null)
+    .is("cost_electra", null)
+    .is("cost_municipal_tax", null)
+    .is("cost_other", null);
+
+  for (const p of (missingCostProperties ?? []) as any[]) {
+    const { data: existing } = await admin
+      .from("recruiter_tasks")
+      .select("id")
+      .eq("organization_id", orgId)
+      .eq("related_entity_type", "property")
+      .eq("related_entity_id", p.id)
+      .eq("category", CATEGORY_MISSING_COSTS)
+      .eq("status", "open")
+      .maybeSingle();
+    if (existing) {
+      skipped++;
+      continue;
+    }
+
+    const label = p.name?.trim() || `${p.address_street}, ${p.address_city}`;
+    await admin.from("recruiter_tasks").insert({
+      organization_id: orgId,
+      title: `Kosten aanvullen: ${label}`,
+      description: `Pand "${label}" staat langer dan 90 dagen actief, maar de maandelijkse kostenvelden zijn nog leeg. Vul huur, gas, water, elektra en overige kosten aan.`,
+      category: CATEGORY_MISSING_COSTS,
+      priority: "medium",
+      status: "open",
+      related_entity_type: "property",
+      related_entity_id: p.id,
+      due_date: today.toISOString().split("T")[0],
+      ai_generated: true,
+      ai_reasoning: "Auto-gegenereerd door housing-reminder-cron (kostenvelden leeg na 90 dagen).",
+    } as any);
+    missingCostTasks++;
+  }
+
   return {
     org_id: orgId,
     contract_tasks_created: contractTasks,
     overbooking_tasks_created: overbookingTasks,
+    missing_cost_tasks_created: missingCostTasks,
     skipped_existing: skipped,
   };
 }

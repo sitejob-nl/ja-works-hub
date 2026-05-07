@@ -250,7 +250,7 @@ Deno.serve(async (req) => {
  * Strips spaces, dashes, and converts local Dutch format to international.
  */
 function normalizePhone(phone: string): string {
-  let cleaned = phone.replace(/[\s\-\(\)]/g, "");
+  let cleaned = phone.replace(/[\s()-]/g, "");
   // Convert Dutch local format to international
   if (cleaned.startsWith("06")) {
     cleaned = "+31" + cleaned.slice(1);
