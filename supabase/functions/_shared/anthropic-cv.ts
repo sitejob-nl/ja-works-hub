@@ -17,7 +17,8 @@ import {
 } from "./cv-prompt.ts";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
-const ANTHROPIC_MODEL = "claude-haiku-4-5-20251001";
+// Alias mapt op de full ID claude-haiku-4-5-20251001 — veiliger en future-proof.
+const ANTHROPIC_MODEL = "claude-haiku-4-5";
 const ANTHROPIC_VERSION = "2023-06-01";
 
 export interface AnthropicCvResult {

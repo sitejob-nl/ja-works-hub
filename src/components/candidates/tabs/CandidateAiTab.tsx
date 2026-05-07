@@ -194,10 +194,17 @@ const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => 
       if (data?.error) throw new Error(data.error);
       return data;
     },
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       qc.invalidateQueries({ queryKey: ['ai-provider-settings', candidate.organization_id] });
       if (data?.status === 'completed') {
-        // Cloud-pad — direct klaar
+        // Cloud-pad — direct klaar; haal verse data op zodat UI ai_* velden ziet
+        const { data: fresh } = await supabase
+          .from('candidates')
+          .select('*')
+          .eq('id', candidate.id)
+          .single();
+        if (fresh) setCandidate(fresh);
+        qc.invalidateQueries({ queryKey: ['candidate', candidate.id] });
         toast.success(
           `Analyse voltooid (Cloud, ${formatEuro(data.cost_cents ?? 0)} verbruikt)`,
         );

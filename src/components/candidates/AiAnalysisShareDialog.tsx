@@ -12,6 +12,7 @@ import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { Send, Loader2, Download, Eye, FileText } from 'lucide-react';
+import { sanitizeHtml } from '@/lib/sanitize-html';
 
 interface Props {
   open: boolean;
@@ -242,7 +243,7 @@ const AiAnalysisShareDialog = ({ open, onOpenChange, candidate }: Props) => {
 
           <TabsContent value="preview" className="flex-1 overflow-y-auto">
             <div className="rounded-md border bg-white">
-              <div ref={previewRef} dangerouslySetInnerHTML={{ __html: previewHtml }} />
+              <div ref={previewRef} dangerouslySetInnerHTML={{ __html: sanitizeHtml(previewHtml) }} />
             </div>
           </TabsContent>
         </Tabs>

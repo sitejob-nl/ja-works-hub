@@ -18,7 +18,10 @@ export const CV_ANALYSIS_SCHEMA = {
       type: "object",
       properties: {
         profiel: { type: "string", description: "Korte profielschets, 2-4 zinnen. Geen persoonsnaam." },
-        plaatsbaarheid_score: { type: "integer", minimum: 1, maximum: 10 },
+        plaatsbaarheid_score: {
+          type: "integer",
+          description: "Geheel getal 1-10 (1=lastig plaatsbaar, 10=top match).",
+        },
         positieve_signalen: { type: "array", items: { type: "string" } },
       },
       required: ["profiel", "plaatsbaarheid_score", "positieve_signalen"],

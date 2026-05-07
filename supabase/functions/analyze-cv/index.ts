@@ -211,9 +211,19 @@ Deno.serve(async (req) => {
           sanitizedAddendum.text || undefined,
         );
       } catch (e) {
-        console.error("[analyze-cv] Anthropic-call mislukt:", e);
+        const msg = (e as Error).message;
+        console.error("[analyze-cv] Anthropic-call mislukt:", msg);
         await admin.from("candidates").update({ ai_status: "failed" }).eq("id", candidate_id);
-        return jsonResponse({ error: `Cloud-analyse mislukt: ${(e as Error).message}` }, 502);
+        // Return 200 with error in body — anders verstopt Supabase functions-js
+        // de body achter een FunctionsHttpError en zie je alleen "non-2xx".
+        return jsonResponse(
+          {
+            success: false,
+            error: `Cloud-analyse mislukt: ${msg}`,
+            detail: msg,
+          },
+          200,
+        );
       }
 
       const costCents = calculateCostCents(
