@@ -1,12 +1,47 @@
 import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
-import { ExternalLink, Phone, Mail, ShieldCheck, ShieldX, Zap, AlertTriangle } from 'lucide-react';
+import { ExternalLink, Phone, Mail, ShieldCheck, ShieldX, Zap, AlertTriangle, FileText } from 'lucide-react';
 import { formatDate } from '@/lib/format';
 import { differenceInDays, parseISO } from 'date-fns';
 
 const OwnerTab = ({ property }: { property: any }) => {
+  const { data: contracts = [] } = useQuery({
+    queryKey: ['property-contracts-recent', property.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('property_contracts' as any)
+        .select('id, file_path, original_name, start_date, end_date, created_at')
+        .eq('property_id', property.id)
+        .order('created_at', { ascending: false })
+        .limit(3);
+      if (error) throw error;
+      return (data ?? []) as unknown as Array<{ id: string; file_path: string; original_name: string; start_date: string | null; end_date: string | null; created_at: string }>;
+    },
+    enabled: !!property?.id,
+  });
+
+  const openContract = async (path: string) => {
+    const { data, error } = await supabase.storage.from('property-contracts').createSignedUrl(path, 60);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    window.open(data.signedUrl, '_blank');
+  };
+
+  const contractPeriod = (start: string | null, end: string | null) => {
+    if (start && end) return `Van ${formatDate(start)} tot ${formatDate(end)}`;
+    if (start) return `Van ${formatDate(start)}`;
+    if (end) return `Tot ${formatDate(end)}`;
+    return null;
+  };
+
   const permitExpiry = (dateStr: string | null) => {
     if (!dateStr) return null;
     const days = differenceInDays(parseISO(dateStr), new Date());
@@ -61,14 +96,41 @@ const OwnerTab = ({ property }: { property: any }) => {
                 <Badge variant="secondary" className="mt-1">{ownershipLabels[property.ownership_type] ?? property.ownership_type}</Badge>
               </div>
             )}
-            {property.rental_contract_url && (
-              <div>
-                <p className="text-xs text-muted-foreground">Huurcontract</p>
-                <a href={property.rental_contract_url} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline flex items-center gap-1 mt-1">
-                  <ExternalLink className="h-3.5 w-3.5" /> Bekijk contract
-                </a>
-              </div>
-            )}
+            <div className="md:col-span-2">
+              <Separator className="my-2" />
+              <p className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Huurcontracten</p>
+              {contracts.length === 0 && !property.rental_contract_url ? (
+                <p className="text-sm text-muted-foreground italic">Nog geen huurcontracten</p>
+              ) : (
+                <div className="space-y-2">
+                  {contracts.map((c) => {
+                    const period = contractPeriod(c.start_date, c.end_date);
+                    return (
+                      <div key={c.id} className="flex items-center justify-between gap-3 rounded-md border border-border/60 px-3 py-2">
+                        <div className="min-w-0 flex items-center gap-2">
+                          <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium truncate">{c.original_name}</p>
+                            {period && <p className="text-xs text-muted-foreground">{period}</p>}
+                          </div>
+                        </div>
+                        <Button variant="ghost" size="sm" onClick={() => openContract(c.file_path)} className="gap-1 shrink-0">
+                          <ExternalLink className="h-3.5 w-3.5" /> Open
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {property.rental_contract_url && (
+                <div className="mt-3">
+                  <p className="text-xs text-muted-foreground">Externe contractlink (legacy)</p>
+                  <a href={property.rental_contract_url} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline flex items-center gap-1 mt-1">
+                    <ExternalLink className="h-3.5 w-3.5" /> Bekijk contract
+                  </a>
+                </div>
+              )}
+            </div>
             <div className="md:col-span-2">
               <Separator className="my-2" />
               <p className="text-xs text-muted-foreground mb-1">Notities</p>

@@ -1,24 +1,127 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Link, useNavigate } from 'react-router-dom';
-import { Building2, Plus, Search, Upload } from 'lucide-react';
+import { Building2, Plus, Search, Upload, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import ImportWizard from '@/components/import/ImportWizard';
+import { toast } from 'sonner';
+import { useAuth } from '@/contexts/AuthContext';
+import { logAudit } from '@/lib/audit';
 
 const PAGE_SIZE = 10;
 
 const Companies = () => {
   const navigate = useNavigate();
+  const qc = useQueryClient();
+  const { role } = useAuth();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [page, setPage] = useState(0);
   const [importOpen, setImportOpen] = useState(false);
+  const [resyncOpen, setResyncOpen] = useState(false);
+
+  const { data: kvkCount } = useQuery({
+    queryKey: ['companies-kvk-count'],
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from('companies')
+        .select('id', { count: 'exact', head: true })
+        .not('kvk_number', 'is', null)
+        .neq('kvk_number', '');
+      if (error) throw error;
+      return count ?? 0;
+    },
+    enabled: role === 'admin',
+  });
+
+  const bulkResync = useMutation({
+    mutationFn: async () => {
+      const { data: companies, error } = await supabase
+        .from('companies')
+        .select('id, kvk_number, name, sbi_codes, legal_form, visit_address_street, visit_address_postal, visit_address_city, visit_address_country, address_street, address_postal, address_city, address_country')
+        .not('kvk_number', 'is', null)
+        .neq('kvk_number', '');
+      if (error) throw error;
+
+      const list = companies ?? [];
+      const total = list.length;
+      const toastId = toast.loading(`Bulk-update gestart: 0/${total}`);
+
+      let updated = 0;
+      let failed = 0;
+      let skipped = 0;
+
+      for (let i = 0; i < total; i++) {
+        const c = list[i];
+        toast.loading(`Bulk-update bezig: ${i + 1}/${total}`, { id: toastId });
+        try {
+          const { data: kvk, error: kvkErr } = await supabase.functions.invoke('kvk-lookup', {
+            body: { kvk_number: c.kvk_number },
+          });
+          if (kvkErr || !kvk) {
+            failed++;
+          } else {
+            const payload: any = {};
+            if (kvk.name && kvk.name !== c.name) payload.name = kvk.name;
+            if (kvk.sbi_codes?.length) payload.sbi_codes = kvk.sbi_codes;
+            if (kvk.visit_address?.street) {
+              payload.visit_address_street = kvk.visit_address.street;
+              payload.address_street = kvk.visit_address.street;
+            }
+            if (kvk.visit_address?.postal) {
+              payload.visit_address_postal = kvk.visit_address.postal;
+              payload.address_postal = kvk.visit_address.postal;
+            }
+            if (kvk.visit_address?.city) {
+              payload.visit_address_city = kvk.visit_address.city;
+              payload.address_city = kvk.visit_address.city;
+            }
+            if (kvk.visit_address?.country) {
+              payload.visit_address_country = kvk.visit_address.country;
+              payload.address_country = kvk.visit_address.country;
+            }
+
+            if (Object.keys(payload).length === 0) {
+              skipped++;
+            } else {
+              const { error: updErr } = await supabase.from('companies').update(payload).eq('id', c.id);
+              if (updErr) {
+                failed++;
+              } else {
+                updated++;
+                await logAudit({
+                  action: 'update',
+                  tableName: 'companies',
+                  recordId: c.id,
+                  newValues: { source: 'bulk_kvk_resync', kvk_number: c.kvk_number, fields: Object.keys(payload) },
+                  reason: 'bulk-kvk-resync',
+                });
+              }
+            }
+          }
+        } catch {
+          failed++;
+        }
+        await new Promise((r) => setTimeout(r, 250));
+      }
+
+      toast.dismiss(toastId);
+      return { total, updated, failed, skipped };
+    },
+    onSuccess: (res) => {
+      toast.success(`Bulk-update klaar: ${res.updated} bijgewerkt, ${res.skipped} ongewijzigd, ${res.failed} gefaald (van ${res.total})`);
+      qc.invalidateQueries({ queryKey: ['companies'] });
+      qc.invalidateQueries({ queryKey: ['companies-kvk-count'] });
+    },
+    onError: (e: any) => toast.error(`Bulk-update mislukt: ${e?.message ?? 'onbekende fout'}`),
+  });
 
   const { data, isLoading } = useQuery({
     queryKey: ['companies', search, statusFilter, page],
@@ -57,6 +160,11 @@ const Companies = () => {
           <p className="text-muted-foreground text-sm mt-1">Beheer je opdrachtgevers en contactpersonen</p>
         </div>
         <div className="flex gap-2">
+          {role === 'admin' && (
+            <Button variant="outline" onClick={() => setResyncOpen(true)} disabled={bulkResync.isPending} className="gap-2">
+              <RefreshCw className={`h-4 w-4 ${bulkResync.isPending ? 'animate-spin' : ''}`} /> Bulk KVK-resync
+            </Button>
+          )}
           <Button variant="outline" onClick={() => setImportOpen(true)} className="gap-2">
             <Upload className="h-4 w-4" /> Importeren
           </Button>
@@ -65,6 +173,25 @@ const Companies = () => {
           </Button>
         </div>
       </div>
+
+      <AlertDialog open={resyncOpen} onOpenChange={setResyncOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Alle opdrachtgevers bijwerken via KVK</AlertDialogTitle>
+            <AlertDialogDescription>
+              Dit ververst de KVK-gegevens (naam, adres, SBI-codes) voor alle opdrachtgevers met een KVK-nummer.
+              Verwacht ~{kvkCount ?? 0} updates, duur ~{Math.ceil((kvkCount ?? 0) * 0.6)}s.
+              Wijzigingen worden gelogd in de audit-trail.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuleer</AlertDialogCancel>
+            <AlertDialogAction onClick={() => bulkResync.mutate()} disabled={!kvkCount || bulkResync.isPending}>
+              Start
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <div className="flex items-center gap-3">
         <div className="relative flex-1 max-w-sm">

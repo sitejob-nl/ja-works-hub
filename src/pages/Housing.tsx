@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Link } from 'react-router-dom';
-import { Home, Plus, Search, LayoutGrid, List, Bed, Building2, ArrowUpDown, CheckCircle2 } from 'lucide-react';
+import { Home, Plus, Search, LayoutGrid, List, Bed, Building2, ArrowUpDown, CheckCircle2, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -13,8 +13,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import PropertySlideOver from '@/components/housing/PropertySlideOver';
 import AvailabilityChart from '@/components/housing/AvailabilityChart';
 import ExportPropertiesButton from '@/components/housing/ExportPropertiesButton';
+import { formatEUR } from '@/lib/format';
 
 const ALL_CITIES = '__all__';
+const WEEKS_PER_MONTH = 4.33;
 
 type SortKey =
   | 'address_asc'
@@ -142,6 +144,15 @@ const Housing = () => {
   const totalOccupancy = properties.reduce((s: number, p: any) => s + (p.currentOccupancy ?? 0), 0);
   const totalAvailable = totalCapacity - totalOccupancy;
   const overallPct = totalCapacity > 0 ? Math.round((totalOccupancy / totalCapacity) * 100) : 0;
+  const totalMonthlyCost = properties.reduce((sum: number, p: any) => {
+    return sum
+      + (Number(p.monthly_rent) || 0)
+      + (Number(p.cost_gas) || 0)
+      + (Number(p.cost_water) || 0)
+      + (Number(p.cost_electra) || 0)
+      + (Number(p.cost_municipal_tax) || 0)
+      + (Number(p.cost_other) || 0);
+  }, 0);
 
   return (
     <div className="space-y-6">
@@ -163,7 +174,7 @@ const Housing = () => {
 
       {/* Top KPIs — focus op vrije plekken (klant-wens 2026-04-25) */}
       {properties.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card>
             <CardContent className="pt-6 flex items-center gap-4">
               <div className="h-10 w-10 rounded-md bg-stat-green/10 flex items-center justify-center">
@@ -194,6 +205,17 @@ const Housing = () => {
               <div>
                 <p className="text-2xl font-bold">{overallPct}%</p>
                 <p className="text-xs text-muted-foreground">Bezettingsgraad ({totalOccupancy}/{totalCapacity})</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6 flex items-center gap-4">
+              <div className="h-10 w-10 rounded-md bg-purple-100 flex items-center justify-center">
+                <Wallet className="h-5 w-5 text-purple-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{formatEUR(totalMonthlyCost)}</p>
+                <p className="text-xs text-muted-foreground">Totale maandlasten · ~{formatEUR(totalMonthlyCost / WEEKS_PER_MONTH)}/wk</p>
               </div>
             </CardContent>
           </Card>
