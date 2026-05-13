@@ -66,6 +66,13 @@ const DEFAULT_EXPECTED_COUNTS = {
 
 type ExpectedCounts = typeof DEFAULT_EXPECTED_COUNTS;
 
+interface AcceptanceCurrentCounts {
+  mappedPlacements: number;
+  mappedVacancies: number;
+  appPlacements: number;
+  appVacancies: number;
+}
+
 const coerceExpectedCounts = (value: unknown): ExpectedCounts => {
   const raw = (value && typeof value === 'object' ? value : {}) as Partial<Record<keyof ExpectedCounts, unknown>>;
   const toCount = (key: keyof ExpectedCounts) => {
@@ -726,6 +733,51 @@ function AcceptanceTab({ config }: { config: CarerixConfig | null | undefined })
     enabled: !!orgId,
   });
 
+  const { data: currentCounts } = useQuery({
+    queryKey: ['carerix-acceptance-current-counts', orgId],
+    queryFn: async (): Promise<AcceptanceCurrentCounts> => {
+      const [
+        mappedPlacements,
+        mappedVacancies,
+        appPlacements,
+        appVacancies,
+      ] = await Promise.all([
+        supabase
+          .from('external_mappings')
+          .select('id', { count: 'exact', head: true })
+          .eq('organization_id', orgId)
+          .eq('external_system', 'carerix')
+          .eq('entity_type', 'placement'),
+        supabase
+          .from('external_mappings')
+          .select('id', { count: 'exact', head: true })
+          .eq('organization_id', orgId)
+          .eq('external_system', 'carerix')
+          .eq('entity_type', 'vacancy'),
+        supabase
+          .from('placements')
+          .select('id', { count: 'exact', head: true })
+          .eq('organization_id', orgId),
+        supabase
+          .from('vacancies')
+          .select('id', { count: 'exact', head: true })
+          .eq('organization_id', orgId),
+      ]);
+
+      const queries = [mappedPlacements, mappedVacancies, appPlacements, appVacancies];
+      const failedQuery = queries.find((query) => query.error);
+      if (failedQuery?.error) throw failedQuery.error;
+
+      return {
+        mappedPlacements: mappedPlacements.count ?? 0,
+        mappedVacancies: mappedVacancies.count ?? 0,
+        appPlacements: appPlacements.count ?? 0,
+        appVacancies: appVacancies.count ?? 0,
+      };
+    },
+    enabled: !!orgId,
+  });
+
   const requiredEntities: EntityName[] = ['candidates', 'vacancies', 'placements', 'matches', 'documents', 'notes'];
   const crScopeOk = Boolean(config?.last_test_ok);
   const entityCoverageOk = requiredEntities.every((e) => {
@@ -746,8 +798,8 @@ function AcceptanceTab({ config }: { config: CarerixConfig | null | undefined })
   const documentBytesOk = documentStats.total === 0 || (documentStats.failed === 0 && documentStats.pending === 0);
   const failuresOk = failures.length === 0;
   const countChecks = {
-    placements: runs.find((r) => r.entity === 'placements')?.found ?? 0,
-    vacancies: runs.find((r) => r.entity === 'vacancies')?.found ?? 0,
+    placements: currentCounts?.mappedPlacements ?? runs.find((r) => r.entity === 'placements')?.found ?? 0,
+    vacancies: currentCounts?.mappedVacancies ?? runs.find((r) => r.entity === 'vacancies')?.found ?? 0,
   };
   const expectedCountsOk = countChecks.placements === expectedCounts.placements && countChecks.vacancies === expectedCounts.vacancies;
   const goNoGo = crScopeOk && entityCoverageOk && documentBytesOk && failuresOk && expectedCountsOk;
@@ -797,7 +849,11 @@ function AcceptanceTab({ config }: { config: CarerixConfig | null | undefined })
         <CardContent className="grid gap-3 md:grid-cols-5">
           <AcceptanceCheck ok={crScopeOk} label="CR*-scope" detail={config?.last_test_ok ? 'Laatste test OK' : config?.last_test_error ?? 'Nog niet getest'} />
           <AcceptanceCheck ok={entityCoverageOk} label="Entiteiten" detail={`${runs.filter((r) => r.status === 'completed').length}/${SUPPORTED_ENTITIES.length} afgerond`} />
-          <AcceptanceCheck ok={expectedCountsOk} label="Aantallen" detail={`Plaatsingen ${countChecks.placements}/${expectedCounts.placements} · Vacatures ${countChecks.vacancies}/${expectedCounts.vacancies}`} />
+          <AcceptanceCheck
+            ok={expectedCountsOk}
+            label="Aantallen"
+            detail={`Carerix: P ${countChecks.placements}/${expectedCounts.placements} · V ${countChecks.vacancies}/${expectedCounts.vacancies}`}
+          />
           <AcceptanceCheck ok={documentBytesOk} label="Document bytes" detail={`${documentStats.downloaded}/${documentStats.total} gedownload · ${documentStats.failed} fout`} />
           <AcceptanceCheck ok={failuresOk} label="Failures" detail={`${failures.length} open importfouten`} />
         </CardContent>
@@ -806,7 +862,10 @@ function AcceptanceTab({ config }: { config: CarerixConfig | null | undefined })
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Verwachte migratie-aantallen</CardTitle>
-          <CardDescription>Deze aantallen komen uit de klantvalidatie en blokkeren de go/no-go wanneer ze niet matchen.</CardDescription>
+          <CardDescription>
+            Deze aantallen komen uit de klantvalidatie en blokkeren de go/no-go wanneer de Carerix-mappings niet matchen.
+            App-totaal: {currentCounts ? `${currentCounts.appPlacements} plaatsingen · ${currentCounts.appVacancies} vacatures` : 'wordt geladen'}.
+          </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-[1fr_1fr_auto]">
           <div className="space-y-1.5">
@@ -865,7 +924,12 @@ function AcceptanceTab({ config }: { config: CarerixConfig | null | undefined })
                   : entity === 'vacancies'
                     ? expectedCounts.vacancies
                     : null;
-                const countOk = expected == null || (run?.found ?? 0) === expected;
+                const mappedCount = entity === 'placements'
+                  ? countChecks.placements
+                  : entity === 'vacancies'
+                    ? countChecks.vacancies
+                    : null;
+                const countOk = expected == null || mappedCount === expected;
                 return (
                   <TableRow key={entity}>
                     <TableCell>{ENTITY_LABEL[entity]}</TableCell>
@@ -879,7 +943,9 @@ function AcceptanceTab({ config }: { config: CarerixConfig | null | undefined })
                     <TableCell className="text-right">{run?.created ?? 0}</TableCell>
                     <TableCell className="text-right">{run?.skipped ?? 0}</TableCell>
                     <TableCell className="text-right">{run?.failed ?? 0}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{signal}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {mappedCount == null ? signal : `Carerix mapping: ${mappedCount}. ${signal}`}
+                    </TableCell>
                   </TableRow>
                 );
               })}

@@ -61,6 +61,16 @@ const DEFAULT_FUEL_CONDITIONS: FuelAnalysisConditions = {
   mileage_jump_max_km: 300,
 };
 
+type FuelAnalysisDataQuality = {
+  vehiclesTotal: number;
+  withoutFuelCard: number;
+  withoutTankCapacity: number;
+  withoutConsumption: number;
+  withoutMileage: number;
+  withoutDoors: number;
+  withoutSeats: number;
+};
+
 const clampNumber = (value: unknown, fallback: number, min: number, max: number) => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
@@ -127,9 +137,32 @@ const FuelCardAnalysis = () => {
     enabled: !!orgId,
   });
 
+  const { data: dataQuality } = useQuery({
+    queryKey: ['fuel-analysis-data-quality', orgId],
+    queryFn: async (): Promise<FuelAnalysisDataQuality> => {
+      const { data, error } = await supabase
+        .from('vehicles')
+        .select('id, fuel_card_reference, tank_capacity_liters, avg_consumption_per_100km, current_mileage, doors, seats')
+        .eq('organization_id', orgId!);
+      if (error) throw error;
+      const vehicles = data ?? [];
+      return {
+        vehiclesTotal: vehicles.length,
+        withoutFuelCard: vehicles.filter((vehicle) => !String(vehicle.fuel_card_reference ?? '').trim()).length,
+        withoutTankCapacity: vehicles.filter((vehicle) => !Number(vehicle.tank_capacity_liters)).length,
+        withoutConsumption: vehicles.filter((vehicle) => !Number(vehicle.avg_consumption_per_100km)).length,
+        withoutMileage: vehicles.filter((vehicle) => !Number(vehicle.current_mileage)).length,
+        withoutDoors: vehicles.filter((vehicle) => !Number(vehicle.doors)).length,
+        withoutSeats: vehicles.filter((vehicle) => !Number(vehicle.seats)).length,
+      };
+    },
+    enabled: !!orgId,
+  });
+
   const thisMonth = useMemo(() => transactions.filter(t => t.transaction_date >= monthStart && t.transaction_date <= monthEnd), [transactions]);
   const flagged = useMemo(() => transactions.filter(t => !t.reviewed && (t.flag_over_capacity || t.flag_multiple_same_day || t.flag_excessive_consumption)), [transactions]);
   const allFlagged = useMemo(() => transactions.filter(t => t.flag_over_capacity || t.flag_multiple_same_day || t.flag_excessive_consumption), [transactions]);
+  const transactionsWithoutVehicle = useMemo(() => transactions.filter(t => !t.vehicle_id).length, [transactions]);
 
   /* ── KPIs ────────────────────────────────────────── */
 
@@ -234,6 +267,8 @@ const FuelCardAnalysis = () => {
         <KpiCard label="Bedrag (maand)" value={formatEUR(totalAmount)} />
         <KpiCard label="Afwijkingen" value={flagCount.toString()} variant={flagCount > 0 ? 'danger' : 'default'} />
       </div>
+
+      <FuelDataQualityCard stats={dataQuality} transactionsWithoutVehicle={transactionsWithoutVehicle} />
 
       {/* Tabs */}
       <Tabs defaultValue="flags">
@@ -356,6 +391,46 @@ const KpiCard = ({ label, value, variant = 'default' }: { label: string; value: 
     </CardContent>
   </Card>
 );
+
+const FuelDataQualityCard = ({ stats, transactionsWithoutVehicle }: {
+  stats: FuelAnalysisDataQuality | undefined;
+  transactionsWithoutVehicle: number;
+}) => {
+  if (!stats) return null;
+
+  const items = [
+    { label: 'Tankpas ontbreekt', value: stats.withoutFuelCard },
+    { label: 'Tankinhoud ontbreekt', value: stats.withoutTankCapacity },
+    { label: 'Verbruik ontbreekt', value: stats.withoutConsumption },
+    { label: 'Kilometerstand ontbreekt', value: stats.withoutMileage },
+    { label: 'Aantal deuren ontbreekt', value: stats.withoutDoors },
+    { label: 'Zitplaatsen ontbreken', value: stats.withoutSeats },
+    { label: 'Transacties zonder voertuig', value: transactionsWithoutVehicle },
+  ];
+  const hasIssues = items.some((item) => item.value > 0);
+
+  return (
+    <Card className={`mb-6 ${hasIssues ? 'border-amber-200 bg-amber-50/50' : 'border-green-200 bg-green-50/50'}`}>
+      <CardContent className="pt-4 pb-4 space-y-3">
+        <div className="flex items-start gap-3">
+          {hasIssues ? <AlertTriangle className="h-5 w-5 text-amber-700 mt-0.5" /> : <CheckCircle2 className="h-5 w-5 text-green-700 mt-0.5" />}
+          <div>
+            <p className="text-sm font-semibold">Datakwaliteit voor analyse</p>
+            <p className="text-xs text-muted-foreground">{stats.vehiclesTotal} voertuigen in fleetbeheer</p>
+          </div>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {items.map((item) => (
+            <div key={item.label} className="rounded-md border bg-background px-3 py-2">
+              <p className="text-xs text-muted-foreground">{item.label}</p>
+              <p className={`text-lg font-semibold ${item.value > 0 ? 'text-amber-700' : 'text-green-700'}`}>{item.value}</p>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
 
 /* ─── Flag Card ─────────────────────────────────────────── */
 

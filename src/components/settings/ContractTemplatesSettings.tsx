@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
-import { FileText, Plus, Eye, Pencil } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, FileText, Plus, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDate } from '@/lib/format';
 
@@ -32,6 +32,15 @@ const TEMPLATE_TYPES = [
   { value: 'house_rules', label: 'Huisregels' },
   { value: 'vehicle_agreement', label: 'Voertuigovereenkomst' },
 ];
+
+const REQUIRED_OPERATIONAL_TEMPLATE_TYPES = [
+  'placement_confirmation',
+  'general_terms',
+  'housing_inhuur',
+  'housing_onderhuur',
+  'house_rules',
+  'vehicle_agreement',
+] as const;
 
 const templateTypeLabel = (value: string | null | undefined) =>
   TEMPLATE_TYPES.find((type) => type.value === value)?.label ?? 'Arbeidsovereenkomst';
@@ -55,7 +64,15 @@ const ContractTemplatesSettings = () => {
       if (error) throw error;
       return data;
     },
+    enabled: !!orgId,
   });
+
+  const activeTemplateTypes = new Set(
+    templates
+      .filter((template: any) => template.is_active !== false)
+      .map((template: any) => template.template_type ?? 'employment_contract'),
+  );
+  const missingOperationalTemplates = REQUIRED_OPERATIONAL_TEMPLATE_TYPES.filter((type) => !activeTemplateTypes.has(type));
 
   const save = useMutation({
     mutationFn: async () => {
@@ -128,6 +145,33 @@ const ContractTemplatesSettings = () => {
         </div>
       </CardHeader>
       <CardContent>
+        <div className={`mb-4 rounded-md border px-4 py-3 ${missingOperationalTemplates.length > 0 ? 'border-amber-200 bg-amber-50/50' : 'border-green-200 bg-green-50/50'}`}>
+          <div className="flex items-start gap-3">
+            {missingOperationalTemplates.length > 0 ? (
+              <AlertTriangle className="h-5 w-5 text-amber-700 mt-0.5" />
+            ) : (
+              <CheckCircle2 className="h-5 w-5 text-green-700 mt-0.5" />
+            )}
+            <div className="space-y-2">
+              <div>
+                <p className="text-sm font-semibold">Operationele documentenset</p>
+                <p className="text-xs text-muted-foreground">
+                  {missingOperationalTemplates.length > 0
+                    ? `${missingOperationalTemplates.length} vereiste template${missingOperationalTemplates.length === 1 ? '' : 's'} ontbreekt nog.`
+                    : 'Alle vereiste templates zijn actief.'}
+                </p>
+              </div>
+              {missingOperationalTemplates.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {missingOperationalTemplates.map((type) => (
+                    <Badge key={type} variant="outline" className="bg-background">{templateTypeLabel(type)}</Badge>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
         {templates.length === 0 ? (
           <p className="text-center text-muted-foreground py-6">Nog geen templates aangemaakt</p>
         ) : (

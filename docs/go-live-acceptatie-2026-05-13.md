@@ -54,6 +54,8 @@ Productiestatus JA Werkt:
 
 Belangrijkste conclusie: plaatsing-migratie lijkt inhoudelijk goed te zitten omdat de Carerix mapping exact `578` is. Het app-totaal `583` moet worden verklaard als handmatig/test/duplicaat/andere bron. Vacatures zijn nog niet geaccepteerd: waarschijnlijk gaat `139` over actieve of business-relevante vacatures, terwijl `657/661` historische of technische records bevat.
 
+Update werkstart 2026-05-13: de 5 extra plaatsingen zijn app-records zonder Carerix mapping en met gekoppelde uren/productiedata. Niet verwijderen zonder expliciet akkoord. De acceptatiecheck in `/carerix-import` telt daarom voortaan Carerix mappings voor de meetingverwachting `578`. De vacaturetelling `139` is reproduceerbaar als vacatures uit kalenderjaar 2023; productie bevat daarnaast historische jaren 2020-2026.
+
 ### Tankpas / voertuigen
 
 | Check | Waarde | Acceptatie-impact |
@@ -67,6 +69,8 @@ Belangrijkste conclusie: plaatsing-migratie lijkt inhoudelijk goed te zitten omd
 | Geflagde tankpastransacties | 9 | Review met klant nodig |
 
 Conclusie: de analysefunctie staat klaar, maar de stamdata is nog onvoldoende. Eerst voertuigen aanvullen met tankpas, tankinhoud en gemiddeld verbruik.
+
+Update werkstart 2026-05-13: `/tankpas-analyse` toont nu een datakwaliteit-kaart met ontbrekende tankpasreferentie, tankinhoud, verbruik, kilometerstand, aantal deuren, zitplaatsen en transacties zonder voertuigmatch. Daarmee is direct zichtbaar waarom regels wel of niet betrouwbaar afgaan.
 
 ### Outlook / mailboxen
 
@@ -91,6 +95,8 @@ Conclusie: persoonlijke/organisatiekoppeling bestaat, maar de gedeelde mailbox i
 | Signing evidence velden | aanwezig | GO technisch |
 
 Conclusie: techniek staat klaar, maar templates en echte documenten ontbreken nog.
+
+Update werkstart 2026-05-13: contracttemplate-instellingen tonen nu een operationele documentenset-check voor plaatsingsbevestiging, algemene voorwaarden, inhuur, onderhuur, huisregels en voertuigovereenkomst. Er wordt geen juridische voorbeeldinhoud aangemaakt; de klant moet de echte teksten leveren of accorderen.
 
 ### Fleet incidenten / schoonmaak
 
@@ -308,8 +314,8 @@ NO-GO:
 |---|---|---|---|
 | Frontend productie | GO | nee | Monitor Vercel |
 | Database schema | GO | nee | Geen |
-| Carerix plaatsingen | GO met restpunt | ja, tot 583 vs 578 verklaard | Verschillijst maken |
-| Carerix vacatures | NO-GO | ja | Filter `139` reproduceren |
+| Carerix plaatsingen | GO met restpunt | nee | 5 niet-Carerix plaatsingen laten accorderen |
+| Carerix vacatures | GO met scope-besluit | ja | Bevestigen of go-live op 2023-filter of volledige historie draait |
 | Carerix documenten | GO met restpunt | mogelijk | 9 missende bestanden afhandelen |
 | Tankpasanalyse | NO-GO | ja | Voertuigstamdata aanvullen |
 | Outlook shared mailbox | NO-GO | ja | Infomail herkoppelen |
@@ -321,10 +327,9 @@ NO-GO:
 
 ## Directe Werkvolgorde
 
-1. Vacaturetelling `139` reproduceren en vastleggen.
-2. Verschil `placements 583` versus `Carerix placement mappings 578` verklaren.
-3. Voertuigen aanvullen: tankpas, tankinhoud, gemiddeld verbruik.
+1. Laat klant bevestigen of vacaturetelling `139` het 2023-filter is of dat een andere businessfilter leidend is.
+2. Laat klant de 5 niet-Carerix plaatsingen met uren/productiedata accorderen.
+3. Voertuigen aanvullen: tankpas, tankinhoud, gemiddeld verbruik, kilometerstand en aantal deuren.
 4. Infomail opnieuw koppelen en mailboxrechtenmatrix nalopen.
 5. Contracttemplates vullen en 1 signing-test uitvoeren.
 6. Q8-import opnieuw draaien met gevulde voertuigdata.
-
