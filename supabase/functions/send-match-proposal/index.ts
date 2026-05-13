@@ -1,5 +1,5 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendViaOutlookAccount } from "../_shared/outlook-send.ts";
+import { createAdminClient, requireInternalProfile } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -93,38 +93,12 @@ Deno.serve(async (req) => {
 
   try {
     // ── Auth ──
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return json({ error: "Unauthorized" }, 401);
-    }
+    const auth = await requireInternalProfile(req, corsHeaders);
+    if (auth instanceof Response) return auth;
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
-
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) {
-      return json({ error: "Unauthorized" }, 401);
-    }
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("organization_id")
-      .eq("id", user.id)
-      .single();
-
-    if (!profile) {
-      return json({ error: "Profile not found" }, 404);
-    }
-
-    const orgId = profile.organization_id;
-
-    const serviceClient = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
+    const orgId = auth.organizationId;
+    const userId = auth.userId;
+    const serviceClient = createAdminClient();
 
     // ── Parse input ──
     const body = await req.json();
@@ -135,7 +109,7 @@ Deno.serve(async (req) => {
     }
 
     // ── Fetch match with relations ──
-    const { data: match, error: mErr } = await supabase
+    const { data: match, error: mErr } = await serviceClient
       .from("matches")
       .select(`
         *,
@@ -143,6 +117,7 @@ Deno.serve(async (req) => {
         vacancies:vacancy_id(id, title, companies:company_id(id, name, email))
       `)
       .eq("id", match_id)
+      .eq("organization_id", orgId)
       .single();
 
     if (mErr || !match) {
@@ -164,10 +139,11 @@ Deno.serve(async (req) => {
     const candidateName = `${candidate.first_name} ${candidate.last_name}`.trim();
 
     // ── Fetch company contact ──
-    const { data: contacts } = await supabase
+    const { data: contacts } = await serviceClient
       .from("company_contacts")
       .select("*")
       .eq("company_id", company.id)
+      .eq("organization_id", orgId)
       .order("is_primary", { ascending: false })
       .limit(1);
 
@@ -230,18 +206,19 @@ Deno.serve(async (req) => {
       to: contactEmail,
       subject,
       htmlBody: html,
-      sentBy: user.id,
+      sentBy: userId,
       companyId: company.id,
     });
 
     // ── Update match status ──
-    await supabase
+    await serviceClient
       .from("matches")
       .update({
         status: "voorgesteld_bij_klant",
         status_changed_at: new Date().toISOString(),
       })
-      .eq("id", match_id);
+      .eq("id", match_id)
+      .eq("organization_id", orgId);
 
     return json({
       success: true,

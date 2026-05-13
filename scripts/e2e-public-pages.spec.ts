@@ -3,6 +3,8 @@
 
 import { test, expect } from "@playwright/test";
 
+test.use({ storageState: { cookies: [], origins: [] } });
+
 test.describe("Public routes render without errors", () => {
   test("Portal login shows email + password fields", async ({ page }) => {
     await page.goto("/portaal/login", { waitUntil: "domcontentloaded" });

@@ -6,64 +6,7 @@
 // alle tests zijn read/render-only.
 
 import { test, expect, Page } from "@playwright/test";
-import * as fs from "node:fs";
-import * as path from "node:path";
-import { fileURLToPath } from "node:url";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const STORAGE_FILE = path.resolve(__dirname, ".auth-state.json");
-
-const SUPABASE_URL = "https://noaupcteygfvlyymqtew.supabase.co";
-const SUPABASE_ANON =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5vYXVwY3RleWdmdmx5eW1xdGV3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI5NzAxNTEsImV4cCI6MjA4ODU0NjE1MX0.YmwNWZSt7IPTBnSNtKwMLlqPXiOaZdWeOQCbFrtWeT4";
-
-async function ensureLoggedIn(page: Page) {
-  await page.goto("/", { waitUntil: "domcontentloaded" });
-
-  const isLoggedIn = await page.evaluate(() => {
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && k.startsWith("sb-") && k.includes("auth-token")) {
-        try {
-          const v = JSON.parse(localStorage.getItem(k) || "null");
-          return !!(v?.access_token ?? v?.currentSession?.access_token);
-        } catch {
-          return false;
-        }
-      }
-    }
-    return false;
-  });
-
-  if (isLoggedIn) return;
-
-  const email = process.env.TEST_EMAIL;
-  const password = process.env.TEST_PASSWORD;
-  if (!email || !password) {
-    test.skip(true, "TEST_EMAIL / TEST_PASSWORD env vars niet gezet; auth skip");
-    return;
-  }
-
-  // Programmatic login via Supabase REST
-  const resp = await page.request.post(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
-    headers: { apikey: SUPABASE_ANON, "Content-Type": "application/json" },
-    data: { email, password },
-  });
-  expect(resp.ok(), `Login faalde: ${await resp.text()}`).toBeTruthy();
-  const body = await resp.json();
-
-  // Inject session into localStorage zodat PortalContext / AuthContext het oppakt
-  await page.evaluate(
-    ({ session, projectRef }) => {
-      const key = `sb-${projectRef}-auth-token`;
-      localStorage.setItem(key, JSON.stringify(session));
-    },
-    { session: body, projectRef: "noaupcteygfvlyymqtew" }
-  );
-
-  await page.reload({ waitUntil: "domcontentloaded" });
-  await page.context().storageState({ path: STORAGE_FILE });
-}
+import { ensureLoggedIn } from "./e2e-helpers";
 
 function collectNetworkErrors(page: Page): { url: string; status: number; body: string }[] {
   const errors: { url: string; status: number; body: string }[] = [];
@@ -110,7 +53,7 @@ test.describe("Kritieke flow 1 — Kandidaat → Match → Plaatsing", () => {
     await page.waitForTimeout(1500);
 
     // Verwacht: Kanban pipeline header + minstens 5 kolommen
-    await expect(page.getByText(/match pipeline/i)).toBeVisible();
+    await expect(page.getByRole("heading", { name: /match pipeline/i })).toBeVisible();
     const columnCount = await page.locator(".flex-shrink-0.w-64").count();
     expect(columnCount, "Kanban moet >= 5 kolommen hebben").toBeGreaterThanOrEqual(5);
   });
@@ -138,7 +81,7 @@ test.describe("Kritieke flow 2 — Uren", () => {
     await page.waitForTimeout(2500);
 
     // Moet een add/toevoegen knop tonen
-    const addBtn = page.getByRole("button", { name: /nieuwe uren|toevoegen/i }).first();
+    const addBtn = page.getByRole("button", { name: /uren invoeren|nieuwe uren|toevoegen/i }).first();
     await expect(addBtn).toBeVisible({ timeout: 5000 });
   });
 
@@ -181,8 +124,8 @@ test.describe("Kritieke flow 3 — Ziekmelding", () => {
 });
 
 test.describe("Portal + Opdrachtgeverportaal routes bestaan", () => {
-  test("Opdrachtgeverportaal login accessible", async ({ page }) => {
-    await page.goto("/opdrachtgeverportaal/login", { waitUntil: "domcontentloaded" });
+  test("Klantportaal login accessible", async ({ page }) => {
+    await page.goto("/klantportaal/login", { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(1500);
     const content = await page.content();
     expect(content.length).toBeGreaterThan(1000);

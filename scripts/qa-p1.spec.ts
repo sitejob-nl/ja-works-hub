@@ -1,31 +1,11 @@
-import { test, expect, Page } from '@playwright/test';
-import * as fs from 'node:fs';
+import { test, expect } from '@playwright/test';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ensureLoggedIn, getAccessToken, SUPABASE_ANON, SUPABASE_URL } from './e2e-helpers';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const APP = 'http://localhost:8080';
-const STORAGE_FILE = path.resolve(__dirname, '.auth-state.json');
-const SUPABASE_URL = 'https://noaupcteygfvlyymqtew.supabase.co';
-const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5vYXVwY3RleWdmdmx5eW1xdGV3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI5NzAxNTEsImV4cCI6MjA4ODU0NjE1MX0.YmwNWZSt7IPTBnSNtKwMLlqPXiOaZdWeOQCbFrtWeT4';
-
 test.describe.configure({ mode: 'serial' });
-
-async function getAccessToken(page: Page): Promise<string | null> {
-  return page.evaluate(() => {
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && k.startsWith('sb-') && k.includes('auth-token')) {
-        try {
-          const v = JSON.parse(localStorage.getItem(k) || 'null');
-          return v?.access_token ?? v?.currentSession?.access_token ?? null;
-        } catch { /* ignore */ }
-      }
-    }
-    return null;
-  });
-}
 
 async function decodeJwtHeader(token: string): Promise<{ alg?: string }> {
   const [h] = token.split('.');
@@ -40,28 +20,8 @@ test('P1.1 — edge functions accepteren ES256 JWT (self-auth)', async ({ page }
   const consoleErrors: string[] = [];
   page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
 
-  await page.goto(APP, { waitUntil: 'domcontentloaded' });
-
-  // Check of er al een login-session is
-  let token = await getAccessToken(page);
-
-  if (!token) {
-    console.log('[P1.1] Geen session — open browser voor handmatige login.');
-    console.log('[P1.1] Log in binnen 90s, dan gaat de test verder.');
-    await page.waitForFunction(() => {
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k && k.startsWith('sb-') && k.includes('auth-token')) {
-          const v = JSON.parse(localStorage.getItem(k) || 'null');
-          if (v?.access_token || v?.currentSession?.access_token) return true;
-        }
-      }
-      return false;
-    }, { timeout: 90_000 });
-    token = await getAccessToken(page);
-    await page.context().storageState({ path: STORAGE_FILE });
-    console.log('[P1.1] Session opgeslagen naar', STORAGE_FILE);
-  }
+  await ensureLoggedIn(page);
+  const token = await getAccessToken(page);
 
   expect(token, 'Access token moet aanwezig zijn na login').toBeTruthy();
 
@@ -108,10 +68,7 @@ test('P1.1 — edge functions accepteren ES256 JWT (self-auth)', async ({ page }
 test('P1.1b — navigeer naar vacature-matches en check geen ES256 errors', async ({ page }) => {
   test.setTimeout(60_000);
 
-  // Herlaad storage state indien aanwezig
-  if (fs.existsSync(STORAGE_FILE)) {
-    await page.context().addCookies([]); // ensure context
-  }
+  await ensureLoggedIn(page);
 
   const consoleErrors: string[] = [];
   const networkErrors: { url: string; status: number; body: string }[] = [];
@@ -126,7 +83,7 @@ test('P1.1b — navigeer naar vacature-matches en check geen ES256 errors', asyn
     }
   });
 
-  await page.goto(`${APP}/vacatures`, { waitUntil: 'domcontentloaded' });
+  await page.goto('/vacatures', { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(5000); // wacht op data-load en notifications call
 
   const es256Errors = [

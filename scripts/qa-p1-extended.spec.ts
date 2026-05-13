@@ -1,10 +1,9 @@
 import { test, expect } from '@playwright/test';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ensureLoggedIn } from './e2e-helpers';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-const APP = 'http://localhost:8080';
 
 test('P1.4 — timesheet entry sheet toont placement-dropdown', async ({ page }) => {
   test.setTimeout(60_000);
@@ -22,36 +21,18 @@ test('P1.4 — timesheet entry sheet toont placement-dropdown', async ({ page })
     }
   });
 
-  await page.goto(`${APP}/uren`, { waitUntil: 'domcontentloaded' });
+  await ensureLoggedIn(page);
+  await page.goto('/uren', { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(3000);
 
   await page.screenshot({ path: path.resolve(__dirname, '../p1.4-uren-page.png') });
 
-  // Zoek de knop "Uren toevoegen" / "Nieuwe uren" / "+"
-  const addButtons = await page.locator('button').filter({ hasText: /uren|toevoegen|nieuw/i }).all();
-  console.log(`[P1.4] Add-buttons gevonden: ${addButtons.length}`);
-
-  let opened = false;
-  for (const btn of addButtons) {
-    const text = (await btn.textContent())?.trim() ?? '';
-    if (/toevoegen|nieuw|invoeren|\+/i.test(text)) {
-      console.log(`[P1.4] Klik op: "${text}"`);
-      await btn.click();
-      opened = true;
-      break;
-    }
-  }
-
-  if (!opened) {
-    // fallback: eerste + icoon
-    const plus = page.locator('button').filter({ hasText: '+' }).first();
-    if (await plus.count() > 0) {
-      await plus.click();
-      opened = true;
-    }
-  }
+  const addButton = page.getByRole('button', { name: /uren invoeren|nieuwe uren|toevoegen/i }).first();
+  await expect(addButton).toBeVisible({ timeout: 10_000 });
+  await addButton.click();
 
   await page.waitForTimeout(1500);
+  await expect(page.getByRole('heading', { name: /uren invoeren/i })).toBeVisible();
 
   // Controleer of "Plaatsing" label in de sheet zichtbaar is
   const placementLabel = page.locator('label', { hasText: /plaatsing/i });
@@ -61,7 +42,7 @@ test('P1.4 — timesheet entry sheet toont placement-dropdown', async ({ page })
   const employeeLabel = page.locator('label', { hasText: /medewerker/i });
   const hasEmployeeField = await employeeLabel.count() > 0;
 
-  console.log(`[P1.4] Sheet open: ${opened}, Medewerker veld: ${hasEmployeeField}, Plaatsing veld: ${hasPlacementField}`);
+  console.log(`[P1.4] Medewerker veld: ${hasEmployeeField}, Plaatsing veld: ${hasPlacementField}`);
 
   await page.screenshot({ path: path.resolve(__dirname, '../p1.4-uren-sheet.png') });
 
@@ -89,7 +70,8 @@ test('P1.2/P1.3 — vacatures overzicht laadt zonder placement-gerelateerde erro
     }
   });
 
-  await page.goto(`${APP}/plaatsingen`, { waitUntil: 'domcontentloaded' });
+  await ensureLoggedIn(page);
+  await page.goto('/plaatsingen', { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(4000);
 
   await page.screenshot({ path: path.resolve(__dirname, '../p1.2-3-plaatsingen-page.png') });
