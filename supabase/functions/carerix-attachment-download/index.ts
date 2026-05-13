@@ -15,8 +15,9 @@ import {
   jsonError,
   jsonOk,
   loadCarerixCredentials,
+  runBackgroundTask,
 } from '../_shared/carerix/helpers.ts';
-import { isServiceRoleRequest } from '../_shared/auth.ts';
+import { internalFunctionHeaders, isServiceRoleRequest } from '../_shared/auth.ts';
 import { fetchCarerixAccessToken } from '../_shared/carerix/auth.ts';
 import { CarerixGraphQLClient } from '../_shared/carerix/client.ts';
 import { crAttachmentByIdQuery } from '../_shared/carerix/queries.ts';
@@ -45,16 +46,21 @@ interface CRAttachmentFull {
   content?: string;
 }
 
-function selfTrigger(orgId: string): Promise<Response> {
+async function selfTrigger(orgId: string): Promise<void> {
   const url = `${Deno.env.get('SUPABASE_URL')}/functions/v1/carerix-attachment-download`;
-  return fetch(url, {
+  const res = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+      ...internalFunctionHeaders(),
     },
     body: JSON.stringify({ organization_id: orgId }),
   });
+
+  if (!res.ok) {
+    throw new Error(`attachment self-trigger failed (${res.status}): ${await res.text()}`);
+  }
 }
 
 // Map Carerix downloadName / mimeType naar een file extensie.
@@ -122,7 +128,7 @@ Deno.serve(async (req) => {
 
   while (true) {
     if (Date.now() - started > SOFT_DEADLINE_MS) {
-      selfTrigger(orgId).catch(() => {});
+      runBackgroundTask(selfTrigger(orgId), 'carerix attachment self-trigger');
       return jsonOk({
         ok: true,
         continued: true,

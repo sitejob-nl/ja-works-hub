@@ -128,6 +128,37 @@ export function crJobsQuery(page: number, size: number, qualifier?: string): str
   }`;
 }
 
+export function crPlacementJobsQuery(page: number, size: number, qualifier?: string): string {
+  // CRJob is de Carerix plaatsing/dienstverband-entiteit: koppelt medewerker,
+  // bedrijf, match/vacature en bevat start/einddatum + tarieven. Geen
+  // `norestrict: true` hier: Jeroen vergelijkt met de reguliere Carerix UI,
+  // waarin soft-deleted/restricted records niet meetellen.
+  return `query {
+    crJobPage(${pageable(page, size)}${qualifierClause(qualifier)}) {
+      totalElements last
+      items {
+        _id
+        name
+        templateName
+        startDate
+        endDate
+        hourlyTariffInvoice
+        hourlyWageGross
+        hoursPerWeek
+        totalWorkHours
+        creationDate
+        modificationDate
+        status
+        statusDisplay
+        toEmployee { _id firstName lastName }
+        toCompany { _id name }
+        toVacancy { _id }
+        toMatch { _id }
+      }
+    }
+  }`;
+}
+
 export function crMatchesQuery(page: number, size: number, qualifier?: string): string {
   // CRStatusInfo gebruikt `name` (geen `value`).
   // CRVacancy gebruikt `jobTitle` (geen `name`).

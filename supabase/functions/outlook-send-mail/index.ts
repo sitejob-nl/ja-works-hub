@@ -11,7 +11,11 @@ const MAX_TOTAL_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
 function cleanEmail(value: unknown): string | null {
   const email = String(value ?? "").trim();
-  if (!email || /[\u0000-\u001f\u007f\s<>]/.test(email)) return null;
+  const hasUnsafeChar = [...email].some((char) => {
+    const code = char.charCodeAt(0);
+    return code <= 31 || code === 127 || /\s|[<>]/.test(char);
+  });
+  if (!email || hasUnsafeChar) return null;
   if (!/^[^@]+@[^@]+\.[^@]+$/.test(email)) return null;
   return email;
 }

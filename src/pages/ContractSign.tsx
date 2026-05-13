@@ -16,6 +16,7 @@ const ContractSign = () => {
   const [agreed, setAgreed] = useState(false);
   const [signed, setSigned] = useState(false);
   const [signedAt, setSignedAt] = useState<string | null>(null);
+  const [signatureRequestId, setSignatureRequestId] = useState<string | null>(null);
 
   const { data: contract, isLoading, error } = useQuery({
     queryKey: ['contract-sign', token],
@@ -63,6 +64,7 @@ const ContractSign = () => {
     onSuccess: (data) => {
       setSigned(true);
       if (data?.signed_at) setSignedAt(data.signed_at);
+      if (data?.signature_request_id) setSignatureRequestId(data.signature_request_id);
     },
   });
 
@@ -103,6 +105,9 @@ const ContractSign = () => {
               <> Op {new Date(displayDate).toLocaleDateString('nl-NL')}.</>
             )}
           </p>
+          {(signatureRequestId || contract.signature_request_id) && (
+            <p className="text-xs text-muted-foreground font-mono break-all">Bewijs-ID: {signatureRequestId || contract.signature_request_id}</p>
+          )}
           <p className="text-xs text-muted-foreground">U kunt dit venster sluiten.</p>
         </div>
       </div>

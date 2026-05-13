@@ -179,6 +179,7 @@ const OutlookSettings = () => {
               <th className="py-2 text-left font-medium">Medewerker</th>
               <th className="py-2 text-center font-medium">Mail lezen</th>
               <th className="py-2 text-center font-medium">Mail sturen</th>
+              <th className="py-2 text-center font-medium">Mail verwijderen</th>
               <th className="py-2 text-center font-medium">Agenda lezen</th>
               <th className="py-2 text-center font-medium">Agenda beheren</th>
             </tr>
@@ -197,6 +198,9 @@ const OutlookSettings = () => {
                   </td>
                   <td className="py-2 text-center">
                     <Checkbox checked={Boolean(grant?.can_send_mail)} onCheckedChange={(checked) => setGrant(account, user, 'can_send_mail', checked === true)} />
+                  </td>
+                  <td className="py-2 text-center">
+                    <Checkbox checked={Boolean(grant?.can_delete_mail)} onCheckedChange={(checked) => setGrant(account, user, 'can_delete_mail', checked === true)} />
                   </td>
                   <td className="py-2 text-center">
                     <Checkbox checked={Boolean(grant?.can_read_calendar)} onCheckedChange={(checked) => setGrant(account, user, 'can_read_calendar', checked === true)} />

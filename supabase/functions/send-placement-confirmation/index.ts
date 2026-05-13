@@ -33,6 +33,16 @@ function formatWorkDays(days: string[] | null): string {
   return days.join(", ");
 }
 
+function appendGeneralTerms(html: string, terms: { name: string; content: string } | null): string {
+  if (!terms?.content) return html;
+  const section = `
+          <div style="background:#f8fafc;border-radius:6px;border:1px solid #e2e8f0;padding:14px 20px;margin:24px 0;">
+            <p style="margin:0 0 8px;color:#334155;font-size:14px;font-weight:600;">${escapeHtml(terms.name || "Algemene voorwaarden")}</p>
+            <p style="margin:0;color:#334155;font-size:12px;line-height:1.5;white-space:pre-wrap;">${escapeHtml(terms.content)}</p>
+          </div>`;
+  return html.replace("</td></tr>\n        <!-- Footer -->", `${section}\n        </td></tr>\n        <!-- Footer -->`);
+}
+
 function buildClientEmailHtml(data: {
   companyName: string;
   contactName: string;
@@ -298,6 +308,16 @@ Deno.serve(async (req) => {
       warnings: string[];
     } = { warnings };
 
+    const { data: generalTerms } = await supabase
+      .from("contract_templates")
+      .select("name, content")
+      .eq("organization_id", orgId)
+      .eq("template_type", "general_terms")
+      .eq("is_active", true)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
     // ── Fetch company contacts once for both emails ──
     const { data: contacts } = await supabase
       .from("company_contacts")
@@ -318,7 +338,7 @@ Deno.serve(async (req) => {
       }
 
       const subject = `Plaatsingsbevestiging - ${functionName} bij ${companyName}`;
-      const html = buildClientEmailHtml({
+      const baseHtml = buildClientEmailHtml({
         companyName,
         contactName,
         candidateName,
@@ -329,6 +349,11 @@ Deno.serve(async (req) => {
         candidatePhone: candidate.phone,
         candidateEmail: candidate.email,
       });
+      const html = appendGeneralTerms(baseHtml, generalTerms as any);
+
+      if (!generalTerms) {
+        warnings.push("Geen actieve algemene voorwaarden-template gevonden");
+      }
 
       // Send via Outlook if connected, otherwise store as concept
       let sendResult: { success: boolean; method: "outlook" | "none"; error?: string } = { success: false, method: "none" };

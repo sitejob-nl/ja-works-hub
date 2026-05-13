@@ -9,9 +9,17 @@ import { formatDate, formatEUR } from '@/lib/format';
 const placementStatusBadge: Record<string, string> = {
   gepland: 'bg-muted text-muted-foreground border-0',
   actief: 'bg-stat-green/10 text-stat-green border-0',
+  afgerond: 'bg-muted text-muted-foreground border-0',
   beeindigd: 'bg-red-100 text-red-600 border-0',
+  voortijdig_beeindigd: 'bg-red-100 text-red-600 border-0',
 };
-const placementStatusLabel: Record<string, string> = { gepland: 'Gepland', actief: 'Actief', beeindigd: 'Beëindigd' };
+const placementStatusLabel: Record<string, string> = {
+  gepland: 'Gepland',
+  actief: 'Actief',
+  afgerond: 'Afgerond',
+  beeindigd: 'Beëindigd',
+  voortijdig_beeindigd: 'Voortijdig beëindigd',
+};
 
 const VacancyPlacementsTab = ({ vacancyId }: { vacancyId: string }) => {
   const { data: placements } = useQuery({
@@ -19,7 +27,7 @@ const VacancyPlacementsTab = ({ vacancyId }: { vacancyId: string }) => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('placements')
-        .select(`*, employees!placements_employee_id_fkey(id, candidates!employees_candidate_id_fkey(first_name, last_name))`)
+        .select(`*, candidates!placements_candidate_id_fkey(id, first_name, last_name), employees!placements_employee_id_fkey(id, candidates!employees_candidate_id_fkey(first_name, last_name))`)
         .eq('vacancy_id', vacancyId)
         .order('start_date', { ascending: false });
       if (error) throw error;
@@ -52,7 +60,7 @@ const VacancyPlacementsTab = ({ vacancyId }: { vacancyId: string }) => {
         <TableBody>
           {placements.map((p: any) => {
             const emp = p.employees as any;
-            const cand = emp?.candidates as any;
+            const cand = ((p.candidates as any) ?? emp?.candidates) as any;
             const name = cand ? `${cand.first_name} ${cand.last_name}` : '—';
             return (
               <TableRow key={p.id}>

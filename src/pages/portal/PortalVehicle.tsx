@@ -26,12 +26,15 @@ const resolveEmployeeRecordId = async (candidateId: string) => {
 };
 
 const damageTypes = [
-  'Lekke band',
-  'Motorstoring',
-  'Carrosserie',
-  'Ruitschade',
-  'Overig',
+  { value: 'lekke_band', label: 'Lekke band' },
+  { value: 'dashboardlampje', label: 'Dashboardlampje' },
+  { value: 'motorstoring', label: 'Motorstoring' },
+  { value: 'carrosserie', label: 'Carrosserie' },
+  { value: 'ruitschade', label: 'Ruitschade' },
+  { value: 'overig', label: 'Overig' },
 ];
+
+const damageTypeLabel = (value: string) => damageTypes.find((type) => type.value === value)?.label ?? value;
 
 const PortalVehicle = () => {
   const { employee } = usePortal();
@@ -40,7 +43,7 @@ const PortalVehicle = () => {
   const orgId = employee?.organization_id;
 
   const [damageOpen, setDamageOpen] = useState(false);
-  const [damageType, setDamageType] = useState('Overig');
+  const [damageType, setDamageType] = useState('overig');
   const [description, setDescription] = useState('');
   const [photos, setPhotos] = useState<File[]>([]);
   const [submitted, setSubmitted] = useState(false);
@@ -78,6 +81,7 @@ const PortalVehicle = () => {
     mutationFn: async () => {
       if (!assignment || !employeeId || !orgId) throw new Error('Geen voertuig');
       if (!description.trim()) throw new Error('Vul een beschrijving in');
+      if (photos.length === 0) throw new Error('Voeg minimaal één foto toe');
 
       const vehicle = assignment.vehicles as any;
       const employeeRecordId = assignment.employee_id ?? await resolveEmployeeRecordId(employeeId);
@@ -109,7 +113,7 @@ const PortalVehicle = () => {
       setSubmitted(true);
       setDescription('');
       setPhotos([]);
-      setDamageType('Overig');
+      setDamageType('overig');
     },
     onError: (err: any) => toast.error(err.message || 'Indienen mislukt'),
   });
@@ -208,7 +212,7 @@ const PortalVehicle = () => {
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {damageTypes.map((t) => (
-                      <SelectItem key={t} value={t}>{t}</SelectItem>
+                      <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -223,7 +227,7 @@ const PortalVehicle = () => {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label>Foto's (max 4)</Label>
+                <Label>Foto's * (max 4)</Label>
                 <Input
                   type="file"
                   accept="image/*"
@@ -236,10 +240,13 @@ const PortalVehicle = () => {
                 {photos.length > 0 && (
                   <p className="text-xs text-muted-foreground">{photos.length} foto('s) geselecteerd</p>
                 )}
+                {photos.length === 0 && (
+                  <p className="text-xs text-destructive">Minimaal één foto is verplicht.</p>
+                )}
               </div>
               <Button
                 onClick={() => submitDamage.mutate()}
-                disabled={submitDamage.isPending || !description.trim()}
+                disabled={submitDamage.isPending || !description.trim() || photos.length === 0}
                 className="w-full"
               >
                 {submitDamage.isPending ? 'Indienen...' : 'Schademelding indienen'}
@@ -257,7 +264,7 @@ const PortalVehicle = () => {
             {damageReports.map((r) => (
               <div key={r.id} className="px-4 py-3 space-y-1">
                 <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium">{r.damage_type}</p>
+                  <p className="text-sm font-medium">{damageTypeLabel(r.damage_type)}</p>
                   {r.resolved ? (
                     <Badge variant="secondary" className="text-[10px] bg-stat-green/10 text-stat-green border-0">
                       Opgelost

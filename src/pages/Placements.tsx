@@ -36,7 +36,7 @@ export default function PlacementsPage() {
     queryFn: async () => {
       let q = supabase
         .from('placements')
-        .select('*, companies!placements_company_id_fkey(name), employees!placements_employee_id_fkey(id, candidates!employees_candidate_id_fkey(first_name, last_name))')
+        .select('*, companies!placements_company_id_fkey(name), candidates!placements_candidate_id_fkey(id, first_name, last_name), employees!placements_employee_id_fkey(id, candidates!employees_candidate_id_fkey(first_name, last_name))')
         .eq('organization_id', orgId)
         .order('start_date', { ascending: false });
       if (statusFilter !== 'all') q = q.eq('status', statusFilter);
@@ -50,7 +50,7 @@ export default function PlacementsPage() {
   const filtered = (placements ?? []).filter((p: any) => {
     if (!search) return true;
     const s = search.toLowerCase();
-    const cand = (p.employees as any)?.candidates;
+    const cand = (p.candidates as any) ?? (p.employees as any)?.candidates;
     const name = `${cand?.first_name ?? ''} ${cand?.last_name ?? ''}`.toLowerCase();
     return name.includes(s) || p.function_name?.toLowerCase().includes(s) || (p.companies as any)?.name?.toLowerCase().includes(s);
   });
@@ -141,7 +141,7 @@ export default function PlacementsPage() {
                 {filtered.length === 0 ? (
                   <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">Geen plaatsingen gevonden</TableCell></TableRow>
                 ) : filtered.map((p: any) => {
-                  const cand = (p.employees as any)?.candidates;
+                  const cand = (p.candidates as any) ?? (p.employees as any)?.candidates;
                   const st = statusBadge[p.status] || statusBadge.gepland;
                   return (
                     <TableRow key={p.id} className="cursor-pointer" onClick={() => window.location.href = `/plaatsingen/${p.id}`}>

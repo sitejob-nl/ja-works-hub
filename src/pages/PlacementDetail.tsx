@@ -54,7 +54,7 @@ const PlacementDetail = () => {
     queryKey: ['placement', id],
     queryFn: async () => {
       const { data, error } = await supabase.from('placements')
-        .select('*, companies!placements_company_id_fkey(id, name), employees!placements_employee_id_fkey(id, candidates!employees_candidate_id_fkey(first_name, last_name))')
+        .select('*, companies!placements_company_id_fkey(id, name), candidates!placements_candidate_id_fkey(id, first_name, last_name), employees!placements_employee_id_fkey(id, candidates!employees_candidate_id_fkey(first_name, last_name))')
         .eq('id', id!)
         .single();
       if (error) throw error;
@@ -63,8 +63,28 @@ const PlacementDetail = () => {
     enabled: !!id,
   });
 
-  const candidateName = placement?.employees?.candidates
-    ? `${placement.employees.candidates.first_name} ${placement.employees.candidates.last_name}`
+  const { data: carerixMapping } = useQuery({
+    queryKey: ['placement-carerix-mapping', id, placement?.organization_id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('external_mappings')
+        .select('external_id, metadata')
+        .eq('organization_id', placement!.organization_id)
+        .eq('external_system', 'carerix')
+        .eq('entity_type', 'placement')
+        .eq('entity_id', id!)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!id && !!placement?.organization_id,
+  });
+
+  const placementCandidate = (placement?.candidates as any) ?? placement?.employees?.candidates;
+  const carerixMeta = (carerixMapping?.metadata as Record<string, any> | null) ?? null;
+
+  const candidateName = placementCandidate
+    ? `${placementCandidate.first_name} ${placementCandidate.last_name}`
     : placement?.function_name ?? 'Plaatsing';
   const placementSublabel = placement?.companies && placement?.function_name
     ? `${(placement.companies as any).name} - ${placement.function_name}`
@@ -139,7 +159,7 @@ const PlacementDetail = () => {
   if (!placement) return <div className="p-8 text-muted-foreground">Niet gevonden</div>;
 
   const emp = placement.employees as any;
-  const cand = emp?.candidates as any;
+  const cand = ((placement as any).candidates ?? emp?.candidates) as any;
   const company = placement.companies as any;
   const canTerminate = placement.status === 'actief' || placement.status === 'gepland';
 
@@ -275,6 +295,25 @@ const PlacementDetail = () => {
                 {(!placement.work_days || placement.work_days.length === 0) && <span className="text-muted-foreground">—</span>}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {carerixMapping && (
+        <div className="bg-card border rounded-lg p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <ExternalLink className="h-4 w-4 text-muted-foreground" />
+            <h2 className="text-sm font-medium">Carerix gegevens</h2>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 text-sm">
+            <div><span className="text-muted-foreground">Carerix job ID</span><p className="font-mono text-xs">{carerixMapping.external_id}</p></div>
+            <div><span className="text-muted-foreground">Bron</span><p className="font-medium">{carerixMeta?.source_entity ?? 'CRJob'}</p></div>
+            <div><span className="text-muted-foreground">Carerix status</span><p className="font-medium">{carerixMeta?.carerix_status ?? '—'}</p></div>
+            <div><span className="text-muted-foreground">Statuscode</span><p className="font-medium">{carerixMeta?.carerix_status_code ?? '—'}</p></div>
+            <div><span className="text-muted-foreground">Kandidaat ID</span><p className="font-mono text-xs">{carerixMeta?.carerix_candidate_id ?? '—'}</p></div>
+            <div><span className="text-muted-foreground">Bedrijf ID</span><p className="font-mono text-xs">{carerixMeta?.carerix_company_id ?? '—'}</p></div>
+            <div><span className="text-muted-foreground">Vacature ID</span><p className="font-mono text-xs">{carerixMeta?.carerix_vacancy_id ?? '—'}</p></div>
+            <div><span className="text-muted-foreground">Match ID</span><p className="font-mono text-xs">{carerixMeta?.carerix_match_id ?? '—'}</p></div>
           </div>
         </div>
       )}

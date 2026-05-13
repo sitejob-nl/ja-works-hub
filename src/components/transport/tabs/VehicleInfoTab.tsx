@@ -50,6 +50,7 @@ const VehicleInfoTab = ({ vehicle, activeAssignment }: { vehicle: any; activeAss
       if (rdwPreview.first_registration) payload.first_registration = rdwPreview.first_registration;
       if (rdwPreview.first_registration_nl) payload.first_registration_nl = rdwPreview.first_registration_nl;
       if (rdwPreview.seats) payload.seats = rdwPreview.seats;
+      if (rdwPreview.doors != null) payload.doors = rdwPreview.doors;
       if (rdwPreview.weight) payload.weight = rdwPreview.weight;
       if (rdwPreview.fuel_consumption != null) payload.avg_consumption_per_100km = rdwPreview.fuel_consumption;
       const { error } = await supabase.from('vehicles').update(payload).eq('id', vehicle.id);
@@ -87,6 +88,7 @@ const VehicleInfoTab = ({ vehicle, activeAssignment }: { vehicle: any; activeAss
             {rdwPreview.apk_expiry && <div><span className="text-muted-foreground">APK vervalt:</span> {formatDate(rdwPreview.apk_expiry)}</div>}
             {rdwPreview.fuel_consumption != null && <div><span className="text-muted-foreground">Gemengd verbruik:</span> {rdwPreview.fuel_consumption} l/100km</div>}
             {rdwPreview.seats && <div><span className="text-muted-foreground">Zitplaatsen:</span> {rdwPreview.seats}</div>}
+            {rdwPreview.doors != null && <div><span className="text-muted-foreground">Deuren:</span> {rdwPreview.doors}</div>}
             {rdwPreview.co2_emission && <div><span className="text-muted-foreground">CO2:</span> {rdwPreview.co2_emission} g/km</div>}
             {rdwPreview.stolen && <div className="text-red-600 font-medium">Gestolen!</div>}
           </div>
@@ -111,6 +113,8 @@ const VehicleInfoTab = ({ vehicle, activeAssignment }: { vehicle: any; activeAss
           <div className="flex justify-between"><span className="text-muted-foreground">Model</span><span>{vehicle.model ?? '—'}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">Bouwjaar</span><span>{vehicle.year ?? '—'}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">Tenaamstelling NL</span><span>{vehicle.first_registration_nl ? formatDate(vehicle.first_registration_nl) : '—'}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Aantal deuren</span><span>{vehicle.doors ?? '—'}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Zitplaatsen</span><span>{vehicle.seats ?? '—'}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">Brandstof</span><span>{vehicle.fuel_type ?? '—'}</span></div>
           <div className="flex justify-between items-center">
             <span className="text-muted-foreground">APK vervalt</span>

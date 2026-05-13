@@ -22,7 +22,11 @@ function folderSegment(input: unknown) {
   const raw = String(input || "inbox").trim();
   const lower = raw.toLowerCase();
   if (WELL_KNOWN.has(lower)) return lower;
-  if (!raw || /[\u0000-\u001f\u007f]/.test(raw)) throw new Error("folder_id_invalid");
+  const hasControlChar = [...raw].some((char) => {
+    const code = char.charCodeAt(0);
+    return code <= 31 || code === 127;
+  });
+  if (!raw || hasControlChar) throw new Error("folder_id_invalid");
   return encodeURIComponent(raw);
 }
 

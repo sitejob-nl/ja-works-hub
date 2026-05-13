@@ -127,7 +127,10 @@ export interface CRJob {
   templateName?: string;
   jobInformation?: string;
   memoGeneral?: string;
+  toEmployee?: { _id: string; firstName?: string; lastName?: string };
   toCompany?: { _id: string; name?: string };
+  toVacancy?: { _id: string };
+  toMatch?: { _id: string };
   toUser?: { _id: string; name?: string };
   status?: number;
   statusDisplay?: string;
@@ -137,6 +140,8 @@ export interface CRJob {
   endDate?: string;
   hourlyTariffInvoice?: number;
   hourlyWageGross?: number;
+  hoursPerWeek?: number;
+  totalWorkHours?: number;
 }
 
 export interface CRPublication {

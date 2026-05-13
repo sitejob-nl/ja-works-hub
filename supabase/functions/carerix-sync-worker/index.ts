@@ -7,8 +7,9 @@ import {
   jsonError,
   jsonOk,
   loadCarerixCredentials,
+  runBackgroundTask,
 } from '../_shared/carerix/helpers.ts';
-import { isServiceRoleRequest } from '../_shared/auth.ts';
+import { internalFunctionHeaders, isServiceRoleRequest } from '../_shared/auth.ts';
 import { fetchCarerixAccessToken } from '../_shared/carerix/auth.ts';
 import { CarerixGraphQLClient } from '../_shared/carerix/client.ts';
 import { IdMapper } from '../_shared/carerix/id-mapper.ts';
@@ -30,22 +31,27 @@ const REQUIRED_MAPPINGS: Record<EntityName, string[]> = {
   candidates: ['candidate'],
   vacancies: ['company', 'vacancy'],
   matches: ['candidate', 'vacancy', 'match'],
-  placements: ['candidate', 'company', 'placement'],
+  placements: ['candidate', 'company', 'vacancy', 'match', 'placement'],
   documents: ['candidate', 'document'],
   notes: ['candidate', 'company', 'match', 'vacancy', 'contact', 'note'],
   employment: [],
 };
 
-function selfTrigger(jobId: string): Promise<Response> {
+async function selfTrigger(jobId: string): Promise<void> {
   const url = `${Deno.env.get('SUPABASE_URL')}/functions/v1/carerix-sync-worker`;
-  return fetch(url, {
+  const res = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+      ...internalFunctionHeaders(),
     },
     body: JSON.stringify({ job_id: jobId }),
   });
+
+  if (!res.ok) {
+    throw new Error(`worker self-trigger failed (${res.status}): ${await res.text()}`);
+  }
 }
 
 Deno.serve(async (req) => {
@@ -115,7 +121,7 @@ Deno.serve(async (req) => {
       })
       .eq('job_id', job_id)
       .eq('entity', nextEntity);
-    selfTrigger(job_id).catch(() => {});
+    runBackgroundTask(selfTrigger(job_id), 'carerix worker self-trigger');
     return jsonOk({ ok: true, skipped_unsupported: nextEntity });
   }
 
@@ -176,7 +182,7 @@ Deno.serve(async (req) => {
     }
 
     if (Date.now() - started > SOFT_DEADLINE_MS) {
-      selfTrigger(job_id).catch(() => {});
+      runBackgroundTask(selfTrigger(job_id), 'carerix worker self-trigger');
       return jsonOk({ ok: true, continued: true, entity: nextEntity, page: pageCursor });
     }
 
@@ -194,7 +200,7 @@ Deno.serve(async (req) => {
         })
         .eq('job_id', job_id)
         .eq('entity', nextEntity);
-      selfTrigger(job_id).catch(() => {});
+      runBackgroundTask(selfTrigger(job_id), 'carerix worker self-trigger');
       return jsonOk({ ok: true, entity_failed: nextEntity, error: msg });
     }
 
@@ -242,7 +248,7 @@ Deno.serve(async (req) => {
       .eq('entity', nextEntity);
 
     if (done) {
-      selfTrigger(job_id).catch(() => {});
+      runBackgroundTask(selfTrigger(job_id), 'carerix worker self-trigger');
       return jsonOk({ ok: true, entity_done: nextEntity, skipped });
     }
   }

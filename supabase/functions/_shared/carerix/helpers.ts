@@ -2,6 +2,12 @@
 
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+declare const EdgeRuntime:
+  | {
+      waitUntil?: (promise: Promise<unknown>) => void;
+    }
+  | undefined;
+
 export const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -27,6 +33,19 @@ export function createAdminClient(): SupabaseClient {
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     { auth: { persistSession: false } },
   );
+}
+
+export function runBackgroundTask(task: Promise<unknown>, label: string): void {
+  const guardedTask = task.catch((err) => {
+    console.error(`${label} failed:`, err);
+  });
+
+  if (typeof EdgeRuntime !== 'undefined' && typeof EdgeRuntime.waitUntil === 'function') {
+    EdgeRuntime.waitUntil(guardedTask);
+    return;
+  }
+
+  guardedTask.catch(() => {});
 }
 
 // Authenticate a request via the user's JWT. Returns { user, profile } or null.

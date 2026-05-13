@@ -22,7 +22,9 @@ interface TerminatedPlacement {
   end_date: string | null;
   company_id: string | null;
   employee_id: string | null;
+  candidate_id: string | null;
   companies: { id: string; name: string } | null;
+  candidates: { id: string; first_name: string; last_name: string } | null;
   employees: {
     id: string;
     candidate_id: string | null;
@@ -50,6 +52,7 @@ interface AllPlacement {
   termination_reason: string | null;
   company_id: string | null;
   employee_id: string | null;
+  candidate_id: string | null;
   start_date: string | null;
   companies: { id: string; name: string } | null;
 }
@@ -127,8 +130,9 @@ const UitstroomAnalyse = () => {
         .from('placements')
         .select(`
           id, status, terminated_by, termination_reason, termination_notes,
-          terminated_at, start_date, end_date, company_id, employee_id,
+          terminated_at, start_date, end_date, company_id, employee_id, candidate_id,
           companies!placements_company_id_fkey(id, name),
+          candidates!placements_candidate_id_fkey(id, first_name, last_name),
           employees!placements_employee_id_fkey(
             id, candidate_id,
             candidates!employees_candidate_id_fkey(id, first_name, last_name)
@@ -184,7 +188,7 @@ const UitstroomAnalyse = () => {
       let query = supabase
         .from('placements')
         .select(`
-          id, status, terminated_by, termination_reason, company_id, employee_id, start_date,
+          id, status, terminated_by, termination_reason, company_id, employee_id, candidate_id, start_date,
           companies!placements_company_id_fkey(id, name)
         `)
         .eq('organization_id', orgId)

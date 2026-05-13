@@ -30,9 +30,11 @@ const statusBadge: Record<string, string> = {
   actief: 'bg-emerald-100 text-emerald-700 border-0',
   afgerond: 'bg-muted text-muted-foreground border-0',
   beeindigd: 'bg-red-100 text-red-600 border-0',
+  voortijdig_beeindigd: 'bg-red-100 text-red-600 border-0',
 };
 const statusLabel: Record<string, string> = {
   gepland: 'Gepland', actief: 'Actief', afgerond: 'Afgerond', beeindigd: 'Beëindigd',
+  voortijdig_beeindigd: 'Voortijdig beëindigd',
 };
 
 const Planning = () => {
@@ -71,6 +73,7 @@ const Planning = () => {
             status,
             candidates!employees_candidate_id_fkey(first_name, last_name)
           ),
+          candidates!placements_candidate_id_fkey(id, first_name, last_name),
           companies!placements_company_id_fkey(id, name)
         `)
         .in('status', ['actief', 'gepland'] as any[])
@@ -117,7 +120,7 @@ const Planning = () => {
     if (search) {
       const s = search.toLowerCase();
       result = result.filter((p: any) => {
-        const emp = p.employees?.candidates;
+        const emp = p.candidates ?? p.employees?.candidates;
         const empName = `${emp?.first_name ?? ''} ${emp?.last_name ?? ''}`.toLowerCase();
         const compName = (p.companies?.name ?? '').toLowerCase();
         return empName.includes(s) || compName.includes(s);
@@ -131,7 +134,7 @@ const Planning = () => {
   // Stats
   const stats = useMemo(() => {
     if (!placements) return { scheduled: 0, unscheduled: 0, openVac: 0, avgRate: 0 };
-    const uniqueEmployees = new Set(placements.map((p: any) => p.employee_id));
+    const uniqueEmployees = new Set(placements.map((p: any) => p.candidate_id ?? p.employee_id));
     const avgRate = placements.length > 0
       ? placements.reduce((sum: number, p: any) => sum + (p.hourly_rate ?? 0), 0) / placements.length
       : 0;
@@ -147,9 +150,12 @@ const Planning = () => {
   const employeeRows = useMemo(() => {
     const map = new Map<string, { employee: any; placements: any[] }>();
     for (const p of filtered) {
-      const empId = p.employee_id;
+      const empId = p.candidate_id ?? p.employee_id ?? p.id;
       if (!map.has(empId)) {
-        map.set(empId, { employee: (p as any).employees, placements: [] });
+        map.set(empId, {
+          employee: (p as any).employees ?? { id: p.candidate_id, candidates: (p as any).candidates },
+          placements: [],
+        });
       }
       map.get(empId)!.placements.push(p);
     }
@@ -322,7 +328,7 @@ const Planning = () => {
                   </TableHeader>
                   <TableBody>
                     {listData.map((p: any) => {
-                      const cand = p.employees?.candidates;
+                      const cand = p.candidates ?? p.employees?.candidates;
                       return (
                         <TableRow key={p.id}>
                           <TableCell>
@@ -372,7 +378,7 @@ const Planning = () => {
 /* Placement cell with popover */
 const PlacementCell = ({ placement, navigate }: { placement: any; navigate: any }) => {
   const comp = placement.companies;
-  const cand = placement.employees?.candidates;
+  const cand = placement.candidates ?? placement.employees?.candidates;
   return (
     <Popover>
       <PopoverTrigger asChild>

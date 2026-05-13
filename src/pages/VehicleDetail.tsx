@@ -78,18 +78,20 @@ const VehicleDetail = () => {
       const [assignments, damage, fines, mileage, fuel] = await Promise.all([
         supabase.from('vehicle_assignments').select('id', { count: 'exact', head: true }).eq('vehicle_id', id!),
         supabase.from('vehicle_damage_reports').select('id, photos').eq('vehicle_id', id!),
-        supabase.from('vehicle_fines').select('id', { count: 'exact', head: true }).eq('vehicle_id', id!),
+        supabase.from('vehicle_fines' as any).select('id, photos').eq('vehicle_id', id!),
         supabase.from('mileage_entries').select('id', { count: 'exact', head: true }).eq('vehicle_id', id!),
         supabase.from('fuel_card_transactions').select('id', { count: 'exact', head: true }).eq('vehicle_id', id!),
       ]);
       const damagePhotos = (damage.data ?? []).flatMap((d: any) => (d.photos ?? []) as string[]);
+      const finePhotos = (fines.data ?? []).flatMap((f: any) => (f.photos ?? []) as string[]);
       return {
         assignments: assignments.count ?? 0,
         damage: damage.data?.length ?? 0,
-        fines: fines.count ?? 0,
+        fines: fines.data?.length ?? 0,
         mileage: mileage.count ?? 0,
         fuel: fuel.count ?? 0,
         damagePhotos,
+        finePhotos,
       };
     },
     enabled: deleteOpen && !!id,
@@ -112,6 +114,9 @@ const VehicleDetail = () => {
       // Cleanup foto's uit damage reports (best-effort)
       if (deleteImpact?.damagePhotos && deleteImpact.damagePhotos.length > 0) {
         await supabase.storage.from('documents').remove(deleteImpact.damagePhotos);
+      }
+      if (deleteImpact?.finePhotos && deleteImpact.finePhotos.length > 0) {
+        await supabase.storage.from('documents').remove(deleteImpact.finePhotos);
       }
 
       // Delete child rijen die niet via CASCADE gaan (RESTRICT / NO ACTION)
@@ -193,7 +198,7 @@ const VehicleDetail = () => {
                   <ul className="text-sm space-y-0.5 mt-2">
                     {deleteImpact.assignments > 0 && <li>· {deleteImpact.assignments} toewijzing(en)</li>}
                     {deleteImpact.damage > 0 && <li>· {deleteImpact.damage} schademelding(en) {deleteImpact.damagePhotos.length > 0 && `(${deleteImpact.damagePhotos.length} foto's)`}</li>}
-                    {deleteImpact.fines > 0 && <li>· {deleteImpact.fines} boete(s)</li>}
+                    {deleteImpact.fines > 0 && <li>· {deleteImpact.fines} boete(s) {deleteImpact.finePhotos.length > 0 && `(${deleteImpact.finePhotos.length} foto's)`}</li>}
                     {deleteImpact.mileage > 0 && <li>· {deleteImpact.mileage} kilometerregistratie(s)</li>}
                     {deleteImpact.fuel > 0 && <li>· {deleteImpact.fuel} tankpas-transactie(s)</li>}
                     {deleteImpact.assignments + deleteImpact.damage + deleteImpact.fines + deleteImpact.mileage + deleteImpact.fuel === 0 && <li className="text-muted-foreground italic">Geen gekoppelde gegevens.</li>}

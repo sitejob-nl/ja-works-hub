@@ -29,6 +29,7 @@ function formatEUR(amount: number | null): string {
 
 const DAMAGE_TYPE_LABELS: Record<string, string> = {
   lekke_band: "Lekke band",
+  dashboardlampje: "Dashboardlampje",
   motorstoring: "Motorstoring",
   carrosserie: "Carrosserieschade",
   ruitschade: "Ruitschade",
@@ -42,6 +43,8 @@ function buildEmailHtml(data: {
   description: string;
   costEstimate: number | null;
   employeeName: string;
+  employeePhone: string | null;
+  employeeEmail: string | null;
   photoUrls: string[];
 }): string {
   const photosHtml =
@@ -90,6 +93,8 @@ function buildEmailHtml(data: {
             <tr><td style="padding:14px 20px;border-bottom:1px solid #fecaca;">
               <span style="color:#991b1b;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;">Bestuurder</span><br>
               <strong style="color:#1e293b;font-size:14px;">${escapeHtml(data.employeeName)}</strong>
+              ${data.employeePhone ? `<br><span style="color:#64748b;font-size:13px;">Tel: ${escapeHtml(data.employeePhone)}</span>` : ""}
+              ${data.employeeEmail ? `<br><span style="color:#64748b;font-size:13px;">E-mail: ${escapeHtml(data.employeeEmail)}</span>` : ""}
             </td></tr>
             ${data.costEstimate != null ? `<tr><td style="padding:14px 20px;">
               <span style="color:#991b1b;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;">Geschatte kosten</span><br>
@@ -155,7 +160,7 @@ Deno.serve(async (req) => {
       .select(`
         id, reported_at, damage_type, description, photos, garage_email, cost_estimate,
         vehicle:vehicle_id(license_plate, brand, model),
-        employee:employee_id(candidates:candidate_id(first_name, last_name))
+        employee:employee_id(candidates:candidate_id(first_name, last_name, phone, email))
       `)
       .eq("id", report_id)
       .eq("organization_id", orgId)
@@ -192,6 +197,8 @@ Deno.serve(async (req) => {
       description: r.description,
       costEstimate: r.cost_estimate,
       employeeName,
+      employeePhone: empCand?.phone ?? null,
+      employeeEmail: empCand?.email ?? null,
       photoUrls,
     });
 

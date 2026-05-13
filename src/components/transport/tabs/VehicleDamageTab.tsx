@@ -29,6 +29,7 @@ import { logAudit } from '@/lib/audit';
 
 const DAMAGE_TYPES = [
   { value: 'lekke_band', label: 'Lekke band' },
+  { value: 'dashboardlampje', label: 'Dashboardlampje' },
   { value: 'motorstoring', label: 'Motorstoring' },
   { value: 'carrosserie', label: 'Carrosserie' },
   { value: 'ruitschade', label: 'Ruitschade' },
@@ -37,6 +38,7 @@ const DAMAGE_TYPES = [
 
 const typeBadgeClass: Record<string, string> = {
   lekke_band: 'bg-orange-100 text-orange-700 border-0',
+  dashboardlampje: 'bg-yellow-100 text-yellow-700 border-0',
   motorstoring: 'bg-destructive/10 text-destructive border-0',
   carrosserie: 'bg-orange-100 text-orange-700 border-0',
   ruitschade: 'bg-orange-100 text-orange-700 border-0',
@@ -324,6 +326,11 @@ const DamageSheet = ({ open, onOpenChange, vehicleId, orgId, onDone, existing }:
 
   const handleSave = async (notifyGarage: boolean) => {
     if (!orgId || !form.employee_id || !form.description) return;
+    const existingPhotoCount = isEdit ? ((existing?.photos ?? []) as string[]).length : 0;
+    if (existingPhotoCount + files.length === 0) {
+      toast.error('Voeg minimaal één foto toe aan de schademelding');
+      return;
+    }
     setSaving(true);
 
     try {
@@ -399,6 +406,8 @@ const DamageSheet = ({ open, onOpenChange, vehicleId, orgId, onDone, existing }:
     }
   };
 
+  const hasPhotoEvidence = (isEdit && ((existing?.photos ?? []) as string[]).length > 0) || files.length > 0;
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="sm:max-w-md overflow-y-auto">
@@ -432,7 +441,7 @@ const DamageSheet = ({ open, onOpenChange, vehicleId, orgId, onDone, existing }:
           </div>
 
           <div>
-            <Label>{isEdit ? "Extra foto's toevoegen (max 4)" : "Foto's (max 4)"}</Label>
+            <Label>{isEdit ? "Extra foto's toevoegen (minimaal 1 totaal)" : "Foto's * (max 4)"}</Label>
             <Input type="file" accept="image/*" multiple onChange={e => {
               const selected = Array.from(e.target.files ?? []).slice(0, 4);
               setFiles(selected);
@@ -441,6 +450,7 @@ const DamageSheet = ({ open, onOpenChange, vehicleId, orgId, onDone, existing }:
             {isEdit && existing?.photos?.length > 0 && (
               <p className="text-xs text-muted-foreground mt-1">{existing.photos.length} bestaande foto('s) blijven bewaard.</p>
             )}
+            {!hasPhotoEvidence && <p className="text-xs text-destructive mt-1">Minimaal één foto is verplicht.</p>}
           </div>
 
           <div>
@@ -454,11 +464,11 @@ const DamageSheet = ({ open, onOpenChange, vehicleId, orgId, onDone, existing }:
           </div>
 
           <div className="flex flex-col gap-2 pt-4">
-            <Button onClick={() => handleSave(false)} disabled={!form.employee_id || !form.description || saving}>
+            <Button onClick={() => handleSave(false)} disabled={!form.employee_id || !form.description || !hasPhotoEvidence || saving}>
               {saving ? 'Opslaan...' : 'Opslaan'}
             </Button>
             {form.garage_email && (
-              <Button variant="outline" onClick={() => handleSave(true)} disabled={!form.employee_id || !form.description || saving}>
+              <Button variant="outline" onClick={() => handleSave(true)} disabled={!form.employee_id || !form.description || !hasPhotoEvidence || saving}>
                 <Bell className="h-4 w-4 mr-1" /> Opslaan & garage notificeren
               </Button>
             )}

@@ -16,12 +16,12 @@ const OwnerTab = ({ property }: { property: any }) => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('property_contracts' as any)
-        .select('id, file_path, original_name, start_date, end_date, created_at')
+        .select('id, file_path, original_name, contract_type, start_date, end_date, created_at')
         .eq('property_id', property.id)
         .order('created_at', { ascending: false })
         .limit(3);
       if (error) throw error;
-      return (data ?? []) as unknown as Array<{ id: string; file_path: string; original_name: string; start_date: string | null; end_date: string | null; created_at: string }>;
+      return (data ?? []) as unknown as Array<{ id: string; file_path: string; original_name: string; contract_type: string | null; start_date: string | null; end_date: string | null; created_at: string }>;
     },
     enabled: !!property?.id,
   });
@@ -61,6 +61,7 @@ const OwnerTab = ({ property }: { property: any }) => {
   const overCapacity = property.max_persons_permit && currentOccupancy > property.max_persons_permit;
 
   const ownershipLabels: Record<string, string> = { huur: 'Huur', eigendom: 'Eigendom', beheer: 'Beheer' };
+  const contractTypeLabels: Record<string, string> = { inhuur: 'Inhuur', onderhuur: 'Onderhuur' };
   const owner = property.property_owners ?? null;
 
   return (
@@ -111,6 +112,7 @@ const OwnerTab = ({ property }: { property: any }) => {
                           <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
                           <div className="min-w-0">
                             <p className="text-sm font-medium truncate">{c.original_name}</p>
+                            {c.contract_type && <p className="text-[11px] text-muted-foreground">{contractTypeLabels[c.contract_type] ?? c.contract_type}</p>}
                             {period && <p className="text-xs text-muted-foreground">{period}</p>}
                           </div>
                         </div>

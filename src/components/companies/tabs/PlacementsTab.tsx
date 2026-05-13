@@ -17,7 +17,7 @@ const PlacementsTab = ({ companyId }: { companyId: string }) => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('placements')
-        .select('*, employees!placements_employee_id_fkey(candidate_id, candidates!employees_candidate_id_fkey(first_name, last_name))')
+        .select('*, candidates!placements_candidate_id_fkey(id, first_name, last_name), employees!placements_employee_id_fkey(candidate_id, candidates!employees_candidate_id_fkey(first_name, last_name))')
         .eq('company_id', companyId)
         .order('status', { ascending: true })
         .order('start_date', { ascending: false });
@@ -43,7 +43,7 @@ const PlacementsTab = ({ companyId }: { companyId: string }) => {
           </TableHeader>
           <TableBody>
             {placements.map((p: any) => {
-              const candidate = p.employees?.candidates;
+              const candidate = p.candidates ?? p.employees?.candidates;
               const name = candidate ? `${candidate.first_name} ${candidate.last_name}` : '—';
               return (
                 <TableRow key={p.id}>

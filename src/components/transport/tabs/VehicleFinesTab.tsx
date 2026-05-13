@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
-import { Plus, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
+import { Plus, MoreHorizontal, Pencil, Trash2, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -40,7 +40,9 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
   const qc = useQueryClient();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingFine, setEditingFine] = useState<any | null>(null);
   const [form, setForm] = useState(emptyFine);
+  const [files, setFiles] = useState<File[]>([]);
   const [fineToDelete, setFineToDelete] = useState<any | null>(null);
 
   // Backwards-compatible aliases for inline form-binding (less code churn)
@@ -78,17 +80,22 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
   const closeSheet = () => {
     setSheetOpen(false);
     setEditingId(null);
+    setEditingFine(null);
     setForm(emptyFine);
+    setFiles([]);
   };
 
   const openAdd = () => {
     setEditingId(null);
+    setEditingFine(null);
     setForm(emptyFine);
+    setFiles([]);
     setSheetOpen(true);
   };
 
   const openEdit = (f: any) => {
     setEditingId(f.id);
+    setEditingFine(f);
     setForm({
       fine_date: f.fine_date ?? '',
       amount: f.amount != null ? String(f.amount) : '',
@@ -97,11 +104,28 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
       employee_id: f.employee_id ?? '',
       notes: f.notes ?? '',
     });
+    setFiles([]);
     setSheetOpen(true);
   };
 
+  const getPhotoUrl = (path: string) => supabase.storage.from('documents').getPublicUrl(path).data.publicUrl;
+
   const saveMutation = useMutation({
     mutationFn: async () => {
+      const existingPhotos: string[] = (editingFine?.photos ?? []) as string[];
+      if (existingPhotos.length + files.length === 0) {
+        throw new Error('Voeg minimaal één foto van de boete toe');
+      }
+
+      const newPhotoPaths: string[] = [];
+      for (const file of files) {
+        const ext = file.name.split('.').pop() ?? 'jpg';
+        const path = `${orgId}/vehicle-fines/${vehicle.id}/${crypto.randomUUID()}.${ext}`;
+        const { error } = await supabase.storage.from('documents').upload(path, file);
+        if (error) throw error;
+        newPhotoPaths.push(path);
+      }
+
       const payload: any = {
         fine_date: fineDate,
         amount: parseFloat(amount),
@@ -109,6 +133,7 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
         reference_number: referenceNumber || null,
         employee_id: employeeId || null,
         notes: notes || null,
+        photos: [...existingPhotos, ...newPhotoPaths],
       };
       if (editingId) {
         const { error } = await supabase.from('vehicle_fines').update(payload).eq('id', editingId);
@@ -130,13 +155,17 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (fineId: string) => {
-      const { error } = await supabase.from('vehicle_fines').delete().eq('id', fineId);
+    mutationFn: async (fine: any) => {
+      if (fine.photos?.length > 0) {
+        await supabase.storage.from('documents').remove(fine.photos);
+      }
+      const { error } = await supabase.from('vehicle_fines').delete().eq('id', fine.id);
       if (error) throw error;
+      return fine;
     },
-    onSuccess: (_, fineId) => {
+    onSuccess: (fine) => {
       qc.invalidateQueries({ queryKey: ['vehicle-fines', vehicle.id] });
-      logAudit({ action: 'delete', tableName: 'vehicle_fines', recordId: fineId });
+      logAudit({ action: 'delete', tableName: 'vehicle_fines', recordId: fine.id });
       toast.success('Boete verwijderd');
       setFineToDelete(null);
     },
@@ -172,6 +201,7 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
               <TableHead>Bedrag</TableHead>
               <TableHead>Beschrijving</TableHead>
               <TableHead>Referentie</TableHead>
+              <TableHead>Foto</TableHead>
               <TableHead>Medewerker</TableHead>
               <TableHead>Betaald</TableHead>
               <TableHead></TableHead>
@@ -186,6 +216,20 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
                   <TableCell>{formatEUR(f.amount)}</TableCell>
                   <TableCell>{f.description ?? '—'}</TableCell>
                   <TableCell>{f.reference_number ?? '—'}</TableCell>
+                  <TableCell>
+                    {f.photos?.length > 0 ? (
+                      <div className="flex items-center gap-1">
+                        {f.photos.slice(0, 2).map((path: string, index: number) => (
+                          <a key={path} href={getPhotoUrl(path)} target="_blank" rel="noopener noreferrer" className="h-8 w-8 overflow-hidden rounded border block">
+                            <img src={getPhotoUrl(path)} alt={`Boete ${index + 1}`} className="h-full w-full object-cover" />
+                          </a>
+                        ))}
+                        {f.photos.length > 2 && <span className="text-xs text-muted-foreground">+{f.photos.length - 2}</span>}
+                      </div>
+                    ) : (
+                      <span className="text-xs text-destructive">Ontbreekt</span>
+                    )}
+                  </TableCell>
                   <TableCell>{c ? `${c.first_name} ${c.last_name}` : '—'}</TableCell>
                   <TableCell>
                     <Badge
@@ -216,7 +260,7 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
               );
             })}
             {(fines ?? []).length === 0 && (
-              <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">Geen boetes geregistreerd</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">Geen boetes geregistreerd</TableCell></TableRow>
             )}
           </TableBody>
         </Table>
@@ -230,6 +274,13 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
             <div><Label>Bedrag (€) *</Label><Input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
             <div><Label>Beschrijving</Label><Input value={description} onChange={(e) => setDescription(e.target.value)} /></div>
             <div><Label>Referentienummer</Label><Input value={referenceNumber} onChange={(e) => setReferenceNumber(e.target.value)} /></div>
+            <div>
+              <Label>{editingId ? "Extra foto's toevoegen" : "Foto boete *"}</Label>
+              <Input type="file" accept="image/*" multiple onChange={(e) => setFiles(Array.from(e.target.files ?? []).slice(0, 4))} />
+              {files.length > 0 && <p className="text-xs text-muted-foreground mt-1">{files.length} bestand(en) geselecteerd</p>}
+              {editingFine?.photos?.length > 0 && <p className="text-xs text-muted-foreground mt-1">{editingFine.photos.length} bestaande foto('s) blijven bewaard.</p>}
+              {files.length === 0 && !editingFine?.photos?.length && <p className="text-xs text-destructive mt-1">Minimaal één foto of scan is verplicht.</p>}
+            </div>
             <div>
               <Label>Medewerker (optioneel)</Label>
               <Select value={employeeId} onValueChange={setEmployeeId}>
@@ -245,7 +296,8 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
             <div><Label>Notities</Label><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} /></div>
             <div className="flex justify-end gap-3 pt-4">
               <Button variant="ghost" onClick={closeSheet}>Annuleren</Button>
-              <Button onClick={() => saveMutation.mutate()} disabled={!fineDate || !amount || saveMutation.isPending}>
+              <Button onClick={() => saveMutation.mutate()} disabled={!fineDate || !amount || (files.length === 0 && !editingFine?.photos?.length) || saveMutation.isPending}>
+                <Upload className="h-3.5 w-3.5 mr-1" />
                 {saveMutation.isPending ? 'Opslaan...' : 'Opslaan'}
               </Button>
             </div>
@@ -264,7 +316,7 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
           <AlertDialogFooter>
             <AlertDialogCancel>Annuleren</AlertDialogCancel>
             <AlertDialogAction
-              onClick={(e) => { e.preventDefault(); if (fineToDelete) deleteMutation.mutate(fineToDelete.id); }}
+              onClick={(e) => { e.preventDefault(); if (fineToDelete) deleteMutation.mutate(fineToDelete); }}
               disabled={deleteMutation.isPending}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >

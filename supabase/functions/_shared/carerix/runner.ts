@@ -17,7 +17,6 @@ import type {
   CRJob,
   CRMatch,
   CRTodo,
-  CRWorkHistory,
   CXCandidate,
   CXCompany,
   CXContact,
@@ -32,17 +31,17 @@ import {
   crEmployeesQuery,
   crJobsQuery,
   crMatchesQuery,
+  crPlacementJobsQuery,
   crTodosQuery,
-  crWorkHistoriesQuery,
   watermarkQualifier,
 } from './queries.ts';
 import {
   mapCRAttachmentToDocument,
   mapCREmployee,
   mapCRJobToVacancy,
+  mapCRJobToPlacement,
   mapCRMatch,
   mapCRTodoToNote,
-  mapCRWorkHistoryToPlacement,
   mapCandidate,
   mapCompany,
   mapContact,
@@ -197,6 +196,7 @@ async function insertIfNew<T extends Record<string, unknown>>(
   payload: T,
   stats: PageStats,
   failureMeta?: Record<string, unknown>,
+  mappingMetadata?: Record<string, unknown>,
 ): Promise<string | null> {
   const existing = ctx.idMapper.get(entityType, carerixId);
   if (existing) {
@@ -217,7 +217,7 @@ async function insertIfNew<T extends Record<string, unknown>>(
       .single();
     if (error) throw new Error(error.message);
     const id = inserted.id as string;
-    await ctx.idMapper.save(entityType, id, carerixId);
+    await ctx.idMapper.save(entityType, id, carerixId, mappingMetadata);
     stats.created++;
     return id;
   } catch (err) {
@@ -271,15 +271,18 @@ export async function runContactsPage(
       continue;
     }
 
-    const companyJaWerktId = ctx.idMapper.get('company', carerixCompanyId);
+    let companyJaWerktId = ctx.idMapper.get('company', carerixCompanyId);
     if (!companyJaWerktId) {
-      stats.failed++;
-      stats.failures.push({
-        carerix_id: String(contact._id),
-        error: `company ${carerixCompanyId} not yet imported`,
-        payload: { carerix_company_id: carerixCompanyId },
-      });
-      continue;
+      companyJaWerktId = await createFallbackCompanyForContact(ctx, contact, carerixCompanyId);
+      if (!companyJaWerktId) {
+        stats.failed++;
+        stats.failures.push({
+          carerix_id: String(contact._id),
+          error: `company ${carerixCompanyId} not yet imported`,
+          payload: { carerix_company_id: carerixCompanyId },
+        });
+        continue;
+      }
     }
 
     const payload = mapContact(contact, companyJaWerktId, ctx.organizationId);
@@ -290,6 +293,40 @@ export async function runContactsPage(
   }
   markDone(stats, pageData);
   return stats;
+}
+
+async function createFallbackCompanyForContact(
+  ctx: RunnerContext,
+  contact: CXContact,
+  carerixCompanyId: string,
+): Promise<string | null> {
+  const fallbackName = contact.company?.name
+    || contact.company?.displayName
+    || `Carerix bedrijf ${carerixCompanyId}`;
+
+  if (ctx.dryRun) return '00000000-0000-0000-0000-000000000000';
+
+  const { data: inserted, error } = await ctx.admin
+    .from('companies')
+    .insert({
+      name: fallbackName,
+      organization_id: ctx.organizationId,
+      is_active: false,
+      notes: `Aangemaakt door Carerix contact-import omdat contact ${contact._id} verwijst naar een bedrijf dat niet in companyPage voorkomt.`,
+    })
+    .select('id')
+    .single();
+
+  if (error || !inserted?.id) return null;
+
+  await ctx.idMapper.save('company', inserted.id as string, carerixCompanyId, {
+    source_entity: 'CXContact.company',
+    created_from_contact_id: String(contact._id),
+    fallback_company: true,
+    name: fallbackName,
+  });
+
+  return inserted.id as string;
 }
 
 export async function runCandidatesPage(
@@ -438,27 +475,30 @@ export async function runMatchesPage(
   return stats;
 }
 
-// Placements via crWorkHistoryPage: één CRWorkHistory-record per dienstverband.
+// Placements via crJobPage: CRJob is in Carerix het concrete
+// dienstverband/plaatsing-record met medewerker, bedrijf, match/vacature,
+// start/einddatum en tarieven. CRWorkHistory is werkhistorie op het CV en telt
+// veel te breed.
 export async function runPlacementsPage(
   ctx: RunnerContext,
   page: number,
   size: number,
 ): Promise<PageStats> {
   const watermark = watermarkQualifier(ctx.modifiedSince);
-  const result = await tryQuery<{ crWorkHistoryPage: PageResponse<CRWorkHistory> }>(
+  const result = await tryQuery<{ crJobPage: PageResponse<CRJob> }>(
     ctx,
-    crWorkHistoriesQuery(page, size, watermark),
+    crPlacementJobsQuery(page, size, watermark),
   );
-  if (!result.data?.crWorkHistoryPage) {
-    return { ...emptyStats(0), skipReason: result.reason ?? 'crWorkHistoryPage onverwachts leeg' };
+  if (!result.data?.crJobPage) {
+    return { ...emptyStats(0), skipReason: result.reason ?? 'crJobPage onverwachts leeg' };
   }
 
-  const pageData = result.data.crWorkHistoryPage;
+  const pageData = result.data.crJobPage;
   const stats = emptyStats(pageData.totalElements);
 
-  for (const wh of pageData.items) {
-    const carerixCandidateId = wh.toEmployee?._id ? String(wh.toEmployee._id) : null;
-    const carerixCompanyId = wh.toCompany?._id ? String(wh.toCompany._id) : null;
+  for (const job of pageData.items) {
+    const carerixCandidateId = job.toEmployee?._id ? String(job.toEmployee._id) : null;
+    const carerixCompanyId = job.toCompany?._id ? String(job.toCompany._id) : null;
     if (!carerixCandidateId || !carerixCompanyId) {
       stats.skipped++;
       continue;
@@ -469,19 +509,66 @@ export async function runPlacementsPage(
     if (!candidateId || !companyId) {
       stats.failed++;
       stats.failures.push({
-        carerix_id: String(wh._id),
+        carerix_id: String(job._id),
         error: `dependency not imported (candidate=${carerixCandidateId} company=${carerixCompanyId})`,
+        payload: {
+          source_entity: 'CRJob',
+          carerix_job_id: String(job._id),
+          carerix_candidate_id: carerixCandidateId,
+          carerix_company_id: carerixCompanyId,
+          carerix_status: job.statusDisplay ?? null,
+          carerix_status_code: job.status ?? null,
+          carerix_name: job.name ?? null,
+          start_date: job.startDate ?? null,
+          end_date: job.endDate ?? null,
+        },
       });
       continue;
     }
 
+    const carerixVacancyId = job.toVacancy?._id ? String(job.toVacancy._id) : null;
+    const vacancyId = (carerixVacancyId ? ctx.idMapper.get('vacancy', carerixVacancyId) : null)
+      ?? ctx.idMapper.get('vacancy', String(job._id));
+    const carerixMatchId = job.toMatch?._id ? String(job.toMatch._id) : null;
+    const matchId = carerixMatchId ? ctx.idMapper.get('match', carerixMatchId) : null;
+
     try {
-      const payload = mapCRWorkHistoryToPlacement(wh, candidateId, companyId, ctx.organizationId);
-      await insertIfNew(ctx, 'placements', 'placement', String(wh._id), payload, stats);
+      const payload = mapCRJobToPlacement(job, candidateId, companyId, ctx.organizationId, {
+        vacancyId,
+        matchId,
+      });
+      const mappingMetadata = {
+        source_entity: 'CRJob',
+        carerix_job_id: String(job._id),
+        carerix_candidate_id: carerixCandidateId,
+        carerix_company_id: carerixCompanyId,
+        carerix_vacancy_id: carerixVacancyId,
+        carerix_match_id: carerixMatchId,
+        carerix_status: job.statusDisplay ?? null,
+        carerix_status_code: job.status ?? null,
+        carerix_name: job.name ?? null,
+        carerix_template_name: job.templateName ?? null,
+        start_date: job.startDate ?? null,
+        end_date: job.endDate ?? null,
+        hourly_tariff_invoice: job.hourlyTariffInvoice ?? null,
+        hourly_wage_gross: job.hourlyWageGross ?? null,
+        hours_per_week: job.hoursPerWeek ?? null,
+        total_work_hours: job.totalWorkHours ?? null,
+      };
+      await insertIfNew(
+        ctx,
+        'placements',
+        'placement',
+        String(job._id),
+        payload,
+        stats,
+        mappingMetadata,
+        mappingMetadata,
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       stats.failed++;
-      stats.failures.push({ carerix_id: String(wh._id), error: msg });
+      stats.failures.push({ carerix_id: String(job._id), error: msg });
     }
   }
   markDone(stats, pageData);
@@ -634,7 +721,7 @@ export const ENTITY_RUNNERS: Partial<Record<EntityName, Runner>> = {
   candidates: runCandidatesPage,
   vacancies: runVacanciesPage,
   matches: runMatchesPage,
-  placements: runPlacementsPage, // via crWorkHistoryPage
+  placements: runPlacementsPage, // via crJobPage
   documents: runDocumentsPage,   // per-kandidaat via CREmployee.attachments
   notes: runNotesPage,
   // employment is in deze tenant gelijk aan placements (zelfde data via

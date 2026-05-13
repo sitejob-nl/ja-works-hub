@@ -9,6 +9,8 @@ export interface AuthenticatedProfile {
   role: EdgeUserRole | string;
 }
 
+const INTERNAL_FUNCTION_SECRET_HEADER = 'x-internal-function-secret';
+
 export function createAdminClient(): SupabaseClient {
   return createClient(
     Deno.env.get('SUPABASE_URL')!,
@@ -30,8 +32,18 @@ export function jsonResponse(
 
 export function isServiceRoleRequest(req: Request): boolean {
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  const internalSecret = Deno.env.get('CARERIX_WORKER_SECRET');
   const authHeader = req.headers.get('Authorization');
-  return Boolean(serviceKey && authHeader === `Bearer ${serviceKey}`);
+  const internalSecretHeader = req.headers.get(INTERNAL_FUNCTION_SECRET_HEADER);
+  return Boolean(
+    (serviceKey && authHeader === `Bearer ${serviceKey}`) ||
+      (internalSecret && internalSecretHeader === internalSecret),
+  );
+}
+
+export function internalFunctionHeaders(): Record<string, string> {
+  const internalSecret = Deno.env.get('CARERIX_WORKER_SECRET');
+  return internalSecret ? { [INTERNAL_FUNCTION_SECRET_HEADER]: internalSecret } : {};
 }
 
 export function isInternalRole(role: string | null | undefined): boolean {

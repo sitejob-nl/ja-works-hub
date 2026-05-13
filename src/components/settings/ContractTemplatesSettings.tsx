@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
@@ -22,19 +23,32 @@ const MERGE_FIELDS = [
   '{{company_name}}', '{{organization_name}}', '{{today}}',
 ];
 
+const TEMPLATE_TYPES = [
+  { value: 'employment_contract', label: 'Arbeidsovereenkomst' },
+  { value: 'placement_confirmation', label: 'Plaatsingsbevestiging' },
+  { value: 'general_terms', label: 'Algemene voorwaarden' },
+  { value: 'housing_inhuur', label: 'Inhuurcontract woning' },
+  { value: 'housing_onderhuur', label: 'Onderhuurcontract woning' },
+  { value: 'house_rules', label: 'Huisregels' },
+  { value: 'vehicle_agreement', label: 'Voertuigovereenkomst' },
+];
+
+const templateTypeLabel = (value: string | null | undefined) =>
+  TEMPLATE_TYPES.find((type) => type.value === value)?.label ?? 'Arbeidsovereenkomst';
+
 const ContractTemplatesSettings = () => {
   const orgId = useOrganizationId();
   const { user } = useAuth();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
-  const [form, setForm] = useState({ name: '', content: '' });
+  const [form, setForm] = useState({ name: '', template_type: 'employment_contract', content: '' });
 
   const { data: templates = [] } = useQuery({
     queryKey: ['contract-templates', orgId],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('contract_templates')
+        .from('contract_templates' as any)
         .select('*')
         .eq('organization_id', orgId)
         .order('created_at', { ascending: false });
@@ -46,14 +60,15 @@ const ContractTemplatesSettings = () => {
   const save = useMutation({
     mutationFn: async () => {
       if (editing) {
-        const { error } = await supabase.from('contract_templates')
-          .update({ name: form.name, content: form.content })
+        const { error } = await supabase.from('contract_templates' as any)
+          .update({ name: form.name, template_type: form.template_type, content: form.content } as any)
           .eq('id', editing.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('contract_templates').insert({
+        const { error } = await supabase.from('contract_templates' as any).insert({
           organization_id: orgId,
           name: form.name,
+          template_type: form.template_type,
           content: form.content,
           created_by: user?.id ?? null,
         });
@@ -64,7 +79,7 @@ const ContractTemplatesSettings = () => {
       qc.invalidateQueries({ queryKey: ['contract-templates'] });
       setOpen(false);
       setEditing(null);
-      setForm({ name: '', content: '' });
+      setForm({ name: '', template_type: 'employment_contract', content: '' });
       toast.success(editing ? 'Template bijgewerkt' : 'Template aangemaakt');
     },
     onError: (e: any) => toast.error(e.message),
@@ -72,7 +87,7 @@ const ContractTemplatesSettings = () => {
 
   const toggleActive = useMutation({
     mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
-      const { error } = await supabase.from('contract_templates').update({ is_active }).eq('id', id);
+      const { error } = await supabase.from('contract_templates' as any).update({ is_active }).eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -83,13 +98,13 @@ const ContractTemplatesSettings = () => {
 
   const openEdit = (t: any) => {
     setEditing(t);
-    setForm({ name: t.name, content: t.content });
+    setForm({ name: t.name, template_type: t.template_type ?? 'employment_contract', content: t.content });
     setOpen(true);
   };
 
   const openNew = () => {
     setEditing(null);
-    setForm({ name: '', content: '' });
+    setForm({ name: '', template_type: 'employment_contract', content: '' });
     setOpen(true);
   };
 
@@ -120,6 +135,7 @@ const ContractTemplatesSettings = () => {
             <TableHeader>
               <TableRow>
                 <TableHead>Naam</TableHead>
+                <TableHead>Type</TableHead>
                 <TableHead>Actief</TableHead>
                 <TableHead>Aangemaakt</TableHead>
                 <TableHead></TableHead>
@@ -129,6 +145,7 @@ const ContractTemplatesSettings = () => {
               {templates.map((t: any) => (
                 <TableRow key={t.id}>
                   <TableCell className="font-medium">{t.name}</TableCell>
+                  <TableCell><Badge variant="secondary">{templateTypeLabel(t.template_type)}</Badge></TableCell>
                   <TableCell>
                     <Switch checked={t.is_active} onCheckedChange={(v) => toggleActive.mutate({ id: t.id, is_active: v })} />
                   </TableCell>
@@ -154,6 +171,15 @@ const ContractTemplatesSettings = () => {
             <div>
               <Label>Naam</Label>
               <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Standaard uitzendovereenkomst" />
+            </div>
+            <div>
+              <Label>Template type</Label>
+              <Select value={form.template_type} onValueChange={(value) => setForm((f) => ({ ...f, template_type: value }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {TEMPLATE_TYPES.map((type) => <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <Label>Merge fields</Label>

@@ -147,7 +147,11 @@ export function graphUrl(path: string, params?: Record<string, string | number |
 
 export function cleanEmail(input: unknown): string | null {
   const value = String(input ?? "").trim().toLowerCase();
-  if (!value || /[\u0000-\u001f\u007f\s<>]/.test(value)) return null;
+  const hasUnsafeChar = [...value].some((char) => {
+    const code = char.charCodeAt(0);
+    return code <= 31 || code === 127 || /\s|[<>]/.test(char);
+  });
+  if (!value || hasUnsafeChar) return null;
   if (!/^[^@]+@[^@]+\.[^@]+$/.test(value)) return null;
   return value;
 }

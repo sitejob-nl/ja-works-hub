@@ -138,6 +138,45 @@ export function mapCRJobToVacancy(job: CRJob, companyId: string, orgId: string) 
   };
 }
 
+export function mapCRJobToPlacement(
+  job: CRJob,
+  candidateId: string,
+  companyId: string,
+  orgId: string,
+  refs: { vacancyId?: string | null; matchId?: string | null } = {},
+) {
+  const startDate = isoDay(job.startDate);
+  if (!startDate) {
+    throw new Error('CRJob zonder startDate kan niet als placement geïmporteerd worden');
+  }
+  const endDate = isoDay(job.endDate);
+  const now = Date.now();
+  const fallbackStatus = endDate && new Date(endDate).getTime() < now
+    ? 'afgerond'
+    : new Date(startDate).getTime() > now
+      ? 'gepland'
+      : 'actief';
+  const status = mapStatus(statusMaps.placement, job.statusDisplay, fallbackStatus);
+
+  return {
+    employee_id: null,
+    candidate_id: candidateId,
+    company_id: companyId,
+    vacancy_id: refs.vacancyId ?? null,
+    match_id: refs.matchId ?? null,
+    function_name: job.name || job.templateName || 'Onbekende functie',
+    hourly_rate: job.hourlyWageGross ?? 0,
+    client_hourly_rate: job.hourlyTariffInvoice ?? null,
+    start_date: startDate,
+    end_date: endDate,
+    expected_end_date: endDate,
+    status,
+    cao_hours: job.hoursPerWeek ?? job.totalWorkHours ?? null,
+    organization_id: orgId,
+    compliance_check_passed: false,
+  };
+}
+
 export function mapCRMatch(
   m: CRMatch,
   candidateId: string,

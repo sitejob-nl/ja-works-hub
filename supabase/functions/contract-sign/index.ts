@@ -31,7 +31,7 @@ Deno.serve(async (req) => {
 
       const { data: contract, error } = await supabase
         .from("contracts")
-        .select("id, title, content, status, signed_at")
+        .select("id, title, content, status, signed_at, signature_request_id")
         .eq("sign_token", token)
         .maybeSingle();
 
@@ -52,7 +52,7 @@ Deno.serve(async (req) => {
 
       if (contract.status === "getekend") {
         return new Response(
-          JSON.stringify({ contract: { title: contract.title, status: contract.status, signed_at: contract.signed_at } }),
+          JSON.stringify({ contract: { title: contract.title, status: contract.status, signed_at: contract.signed_at, signature_request_id: contract.signature_request_id } }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
@@ -99,16 +99,32 @@ Deno.serve(async (req) => {
         req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
         req.headers.get("x-real-ip") ||
         "onbekend";
+      const userAgent = req.headers.get("user-agent") || "onbekend";
 
       const signedAt = new Date().toISOString();
       const timestamp = new Date().toLocaleString("nl-NL", { timeZone: "Europe/Amsterdam" });
+      const signerName = full_name.trim();
+      const signatureRequestId = crypto.randomUUID();
 
       const { error: updateError } = await supabase
         .from("contracts")
         .update({
           status: "getekend",
           signed_at: signedAt,
-          pdf_url: `Digitaal getekend door: ${full_name.trim()} op ${timestamp} | IP: ${clientIp}`,
+          signed_by_name: signerName,
+          signed_ip: clientIp,
+          signature_request_id: signatureRequestId,
+          signature_evidence: {
+            request_id: signatureRequestId,
+            signed_by_name: signerName,
+            signed_at: signedAt,
+            signed_at_local: timestamp,
+            ip_address: clientIp,
+            user_agent: userAgent,
+            method: "token_link",
+            contract_id: contract.id,
+          },
+          pdf_url: `Digitaal getekend door: ${signerName} op ${timestamp} | IP: ${clientIp} | Request: ${signatureRequestId}`,
         })
         .eq("sign_token", token);
 
@@ -120,10 +136,10 @@ Deno.serve(async (req) => {
         });
       }
 
-      console.log(`Contract ${contract.id} signed by ${full_name.trim()} from ${clientIp}`);
+      console.log(`Contract ${contract.id} signed by ${signerName} from ${clientIp} (${signatureRequestId})`);
 
       return new Response(
-        JSON.stringify({ success: true, signed_at: signedAt }),
+        JSON.stringify({ success: true, signed_at: signedAt, signature_request_id: signatureRequestId }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }

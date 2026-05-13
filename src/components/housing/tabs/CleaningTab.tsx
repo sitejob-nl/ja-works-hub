@@ -41,6 +41,7 @@ export default function CleaningTab({ property }: { property: any }) {
     due_date: '',
     priority: 'medium',
   });
+  const [completionFiles, setCompletionFiles] = useState<Record<string, File[]>>({});
 
   const { data: tasks = [] } = useQuery({
     queryKey: ['housing-cleaning-tasks', property.id],
@@ -83,17 +84,38 @@ export default function CleaningTab({ property }: { property: any }) {
     onError: (e: any) => toast.error(e.message ?? 'Aanmaken mislukt'),
   });
 
+  const getPhotoUrl = (path: string) => supabase.storage.from('documents').getPublicUrl(path).data.publicUrl;
+
   const updateStatus = useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: string }) => {
+    mutationFn: async ({ task, status }: { task: any; status: string }) => {
       const update: any = { status };
-      if (status === 'done') update.completed_at = new Date().toISOString();
-      const { error } = await supabase.from('housing_cleaning_tasks' as any).update(update).eq('id', id);
+      if (status === 'done') {
+        const existingPhotos: string[] = (task.completion_photos ?? []) as string[];
+        const files = completionFiles[task.id] ?? [];
+        if (existingPhotos.length + files.length === 0) {
+          throw new Error('Voeg minimaal één schoonmaakfoto toe');
+        }
+
+        const uploaded: string[] = [];
+        for (const file of files) {
+          const ext = file.name.split('.').pop() ?? 'jpg';
+          const path = `${property.organization_id}/cleaning/${property.id}/${task.id}/${crypto.randomUUID()}.${ext}`;
+          const { error } = await supabase.storage.from('documents').upload(path, file);
+          if (error) throw error;
+          uploaded.push(path);
+        }
+        update.completed_at = new Date().toISOString();
+        update.completion_photos = [...existingPhotos, ...uploaded];
+      }
+
+      const { error } = await supabase.from('housing_cleaning_tasks' as any).update(update).eq('id', task.id);
       if (error) throw error;
-      logAudit({ action: 'status_change', tableName: 'housing_cleaning_tasks', recordId: id, newValues: update });
+      logAudit({ action: 'status_change', tableName: 'housing_cleaning_tasks', recordId: task.id, newValues: update });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['housing-cleaning-tasks', property.id] });
       qc.invalidateQueries({ queryKey: ['housing-cleaning-overview'] });
+      setCompletionFiles({});
       toast.success('Status bijgewerkt');
     },
     onError: (e: any) => toast.error(e.message ?? 'Opslaan mislukt'),
@@ -157,6 +179,7 @@ export default function CleaningTab({ property }: { property: any }) {
             <TableHead>Kamer</TableHead>
             <TableHead>Deadline</TableHead>
             <TableHead>Prioriteit</TableHead>
+            <TableHead>Foto's</TableHead>
             <TableHead>Status</TableHead>
             <TableHead className="text-right">Actie</TableHead>
           </TableRow>
@@ -171,10 +194,34 @@ export default function CleaningTab({ property }: { property: any }) {
               <TableCell>{task.units?.name ?? 'Hele pand'}</TableCell>
               <TableCell>{task.due_date ? new Date(task.due_date).toLocaleDateString('nl-NL') : '—'}</TableCell>
               <TableCell><Badge variant="secondary" className={priorityClass[task.priority] ?? ''}>{task.priority}</Badge></TableCell>
+              <TableCell>
+                {task.completion_photos?.length > 0 ? (
+                  <div className="flex items-center gap-1">
+                    {task.completion_photos.slice(0, 2).map((path: string, index: number) => (
+                      <a key={path} href={getPhotoUrl(path)} target="_blank" rel="noopener noreferrer" className="h-8 w-8 rounded border overflow-hidden block">
+                        <img src={getPhotoUrl(path)} alt={`Schoonmaak ${index + 1}`} className="h-full w-full object-cover" />
+                      </a>
+                    ))}
+                    {task.completion_photos.length > 2 && <span className="text-xs text-muted-foreground">+{task.completion_photos.length - 2}</span>}
+                  </div>
+                ) : task.status !== 'done' ? (
+                  <div className="space-y-1">
+                    <Input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={(e) => setCompletionFiles((current) => ({ ...current, [task.id]: Array.from(e.target.files ?? []).slice(0, 4) }))}
+                    />
+                    {(completionFiles[task.id]?.length ?? 0) === 0 && <p className="text-[11px] text-destructive">Verplicht bij afronden</p>}
+                  </div>
+                ) : (
+                  <span className="text-xs text-muted-foreground">—</span>
+                )}
+              </TableCell>
               <TableCell>{statusLabel[task.status] ?? task.status}</TableCell>
               <TableCell className="text-right">
                 {task.status !== 'done' && (
-                  <Button variant="ghost" size="sm" onClick={() => updateStatus.mutate({ id: task.id, status: 'done' })} className="gap-1">
+                  <Button variant="ghost" size="sm" onClick={() => updateStatus.mutate({ task, status: 'done' })} className="gap-1">
                     <CheckCircle2 className="h-3.5 w-3.5" /> Klaar
                   </Button>
                 )}
@@ -182,7 +229,7 @@ export default function CleaningTab({ property }: { property: any }) {
             </TableRow>
           ))}
           {tasks.length === 0 && (
-            <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground">Geen schoonmaaktaken</TableCell></TableRow>
+            <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground">Geen schoonmaaktaken</TableCell></TableRow>
           )}
         </TableBody>
       </Table>

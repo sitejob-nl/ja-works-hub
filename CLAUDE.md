@@ -14,6 +14,8 @@ This file provides guidance to Claude Code when working with the JA Werkt codeba
 
 **Status:** Built in Lovable, now transitioning to Claude Code + VS Code for further development.
 
+> **Naast dit document:** zie [docs/handover-deep.md](docs/handover-deep.md) voor een diepe technische rondleiding (live Supabase-schema, RPCs, triggers, cron, edge function clusters, env vars, deployment). Bedoeld voor nieuwe ontwikkelaars en als referentie bij infra-werk.
+
 ## Commands
 
 ```bash
@@ -132,7 +134,7 @@ Database triggers encrypt sensitive fields (BSN, IBAN, webhook secrets, access t
 
 ## Database Schema
 
-~95 tables, 3 views. Full schema is canonical in [src/integrations/supabase/types.ts](src/integrations/supabase/types.ts) (auto-generated, ~6400 lines, never hand-edit) and discoverable via `mcp__claude_ai_Supabase__list_tables`. Below: only the **non-obvious** parts you can't infer from a list.
+~92 tables, 3 views. Full schema is canonical in [src/integrations/supabase/types.ts](src/integrations/supabase/types.ts) (auto-generated, ~6400 lines, never hand-edit) and discoverable via `mcp__claude_ai_Supabase__list_tables`. Below: only the **non-obvious** parts you can't infer from a list.
 
 ### Domain landscape
 
@@ -203,9 +205,20 @@ Canonical in [src/integrations/supabase/types.ts](src/integrations/supabase/type
 | `sa_update_org_active` | org_uuid, active | void | Superadmin: activate/deactivate org |
 | `sa_update_org_plan` | org_uuid, new_plan_id | void | Superadmin: change subscription |
 
-## Edge Functions (~57 functions)
+## Edge Functions (~60 functies)
 
-> **NB**: alle protected functions hebben `verify_jwt = false` in `config.toml` met **self-auth** in de function body (de Supabase Edge Runtime kan ES256 signing keys niet valideren). Dat is bewust en gedocumenteerd in config.toml.
+> **NB**: alle protected functions hebben `verify_jwt = false` in `config.toml` met **self-auth** in de function body (de Supabase Edge Runtime kan ES256 signing keys niet valideren). Dat is bewust en gedocumenteerd in config.toml. **Uitzondering**: `analyze-cv` heeft `verify_jwt = true` (synchroon vanuit UI, anonieme JWT validatie volstaat).
+
+### pg_cron-getriggerde functies
+
+4 actieve cron jobs (zie `cron.job` in productie). Elk cron-target valideert `x-cron-secret` header tegen `current_setting('app.cron_secret')`:
+
+| Schedule | Job | Edge function |
+|----------|-----|---------------|
+| `0 6 * * *` | document-expiry check | `check-document-expiry` |
+| `0 9 * * *` | onboarding-reminders | `automated-messages` (`?job=onboarding-reminders`) |
+| `30 2 * * *` | housing-reminder daily | `housing-reminder-cron` |
+| `45 2 * * *` | vehicle-APK daily | `check-vehicle-apk` |
 
 ### Public (verify_jwt = false)
 
@@ -238,6 +251,7 @@ Canonical in [src/integrations/supabase/types.ts](src/integrations/supabase/type
 | `send-damage-report` | Email vehicle damage report with photos + template |
 | `send-portal-invite` | Send employee portal activation link |
 | `send-timesheet-approval` | Notify approval/rejection of timesheets |
+| `send-ai-analysis` | Email AI-CV-analyse naar opdrachtgever / interne stakeholder |
 | `automated-messages` | Scheduled/triggered automatic messaging (birthdays, expiries) |
 | `bulk-campaign-processor` | Process bulk WhatsApp campaigns (batch of 50, rate limited) |
 | `email-campaign-processor` | Process bulk email campaigns |
@@ -258,6 +272,7 @@ Canonical in [src/integrations/supabase/types.ts](src/integrations/supabase/type
 | `carerix-sync-worker` | Worker that fetches pages from Carerix |
 | `carerix-sync-cancel` | Cancel running Carerix sync |
 | `carerix-test` | Test Carerix credentials/connection |
+| `carerix-attachment-download` | Byte-download Carerix attachments → `documents` bucket |
 | `generate-invoice-pdf` | Generate PDF invoices |
 
 **Sourcing / job data**
@@ -290,7 +305,10 @@ Canonical in [src/integrations/supabase/types.ts](src/integrations/supabase/type
 | Function | Purpose |
 |----------|---------|
 | `process-sick-report` | Handle ziekmelding from portal (create record + notify) |
-| `check-document-expiry` | Scheduled document expiry validation |
+| `check-document-expiry` | Scheduled document expiry validation (cron 06:00) |
+| `housing-reminder-cron` | Wekelijkse reminders voor huisvesting-acties (cron 02:30) |
+| `check-vehicle-apk` | APK-vervaldatum scan + alerts (cron 02:45) |
+| `data-export` | Full-data export per organisatie (CSV/Excel bundel) |
 
 ### No config entry (default: JWT required)
 
@@ -419,6 +437,7 @@ Voor DB- en edge-function-werk gebruiken we standaard de Supabase MCP-tools (ver
 | Types regenereren | `mcp__claude_ai_Supabase__generate_typescript_types` (output in JSON-wrapper, extract via `python3 -c 'json.load...'` naar `src/integrations/supabase/types.ts`) |
 | Migration-historie | `mcp__claude_ai_Supabase__list_migrations` |
 | Tabellen / extensies | `mcp__claude_ai_Supabase__list_tables` / `list_extensions` |
+| Security / performance audit | `mcp__claude_ai_Supabase__get_advisors` (type: `security` of `performance`) — draaien na DDL-changes |
 
 Project-id: `noaupcteygfvlyymqtew` (vermeld in CLAUDE.md "Team & Contact" hieronder).
 

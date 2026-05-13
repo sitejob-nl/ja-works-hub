@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, type ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -18,7 +19,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { toast } from 'sonner';
 import { formatDate, formatEUR } from '@/lib/format';
 import { logAudit } from '@/lib/audit';
-import { Upload, AlertTriangle, Fuel, CheckCircle2, StickyNote, Link as LinkIcon, Info, Car, UserRound, CreditCard, Trash2 } from 'lucide-react';
+import { Upload, AlertTriangle, CheckCircle2, StickyNote, Car, UserRound, CreditCard, Trash2, Settings2, Save, Info } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
@@ -40,6 +41,49 @@ const now = new Date();
 const monthStart = format(startOfMonth(now), 'yyyy-MM-dd');
 const monthEnd = format(endOfMonth(now), 'yyyy-MM-dd');
 
+type FuelAnalysisConditions = {
+  multiple_same_day_enabled: boolean;
+  tank_capacity_enabled: boolean;
+  tank_capacity_margin_pct: number;
+  consumption_enabled: boolean;
+  consumption_margin_pct: number;
+  mileage_jump_enabled: boolean;
+  mileage_jump_max_km: number;
+};
+
+const DEFAULT_FUEL_CONDITIONS: FuelAnalysisConditions = {
+  multiple_same_day_enabled: true,
+  tank_capacity_enabled: true,
+  tank_capacity_margin_pct: 10,
+  consumption_enabled: true,
+  consumption_margin_pct: 50,
+  mileage_jump_enabled: true,
+  mileage_jump_max_km: 300,
+};
+
+const clampNumber = (value: unknown, fallback: number, min: number, max: number) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+};
+
+const coerceConditions = (value: unknown): FuelAnalysisConditions => {
+  const raw = (value && typeof value === 'object' ? value : {}) as Partial<FuelAnalysisConditions>;
+  return {
+    multiple_same_day_enabled: raw.multiple_same_day_enabled ?? DEFAULT_FUEL_CONDITIONS.multiple_same_day_enabled,
+    tank_capacity_enabled: raw.tank_capacity_enabled ?? DEFAULT_FUEL_CONDITIONS.tank_capacity_enabled,
+    tank_capacity_margin_pct: clampNumber(raw.tank_capacity_margin_pct, DEFAULT_FUEL_CONDITIONS.tank_capacity_margin_pct, 0, 100),
+    consumption_enabled: raw.consumption_enabled ?? DEFAULT_FUEL_CONDITIONS.consumption_enabled,
+    consumption_margin_pct: clampNumber(raw.consumption_margin_pct, DEFAULT_FUEL_CONDITIONS.consumption_margin_pct, 0, 300),
+    mileage_jump_enabled: raw.mileage_jump_enabled ?? DEFAULT_FUEL_CONDITIONS.mileage_jump_enabled,
+    mileage_jump_max_km: clampNumber(raw.mileage_jump_max_km, DEFAULT_FUEL_CONDITIONS.mileage_jump_max_km, 1, 5000),
+  };
+};
+
+const appendFlagNote = (insert: any, note: string) => {
+  insert.flag_notes = [insert.flag_notes, note].filter(Boolean).join('\n');
+};
+
 /* ─── Component ──────────────────────────────────────────── */
 
 const FuelCardAnalysis = () => {
@@ -49,6 +93,25 @@ const FuelCardAnalysis = () => {
   const [importOpen, setImportOpen] = useState(false);
 
   /* ── Queries ─────────────────────────────────────── */
+
+  const { data: organizationSettings } = useQuery({
+    queryKey: ['organization-fuel-analysis-settings', orgId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('organizations')
+        .select('settings')
+        .eq('id', orgId!)
+        .single();
+      if (error) throw error;
+      return data as { settings: Record<string, unknown> | null };
+    },
+    enabled: !!orgId,
+  });
+
+  const conditions = useMemo(
+    () => coerceConditions(organizationSettings?.settings?.fuel_analysis_conditions),
+    [organizationSettings?.settings],
+  );
 
   const { data: transactions = [] } = useQuery({
     queryKey: ['fuel-transactions', orgId],
@@ -81,7 +144,7 @@ const FuelCardAnalysis = () => {
       const { error } = await supabase.from('fuel_card_transactions').update({ reviewed: true, reviewed_at: new Date().toISOString(), reviewed_by: user?.id } as any).eq('id', id);
       if (error) throw error;
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['fuel-transactions'] }); toast.success('Markeerd als bekeken'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['fuel-transactions'] }); toast.success('Gemarkeerd als bekeken'); },
   });
 
   const saveNote = useMutation({
@@ -90,6 +153,24 @@ const FuelCardAnalysis = () => {
       if (error) throw error;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['fuel-transactions'] }); toast.success('Notitie opgeslagen'); },
+  });
+
+  const saveConditions = useMutation({
+    mutationFn: async (next: FuelAnalysisConditions) => {
+      const settings = (organizationSettings?.settings && typeof organizationSettings.settings === 'object')
+        ? organizationSettings.settings
+        : {};
+      const { error } = await supabase
+        .from('organizations')
+        .update({ settings: { ...settings, fuel_analysis_conditions: next } })
+        .eq('id', orgId!);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['organization-fuel-analysis-settings', orgId] });
+      toast.success('Voorwaarden opgeslagen');
+    },
+    onError: (e: any) => toast.error(e.message ?? 'Voorwaarden opslaan mislukt'),
   });
 
   /* ── Import history (uit fuel_card_imports tabel) ─ */
@@ -159,19 +240,25 @@ const FuelCardAnalysis = () => {
         <TabsList>
           <TabsTrigger value="flags">Afwijkingen{flagged.length > 0 && ` (${flagged.length})`}</TabsTrigger>
           <TabsTrigger value="all">Alle transacties</TabsTrigger>
+          <TabsTrigger value="conditions">Voorwaarden</TabsTrigger>
           <TabsTrigger value="history">Import geschiedenis</TabsTrigger>
         </TabsList>
 
         {/* ── Afwijkingen ───────────────────────────── */}
         <TabsContent value="flags" className="space-y-4 mt-4">
           {flagged.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Geen openstaande afwijkingen 🎉</p>
+            <p className="text-sm text-muted-foreground">Geen openstaande afwijkingen</p>
           ) : flagged.map(t => <FlagCard key={t.id} t={t} onReview={() => markReviewed.mutate(t.id)} onSaveNote={(note) => saveNote.mutate({ id: t.id, note })} />)}
         </TabsContent>
 
         {/* ── Alle transacties ──────────────────────── */}
         <TabsContent value="all" className="mt-4">
           <AllTransactionsTable data={transactions} />
+        </TabsContent>
+
+        {/* ── Voorwaarden ───────────────────────────── */}
+        <TabsContent value="conditions" className="mt-4">
+          <ConditionsTab conditions={conditions} onSave={(next) => saveConditions.mutate(next)} saving={saveConditions.isPending} />
         </TabsContent>
 
         {/* ── Import geschiedenis ───────────────────── */}
@@ -229,6 +316,7 @@ const FuelCardAnalysis = () => {
         open={importOpen}
         onOpenChange={setImportOpen}
         orgId={orgId}
+        conditions={conditions}
         onDone={() => {
           qc.invalidateQueries({ queryKey: ['fuel-transactions'] });
           qc.invalidateQueries({ queryKey: ['fuel-card-imports'] });
@@ -424,6 +512,126 @@ const AllTransactionsTable = ({ data }: { data: any[] }) => (
   </div>
 );
 
+/* ─── Conditions ─────────────────────────────────────────── */
+
+const ConditionsTab = ({ conditions, onSave, saving }: {
+  conditions: FuelAnalysisConditions;
+  onSave: (next: FuelAnalysisConditions) => void;
+  saving: boolean;
+}) => {
+  const [draft, setDraft] = useState<FuelAnalysisConditions>(conditions);
+
+  useEffect(() => {
+    setDraft(conditions);
+  }, [conditions]);
+
+  const setBool = (key: keyof FuelAnalysisConditions, value: boolean) => {
+    setDraft((current) => ({ ...current, [key]: value }));
+  };
+
+  const setNumber = (key: keyof FuelAnalysisConditions, value: string, fallback: number, min: number, max: number) => {
+    setDraft((current) => ({ ...current, [key]: clampNumber(value, fallback, min, max) }));
+  };
+
+  return (
+    <Card>
+      <CardContent className="pt-5 space-y-5">
+        <div className="flex items-start gap-3">
+          <div className="h-9 w-9 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
+            <Settings2 className="h-4 w-4 text-primary" />
+          </div>
+          <div>
+            <h2 className="text-base font-semibold">Analysevoorwaarden</h2>
+            <p className="text-sm text-muted-foreground">
+              Deze regels worden gebruikt bij nieuwe tankpasimports en blijven per organisatie bewaard.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <ConditionRow
+            title="Meerdere tankbeurten per dag"
+            description="Markeer dezelfde tankpas of referentie wanneer die op één dag meerdere transacties heeft."
+            enabled={draft.multiple_same_day_enabled}
+            onEnabled={(v) => setBool('multiple_same_day_enabled', v)}
+          />
+
+          <ConditionRow
+            title="Boven tankcapaciteit"
+            description="Vergelijk liters met de voertuigspecifieke tankinhoud plus marge."
+            enabled={draft.tank_capacity_enabled}
+            onEnabled={(v) => setBool('tank_capacity_enabled', v)}
+          >
+            <NumberField
+              label="Marge (%)"
+              value={draft.tank_capacity_margin_pct}
+              onChange={(value) => setNumber('tank_capacity_margin_pct', value, DEFAULT_FUEL_CONDITIONS.tank_capacity_margin_pct, 0, 100)}
+            />
+          </ConditionRow>
+
+          <ConditionRow
+            title="Verbruik op basis van kilometerstand"
+            description="Vergelijk getankte liters met gereden kilometers en gemengd verbruik."
+            enabled={draft.consumption_enabled}
+            onEnabled={(v) => setBool('consumption_enabled', v)}
+          >
+            <NumberField
+              label="Marge (%)"
+              value={draft.consumption_margin_pct}
+              onChange={(value) => setNumber('consumption_margin_pct', value, DEFAULT_FUEL_CONDITIONS.consumption_margin_pct, 0, 300)}
+            />
+          </ConditionRow>
+
+          <ConditionRow
+            title="Onlogische kilometerstand"
+            description="Markeer dalende standen of sprongen boven de ingestelde kilometergrens."
+            enabled={draft.mileage_jump_enabled}
+            onEnabled={(v) => setBool('mileage_jump_enabled', v)}
+          >
+            <NumberField
+              label="Max. sprong (km)"
+              value={draft.mileage_jump_max_km}
+              onChange={(value) => setNumber('mileage_jump_max_km', value, DEFAULT_FUEL_CONDITIONS.mileage_jump_max_km, 1, 5000)}
+            />
+          </ConditionRow>
+        </div>
+
+        <div className="flex justify-end">
+          <Button onClick={() => onSave(draft)} disabled={saving} className="gap-2">
+            <Save className="h-4 w-4" /> {saving ? 'Opslaan...' : 'Voorwaarden opslaan'}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
+const ConditionRow = ({ title, description, enabled, onEnabled, children }: {
+  title: string;
+  description: string;
+  enabled: boolean;
+  onEnabled: (value: boolean) => void;
+  children?: ReactNode;
+}) => (
+  <div className="rounded-md border p-4 space-y-4">
+    <div className="flex items-start justify-between gap-3">
+      <div>
+        <p className="text-sm font-medium">{title}</p>
+        <p className="text-xs text-muted-foreground mt-1">{description}</p>
+      </div>
+      <Switch checked={enabled} onCheckedChange={onEnabled} />
+    </div>
+    {children && <div className={enabled ? '' : 'opacity-50 pointer-events-none'}>{children}</div>}
+  </div>
+);
+
+const NumberField = ({ label, value, onChange }: { label: string; value: number; onChange: (value: string) => void }) => (
+  <div className="space-y-1.5 max-w-40">
+    <Label>{label}</Label>
+    <Input type="number" value={value} onChange={(e) => onChange(e.target.value)} />
+  </div>
+);
+
 /* ─── Import Sheet ──────────────────────────────────────── */
 
 type ColMap = { datum: string; kenteken: string; liters: string; bedrag: string; prijs: string; station: string };
@@ -445,7 +653,13 @@ async function sha256Hex(buffer: ArrayBuffer): Promise<string> {
   return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-const ImportSheet = ({ open, onOpenChange, orgId, onDone }: { open: boolean; onOpenChange: (o: boolean) => void; orgId: string | null; onDone: () => void }) => {
+const ImportSheet = ({ open, onOpenChange, orgId, conditions, onDone }: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  orgId: string | null;
+  conditions: FuelAnalysisConditions;
+  onDone: () => void;
+}) => {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [rows, setRows] = useState<Record<string, string>[]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
@@ -547,7 +761,9 @@ const ImportSheet = ({ open, onOpenChange, orgId, onDone }: { open: boolean; onO
 
       const vehicleByPlate: Record<string, any> = {};
       const vehicleByRef: Record<string, any> = {};
+      const vehicleById: Record<string, any> = {};
       (vehicles ?? []).forEach(v => {
+        vehicleById[v.id] = v;
         if (v.license_plate) vehicleByPlate[v.license_plate.toUpperCase().replace(/[^A-Z0-9]/g, '')] = v;
         if (v.fuel_card_reference) vehicleByRef[v.fuel_card_reference.toUpperCase().trim()] = v;
       });
@@ -555,6 +771,7 @@ const ImportSheet = ({ open, onOpenChange, orgId, onDone }: { open: boolean; onO
       (assignments ?? []).forEach(a => { assignmentByVehicle[a.vehicle_id] = a.employee_id; });
 
       const inserts: any[] = [];
+      const rowMeta: Array<{ vehicleId: string | null; odometer: number | null; transactionDate: string; rowIndex: number }> = [];
       const maxKmByVehicle: Record<string, number> = {};
       // Q8 herhaalt het kenteken niet op vervolg-rijen — blanco kentekens
       // erven van de eerstvolgende niet-blanco rij erboven (forward-fill).
@@ -598,9 +815,13 @@ const ImportSheet = ({ open, onOpenChange, orgId, onDone }: { open: boolean; onO
 
         // Fraud checks
         let flagOverCap = false;
-        if (vehicle?.tank_capacity_liters && liters > Number(vehicle.tank_capacity_liters)) {
-          flagOverCap = true;
+        if (conditions.tank_capacity_enabled && vehicle?.tank_capacity_liters) {
+          const maxLiters = Number(vehicle.tank_capacity_liters) * (1 + conditions.tank_capacity_margin_pct / 100);
+          flagOverCap = liters > maxLiters;
         }
+
+        const odometer = parseFloat(rawKm);
+        const validOdometer = Number.isFinite(odometer) && odometer > 0 ? odometer : null;
 
         // raw_data krijgt de forward-filled kenteken zodat blanco rijen ook
         // het juiste kenteken (met streepjes) tonen in de UI.
@@ -608,6 +829,7 @@ const ImportSheet = ({ open, onOpenChange, orgId, onDone }: { open: boolean; onO
           ? { ...row, Kentekenplaat: rawRef }
           : row;
 
+        const insertIndex = inserts.length;
         inserts.push({
           organization_id: orgId,
           import_batch_id: batchId,
@@ -624,42 +846,89 @@ const ImportSheet = ({ open, onOpenChange, orgId, onDone }: { open: boolean; onO
           flag_over_capacity: flagOverCap,
           raw_data: filledRow,
         });
+        rowMeta[insertIndex] = {
+          vehicleId,
+          odometer: validOdometer,
+          transactionDate: parsedDate,
+          rowIndex: insertIndex,
+        };
 
-        if (vehicleId) {
-          const km = parseFloat(rawKm);
-          if (Number.isFinite(km) && km > 0) {
-            maxKmByVehicle[vehicleId] = Math.max(maxKmByVehicle[vehicleId] ?? 0, km);
+        if (vehicleId && validOdometer != null) {
+          if (Number.isFinite(validOdometer) && validOdometer > 0) {
+            maxKmByVehicle[vehicleId] = Math.max(maxKmByVehicle[vehicleId] ?? 0, validOdometer);
           }
         }
       }
 
       // Detect same-day multiples
-      const dayGroups: Record<string, number[]> = {};
-      inserts.forEach((ins, i) => {
-        const key = `${ins.fuel_card_reference}__${ins.transaction_date}`;
-        if (!dayGroups[key]) dayGroups[key] = [];
-        dayGroups[key].push(i);
-      });
-      Object.values(dayGroups).forEach(indices => {
-        if (indices.length >= 2) indices.forEach(i => { inserts[i].flag_multiple_same_day = true; });
-      });
-
-      // Excessive consumption check (simple: weekly liters > capacity × 3)
-      if (inserts.length > 0) {
-        const refTotals: Record<string, { liters: number; cap: number | null }> = {};
-        inserts.forEach(ins => {
-          const ref = ins.fuel_card_reference;
-          if (!refTotals[ref]) {
-            const v = vehicleByRef[ref.toUpperCase().trim()] ?? vehicleByPlate[ref.toUpperCase().replace(/[^A-Z0-9]/g, '')] ?? null;
-            refTotals[ref] = { liters: 0, cap: v?.tank_capacity_liters ? Number(v.tank_capacity_liters) : null };
-          }
-          refTotals[ref].liters += ins.liters;
+      if (conditions.multiple_same_day_enabled) {
+        const dayGroups: Record<string, number[]> = {};
+        inserts.forEach((ins, i) => {
+          const key = `${ins.fuel_card_reference}__${ins.transaction_date}`;
+          if (!dayGroups[key]) dayGroups[key] = [];
+          dayGroups[key].push(i);
         });
-        // Flag if total liters in batch > capacity × 3
-        Object.entries(refTotals).forEach(([ref, data]) => {
-          if (data.cap && data.liters > data.cap * 3) {
-            inserts.forEach(ins => { if (ins.fuel_card_reference === ref) ins.flag_excessive_consumption = true; });
+        Object.values(dayGroups).forEach(indices => {
+          if (indices.length >= 2) indices.forEach(i => { inserts[i].flag_multiple_same_day = true; });
+        });
+      }
+
+      // Consumption and odometer checks based on Q8 kilometerstanden.
+      if (conditions.consumption_enabled || conditions.mileage_jump_enabled) {
+        const byVehicle: Record<string, typeof rowMeta> = {};
+        rowMeta.forEach((meta) => {
+          if (!meta.vehicleId || meta.odometer == null) return;
+          if (!byVehicle[meta.vehicleId]) byVehicle[meta.vehicleId] = [];
+          byVehicle[meta.vehicleId].push(meta);
+        });
+
+        Object.entries(byVehicle).forEach(([vehicleId, metas]) => {
+          const sorted = [...metas].sort((a, b) => {
+            const dateCmp = a.transactionDate.localeCompare(b.transactionDate);
+            return dateCmp !== 0 ? dateCmp : a.rowIndex - b.rowIndex;
+          });
+          const vehicle = vehicleById[vehicleId];
+          const avgConsumption = Number(vehicle?.avg_consumption_per_100km);
+          let lastKm: number | null = null;
+          const currentMileage = Number(vehicle?.current_mileage);
+          if (Number.isFinite(currentMileage) && currentMileage > 0 && sorted[0]?.odometer && currentMileage < sorted[0].odometer) {
+            lastKm = currentMileage;
           }
+
+          sorted.forEach((meta) => {
+            const insert = inserts[meta.rowIndex];
+            if (meta.odometer == null) return;
+
+            if (lastKm != null) {
+              const distance = meta.odometer - lastKm;
+              if (conditions.mileage_jump_enabled && distance <= 0) {
+                insert.flag_excessive_consumption = true;
+                appendFlagNote(insert, `Kilometerstand niet oplopend: ${meta.odometer} km na ${lastKm} km.`);
+              } else if (conditions.mileage_jump_enabled && distance > conditions.mileage_jump_max_km) {
+                insert.flag_excessive_consumption = true;
+                appendFlagNote(insert, `Kilometersprong ${Math.round(distance)} km boven grens ${conditions.mileage_jump_max_km} km.`);
+              }
+
+              if (
+                conditions.consumption_enabled
+                && distance > 0
+                && Number.isFinite(avgConsumption)
+                && avgConsumption > 0
+              ) {
+                const expectedLiters = (distance * avgConsumption) / 100;
+                const allowedLiters = expectedLiters * (1 + conditions.consumption_margin_pct / 100);
+                if (insert.liters > allowedLiters) {
+                  insert.flag_excessive_consumption = true;
+                  appendFlagNote(
+                    insert,
+                    `Verbruik ${insert.liters.toFixed(1)}L bij ${Math.round(distance)} km; verwacht ca. ${expectedLiters.toFixed(1)}L + ${conditions.consumption_margin_pct}% marge.`,
+                  );
+                }
+              }
+            }
+
+            lastKm = meta.odometer;
+          });
         });
       }
 

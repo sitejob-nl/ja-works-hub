@@ -30,8 +30,8 @@ type SortKey =
   | 'capacity_asc';
 
 const SORT_LABELS: Record<SortKey, string> = {
-  address_asc: 'Adres (A → Z)',
-  address_desc: 'Adres (Z → A)',
+  address_asc: 'Woonplaats, straat (A → Z)',
+  address_desc: 'Woonplaats, straat (Z → A)',
   name_asc: 'Naam (A → Z)',
   free_desc: 'Vrije plekken (meeste)',
   free_asc: 'Vrije plekken (minste)',
@@ -260,7 +260,7 @@ const Housing = () => {
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Zoek op naam, straat of stad..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
+          <Input placeholder="Zoek op naam, straat of woonplaats..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
         </div>
         <Select value={city} onValueChange={setCity}>
           <SelectTrigger className="w-44">
@@ -326,7 +326,9 @@ const Housing = () => {
             <TableHeader>
               <TableRow>
                 <TableHead>Pand</TableHead>
-                <TableHead>Adres</TableHead>
+                <TableHead>Straat</TableHead>
+                <TableHead>Postcode</TableHead>
+                <TableHead>Woonplaats</TableHead>
                 <TableHead className="text-right">Capaciteit</TableHead>
                 <TableHead className="text-right">Bezet</TableHead>
                 <TableHead className="text-right">Beschikbaar</TableHead>
@@ -339,7 +341,9 @@ const Housing = () => {
                   <TableCell>
                     <Link to={`/huisvesting/${p.id}`} className="font-medium text-foreground hover:text-primary transition-colors">{p.name || [p.address_street, p.address_city].filter(Boolean).join(', ')}</Link>
                   </TableCell>
-                  <TableCell className="text-sm">{[p.address_street, p.address_city].filter(Boolean).join(', ') || '—'}</TableCell>
+                  <TableCell className="text-sm">{p.address_street || '—'}</TableCell>
+                  <TableCell className="text-sm">{p.address_postal || '—'}</TableCell>
+                  <TableCell className="text-sm">{p.address_city || '—'}</TableCell>
                   <TableCell className="text-right">{p.totalCapacity}</TableCell>
                   <TableCell className="text-right">{p.currentOccupancy}</TableCell>
                   <TableCell className="text-right">{p.totalCapacity - p.currentOccupancy}</TableCell>

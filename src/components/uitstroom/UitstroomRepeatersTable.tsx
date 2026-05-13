@@ -6,6 +6,8 @@ interface TerminatedPlacement {
   terminated_by: string | null;
   termination_reason: string | null;
   employee_id: string | null;
+  candidate_id: string | null;
+  candidates: { id: string; first_name: string; last_name: string } | null;
   employees: {
     id: string;
     candidate_id: string | null;
@@ -16,6 +18,7 @@ interface TerminatedPlacement {
 interface AllPlacement {
   id: string;
   employee_id: string | null;
+  candidate_id: string | null;
 }
 
 interface UitstroomRepeatersTableProps {
@@ -39,15 +42,16 @@ const UitstroomRepeatersTable = ({ terminatedPlacements, allPlacements }: Uitstr
   // Count total placements per employee
   const totalByEmployee: Record<string, number> = {};
   for (const p of allPlacements) {
-    if (p.employee_id) {
-      totalByEmployee[p.employee_id] = (totalByEmployee[p.employee_id] || 0) + 1;
+    const key = p.candidate_id ?? p.employee_id;
+    if (key) {
+      totalByEmployee[key] = (totalByEmployee[key] || 0) + 1;
     }
   }
 
   for (const p of terminatedPlacements) {
-    const empId = p.employee_id || 'unknown';
+    const empId = p.candidate_id ?? p.employee_id ?? 'unknown';
     const emp = p.employees;
-    const cand = emp?.candidates;
+    const cand = p.candidates ?? emp?.candidates;
     const name = cand ? `${cand.first_name} ${cand.last_name}` : 'Onbekend';
     const candidateId = cand?.id || '';
 

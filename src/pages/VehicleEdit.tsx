@@ -47,7 +47,7 @@ const VehicleEdit = () => {
         fuel_card_reference: vehicle.fuel_card_reference ?? '',
         avg_consumption_per_100km: vehicle.avg_consumption_per_100km?.toString() ?? '',
         apk_expiry: vehicle.apk_expiry ?? '',
-        first_registration_nl: vehicle.first_registration ?? '',
+        first_registration_nl: vehicle.first_registration_nl ?? '',
         doors: vehicle.doors != null ? String(vehicle.doors) : '',
         notes: vehicle.notes ?? '',
       });
@@ -89,7 +89,7 @@ const VehicleEdit = () => {
         fuel_card_reference: form.fuel_card_reference || null,
         avg_consumption_per_100km: form.avg_consumption_per_100km ? parseFloat(form.avg_consumption_per_100km) : null,
         apk_expiry: form.apk_expiry || null,
-        first_registration: form.first_registration_nl || null,
+        first_registration_nl: form.first_registration_nl || null,
         doors: form.doors ? Number(form.doors) : null,
         notes: form.notes || null,
       };

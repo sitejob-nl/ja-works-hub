@@ -47,7 +47,7 @@ const ENTITY_LABEL: Record<EntityName, string> = {
   contacts: 'Contactpersonen',
   candidates: 'Kandidaten',
   vacancies: 'Vacatures',
-  placements: 'Plaatsingen (werkhistorie)',
+  placements: 'Plaatsingen',
   matches: 'Matches (pipeline)',
   documents: 'Documenten (per kandidaat)',
   employment: 'Werkhistorie (zit in plaatsingen)',
@@ -56,7 +56,26 @@ const ENTITY_LABEL: Record<EntityName, string> = {
 
 const UNSUPPORTED_REASON: Partial<Record<EntityName, string>> = {
   employment:
-    'Werkhistorie wordt al gemigreerd via Plaatsingen (CRWorkHistory bevat alle JA Werkt-plaatsingen).',
+    'Werkhistorie is geen aparte JA Werkt-entiteit. Plaatsingen komen uit Carerix CRJob; CRWorkHistory is CV-/werkhistorie.',
+};
+
+const DEFAULT_EXPECTED_COUNTS = {
+  placements: 578,
+  vacancies: 139,
+};
+
+type ExpectedCounts = typeof DEFAULT_EXPECTED_COUNTS;
+
+const coerceExpectedCounts = (value: unknown): ExpectedCounts => {
+  const raw = (value && typeof value === 'object' ? value : {}) as Partial<Record<keyof ExpectedCounts, unknown>>;
+  const toCount = (key: keyof ExpectedCounts) => {
+    const parsed = Number(raw[key]);
+    return Number.isFinite(parsed) && parsed >= 0 ? Math.round(parsed) : DEFAULT_EXPECTED_COUNTS[key];
+  };
+  return {
+    placements: toCount('placements'),
+    vacancies: toCount('vacancies'),
+  };
 };
 
 interface CarerixConfig {
@@ -624,6 +643,31 @@ function IntrospectButton() {
 // ─────────────────────────────────────────────────────────────
 function AcceptanceTab({ config }: { config: CarerixConfig | null | undefined }) {
   const orgId = useOrganizationId();
+  const queryClient = useQueryClient();
+
+  const { data: organizationSettings } = useQuery({
+    queryKey: ['carerix-acceptance-settings', orgId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('organizations')
+        .select('settings')
+        .eq('id', orgId)
+        .single();
+      if (error) throw error;
+      return data as { settings: Record<string, unknown> | null };
+    },
+    enabled: !!orgId,
+  });
+
+  const expectedCounts = useMemo(
+    () => coerceExpectedCounts(organizationSettings?.settings?.carerix_acceptance_expected_counts),
+    [organizationSettings?.settings],
+  );
+  const [expectedDraft, setExpectedDraft] = useState<ExpectedCounts>(expectedCounts);
+
+  useEffect(() => {
+    setExpectedDraft(expectedCounts);
+  }, [expectedCounts]);
 
   const { data: latestJob } = useQuery({
     queryKey: ['carerix-acceptance-latest-job', orgId],
@@ -701,7 +745,30 @@ function AcceptanceTab({ config }: { config: CarerixConfig | null | undefined })
   );
   const documentBytesOk = documentStats.total === 0 || (documentStats.failed === 0 && documentStats.pending === 0);
   const failuresOk = failures.length === 0;
-  const goNoGo = crScopeOk && entityCoverageOk && documentBytesOk && failuresOk;
+  const countChecks = {
+    placements: runs.find((r) => r.entity === 'placements')?.found ?? 0,
+    vacancies: runs.find((r) => r.entity === 'vacancies')?.found ?? 0,
+  };
+  const expectedCountsOk = countChecks.placements === expectedCounts.placements && countChecks.vacancies === expectedCounts.vacancies;
+  const goNoGo = crScopeOk && entityCoverageOk && documentBytesOk && failuresOk && expectedCountsOk;
+
+  const saveExpectedCounts = useMutation({
+    mutationFn: async () => {
+      const settings = organizationSettings?.settings && typeof organizationSettings.settings === 'object'
+        ? organizationSettings.settings
+        : {};
+      const { error } = await supabase
+        .from('organizations')
+        .update({ settings: { ...settings, carerix_acceptance_expected_counts: expectedDraft } })
+        .eq('id', orgId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['carerix-acceptance-settings', orgId] });
+      toast.success('Acceptatie-aantallen opgeslagen');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   const exportFailures = () => {
     const header = ['entity', 'carerix_id', 'error'];
@@ -727,11 +794,42 @@ function AcceptanceTab({ config }: { config: CarerixConfig | null | undefined })
             Laatste job: {latestJob ? `${latestJob.id.slice(0, 8)} · ${latestJob.mode} · ${latestJob.status}` : 'geen importgeschiedenis'}
           </CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-3 md:grid-cols-4">
+        <CardContent className="grid gap-3 md:grid-cols-5">
           <AcceptanceCheck ok={crScopeOk} label="CR*-scope" detail={config?.last_test_ok ? 'Laatste test OK' : config?.last_test_error ?? 'Nog niet getest'} />
           <AcceptanceCheck ok={entityCoverageOk} label="Entiteiten" detail={`${runs.filter((r) => r.status === 'completed').length}/${SUPPORTED_ENTITIES.length} afgerond`} />
+          <AcceptanceCheck ok={expectedCountsOk} label="Aantallen" detail={`Plaatsingen ${countChecks.placements}/${expectedCounts.placements} · Vacatures ${countChecks.vacancies}/${expectedCounts.vacancies}`} />
           <AcceptanceCheck ok={documentBytesOk} label="Document bytes" detail={`${documentStats.downloaded}/${documentStats.total} gedownload · ${documentStats.failed} fout`} />
           <AcceptanceCheck ok={failuresOk} label="Failures" detail={`${failures.length} open importfouten`} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Verwachte migratie-aantallen</CardTitle>
+          <CardDescription>Deze aantallen komen uit de klantvalidatie en blokkeren de go/no-go wanneer ze niet matchen.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 md:grid-cols-[1fr_1fr_auto]">
+          <div className="space-y-1.5">
+            <Label>Plaatsingen</Label>
+            <Input
+              type="number"
+              min={0}
+              value={expectedDraft.placements}
+              onChange={(e) => setExpectedDraft((current) => ({ ...current, placements: Math.max(0, Number(e.target.value) || 0) }))}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Vacatures</Label>
+            <Input
+              type="number"
+              min={0}
+              value={expectedDraft.vacancies}
+              onChange={(e) => setExpectedDraft((current) => ({ ...current, vacancies: Math.max(0, Number(e.target.value) || 0) }))}
+            />
+          </div>
+          <Button className="self-end" onClick={() => saveExpectedCounts.mutate()} disabled={saveExpectedCounts.isPending}>
+            {saveExpectedCounts.isPending ? 'Opslaan...' : 'Opslaan'}
+          </Button>
         </CardContent>
       </Card>
 
@@ -746,6 +844,7 @@ function AcceptanceTab({ config }: { config: CarerixConfig | null | undefined })
                 <TableHead>Entiteit</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Gevonden</TableHead>
+                <TableHead className="text-right">Verwacht</TableHead>
                 <TableHead className="text-right">Aangemaakt</TableHead>
                 <TableHead className="text-right">Overgeslagen</TableHead>
                 <TableHead className="text-right">Fout</TableHead>
@@ -761,11 +860,22 @@ function AcceptanceTab({ config }: { config: CarerixConfig | null | undefined })
                   : summary?.dependency_missing
                     ? 'Dependency ontbreekt'
                     : run?.last_error ?? '—';
+                const expected = entity === 'placements'
+                  ? expectedCounts.placements
+                  : entity === 'vacancies'
+                    ? expectedCounts.vacancies
+                    : null;
+                const countOk = expected == null || (run?.found ?? 0) === expected;
                 return (
                   <TableRow key={entity}>
                     <TableCell>{ENTITY_LABEL[entity]}</TableCell>
                     <TableCell><StatusBadge status={run?.status ?? 'queued'} /></TableCell>
                     <TableCell className="text-right">{run?.found ?? 0}</TableCell>
+                    <TableCell className="text-right">
+                      {expected == null ? '—' : (
+                        <span className={countOk ? 'text-green-600' : 'text-amber-700'}>{expected}</span>
+                      )}
+                    </TableCell>
                     <TableCell className="text-right">{run?.created ?? 0}</TableCell>
                     <TableCell className="text-right">{run?.skipped ?? 0}</TableCell>
                     <TableCell className="text-right">{run?.failed ?? 0}</TableCell>
@@ -890,16 +1000,28 @@ function HistoryTab() {
 }
 
 function JobCard({ job }: { job: CarerixJob }) {
+  const { data: runs = [] } = useQuery({
+    queryKey: ['carerix-history-runs', job.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('carerix_import_entity_runs' as any)
+        .select('*')
+        .eq('job_id', job.id);
+      if (error) throw error;
+      return data as any as EntityRun[];
+    },
+  });
+
   const { data: failures } = useQuery({
     queryKey: ['carerix-failures', job.id],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('carerix_import_failures' as any)
-        .select('entity, carerix_id, error')
+        .select('entity, carerix_id, error, payload')
         .eq('job_id', job.id)
         .limit(50);
       if (error) throw error;
-      return data as any as Array<{ entity: string; carerix_id: string; error: string }>;
+      return data as any as Array<{ entity: string; carerix_id: string; error: string; payload: Record<string, unknown> | null }>;
     },
     enabled:
       job.status === 'failed' ||
@@ -920,22 +1042,35 @@ function JobCard({ job }: { job: CarerixJob }) {
         </div>
       </CardHeader>
       <CardContent className="space-y-2 text-sm">
-        {job.summary ? (
-          <div className="grid grid-cols-4 gap-2">
-            {Object.entries(job.summary).filter(([entity]) => !entity.startsWith('_')).map(([entity, s]) => (
-              <div key={entity} className="border rounded px-2 py-1">
-                <div className="font-medium">{ENTITY_LABEL[entity as EntityName] ?? entity}</div>
-                <div className="text-xs text-muted-foreground">
-                  +{s.created} ={s.skipped} ✕{s.failed} · {s.status}
-                </div>
-                {s.top_failure_reasons && s.top_failure_reasons.length > 0 && (
-                  <div className="text-[11px] text-muted-foreground mt-1">
-                    {s.top_failure_reasons[0].reason} ({s.top_failure_reasons[0].count})
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+        {runs.length > 0 ? (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Entiteit</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Gevonden</TableHead>
+                <TableHead className="text-right">Aangemaakt</TableHead>
+                <TableHead className="text-right">Overgeslagen</TableHead>
+                <TableHead className="text-right">Fout</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {SUPPORTED_ENTITIES.map((entity) => {
+                const run = runs.find((r) => r.entity === entity);
+                if (!run) return null;
+                return (
+                  <TableRow key={entity}>
+                    <TableCell>{ENTITY_LABEL[entity]}</TableCell>
+                    <TableCell><StatusBadge status={run.status} /></TableCell>
+                    <TableCell className="text-right">{run.found}</TableCell>
+                    <TableCell className="text-right">{run.created}</TableCell>
+                    <TableCell className="text-right">{run.skipped}</TableCell>
+                    <TableCell className="text-right">{run.failed}</TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
         ) : (
           <p className="text-muted-foreground">Geen samenvatting beschikbaar.</p>
         )}
@@ -947,6 +1082,11 @@ function JobCard({ job }: { job: CarerixJob }) {
               {failures.map((f, i) => (
                 <li key={i}>
                   <code>{f.entity}</code> {f.carerix_id}: {f.error}
+                  {f.payload && (
+                    <pre className="mt-1 overflow-auto rounded bg-muted p-2 text-[11px]">
+                      {JSON.stringify(f.payload, null, 2)}
+                    </pre>
+                  )}
                 </li>
               ))}
             </ul>

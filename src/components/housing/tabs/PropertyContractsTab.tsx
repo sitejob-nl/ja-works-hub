@@ -6,17 +6,23 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Upload, ExternalLink, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { logAudit } from '@/lib/audit';
 
+const CONTRACT_TYPE_LABELS: Record<string, string> = {
+  inhuur: 'Inhuurcontract',
+  onderhuur: 'Onderhuurcontract',
+};
+
 export default function PropertyContractsTab({ property }: { property: any }) {
   const qc = useQueryClient();
   const { user } = useAuth();
   const [file, setFile] = useState<File | null>(null);
-  const [form, setForm] = useState({ start_date: '', end_date: '', notes: '' });
+  const [form, setForm] = useState({ contract_type: 'inhuur', start_date: '', end_date: '', notes: '' });
 
   const { data: contracts = [] } = useQuery({
     queryKey: ['property-contracts', property.id],
@@ -43,6 +49,7 @@ export default function PropertyContractsTab({ property }: { property: any }) {
         property_id: property.id,
         file_path: path,
         original_name: file.name,
+        contract_type: form.contract_type,
         start_date: form.start_date || null,
         end_date: form.end_date || null,
         notes: form.notes || null,
@@ -57,7 +64,7 @@ export default function PropertyContractsTab({ property }: { property: any }) {
       logAudit({ action: 'create', tableName: 'property_contracts', recordId: data.id });
       toast.success('Contract geüpload');
       setFile(null);
-      setForm({ start_date: '', end_date: '', notes: '' });
+      setForm({ contract_type: 'inhuur', start_date: '', end_date: '', notes: '' });
     },
     onError: (e: any) => toast.error(e.message ?? 'Upload mislukt'),
   });
@@ -91,6 +98,16 @@ export default function PropertyContractsTab({ property }: { property: any }) {
         <CardHeader><CardTitle className="text-base">Nieuw huurcontract</CardTitle></CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
           <div className="space-y-1.5 md:col-span-2">
+            <Label>Contracttype</Label>
+            <Select value={form.contract_type} onValueChange={(value) => setForm((f) => ({ ...f, contract_type: value }))}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="inhuur">Inhuurcontract (JA Werkt ↔ eigenaar)</SelectItem>
+                <SelectItem value="onderhuur">Onderhuurcontract (JA Werkt ↔ bewoner)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5 md:col-span-2">
             <Label>Bestand</Label>
             <Input type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
           </div>
@@ -117,6 +134,7 @@ export default function PropertyContractsTab({ property }: { property: any }) {
       <Table>
         <TableHeader>
           <TableRow>
+            <TableHead>Type</TableHead>
             <TableHead>Bestand</TableHead>
             <TableHead>Begindatum</TableHead>
             <TableHead>Einddatum</TableHead>
@@ -127,6 +145,7 @@ export default function PropertyContractsTab({ property }: { property: any }) {
         <TableBody>
           {contracts.map((contract: any) => (
             <TableRow key={contract.id}>
+              <TableCell>{CONTRACT_TYPE_LABELS[contract.contract_type] ?? contract.contract_type ?? 'Huurcontract'}</TableCell>
               <TableCell className="font-medium">{contract.original_name}</TableCell>
               <TableCell>{contract.start_date ? new Date(contract.start_date).toLocaleDateString('nl-NL') : '—'}</TableCell>
               <TableCell>{contract.end_date ? new Date(contract.end_date).toLocaleDateString('nl-NL') : '—'}</TableCell>
@@ -144,7 +163,7 @@ export default function PropertyContractsTab({ property }: { property: any }) {
             </TableRow>
           ))}
           {contracts.length === 0 && (
-            <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground">Geen contractbestanden</TableCell></TableRow>
+            <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground">Geen contractbestanden</TableCell></TableRow>
           )}
         </TableBody>
       </Table>

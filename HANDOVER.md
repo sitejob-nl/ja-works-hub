@@ -240,6 +240,7 @@ npx supabase gen types typescript --project-id noaupcteygfvlyymqtew > src/integr
 | [`AGENTS.md`](AGENTS.md) | 1-regel pointer naar CLAUDE.md (Codex en Claude Code lezen hetzelfde) |
 | [`README.md`](README.md) | Korte project-intro + dev-commands |
 | [`docs/open-gaps.md`](docs/open-gaps.md) | Levende lijst open client-meeting items + Fase 2 backlog |
+| [`docs/handover-deep.md`](docs/handover-deep.md) | Diepe technische rondleiding — schema, RLS, RPCs, triggers, cron, edge functions, deployment. Voor nieuwe developers naast CLAUDE.md. |
 | [`HANDOVER_SESSION.md`](HANDOVER_SESSION.md) | Werk-in-uitvoering snapshot — uncommitted changes, in-progress features |
 | [`docs/carerix-api-research.md`](docs/carerix-api-research.md) | Research op Carerix v1 API endpoints + gaps |
 | [`docs/carerix-credentials-setup.md`](docs/carerix-credentials-setup.md) | Setup-instructies Carerix OAuth |

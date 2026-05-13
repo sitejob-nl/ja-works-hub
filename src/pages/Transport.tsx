@@ -168,10 +168,11 @@ const Transport = () => {
                   <TableHead>Merk / Model</TableHead>
                   <TableHead>Bouwjaar</TableHead>
                   <TableHead>Brandstof</TableHead>
-                   <TableHead className="text-right">KM-stand</TableHead>
-                   <TableHead>APK</TableHead>
-                   <TableHead>Tankpas</TableHead>
-                   <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Deuren</TableHead>
+                  <TableHead className="text-right">KM-stand</TableHead>
+                  <TableHead>APK</TableHead>
+                  <TableHead>Tankpas</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead>Toegewezen aan</TableHead>
                   <TableHead>Notitie</TableHead>
                 </TableRow>
@@ -188,6 +189,7 @@ const Transport = () => {
                       <TableCell>{[v.brand, v.model].filter(Boolean).join(' ') || '—'}</TableCell>
                       <TableCell>{v.year ?? '—'}</TableCell>
                       <TableCell>{v.fuel_type ?? '—'}</TableCell>
+                      <TableCell className="text-right">{v.doors ?? '—'}</TableCell>
                       <TableCell className="text-right">{v.current_mileage != null ? v.current_mileage.toLocaleString('nl-NL') : '—'}</TableCell>
                       <TableCell>
                         {(() => {

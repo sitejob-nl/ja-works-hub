@@ -6,7 +6,9 @@ import {
   getCallerProfile,
   jsonError,
   jsonOk,
+  runBackgroundTask,
 } from '../_shared/carerix/helpers.ts';
+import { internalFunctionHeaders } from '../_shared/auth.ts';
 import { ALL_ENTITIES, type EntityName } from '../_shared/carerix/types.ts';
 
 interface StartBody {
@@ -14,6 +16,23 @@ interface StartBody {
   only?: EntityName[];
   skip?: EntityName[];
   modified_since?: string | null;
+}
+
+async function triggerWorker(jobId: string): Promise<void> {
+  const workerUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/carerix-sync-worker`;
+  const res = await fetch(workerUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+      ...internalFunctionHeaders(),
+    },
+    body: JSON.stringify({ job_id: jobId }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`worker trigger failed (${res.status}): ${await res.text()}`);
+  }
 }
 
 Deno.serve(async (req) => {
@@ -75,16 +94,7 @@ Deno.serve(async (req) => {
   const { error: runsErr } = await admin.from('carerix_import_entity_runs').insert(runsToInsert);
   if (runsErr) return jsonError(`Kon entity_runs niet aanmaken: ${runsErr.message}`, 500);
 
-  // Trigger worker (fire-and-forget)
-  const workerUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/carerix-sync-worker`;
-  fetch(workerUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
-    },
-    body: JSON.stringify({ job_id: job.id }),
-  }).catch((err) => console.error('worker trigger failed:', err));
+  runBackgroundTask(triggerWorker(job.id), 'carerix worker trigger');
 
   return jsonOk({ job_id: job.id });
 });

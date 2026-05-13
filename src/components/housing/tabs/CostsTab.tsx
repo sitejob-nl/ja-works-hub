@@ -54,7 +54,7 @@ const CostsTab = ({ property }: { property: any }) => {
 
   const nettoWeek = totalWeeklyDeductions - totalPandkostenWeek;
 
-  // Verdeel pand-kosten over kamers naar rato van capaciteit
+  // Verdeel pand-kosten over kamers naar rato van capaciteit én als gelijke kamerprijs.
   const perUnitRows = useMemo(() => {
     if (units.length === 0) return [];
     const totalCapacity = units.reduce((s: number, u) => s + (Number(u.capacity) || 0), 0);
@@ -74,9 +74,12 @@ const CostsTab = ({ property }: { property: any }) => {
         const taxWeek = (taxMonth * share) / WEEKS_PER_MONTH;
         const otherWeek = (otherMonth * share) / WEEKS_PER_MONTH;
         const totalCostWeek = rentWeek + gwlWeek + taxWeek + otherWeek;
+        const roomShare = units.length > 0 ? 1 / units.length : 0;
+        const totalCostByRoomWeek = ((rentMonth + gwlMonth + taxMonth + otherMonth) * roomShare) / WEEKS_PER_MONTH;
         const active = (u.housing_assignments ?? []).filter((a) => a.status === 'ingecheckt');
         const deductionWeek = active.reduce((s: number, a) => s + getWeeklyDeduction(a), 0);
         const margin = deductionWeek - totalCostWeek;
+        const marginByRoom = deductionWeek - totalCostByRoomWeek;
         return {
           id: u.id,
           name: u.name ?? '—',
@@ -87,8 +90,10 @@ const CostsTab = ({ property }: { property: any }) => {
           taxWeek,
           otherWeek,
           totalCostWeek,
+          totalCostByRoomWeek,
           deductionWeek,
           margin,
+          marginByRoom,
         };
       });
   }, [units, property.monthly_rent, property.cost_gas, property.cost_water, property.cost_electra, property.cost_municipal_tax, property.cost_other]);
@@ -102,10 +107,12 @@ const CostsTab = ({ property }: { property: any }) => {
       taxWeek: acc.taxWeek + r.taxWeek,
       otherWeek: acc.otherWeek + r.otherWeek,
       totalCostWeek: acc.totalCostWeek + r.totalCostWeek,
+      totalCostByRoomWeek: acc.totalCostByRoomWeek + r.totalCostByRoomWeek,
       deductionWeek: acc.deductionWeek + r.deductionWeek,
       margin: acc.margin + r.margin,
+      marginByRoom: acc.marginByRoom + r.marginByRoom,
     }),
-    { capacity: 0, occupied: 0, rentWeek: 0, gwlWeek: 0, taxWeek: 0, otherWeek: 0, totalCostWeek: 0, deductionWeek: 0, margin: 0 }
+    { capacity: 0, occupied: 0, rentWeek: 0, gwlWeek: 0, taxWeek: 0, otherWeek: 0, totalCostWeek: 0, totalCostByRoomWeek: 0, deductionWeek: 0, margin: 0, marginByRoom: 0 }
   ), [perUnitRows]);
 
   const toggleDeposit = useMutation({
@@ -185,10 +192,11 @@ const CostsTab = ({ property }: { property: any }) => {
 
       <Separator />
 
-      {/* Per kamer — verdeling van pand-kosten naar rato van capaciteit */}
+      {/* Per kamer — verdeling van pand-kosten naar rato van capaciteit en gelijk per kamer */}
       {perUnitRows.length > 0 && (
         <div>
-          <h3 className="text-sm font-semibold text-foreground mb-3">Per kamer</h3>
+          <h3 className="text-sm font-semibold text-foreground mb-1">Per kamer</h3>
+          <p className="text-xs text-muted-foreground mb-3">Toont zowel de theoretische verdeling op capaciteit als de praktische verdeling per kamer.</p>
           <div className="bg-card rounded-lg border">
             <Table>
               <TableHeader>
@@ -200,9 +208,11 @@ const CostsTab = ({ property }: { property: any }) => {
                   <TableHead>GWL/wk</TableHead>
                   <TableHead>Belasting/wk</TableHead>
                   <TableHead>Overig/wk</TableHead>
-                  <TableHead>Totaal kosten/wk</TableHead>
+                  <TableHead>Kosten/wk capaciteit</TableHead>
+                  <TableHead>Kosten/wk kamer</TableHead>
                   <TableHead>Inhouding/wk</TableHead>
-                  <TableHead>Marge/wk</TableHead>
+                  <TableHead>Marge capaciteit</TableHead>
+                  <TableHead>Marge kamer</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -216,9 +226,13 @@ const CostsTab = ({ property }: { property: any }) => {
                     <TableCell>{formatEUR(r.taxWeek)}</TableCell>
                     <TableCell>{formatEUR(r.otherWeek)}</TableCell>
                     <TableCell className="font-medium">{formatEUR(r.totalCostWeek)}</TableCell>
+                    <TableCell className="font-medium">{formatEUR(r.totalCostByRoomWeek)}</TableCell>
                     <TableCell>{formatEUR(r.deductionWeek)}</TableCell>
                     <TableCell className={`font-semibold ${r.margin >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                       {formatEUR(r.margin)}
+                    </TableCell>
+                    <TableCell className={`font-semibold ${r.marginByRoom >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {formatEUR(r.marginByRoom)}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -231,9 +245,13 @@ const CostsTab = ({ property }: { property: any }) => {
                   <TableCell>{formatEUR(perUnitTotals.taxWeek)}</TableCell>
                   <TableCell>{formatEUR(perUnitTotals.otherWeek)}</TableCell>
                   <TableCell>{formatEUR(perUnitTotals.totalCostWeek)}</TableCell>
+                  <TableCell>{formatEUR(perUnitTotals.totalCostByRoomWeek)}</TableCell>
                   <TableCell>{formatEUR(perUnitTotals.deductionWeek)}</TableCell>
                   <TableCell className={perUnitTotals.margin >= 0 ? 'text-green-600' : 'text-red-600'}>
                     {formatEUR(perUnitTotals.margin)}
+                  </TableCell>
+                  <TableCell className={perUnitTotals.marginByRoom >= 0 ? 'text-green-600' : 'text-red-600'}>
+                    {formatEUR(perUnitTotals.marginByRoom)}
                   </TableCell>
                 </TableRow>
               </TableBody>
