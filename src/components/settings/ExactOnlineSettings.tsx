@@ -7,13 +7,23 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
-import { FileSpreadsheet, ExternalLink, Loader2, CheckCircle2, XCircle, RefreshCw, Bell } from 'lucide-react';
+import { AlertTriangle, Bell, ExternalLink, FileSpreadsheet, Loader2, CheckCircle2, ListChecks, RefreshCw, XCircle } from 'lucide-react';
 import ExactGLAccountMappings from './ExactGLAccountMappings';
+
+type ExactDiagnosticResult = {
+  ok: boolean;
+  division: number;
+  region: string;
+  base_url: string;
+  expires_at: string;
+  checks: Array<{ name: string; ok: boolean; status: number; error?: unknown }>;
+};
 
 const ExactOnlineSettings = () => {
   const orgId = useOrganizationId();
   const queryClient = useQueryClient();
   const [registering, setRegistering] = useState(false);
+  const [diagnosticResult, setDiagnosticResult] = useState<ExactDiagnosticResult | null>(null);
 
   const { data: config, isLoading } = useQuery({
     queryKey: ['exact-config', orgId],
@@ -80,6 +90,26 @@ const ExactOnlineSettings = () => {
     },
     onSuccess: () => toast.success('Webhook subscriptions geactiveerd'),
     onError: (e: any) => toast.error('Webhooks activeren mislukt: ' + e.message),
+  });
+
+  const testConnection = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke('exact-api', {
+        body: { action: 'diagnostics' },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      return data as ExactDiagnosticResult;
+    },
+    onSuccess: (data) => {
+      setDiagnosticResult(data);
+      if (data.ok) toast.success('Exact Online koppeling getest');
+      else toast.error('Exact Online test heeft aandachtspunten');
+    },
+    onError: (e: any) => {
+      setDiagnosticResult(null);
+      toast.error('Exact test mislukt: ' + e.message);
+    },
   });
 
   const openSetup = () => {
@@ -187,9 +217,45 @@ const ExactOnlineSettings = () => {
                   <Bell className={`h-4 w-4 ${reactivateWebhooks.isPending ? 'animate-pulse' : ''}`} />
                   {reactivateWebhooks.isPending ? 'Activeren...' : 'Heractiveer webhooks'}
                 </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                  onClick={() => testConnection.mutate()}
+                  disabled={testConnection.isPending}
+                >
+                  {testConnection.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ListChecks className="h-4 w-4" />}
+                  Test koppeling
+                </Button>
               </>
             )}
           </div>
+
+          {diagnosticResult && (
+            <div className={`rounded-md border p-3 ${diagnosticResult.ok ? 'border-green-200 bg-green-50/50' : 'border-amber-200 bg-amber-50/50'}`}>
+              <div className="mb-2 flex items-start gap-2">
+                {diagnosticResult.ok ? (
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 text-green-700" />
+                ) : (
+                  <AlertTriangle className="mt-0.5 h-4 w-4 text-amber-700" />
+                )}
+                <div>
+                  <p className="text-sm font-medium">Live acceptatiecheck</p>
+                  <p className="text-xs text-muted-foreground">
+                    Division {diagnosticResult.division} · regio {diagnosticResult.region?.toUpperCase() || 'NL'}
+                  </p>
+                </div>
+              </div>
+              <div className="space-y-1">
+                {diagnosticResult.checks.map((check) => (
+                  <div key={check.name} className="flex items-center justify-between gap-3 text-xs">
+                    <span>{check.name}</span>
+                    <Badge variant={check.ok ? 'default' : 'destructive'}>{check.ok ? 'OK' : `HTTP ${check.status || '—'}`}</Badge>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

@@ -139,7 +139,7 @@ const PortalDashboard = () => {
         .from('vehicle_assignments')
         .select('*, vehicles:vehicle_id(license_plate, brand, model)')
         .eq('candidate_id', employeeId!)
-        .is('end_date', null)
+        .is('returned_date', null)
         .maybeSingle();
       return data;
     },
@@ -177,7 +177,7 @@ const PortalDashboard = () => {
         .from('documents')
         .select('id, name, status')
         .eq('candidate_id', employeeId!)
-        .in('status', ['verlopen', 'bijna_verlopen'] as any);
+        .in('status', ['verlopen', 'verloopt_binnenkort'] as any);
       return data ?? [];
     },
     enabled: !!employeeId,

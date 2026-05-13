@@ -24,6 +24,7 @@ const ClientPortalPlacements = () => {
       const { data, error } = await supabase
         .from('placements')
         .select('id, status, start_date, end_date, function_name, candidates!placements_candidate_id_fkey(first_name, last_name)')
+        .eq('company_id', company!.id)
         .order('start_date', { ascending: false });
       if (error) throw error;
       return data ?? [];

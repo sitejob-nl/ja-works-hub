@@ -17,12 +17,14 @@ const ClientPortalDashboard = () => {
       const { count: placementsCount } = await supabase
         .from('placements')
         .select('id', { count: 'exact', head: true })
+        .eq('company_id', companyId!)
         .eq('status', 'actief');
 
       // Timesheets awaiting client approval
       const { count: pendingCount } = await supabase
         .from('timesheets')
-        .select('id', { count: 'exact', head: true })
+        .select('id, placements!inner(company_id)', { count: 'exact', head: true })
+        .eq('placements.company_id', companyId!)
         .in('status', ['groen', 'oranje', 'rood'] as any)
         .is('client_approved', null);
 

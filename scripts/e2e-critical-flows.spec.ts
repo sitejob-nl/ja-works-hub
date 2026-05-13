@@ -102,14 +102,14 @@ test.describe("Kritieke flow 3 — Ziekmelding", () => {
   });
 
   test("Kandidaat detail → Ziekte tab laadt", async ({ page }) => {
-    await page.goto("/kandidaten", { waitUntil: "domcontentloaded" });
+    await page.goto("/kandidaten?tab=in-dienst", { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(2000);
 
-    const firstCand = page.locator('a[href^="/kandidaten/"]').first();
-    const href = await firstCand.getAttribute("href");
-    test.skip(!href || href === "/kandidaten/new", "Geen kandidaten in testdata");
+    const firstEmployee = page.locator('main table a[href^="/kandidaten/"]').first();
+    const href = await firstEmployee.getAttribute("href");
+    test.skip(!href || href === "/kandidaten/new", "Geen medewerkers in testdata");
 
-    await firstCand.click();
+    await firstEmployee.click();
     await page.waitForTimeout(1500);
 
     // Click Ziekte tab

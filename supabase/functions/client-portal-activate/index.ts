@@ -12,11 +12,11 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { token, password } = await req.json();
+    const { token, password, action } = await req.json();
 
-    if (!token || !password) {
+    if (!token) {
       return new Response(
-        JSON.stringify({ error: "Token en wachtwoord zijn verplicht" }),
+        JSON.stringify({ error: "Token is verplicht" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -50,6 +50,20 @@ Deno.serve(async (req) => {
       );
     }
     const fullName = contact.full_name || `${contact.first_name ?? ''} ${contact.last_name ?? ''}`.trim();
+
+    if (action === "inspect") {
+      return new Response(
+        JSON.stringify({ success: true, email: invite.email, full_name: fullName, company_id: contact.company_id }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!password) {
+      return new Response(
+        JSON.stringify({ error: "Wachtwoord is verplicht" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     // 2. Create auth user
     const { data: authData, error: authErr } = await supabaseAdmin.auth.admin.createUser({

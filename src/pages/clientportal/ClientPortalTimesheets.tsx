@@ -49,7 +49,8 @@ const ClientPortalTimesheets = () => {
     queryFn: async () => {
       let query = supabase
         .from('timesheets')
-        .select('id, work_date, hours_worked, overtime_hours, status, client_approved, client_approved_at, client_rejection_notes, candidates!timesheets_candidate_id_fkey(first_name, last_name), placements!timesheets_placement_id_fkey(function_name)')
+        .select('id, work_date, hours, overtime_hours, status, client_approved, client_approved_at, client_rejection_notes, candidates!timesheets_candidate_id_fkey(first_name, last_name), placements!inner(company_id, function_name)')
+        .eq('placements.company_id', company!.id)
         .gte('work_date', weekStart.toISOString().split('T')[0])
         .lte('work_date', weekEnd.toISOString().split('T')[0])
         .order('work_date');
@@ -205,7 +206,7 @@ const ClientPortalTimesheets = () => {
                     {t.candidates?.first_name} {t.candidates?.last_name}
                   </TableCell>
                   <TableCell>{formatDate(t.work_date)}</TableCell>
-                  <TableCell>{t.hours_worked}</TableCell>
+                  <TableCell>{t.hours}</TableCell>
                   <TableCell>{t.overtime_hours || '-'}</TableCell>
                   <TableCell>
                     <Badge variant="secondary" className={`text-xs ${aiStatusBadge[t.status] ?? ''}`}>

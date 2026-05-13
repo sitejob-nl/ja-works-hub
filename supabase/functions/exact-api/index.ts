@@ -1,5 +1,74 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders, getExactToken, jsonError } from "../_shared/exact-helpers.ts";
+import { corsHeaders, getExactToken, jsonError, jsonOk } from "../_shared/exact-helpers.ts";
+
+type ExactMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+
+const ALLOWED_METHODS = new Set<ExactMethod>(["GET", "POST", "PUT", "PATCH", "DELETE"]);
+
+function hasControlChar(value: string): boolean {
+  return [...value].some((char) => {
+    const code = char.charCodeAt(0);
+    return code <= 31 || code === 127;
+  });
+}
+
+function normalizeEndpoint(input: unknown): string {
+  const value = String(input ?? "").trim();
+  if (!value) throw new Error("endpoint is required");
+  if (hasControlChar(value)) throw new Error("endpoint_invalid");
+  if (/^https?:\/\//i.test(value) || value.startsWith("//") || value.includes("://")) {
+    throw new Error("external_exact_url_not_allowed");
+  }
+  if (value.startsWith("/") || value.includes("\\") || value.split(/[?#]/)[0].split("/").includes("..")) {
+    throw new Error("endpoint_invalid");
+  }
+  return value;
+}
+
+function exactUrl(baseUrl: string, division: number, endpoint: string): string {
+  return `${baseUrl}/api/v1/${division}/${normalizeEndpoint(endpoint)}`;
+}
+
+async function callExact(tokenData: { base_url: string; division: number; access_token: string }, endpoint: string, method: ExactMethod, payload?: unknown) {
+  const res = await fetch(exactUrl(tokenData.base_url, tokenData.division, endpoint), {
+    method,
+    headers: {
+      Authorization: `Bearer ${tokenData.access_token}`,
+      Accept: "application/json",
+      ...(payload !== undefined ? { "Content-Type": "application/json" } : {}),
+    },
+    ...(payload !== undefined ? { body: JSON.stringify(payload) } : {}),
+  });
+
+  const text = await res.text();
+  let parsed: unknown;
+  try {
+    parsed = text ? JSON.parse(text) : {};
+  } catch {
+    parsed = { raw: text };
+  }
+
+  return { ok: res.ok, status: res.status, body: parsed };
+}
+
+async function diagnosticCheck(tokenData: { base_url: string; division: number; access_token: string }, name: string, endpoint: string) {
+  try {
+    const result = await callExact(tokenData, endpoint, "GET");
+    return {
+      name,
+      ok: result.ok,
+      status: result.status,
+      error: result.ok ? null : result.body,
+    };
+  } catch (error) {
+    return {
+      name,
+      ok: false,
+      status: 0,
+      error: (error as Error).message,
+    };
+  }
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -45,11 +114,9 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const { endpoint, method = "GET", payload } = body;
-
-    if (!endpoint) {
-      return jsonError("endpoint is required", 400);
-    }
+    const { endpoint, payload } = body;
+    const method = String(body.method ?? "GET").toUpperCase() as ExactMethod;
+    if (!ALLOWED_METHODS.has(method)) return jsonError("method_not_allowed", 405);
 
     // Get fresh token using decrypted webhook secret
     let tokenData;
@@ -65,39 +132,31 @@ Deno.serve(async (req) => {
       throw err;
     }
 
-    // Build the full URL
-    let fullUrl: string;
-    if (endpoint.startsWith("http")) {
-      fullUrl = endpoint;
-    } else {
-      fullUrl = `${tokenData.base_url}/api/v1/${tokenData.division}/${endpoint}`;
+    if (body.action === "diagnostics") {
+      const checks = await Promise.all([
+        diagnosticCheck(tokenData, "Exact token en administratie", "crm/Accounts?$select=ID,Name&$top=1"),
+        diagnosticCheck(tokenData, "Grootboekrekeningen lezen", "financial/GLAccounts?$filter=Type eq 20&$select=ID,Code,Description&$top=1"),
+      ]);
+      return jsonOk({
+        ok: checks.every((check) => check.ok),
+        division: tokenData.division,
+        region: tokenData.region,
+        base_url: tokenData.base_url,
+        expires_at: tokenData.expires_at,
+        checks,
+      });
     }
 
-    // Call Exact API
-    const exactRes = await fetch(fullUrl, {
-      method: method.toUpperCase(),
-      headers: {
-        Authorization: `Bearer ${tokenData.access_token}`,
-        Accept: "application/json",
-        ...(payload ? { "Content-Type": "application/json" } : {}),
-      },
-      ...(payload ? { body: JSON.stringify(payload) } : {}),
-    });
+    const result = await callExact(tokenData, endpoint, method, payload);
 
-    const exactBody = await exactRes.text();
-    let parsed;
-    try {
-      parsed = JSON.parse(exactBody);
-    } catch {
-      parsed = { raw: exactBody };
-    }
-
-    return new Response(JSON.stringify(parsed), {
-      status: exactRes.status,
+    return new Response(JSON.stringify(result.body), {
+      status: result.status,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
     console.error("Exact API proxy error:", err);
-    return jsonError("Internal server error", 500);
+    const message = (err as Error).message || "Internal server error";
+    const clientErrors = new Set(["endpoint is required", "endpoint_invalid", "external_exact_url_not_allowed"]);
+    return jsonError(clientErrors.has(message) ? message : "Internal server error", clientErrors.has(message) ? 400 : 500);
   }
 });

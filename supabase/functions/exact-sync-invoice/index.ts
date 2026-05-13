@@ -1,6 +1,16 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, getExactToken, jsonError, jsonOk } from "../_shared/exact-helpers.ts";
 
+function odataString(value: unknown): string {
+  return String(value ?? "").replace(/'/g, "''");
+}
+
+function exactApiUrl(baseUrl: string, division: number, path: string, params: Record<string, string>): string {
+  const url = new URL(`${baseUrl}/api/v1/${division}/${path}`);
+  for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
+  return url.toString();
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -108,7 +118,11 @@ Deno.serve(async (req) => {
     if (!exactAccountId && company) {
       // Search by name
       const accountSearchRes = await fetch(
-        `${tokenData.base_url}/api/v1/${tokenData.division}/crm/Accounts?$filter=Name eq '${encodeURIComponent(company.name)}'&$select=ID,Name`,
+        exactApiUrl(tokenData.base_url, tokenData.division, "crm/Accounts", {
+          "$filter": `Name eq '${odataString(company.name)}'`,
+          "$select": "ID,Name",
+          "$top": "1",
+        }),
         { headers: { Authorization: `Bearer ${tokenData.access_token}`, Accept: "application/json" } }
       );
       const accountSearchData = await accountSearchRes.json();

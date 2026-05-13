@@ -277,7 +277,7 @@ export async function listVisibleAccounts(
     const adminOrgAccess = role === "admin" && account.scope === "organization";
     const hasJaAccess = personalOwner || adminOrgAccess || grantAllows(grant, capability);
     const hasCapability = accountHasCapability(account, capability);
-    if (!hasJaAccess && account.status === "connected") continue;
+    if (!hasJaAccess) continue;
     if (!hasCapability && account.status === "connected") continue;
     if (account.scope === "personal" && !personalOwner) continue;
 

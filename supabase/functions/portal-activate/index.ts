@@ -12,11 +12,11 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { token, password, language } = await req.json();
+    const { token, password, language, action } = await req.json();
 
-    if (!token || !password) {
+    if (!token) {
       return new Response(
-        JSON.stringify({ error: "Token en wachtwoord zijn verplicht" }),
+        JSON.stringify({ error: "Token is verplicht" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -50,6 +50,20 @@ Deno.serve(async (req) => {
       );
     }
     const fullName = `${candidate.first_name} ${candidate.last_name}`;
+
+    if (action === "inspect") {
+      return new Response(
+        JSON.stringify({ success: true, email: invite.email, full_name: fullName }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!password) {
+      return new Response(
+        JSON.stringify({ error: "Wachtwoord is verplicht" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     // 2. Create auth user
     const { data: authData, error: authErr } = await supabaseAdmin.auth.admin.createUser({
@@ -98,7 +112,25 @@ Deno.serve(async (req) => {
 
     if (candErr) throw candErr;
 
-    // 5. Mark invite as used
+    // 5. Mirror auth link on the employee record. Portal RLS self-policies
+    // use employees.auth_user_id, while older portal screens still read
+    // candidate portal fields for backwards compatibility.
+    const employeeUpdate = supabaseAdmin
+      .from("employees")
+      .update({
+        auth_user_id: newUserId,
+        portal_enabled: true,
+        portal_activated_at: new Date().toISOString(),
+        portal_language: language || "nl",
+      });
+
+    const { error: employeeErr } = invite.employee_id
+      ? await employeeUpdate.eq("id", invite.employee_id)
+      : await employeeUpdate.eq("candidate_id", candidate.id);
+
+    if (employeeErr) throw employeeErr;
+
+    // 6. Mark invite as used
     const { error: usedErr } = await supabaseAdmin
       .from("portal_invites")
       .update({ used_at: new Date().toISOString() })

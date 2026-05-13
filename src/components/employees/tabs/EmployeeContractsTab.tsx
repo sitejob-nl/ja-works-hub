@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
-import { Plus, Eye, Send, FileText, Link2, Copy } from 'lucide-react';
+import { Plus, Eye, Send, FileText, Link2, ShieldCheck } from 'lucide-react';
 import { formatDate } from '@/lib/format';
 import { toast } from 'sonner';
 import { logAudit } from '@/lib/audit';
@@ -170,8 +170,19 @@ const EmployeeContractsTab = ({ candidateId, candidate, employment }: { candidat
 
   const markSigned = useMutation({
     mutationFn: async (contractId: string) => {
+      const signedAt = new Date().toISOString();
       const { error } = await supabase.from('contracts')
-        .update({ status: 'getekend' as any, signed_at: new Date().toISOString() })
+        .update({
+          status: 'getekend' as any,
+          signed_at: signedAt,
+          signed_by_name: 'Handmatig gemarkeerd',
+          signature_evidence: {
+            method: 'manual_admin_override',
+            marked_by: user?.id ?? null,
+            marked_at: signedAt,
+            note: 'Niet digitaal ondertekend via publieke tekenlink',
+          },
+        } as any)
         .eq('id', contractId);
       if (error) throw error;
     },
@@ -239,45 +250,59 @@ const EmployeeContractsTab = ({ candidateId, candidate, employment }: { candidat
                 <TableHead>Aangemaakt</TableHead>
                 <TableHead>Verzonden</TableHead>
                 <TableHead>Getekend</TableHead>
+                <TableHead>Bewijs</TableHead>
                 <TableHead></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {contracts.map((c: any) => (
-                <TableRow key={c.id}>
-                  <TableCell className="font-medium">{c.title}</TableCell>
-                  <TableCell>
-                    <Badge variant="secondary" className={statusColors[c.status] ?? ''}>
-                      {c.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{formatDate(c.created_at)}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{formatDate(c.sent_at)}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{formatDate(c.signed_at)}</TableCell>
-                  <TableCell>
-                    <div className="flex gap-1">
-                      <Button size="icon" variant="ghost" onClick={() => setViewContract(c)} title="Bekijken">
-                        <Eye className="h-3.5 w-3.5" />
-                      </Button>
-                      {c.sign_token && c.status !== 'getekend' && (
-                        <Button size="sm" variant="outline" onClick={() => copySignLink(c)} className="gap-1">
-                          <Link2 className="h-3.5 w-3.5" /> Tekenlink
-                        </Button>
+              {contracts.map((c: any) => {
+                const evidenceMethod = c.signature_evidence?.method;
+                const hasDigitalEvidence = Boolean(c.signature_request_id && evidenceMethod === 'token_link');
+                return (
+                  <TableRow key={c.id}>
+                    <TableCell className="font-medium">{c.title}</TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className={statusColors[c.status] ?? ''}>
+                        {c.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{formatDate(c.created_at)}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{formatDate(c.sent_at)}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{formatDate(c.signed_at)}</TableCell>
+                    <TableCell>
+                      {hasDigitalEvidence ? (
+                        <Badge className="gap-1"><ShieldCheck className="h-3 w-3" /> Digitaal</Badge>
+                      ) : c.status === 'getekend' ? (
+                        <Badge variant="outline">Handmatig</Badge>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">—</span>
                       )}
-                      {c.status === 'concept' && (
-                        <Button size="sm" variant="outline" onClick={() => markSent.mutate(c.id)}>
-                          <Send className="h-3.5 w-3.5 mr-1" /> Verzonden
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-1">
+                        <Button size="icon" variant="ghost" onClick={() => setViewContract(c)} title="Bekijken">
+                          <Eye className="h-3.5 w-3.5" />
                         </Button>
-                      )}
-                      {c.status === 'verzonden' && (
-                        <Button size="sm" variant="outline" onClick={() => markSigned.mutate(c.id)}>
-                          <FileText className="h-3.5 w-3.5 mr-1" /> Getekend
-                        </Button>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+                        {c.sign_token && c.status !== 'getekend' && (
+                          <Button size="sm" variant="outline" onClick={() => copySignLink(c)} className="gap-1">
+                            <Link2 className="h-3.5 w-3.5" /> Tekenlink
+                          </Button>
+                        )}
+                        {c.status === 'concept' && (
+                          <Button size="sm" variant="outline" onClick={() => markSent.mutate(c.id)}>
+                            <Send className="h-3.5 w-3.5 mr-1" /> Verzonden
+                          </Button>
+                        )}
+                        {c.status === 'verzonden' && (
+                          <Button size="sm" variant="outline" onClick={() => markSigned.mutate(c.id)}>
+                            <FileText className="h-3.5 w-3.5 mr-1" /> Handmatig getekend
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </div>
@@ -289,6 +314,14 @@ const EmployeeContractsTab = ({ candidateId, candidate, employment }: { candidat
           <DialogHeader>
             <DialogTitle>{viewContract?.title}</DialogTitle>
           </DialogHeader>
+          {viewContract?.signature_request_id && (
+            <div className="rounded-md border bg-muted/40 p-3 text-xs">
+              <div className="font-medium">Ondertekenbewijs</div>
+              <div className="mt-1 font-mono break-all">Request: {viewContract.signature_request_id}</div>
+              {viewContract.signed_by_name && <div>Naam: {viewContract.signed_by_name}</div>}
+              {viewContract.signed_ip && <div>IP: {viewContract.signed_ip}</div>}
+            </div>
+          )}
           <div className="whitespace-pre-wrap text-sm">{viewContract?.content}</div>
         </DialogContent>
       </Dialog>

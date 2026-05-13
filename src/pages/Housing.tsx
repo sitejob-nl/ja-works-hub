@@ -78,7 +78,7 @@ const Housing = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('housing_cleaning_tasks' as any)
-        .select('id, title, due_date, priority, property_id, properties(name, address_street, address_city)')
+        .select('id, title, due_date, priority, property_id, assigned_to, assignee:profiles!housing_cleaning_tasks_assigned_to_fkey(full_name,email), properties(name, address_street, address_city)')
         .in('status', ['open', 'in_progress'])
         .order('due_date', { ascending: true, nullsFirst: false })
         .limit(5);
@@ -243,6 +243,9 @@ const Housing = () => {
                       <div>
                         <p className="text-sm font-medium">{task.title}</p>
                         <p className="text-xs text-muted-foreground">{label || 'Pand'}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {task.assignee?.full_name || task.assignee?.email || 'Niet toegewezen'}
+                        </p>
                       </div>
                       <Badge variant="secondary" className={task.priority === 'high' ? 'bg-red-100 text-red-700 border-0' : 'bg-yellow-100 text-yellow-700 border-0'}>
                         {task.priority}

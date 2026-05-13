@@ -1,13 +1,29 @@
 import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CheckCircle2, AlertTriangle, Loader2, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
+
+async function inspectPortalInvite(token: string) {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+  const res = await fetch(`${supabaseUrl}/functions/v1/portal-activate`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: anonKey,
+      Authorization: `Bearer ${anonKey}`,
+    },
+    body: JSON.stringify({ action: 'inspect', token }),
+  });
+  const data = await res.json();
+  if (!res.ok || data?.error) throw new Error(data?.error || 'Niet gevonden');
+  return data as { email: string; full_name?: string };
+}
 
 const PortalActivate = () => {
   const { token } = useParams<{ token: string }>();
@@ -23,32 +39,13 @@ const PortalActivate = () => {
     queryKey: ['portal-invite', token],
     queryFn: async () => {
       if (!token) throw new Error('Geen token');
-      const { data, error } = await supabase
-        .from('portal_invites')
-        .select(`
-          id, email, token, expires_at, used_at,
-          employees!portal_invites_employee_id_fkey(
-            id, organization_id,
-            candidates!employees_candidate_id_fkey(first_name, last_name),
-            organizations:organization_id(name, logo_url)
-          )
-        `)
-        .eq('token', token)
-        .is('used_at', null)
-        .maybeSingle();
-      if (error) throw error;
-      if (!data) throw new Error('Niet gevonden');
-      if (new Date(data.expires_at) < new Date()) throw new Error('Verlopen');
-      return data;
+      return inspectPortalInvite(token);
     },
     enabled: !!token,
     retry: false,
   });
 
-  const employee = invite?.employees as any;
-  const candidate = employee?.candidates;
-  const org = employee?.organizations;
-  const fullName = candidate ? `${candidate.first_name} ${candidate.last_name}` : '';
+  const fullName = invite?.full_name || invite?.email || '';
 
   const isValid = password.length >= 6 && password === confirmPassword;
 
@@ -129,19 +126,13 @@ const PortalActivate = () => {
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="bg-card rounded-xl border shadow-sm p-8 max-w-md w-full space-y-6">
         {/* Logo + org name */}
-        <div className="flex flex-col items-center gap-3">
-          {org?.logo_url ? (
-            <img src={org.logo_url} alt="Logo" className="h-12 w-12 rounded-lg object-contain" />
-          ) : (
-            <div className="h-12 w-12 rounded-lg bg-primary flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-lg">
-                {(org?.name ?? 'JA').slice(0, 2).toUpperCase()}
-              </span>
-            </div>
-          )}
+          <div className="flex flex-col items-center gap-3">
+          <div className="h-12 w-12 rounded-lg bg-primary flex items-center justify-center">
+            <span className="text-primary-foreground font-bold text-lg">JA</span>
+          </div>
           <div className="text-center">
             <h1 className="text-xl font-semibold">Portaal activeren</h1>
-            {org?.name && <p className="text-sm text-muted-foreground">{org.name}</p>}
+            <p className="text-sm text-muted-foreground">Medewerkerportaal</p>
           </div>
         </div>
 

@@ -138,16 +138,18 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
       if (editingId) {
         const { error } = await supabase.from('vehicle_fines').update(payload).eq('id', editingId);
         if (error) throw error;
+        return editingId;
       } else {
-        const { error } = await supabase.from('vehicle_fines').insert({
+        const { data, error } = await supabase.from('vehicle_fines').insert({
           ...payload, organization_id: orgId, vehicle_id: vehicle.id,
-        });
+        }).select('id').single();
         if (error) throw error;
+        return data.id;
       }
     },
-    onSuccess: () => {
+    onSuccess: (recordId) => {
       qc.invalidateQueries({ queryKey: ['vehicle-fines', vehicle.id] });
-      logAudit({ action: editingId ? 'update' : 'create', tableName: 'vehicle_fines', recordId: editingId ?? 'new' });
+      logAudit({ action: editingId ? 'update' : 'create', tableName: 'vehicle_fines', recordId });
       toast.success(editingId ? 'Boete bijgewerkt' : 'Boete geregistreerd');
       closeSheet();
     },

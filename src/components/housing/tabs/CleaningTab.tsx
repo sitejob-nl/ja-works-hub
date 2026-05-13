@@ -38,6 +38,7 @@ export default function CleaningTab({ property }: { property: any }) {
     title: '',
     description: '',
     unit_id: NONE,
+    assigned_to: NONE,
     due_date: '',
     priority: 'medium',
   });
@@ -48,7 +49,7 @@ export default function CleaningTab({ property }: { property: any }) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('housing_cleaning_tasks' as any)
-        .select('*, units(name)')
+        .select('*, units(name), assignee:profiles!housing_cleaning_tasks_assigned_to_fkey(full_name,email)')
         .eq('property_id', property.id)
         .order('status')
         .order('due_date', { ascending: true, nullsFirst: false });
@@ -57,12 +58,28 @@ export default function CleaningTab({ property }: { property: any }) {
     },
   });
 
+  const { data: assignees = [] } = useQuery({
+    queryKey: ['housing-cleaning-assignees', property.organization_id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, full_name, email, role')
+        .eq('organization_id', property.organization_id)
+        .in('role', ['admin', 'intercedent', 'backoffice', 'medewerker'])
+        .order('full_name');
+      if (error) throw error;
+      return data as any[];
+    },
+    enabled: !!property.organization_id,
+  });
+
   const createTask = useMutation({
     mutationFn: async () => {
       const payload = {
         organization_id: property.organization_id,
         property_id: property.id,
         unit_id: form.unit_id === NONE ? null : form.unit_id,
+        assigned_to: form.assigned_to === NONE ? null : form.assigned_to,
         title: form.title.trim(),
         description: form.description || null,
         due_date: form.due_date || null,
@@ -78,7 +95,7 @@ export default function CleaningTab({ property }: { property: any }) {
       qc.invalidateQueries({ queryKey: ['housing-cleaning-overview'] });
       logAudit({ action: 'create', tableName: 'housing_cleaning_tasks', recordId: data.id });
       toast.success('Schoonmaaktaak aangemaakt');
-      setForm({ title: '', description: '', unit_id: NONE, due_date: '', priority: 'medium' });
+      setForm({ title: '', description: '', unit_id: NONE, assigned_to: NONE, due_date: '', priority: 'medium' });
       setOpenForm(false);
     },
     onError: (e: any) => toast.error(e.message ?? 'Aanmaken mislukt'),
@@ -146,6 +163,20 @@ export default function CleaningTab({ property }: { property: any }) {
               </Select>
             </div>
             <div className="space-y-1.5">
+              <Label>Uitvoerder</Label>
+              <Select value={form.assigned_to} onValueChange={(v) => setForm((f) => ({ ...f, assigned_to: v }))}>
+                <SelectTrigger><SelectValue placeholder="Niet toegewezen" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>Niet toegewezen</SelectItem>
+                  {assignees.map((profile: any) => (
+                    <SelectItem key={profile.id} value={profile.id}>
+                      {profile.full_name || profile.email || 'Gebruiker'}{profile.role ? ` (${profile.role})` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
               <Label>Deadline</Label>
               <Input type="date" value={form.due_date} onChange={(e) => setForm((f) => ({ ...f, due_date: e.target.value }))} />
             </div>
@@ -177,6 +208,7 @@ export default function CleaningTab({ property }: { property: any }) {
           <TableRow>
             <TableHead>Taak</TableHead>
             <TableHead>Kamer</TableHead>
+            <TableHead>Uitvoerder</TableHead>
             <TableHead>Deadline</TableHead>
             <TableHead>Prioriteit</TableHead>
             <TableHead>Foto's</TableHead>
@@ -192,6 +224,9 @@ export default function CleaningTab({ property }: { property: any }) {
                 {task.description && <div className="text-xs text-muted-foreground">{task.description}</div>}
               </TableCell>
               <TableCell>{task.units?.name ?? 'Hele pand'}</TableCell>
+              <TableCell>
+                {task.assignee?.full_name || task.assignee?.email || <span className="text-muted-foreground">—</span>}
+              </TableCell>
               <TableCell>{task.due_date ? new Date(task.due_date).toLocaleDateString('nl-NL') : '—'}</TableCell>
               <TableCell><Badge variant="secondary" className={priorityClass[task.priority] ?? ''}>{task.priority}</Badge></TableCell>
               <TableCell>
@@ -221,15 +256,22 @@ export default function CleaningTab({ property }: { property: any }) {
               <TableCell>{statusLabel[task.status] ?? task.status}</TableCell>
               <TableCell className="text-right">
                 {task.status !== 'done' && (
-                  <Button variant="ghost" size="sm" onClick={() => updateStatus.mutate({ task, status: 'done' })} className="gap-1">
-                    <CheckCircle2 className="h-3.5 w-3.5" /> Klaar
-                  </Button>
+                  <div className="flex justify-end gap-1">
+                    {task.status === 'open' && (
+                      <Button variant="ghost" size="sm" onClick={() => updateStatus.mutate({ task, status: 'in_progress' })}>
+                        Start
+                      </Button>
+                    )}
+                    <Button variant="ghost" size="sm" onClick={() => updateStatus.mutate({ task, status: 'done' })} className="gap-1">
+                      <CheckCircle2 className="h-3.5 w-3.5" /> Klaar
+                    </Button>
+                  </div>
                 )}
               </TableCell>
             </TableRow>
           ))}
           {tasks.length === 0 && (
-            <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground">Geen schoonmaaktaken</TableCell></TableRow>
+            <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground">Geen schoonmaaktaken</TableCell></TableRow>
           )}
         </TableBody>
       </Table>

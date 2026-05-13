@@ -12,7 +12,7 @@ import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/contexts/AuthContext';
 import { invokeOutlookFunction, useOutlookAccounts, type OutlookAccount } from '@/hooks/useOutlookAccounts';
-import { Building2, CalendarCheck, CheckCircle2, Loader2, Mail, Plus, RotateCcw, ShieldCheck, Trash2, User } from 'lucide-react';
+import { AlertTriangle, Building2, CalendarCheck, CheckCircle2, Loader2, Mail, Plus, RotateCcw, ShieldCheck, Trash2, User } from 'lucide-react';
 
 type AdminUser = {
   id: string;
@@ -101,19 +101,40 @@ const OutlookSettings = () => {
 
   const action = useMutation({
     mutationFn: (body: Record<string, unknown>) => invokeOutlookFunction('outlook-accounts', body),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['outlook-accounts-visible'] });
       queryClient.invalidateQueries({ queryKey: ['outlook-accounts-admin'] });
+      const actionName = variables.action;
+      if (actionName === 'test_mail') toast.success('Mailtoegang getest');
+      if (actionName === 'test_calendar') toast.success('Agendatoegang getest');
+      if (actionName === 'set_default') toast.success('Standaard mailbox bijgewerkt');
+      if (actionName === 'delete_account') toast.success('Mailbox verwijderd');
     },
     onError: (error: Error) => toast.error(error.message),
   });
 
-  const accounts = (isAdmin ? adminList.data?.accounts : visible.accounts) || [];
+  const adminAccounts = adminList.data?.accounts;
+  const visibleAccounts = visible.data;
+  const accounts = useMemo(
+    () => (isAdmin ? (adminAccounts ?? []) : (visibleAccounts ?? [])),
+    [adminAccounts, isAdmin, visibleAccounts],
+  );
   const users = adminList.data?.users || [];
   const orgCredential = accounts.find((account) => account.scope === 'organization' && account.mode === 'user');
   const personalAccount = visible.accounts.find((account) => account.scope === 'personal');
   const personalAccounts = accounts.filter((account) => account.scope === 'personal');
   const sharedAccounts = accounts.filter((account) => account.scope === 'organization' && account.mode === 'shared');
+  const failedAccounts = accounts.filter((account) => ['failed', 'needs_reconnect'].includes(account.status));
+  const connectedSharedAccounts = sharedAccounts.filter((account) => account.status === 'connected');
+  const grantCount = (accounts as AdminAccount[]).reduce((sum, account) => sum + (account.grants?.length ?? 0), 0);
+  const deleteGrantCount = (accounts as AdminAccount[]).reduce(
+    (sum, account) => sum + (account.grants?.filter((grant) => grant.can_delete_mail).length ?? 0),
+    0,
+  );
+  const outlookAcceptanceOk = Boolean(orgCredential?.status === 'connected')
+    && sharedAccounts.length > 0
+    && connectedSharedAccounts.length === sharedAccounts.length
+    && failedAccounts.length === 0;
   const personalByUser = useMemo(() => {
     const map = new Map<string, AdminAccount>();
     for (const account of personalAccounts as AdminAccount[]) {
@@ -237,6 +258,37 @@ const OutlookSettings = () => {
           </div>
         ) : (
           <>
+            {isAdmin && (
+              <section className={`rounded-md border p-3 ${outlookAcceptanceOk ? 'border-green-200 bg-green-50/50' : 'border-amber-200 bg-amber-50/50'}`}>
+                <div className="flex items-start gap-3">
+                  {outlookAcceptanceOk ? (
+                    <CheckCircle2 className="mt-0.5 h-5 w-5 text-green-700" />
+                  ) : (
+                    <AlertTriangle className="mt-0.5 h-5 w-5 text-amber-700" />
+                  )}
+                  <div className="space-y-2">
+                    <div>
+                      <p className="text-sm font-semibold">Outlook acceptatiecheck</p>
+                      <p className="text-xs text-muted-foreground">
+                        Hoofdaccount, gedeelde mailboxen, rechtenmatrix en delete-rechten voor de go-live-test.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      <Badge variant={orgCredential?.status === 'connected' ? 'default' : 'outline'}>
+                        Hoofdaccount {orgCredential?.status === 'connected' ? 'OK' : 'niet klaar'}
+                      </Badge>
+                      <Badge variant={sharedAccounts.length > 0 && connectedSharedAccounts.length === sharedAccounts.length ? 'default' : 'outline'}>
+                        Gedeeld {connectedSharedAccounts.length}/{sharedAccounts.length}
+                      </Badge>
+                      <Badge variant={grantCount > 0 ? 'default' : 'outline'}>{grantCount} rechten</Badge>
+                      <Badge variant={deleteGrantCount > 0 ? 'secondary' : 'outline'}>{deleteGrantCount} delete-rechten</Badge>
+                      {failedAccounts.length > 0 && <Badge variant="destructive">{failedAccounts.length} mislukt/herkoppelen</Badge>}
+                    </div>
+                  </div>
+                </div>
+              </section>
+            )}
+
             <section className="space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="space-y-1">

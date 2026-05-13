@@ -1,12 +1,28 @@
 import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { CheckCircle2, AlertTriangle, Loader2, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
+
+async function inspectClientPortalInvite(token: string) {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+  const res = await fetch(`${supabaseUrl}/functions/v1/client-portal-activate`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: anonKey,
+      Authorization: `Bearer ${anonKey}`,
+    },
+    body: JSON.stringify({ action: 'inspect', token }),
+  });
+  const data = await res.json();
+  if (!res.ok || data?.error) throw new Error(data?.error || 'Niet gevonden');
+  return data as { email: string; full_name?: string; company_id?: string };
+}
 
 const ClientPortalActivate = () => {
   const { token } = useParams<{ token: string }>();
@@ -20,16 +36,7 @@ const ClientPortalActivate = () => {
     queryKey: ['client-portal-invite', token],
     queryFn: async () => {
       if (!token) throw new Error('Geen token');
-      const { data, error } = await supabase
-        .from('client_portal_invites')
-        .select('id, email, token, expires_at, used_at, company_id')
-        .eq('token', token)
-        .is('used_at', null)
-        .maybeSingle();
-      if (error) throw error;
-      if (!data) throw new Error('Niet gevonden');
-      if (new Date(data.expires_at) < new Date()) throw new Error('Verlopen');
-      return data;
+      return inspectClientPortalInvite(token);
     },
     enabled: !!token,
     retry: false,
