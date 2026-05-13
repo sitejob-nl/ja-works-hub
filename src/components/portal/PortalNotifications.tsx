@@ -39,14 +39,41 @@ const PortalNotifications = () => {
   const { data: notifications = [] } = useQuery({
     queryKey: ['portal-notifications', employeeId],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data: timesheets } = await supabase
         .from('timesheets')
         .select('id, work_date, status, approved_at')
         .eq('candidate_id', employeeId!)
         .gte('approved_at', sevenDaysAgo)
         .in('status', ['goedgekeurd', 'afgekeurd'] as any)
         .order('approved_at', { ascending: false });
-      return data ?? [];
+
+      const { data: employeeNotifications } = await supabase
+        .from('employee_notifications')
+        .select('id, title, message, severity, created_at, type')
+        .eq('candidate_id', employeeId!)
+        .or('is_dismissed.is.null,is_dismissed.eq.false')
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+      const approvalItems = (timesheets ?? []).map((n) => ({
+        id: `timesheet-${n.id}`,
+        created_at: n.approved_at,
+        text: n.status === 'goedgekeurd'
+          ? `Je uren van ${formatDate(n.work_date)} zijn goedgekeurd \u2713`
+          : `Je uren van ${formatDate(n.work_date)} zijn afgekeurd \u2717`,
+        className: n.status === 'goedgekeurd' ? 'text-stat-green' : 'text-destructive',
+      }));
+
+      const portalItems = (employeeNotifications ?? []).map((n) => ({
+        id: `notification-${n.id}`,
+        created_at: n.created_at,
+        text: n.message ? `${n.title} — ${n.message}` : n.title,
+        className: n.severity === 'urgent' ? 'text-destructive' : n.type === 'verjaardag' ? 'text-primary' : 'text-foreground',
+      }));
+
+      return [...approvalItems, ...portalItems]
+        .filter((n) => !!n.created_at)
+        .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
     },
     enabled: !!employeeId,
     refetchInterval: 30000,
@@ -90,17 +117,12 @@ const PortalNotifications = () => {
           ) : (
             notifications.map((n) => {
               const isSeen = seenIds.includes(n.id);
-              const isApproved = n.status === 'goedgekeurd';
               return (
                 <div
                   key={n.id}
                   className={`px-4 py-2.5 border-b last:border-b-0 text-sm ${!isSeen ? 'bg-muted/50' : ''}`}
                 >
-                  <span className={isApproved ? 'text-stat-green' : 'text-destructive'}>
-                    {isApproved
-                      ? `Je uren van ${formatDate(n.work_date)} zijn goedgekeurd \u2713`
-                      : `Je uren van ${formatDate(n.work_date)} zijn afgekeurd \u2717`}
-                  </span>
+                  <span className={n.className}>{n.text}</span>
                 </div>
               );
             })

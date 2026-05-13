@@ -18,6 +18,7 @@ const mainTabs = [
 
 const moreTabs = [
   { label: 'Voertuig', path: '/portaal/voertuig' },
+  { label: 'Punten & rewards', path: '/portaal/punten' },
   { label: 'Ziekmelding', path: '/portaal/ziekmelding' },
   { label: 'Loonstroken', path: '/portaal/loonstroken' },
   { label: 'Jaaropgaven', path: '/portaal/jaaropgaven' },

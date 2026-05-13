@@ -91,6 +91,9 @@ verify_jwt = false
 [functions.generate-notifications]
 verify_jwt = false
 
+[functions.birthday-loyalty-cron]
+verify_jwt = false
+
 [functions.send-placement-confirmation]
 verify_jwt = false
 

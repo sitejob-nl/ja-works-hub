@@ -57,17 +57,19 @@ const EmployeeContractsTab = ({ candidateId, candidate, employment }: { candidat
     },
   });
 
-  const { data: templates = [] } = useQuery({
+  const { data: templates = [] } = useQuery<any[]>({
     queryKey: ['contract-templates', orgId],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('contract_templates')
+        .from('contract_templates' as any)
         .select('*')
         .eq('organization_id', orgId)
         .eq('is_active', true)
+        .eq('template_status', 'actief')
+        .eq('is_placeholder', false)
         .order('name');
       if (error) throw error;
-      return data;
+      return (data ?? []) as any[];
     },
   });
 
@@ -134,7 +136,11 @@ const EmployeeContractsTab = ({ candidateId, candidate, employment }: { candidat
         content: contractContent,
         sign_token: token,
         created_by: user?.id ?? null,
-      });
+        template_version_id: selectedTemplate || null,
+        template_version_name: templates.find((t: any) => t.id === selectedTemplate)?.name ?? null,
+        template_version_status: templates.find((t: any) => t.id === selectedTemplate)?.template_status ?? null,
+        legal_document_type: templates.find((t: any) => t.id === selectedTemplate)?.template_type ?? null,
+      } as any);
       if (error) throw error;
     },
     onSuccess: () => {

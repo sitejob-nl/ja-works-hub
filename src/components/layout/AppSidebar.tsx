@@ -58,6 +58,7 @@ const navGroups: NavGroup[] = [
       { label: 'Huisvesting', icon: Home, path: '/huisvesting', moduleKey: 'huisvesting', roles: ['intercedent', 'backoffice'] },
       { label: 'Transport', icon: Car, path: '/transport', moduleKey: 'transport', roles: ['intercedent', 'backoffice'] },
       { label: 'Tankpas analyse', icon: Fuel, path: '/tankpas-analyse', moduleKey: 'tankpas-analyse', roles: ['finance', 'backoffice'] },
+      { label: 'Kilometeranalyse', icon: Calculator, path: '/kilometeranalyse', moduleKey: 'tankpas-analyse', roles: ['finance', 'backoffice'] },
     ],
   },
   {

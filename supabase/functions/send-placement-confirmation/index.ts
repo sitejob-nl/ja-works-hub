@@ -43,6 +43,35 @@ function appendGeneralTerms(html: string, terms: { name: string; content: string
   return html.replace("</td></tr>\n        <!-- Footer -->", `${section}\n        </td></tr>\n        <!-- Footer -->`);
 }
 
+function mergeTemplate(content: string, vars: Record<string, string | null | undefined>): string {
+  return Object.entries(vars).reduce(
+    (text, [key, value]) => text.replaceAll(`{{${key}}}`, escapeHtml(String(value ?? ""))),
+    content,
+  );
+}
+
+function templateToEmailHtml(template: { name: string; content: string }, vars: Record<string, string | null | undefined>): string {
+  const body = mergeTemplate(template.content, vars);
+  return `<!DOCTYPE html>
+<html lang="nl">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:32px 0;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+        <tr><td style="background:#1e293b;padding:24px 32px;"><h1 style="margin:0;color:#fff;font-size:20px;">${escapeHtml(template.name)}</h1></td></tr>
+        <tr><td style="padding:32px;color:#334155;font-size:14px;line-height:1.6;white-space:pre-wrap;">${body}</td></tr>
+        <!-- Footer -->
+        <tr><td style="background:#f8fafc;padding:16px 32px;border-top:1px solid #e2e8f0;">
+          <p style="margin:0;color:#94a3b8;font-size:12px;text-align:center;">Dit is een automatisch gegenereerd bericht van SiteJob.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
+
 function buildClientEmailHtml(data: {
   companyName: string;
   contactName: string;
@@ -266,7 +295,7 @@ Deno.serve(async (req) => {
         employees:employee_id(
           id,
           candidate_id,
-          candidates:candidate_id(id, first_name, last_name, email, phone)
+          candidates:candidate_id(id, first_name, last_name, email, phone, employee_number)
         ),
         vacancies:vacancy_id(id, title, work_location)
       `)
@@ -308,15 +337,46 @@ Deno.serve(async (req) => {
       warnings: string[];
     } = { warnings };
 
-    const { data: generalTerms } = await supabase
+    const activeTemplateQuery = (type: string) => supabase
       .from("contract_templates")
       .select("name, content")
       .eq("organization_id", orgId)
-      .eq("template_type", "general_terms")
+      .eq("template_type", type)
       .eq("is_active", true)
+      .eq("template_status", "actief")
+      .eq("is_placeholder", false)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
+
+    const { data: generalTerms } = await activeTemplateQuery("general_terms");
+    const { data: clientTemplate } = await activeTemplateQuery("placement_confirmation_client");
+    const { data: employeeTemplate } = await activeTemplateQuery("placement_confirmation_employee");
+
+    const missingTemplates: string[] = [];
+    if (send_to_client && !clientTemplate) missingTemplates.push("plaatsingsbevestiging opdrachtgever");
+    if (send_to_employee && !employeeTemplate) missingTemplates.push("plaatsingsbevestiging medewerker");
+    if (send_to_client && !generalTerms) missingTemplates.push("algemene voorwaarden");
+    if (missingTemplates.length > 0) {
+      return json({
+        error: `Actieve juridische template(s) ontbreken: ${missingTemplates.join(", ")}`,
+        warnings,
+      }, 400);
+    }
+
+    const templateVars = {
+      employee_name: candidateName,
+      employee_number: candidate.employee_number,
+      start_date: formatDate(startDate),
+      function_name: functionName,
+      company_name: companyName,
+      organization_name: "SiteJob",
+      work_location: workLocation ?? "Nader te bepalen",
+      work_days: formatWorkDays(workDays),
+      candidate_phone: candidate.phone,
+      candidate_email: candidate.email,
+      today: formatDate(new Date().toISOString()),
+    };
 
     // ── Fetch company contacts once for both emails ──
     const { data: contacts } = await supabase
@@ -338,7 +398,9 @@ Deno.serve(async (req) => {
       }
 
       const subject = `Plaatsingsbevestiging - ${functionName} bij ${companyName}`;
-      const baseHtml = buildClientEmailHtml({
+      const baseHtml = clientTemplate
+        ? templateToEmailHtml(clientTemplate as any, { ...templateVars, contact_name: contactName })
+        : buildClientEmailHtml({
         companyName,
         contactName,
         candidateName,
@@ -393,7 +455,14 @@ Deno.serve(async (req) => {
     // ── Employee email ──
     if (send_to_employee) {
       const subject = `Plaatsingsbevestiging - ${functionName} bij ${companyName}`;
-      const html = buildEmployeeEmailHtml({
+      const html = employeeTemplate
+        ? templateToEmailHtml(employeeTemplate as any, {
+          ...templateVars,
+          contact_person_name: primaryContact?.full_name ?? "",
+          contact_person_phone: primaryContact?.phone ?? "",
+          contact_person_email: primaryContact?.email ?? "",
+        })
+        : buildEmployeeEmailHtml({
         candidateName,
         functionName,
         companyName,

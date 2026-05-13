@@ -26,6 +26,8 @@ const MERGE_FIELDS = [
 const TEMPLATE_TYPES = [
   { value: 'employment_contract', label: 'Arbeidsovereenkomst' },
   { value: 'placement_confirmation', label: 'Plaatsingsbevestiging' },
+  { value: 'placement_confirmation_client', label: 'Plaatsingsbevestiging opdrachtgever' },
+  { value: 'placement_confirmation_employee', label: 'Plaatsingsbevestiging medewerker' },
   { value: 'general_terms', label: 'Algemene voorwaarden' },
   { value: 'housing_inhuur', label: 'Inhuurcontract woning' },
   { value: 'housing_onderhuur', label: 'Onderhuurcontract woning' },
@@ -34,7 +36,8 @@ const TEMPLATE_TYPES = [
 ];
 
 const REQUIRED_OPERATIONAL_TEMPLATE_TYPES = [
-  'placement_confirmation',
+  'placement_confirmation_client',
+  'placement_confirmation_employee',
   'general_terms',
   'housing_inhuur',
   'housing_onderhuur',
@@ -51,9 +54,9 @@ const ContractTemplatesSettings = () => {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
-  const [form, setForm] = useState({ name: '', template_type: 'employment_contract', content: '' });
+  const [form, setForm] = useState({ name: '', template_type: 'employment_contract', template_status: 'concept', is_placeholder: false, content: '' });
 
-  const { data: templates = [] } = useQuery({
+  const { data: templates = [] } = useQuery<any[]>({
     queryKey: ['contract-templates', orgId],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -62,7 +65,7 @@ const ContractTemplatesSettings = () => {
         .eq('organization_id', orgId)
         .order('created_at', { ascending: false });
       if (error) throw error;
-      return data;
+      return (data ?? []) as any[];
     },
     enabled: !!orgId,
   });
@@ -70,6 +73,8 @@ const ContractTemplatesSettings = () => {
   const activeTemplateTypes = new Set(
     templates
       .filter((template: any) => template.is_active !== false)
+      .filter((template: any) => (template.template_status ?? 'actief') === 'actief')
+      .filter((template: any) => template.is_placeholder !== true)
       .map((template: any) => template.template_type ?? 'employment_contract'),
   );
   const missingOperationalTemplates = REQUIRED_OPERATIONAL_TEMPLATE_TYPES.filter((type) => !activeTemplateTypes.has(type));
@@ -78,7 +83,16 @@ const ContractTemplatesSettings = () => {
     mutationFn: async () => {
       if (editing) {
         const { error } = await supabase.from('contract_templates' as any)
-          .update({ name: form.name, template_type: form.template_type, content: form.content } as any)
+          .update({
+            name: form.name,
+            template_type: form.template_type,
+            template_status: form.template_status,
+            is_placeholder: form.is_placeholder,
+            content: form.content,
+            is_active: form.template_status === 'actief' && !form.is_placeholder,
+            approved_at: form.template_status === 'actief' ? new Date().toISOString() : null,
+            approved_by: form.template_status === 'actief' ? user?.id ?? null : null,
+          } as any)
           .eq('id', editing.id);
         if (error) throw error;
       } else {
@@ -86,6 +100,9 @@ const ContractTemplatesSettings = () => {
           organization_id: orgId,
           name: form.name,
           template_type: form.template_type,
+          template_status: form.template_status,
+          is_placeholder: form.is_placeholder,
+          is_active: form.template_status === 'actief' && !form.is_placeholder,
           content: form.content,
           created_by: user?.id ?? null,
         });
@@ -96,7 +113,7 @@ const ContractTemplatesSettings = () => {
       qc.invalidateQueries({ queryKey: ['contract-templates'] });
       setOpen(false);
       setEditing(null);
-      setForm({ name: '', template_type: 'employment_contract', content: '' });
+      setForm({ name: '', template_type: 'employment_contract', template_status: 'concept', is_placeholder: false, content: '' });
       toast.success(editing ? 'Template bijgewerkt' : 'Template aangemaakt');
     },
     onError: (e: any) => toast.error(e.message),
@@ -104,7 +121,14 @@ const ContractTemplatesSettings = () => {
 
   const toggleActive = useMutation({
     mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
-      const { error } = await supabase.from('contract_templates' as any).update({ is_active }).eq('id', id);
+      const template = templates.find((t: any) => t.id === id);
+      if (is_active && template?.is_placeholder) throw new Error('Placeholder-template kan niet actief worden');
+      const { error } = await supabase.from('contract_templates' as any).update({
+        is_active,
+        template_status: is_active ? 'actief' : 'concept',
+        approved_at: is_active ? new Date().toISOString() : null,
+        approved_by: is_active ? user?.id ?? null : null,
+      } as any).eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -115,13 +139,19 @@ const ContractTemplatesSettings = () => {
 
   const openEdit = (t: any) => {
     setEditing(t);
-    setForm({ name: t.name, template_type: t.template_type ?? 'employment_contract', content: t.content });
+    setForm({
+      name: t.name,
+      template_type: t.template_type ?? 'employment_contract',
+      template_status: t.template_status ?? (t.is_active ? 'actief' : 'concept'),
+      is_placeholder: t.is_placeholder ?? false,
+      content: t.content,
+    });
     setOpen(true);
   };
 
   const openNew = () => {
     setEditing(null);
-    setForm({ name: '', template_type: 'employment_contract', content: '' });
+    setForm({ name: '', template_type: 'employment_contract', template_status: 'concept', is_placeholder: false, content: '' });
     setOpen(true);
   };
 
@@ -180,6 +210,7 @@ const ContractTemplatesSettings = () => {
               <TableRow>
                 <TableHead>Naam</TableHead>
                 <TableHead>Type</TableHead>
+                <TableHead>Status</TableHead>
                 <TableHead>Actief</TableHead>
                 <TableHead>Aangemaakt</TableHead>
                 <TableHead></TableHead>
@@ -190,8 +221,9 @@ const ContractTemplatesSettings = () => {
                 <TableRow key={t.id}>
                   <TableCell className="font-medium">{t.name}</TableCell>
                   <TableCell><Badge variant="secondary">{templateTypeLabel(t.template_type)}</Badge></TableCell>
+                  <TableCell><Badge variant={t.template_status === 'actief' ? 'default' : 'outline'}>{t.template_status ?? (t.is_active ? 'actief' : 'concept')}</Badge></TableCell>
                   <TableCell>
-                    <Switch checked={t.is_active} onCheckedChange={(v) => toggleActive.mutate({ id: t.id, is_active: v })} />
+                    <Switch checked={t.is_active && t.template_status === 'actief' && !t.is_placeholder} onCheckedChange={(v) => toggleActive.mutate({ id: t.id, is_active: v })} />
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">{formatDate(t.created_at)}</TableCell>
                   <TableCell>
@@ -225,6 +257,26 @@ const ContractTemplatesSettings = () => {
                 </SelectContent>
               </Select>
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Status</Label>
+                <Select value={form.template_status} onValueChange={(value) => setForm((f) => ({ ...f, template_status: value }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="concept">Concept</SelectItem>
+                    <SelectItem value="klaar_voor_review">Klaar voor review</SelectItem>
+                    <SelectItem value="actief">Actief</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center justify-between rounded-md border px-3 py-2">
+                <div>
+                  <Label>Placeholder</Label>
+                  <p className="text-xs text-muted-foreground">Blokkeert productiegebruik.</p>
+                </div>
+                <Switch checked={form.is_placeholder} onCheckedChange={(value) => setForm((f) => ({ ...f, is_placeholder: value, template_status: value && f.template_status === 'actief' ? 'concept' : f.template_status }))} />
+              </div>
+            </div>
             <div>
               <Label>Merge fields</Label>
               <div className="flex flex-wrap gap-1.5 mt-1">
@@ -247,7 +299,7 @@ const ContractTemplatesSettings = () => {
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="ghost" onClick={() => setOpen(false)}>Annuleren</Button>
-              <Button onClick={() => save.mutate()} disabled={!form.name || !form.content || save.isPending}>
+              <Button onClick={() => save.mutate()} disabled={!form.name || !form.content || (form.is_placeholder && form.template_status === 'actief') || save.isPending}>
                 {save.isPending ? 'Opslaan...' : 'Opslaan'}
               </Button>
             </div>

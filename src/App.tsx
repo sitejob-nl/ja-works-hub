@@ -63,6 +63,7 @@ import CandidateProfile from "@/pages/CandidateProfile";
 import Register from "@/pages/Register";
 import PortalActivate from "@/pages/PortalActivate";
 import FuelCardAnalysis from "@/pages/FuelCardAnalysis";
+import FiscalMileageAnalysis from "@/pages/FiscalMileageAnalysis";
 import InvoicesPage from "@/pages/Invoices";
 import PlacementsPage from "@/pages/Placements";
 import PlacementDetail from "@/pages/PlacementDetail";
@@ -88,6 +89,7 @@ import PortalProfile from "@/pages/portal/PortalProfile";
 import PortalSickReport from "@/pages/portal/PortalSickReport";
 import PortalHousing from "@/pages/portal/PortalHousing";
 import PortalVehicle from "@/pages/portal/PortalVehicle";
+import PortalLoyalty from "@/pages/portal/PortalLoyalty";
 import PortalPayslips from "@/pages/portal/PortalPayslips";
 import PortalAnnualStatements from "@/pages/portal/PortalAnnualStatements";
 import PortalHourLetters from "@/pages/portal/PortalHourLetters";
@@ -174,6 +176,7 @@ const App = () => (
               <Route path="/transport/:id" element={<VehicleDetail />} />
               <Route path="/transport/:id/bewerken" element={<VehicleEdit />} />
               <Route path="/tankpas-analyse" element={<FuelCardAnalysis />} />
+              <Route path="/kilometeranalyse" element={<FiscalMileageAnalysis />} />
               <Route path="/vacaturebank" element={<Vacaturebank />} />
               <Route path="/kandidaten-zoeken" element={<KandidatenZoeken />} />
               <Route path="/communicatie" element={<Communications />} />
@@ -215,6 +218,7 @@ const App = () => (
               <Route path="ziekmelding" element={<PortalSickReport />} />
               <Route path="huisvesting" element={<PortalHousing />} />
               <Route path="voertuig" element={<PortalVehicle />} />
+              <Route path="punten" element={<PortalLoyalty />} />
               <Route path="loonstroken" element={<PortalPayslips />} />
               <Route path="jaaropgaven" element={<PortalAnnualStatements />} />
               <Route path="urenbrieven" element={<PortalHourLetters />} />

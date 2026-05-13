@@ -24,6 +24,7 @@ import OutlookSettings from '@/components/settings/OutlookSettings';
 import VoysSettings from '@/components/settings/VoysSettings';
 import PropertyOwnersSettings from '@/components/settings/PropertyOwnersSettings';
 import AiCvProviderSettings from '@/components/settings/AiCvProviderSettings';
+import EngagementSettings from '@/components/settings/EngagementSettings';
 import { applyBranding, BRANDING_DEFAULTS, type BrandingSettings } from '@/lib/branding';
 
 /* ---- Color conversion helpers ---- */
@@ -469,6 +470,9 @@ const Settings = () => {
 
           {/* AI CV-analyse provider + saldo */}
           <AiCvProviderSettings />
+
+          {/* Engagement / loyalty */}
+          <EngagementSettings />
 
           {/* Microsoft 365 */}
           <OutlookSettings />

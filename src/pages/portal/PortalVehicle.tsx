@@ -13,6 +13,7 @@ import { Car, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { nl } from 'date-fns/locale';
+import { DAMAGE_TYPES, damageTypeIsUrgent, damageTypeLabel } from '@/lib/damage';
 
 const resolveEmployeeRecordId = async (candidateId: string) => {
   const { data, error } = await supabase
@@ -24,17 +25,6 @@ const resolveEmployeeRecordId = async (candidateId: string) => {
   if (!data?.id) throw new Error('Geen medewerkerrecord gevonden voor deze kandidaat');
   return data.id;
 };
-
-const damageTypes = [
-  { value: 'lekke_band', label: 'Lekke band' },
-  { value: 'dashboardlampje', label: 'Dashboardlampje' },
-  { value: 'motorstoring', label: 'Motorstoring' },
-  { value: 'carrosserie', label: 'Carrosserie' },
-  { value: 'ruitschade', label: 'Ruitschade' },
-  { value: 'overig', label: 'Overig' },
-];
-
-const damageTypeLabel = (value: string) => damageTypes.find((type) => type.value === value)?.label ?? value;
 
 const PortalVehicle = () => {
   const { employee } = usePortal();
@@ -104,8 +94,12 @@ const PortalVehicle = () => {
         damage_type: damageType,
         description: description.trim(),
         photos: uploadedPaths.length > 0 ? uploadedPaths : null,
+        contact_route: 'internal_fleet',
+        route_status: 'pending_internal',
+        urgency: damageTypeIsUrgent(damageType) ? 'urgent' : 'normal',
+        contact_phone_shared: false,
         reported_at: new Date().toISOString(),
-      });
+      } as any);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -199,7 +193,7 @@ const PortalVehicle = () => {
             <div className="flex flex-col items-center justify-center py-12 space-y-3">
               <CheckCircle2 className="h-10 w-10 text-stat-green" />
               <p className="font-semibold text-center">Schademelding ingediend</p>
-              <p className="text-sm text-muted-foreground text-center">De garage wordt geïnformeerd.</p>
+              <p className="text-sm text-muted-foreground text-center">De interne fleet/admin wordt geïnformeerd.</p>
               <Button variant="outline" onClick={() => { setSubmitted(false); setDamageOpen(false); }}>
                 Sluiten
               </Button>
@@ -211,7 +205,7 @@ const PortalVehicle = () => {
                 <Select value={damageType} onValueChange={setDamageType}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {damageTypes.map((t) => (
+                    {DAMAGE_TYPES.map((t) => (
                       <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
                     ))}
                   </SelectContent>

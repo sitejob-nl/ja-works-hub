@@ -30,9 +30,11 @@ function formatEUR(amount: number | null): string {
 const DAMAGE_TYPE_LABELS: Record<string, string> = {
   lekke_band: "Lekke band",
   dashboardlampje: "Dashboardlampje",
-  motorstoring: "Motorstoring",
-  carrosserie: "Carrosserieschade",
-  ruitschade: "Ruitschade",
+  pech_stilstand: "Pech / stilstand",
+  ongeval: "Ongeval",
+  schade_exterieur: "Schade exterieur",
+  schade_interieur: "Schade interieur",
+  onderhoud: "Onderhoud",
   overig: "Overig",
 };
 
@@ -46,6 +48,7 @@ function buildEmailHtml(data: {
   employeePhone: string | null;
   employeeEmail: string | null;
   photoUrls: string[];
+  target: "internal" | "external";
 }): string {
   const photosHtml =
     data.photoUrls.length > 0
@@ -72,9 +75,9 @@ function buildEmailHtml(data: {
           <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:600;">Schademelding</h1>
         </td></tr>
         <tr><td style="padding:32px;">
-          <p style="margin:0 0 16px;color:#334155;font-size:14px;">Beste garagemedewerker,</p>
+          <p style="margin:0 0 16px;color:#334155;font-size:14px;">Beste ${data.target === "internal" ? "fleet/admin team" : "garagemedewerker"},</p>
           <p style="margin:0 0 24px;color:#334155;font-size:14px;">
-            Hierbij melden wij schade aan onderstaand voertuig. Graag zo spoedig mogelijk inplannen voor reparatie.
+            Hierbij melden wij schade aan onderstaand voertuig. ${data.target === "internal" ? "Graag intern beoordelen en de juiste opvolging bepalen." : "Graag zo spoedig mogelijk inplannen voor reparatie."}
           </p>
 
           <table width="100%" cellpadding="0" cellspacing="0" style="background:#fef2f2;border-radius:6px;border:1px solid #fecaca;margin-bottom:16px;">
@@ -109,11 +112,11 @@ function buildEmailHtml(data: {
 
           ${photosHtml}
 
-          <p style="margin:24px 0 0;color:#334155;font-size:14px;">Graag ontvangen wij van u een offerte voor de reparatie. Voor vragen kunt u contact opnemen met JA Werkt.</p>
+          <p style="margin:24px 0 0;color:#334155;font-size:14px;">${data.target === "internal" ? "Let op: bestuurdergegevens zijn alleen voor interne opvolging toegevoegd." : "Graag ontvangen wij van u een offerte voor de reparatie. Voor vragen kunt u contact opnemen met JA Werkt."}</p>
           <p style="margin:16px 0 0;color:#334155;font-size:14px;">Met vriendelijke groet,<br><strong>JA Werkt</strong></p>
         </td></tr>
         <tr><td style="background:#f8fafc;padding:16px 32px;border-top:1px solid #e2e8f0;">
-          <p style="margin:0;color:#94a3b8;font-size:12px;text-align:center;">Automatische schademelding.</p>
+          <p style="margin:0;color:#94a3b8;font-size:12px;text-align:center;">Automatische schademelding via interne regie-flow.</p>
         </td></tr>
       </table>
     </td></tr>
@@ -152,13 +155,20 @@ Deno.serve(async (req) => {
     );
 
     const body = await req.json();
-    const { report_id } = body as { report_id: string };
+    const { report_id, target = "internal" } = body as { report_id: string; target?: "internal" | "external" };
     if (!report_id) return json({ error: "report_id required" }, 400);
+
+    const { data: org } = await serviceClient
+      .from("organizations")
+      .select("settings")
+      .eq("id", orgId)
+      .maybeSingle();
 
     const { data: report, error: repErr } = await serviceClient
       .from("vehicle_damage_reports")
       .select(`
         id, reported_at, damage_type, description, photos, garage_email, cost_estimate,
+        internal_contact_email, external_contact_email, contact_phone_shared, urgency,
         vehicle:vehicle_id(license_plate, brand, model),
         employee:employee_id(candidates:candidate_id(first_name, last_name, phone, email))
       `)
@@ -169,7 +179,15 @@ Deno.serve(async (req) => {
     if (repErr || !report) return json({ error: "Schademelding niet gevonden" }, 404);
 
     const r = report as any;
-    if (!r.garage_email) return json({ error: "Geen garage e-mailadres ingevuld" }, 400);
+    const damageSettings = (org?.settings as any)?.damage_contact_settings ?? {};
+    const sharePhoneExternally = Boolean(damageSettings.share_driver_phone_externally || r.contact_phone_shared);
+    const recipient = target === "external"
+      ? (r.external_contact_email || r.garage_email)
+      : (r.internal_contact_email || damageSettings.internal_email || r.garage_email);
+
+    if (!recipient) {
+      return json({ error: target === "external" ? "Geen extern e-mailadres ingevuld" : "Geen intern contactadres ingesteld" }, 400);
+    }
 
     // Build signed URLs for photos (1 hour TTL)
     const photoUrls: string[] = [];
@@ -197,14 +215,15 @@ Deno.serve(async (req) => {
       description: r.description,
       costEstimate: r.cost_estimate,
       employeeName,
-      employeePhone: empCand?.phone ?? null,
-      employeeEmail: empCand?.email ?? null,
+      employeePhone: target === "internal" || sharePhoneExternally ? empCand?.phone ?? null : null,
+      employeeEmail: target === "internal" || sharePhoneExternally ? empCand?.email ?? null : null,
       photoUrls,
+      target,
     });
 
     const result = await sendViaOutlookAccount({
       orgId,
-      to: r.garage_email,
+      to: recipient,
       subject,
       htmlBody: html,
       sentBy: user.id,
@@ -223,10 +242,20 @@ Deno.serve(async (req) => {
       body: `Schademelding voor ${vehicleLabel}`,
       sent_at: new Date().toISOString(),
       sent_by: user.id,
-      email_to: [r.garage_email],
+      email_to: [recipient],
     });
 
-    return json({ success: true, to: r.garage_email });
+    await serviceClient
+      .from("vehicle_damage_reports")
+      .update({
+        route_status: target === "external" ? "forwarded_external" : "internal_notified",
+        garage_notified: true,
+        garage_notified_at: new Date().toISOString(),
+      })
+      .eq("id", report_id)
+      .eq("organization_id", orgId);
+
+    return json({ success: true, to: recipient, target });
   } catch (err: any) {
     console.error("send-damage-report error:", err);
     return json({ error: err.message ?? "Unknown error" }, 500);

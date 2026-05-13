@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
+import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -26,27 +27,23 @@ import { toast } from 'sonner';
 import { formatDate, formatEUR } from '@/lib/format';
 import { Plus, ShieldAlert, CheckCircle2, Bell, MoreHorizontal, Pencil, Trash2, RotateCcw } from 'lucide-react';
 import { logAudit } from '@/lib/audit';
-
-const DAMAGE_TYPES = [
-  { value: 'lekke_band', label: 'Lekke band' },
-  { value: 'dashboardlampje', label: 'Dashboardlampje' },
-  { value: 'motorstoring', label: 'Motorstoring' },
-  { value: 'carrosserie', label: 'Carrosserie' },
-  { value: 'ruitschade', label: 'Ruitschade' },
-  { value: 'overig', label: 'Overig' },
-];
+import { DAMAGE_ROUTE_STATUS_LABELS, DAMAGE_TYPES, damageTypeIsUrgent, damageTypeLabel } from '@/lib/damage';
+import { normalizeDamageContactSettings } from '@/lib/engagement';
 
 const typeBadgeClass: Record<string, string> = {
   lekke_band: 'bg-orange-100 text-orange-700 border-0',
   dashboardlampje: 'bg-yellow-100 text-yellow-700 border-0',
-  motorstoring: 'bg-destructive/10 text-destructive border-0',
-  carrosserie: 'bg-orange-100 text-orange-700 border-0',
-  ruitschade: 'bg-orange-100 text-orange-700 border-0',
+  pech_stilstand: 'bg-destructive/10 text-destructive border-0',
+  ongeval: 'bg-destructive/10 text-destructive border-0',
+  schade_exterieur: 'bg-orange-100 text-orange-700 border-0',
+  schade_interieur: 'bg-orange-100 text-orange-700 border-0',
+  onderhoud: 'bg-blue-100 text-blue-700 border-0',
   overig: 'bg-muted text-muted-foreground border-0',
 };
 
 const VehicleDamageTab = ({ vehicle }: { vehicle: any }) => {
   const orgId = useOrganizationId();
+  const { profile } = useAuth();
   const qc = useQueryClient();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editingReport, setEditingReport] = useState<any | null>(null);
@@ -58,13 +55,26 @@ const VehicleDamageTab = ({ vehicle }: { vehicle: any }) => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('vehicle_damage_reports')
-        .select('*, employees(id, candidates(first_name, last_name))')
+        .select('*, employees(id, candidates(first_name, last_name, phone, email))')
         .eq('vehicle_id', vehicle.id)
         .order('reported_at', { ascending: false });
       if (error) throw error;
       return data as any[];
     },
   });
+
+  const { data: org } = useQuery({
+    queryKey: ['damage-contact-settings', orgId],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('organizations').select('settings').eq('id', orgId).single();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!orgId,
+  });
+
+  const damageSettings = normalizeDamageContactSettings((org?.settings as any)?.damage_contact_settings);
+  const canSeeDriverContact = damageSettings.show_driver_contact_to_roles.includes(profile?.role ?? '');
 
   const resolveMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -119,11 +129,11 @@ const VehicleDamageTab = ({ vehicle }: { vehicle: any }) => {
         throw new Error(msg);
       }
       const { error } = await supabase.from('vehicle_damage_reports')
-        .update({ garage_notified: true, garage_notified_at: new Date().toISOString() } as any)
+        .update({ garage_notified: true, garage_notified_at: new Date().toISOString(), route_status: 'internal_notified' } as any)
         .eq('id', id);
       if (error) throw error;
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['vehicle-damage', vehicle.id] }); toast.success('Garage genotificeerd — email verstuurd'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['vehicle-damage', vehicle.id] }); toast.success('Interne regie geïnformeerd'); },
     onError: (e: any) => toast.error(`Notificatie mislukt: ${e.message}`),
   });
 
@@ -147,7 +157,7 @@ const VehicleDamageTab = ({ vehicle }: { vehicle: any }) => {
         reports.map(r => {
           const emp = r.employees?.candidates;
           const empName = emp ? `${emp.first_name} ${emp.last_name}` : '—';
-          const typeLabel = DAMAGE_TYPES.find(d => d.value === r.damage_type)?.label ?? r.damage_type;
+          const typeLabel = damageTypeLabel(r.damage_type);
 
           return (
             <Card key={r.id}>
@@ -158,6 +168,8 @@ const VehicleDamageTab = ({ vehicle }: { vehicle: any }) => {
                   <span className="text-muted-foreground">·</span>
                   <span>{empName}</span>
                   <Badge variant="secondary" className={typeBadgeClass[r.damage_type] ?? typeBadgeClass.overig}>{typeLabel}</Badge>
+                  {r.urgency === 'urgent' && <Badge variant="secondary" className="bg-destructive/10 text-destructive border-0">Urgent</Badge>}
+                  <Badge variant="outline">{DAMAGE_ROUTE_STATUS_LABELS[r.route_status] ?? r.route_status ?? 'Interne regie'}</Badge>
                   <Badge variant="secondary" className={r.resolved ? 'bg-primary/10 text-primary border-0' : 'bg-destructive/10 text-destructive border-0'}>
                     {r.resolved ? 'Opgelost' : 'Open'}
                   </Badge>
@@ -165,6 +177,11 @@ const VehicleDamageTab = ({ vehicle }: { vehicle: any }) => {
 
                 {/* Description */}
                 <p className="text-sm">{r.description}</p>
+                {canSeeDriverContact && emp && (
+                  <p className="text-xs text-muted-foreground">
+                    Contact bestuurder: {emp.phone || 'geen telefoon'}{emp.email ? ` · ${emp.email}` : ''}
+                  </p>
+                )}
 
                 {/* Photos */}
                 {r.photos && r.photos.length > 0 && (
@@ -182,13 +199,13 @@ const VehicleDamageTab = ({ vehicle }: { vehicle: any }) => {
                   <p className="text-sm text-muted-foreground">Geschatte kosten: <span className="font-medium text-foreground">{formatEUR(r.cost_estimate)}</span></p>
                 )}
 
-                {/* Garage */}
-                {r.garage_notified ? (
-                  <p className="text-xs text-primary">✓ Garage genotificeerd op {formatDate(r.garage_notified_at)}</p>
+                {/* Internal routing */}
+                {r.garage_notified || r.route_status === 'internal_notified' ? (
+                  <p className="text-xs text-primary">✓ Interne regie geïnformeerd op {formatDate(r.garage_notified_at)}</p>
                 ) : (
                   !r.resolved && (
                     <Button size="sm" variant="outline" onClick={() => notifyGarageMutation.mutate(r.id)}>
-                      <Bell className="h-3.5 w-3.5 mr-1" /> Garage notificeren
+                      <Bell className="h-3.5 w-3.5 mr-1" /> Interne regie informeren
                     </Button>
                   )
                 )}
@@ -241,6 +258,7 @@ const VehicleDamageTab = ({ vehicle }: { vehicle: any }) => {
         onOpenChange={setSheetOpen}
         vehicleId={vehicle.id}
         orgId={orgId}
+        defaultInternalEmail={damageSettings.internal_email}
         onDone={() => qc.invalidateQueries({ queryKey: ['vehicle-damage', vehicle.id] })}
       />
 
@@ -250,6 +268,7 @@ const VehicleDamageTab = ({ vehicle }: { vehicle: any }) => {
         onOpenChange={(o) => { if (!o) setEditingReport(null); }}
         vehicleId={vehicle.id}
         orgId={orgId}
+        defaultInternalEmail={damageSettings.internal_email}
         onDone={() => qc.invalidateQueries({ queryKey: ['vehicle-damage', vehicle.id] })}
         existing={editingReport}
       />
@@ -282,12 +301,12 @@ const VehicleDamageTab = ({ vehicle }: { vehicle: any }) => {
 
 /* ─── Damage Sheet (create + edit) ─────────────────────── */
 
-const DamageSheet = ({ open, onOpenChange, vehicleId, orgId, onDone, existing }: {
+const DamageSheet = ({ open, onOpenChange, vehicleId, orgId, onDone, existing, defaultInternalEmail }: {
   open: boolean; onOpenChange: (o: boolean) => void; vehicleId: string; orgId: string | null; onDone: () => void;
-  existing?: any;
+  existing?: any; defaultInternalEmail?: string | null;
 }) => {
   const isEdit = !!existing;
-  const [form, setForm] = useState({ employee_id: '', damage_type: 'overig', description: '', garage_email: '', cost_estimate: '' });
+  const [form, setForm] = useState({ employee_id: '', damage_type: 'overig', description: '', internal_contact_email: '', external_contact_email: '', cost_estimate: '' });
   const [files, setFiles] = useState<File[]>([]);
   const [saving, setSaving] = useState(false);
 
@@ -299,15 +318,16 @@ const DamageSheet = ({ open, onOpenChange, vehicleId, orgId, onDone, existing }:
         employee_id: existing.employee_id ?? '',
         damage_type: existing.damage_type ?? 'overig',
         description: existing.description ?? '',
-        garage_email: existing.garage_email ?? '',
+        internal_contact_email: existing.internal_contact_email ?? existing.garage_email ?? '',
+        external_contact_email: existing.external_contact_email ?? '',
         cost_estimate: existing.cost_estimate != null ? String(existing.cost_estimate) : '',
       });
     } else {
-      setForm({ employee_id: '', damage_type: 'overig', description: '', garage_email: '', cost_estimate: '' });
+      setForm({ employee_id: '', damage_type: 'overig', description: '', internal_contact_email: defaultInternalEmail ?? '', external_contact_email: '', cost_estimate: '' });
     }
     setFiles([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, existing?.id]);
+  }, [open, existing?.id, defaultInternalEmail]);
 
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
 
@@ -348,7 +368,13 @@ const DamageSheet = ({ open, onOpenChange, vehicleId, orgId, onDone, existing }:
         employee_id: form.employee_id,
         damage_type: form.damage_type,
         description: form.description,
-        garage_email: form.garage_email || null,
+        garage_email: form.internal_contact_email || null,
+        internal_contact_email: form.internal_contact_email || null,
+        external_contact_email: form.external_contact_email || null,
+        contact_route: 'internal_fleet',
+        route_status: 'pending_internal',
+        urgency: damageTypeIsUrgent(form.damage_type) ? 'urgent' : 'normal',
+        contact_phone_shared: false,
         cost_estimate: form.cost_estimate ? parseFloat(form.cost_estimate) : null,
       };
 
@@ -380,24 +406,24 @@ const DamageSheet = ({ open, onOpenChange, vehicleId, orgId, onDone, existing }:
         logAudit({ action: 'create', tableName: 'vehicle_damage_reports', recordId: reportId ?? 'new' });
       }
 
-      if (notifyGarage && reportId && form.garage_email) {
+      if (notifyGarage && reportId && form.internal_contact_email) {
         const { data: notifyData, error: notifyErr } = await supabase.functions.invoke('send-damage-report', {
-          body: { report_id: reportId },
+          body: { report_id: reportId, target: 'internal' },
         });
         if (notifyErr) {
-          toast.error(`Email naar garage mislukt: ${(notifyData as any)?.error ?? notifyErr.message}`);
+          toast.error(`Interne melding mislukt: ${(notifyData as any)?.error ?? notifyErr.message}`);
         } else {
           await supabase.from('vehicle_damage_reports')
-            .update({ garage_notified: true, garage_notified_at: new Date().toISOString() } as any)
+            .update({ garage_notified: true, garage_notified_at: new Date().toISOString(), route_status: 'internal_notified' } as any)
             .eq('id', reportId);
-          toast.info(`Email verstuurd naar ${form.garage_email}`);
+          toast.info(`Interne melding verstuurd naar ${form.internal_contact_email}`);
         }
       }
 
       toast.success(isEdit ? 'Schademelding bijgewerkt' : 'Schademelding opgeslagen');
       onDone();
       onOpenChange(false);
-      setForm({ employee_id: '', damage_type: 'overig', description: '', garage_email: '', cost_estimate: '' });
+      setForm({ employee_id: '', damage_type: 'overig', description: '', internal_contact_email: defaultInternalEmail ?? '', external_contact_email: '', cost_estimate: '' });
       setFiles([]);
     } catch (e: any) {
       toast.error(e.message);
@@ -454,8 +480,14 @@ const DamageSheet = ({ open, onOpenChange, vehicleId, orgId, onDone, existing }:
           </div>
 
           <div>
-            <Label>E-mail garage (optioneel)</Label>
-            <Input type="email" value={form.garage_email} onChange={e => set('garage_email', e.target.value)} placeholder="garage@voorbeeld.nl" />
+            <Label>Interne melding naar (optioneel)</Label>
+            <Input type="email" value={form.internal_contact_email} onChange={e => set('internal_contact_email', e.target.value)} placeholder="fleet@bedrijf.nl" />
+            <p className="text-xs text-muted-foreground mt-1">Default is interne regie; bestuurdergegevens worden niet automatisch extern gedeeld.</p>
+          </div>
+
+          <div>
+            <Label>Extern contact voor opvolging (optioneel)</Label>
+            <Input type="email" value={form.external_contact_email} onChange={e => set('external_contact_email', e.target.value)} placeholder="garage@voorbeeld.nl" />
           </div>
 
           <div>
@@ -467,9 +499,9 @@ const DamageSheet = ({ open, onOpenChange, vehicleId, orgId, onDone, existing }:
             <Button onClick={() => handleSave(false)} disabled={!form.employee_id || !form.description || !hasPhotoEvidence || saving}>
               {saving ? 'Opslaan...' : 'Opslaan'}
             </Button>
-            {form.garage_email && (
+            {form.internal_contact_email && (
               <Button variant="outline" onClick={() => handleSave(true)} disabled={!form.employee_id || !form.description || !hasPhotoEvidence || saving}>
-                <Bell className="h-4 w-4 mr-1" /> Opslaan & garage notificeren
+                <Bell className="h-4 w-4 mr-1" /> Opslaan & interne regie informeren
               </Button>
             )}
           </div>
