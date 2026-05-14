@@ -1,5 +1,5 @@
 import { createAdminClient, requireInternalProfile } from "../_shared/auth.ts";
-import { OUTLOOK_SCOPES, json } from "../_shared/outlook-accounts.ts";
+import { OUTLOOK_ADMIN_CONSENT_SCOPES, OUTLOOK_SCOPES, json } from "../_shared/outlook-accounts.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -7,6 +7,7 @@ const corsHeaders = {
 };
 
 const AUTH_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize";
+const ADMIN_CONSENT_URL = "https://login.microsoftonline.com/organizations/v2.0/adminconsent";
 
 function utf8(value: string) {
   return new TextEncoder().encode(value);
@@ -63,6 +64,7 @@ Deno.serve(async (req) => {
   const body = await req.json().catch(() => ({}));
   const scope = body.scope === "personal" ? "personal" : "organization";
   if (scope === "organization" && auth.role !== "admin") return json({ error: "Alleen admins kunnen bedrijfsmail koppelen" }, 403, corsHeaders);
+  const consentFlow = scope === "organization" && body.consent_flow === "admin" ? "admin" : "oauth";
 
   let targetUserId = auth.userId;
   if (scope === "personal" && body.target_user_id && body.target_user_id !== auth.userId) {
@@ -86,6 +88,7 @@ Deno.serve(async (req) => {
     user_id: auth.userId,
     target_user_id: targetUserId,
     scope,
+    consent_flow: consentFlow,
     return_to: safeReturnTo(body.return_to),
     nonce,
     iat: Math.floor(Date.now() / 1000),
@@ -104,14 +107,22 @@ Deno.serve(async (req) => {
   });
   if (error) return json({ error: error.message }, 400, corsHeaders);
 
-  const url = new URL(AUTH_URL);
+  const url = new URL(consentFlow === "admin" ? ADMIN_CONSENT_URL : AUTH_URL);
   url.searchParams.set("client_id", clientId);
-  url.searchParams.set("response_type", "code");
   url.searchParams.set("redirect_uri", redirectUri());
-  url.searchParams.set("response_mode", "query");
-  url.searchParams.set("scope", OUTLOOK_SCOPES);
   url.searchParams.set("state", state);
-  url.searchParams.set("prompt", "select_account");
+
+  if (consentFlow === "admin") {
+    url.searchParams.set("scope", OUTLOOK_ADMIN_CONSENT_SCOPES);
+  } else {
+    url.searchParams.set("response_type", "code");
+    url.searchParams.set("response_mode", "query");
+    url.searchParams.set("scope", OUTLOOK_SCOPES);
+    url.searchParams.set("prompt", body.force_consent ? "consent" : "select_account");
+    if (typeof body.login_hint === "string" && body.login_hint.includes("@")) {
+      url.searchParams.set("login_hint", body.login_hint.trim());
+    }
+  }
 
   return json({ authorization_url: url.toString() }, 200, corsHeaders);
 });

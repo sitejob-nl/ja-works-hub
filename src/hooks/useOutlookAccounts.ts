@@ -65,8 +65,10 @@ export function useOutlookInvoke() {
       return await invokeOutlookFunction<T>(functionName, body);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Outlook actie mislukt';
-      if (/reconnect|expired|verlopen|needs_reconnect/i.test(message)) {
-        toast.error('Outlook koppeling verlopen. Koppel opnieuw via Instellingen.');
+      if (/consent|AADSTS65001|reconnect|expired|verlopen|needs_reconnect/i.test(message)) {
+        toast.error(/consent|AADSTS65001/i.test(message)
+          ? 'Microsoft admin consent ontbreekt. Geef toestemming via Instellingen > Outlook.'
+          : 'Outlook koppeling verlopen. Koppel opnieuw via Instellingen.');
         navigate('/instellingen');
       }
       throw error;

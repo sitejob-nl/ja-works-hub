@@ -181,13 +181,16 @@ const EmailInbox = ({ selectedAccount }: { selectedAccount?: string }) => {
   };
 
   if (!canRead) {
+    const consentBlocked = /consent|AADSTS65001|toestemming/i.test(activeAccount?.status_reason || '');
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] gap-4 text-muted-foreground">
         <AlertCircle className="h-12 w-12" />
-        <p className="text-lg">Geen leesbare Outlook mailbox geselecteerd</p>
-        <p className="text-sm">{activeAccount?.status_reason || 'Ga naar Instellingen om Outlook accounts en rechten te beheren'}</p>
+        <p className="text-lg">{consentBlocked ? 'Microsoft toestemming nodig' : 'Geen leesbare Outlook mailbox geselecteerd'}</p>
+        <p className="max-w-xl text-center text-sm">
+          {activeAccount?.status_reason || 'Ga naar Instellingen om Outlook accounts en rechten te beheren'}
+        </p>
         <Button variant="outline" onClick={() => window.location.href = '/instellingen'}>
-          Naar Instellingen
+          {consentBlocked ? 'Outlook toestemming herstellen' : 'Naar Instellingen'}
         </Button>
       </div>
     );

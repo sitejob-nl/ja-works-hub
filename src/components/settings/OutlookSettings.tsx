@@ -48,9 +48,13 @@ function statusBadge(account: OutlookAccount) {
     return <Badge className="gap-1"><CheckCircle2 className="h-3 w-3" /> Actief</Badge>;
   }
   if (account.status === 'needs_test') return <Badge variant="outline">Test nodig</Badge>;
-  if (account.status === 'needs_reconnect') return <Badge variant="outline">Herkoppelen</Badge>;
+  if (account.status === 'needs_reconnect') return <Badge variant="outline">Consent/herkoppelen</Badge>;
   if (account.status === 'failed') return <Badge variant="destructive">Mislukt</Badge>;
   return <Badge variant="outline">{account.status || 'Concept'}</Badge>;
+}
+
+function needsMicrosoftConsent(account?: OutlookAccount | null) {
+  return Boolean(account && /consent|AADSTS65001|toestemming/i.test(`${account.status} ${account.status_reason ?? ''}`));
 }
 
 const OutlookSettings = () => {
@@ -78,16 +82,40 @@ const OutlookSettings = () => {
       searchParams.delete('outlook_scope');
       setSearchParams(searchParams, { replace: true });
     }
+    if (searchParams.get('outlook_admin_consent') === '1') {
+      toast.success('Microsoft admin consent is gegeven. Koppel nu het hoofdaccount opnieuw om nieuwe tokens op te slaan.');
+      queryClient.invalidateQueries({ queryKey: ['outlook-accounts-visible'] });
+      queryClient.invalidateQueries({ queryKey: ['outlook-accounts-admin'] });
+      searchParams.delete('outlook_admin_consent');
+      searchParams.delete('outlook_scope');
+      setSearchParams(searchParams, { replace: true });
+    }
+    if (searchParams.get('outlook_error')) {
+      toast.error(searchParams.get('outlook_error_description') || 'Outlook koppelen mislukt');
+      searchParams.delete('outlook_error');
+      searchParams.delete('outlook_error_description');
+      setSearchParams(searchParams, { replace: true });
+    }
   }, [queryClient, searchParams, setSearchParams]);
 
   const connect = useMutation({
-    mutationFn: async ({ scope, targetUserId }: { scope: 'organization' | 'personal'; targetUserId?: string }) => {
-      setConnectingKey(targetUserId ? `${scope}:${targetUserId}` : scope);
+    mutationFn: async ({ scope, targetUserId, forceConsent, adminConsent, loginHint }: {
+      scope: 'organization' | 'personal';
+      targetUserId?: string;
+      forceConsent?: boolean;
+      adminConsent?: boolean;
+      loginHint?: string | null;
+    }) => {
+      const key = adminConsent ? 'organization:admin-consent' : targetUserId ? `${scope}:${targetUserId}` : scope;
+      setConnectingKey(key);
       const returnTo = `${window.location.origin}${window.location.pathname}`;
       return invokeOutlookFunction<{ authorization_url: string }>('outlook-start', {
         scope,
         target_user_id: targetUserId,
         return_to: returnTo,
+        force_consent: forceConsent,
+        consent_flow: adminConsent ? 'admin' : undefined,
+        login_hint: loginHint || undefined,
       });
     },
     onSuccess: (data) => {
@@ -300,10 +328,29 @@ const OutlookSettings = () => {
                   </p>
                 </div>
                 {isAdmin && (
-                  <Button size="sm" onClick={() => connect.mutate({ scope: 'organization' })} disabled={connectingKey === 'organization'} className="gap-2">
-                    {connectingKey === 'organization' ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
-                    {orgCredential ? 'Hoofdaccount herkoppelen' : 'Hoofdaccount koppelen'}
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    {needsMicrosoftConsent(orgCredential) && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => connect.mutate({ scope: 'organization', adminConsent: true })}
+                        disabled={connectingKey === 'organization:admin-consent'}
+                        className="gap-2"
+                      >
+                        {connectingKey === 'organization:admin-consent' ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                        Admin consent geven
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      onClick={() => connect.mutate({ scope: 'organization', forceConsent: true, loginHint: orgCredential?.email })}
+                      disabled={connectingKey === 'organization'}
+                      className="gap-2"
+                    >
+                      {connectingKey === 'organization' ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                      {orgCredential ? 'Hoofdaccount herkoppelen' : 'Hoofdaccount koppelen'}
+                    </Button>
+                  </div>
                 )}
               </div>
 
@@ -321,6 +368,9 @@ const OutlookSettings = () => {
                     </div>
                     {isAdmin && (
                       <div className="flex flex-wrap gap-2">
+                        {needsMicrosoftConsent(orgCredential) && (
+                          <Button variant="outline" size="sm" onClick={() => connect.mutate({ scope: 'organization', adminConsent: true })}>Admin consent</Button>
+                        )}
                         <Button variant="outline" size="sm" onClick={() => action.mutate({ action: 'test_mail', account_id: orgCredential.account_id })}>Test mail</Button>
                         <Button variant="outline" size="sm" onClick={() => action.mutate({ action: 'test_calendar', account_id: orgCredential.account_id })}>Test agenda</Button>
                         <Button variant="outline" size="sm" onClick={() => action.mutate({ action: 'set_default', account_id: orgCredential.account_id })}>Maak default</Button>

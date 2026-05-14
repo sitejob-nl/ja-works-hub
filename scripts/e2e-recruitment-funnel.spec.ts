@@ -162,7 +162,7 @@ function blockingFailures(failures: string[]): string[] {
   );
 }
 
-test("Recruiterfunnel: kandidaat komt binnen, CV analyse, match, plaatsing, portaal, woning, auto, ziekmelding en uren", async ({ page }) => {
+test("Recruiterfunnel: kandidaat komt binnen, CV analyse, match, plaatsing, portaal, woning, auto, ziekmelding en uren", async ({ page, browser }, testInfo) => {
   requireMutatingWorkflows();
   test.setTimeout(720_000);
 
@@ -265,13 +265,22 @@ test("Recruiterfunnel: kandidaat komt binnen, CV analyse, match, plaatsing, port
   const candidateId = idFromUrl(page.url(), "/kandidaten");
   await expect(page.getByRole("heading", { name: new RegExp(`${candidateFirst}.*${escapeRegExp(candidateLast)}`) })).toBeVisible();
 
-  await page.goto(profileUrl, { waitUntil: "domcontentloaded" });
-  await expect(page.getByRole("heading", { name: new RegExp(`Hoi ${candidateFirst}`) })).toBeVisible({ timeout: 20_000 });
-  await fillTextareaAfterLabel(page, "Beschikbaarheid", "Per direct fulltime beschikbaar voor ploegendienst.");
-  await fillTagAfterLabel(page, "Certificaten", "VCA");
-  await page.locator('input[accept=".pdf,.doc,.docx,image/*"]').setInputFiles(pdfPayload(`cv-${suffix}.pdf`));
-  await page.getByRole("button", { name: /Profiel opslaan/i }).click();
-  await expect(page.getByText(/Je profiel is aangevuld/i)).toBeVisible({ timeout: 30_000 });
+  const publicContext = await browser.newContext({
+    baseURL: testInfo.project.use.baseURL as string,
+    viewport: { width: 1400, height: 900 },
+  });
+  const publicPage = await publicContext.newPage();
+  try {
+    await publicPage.goto(profileUrl, { waitUntil: "domcontentloaded" });
+    await expect(publicPage.getByRole("heading", { name: new RegExp(`Hoi ${candidateFirst}`) })).toBeVisible({ timeout: 20_000 });
+    await fillTextareaAfterLabel(publicPage, "Beschikbaarheid", "Per direct fulltime beschikbaar voor ploegendienst.");
+    await fillTagAfterLabel(publicPage, "Certificaten", "VCA");
+    await publicPage.locator('input[accept=".pdf,.doc,.docx,image/*"]').setInputFiles(pdfPayload(`cv-${suffix}.pdf`));
+    await publicPage.getByRole("button", { name: /Profiel opslaan/i }).click();
+    await expect(publicPage.getByText(/Je profiel is aangevuld/i)).toBeVisible({ timeout: 30_000 });
+  } finally {
+    await publicContext.close();
+  }
 
   await ensureLoggedIn(page);
   await page.goto(`/kandidaten/${candidateId}`, { waitUntil: "domcontentloaded" });

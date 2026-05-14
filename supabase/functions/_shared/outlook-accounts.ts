@@ -6,10 +6,22 @@ export const OUTLOOK_SCOPES = [
   "email",
   "offline_access",
   "User.Read",
+  "Mail.ReadWrite",
   "Mail.ReadWrite.Shared",
   "Mail.Send",
   "Mail.Send.Shared",
+  "Calendars.ReadWrite",
   "Calendars.ReadWrite.Shared",
+].join(" ");
+
+export const OUTLOOK_ADMIN_CONSENT_SCOPES = [
+  "https://graph.microsoft.com/User.Read",
+  "https://graph.microsoft.com/Mail.ReadWrite",
+  "https://graph.microsoft.com/Mail.ReadWrite.Shared",
+  "https://graph.microsoft.com/Mail.Send",
+  "https://graph.microsoft.com/Mail.Send.Shared",
+  "https://graph.microsoft.com/Calendars.ReadWrite",
+  "https://graph.microsoft.com/Calendars.ReadWrite.Shared",
 ].join(" ");
 
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
@@ -127,6 +139,14 @@ export class OutlookError extends Error {
     this.status = status;
     this.retryAfter = retryAfter;
   }
+}
+
+export function isConsentError(message: string | null | undefined): boolean {
+  return /AADSTS65001|AADSTS65004|consent_required|not consented|has not consented/i.test(String(message ?? ""));
+}
+
+export function consentRequiredMessage(): string {
+  return "Microsoft admin consent ontbreekt voor SiteJob Uitzend HUB. Geef als tenant-admin toestemming en koppel daarna het hoofdaccount opnieuw.";
 }
 
 export function json(body: unknown, status = 200, corsHeaders: Record<string, string> = {}) {
@@ -433,7 +453,7 @@ async function refreshToken(admin: AdminClient, credential: MailAccountRow, toke
       if (res.status === 400 || body.error === "invalid_grant") {
         await admin.from("mail_accounts").update({
           status: "needs_reconnect",
-          last_error: message,
+          last_error: isConsentError(message) ? consentRequiredMessage() : message,
           refreshing_at: null,
         }).eq("id", credential.id);
       }
@@ -597,6 +617,15 @@ export async function graphJson<T>(
 }
 
 export async function markGraphFailure(admin: AdminClient, provider: OutlookProvider, status: number, message: string) {
+  if (isConsentError(message)) {
+    const last_error = consentRequiredMessage();
+    await admin.from("mail_accounts").update({
+      status: "needs_reconnect",
+      last_error,
+    }).in("id", [provider.credential.id, provider.account.id]);
+    return;
+  }
+
   if (status === 401) {
     await admin.from("mail_accounts").update({
       status: "needs_reconnect",

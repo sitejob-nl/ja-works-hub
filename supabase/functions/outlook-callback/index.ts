@@ -1,5 +1,5 @@
 import { createAdminClient } from "../_shared/auth.ts";
-import { OUTLOOK_SCOPES, storeTokenSecret } from "../_shared/outlook-accounts.ts";
+import { OUTLOOK_SCOPES, isConsentError, consentRequiredMessage, storeTokenSecret } from "../_shared/outlook-accounts.ts";
 
 const TOKEN_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/token";
 const GRAPH_ME_URL = "https://graph.microsoft.com/v1.0/me?$select=id,displayName,mail,userPrincipalName";
@@ -9,6 +9,7 @@ type StatePayload = {
   user_id: string;
   target_user_id?: string;
   scope: "organization" | "personal";
+  consent_flow?: "admin" | "oauth";
   return_to: string;
   nonce: string;
   iat: number;
@@ -67,21 +68,45 @@ function connectedRedirect(returnTo: string, scope: string) {
   return new Response(null, { status: 303, headers: { Location: url.toString(), "Cache-Control": "no-store" } });
 }
 
+function statusRedirect(returnTo: string, params: Record<string, string>) {
+  const url = new URL(returnTo);
+  for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
+  return new Response(null, { status: 303, headers: { Location: url.toString(), "Cache-Control": "no-store" } });
+}
+
 Deno.serve(async (req) => {
   const url = new URL(req.url);
   const code = url.searchParams.get("code");
   const rawState = url.searchParams.get("state");
+  const adminConsent = url.searchParams.get("admin_consent");
+  const tenant = url.searchParams.get("tenant");
   const oauthError = url.searchParams.get("error_description") || url.searchParams.get("error");
-  if (oauthError) return errorPage(oauthError);
-  if (!code || !rawState) return errorPage("OAuth response mist code of state.");
 
   const clientId = Deno.env.get("MICROSOFT_CLIENT_ID");
   const clientSecret = Deno.env.get("MICROSOFT_CLIENT_SECRET");
   const stateSecret = Deno.env.get("OUTLOOK_OAUTH_STATE_SECRET") || clientSecret;
   if (!clientId || !clientSecret || !stateSecret) return errorPage("Outlook secrets ontbreken.");
 
-  const state = await verifyState(rawState, stateSecret);
-  if (!state) return errorPage("Ongeldige of verlopen OAuth state.");
+  const state = rawState ? await verifyState(rawState, stateSecret) : null;
+  if (oauthError) {
+    if (state?.return_to) {
+      return statusRedirect(state.return_to, {
+        outlook_error: isConsentError(oauthError) ? "consent_required" : "oauth_error",
+        outlook_error_description: isConsentError(oauthError) ? consentRequiredMessage() : oauthError.slice(0, 500),
+      });
+    }
+    return errorPage(oauthError);
+  }
+  if (!rawState || !state) return errorPage("Ongeldige of verlopen OAuth state.");
+
+  if (state.consent_flow === "admin") {
+    if (adminConsent !== "True") return statusRedirect(state.return_to, {
+      outlook_error: "admin_consent_denied",
+      outlook_error_description: "Microsoft admin consent is niet bevestigd.",
+    });
+  } else if (!code) {
+    return errorPage("OAuth response mist code.");
+  }
 
   const admin = createAdminClient();
   const stateHash = await sha256(rawState);
@@ -100,12 +125,32 @@ Deno.serve(async (req) => {
 
   await admin.from("outlook_oauth_states").update({ used_at: new Date().toISOString() }).eq("id", stored.id);
 
+  if (state.consent_flow === "admin") {
+    await admin.from("audit_log").insert({
+      organization_id: state.organization_id,
+      action: "update",
+      table_name: "mail_accounts",
+      record_id: null,
+      user_id: state.user_id,
+      new_values: {
+        event: "outlook_admin_consent",
+        tenant,
+      },
+    } as any).then(() => {});
+
+    return statusRedirect(state.return_to || `${Deno.env.get("FRONTEND_URL") || "https://ja-werkt.lovable.app"}/instellingen`, {
+      outlook_admin_consent: "1",
+      outlook_scope: state.scope,
+    });
+  }
+  const authCode = code!;
+
   const tokenRes = await fetch(TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       grant_type: "authorization_code",
-      code,
+      code: authCode,
       client_id: clientId,
       client_secret: clientSecret,
       redirect_uri: redirectUri(),
