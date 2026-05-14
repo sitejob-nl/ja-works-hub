@@ -10,9 +10,9 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { geocodeAndSaveProperty } from '@/lib/distance';
+import AddressAutocomplete from '@/components/shared/AddressAutocomplete';
+import { resolveAddressCoordinates } from '@/lib/pdok';
 import OwnerSelector from '@/components/housing/OwnerSelector';
 import { Upload } from 'lucide-react';
 
@@ -33,9 +33,9 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
 
   const defaults = {
     name: '', address_street: '', address_postal: '', address_city: '',
+    address_lat: null as number | null, address_lng: null as number | null,
     // owner
     owner_id: null as string | null,
-    ownership_type: '',
     rental_contract_start_date: '', rental_contract_end_date: '', rental_contract_notes: '',
     // permits
     has_rental_permit: false, rental_permit_number: '', rental_permit_expiry: '',
@@ -58,8 +58,8 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
       setForm({
         name: property.name ?? '', address_street: property.address_street ?? '',
         address_postal: property.address_postal ?? '', address_city: property.address_city ?? '',
+        address_lat: property.address_lat ?? null, address_lng: property.address_lng ?? null,
         owner_id: property.owner_id ?? null,
-        ownership_type: property.ownership_type ?? '',
         rental_contract_start_date: property.rental_contract_start_date ?? '',
         rental_contract_end_date: property.rental_contract_end_date ?? '',
         rental_contract_notes: property.rental_contract_notes ?? '',
@@ -126,13 +126,22 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
 
   const mutation = useMutation({
     mutationFn: async () => {
+      const address = await resolveAddressCoordinates({
+        street: form.address_street,
+        postal: form.address_postal,
+        city: form.address_city,
+        lat: form.address_lat,
+        lng: form.address_lng,
+      });
+
       const payload = {
         name: form.name?.trim() || null,
         address_street: form.address_street,
         address_postal: form.address_postal,
         address_city: form.address_city,
+        address_lat: address.lat,
+        address_lng: address.lng,
         owner_id: form.owner_id,
-        ownership_type: form.ownership_type || null,
         rental_contract_start_date: form.rental_contract_start_date || null,
         rental_contract_end_date: form.rental_contract_end_date || null,
         rental_contract_notes: form.rental_contract_notes || null,
@@ -178,8 +187,6 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
         ? (isEdit ? 'Pand bijgewerkt en contract geüpload' : 'Pand aangemaakt en contract geüpload')
         : (isEdit ? 'Pand bijgewerkt' : 'Pand aangemaakt'));
       onOpenChange(false);
-      // Fire-and-forget geocoding
-      geocodeAndSaveProperty(propertyId, form.address_street, form.address_postal, form.address_city);
     },
     onError: (e: any) => toast.error(e.message ?? 'Opslaan of uploaden mislukt'),
   });
@@ -197,11 +204,26 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
           {/* Section 1: Address */}
           <div className="space-y-3">
             <SectionHeader>Adresgegevens</SectionHeader>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="col-span-1"><Label>Straat *</Label><Input value={form.address_street} onChange={(e) => set('address_street', e.target.value)} /></div>
-              <div><Label>Postcode *</Label><Input value={form.address_postal} onChange={(e) => set('address_postal', e.target.value)} /></div>
-              <div><Label>Stad *</Label><Input value={form.address_city} onChange={(e) => set('address_city', e.target.value)} /></div>
-            </div>
+            <AddressAutocomplete
+              value={{
+                street: form.address_street,
+                postal: form.address_postal,
+                city: form.address_city,
+                lat: form.address_lat,
+                lng: form.address_lng,
+              }}
+              onChange={(address) => setForm((f) => ({
+                ...f,
+                address_street: address.street,
+                address_postal: address.postal,
+                address_city: address.city,
+                address_lat: address.lat ?? null,
+                address_lng: address.lng ?? null,
+              }))}
+              gridClassName="grid-cols-3 gap-3"
+              required
+              streetLabel="Straat"
+            />
             <div>
               <Label className="text-xs text-muted-foreground">Bijnaam (optioneel)</Label>
               <Input value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Laat leeg om adres als naam te tonen" />
@@ -217,32 +239,19 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
               <Label>Eigenaar</Label>
               <OwnerSelector value={form.owner_id} onChange={(id) => set('owner_id', id)} showManageLink />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Eigendomstype</Label>
-                <Select value={form.ownership_type} onValueChange={(v) => set('ownership_type', v)}>
-                  <SelectTrigger><SelectValue placeholder="Selecteer..." /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="huur">Huur</SelectItem>
-                    <SelectItem value="eigendom">Eigendom</SelectItem>
-                    <SelectItem value="beheer">Beheer</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Huurcontractbestand</Label>
-                <Input
-                  type="file"
-                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                  onChange={(e) => setRentalContractFile(e.target.files?.[0] ?? null)}
-                />
-                {rentalContractFile && (
-                  <p className="mt-1 truncate text-xs text-muted-foreground">
-                    <Upload className="mr-1 inline h-3 w-3" />
-                    {rentalContractFile.name}
-                  </p>
-                )}
-              </div>
+            <div>
+              <Label>Huurcontractbestand</Label>
+              <Input
+                type="file"
+                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                onChange={(e) => setRentalContractFile(e.target.files?.[0] ?? null)}
+              />
+              {rentalContractFile && (
+                <p className="mt-1 truncate text-xs text-muted-foreground">
+                  <Upload className="mr-1 inline h-3 w-3" />
+                  {rentalContractFile.name}
+                </p>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div><Label>Huurcontract begindatum</Label><Input type="date" value={form.rental_contract_start_date} onChange={(e) => set('rental_contract_start_date', e.target.value)} /></div>

@@ -81,6 +81,8 @@ Deno.serve(async (req) => {
           address_postal: c?.address_postal,
           address_city: c?.address_city,
           address_country: c?.address_country,
+          address_lat: c?.address_lat,
+          address_lng: c?.address_lng,
           skills: c?.skills,
           certifications: c?.certifications,
           has_drivers_license: c?.has_drivers_license,
@@ -127,7 +129,7 @@ Deno.serve(async (req) => {
         const allowedFields = [
           "phone", "email", "date_of_birth", "nationality", "languages",
           "skills", "certifications", "address_street", "address_postal",
-          "address_city", "address_country", "has_drivers_license",
+          "address_city", "address_country", "address_lat", "address_lng", "has_drivers_license",
           "drivers_license_expiry", "availability_notes",
           "cv_file_url", "profile_photo_url",
         ];

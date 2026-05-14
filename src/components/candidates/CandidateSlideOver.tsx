@@ -12,6 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import TagInput from '@/components/ui/tag-input';
 import { toast } from 'sonner';
 import { logAudit } from '@/lib/audit';
+import AddressAutocomplete from '@/components/shared/AddressAutocomplete';
+import { resolveAddressCoordinates } from '@/lib/pdok';
 
 interface Props {
   open: boolean;
@@ -31,6 +33,7 @@ const sources = [
 const emptyForm = {
   first_name: '', last_name: '', date_of_birth: '', nationality: '',
   email: '', phone: '', address_street: '', address_postal: '', address_city: '',
+  address_lat: null as number | null, address_lng: null as number | null,
   bsn: '', iban: '', has_drivers_license: false, drivers_license_expiry: '',
   skills: [] as string[], languages: [] as string[], source: '', notes: '',
 };
@@ -54,6 +57,8 @@ const CandidateSlideOver = ({ open, onOpenChange, candidate }: Props) => {
         address_street: candidate.address_street ?? '',
         address_postal: candidate.address_postal ?? '',
         address_city: candidate.address_city ?? '',
+        address_lat: candidate.address_lat ?? null,
+        address_lng: candidate.address_lng ?? null,
         bsn: candidate.bsn ?? '',
         iban: candidate.iban ?? '',
         has_drivers_license: candidate.has_drivers_license ?? false,
@@ -72,6 +77,13 @@ const CandidateSlideOver = ({ open, onOpenChange, candidate }: Props) => {
 
   const mutation = useMutation({
     mutationFn: async () => {
+      const address = await resolveAddressCoordinates({
+        street: form.address_street,
+        postal: form.address_postal,
+        city: form.address_city,
+        lat: form.address_lat,
+        lng: form.address_lng,
+      });
       const payload = {
         ...form,
         date_of_birth: form.date_of_birth || null,
@@ -86,12 +98,14 @@ const CandidateSlideOver = ({ open, onOpenChange, candidate }: Props) => {
         address_street: form.address_street || null,
         address_postal: form.address_postal || null,
         address_city: form.address_city || null,
+        address_lat: address.lat,
+        address_lng: address.lng,
       };
       if (isEdit) {
-        const { error } = await supabase.from('candidates').update(payload).eq('id', candidate.id);
+        const { error } = await supabase.from('candidates').update(payload as any).eq('id', candidate.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('candidates').insert({ ...payload, organization_id: orgId });
+        const { error } = await supabase.from('candidates').insert({ ...payload, organization_id: orgId } as any);
         if (error) throw error;
       }
     },
@@ -129,11 +143,19 @@ const CandidateSlideOver = ({ open, onOpenChange, candidate }: Props) => {
             <div><Label>E-mail</Label><Input value={form.email} onChange={(e) => set('email', e.target.value)} /></div>
             <div><Label>Telefoon</Label><Input value={form.phone} onChange={(e) => set('phone', e.target.value)} /></div>
           </div>
-          <div className="grid grid-cols-3 gap-3">
-            <div><Label>Straat</Label><Input value={form.address_street} onChange={(e) => set('address_street', e.target.value)} /></div>
-            <div><Label>Postcode</Label><Input value={form.address_postal} onChange={(e) => set('address_postal', e.target.value)} /></div>
-            <div><Label>Stad</Label><Input value={form.address_city} onChange={(e) => set('address_city', e.target.value)} /></div>
-          </div>
+          <AddressAutocomplete
+            value={{ street: form.address_street, postal: form.address_postal, city: form.address_city, lat: form.address_lat, lng: form.address_lng }}
+            onChange={(address) => setForm((f) => ({
+              ...f,
+              address_street: address.street,
+              address_postal: address.postal,
+              address_city: address.city,
+              address_lat: address.lat ?? null,
+              address_lng: address.lng ?? null,
+            }))}
+            gridClassName="grid-cols-3 gap-3"
+            streetLabel="Straat"
+          />
           <div className="grid grid-cols-2 gap-3">
             <div><Label>BSN</Label><Input value={form.bsn} onChange={(e) => set('bsn', e.target.value)} /></div>
             <div><Label>IBAN</Label><Input value={form.iban} onChange={(e) => set('iban', e.target.value)} /></div>

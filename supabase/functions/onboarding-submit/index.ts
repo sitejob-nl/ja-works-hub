@@ -140,7 +140,7 @@ Deno.serve(async (req) => {
     // ─── POST: submit onboarding data ───
     if (req.method === "POST") {
       const body = await req.json();
-      const { token, personal_data, documents_accepted, form_id, responses } = body;
+      const { token, personal_data, documents_accepted, form_id, responses, address_geo } = body;
 
       if (!token) return json({ error: "Token required" }, 400);
 
@@ -191,7 +191,7 @@ Deno.serve(async (req) => {
         }
 
         // Build candidate updates from mapped fields
-        const candidateUpdates: Record<string, string> = {};
+        const candidateUpdates: Record<string, any> = {};
         const responseInserts: any[] = [];
 
         for (const [fieldId, value] of Object.entries(responses)) {
@@ -215,6 +215,15 @@ Deno.serve(async (req) => {
           });
         }
 
+        if (
+          address_geo &&
+          Number.isFinite(Number(address_geo.address_lat)) &&
+          Number.isFinite(Number(address_geo.address_lng))
+        ) {
+          candidateUpdates.address_lat = Number(address_geo.address_lat);
+          candidateUpdates.address_lng = Number(address_geo.address_lng);
+        }
+
         // Apply candidate updates
         if (Object.keys(candidateUpdates).length > 0) {
           await admin.from("candidates").update(candidateUpdates).eq("id", candidateId);
@@ -227,7 +236,7 @@ Deno.serve(async (req) => {
       }
       // ── Legacy fallback submission ──
       else if (personal_data) {
-        const allowed = ["bsn", "iban", "date_of_birth", "nationality", "address_street", "address_postal", "address_city", "address_country", "phone", "email"];
+        const allowed = ["bsn", "iban", "date_of_birth", "nationality", "address_street", "address_postal", "address_city", "address_country", "address_lat", "address_lng", "phone", "email"];
         const updates: Record<string, any> = {};
         for (const key of allowed) {
           if (personal_data[key] !== undefined && personal_data[key] !== null && personal_data[key] !== "") {

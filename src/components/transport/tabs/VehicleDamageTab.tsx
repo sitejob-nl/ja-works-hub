@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
@@ -32,14 +32,20 @@ import { normalizeDamageContactSettings } from '@/lib/engagement';
 
 const typeBadgeClass: Record<string, string> = {
   lekke_band: 'bg-orange-100 text-orange-700 border-0',
+  motorstoring: 'bg-yellow-100 text-yellow-700 border-0',
   dashboardlampje: 'bg-yellow-100 text-yellow-700 border-0',
   pech_stilstand: 'bg-destructive/10 text-destructive border-0',
   ongeval: 'bg-destructive/10 text-destructive border-0',
+  carrosserie: 'bg-orange-100 text-orange-700 border-0',
   schade_exterieur: 'bg-orange-100 text-orange-700 border-0',
   schade_interieur: 'bg-orange-100 text-orange-700 border-0',
+  ruitschade: 'bg-orange-100 text-orange-700 border-0',
   onderhoud: 'bg-blue-100 text-blue-700 border-0',
   overig: 'bg-muted text-muted-foreground border-0',
 };
+
+const assignableEmployeeStatuses = new Set(['onboarding', 'actief', 'ziek']);
+const isStoredUrl = (path: string) => /^https?:\/\//i.test(path);
 
 const VehicleDamageTab = ({ vehicle }: { vehicle: any }) => {
   const orgId = useOrganizationId();
@@ -61,6 +67,28 @@ const VehicleDamageTab = ({ vehicle }: { vehicle: any }) => {
       if (error) throw error;
       return data as any[];
     },
+  });
+
+  const damagePhotoPaths = useMemo(
+    () => Array.from(new Set(reports.flatMap((report: any) => ((report.photos ?? []) as string[]).filter(Boolean)))),
+    [reports]
+  );
+
+  const { data: damagePhotoUrls = {} } = useQuery({
+    queryKey: ['vehicle-damage-photo-urls', vehicle.id, damagePhotoPaths],
+    queryFn: async () => {
+      const entries = await Promise.all(
+        damagePhotoPaths.map(async (path) => {
+          if (isStoredUrl(path)) return [path, path] as const;
+          const { data, error } = await supabase.storage.from('documents').createSignedUrl(path, 60 * 10);
+          if (error) return [path, null] as const;
+          return [path, data.signedUrl] as const;
+        })
+      );
+      return Object.fromEntries(entries.filter(([, url]) => Boolean(url))) as Record<string, string>;
+    },
+    enabled: damagePhotoPaths.length > 0,
+    staleTime: 5 * 60 * 1000,
   });
 
   const { data: org } = useQuery({
@@ -137,11 +165,6 @@ const VehicleDamageTab = ({ vehicle }: { vehicle: any }) => {
     onError: (e: any) => toast.error(`Notificatie mislukt: ${e.message}`),
   });
 
-  const getPhotoUrl = (path: string) => {
-    const { data } = supabase.storage.from('documents').getPublicUrl(path);
-    return data.publicUrl;
-  };
-
   return (
     <div className="space-y-4 mt-4">
       <div className="flex justify-end">
@@ -187,8 +210,24 @@ const VehicleDamageTab = ({ vehicle }: { vehicle: any }) => {
                 {r.photos && r.photos.length > 0 && (
                   <div className="flex gap-2 flex-wrap">
                     {r.photos.map((p: string, i: number) => (
-                      <button key={i} onClick={() => setLightbox(getPhotoUrl(p))} className="h-16 w-16 rounded-md overflow-hidden border hover:ring-2 hover:ring-ring">
-                        <img src={getPhotoUrl(p)} alt={`Schade ${i + 1}`} className="h-full w-full object-cover" />
+                      <button
+                        key={p}
+                        onClick={() => {
+                          const url = damagePhotoUrls[p];
+                          if (!url) {
+                            toast.error('Foto wordt nog geladen of is niet beschikbaar');
+                            return;
+                          }
+                          setLightbox(url);
+                        }}
+                        className="h-16 w-16 rounded-md overflow-hidden border bg-muted hover:ring-2 hover:ring-ring"
+                        title={`Schadefoto ${i + 1} openen`}
+                      >
+                        {damagePhotoUrls[p] ? (
+                          <img src={damagePhotoUrls[p]} alt={`Schade ${i + 1}`} className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="h-full w-full animate-pulse bg-muted" />
+                        )}
                       </button>
                     ))}
                   </div>
@@ -332,14 +371,23 @@ const DamageSheet = ({ open, onOpenChange, vehicleId, orgId, onDone, existing, d
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
 
   const { data: employees = [] } = useQuery({
-    queryKey: ['active-employees', orgId],
+    queryKey: ['damage-assignable-employees', orgId, existing?.employee_id],
     queryFn: async () => {
       const { data, error } = await supabase.from('employees')
-        .select('id, candidates(first_name, last_name)')
+        .select('id, candidate_id, status, candidates!employees_candidate_id_fkey(first_name, last_name, employee_status, employee_number)')
         .eq('organization_id', orgId!)
-        .eq('status', 'actief');
+        .order('created_at', { ascending: false });
       if (error) throw error;
-      return data as any[];
+      return ((data ?? []) as any[])
+        .filter((employee) => {
+          const status = employee.candidates?.employee_status ?? employee.status;
+          return assignableEmployeeStatuses.has(status) || employee.id === existing?.employee_id;
+        })
+        .sort((a, b) => {
+          const aName = `${a.candidates?.last_name ?? ''} ${a.candidates?.first_name ?? ''}`.trim();
+          const bName = `${b.candidates?.last_name ?? ''} ${b.candidates?.first_name ?? ''}`.trim();
+          return aName.localeCompare(bName, 'nl');
+        });
     },
     enabled: !!orgId && open,
   });
@@ -364,8 +412,11 @@ const DamageSheet = ({ open, onOpenChange, vehicleId, orgId, onDone, existing, d
         newPhotoPaths.push(path);
       }
 
+      const selectedEmployee = employees.find((employee: any) => employee.id === form.employee_id) as any;
+
       const corePayload: any = {
         employee_id: form.employee_id,
+        candidate_id: selectedEmployee?.candidate_id ?? existing?.candidate_id ?? null,
         damage_type: form.damage_type,
         description: form.description,
         garage_email: form.internal_contact_email || null,
@@ -445,7 +496,10 @@ const DamageSheet = ({ open, onOpenChange, vehicleId, orgId, onDone, existing, d
               <SelectTrigger><SelectValue placeholder="Selecteer medewerker" /></SelectTrigger>
               <SelectContent>
                 {employees.map((e: any) => (
-                  <SelectItem key={e.id} value={e.id}>{e.candidates?.first_name} {e.candidates?.last_name}</SelectItem>
+                  <SelectItem key={e.id} value={e.id}>
+                    {e.candidates?.first_name} {e.candidates?.last_name}
+                    {e.candidates?.employee_number ? ` #${e.candidates.employee_number}` : ''}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>

@@ -9,6 +9,12 @@ export const DAMAGE_TYPES = [
   { value: 'overig', label: 'Overig', urgent: false },
 ] as const;
 
+export const LEGACY_DAMAGE_TYPE_LABELS: Record<string, string> = {
+  motorstoring: 'Motorstoring',
+  carrosserie: 'Carrosserie',
+  ruitschade: 'Ruitschade',
+};
+
 export const DAMAGE_ROUTE_STATUS_LABELS: Record<string, string> = {
   pending_internal: 'Wacht op interne regie',
   internal_notified: 'Interne regie geïnformeerd',
@@ -17,7 +23,7 @@ export const DAMAGE_ROUTE_STATUS_LABELS: Record<string, string> = {
 };
 
 export const damageTypeLabel = (value: string | null | undefined) =>
-  DAMAGE_TYPES.find((type) => type.value === value)?.label ?? value ?? 'Onbekend';
+  DAMAGE_TYPES.find((type) => type.value === value)?.label ?? LEGACY_DAMAGE_TYPE_LABELS[value ?? ''] ?? value ?? 'Onbekend';
 
 export const damageTypeIsUrgent = (value: string | null | undefined) =>
   DAMAGE_TYPES.find((type) => type.value === value)?.urgent ?? false;

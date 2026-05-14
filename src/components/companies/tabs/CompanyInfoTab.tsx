@@ -12,6 +12,8 @@ import { Pencil, X, Check, Search, Building2 } from 'lucide-react';
 import { toast } from 'sonner';
 import TagInput from '@/components/ui/tag-input';
 import { logAudit } from '@/lib/audit';
+import AddressAutocomplete from '@/components/shared/AddressAutocomplete';
+import { resolveAddressCoordinates } from '@/lib/pdok';
 
 const Field = ({ label, value }: { label: string; value: string | null | undefined }) => (
   <div>
@@ -62,6 +64,17 @@ const CompanyInfoTab = ({ company }: { company: any }) => {
       if (kvkPreview.visit_address?.postal) payload.address_postal = kvkPreview.visit_address.postal;
       if (kvkPreview.visit_address?.city) payload.address_city = kvkPreview.visit_address.city;
       if (kvkPreview.visit_address?.country) payload.address_country = kvkPreview.visit_address.country;
+      if (kvkPreview.visit_address?.street || kvkPreview.visit_address?.postal || kvkPreview.visit_address?.city) {
+        const address = await resolveAddressCoordinates({
+          street: kvkPreview.visit_address?.street ?? '',
+          postal: kvkPreview.visit_address?.postal ?? '',
+          city: kvkPreview.visit_address?.city ?? '',
+        });
+        payload.visit_address_lat = address.lat;
+        payload.visit_address_lng = address.lng;
+        payload.address_lat = address.lat;
+        payload.address_lng = address.lng;
+      }
       const { error } = await supabase.from('companies').update(payload).eq('id', company.id);
       if (error) throw error;
     },
@@ -76,14 +89,32 @@ const CompanyInfoTab = ({ company }: { company: any }) => {
 
   const save = useMutation({
     mutationFn: async () => {
+      const visitAddress = await resolveAddressCoordinates({
+        street: form.visit_address_street ?? '',
+        postal: form.visit_address_postal ?? '',
+        city: form.visit_address_city ?? '',
+        lat: form.visit_address_lat ?? form.address_lat ?? null,
+        lng: form.visit_address_lng ?? form.address_lng ?? null,
+      });
+      const invoiceAddress = sameAddress
+        ? visitAddress
+        : await resolveAddressCoordinates({
+          street: form.invoice_address_street ?? '',
+          postal: form.invoice_address_postal ?? '',
+          city: form.invoice_address_city ?? '',
+          lat: form.invoice_address_lat ?? null,
+          lng: form.invoice_address_lng ?? null,
+        });
       const payload: any = {
         name: form.name, kvk_number: form.kvk_number, btw_number: form.btw_number,
         language: form.language, legal_form: form.legal_form, sbi_codes: form.sbi_codes,
         cao: form.cao,
         visit_address_street: form.visit_address_street, visit_address_postal: form.visit_address_postal,
         visit_address_city: form.visit_address_city, visit_address_country: form.visit_address_country,
+        visit_address_lat: visitAddress.lat, visit_address_lng: visitAddress.lng,
         invoice_address_street: form.invoice_address_street, invoice_address_postal: form.invoice_address_postal,
         invoice_address_city: form.invoice_address_city, invoice_address_country: form.invoice_address_country,
+        invoice_address_lat: invoiceAddress.lat, invoice_address_lng: invoiceAddress.lng,
         iban: form.iban, bank_account_holder: form.bank_account_holder,
         authorized_signatory: form.authorized_signatory, vat_rate: form.vat_rate ? parseFloat(form.vat_rate) : null,
         invoice_email: form.invoice_email, invoice_cc: form.invoice_cc,
@@ -92,6 +123,7 @@ const CompanyInfoTab = ({ company }: { company: any }) => {
         // Keep old address fields synced with visit address
         address_street: form.visit_address_street, address_postal: form.visit_address_postal,
         address_city: form.visit_address_city, address_country: form.visit_address_country,
+        address_lat: visitAddress.lat, address_lng: visitAddress.lng,
       };
       const { error } = await supabase.from('companies').update(payload).eq('id', company.id);
       if (error) throw error;
@@ -115,6 +147,8 @@ const CompanyInfoTab = ({ company }: { company: any }) => {
         invoice_address_postal: f.visit_address_postal,
         invoice_address_city: f.visit_address_city,
         invoice_address_country: f.visit_address_country,
+        invoice_address_lat: f.visit_address_lat ?? f.address_lat ?? null,
+        invoice_address_lng: f.visit_address_lng ?? f.address_lng ?? null,
       }));
     }
   };
@@ -160,14 +194,37 @@ const CompanyInfoTab = ({ company }: { company: any }) => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="bg-card rounded-lg border p-6 space-y-4">
             <h4 className="text-sm font-medium text-muted-foreground">Bezoekadres</h4>
-            <div className="space-y-3">
-              <div><Label>Straat + nr</Label><Input value={form.visit_address_street ?? ''} onChange={e => { set('visit_address_street', e.target.value); if (sameAddress) set('invoice_address_street', e.target.value); }} /></div>
-              <div className="grid grid-cols-2 gap-3">
-                <div><Label>Postcode</Label><Input value={form.visit_address_postal ?? ''} onChange={e => { set('visit_address_postal', e.target.value); if (sameAddress) set('invoice_address_postal', e.target.value); }} /></div>
-                <div><Label>Stad</Label><Input value={form.visit_address_city ?? ''} onChange={e => { set('visit_address_city', e.target.value); if (sameAddress) set('invoice_address_city', e.target.value); }} /></div>
-              </div>
-              <div><Label>Land</Label><Input value={form.visit_address_country ?? ''} onChange={e => { set('visit_address_country', e.target.value); if (sameAddress) set('invoice_address_country', e.target.value); }} /></div>
-            </div>
+            <AddressAutocomplete
+              value={{
+                street: form.visit_address_street ?? '',
+                postal: form.visit_address_postal ?? '',
+                city: form.visit_address_city ?? '',
+                country: form.visit_address_country ?? '',
+                lat: form.visit_address_lat ?? form.address_lat ?? null,
+                lng: form.visit_address_lng ?? form.address_lng ?? null,
+              }}
+              onChange={(address) => setForm((f: any) => ({
+                ...f,
+                visit_address_street: address.street,
+                visit_address_postal: address.postal,
+                visit_address_city: address.city,
+                visit_address_country: address.country ?? f.visit_address_country,
+                visit_address_lat: address.lat ?? null,
+                visit_address_lng: address.lng ?? null,
+                ...(sameAddress ? {
+                  invoice_address_street: address.street,
+                  invoice_address_postal: address.postal,
+                  invoice_address_city: address.city,
+                  invoice_address_country: address.country ?? f.invoice_address_country,
+                  invoice_address_lat: address.lat ?? null,
+                  invoice_address_lng: address.lng ?? null,
+                } : {}),
+              }))}
+              gridClassName="grid-cols-2 gap-3"
+              streetClassName="col-span-2"
+              countryClassName="col-span-2"
+              showCountry
+            />
           </div>
 
           <div className="bg-card rounded-lg border p-6 space-y-4">
@@ -178,13 +235,30 @@ const CompanyInfoTab = ({ company }: { company: any }) => {
                 <label htmlFor="same-addr" className="text-xs text-muted-foreground cursor-pointer">Gelijk aan bezoekadres</label>
               </div>
             </div>
-            <div className="space-y-3">
-              <div><Label>Straat + nr</Label><Input value={form.invoice_address_street ?? ''} onChange={e => set('invoice_address_street', e.target.value)} disabled={sameAddress} /></div>
-              <div className="grid grid-cols-2 gap-3">
-                <div><Label>Postcode</Label><Input value={form.invoice_address_postal ?? ''} onChange={e => set('invoice_address_postal', e.target.value)} disabled={sameAddress} /></div>
-                <div><Label>Stad</Label><Input value={form.invoice_address_city ?? ''} onChange={e => set('invoice_address_city', e.target.value)} disabled={sameAddress} /></div>
-              </div>
-              <div><Label>Land</Label><Input value={form.invoice_address_country ?? ''} onChange={e => set('invoice_address_country', e.target.value)} disabled={sameAddress} /></div>
+            <div className={sameAddress ? 'pointer-events-none opacity-60' : undefined}>
+              <AddressAutocomplete
+                value={{
+                  street: form.invoice_address_street ?? '',
+                  postal: form.invoice_address_postal ?? '',
+                  city: form.invoice_address_city ?? '',
+                  country: form.invoice_address_country ?? '',
+                  lat: form.invoice_address_lat ?? null,
+                  lng: form.invoice_address_lng ?? null,
+                }}
+                onChange={(address) => setForm((f: any) => ({
+                  ...f,
+                  invoice_address_street: address.street,
+                  invoice_address_postal: address.postal,
+                  invoice_address_city: address.city,
+                  invoice_address_country: address.country ?? f.invoice_address_country,
+                  invoice_address_lat: address.lat ?? null,
+                  invoice_address_lng: address.lng ?? null,
+                }))}
+                gridClassName="grid-cols-2 gap-3"
+                streetClassName="col-span-2"
+                countryClassName="col-span-2"
+                showCountry
+              />
             </div>
           </div>
         </div>

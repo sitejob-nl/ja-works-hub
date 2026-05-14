@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { geocodePdokAddress } from '@/lib/pdok';
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 
@@ -11,26 +12,7 @@ export async function geocodeAddress(
   postal: string,
   city: string
 ): Promise<{ lat: number; lng: number } | null> {
-  const query = [street, postal, city].filter(Boolean).join(' ');
-  if (!query.trim()) return null;
-
-  try {
-    const url = `https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?q=${encodeURIComponent(query)}&rows=1&fq=type:adres`;
-    const res = await fetch(url);
-    if (!res.ok) return null;
-
-    const data = await res.json();
-    const doc = data?.response?.docs?.[0];
-    if (!doc?.centroide_ll) return null;
-
-    // centroide_ll format: "POINT(lng lat)"
-    const match = doc.centroide_ll.match(/POINT\(([\d.]+)\s+([\d.]+)\)/);
-    if (!match) return null;
-
-    return { lng: parseFloat(match[1]), lat: parseFloat(match[2]) };
-  } catch {
-    return null;
-  }
+  return geocodePdokAddress({ street, postal, city });
 }
 
 /**

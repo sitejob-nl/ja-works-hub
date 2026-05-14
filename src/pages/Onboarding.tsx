@@ -9,6 +9,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
+import AddressAutocomplete from '@/components/shared/AddressAutocomplete';
+import { resolveAddressCoordinates } from '@/lib/pdok';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -40,6 +42,8 @@ type FormStep = {
   fields: FormField[];
 };
 
+const ADDRESS_COLUMNS = ['address_street', 'address_postal', 'address_city'] as const;
+
 const Onboarding = () => {
   const { token } = useParams<{ token: string }>();
   const [status, setStatus] = useState<PageState>('loading');
@@ -57,6 +61,7 @@ const Onboarding = () => {
   const [fallbackForm, setFallbackForm] = useState({
     bsn: '', iban: '', date_of_birth: '', nationality: '', phone: '', email: '',
     address_street: '', address_postal: '', address_city: '', address_country: 'NL',
+    address_lat: null as number | null, address_lng: null as number | null,
   });
   const [reglementAccepted, setReglementAccepted] = useState(false);
   const [docFiles, setDocFiles] = useState<{ id_bewijs: File | null; rijbewijs: File | null; certificaat: File | null }>({
@@ -108,6 +113,31 @@ const Onboarding = () => {
     setValidationErrors(e => { const n = { ...e }; delete n[fieldId]; return n; });
   };
 
+  const getAddressFields = (fields: FormField[]) => ({
+    street: fields.find(field => field.maps_to_table === 'candidates' && field.maps_to_column === 'address_street'),
+    postal: fields.find(field => field.maps_to_table === 'candidates' && field.maps_to_column === 'address_postal'),
+    city: fields.find(field => field.maps_to_table === 'candidates' && field.maps_to_column === 'address_city'),
+  });
+
+  const isAddressField = (field: FormField) =>
+    field.maps_to_table === 'candidates' &&
+    ADDRESS_COLUMNS.includes(field.maps_to_column as typeof ADDRESS_COLUMNS[number]);
+
+  const resolveDynamicAddressGeo = async () => {
+    const fields = steps.flatMap(step => step.fields);
+    const addressFields = getAddressFields(fields);
+    if (!addressFields.street || !addressFields.postal || !addressFields.city) return null;
+
+    const address = await resolveAddressCoordinates({
+      street: values[addressFields.street.id] ?? '',
+      postal: values[addressFields.postal.id] ?? '',
+      city: values[addressFields.city.id] ?? '',
+    });
+
+    if (address.lat == null || address.lng == null) return null;
+    return { address_lat: address.lat, address_lng: address.lng };
+  };
+
   const validateStep = (stepIndex: number): boolean => {
     const step = steps[stepIndex];
     if (!step) return true;
@@ -145,6 +175,7 @@ const Onboarding = () => {
     setSubmitting(true);
 
     try {
+      const addressGeo = await resolveDynamicAddressGeo();
       const res = await fetch(`${SUPABASE_URL}/functions/v1/onboarding-submit`, {
         method: 'POST',
         headers: {
@@ -156,6 +187,7 @@ const Onboarding = () => {
           token,
           form_id: formId,
           responses: values,
+          address_geo: addressGeo,
           documents_accepted: true,
         }),
       });
@@ -199,6 +231,13 @@ const Onboarding = () => {
           documents.push({ type, name: file.name, data: await fileToBase64(file) });
         }
       }
+      const address = await resolveAddressCoordinates({
+        street: fallbackForm.address_street,
+        postal: fallbackForm.address_postal,
+        city: fallbackForm.address_city,
+        lat: fallbackForm.address_lat,
+        lng: fallbackForm.address_lng,
+      });
 
       const res = await fetch(`${SUPABASE_URL}/functions/v1/onboarding-submit`, {
         method: 'POST',
@@ -207,7 +246,12 @@ const Onboarding = () => {
           'apikey': SUPABASE_ANON_KEY,
           'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
         },
-        body: JSON.stringify({ token, personal_data: fallbackForm, documents_accepted: reglementAccepted, documents }),
+        body: JSON.stringify({
+          token,
+          personal_data: { ...fallbackForm, address_lat: address.lat, address_lng: address.lng },
+          documents_accepted: reglementAccepted,
+          documents,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Fout bij indienen');
@@ -300,6 +344,72 @@ const Onboarding = () => {
     );
   };
 
+  const renderAddressGroup = (addressFields: ReturnType<typeof getAddressFields>) => {
+    if (!addressFields.street || !addressFields.postal || !addressFields.city) return null;
+
+    const clearAddressErrors = () => {
+      setValidationErrors(errors => {
+        const next = { ...errors };
+        delete next[addressFields.street!.id];
+        delete next[addressFields.postal!.id];
+        delete next[addressFields.city!.id];
+        return next;
+      });
+    };
+
+    const addressErrors = [addressFields.street, addressFields.postal, addressFields.city]
+      .map(field => validationErrors[field.id])
+      .filter(Boolean);
+
+    return (
+      <div key="pdok-address" className="col-span-2">
+        <AddressAutocomplete
+          value={{
+            street: values[addressFields.street.id] ?? '',
+            postal: values[addressFields.postal.id] ?? '',
+            city: values[addressFields.city.id] ?? '',
+          }}
+          onChange={(address) => {
+            setValues(current => ({
+              ...current,
+              [addressFields.street!.id]: address.street,
+              [addressFields.postal!.id]: address.postal,
+              [addressFields.city!.id]: address.city,
+            }));
+            clearAddressErrors();
+          }}
+          gridClassName="grid-cols-2 gap-3"
+          streetClassName="col-span-2"
+          streetLabel={addressFields.street.label}
+          postalLabel={addressFields.postal.label}
+          cityLabel={addressFields.city.label}
+          required={addressFields.street.is_required || addressFields.postal.is_required || addressFields.city.is_required}
+        />
+        {addressErrors.length > 0 && (
+          <p className="text-xs text-destructive mt-1">{addressErrors[0]}</p>
+        )}
+      </div>
+    );
+  };
+
+  const renderStepFields = (stepToRender: FormStep | undefined) => {
+    if (!stepToRender) return null;
+
+    const addressFields = getAddressFields(stepToRender.fields);
+    const hasAddressGroup = !!addressFields.street && !!addressFields.postal && !!addressFields.city;
+    let renderedAddress = false;
+
+    return stepToRender.fields.map(field => {
+      if (hasAddressGroup && isAddressField(field)) {
+        if (renderedAddress) return null;
+        renderedAddress = true;
+        return renderAddressGroup(addressFields);
+      }
+
+      return renderField(field);
+    });
+  };
+
   // ── Status screens ──
   if (status === 'loading') {
     return (
@@ -365,11 +475,27 @@ const Onboarding = () => {
           <Card>
             <CardHeader><CardTitle className="text-base">Adresgegevens</CardTitle></CardHeader>
             <CardContent className="space-y-3">
-              <div><Label>Straat + huisnummer</Label><Input value={fallbackForm.address_street} onChange={e => setFallback('address_street', e.target.value)} /></div>
-              <div className="grid grid-cols-2 gap-3">
-                <div><Label>Postcode</Label><Input value={fallbackForm.address_postal} onChange={e => setFallback('address_postal', e.target.value)} /></div>
-                <div><Label>Stad</Label><Input value={fallbackForm.address_city} onChange={e => setFallback('address_city', e.target.value)} /></div>
-              </div>
+              <AddressAutocomplete
+                value={{
+                  street: fallbackForm.address_street,
+                  postal: fallbackForm.address_postal,
+                  city: fallbackForm.address_city,
+                  country: fallbackForm.address_country,
+                  lat: fallbackForm.address_lat,
+                  lng: fallbackForm.address_lng,
+                }}
+                onChange={(address) => setFallbackForm((f) => ({
+                  ...f,
+                  address_street: address.street,
+                  address_postal: address.postal,
+                  address_city: address.city,
+                  address_country: address.country ?? f.address_country,
+                  address_lat: address.lat ?? null,
+                  address_lng: address.lng ?? null,
+                }))}
+                gridClassName="grid-cols-2 gap-3"
+                streetClassName="col-span-2"
+              />
             </CardContent>
           </Card>
 
@@ -439,7 +565,7 @@ const Onboarding = () => {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-3">
-              {step?.fields.map(renderField)}
+              {renderStepFields(step)}
             </div>
           </CardContent>
         </Card>

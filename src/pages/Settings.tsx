@@ -26,6 +26,8 @@ import PropertyOwnersSettings from '@/components/settings/PropertyOwnersSettings
 import AiCvProviderSettings from '@/components/settings/AiCvProviderSettings';
 import EngagementSettings from '@/components/settings/EngagementSettings';
 import { applyBranding, BRANDING_DEFAULTS, type BrandingSettings } from '@/lib/branding';
+import AddressAutocomplete from '@/components/shared/AddressAutocomplete';
+import { resolveAddressCoordinates } from '@/lib/pdok';
 
 /* ---- Color conversion helpers ---- */
 function hexToHsl(hex: string): string {
@@ -200,8 +202,11 @@ const Settings = () => {
   const [orgStreet, setOrgStreet] = useState('');
   const [orgPostal, setOrgPostal] = useState('');
   const [orgCity, setOrgCity] = useState('');
+  const [orgLat, setOrgLat] = useState<number | null>(null);
+  const [orgLng, setOrgLng] = useState<number | null>(null);
   const [orgKvk, setOrgKvk] = useState('');
   const [orgBtw, setOrgBtw] = useState('');
+  const [savingOrg, setSavingOrg] = useState(false);
 
   useEffect(() => {
     if (org) {
@@ -212,6 +217,8 @@ const Settings = () => {
       setOrgStreet(org.address_street ?? '');
       setOrgPostal(org.address_postal ?? '');
       setOrgCity(org.address_city ?? '');
+      setOrgLat((org as any).address_lat ?? null);
+      setOrgLng((org as any).address_lng ?? null);
       setOrgKvk(org.kvk_number ?? '');
       setOrgBtw(org.btw_number ?? '');
     }
@@ -229,18 +236,35 @@ const Settings = () => {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const handleSaveOrg = () => {
-    updateOrg.mutate({
-      name: orgName,
-      email: orgEmail || null,
-      phone: orgPhone || null,
-      website: orgWebsite || null,
-      address_street: orgStreet || null,
-      address_postal: orgPostal || null,
-      address_city: orgCity || null,
-      kvk_number: orgKvk || null,
-      btw_number: orgBtw || null,
-    });
+  const handleSaveOrg = async () => {
+    setSavingOrg(true);
+    try {
+      const address = await resolveAddressCoordinates({
+        street: orgStreet,
+        postal: orgPostal,
+        city: orgCity,
+        lat: orgLat,
+        lng: orgLng,
+      });
+
+      await updateOrg.mutateAsync({
+        name: orgName,
+        email: orgEmail || null,
+        phone: orgPhone || null,
+        website: orgWebsite || null,
+        address_street: orgStreet || null,
+        address_postal: orgPostal || null,
+        address_city: orgCity || null,
+        address_lat: address.lat,
+        address_lng: address.lng,
+        kvk_number: orgKvk || null,
+        btw_number: orgBtw || null,
+      } as any);
+    } catch {
+      // updateOrg.onError shows the toast.
+    } finally {
+      setSavingOrg(false);
+    }
   };
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -353,19 +377,22 @@ const Settings = () => {
 
               <Separator />
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="sm:col-span-2">
-                  <Label>Straat + huisnr.</Label>
-                  <Input value={orgStreet} onChange={e => setOrgStreet(e.target.value)} />
-                </div>
-                <div>
-                  <Label>Postcode</Label>
-                  <Input value={orgPostal} onChange={e => setOrgPostal(e.target.value)} />
-                </div>
-                <div>
-                  <Label>Stad</Label>
-                  <Input value={orgCity} onChange={e => setOrgCity(e.target.value)} />
-                </div>
+              <div className="space-y-4">
+                <AddressAutocomplete
+                  value={{ street: orgStreet, postal: orgPostal, city: orgCity, lat: orgLat, lng: orgLng }}
+                  onChange={(address) => {
+                    setOrgStreet(address.street);
+                    setOrgPostal(address.postal);
+                    setOrgCity(address.city);
+                    setOrgLat(address.lat ?? null);
+                    setOrgLng(address.lng ?? null);
+                  }}
+                  gridClassName="grid-cols-1 sm:grid-cols-3 gap-4"
+                  streetClassName="sm:col-span-2"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label>KVK nummer</Label>
                   <Input value={orgKvk} onChange={e => setOrgKvk(e.target.value)} />
@@ -377,7 +404,7 @@ const Settings = () => {
               </div>
 
               <div className="flex justify-end">
-                <Button onClick={handleSaveOrg} disabled={updateOrg.isPending}>Opslaan</Button>
+                <Button onClick={handleSaveOrg} disabled={updateOrg.isPending || savingOrg}>Opslaan</Button>
               </div>
             </CardContent>
           </Card>

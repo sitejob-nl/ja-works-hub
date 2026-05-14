@@ -17,7 +17,6 @@ import {
 } from '@/components/ui/alert-dialog';
 import { ChevronRight, MoreHorizontal, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
-import { Badge } from '@/components/ui/badge';
 import { formatEUR } from '@/lib/format';
 import PropertySlideOver from '@/components/housing/PropertySlideOver';
 import UnitsTab from '@/components/housing/tabs/UnitsTab';
@@ -109,8 +108,6 @@ const PropertyDetail = () => {
     property.cost_electra, property.cost_municipal_tax, property.cost_other,
   ].reduce((s: number, v: any) => s + (Number(v) || 0), 0);
 
-  const ownershipLabels: Record<string, string> = { huur: 'Huur', eigendom: 'Eigendom', beheer: 'Beheer' };
-
   return (
     <div className="space-y-4 sm:space-y-6 min-w-0">
       <div className="flex items-center gap-1 text-sm text-muted-foreground">
@@ -134,9 +131,6 @@ const PropertyDetail = () => {
           <div className="flex items-center gap-4 mt-2 flex-wrap">
             {property.property_owners?.name && (
               <span className="text-xs text-muted-foreground">Eigenaar: <span className="text-foreground font-medium">{property.property_owners.name}</span></span>
-            )}
-            {property.ownership_type && (
-              <Badge variant="secondary" className="text-xs">{ownershipLabels[property.ownership_type] ?? property.ownership_type}</Badge>
             )}
             {totalMaandlasten > 0 && (
               <span className="text-xs text-muted-foreground">Maandlasten: <span className="text-foreground font-medium">{formatEUR(totalMaandlasten)}</span></span>

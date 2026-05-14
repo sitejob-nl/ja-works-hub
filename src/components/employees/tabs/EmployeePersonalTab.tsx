@@ -12,6 +12,8 @@ import { Pencil, X, Check, AlertTriangle } from 'lucide-react';
 import { formatDate } from '@/lib/format';
 import { toast } from 'sonner';
 import { differenceInDays, parseISO } from 'date-fns';
+import AddressAutocomplete from '@/components/shared/AddressAutocomplete';
+import { resolveAddressCoordinates } from '@/lib/pdok';
 
 const Field = ({ label, value }: { label: string; value: string | null | undefined }) => (
   <div>
@@ -68,6 +70,7 @@ const EmployeePersonalTab = ({ candidateId, candidate }: { candidateId: string; 
       birth_place: c?.birth_place ?? '', birth_country: c?.birth_country ?? '',
       address_street: c?.address_street ?? '', address_postal: c?.address_postal ?? '',
       address_city: c?.address_city ?? '', address_country: c?.address_country ?? '',
+      address_lat: c?.address_lat ?? null, address_lng: c?.address_lng ?? null,
       phone: c?.phone ?? '', email: c?.email ?? '',
       id_document_type: c?.id_document_type ?? '', id_document_number: c?.id_document_number ?? '',
       id_document_valid_until: c?.id_document_valid_until ?? '',
@@ -78,6 +81,13 @@ const EmployeePersonalTab = ({ candidateId, candidate }: { candidateId: string; 
 
   const save = useMutation({
     mutationFn: async () => {
+      const address = await resolveAddressCoordinates({
+        street: form.address_street,
+        postal: form.address_postal,
+        city: form.address_city,
+        lat: form.address_lat,
+        lng: form.address_lng,
+      });
       const { error } = await supabase.from('candidates').update({
         gender: form.gender || null, first_name: form.first_name, middle_name: form.middle_name || null,
         last_name: form.last_name, initials: form.initials || null,
@@ -85,11 +95,12 @@ const EmployeePersonalTab = ({ candidateId, candidate }: { candidateId: string; 
         birth_place: form.birth_place || null, birth_country: form.birth_country || null,
         address_street: form.address_street || null, address_postal: form.address_postal || null,
         address_city: form.address_city || null, address_country: form.address_country || null,
+        address_lat: address.lat, address_lng: address.lng,
         phone: form.phone || null, email: form.email || null,
         id_document_type: form.id_document_type || null, id_document_number: form.id_document_number || null,
         id_document_valid_until: form.id_document_valid_until || null,
         bank_account_holder: form.bank_account_holder || null,
-      }).eq('id', candidateId);
+      } as any).eq('id', candidateId);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -141,10 +152,22 @@ const EmployeePersonalTab = ({ candidateId, candidate }: { candidateId: string; 
         <div className="bg-card rounded-lg border p-6 space-y-4">
           <h4 className="text-sm font-medium text-muted-foreground">Adres & contact</h4>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="sm:col-span-2"><Label>Straat + huisnr</Label><Input value={form.address_street} onChange={e => set('address_street', e.target.value)} /></div>
-            <div><Label>Postcode</Label><Input value={form.address_postal} onChange={e => set('address_postal', e.target.value)} /></div>
-            <div><Label>Stad</Label><Input value={form.address_city} onChange={e => set('address_city', e.target.value)} /></div>
-            <div><Label>Land</Label><Input value={form.address_country} onChange={e => set('address_country', e.target.value)} /></div>
+            <AddressAutocomplete
+              className="lg:col-span-4"
+              value={{ street: form.address_street, postal: form.address_postal, city: form.address_city, country: form.address_country, lat: form.address_lat, lng: form.address_lng }}
+              onChange={(address) => setForm((f: any) => ({
+                ...f,
+                address_street: address.street,
+                address_postal: address.postal,
+                address_city: address.city,
+                address_country: address.country ?? f.address_country,
+                address_lat: address.lat ?? null,
+                address_lng: address.lng ?? null,
+              }))}
+              gridClassName="grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
+              streetClassName="sm:col-span-2"
+              showCountry
+            />
             <div><Label>Telefoon</Label><Input value={form.phone} onChange={e => set('phone', e.target.value)} /></div>
             <div><Label>E-mail</Label><Input type="email" value={form.email} onChange={e => set('email', e.target.value)} /></div>
           </div>

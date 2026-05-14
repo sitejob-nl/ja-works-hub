@@ -11,6 +11,8 @@ import { ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { logAudit } from '@/lib/audit';
 import KvkNameSearchInput from '@/components/companies/KvkNameSearchInput';
+import AddressAutocomplete from '@/components/shared/AddressAutocomplete';
+import { resolveAddressCoordinates } from '@/lib/pdok';
 
 const CompanyEdit = () => {
   const { id } = useParams<{ id: string }>();
@@ -31,6 +33,7 @@ const CompanyEdit = () => {
   const [form, setForm] = useState({
     name: '', kvk_number: '', btw_number: '',
     address_street: '', address_postal: '', address_city: '',
+    address_lat: null as number | null, address_lng: null as number | null,
     phone: '', email: '', website: '', notes: '',
   });
 
@@ -43,6 +46,8 @@ const CompanyEdit = () => {
         address_street: company.address_street ?? '',
         address_postal: company.address_postal ?? '',
         address_city: company.address_city ?? '',
+        address_lat: company.address_lat ?? null,
+        address_lng: company.address_lng ?? null,
         phone: company.phone ?? '',
         email: company.email ?? '',
         website: company.website ?? '',
@@ -55,6 +60,13 @@ const CompanyEdit = () => {
 
   const mutation = useMutation({
     mutationFn: async () => {
+      const address = await resolveAddressCoordinates({
+        street: form.address_street,
+        postal: form.address_postal,
+        city: form.address_city,
+        lat: form.address_lat,
+        lng: form.address_lng,
+      });
       const { error } = await supabase.from('companies').update({
         name: form.name,
         kvk_number: form.kvk_number || null,
@@ -62,6 +74,8 @@ const CompanyEdit = () => {
         address_street: form.address_street || null,
         address_postal: form.address_postal || null,
         address_city: form.address_city || null,
+        address_lat: address.lat,
+        address_lng: address.lng,
         phone: form.phone || null,
         email: form.email || null,
         website: form.website || null,
@@ -117,6 +131,8 @@ const CompanyEdit = () => {
                 address_street: p.address_street ?? f.address_street,
                 address_postal: p.address_postal ?? f.address_postal,
                 address_city: p.address_city ?? f.address_city,
+                address_lat: null,
+                address_lng: null,
               }))}
               placeholder="Typ om te zoeken in KVK..."
             />
@@ -125,11 +141,19 @@ const CompanyEdit = () => {
             <div className="space-y-1.5"><Label>KVK-nummer</Label><Input value={form.kvk_number} onChange={(e) => set('kvk_number', e.target.value)} /></div>
             <div className="space-y-1.5"><Label>BTW-nummer</Label><Input value={form.btw_number} onChange={(e) => set('btw_number', e.target.value)} /></div>
           </div>
-          <div className="grid grid-cols-3 gap-4">
-            <div className="space-y-1.5"><Label>Straat</Label><Input value={form.address_street} onChange={(e) => set('address_street', e.target.value)} /></div>
-            <div className="space-y-1.5"><Label>Postcode</Label><Input value={form.address_postal} onChange={(e) => set('address_postal', e.target.value)} /></div>
-            <div className="space-y-1.5"><Label>Stad</Label><Input value={form.address_city} onChange={(e) => set('address_city', e.target.value)} /></div>
-          </div>
+          <AddressAutocomplete
+            value={{ street: form.address_street, postal: form.address_postal, city: form.address_city, lat: form.address_lat, lng: form.address_lng }}
+            onChange={(address) => setForm((f) => ({
+              ...f,
+              address_street: address.street,
+              address_postal: address.postal,
+              address_city: address.city,
+              address_lat: address.lat ?? null,
+              address_lng: address.lng ?? null,
+            }))}
+            gridClassName="grid-cols-1 sm:grid-cols-3 gap-4"
+            streetLabel="Straat"
+          />
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5"><Label>Telefoon</Label><Input value={form.phone} onChange={(e) => set('phone', e.target.value)} /></div>
             <div className="space-y-1.5"><Label>E-mail</Label><Input value={form.email} onChange={(e) => set('email', e.target.value)} /></div>

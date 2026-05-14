@@ -12,31 +12,6 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.1"
   }
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
   public: {
     Tables: {
       ai_usage_log: {
@@ -793,6 +768,8 @@ export type Database = {
         Row: {
           address_city: string | null
           address_country: string | null
+          address_lat: number | null
+          address_lng: number | null
           address_postal: string | null
           address_street: string | null
           ai_analysis: Json | null
@@ -861,6 +838,8 @@ export type Database = {
         Insert: {
           address_city?: string | null
           address_country?: string | null
+          address_lat?: number | null
+          address_lng?: number | null
           address_postal?: string | null
           address_street?: string | null
           ai_analysis?: Json | null
@@ -929,6 +908,8 @@ export type Database = {
         Update: {
           address_city?: string | null
           address_country?: string | null
+          address_lat?: number | null
+          address_lng?: number | null
           address_postal?: string | null
           address_street?: string | null
           ai_analysis?: Json | null
@@ -1528,6 +1509,8 @@ export type Database = {
           id: string
           invoice_address_city: string | null
           invoice_address_country: string | null
+          invoice_address_lat: number | null
+          invoice_address_lng: number | null
           invoice_address_postal: string | null
           invoice_address_street: string | null
           invoice_cc: string | null
@@ -1546,6 +1529,8 @@ export type Database = {
           vat_rate: number | null
           visit_address_city: string | null
           visit_address_country: string | null
+          visit_address_lat: number | null
+          visit_address_lng: number | null
           visit_address_postal: string | null
           visit_address_street: string | null
           website: string | null
@@ -1568,6 +1553,8 @@ export type Database = {
           id?: string
           invoice_address_city?: string | null
           invoice_address_country?: string | null
+          invoice_address_lat?: number | null
+          invoice_address_lng?: number | null
           invoice_address_postal?: string | null
           invoice_address_street?: string | null
           invoice_cc?: string | null
@@ -1586,6 +1573,8 @@ export type Database = {
           vat_rate?: number | null
           visit_address_city?: string | null
           visit_address_country?: string | null
+          visit_address_lat?: number | null
+          visit_address_lng?: number | null
           visit_address_postal?: string | null
           visit_address_street?: string | null
           website?: string | null
@@ -1608,6 +1597,8 @@ export type Database = {
           id?: string
           invoice_address_city?: string | null
           invoice_address_country?: string | null
+          invoice_address_lat?: number | null
+          invoice_address_lng?: number | null
           invoice_address_postal?: string | null
           invoice_address_street?: string | null
           invoice_cc?: string | null
@@ -1626,6 +1617,8 @@ export type Database = {
           vat_rate?: number | null
           visit_address_city?: string | null
           visit_address_country?: string | null
+          visit_address_lat?: number | null
+          visit_address_lng?: number | null
           visit_address_postal?: string | null
           visit_address_street?: string | null
           website?: string | null
@@ -5596,6 +5589,8 @@ export type Database = {
       organizations: {
         Row: {
           address_city: string | null
+          address_lat: number | null
+          address_lng: number | null
           address_postal: string | null
           address_street: string | null
           btw_number: string | null
@@ -5615,6 +5610,8 @@ export type Database = {
         }
         Insert: {
           address_city?: string | null
+          address_lat?: number | null
+          address_lng?: number | null
           address_postal?: string | null
           address_street?: string | null
           btw_number?: string | null
@@ -5634,6 +5631,8 @@ export type Database = {
         }
         Update: {
           address_city?: string | null
+          address_lat?: number | null
+          address_lng?: number | null
           address_postal?: string | null
           address_street?: string | null
           btw_number?: string | null
@@ -8828,9 +8827,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {
       audit_action: [

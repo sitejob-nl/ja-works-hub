@@ -11,6 +11,8 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { useMyDecryptedData } from '@/hooks/useDecryptedCandidate';
 import SensitiveField from '@/components/ui/sensitive-field';
+import AddressAutocomplete from '@/components/shared/AddressAutocomplete';
+import { resolveAddressCoordinates } from '@/lib/pdok';
 
 const PortalProfile = () => {
   const { employee, candidate } = usePortal();
@@ -22,6 +24,8 @@ const PortalProfile = () => {
   const [street, setStreet] = useState('');
   const [postal, setPostal] = useState('');
   const [city, setCity] = useState('');
+  const [addressLat, setAddressLat] = useState<number | null>(null);
+  const [addressLng, setAddressLng] = useState<number | null>(null);
   const [lang, setLang] = useState('nl');
 
   useEffect(() => {
@@ -31,6 +35,8 @@ const PortalProfile = () => {
       setStreet(candidate.address_street ?? '');
       setPostal(candidate.address_postal ?? '');
       setCity(candidate.address_city ?? '');
+      setAddressLat(candidate.address_lat ?? null);
+      setAddressLng(candidate.address_lng ?? null);
     }
     if (employee) {
       setLang(employee.portal_language ?? 'nl');
@@ -40,6 +46,7 @@ const PortalProfile = () => {
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!candidate?.id) throw new Error('Geen profiel gevonden');
+      const address = await resolveAddressCoordinates({ street, postal, city, lat: addressLat, lng: addressLng });
 
       const { error: cErr } = await supabase
         .from('candidates')
@@ -49,8 +56,10 @@ const PortalProfile = () => {
           address_street: street || null,
           address_postal: postal || null,
           address_city: city || null,
+          address_lat: address.lat,
+          address_lng: address.lng,
           portal_language: lang,
-        })
+        } as any)
         .eq('id', candidate.id);
       if (cErr) throw cErr;
     },
@@ -107,20 +116,18 @@ const PortalProfile = () => {
             <Label>Email</Label>
             <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
           </div>
-          <div className="space-y-1.5">
-            <Label>Straat + huisnummer</Label>
-            <Input value={street} onChange={(e) => setStreet(e.target.value)} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label>Postcode</Label>
-              <Input value={postal} onChange={(e) => setPostal(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Stad</Label>
-              <Input value={city} onChange={(e) => setCity(e.target.value)} />
-            </div>
-          </div>
+          <AddressAutocomplete
+            value={{ street, postal, city, lat: addressLat, lng: addressLng }}
+            onChange={(address) => {
+              setStreet(address.street);
+              setPostal(address.postal);
+              setCity(address.city);
+              setAddressLat(address.lat ?? null);
+              setAddressLng(address.lng ?? null);
+            }}
+            gridClassName="grid-cols-1 sm:grid-cols-2 gap-3"
+            streetClassName="sm:col-span-2"
+          />
           <div className="space-y-1.5">
             <Label>Taal portaal</Label>
             <Select value={lang} onValueChange={setLang}>

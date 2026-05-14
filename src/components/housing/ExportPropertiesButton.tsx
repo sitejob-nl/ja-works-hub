@@ -14,12 +14,6 @@ interface Props {
   filenameSuffix?: string;
 }
 
-const ownershipLabel: Record<string, string> = {
-  huur: 'Huur',
-  eigendom: 'Eigendom',
-  beheer: 'Beheer',
-};
-
 const fmtDate = (d: string | null) => {
   if (!d) return '';
   return new Date(d).toLocaleDateString('nl-NL');
@@ -38,7 +32,6 @@ function propertiesToRows(properties: any[]) {
     Postcode: p.address_postal ?? '',
     Plaats: p.address_city ?? '',
     Eigenaar: p.property_owners?.name ?? '',
-    Eigendomstype: ownershipLabel[p.ownership_type] ?? p.ownership_type ?? '',
     Capaciteit: p.totalCapacity ?? 0,
     Bezet: p.currentOccupancy ?? 0,
     Vrij: (p.totalCapacity ?? 0) - (p.currentOccupancy ?? 0),

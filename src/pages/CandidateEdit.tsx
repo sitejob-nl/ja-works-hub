@@ -13,6 +13,8 @@ import { ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { logAudit } from '@/lib/audit';
 import { useDecryptedCandidate } from '@/hooks/useDecryptedCandidate';
+import AddressAutocomplete from '@/components/shared/AddressAutocomplete';
+import { resolveAddressCoordinates } from '@/lib/pdok';
 
 const sources = [
   { value: 'website', label: 'Website' },
@@ -33,7 +35,7 @@ const CandidateEdit = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('candidates')
-        .select('id, first_name, last_name, date_of_birth, nationality, email, phone, address_street, address_postal, address_city, has_drivers_license, drivers_license_expiry, skills, languages, source, notes')
+        .select('id, first_name, last_name, date_of_birth, nationality, email, phone, address_street, address_postal, address_city, address_lat, address_lng, has_drivers_license, drivers_license_expiry, skills, languages, source, notes')
         .eq('id', id!)
         .single();
       if (error) throw error;
@@ -46,6 +48,7 @@ const CandidateEdit = () => {
   const [form, setForm] = useState({
     first_name: '', last_name: '', date_of_birth: '', nationality: '',
     email: '', phone: '', address_street: '', address_postal: '', address_city: '',
+    address_lat: null as number | null, address_lng: null as number | null,
     bsn: '', iban: '', has_drivers_license: false, drivers_license_expiry: '',
     skills: [] as string[], languages: [] as string[], source: '', notes: '',
   });
@@ -62,6 +65,8 @@ const CandidateEdit = () => {
         address_street: candidate.address_street ?? '',
         address_postal: candidate.address_postal ?? '',
         address_city: candidate.address_city ?? '',
+        address_lat: (candidate as any).address_lat ?? null,
+        address_lng: (candidate as any).address_lng ?? null,
         bsn: sensitiveData?.decrypted_bsn ?? '',
         iban: sensitiveData?.decrypted_iban ?? '',
         has_drivers_license: candidate.has_drivers_license ?? false,
@@ -78,6 +83,13 @@ const CandidateEdit = () => {
 
   const mutation = useMutation({
     mutationFn: async () => {
+      const address = await resolveAddressCoordinates({
+        street: form.address_street,
+        postal: form.address_postal,
+        city: form.address_city,
+        lat: form.address_lat,
+        lng: form.address_lng,
+      });
       const payload = {
         first_name: form.first_name,
         last_name: form.last_name,
@@ -88,6 +100,8 @@ const CandidateEdit = () => {
         address_street: form.address_street || null,
         address_postal: form.address_postal || null,
         address_city: form.address_city || null,
+        address_lat: address.lat,
+        address_lng: address.lng,
         bsn: form.bsn || null,
         iban: form.iban || null,
         has_drivers_license: form.has_drivers_license,
@@ -97,7 +111,7 @@ const CandidateEdit = () => {
         source: form.source || null,
         notes: form.notes || null,
       };
-      const { error } = await supabase.from('candidates').update(payload).eq('id', id!);
+      const { error } = await supabase.from('candidates').update(payload as any).eq('id', id!);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -139,11 +153,19 @@ const CandidateEdit = () => {
             <div className="space-y-1.5"><Label>E-mail</Label><Input value={form.email} onChange={(e) => set('email', e.target.value)} /></div>
             <div className="space-y-1.5"><Label>Telefoon</Label><Input value={form.phone} onChange={(e) => set('phone', e.target.value)} /></div>
           </div>
-          <div className="grid grid-cols-3 gap-4">
-            <div className="space-y-1.5"><Label>Straat</Label><Input value={form.address_street} onChange={(e) => set('address_street', e.target.value)} /></div>
-            <div className="space-y-1.5"><Label>Postcode</Label><Input value={form.address_postal} onChange={(e) => set('address_postal', e.target.value)} /></div>
-            <div className="space-y-1.5"><Label>Stad</Label><Input value={form.address_city} onChange={(e) => set('address_city', e.target.value)} /></div>
-          </div>
+          <AddressAutocomplete
+            value={{ street: form.address_street, postal: form.address_postal, city: form.address_city, lat: form.address_lat, lng: form.address_lng }}
+            onChange={(address) => setForm((f) => ({
+              ...f,
+              address_street: address.street,
+              address_postal: address.postal,
+              address_city: address.city,
+              address_lat: address.lat ?? null,
+              address_lng: address.lng ?? null,
+            }))}
+            gridClassName="grid-cols-1 sm:grid-cols-3 gap-4"
+            streetLabel="Straat"
+          />
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5"><Label>BSN</Label><Input value={form.bsn} onChange={(e) => set('bsn', e.target.value)} /></div>
             <div className="space-y-1.5"><Label>IBAN</Label><Input value={form.iban} onChange={(e) => set('iban', e.target.value)} /></div>

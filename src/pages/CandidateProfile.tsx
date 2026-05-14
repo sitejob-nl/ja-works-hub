@@ -9,6 +9,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import TagInput from '@/components/ui/tag-input';
 import { CheckCircle2, AlertTriangle, Upload, Camera, Loader2, User } from 'lucide-react';
+import AddressAutocomplete from '@/components/shared/AddressAutocomplete';
+import { resolveAddressCoordinates } from '@/lib/pdok';
 
 const nationalities = [
   { value: 'Nederlands', label: 'Nederlands' },
@@ -38,6 +40,7 @@ const CandidateProfile = () => {
     date_of_birth: '', nationality: '', nationality_other: '',
     languages: [] as string[],
     address_street: '', address_postal: '', address_city: '', address_country: 'Nederland',
+    address_lat: null as number | null, address_lng: null as number | null,
     skills: [] as string[], certifications: [] as string[],
     has_drivers_license: false, drivers_license_expiry: '',
     availability_notes: '',
@@ -104,6 +107,8 @@ const CandidateProfile = () => {
           address_postal: c.address_postal ?? '',
           address_city: c.address_city ?? '',
           address_country: c.address_country ?? 'Nederland',
+          address_lat: c.address_lat ?? null,
+          address_lng: c.address_lng ?? null,
           skills: c.skills ?? [],
           certifications: c.certifications ?? [],
           has_drivers_license: c.has_drivers_license ?? false,
@@ -154,6 +159,13 @@ const CandidateProfile = () => {
       }
 
       const nationality = form.nationality === 'overig' ? form.nationality_other : form.nationality;
+      const address = await resolveAddressCoordinates({
+        street: form.address_street,
+        postal: form.address_postal,
+        city: form.address_city,
+        lat: form.address_lat,
+        lng: form.address_lng,
+      });
 
       const res = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/candidate-profile`,
@@ -176,6 +188,8 @@ const CandidateProfile = () => {
               address_postal: form.address_postal || undefined,
               address_city: form.address_city || undefined,
               address_country: form.address_country || undefined,
+              address_lat: address.lat ?? undefined,
+              address_lng: address.lng ?? undefined,
               skills: form.skills.length ? form.skills : undefined,
               certifications: form.certifications.length ? form.certifications : undefined,
               has_drivers_license: form.has_drivers_license,
@@ -341,26 +355,23 @@ const CandidateProfile = () => {
         <div className="bg-card border rounded-xl p-6 space-y-4">
           <h2 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">Adres</h2>
 
-          <div className="space-y-1.5">
-            <Label>Straat + huisnummer</Label>
-            <Input value={form.address_street} onChange={(e) => set('address_street', e.target.value)} className="h-12 text-base" />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label>Postcode</Label>
-              <Input value={form.address_postal} onChange={(e) => set('address_postal', e.target.value)} className="h-12 text-base" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Stad</Label>
-              <Input value={form.address_city} onChange={(e) => set('address_city', e.target.value)} className="h-12 text-base" />
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label>Land</Label>
-            <Input value={form.address_country} onChange={(e) => set('address_country', e.target.value)} className="h-12 text-base" />
-          </div>
+          <AddressAutocomplete
+            value={{ street: form.address_street, postal: form.address_postal, city: form.address_city, country: form.address_country, lat: form.address_lat, lng: form.address_lng }}
+            onChange={(address) => setForm((f) => ({
+              ...f,
+              address_street: address.street,
+              address_postal: address.postal,
+              address_city: address.city,
+              address_country: address.country ?? f.address_country,
+              address_lat: address.lat ?? null,
+              address_lng: address.lng ?? null,
+            }))}
+            gridClassName="grid-cols-2 gap-3"
+            streetClassName="col-span-2"
+            countryClassName="col-span-2"
+            showCountry
+            inputClassName="h-12 text-base"
+          />
         </div>
 
         {/* Section 3: Werk & beschikbaarheid */}

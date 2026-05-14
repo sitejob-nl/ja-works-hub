@@ -60,7 +60,6 @@ const OwnerTab = ({ property }: { property: any }) => {
   const snfExpiry = permitExpiry(property.snf_certificate_expiry);
   const overCapacity = property.max_persons_permit && currentOccupancy > property.max_persons_permit;
 
-  const ownershipLabels: Record<string, string> = { huur: 'Huur', eigendom: 'Eigendom', beheer: 'Beheer' };
   const contractTypeLabels: Record<string, string> = { inhuur: 'Inhuur', onderhuur: 'Onderhuur' };
   const owner = property.property_owners ?? null;
 
@@ -89,12 +88,6 @@ const OwnerTab = ({ property }: { property: any }) => {
                 <a href={`mailto:${owner.email}`} className="text-sm font-medium text-primary hover:underline flex items-center gap-1">
                   <Mail className="h-3.5 w-3.5" /> {owner.email}
                 </a>
-              </div>
-            )}
-            {property.ownership_type && (
-              <div>
-                <p className="text-xs text-muted-foreground">Type</p>
-                <Badge variant="secondary" className="mt-1">{ownershipLabels[property.ownership_type] ?? property.ownership_type}</Badge>
               </div>
             )}
             <div className="md:col-span-2">

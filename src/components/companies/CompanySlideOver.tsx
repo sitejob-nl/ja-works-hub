@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
@@ -9,7 +9,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { logAudit } from '@/lib/audit';
-import { geocodeAndSaveCompany } from '@/lib/distance';
+import AddressAutocomplete from '@/components/shared/AddressAutocomplete';
+import { resolveAddressCoordinates } from '@/lib/pdok';
 
 interface Props {
   open: boolean;
@@ -29,6 +30,8 @@ const CompanySlideOver = ({ open, onOpenChange, company }: Props) => {
     address_street: company?.address_street ?? '',
     address_postal: company?.address_postal ?? '',
     address_city: company?.address_city ?? '',
+    address_lat: (company?.address_lat ?? null) as number | null,
+    address_lng: (company?.address_lng ?? null) as number | null,
     phone: company?.phone ?? '',
     email: company?.email ?? '',
     website: company?.website ?? '',
@@ -37,14 +40,39 @@ const CompanySlideOver = ({ open, onOpenChange, company }: Props) => {
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
+  useEffect(() => {
+    setForm({
+      name: company?.name ?? '',
+      kvk_number: company?.kvk_number ?? '',
+      btw_number: company?.btw_number ?? '',
+      address_street: company?.address_street ?? '',
+      address_postal: company?.address_postal ?? '',
+      address_city: company?.address_city ?? '',
+      address_lat: company?.address_lat ?? null,
+      address_lng: company?.address_lng ?? null,
+      phone: company?.phone ?? '',
+      email: company?.email ?? '',
+      website: company?.website ?? '',
+      notes: company?.notes ?? '',
+    });
+  }, [company, open]);
+
   const mutation = useMutation({
     mutationFn: async () => {
+      const address = await resolveAddressCoordinates({
+        street: form.address_street,
+        postal: form.address_postal,
+        city: form.address_city,
+        lat: form.address_lat,
+        lng: form.address_lng,
+      });
+      const payload = { ...form, address_lat: address.lat, address_lng: address.lng };
       if (isEdit) {
-        const { error } = await supabase.from('companies').update(form).eq('id', company.id);
+        const { error } = await supabase.from('companies').update(payload).eq('id', company.id);
         if (error) throw error;
         return company.id as string;
       } else {
-        const { data, error } = await supabase.from('companies').insert({ ...form, organization_id: orgId }).select('id').single();
+        const { data, error } = await supabase.from('companies').insert({ ...payload, organization_id: orgId }).select('id').single();
         if (error) throw error;
         return data.id as string;
       }
@@ -59,8 +87,6 @@ const CompanySlideOver = ({ open, onOpenChange, company }: Props) => {
       });
       toast.success(isEdit ? 'Opdrachtgever bijgewerkt' : 'Opdrachtgever aangemaakt');
       onOpenChange(false);
-      // Fire-and-forget geocoding
-      geocodeAndSaveCompany(savedId, form.address_street, form.address_postal, form.address_city);
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -80,11 +106,19 @@ const CompanySlideOver = ({ open, onOpenChange, company }: Props) => {
             <div><Label>KVK-nummer</Label><Input value={form.kvk_number} onChange={(e) => set('kvk_number', e.target.value)} /></div>
             <div><Label>BTW-nummer</Label><Input value={form.btw_number} onChange={(e) => set('btw_number', e.target.value)} /></div>
           </div>
-          <div className="grid grid-cols-3 gap-3">
-            <div className="col-span-1"><Label>Straat</Label><Input value={form.address_street} onChange={(e) => set('address_street', e.target.value)} /></div>
-            <div><Label>Postcode</Label><Input value={form.address_postal} onChange={(e) => set('address_postal', e.target.value)} /></div>
-            <div><Label>Stad</Label><Input value={form.address_city} onChange={(e) => set('address_city', e.target.value)} /></div>
-          </div>
+          <AddressAutocomplete
+            value={{ street: form.address_street, postal: form.address_postal, city: form.address_city, lat: form.address_lat, lng: form.address_lng }}
+            onChange={(address) => setForm((f) => ({
+              ...f,
+              address_street: address.street,
+              address_postal: address.postal,
+              address_city: address.city,
+              address_lat: address.lat ?? null,
+              address_lng: address.lng ?? null,
+            }))}
+            gridClassName="grid-cols-3 gap-3"
+            streetLabel="Straat"
+          />
           <div className="grid grid-cols-2 gap-3">
             <div><Label>Telefoon</Label><Input value={form.phone} onChange={(e) => set('phone', e.target.value)} /></div>
             <div><Label>E-mail</Label><Input value={form.email} onChange={(e) => set('email', e.target.value)} /></div>

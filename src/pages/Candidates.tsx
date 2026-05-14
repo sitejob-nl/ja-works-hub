@@ -50,6 +50,53 @@ const employeeStatusLabel: Record<string, string> = {
   onboarding: 'Onboarding', actief: 'Actief', ziek: 'Ziek', uit_dienst: 'Uit dienst',
 };
 
+const placementDrivenStatuses = ['actief', 'ziek', 'onboarding'];
+
+const getPlacementDrivenEmployeeStatus = (candidate: any) => {
+  if (placementDrivenStatuses.includes(candidate.employee_status)) return candidate.employee_status;
+  return 'actief';
+};
+
+const toInServiceCandidates = (placements: any[]) => {
+  const byCandidate = new Map<string, any>();
+
+  for (const placement of placements) {
+    const candidate = placement.candidates;
+    if (!candidate?.id) continue;
+
+    const activePlacement = {
+      id: placement.id,
+      company_id: placement.company_id,
+      companies: placement.companies,
+      function_name: placement.function_name,
+      start_date: placement.start_date,
+      status: placement.status,
+    };
+    const existing = byCandidate.get(candidate.id);
+
+    if (!existing) {
+      byCandidate.set(candidate.id, {
+        ...candidate,
+        employee_status: getPlacementDrivenEmployeeStatus(candidate),
+        activePlacement,
+        activePlacements: [activePlacement],
+      });
+      continue;
+    }
+
+    existing.activePlacements.push(activePlacement);
+    if (new Date(activePlacement.start_date).getTime() > new Date(existing.activePlacement?.start_date ?? 0).getTime()) {
+      existing.activePlacement = activePlacement;
+    }
+  }
+
+  return Array.from(byCandidate.values()).sort((a, b) => {
+    const aDate = new Date(a.activePlacement?.start_date ?? 0).getTime();
+    const bDate = new Date(b.activePlacement?.start_date ?? 0).getTime();
+    return bDate - aDate;
+  });
+};
+
 const getProfileLinkStatus = (candidate: any, tokens: any[]) => {
   const token = tokens.find((t) => t.candidate_id === candidate.id);
   if (!token) return { label: 'Niet verstuurd', className: 'bg-muted text-muted-foreground border-0' };
@@ -114,25 +161,51 @@ const Candidates = () => {
   const { data: employeeData, isLoading: employeesLoading } = useQuery({
     queryKey: ['candidates-in-dienst', search, employeeStatusFilter, page],
     queryFn: async () => {
-      let query = supabase.from('candidates').select(`
-        *,
-        candidate_employment(*),
-        housing_assignments!housing_assignments_candidate_id_fkey(id, status),
-        placements!placements_candidate_id_fkey(id, status, company_id, companies!placements_company_id_fkey(name))
-      `, { count: 'exact' });
-
-      if (employeeStatusFilter === 'all') {
-        query = query.in('employee_status', ['onboarding', 'actief', 'ziek'] as any);
-      } else {
-        query = query.eq('employee_status', employeeStatusFilter as any);
-      }
-      if (search) {
-        query = query.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%`);
-      }
-      query = query.order('created_at', { ascending: false }).range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
-      const { data, count, error } = await query;
+      const { data, error } = await supabase
+        .from('placements')
+        .select(`
+          id,
+          company_id,
+          function_name,
+          start_date,
+          status,
+          companies!placements_company_id_fkey(name),
+          candidates!placements_candidate_id_fkey(
+            id,
+            first_name,
+            last_name,
+            employee_number,
+            employee_status,
+            compliance_status,
+            portal_enabled,
+            housing_assignments!housing_assignments_candidate_id_fkey(id, status)
+          )
+        `)
+        .eq('status', 'actief' as any)
+        .not('candidate_id', 'is', null)
+        .order('start_date', { ascending: false });
       if (error) throw error;
-      return { employees: data ?? [], total: count ?? 0 };
+
+      const activeCandidates = toInServiceCandidates(data ?? []);
+      const searchValue = search.trim().toLowerCase();
+      const filtered = activeCandidates.filter((candidate: any) => {
+        if (employeeStatusFilter !== 'all' && candidate.employee_status !== employeeStatusFilter) return false;
+        if (!searchValue) return true;
+
+        const activePlacement = candidate.activePlacement;
+        const haystack = [
+          candidate.first_name,
+          candidate.last_name,
+          candidate.employee_number,
+          activePlacement?.companies?.name,
+          activePlacement?.function_name,
+        ].filter(Boolean).join(' ').toLowerCase();
+
+        return haystack.includes(searchValue);
+      });
+      const start = page * PAGE_SIZE;
+
+      return { employees: filtered.slice(start, start + PAGE_SIZE), total: filtered.length };
     },
     enabled: activeTab === 'in-dienst',
   });
@@ -466,11 +539,9 @@ const Candidates = () => {
                   <TableBody>
                     {employees.map((c: any, i: number) => {
                       const hasHousing = (c.housing_assignments ?? []).some((h: any) => h.status === 'ingecheckt');
-                      const activePlacement = (c.placements ?? []).find((p: any) => p.status === 'actief');
+                      const activePlacement = c.activePlacement;
                       const companyName = activePlacement?.companies?.name;
-                      const sortedEmployments = (c.candidate_employment ?? [])
-                        .sort((a: any, b: any) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime());
-                      const currentEmployment = sortedEmployments.find((e: any) => e.is_current) ?? sortedEmployments[0];
+                      const extraPlacements = Math.max(0, (c.activePlacements?.length ?? 1) - 1);
                       return (
                         <TableRow key={c.id} className={i % 2 === 1 ? 'bg-background' : ''}>
                           <TableCell>
@@ -489,7 +560,7 @@ const Candidates = () => {
                               {c.compliance_status ?? '—'}
                             </Badge>
                           </TableCell>
-                          <TableCell>{formatDate(currentEmployment?.start_date)}</TableCell>
+                          <TableCell>{formatDate(activePlacement?.start_date)}</TableCell>
                           <TableCell>
                             {hasHousing
                               ? <Check className="h-4 w-4 text-stat-green" />
@@ -498,7 +569,16 @@ const Candidates = () => {
                           <TableCell>
                             <span className={`inline-block h-2.5 w-2.5 rounded-full ${c.portal_enabled ? 'bg-stat-green' : 'bg-muted-foreground/30'}`} />
                           </TableCell>
-                          <TableCell>{companyName ?? '—'}</TableCell>
+                          <TableCell>
+                            {activePlacement ? (
+                              <div className="flex items-center gap-1.5">
+                                <Link to={`/plaatsingen/${activePlacement.id}`} className="font-medium text-foreground hover:text-primary transition-colors">
+                                  {companyName ?? activePlacement.function_name ?? 'Plaatsing'}
+                                </Link>
+                                {extraPlacements > 0 && <Badge variant="outline" className="text-xs">+{extraPlacements}</Badge>}
+                              </div>
+                            ) : '—'}
+                          </TableCell>
                         </TableRow>
                       );
                     })}
