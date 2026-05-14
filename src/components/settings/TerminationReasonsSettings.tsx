@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { Plus, Trash2, ArrowUp, ArrowDown, AlertTriangle } from 'lucide-react';
+import { Plus, Trash2, ArrowUp, ArrowDown, AlertTriangle, Pencil, Check, X } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -42,6 +42,8 @@ const TerminationReasonsSettings = () => {
   const [newReason, setNewReason] = useState('');
   const [newType, setNewType] = useState<TerminatedByType>('opdrachtgever');
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editReason, setEditReason] = useState('');
 
   const { data: reasons = [], isLoading } = useQuery({
     queryKey: ['termination-reasons-all', orgId],
@@ -89,6 +91,46 @@ const TerminationReasonsSettings = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['termination-reasons-all'] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const updateReasonMutation = useMutation({
+    mutationFn: async ({ reason, newReason }: { reason: TerminationReason; newReason: string }) => {
+      const trimmedReason = newReason.trim();
+      if (!trimmedReason) throw new Error('Vul een reden in');
+
+      const duplicate = reasons.some((r: TerminationReason) =>
+        r.id !== reason.id
+        && r.terminated_by === reason.terminated_by
+        && r.reason.trim().toLowerCase() === trimmedReason.toLowerCase()
+      );
+      if (duplicate) throw new Error('Deze reden bestaat al voor deze categorie');
+
+      const oldReason = reason.reason;
+      if (oldReason === trimmedReason) return;
+
+      const { error } = await supabase.from('termination_reasons')
+        .update({ reason: trimmedReason })
+        .eq('id', reason.id);
+      if (error) throw error;
+
+      const { error: placementError } = await supabase.from('placements')
+        .update({ termination_reason: trimmedReason })
+        .eq('organization_id', orgId)
+        .eq('terminated_by', reason.terminated_by)
+        .eq('termination_reason', oldReason);
+      if (placementError) throw placementError;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['termination-reasons-all'] });
+      queryClient.invalidateQueries({ queryKey: ['termination-reasons'] });
+      queryClient.invalidateQueries({ queryKey: ['uitstroom-terminated'] });
+      queryClient.invalidateQueries({ queryKey: ['uitstroom-terminated-prev'] });
+      queryClient.invalidateQueries({ queryKey: ['uitstroom-all-placements'] });
+      setEditingId(null);
+      setEditReason('');
+      toast.success('Reden aangepast');
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -142,6 +184,20 @@ const TerminationReasonsSettings = () => {
       idA: reason.id, orderA: next.sort_order ?? 0,
       idB: next.id, orderB: reason.sort_order ?? 0,
     });
+  };
+
+  const startEditing = (reason: TerminationReason) => {
+    setEditingId(reason.id);
+    setEditReason(reason.reason);
+  };
+
+  const cancelEditing = () => {
+    setEditingId(null);
+    setEditReason('');
+  };
+
+  const saveEditing = (reason: TerminationReason) => {
+    updateReasonMutation.mutate({ reason, newReason: editReason });
   };
 
   const grouped = {
@@ -210,46 +266,99 @@ const TerminationReasonsSettings = () => {
                 <p className="text-xs text-muted-foreground pl-2 py-2">Geen redenen geconfigureerd</p>
               ) : (
                 <div className="space-y-1">
-                  {groupReasons.map((r: TerminationReason) => (
-                    <div
-                      key={r.id}
-                      className="flex items-center gap-2 py-1.5 px-2 rounded-md hover:bg-muted/50 group"
-                    >
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => handleMoveUp(r, groupReasons)}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5"
-                          title="Omhoog"
-                        >
-                          <ArrowUp className="h-3 w-3 text-muted-foreground" />
-                        </button>
-                        <button
-                          onClick={() => handleMoveDown(r, groupReasons)}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5"
-                          title="Omlaag"
-                        >
-                          <ArrowDown className="h-3 w-3 text-muted-foreground" />
-                        </button>
+                  {groupReasons.map((r: TerminationReason) => {
+                    const isEditing = editingId === r.id;
+
+                    return (
+                      <div
+                        key={r.id}
+                        className="flex items-center gap-2 py-1.5 px-2 rounded-md hover:bg-muted/50 group"
+                      >
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleMoveUp(r, groupReasons)}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5"
+                            title="Omhoog"
+                          >
+                            <ArrowUp className="h-3 w-3 text-muted-foreground" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleMoveDown(r, groupReasons)}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5"
+                            title="Omlaag"
+                          >
+                            <ArrowDown className="h-3 w-3 text-muted-foreground" />
+                          </button>
+                        </div>
+                        {isEditing ? (
+                          <Input
+                            value={editReason}
+                            onChange={(e) => setEditReason(e.target.value)}
+                            className="h-8 flex-1 text-sm"
+                            autoFocus
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') saveEditing(r);
+                              if (e.key === 'Escape') cancelEditing();
+                            }}
+                          />
+                        ) : (
+                          <span className={`flex-1 text-sm ${!r.is_active ? 'text-muted-foreground line-through' : ''}`}>
+                            {r.reason}
+                          </span>
+                        )}
+                        <div className="flex items-center gap-2">
+                          {isEditing ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => saveEditing(r)}
+                                disabled={!editReason.trim() || updateReasonMutation.isPending}
+                                className="p-1 text-muted-foreground hover:text-primary disabled:opacity-50"
+                                title="Opslaan"
+                              >
+                                <Check className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={cancelEditing}
+                                disabled={updateReasonMutation.isPending}
+                                className="p-1 text-muted-foreground hover:text-foreground disabled:opacity-50"
+                                title="Annuleren"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <Label className="text-[10px] text-muted-foreground">Actief</Label>
+                              <Switch
+                                checked={r.is_active}
+                                onCheckedChange={(checked) => toggleMutation.mutate({ id: r.id, isActive: checked })}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => startEditing(r)}
+                                className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-muted-foreground hover:text-primary"
+                                title="Bewerken"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDeleteId(r.id)}
+                                className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-muted-foreground hover:text-destructive"
+                                title="Verwijderen"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </div>
-                      <span className={`flex-1 text-sm ${!r.is_active ? 'text-muted-foreground line-through' : ''}`}>
-                        {r.reason}
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <Label className="text-[10px] text-muted-foreground">Actief</Label>
-                        <Switch
-                          checked={r.is_active}
-                          onCheckedChange={(checked) => toggleMutation.mutate({ id: r.id, isActive: checked })}
-                        />
-                        <button
-                          onClick={() => setDeleteId(r.id)}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-muted-foreground hover:text-destructive"
-                          title="Verwijderen"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
