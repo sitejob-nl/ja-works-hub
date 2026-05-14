@@ -143,7 +143,7 @@ Deno.serve(async (req) => {
 
     const { data: profile } = await supabase
       .from("profiles")
-      .select("organization_id")
+      .select("organization_id, role")
       .eq("id", user.id)
       .single();
     if (!profile) return json({ error: "Profile not found" }, 404);
@@ -167,7 +167,7 @@ Deno.serve(async (req) => {
     const { data: report, error: repErr } = await serviceClient
       .from("vehicle_damage_reports")
       .select(`
-        id, reported_at, damage_type, description, photos, garage_email, cost_estimate,
+        id, reported_at, damage_type, description, photos, garage_email, cost_estimate, route_status,
         internal_contact_email, external_contact_email, contact_phone_shared, urgency,
         vehicle:vehicle_id(license_plate, brand, model),
         employee:employee_id(candidates:candidate_id(first_name, last_name, phone, email))
@@ -179,6 +179,15 @@ Deno.serve(async (req) => {
     if (repErr || !report) return json({ error: "Schademelding niet gevonden" }, 404);
 
     const r = report as any;
+    if (target === "external") {
+      if (!["admin", "backoffice"].includes(profile.role)) {
+        return json({ error: "Alleen admin/backoffice mag een schademelding extern doorsturen" }, 403);
+      }
+      if (r.route_status !== "internal_notified") {
+        return json({ error: "Schademelding moet eerst door interne regie zijn geïnformeerd" }, 409);
+      }
+    }
+
     const damageSettings = (org?.settings as any)?.damage_contact_settings ?? {};
     const sharePhoneExternally = Boolean(damageSettings.share_driver_phone_externally || r.contact_phone_shared);
     const recipient = target === "external"
@@ -204,7 +213,9 @@ Deno.serve(async (req) => {
       : "Onbekend voertuig";
 
     const empCand = r.employee?.candidates;
-    const employeeName = empCand ? `${empCand.first_name} ${empCand.last_name}`.trim() : "—";
+    const employeeName = target === "internal" || sharePhoneExternally
+      ? (empCand ? `${empCand.first_name} ${empCand.last_name}`.trim() : "—")
+      : "Niet gedeeld";
     const damageTypeLabel = DAMAGE_TYPE_LABELS[r.damage_type] ?? r.damage_type;
 
     const subject = `Schademelding ${vehicleLabel} — ${damageTypeLabel}`;
@@ -216,7 +227,7 @@ Deno.serve(async (req) => {
       costEstimate: r.cost_estimate,
       employeeName,
       employeePhone: target === "internal" || sharePhoneExternally ? empCand?.phone ?? null : null,
-      employeeEmail: target === "internal" || sharePhoneExternally ? empCand?.email ?? null : null,
+      employeeEmail: target === "internal" ? empCand?.email ?? null : null,
       photoUrls,
       target,
     });

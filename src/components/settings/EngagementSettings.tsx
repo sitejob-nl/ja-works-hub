@@ -209,7 +209,12 @@ const EngagementSettings = () => {
           </div>
           <div>
             <Label>Verzendtijd</Label>
-            <Input value={draft.birthday_send_time} onChange={(e) => setDraftValue('birthday_send_time', e.target.value)} />
+            <Input
+              type="time"
+              value={draft.birthday_send_time}
+              onChange={(e) => setDraftValue('birthday_send_time', e.target.value)}
+            />
+            <p className="mt-1 text-xs text-muted-foreground">De cron draait elk uur; tijden met minuten worden op de eerstvolgende run verwerkt.</p>
           </div>
           <div>
             <Label>E-mailtemplate</Label>

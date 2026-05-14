@@ -20,9 +20,15 @@ export const DEFAULT_ENGAGEMENT_SETTINGS: EngagementSettings = {
   birthday_message: 'Van harte gefeliciteerd met je verjaardag. We hebben {{punten}} punten voor je klaargezet in je portaal.',
 };
 
+const normalizeTime = (value: unknown, fallback = DEFAULT_ENGAGEMENT_SETTINGS.birthday_send_time) => {
+  const match = String(value ?? fallback).match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return fallback;
+  return `${match[1].padStart(2, '0')}:${match[2]}`;
+};
+
 export const normalizeEngagementSettings = (raw: any): EngagementSettings => ({
   birthday_enabled: raw?.birthday_enabled ?? DEFAULT_ENGAGEMENT_SETTINGS.birthday_enabled,
-  birthday_send_time: raw?.birthday_send_time ?? DEFAULT_ENGAGEMENT_SETTINGS.birthday_send_time,
+  birthday_send_time: normalizeTime(raw?.birthday_send_time),
   birthday_bonus_points: Number(raw?.birthday_bonus_points ?? DEFAULT_ENGAGEMENT_SETTINGS.birthday_bonus_points),
   birthday_email_enabled: raw?.birthday_email_enabled ?? DEFAULT_ENGAGEMENT_SETTINGS.birthday_email_enabled,
   birthday_push_enabled: raw?.birthday_push_enabled ?? DEFAULT_ENGAGEMENT_SETTINGS.birthday_push_enabled,

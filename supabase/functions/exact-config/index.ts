@@ -1,7 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders, getExactToken } from "../_shared/exact-helpers.ts";
-
-const CONNECT_WEBHOOK_ROUTER = "https://xeshjkznwdrxjjhbpisn.supabase.co/functions/v1/exact-webhook-router";
+import { corsHeaders, getExactToken, registerExactWebhookSubscriptions } from "../_shared/exact-helpers.ts";
 
 const regionBaseUrls: Record<string, string> = {
   nl: "https://start.exactonline.nl",
@@ -11,45 +9,6 @@ const regionBaseUrls: Record<string, string> = {
   fr: "https://start.exactonline.fr",
   es: "https://start.exactonline.es",
 };
-
-/** Register webhook subscriptions in Exact Online for key topics */
-async function registerWebhookSubscriptions(
-  baseUrl: string,
-  division: number,
-  accessToken: string,
-) {
-  const topics = ["SalesInvoices", "Accounts"];
-
-  for (const topic of topics) {
-    try {
-      const res = await fetch(
-        `${baseUrl}/api/v1/${division}/webhooks/WebhookSubscriptions`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            "Content-Type": "application/json",
-            Accept: "application/json",
-          },
-          body: JSON.stringify({
-            CallbackURL: CONNECT_WEBHOOK_ROUTER,
-            Topic: topic,
-          }),
-        }
-      );
-
-      if (res.ok) {
-        console.log(`Webhook subscription registered for topic: ${topic}`);
-      } else {
-        const errBody = await res.text();
-        // 409 or duplicate is fine — subscription may already exist
-        console.warn(`Webhook subscription for ${topic} response ${res.status}:`, errBody);
-      }
-    } catch (err) {
-      console.error(`Failed to register webhook for ${topic}:`, err);
-    }
-  }
-}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -136,7 +95,8 @@ Deno.serve(async (req) => {
     if (body.division && config.tenant_id && decrypted[0].decrypted_webhook_secret) {
       try {
         const tokenData = await getExactToken(config.tenant_id, decrypted[0].decrypted_webhook_secret);
-        await registerWebhookSubscriptions(tokenData.base_url, tokenData.division, tokenData.access_token);
+        const webhookResult = await registerExactWebhookSubscriptions(tokenData.base_url, tokenData.division, tokenData.access_token);
+        console.log("Exact webhook subscriptions checked:", webhookResult);
       } catch (err) {
         // Non-blocking — webhook registration failure shouldn't break the config push
         console.error("Webhook subscription registration failed (non-blocking):", err);

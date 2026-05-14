@@ -19,11 +19,18 @@ type ExactDiagnosticResult = {
   checks: Array<{ name: string; ok: boolean; status: number; error?: unknown }>;
 };
 
+type ExactWebhookResult = {
+  ok: boolean;
+  callback_url: string;
+  results: Array<{ topic: string; ok: boolean; status: number; body?: string }>;
+};
+
 const ExactOnlineSettings = () => {
   const orgId = useOrganizationId();
   const queryClient = useQueryClient();
   const [registering, setRegistering] = useState(false);
   const [diagnosticResult, setDiagnosticResult] = useState<ExactDiagnosticResult | null>(null);
+  const [webhookResult, setWebhookResult] = useState<ExactWebhookResult | null>(null);
 
   const { data: config, isLoading } = useQuery({
     queryKey: ['exact-config', orgId],
@@ -70,25 +77,22 @@ const ExactOnlineSettings = () => {
   // Reactivate webhook subscriptions
   const reactivateWebhooks = useMutation({
     mutationFn: async () => {
-      // Trigger webhook subscription registration via exact-api proxy
-      // This calls the Exact Online webhooks API to register subscriptions
-      const topics = ['SalesInvoices', 'Accounts'];
-      for (const topic of topics) {
-        const { data, error } = await supabase.functions.invoke('exact-api', {
-          body: {
-            endpoint: 'webhooks/WebhookSubscriptions',
-            method: 'POST',
-            payload: {
-              CallbackURL: 'https://xeshjkznwdrxjjhbpisn.supabase.co/functions/v1/exact-webhook-router',
-              Topic: topic,
-            },
-          },
-        });
-        if (error) throw error;
-        if (data?.error) console.warn(`Webhook ${topic}:`, data.error);
+      const { data, error } = await supabase.functions.invoke('exact-api', {
+        body: { action: 'reactivate_webhooks' },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      return data as ExactWebhookResult;
+    },
+    onSuccess: (data) => {
+      setWebhookResult(data);
+      const failed = data.results.filter((result) => !result.ok);
+      if (failed.length > 0) {
+        toast.warning(`Exact webhook aandacht nodig: ${failed.map((result) => `${result.topic} (${result.status || 'geen response'})`).join(', ')}`);
+      } else {
+        toast.success('Exact webhooks geactiveerd');
       }
     },
-    onSuccess: () => toast.success('Webhook subscriptions geactiveerd'),
     onError: (e: any) => toast.error('Webhooks activeren mislukt: ' + e.message),
   });
 
@@ -251,6 +255,30 @@ const ExactOnlineSettings = () => {
                   <div key={check.name} className="flex items-center justify-between gap-3 text-xs">
                     <span>{check.name}</span>
                     <Badge variant={check.ok ? 'default' : 'destructive'}>{check.ok ? 'OK' : `HTTP ${check.status || '—'}`}</Badge>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {webhookResult && (
+            <div className={`rounded-md border p-3 ${webhookResult.ok ? 'border-green-200 bg-green-50/50' : 'border-amber-200 bg-amber-50/50'}`}>
+              <div className="mb-2 flex items-start gap-2">
+                {webhookResult.ok ? (
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 text-green-700" />
+                ) : (
+                  <AlertTriangle className="mt-0.5 h-4 w-4 text-amber-700" />
+                )}
+                <div>
+                  <p className="text-sm font-medium">Webhookreactivatie</p>
+                  <p className="break-all text-xs text-muted-foreground">{webhookResult.callback_url}</p>
+                </div>
+              </div>
+              <div className="space-y-1">
+                {webhookResult.results.map((result) => (
+                  <div key={result.topic} className="flex items-center justify-between gap-3 text-xs">
+                    <span>{result.topic}</span>
+                    <Badge variant={result.ok ? 'default' : 'destructive'}>{result.ok ? 'OK' : `HTTP ${result.status || '—'}`}</Badge>
                   </div>
                 ))}
               </div>

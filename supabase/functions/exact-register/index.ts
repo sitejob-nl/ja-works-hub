@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getExactConnectUrl } from "../_shared/exact-helpers.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -63,7 +64,7 @@ Deno.serve(async (req) => {
     const webhookUrl = `${SUPABASE_URL}/functions/v1/exact-webhook`;
 
     const registerRes = await fetch(
-      "https://xeshjkznwdrxjjhbpisn.supabase.co/functions/v1/exact-register-tenant",
+      getExactConnectUrl("exact-register-tenant"),
       {
         method: "POST",
         headers: {

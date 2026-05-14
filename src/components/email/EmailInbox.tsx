@@ -16,6 +16,7 @@ import EmailCompose from './EmailCompose';
 import { format, isToday, isYesterday, parseISO } from 'date-fns';
 import { nl } from 'date-fns/locale';
 import { sanitizeHtml } from '@/lib/sanitize-html';
+import { toast } from 'sonner';
 
 interface EmailMessage {
   id: string;
@@ -64,6 +65,18 @@ const EmailInbox = ({ selectedAccount }: { selectedAccount?: string }) => {
       activeAccount?.microsoft_access_ok &&
       activeAccount?.capabilities.mail_read &&
       activeAccount?.ja_grants.mail_read,
+  );
+  const canSend = Boolean(
+    selectedAccount &&
+      activeAccount?.microsoft_access_ok &&
+      activeAccount?.capabilities.mail_send &&
+      activeAccount?.ja_grants.mail_send,
+  );
+  const canDelete = Boolean(
+    selectedAccount &&
+      activeAccount?.microsoft_access_ok &&
+      activeAccount?.capabilities.mail_delete &&
+      activeAccount?.ja_grants.mail_delete,
   );
   const [activeFolder, setActiveFolder] = useState<FolderKey>('inbox');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -126,6 +139,10 @@ const EmailInbox = ({ selectedAccount }: { selectedAccount?: string }) => {
 
   const handleReply = (mode: 'reply' | 'replyAll' | 'forward') => {
     if (!selectedMessage) return;
+    if (!canSend) {
+      toast.error('Je hebt geen verzendrecht voor deze mailbox');
+      return;
+    }
     setReplyData({
       messageId: selectedMessage.id,
       subject: selectedMessage.subject,
@@ -139,6 +156,10 @@ const EmailInbox = ({ selectedAccount }: { selectedAccount?: string }) => {
 
   const handleDelete = async () => {
     if (!selectedId) return;
+    if (!canDelete) {
+      toast.error('Je hebt geen verwijderrecht voor deze mailbox');
+      return;
+    }
     try {
       await callOutlook('outlook-mail', { action: 'delete', account_id: selectedAccount, message_id: selectedId });
       setSelectedId(null);
@@ -148,6 +169,10 @@ const EmailInbox = ({ selectedAccount }: { selectedAccount?: string }) => {
 
   const handleArchive = async () => {
     if (!selectedId) return;
+    if (!canDelete) {
+      toast.error('Je hebt geen verwijderrecht voor deze mailbox');
+      return;
+    }
     try {
       await callOutlook('outlook-mail', { action: 'move', account_id: selectedAccount, message_id: selectedId, destination_id: 'archive' });
       setSelectedId(null);
@@ -173,7 +198,13 @@ const EmailInbox = ({ selectedAccount }: { selectedAccount?: string }) => {
       {/* Folders sidebar */}
       <div className="w-48 border-r bg-muted/30 flex-shrink-0 hidden md:flex flex-col">
         <div className="p-2">
-          <Button onClick={() => { setReplyData(null); setComposeOpen(true); }} className="w-full gap-2" size="sm">
+          <Button
+            onClick={() => { setReplyData(null); setComposeOpen(true); }}
+            className="w-full gap-2"
+            size="sm"
+            disabled={!canSend}
+            title={canSend ? 'Nieuw bericht' : 'Geen verzendrecht voor deze mailbox'}
+          >
             <MailPlus className="h-4 w-4" /> Nieuw bericht
           </Button>
         </div>
@@ -210,7 +241,14 @@ const EmailInbox = ({ selectedAccount }: { selectedAccount?: string }) => {
             <RefreshCw className={cn('h-4 w-4', isFetching && 'animate-spin')} />
           </Button>
           {/* Mobile: compose button */}
-          <Button variant="ghost" size="icon" className="h-9 w-9 md:hidden" onClick={() => { setReplyData(null); setComposeOpen(true); }}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9 md:hidden"
+            onClick={() => { setReplyData(null); setComposeOpen(true); }}
+            disabled={!canSend}
+            title={canSend ? 'Nieuw bericht' : 'Geen verzendrecht voor deze mailbox'}
+          >
             <MailPlus className="h-4 w-4" />
           </Button>
         </div>
@@ -317,20 +355,34 @@ const EmailInbox = ({ selectedAccount }: { selectedAccount?: string }) => {
               <Button variant="ghost" size="icon" className="h-8 w-8 md:hidden" onClick={() => setSelectedId(null)}>
                 <ChevronLeft className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="sm" className="gap-1" onClick={() => handleReply('reply')}>
+              <Button variant="ghost" size="sm" className="gap-1" onClick={() => handleReply('reply')} disabled={!canSend}>
                 <Reply className="h-4 w-4" /> Beantwoorden
               </Button>
-              <Button variant="ghost" size="sm" className="gap-1" onClick={() => handleReply('replyAll')}>
+              <Button variant="ghost" size="sm" className="gap-1" onClick={() => handleReply('replyAll')} disabled={!canSend}>
                 <ReplyAll className="h-4 w-4" /> Allen
               </Button>
-              <Button variant="ghost" size="sm" className="gap-1" onClick={() => handleReply('forward')}>
+              <Button variant="ghost" size="sm" className="gap-1" onClick={() => handleReply('forward')} disabled={!canSend}>
                 <Forward className="h-4 w-4" /> Doorsturen
               </Button>
               <div className="flex-1" />
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleArchive}>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={handleArchive}
+                disabled={!canDelete}
+                title={canDelete ? 'Archiveren' : 'Geen verwijderrecht voor deze mailbox'}
+              >
                 <Archive className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={handleDelete}>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-destructive"
+                onClick={handleDelete}
+                disabled={!canDelete}
+                title={canDelete ? 'Verwijderen' : 'Geen verwijderrecht voor deze mailbox'}
+              >
                 <Trash2 className="h-4 w-4" />
               </Button>
             </div>

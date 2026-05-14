@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders, getExactToken, jsonError, jsonOk } from "../_shared/exact-helpers.ts";
+import { corsHeaders, getExactToken, jsonError, jsonOk, registerExactWebhookSubscriptions } from "../_shared/exact-helpers.ts";
 
 type ExactMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
@@ -92,9 +92,12 @@ Deno.serve(async (req) => {
       return jsonError("Unauthorized", 401);
     }
 
-    const { data: profile } = await supabase.from("profiles").select("organization_id").eq("id", user.id).single();
+    const { data: profile } = await supabase.from("profiles").select("organization_id, role").eq("id", user.id).single();
     if (!profile) {
       return jsonError("Profile not found", 404);
+    }
+    if (!["admin", "backoffice", "finance"].includes(profile.role)) {
+      return jsonError("Forbidden", 403);
     }
 
     const serviceClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -144,6 +147,14 @@ Deno.serve(async (req) => {
         base_url: tokenData.base_url,
         expires_at: tokenData.expires_at,
         checks,
+      });
+    }
+
+    if (body.action === "reactivate_webhooks") {
+      const webhookResult = await registerExactWebhookSubscriptions(tokenData.base_url, tokenData.division, tokenData.access_token);
+      return jsonOk({
+        ok: webhookResult.results.every((result) => result.ok),
+        ...webhookResult,
       });
     }
 

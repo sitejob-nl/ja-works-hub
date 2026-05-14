@@ -12,7 +12,7 @@ const json = (body: unknown, status = 200) =>
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 
-function amsterdamToday(): string {
+function amsterdamDate(date = new Date()): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Europe/Amsterdam",
     year: "numeric",
@@ -21,6 +21,10 @@ function amsterdamToday(): string {
   }).formatToParts(new Date());
   const get = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
   return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+function amsterdamToday(): string {
+  return amsterdamDate();
 }
 
 function amsterdamTime(): string {
@@ -38,6 +42,23 @@ function normalizeSendTime(value: string | null | undefined): string {
   const match = String(value ?? "07:00").match(/^(\d{1,2}):(\d{2})/);
   if (!match) return "07:00";
   return `${match[1].padStart(2, "0")}:${match[2]}`;
+}
+
+function minutesSinceMidnight(value: string): number {
+  const [hours, minutes] = normalizeSendTime(value).split(":").map((part) => Number(part));
+  return (hours * 60) + minutes;
+}
+
+function cronWindowBirthdayDate(sendTime: string, nowTime: string, todayIso: string): string | null {
+  const diff = minutesSinceMidnight(nowTime) - minutesSinceMidnight(sendTime);
+  if (diff >= 0 && diff < 60) return todayIso;
+
+  const wrappedDiff = minutesSinceMidnight(nowTime) + 1440 - minutesSinceMidnight(sendTime);
+  if (wrappedDiff >= 0 && wrappedDiff < 60) {
+    return amsterdamDate(new Date(Date.now() - 24 * 60 * 60 * 1000));
+  }
+
+  return null;
 }
 
 function isAuthorizedCronRequest(req: Request): boolean {
@@ -178,7 +199,8 @@ Deno.serve(async (req) => {
         continue;
       }
       const sendTime = normalizeSendTime(settings.birthday_send_time);
-      if (isCronRun && sendTime !== nowTime) {
+      const birthdayDate = isCronRun ? cronWindowBirthdayDate(sendTime, nowTime, todayIso) : todayIso;
+      if (!birthdayDate) {
         results.push({ org_id: orgId, status: "skipped", reason: "outside_send_time", send_time: sendTime, now_time: nowTime });
         continue;
       }
@@ -210,14 +232,14 @@ Deno.serve(async (req) => {
       let failed = 0;
 
       for (const candidate of candidates ?? []) {
-        if (!birthdayMatches(candidate.date_of_birth, todayIso)) continue;
+        if (!birthdayMatches(candidate.date_of_birth, birthdayDate)) continue;
 
         const { data: existingLog } = await admin
           .from("birthday_campaign_logs")
           .select("id")
           .eq("organization_id", orgId)
           .eq("candidate_id", candidate.id)
-          .eq("birthday_date", todayIso)
+          .eq("birthday_date", birthdayDate)
           .maybeSingle();
         if (existingLog) {
           skipped++;
@@ -230,7 +252,7 @@ Deno.serve(async (req) => {
             achternaam: candidate.last_name ?? "",
             naam: `${candidate.first_name ?? ""} ${candidate.last_name ?? ""}`.trim(),
             punten: String(bonusPoints),
-            leeftijd: String(ageOnBirthday(candidate.date_of_birth, todayIso)),
+            leeftijd: String(ageOnBirthday(candidate.date_of_birth, birthdayDate)),
             organisatie: org.name ?? "JA Werkt",
           };
 
@@ -238,7 +260,7 @@ Deno.serve(async (req) => {
           const message = mergeText(settings.birthday_message ?? "", vars);
           const html = template?.body_html ? mergeText(template.body_html, vars) : defaultBirthdayHtml(message);
 
-          const transactionId = await awardBirthdayPoints(admin, orgId, candidate, bonusPoints, todayIso);
+          const transactionId = await awardBirthdayPoints(admin, orgId, candidate, bonusPoints, birthdayDate);
 
           let notificationId: string | null = null;
           if (pushEnabled) {
@@ -286,7 +308,7 @@ Deno.serve(async (req) => {
           await admin.from("birthday_campaign_logs").insert({
             organization_id: orgId,
             candidate_id: candidate.id,
-            birthday_date: todayIso,
+            birthday_date: birthdayDate,
             email_template_id: template?.id ?? null,
             notification_id: notificationId,
             loyalty_transaction_id: transactionId,
@@ -299,7 +321,7 @@ Deno.serve(async (req) => {
           await admin.from("birthday_campaign_logs").insert({
             organization_id: orgId,
             candidate_id: candidate.id,
-            birthday_date: todayIso,
+            birthday_date: birthdayDate,
             status: "failed",
             error: (error as any)?.message ?? "Unknown error",
           }).then(() => {});

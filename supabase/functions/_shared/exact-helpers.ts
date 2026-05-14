@@ -11,12 +11,25 @@ export interface ExactTokenResponse {
   expires_at: string;
 }
 
+export function getExactConnectUrl(path: "exact-register-tenant" | "exact-token" | "exact-webhook-router"): string {
+  const baseUrl = Deno.env.get("SITEJOB_CONNECT_FUNCTIONS_URL")
+    ?? Deno.env.get("CONNECT_FUNCTIONS_URL")
+    ?? "https://xeshjkznwdrxjjhbpisn.supabase.co/functions/v1";
+  return `${baseUrl.replace(/\/$/, "")}/${path}`;
+}
+
+export function getExactWebhookCallbackUrl(): string {
+  return Deno.env.get("EXACT_WEBHOOK_CALLBACK_URL")
+    ?? Deno.env.get("CONNECT_EXACT_WEBHOOK_ROUTER_URL")
+    ?? getExactConnectUrl("exact-webhook-router");
+}
+
 /**
  * Get a fresh Exact Online access token via SiteJob Connect.
  * Tokens expire after 10 minutes — always call this before each API request.
  */
 export async function getExactToken(tenantId: string, webhookSecret: string): Promise<ExactTokenResponse> {
-  const res = await fetch("https://xeshjkznwdrxjjhbpisn.supabase.co/functions/v1/exact-token", {
+  const res = await fetch(getExactConnectUrl("exact-token"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ tenant_id: tenantId, secret: webhookSecret }),
@@ -30,6 +43,48 @@ export async function getExactToken(tenantId: string, webhookSecret: string): Pr
     throw new Error(data.error || "Token ophalen mislukt");
   }
   return data as ExactTokenResponse;
+}
+
+/** Register webhook subscriptions in Exact Online for the topics JA Werkt syncs back. */
+export async function registerExactWebhookSubscriptions(
+  baseUrl: string,
+  division: number,
+  accessToken: string,
+) {
+  const topics = ["SalesInvoices", "Accounts"];
+  const callbackUrl = getExactWebhookCallbackUrl();
+  const results: Array<{ topic: string; ok: boolean; status: number; body?: string }> = [];
+
+  for (const topic of topics) {
+    try {
+      const res = await fetch(
+        `${baseUrl}/api/v1/${division}/webhooks/WebhookSubscriptions`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({
+            CallbackURL: callbackUrl,
+            Topic: topic,
+          }),
+        }
+      );
+
+      results.push({
+        topic,
+        ok: res.ok || res.status === 409,
+        status: res.status,
+        body: res.ok ? undefined : await res.text(),
+      });
+    } catch (err) {
+      results.push({ topic, ok: false, status: 0, body: (err as Error).message });
+    }
+  }
+
+  return { callback_url: callbackUrl, results };
 }
 
 /** Standard JSON error response with CORS */
