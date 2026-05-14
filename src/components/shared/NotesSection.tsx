@@ -56,12 +56,36 @@ const NotesSection = ({ entityId, entityType }: NotesSectionProps) => {
         );
       }
 
-      return rawNotes.map((n: any) => ({
-        ...n,
-        profiles: n.created_by && profilesById[n.created_by]
+      const noteIds = rawNotes.map((n: any) => n.id).filter(Boolean);
+      let carerixNoteIds = new Set<string>();
+      if (noteIds.length > 0) {
+        const { data: mappingsData, error: mappingsError } = await supabase
+          .from('external_mappings')
+          .select('entity_id')
+          .eq('organization_id', orgId)
+          .eq('external_system', 'carerix')
+          .eq('entity_type', 'note')
+          .in('entity_id', noteIds as string[]);
+        if (mappingsError) throw mappingsError;
+        carerixNoteIds = new Set(
+          (mappingsData ?? []).map((mapping: any) => mapping.entity_id)
+        );
+      }
+
+      return rawNotes.map((n: any) => {
+        const profile = n.created_by && profilesById[n.created_by]
           ? { full_name: profilesById[n.created_by].full_name }
-          : null,
-      }));
+          : null;
+        const createdByDisplayName = carerixNoteIds.has(n.id)
+          ? 'Carerix'
+          : profile?.full_name;
+
+        return {
+          ...n,
+          profiles: profile,
+          created_by_display_name: createdByDisplayName,
+        };
+      });
     },
   });
 
@@ -163,7 +187,7 @@ const NotesSection = ({ entityId, entityType }: NotesSectionProps) => {
             <div key={note.id} className="bg-card rounded-lg border p-4">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium">{note.profiles?.full_name ?? 'Onbekend'}</span>
+                  <span className="text-sm font-medium">{note.created_by_display_name ?? 'Onbekend'}</span>
                   <span className="text-xs text-muted-foreground">{formatRelativeTime(note.created_at)}</span>
                   {note.is_internal && (
                     <Badge variant="secondary" className="text-[10px] gap-1">
