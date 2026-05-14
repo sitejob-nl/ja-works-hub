@@ -60,6 +60,30 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
+  const ensureEmployeeRecord = async (candidateId: string) => {
+    const { data: existing, error: existingError } = await supabase
+      .from('employees')
+      .select('id')
+      .eq('candidate_id', candidateId)
+      .maybeSingle();
+    if (existingError) throw existingError;
+    if (existing?.id) return existing.id;
+
+    const { data: created, error: createError } = await supabase
+      .from('employees')
+      .insert({
+        organization_id: orgId,
+        candidate_id: candidateId,
+        start_date: form.start_date,
+        contract_type: null,
+        status: 'actief' as any,
+      })
+      .select('id')
+      .single();
+    if (createError) throw createError;
+    return created.id;
+  };
+
   const executePlacement = async (isOverride: boolean) => {
     const candidateId = match.candidate_id;
     const companyId = vacancy.company_id;
@@ -73,6 +97,8 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
       return;
     }
 
+    const employeeId = await ensureEmployeeRecord(candidateId);
+
     // 1. Update candidate status to geplaatst
     const { error: candError } = await supabase
       .from('candidates')
@@ -84,6 +110,7 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
     const { data: placement, error: plError } = await supabase.from('placements').insert({
       organization_id: orgId,
       candidate_id: candidateId,
+      employee_id: employeeId,
       company_id: companyId,
       vacancy_id: vacancy.id,
       match_id: match.id,
@@ -137,6 +164,7 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
       const count = await generateTimesheetTemplates({
         placementId: placement.id,
         candidateId,
+        employeeId,
         companyId,
         organizationId: orgId,
         startDate: form.start_date,
@@ -203,6 +231,7 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
             .insert({
               organization_id: orgId,
               candidate_id: candidateId,
+              employee_id: employeeId,
               email: candData.email,
             })
             .select('id')

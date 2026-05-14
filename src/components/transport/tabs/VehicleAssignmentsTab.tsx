@@ -61,7 +61,7 @@ const VehicleAssignmentsTab = ({ vehicle }: { vehicle: any }) => {
   const { data: employees } = useQuery({
     queryKey: ['employees-active-for-assign'],
     queryFn: async () => {
-      const { data, error } = await supabase.from('employees').select('id, candidates!employees_candidate_id_fkey(first_name, last_name)').eq('status', 'actief' as any);
+      const { data, error } = await supabase.from('employees').select('id, candidate_id, candidates!employees_candidate_id_fkey(first_name, last_name)').eq('status', 'actief' as any);
       if (error) throw error;
       return data ?? [];
     },
@@ -70,10 +70,12 @@ const VehicleAssignmentsTab = ({ vehicle }: { vehicle: any }) => {
 
   const assignMutation = useMutation({
     mutationFn: async () => {
+      const selectedEmployee = (employees ?? []).find((employee: any) => employee.id === employeeId) as any;
       const { error } = await supabase.from('vehicle_assignments').insert({
         organization_id: orgId,
         vehicle_id: vehicle.id,
         employee_id: employeeId,
+        candidate_id: selectedEmployee?.candidate_id ?? null,
         assigned_date: assignedDate,
         start_mileage: startMileage ? parseInt(startMileage) : null,
       });

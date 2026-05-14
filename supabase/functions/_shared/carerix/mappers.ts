@@ -259,7 +259,7 @@ export function mapCRAttachmentToDocument(
   const fileName = (a as { downloadName?: string }).downloadName || a.displayName;
   const tag = (a as { label?: string }).label;
   const isCv = isCvType(tag) || isCvType(fileName);
-  const docType = isCv ? 'overig' : mapDocumentType(tag);
+  const docType = isCv ? 'cv' : mapDocumentType(tag);
 
   return {
     candidate_id: candidateId,

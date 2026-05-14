@@ -67,9 +67,8 @@ const CandidateProfile = () => {
 
     const validate = async () => {
       try {
-        const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
         const res = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/candidate-profile?token=${encodeURIComponent(token)}`,
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/candidate-profile?token=${encodeURIComponent(token)}`,
           { headers: { 'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY, 'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` } }
         );
         const data = await res.json();
@@ -156,9 +155,8 @@ const CandidateProfile = () => {
 
       const nationality = form.nationality === 'overig' ? form.nationality_other : form.nationality;
 
-      const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
       const res = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/candidate-profile`,
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/candidate-profile`,
         {
           method: 'POST',
           headers: {

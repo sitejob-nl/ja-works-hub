@@ -12,6 +12,7 @@ import { getDrivingDistance } from '@/lib/distance';
 interface PlacementTriggerInput {
   placementId: string;
   candidateId: string;
+  employeeId?: string | null;
   companyId: string;
   organizationId: string;
   startDate: string;
@@ -49,6 +50,7 @@ export async function generateTimesheetTemplates(input: PlacementTriggerInput): 
     entries.push({
       organization_id: input.organizationId,
       candidate_id: input.candidateId,
+      employee_id: input.employeeId ?? null,
       placement_id: input.placementId,
       work_date: format(day, 'yyyy-MM-dd'),
       hours: 8,

@@ -42,7 +42,7 @@ Deno.serve(async (req) => {
     // Fetch vacancy
     const { data: vacancy, error: vErr } = await userClient
       .from("vacancies")
-      .select("title, description, function_name, required_count, skills_required, companies!vacancies_company_id_fkey(name, address_city)")
+      .select("title, description, required_count, required_skills, required_certifications, requires_drivers_license, location, companies!vacancies_company_id_fkey(name, address_city)")
       .eq("id", vacancy_id)
       .single();
     if (vErr) throw vErr;
@@ -61,10 +61,13 @@ KANDIDAAT:
 
 VACATURE:
 - Titel: ${vacancy.title}
-- Functie: ${vacancy.function_name ?? vacancy.title}
+- Functie: ${vacancy.title}
 - Bedrijf: ${(vacancy.companies as any)?.name ?? "onbekend"} (${(vacancy.companies as any)?.address_city ?? ""})
+- Locatie: ${vacancy.location ?? "niet opgegeven"}
 - Beschrijving: ${vacancy.description ?? "geen"}
-- Gewenste vaardigheden: ${(vacancy.skills_required ?? []).join(", ") || "niet gespecificeerd"}
+- Gewenste vaardigheden: ${(vacancy.required_skills ?? []).join(", ") || "niet gespecificeerd"}
+- Gewenste certificeringen: ${(vacancy.required_certifications ?? []).join(", ") || "niet gespecificeerd"}
+- Rijbewijs vereist: ${vacancy.requires_drivers_license ? "ja" : "nee"}
 
 Geef een score van 0-100 en een korte onderbouwing in het Nederlands.`;
 

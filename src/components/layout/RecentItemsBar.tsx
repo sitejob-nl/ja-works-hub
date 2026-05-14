@@ -29,9 +29,18 @@ const RecentItemsBar = () => {
           return (
             <Tooltip key={`${item.type}-${item.id}`}>
               <TooltipTrigger asChild>
-                <button
+                <div
+                  role="button"
+                  tabIndex={0}
+                  aria-current={isActive ? 'page' : undefined}
                   onClick={() => navigate(item.path)}
-                  className={`group inline-flex items-center gap-1 h-6 px-2 rounded-md text-xs font-medium whitespace-nowrap transition-all ${config.color} ${isActive ? config.activeRing : ''}`}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      navigate(item.path);
+                    }
+                  }}
+                  className={`group inline-flex items-center gap-1 h-6 px-2 rounded-md text-xs font-medium whitespace-nowrap transition-all cursor-pointer ${config.color} ${isActive ? config.activeRing : ''}`}
                 >
                   <Icon className="h-3 w-3 shrink-0" />
                   <span className="max-w-32 truncate">{item.label}</span>
@@ -39,7 +48,7 @@ const RecentItemsBar = () => {
                     type="button"
                     tabIndex={0}
                     aria-label={`Verwijder ${item.label}`}
-                    className="hidden group-hover:inline-flex items-center justify-center h-3.5 w-3.5 rounded-full hover:bg-black/10 shrink-0 p-0 border-0 bg-transparent cursor-pointer"
+                    className="hidden group-hover:inline-flex group-focus-within:inline-flex items-center justify-center h-3.5 w-3.5 rounded-full hover:bg-black/10 shrink-0 p-0 border-0 bg-transparent cursor-pointer"
                     onClick={(e) => {
                       e.stopPropagation();
                       removeItem(item.id, item.type);
@@ -47,7 +56,7 @@ const RecentItemsBar = () => {
                   >
                     <X className="h-2.5 w-2.5" />
                   </button>
-                </button>
+                </div>
               </TooltipTrigger>
               <TooltipContent side="bottom" className="text-xs">
                 <p className="font-medium">{item.label}</p>

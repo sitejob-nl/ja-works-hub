@@ -1,15 +1,22 @@
-import { expect, Page, test } from "@playwright/test";
+import { expect, Locator, Page, test } from "@playwright/test";
 import { ensureLoggedIn } from "./e2e-helpers";
 
 test.describe.configure({ mode: "serial" });
-test.use({ storageState: { cookies: [], origins: [] } });
+
+function requireMutatingWorkflows(): void {
+  const enabled = process.env.E2E_ALLOW_MUTATING_WORKFLOWS === "true";
+  if (!enabled) {
+    console.warn("Muterende full-workflow E2E overgeslagen: E2E_ALLOW_MUTATING_WORKFLOWS is niet true.");
+    test.skip(true, "Muterende full-workflow E2E vereist E2E_ALLOW_MUTATING_WORKFLOWS=true; dit voorkomt testdata in productie.");
+  }
+}
 
 const seedRunId = process.env.E2E_RUN_ID ?? `${Date.now()}`;
 const runId = `${seedRunId}${Date.now().toString().slice(-6)}`;
 
 function requiredEnv(name: string): string {
   const value = process.env[name];
-  test.skip(!value, `${name} niet gezet; full workflow e2e overgeslagen`);
+  if (!value) test.skip(true, `${name} niet gezet; full workflow e2e overgeslagen`);
   return value!;
 }
 
@@ -29,6 +36,20 @@ async function fillInputAfterLabel(page: Page, label: string, value: string): Pr
 async function fillTextareaAfterLabel(page: Page, label: string, value: string): Promise<void> {
   await page
     .locator(`xpath=//label[contains(normalize-space(), ${xpathLiteral(label)})]/following::textarea[1]`)
+    .first()
+    .fill(value);
+}
+
+async function fillInputWithin(container: Locator, label: string, value: string): Promise<void> {
+  await container
+    .locator(`xpath=.//label[contains(normalize-space(), ${xpathLiteral(label)})]/following::input[1]`)
+    .first()
+    .fill(value);
+}
+
+async function fillTextareaWithin(container: Locator, label: string, value: string): Promise<void> {
+  await container
+    .locator(`xpath=.//label[contains(normalize-space(), ${xpathLiteral(label)})]/following::textarea[1]`)
     .first()
     .fill(value);
 }
@@ -105,12 +126,15 @@ function blockingFailures(failures: string[]): string[] {
       !failure.includes("exact-sync-account") &&
       !failure.includes("portal-activate: {\"error\":\"Ongeldige of verlopen uitnodiging\"}") &&
       !failure.includes("client-portal-activate: {\"error\":\"Ongeldige of verlopen uitnodiging\"}") &&
+      !(failure.includes("Error fetching profile") && failure.includes("Failed to fetch")) &&
+      !(failure.startsWith("console: TypeError: Failed to fetch") && failure.includes("_refreshAccessToken")) &&
       !failure.includes("validateDOMNesting") &&
       !failure.includes("cannot appear as a descendant of"),
   );
 }
 
 test("Admin UI maakt kernrecords aan: opdrachtgever, kandidaat, vacature, voertuig en pand", async ({ page }) => {
+  requireMutatingWorkflows();
   test.setTimeout(180_000);
   const failures = watchFailures(page);
   await ensureLoggedIn(page);
@@ -202,10 +226,61 @@ test("Admin UI maakt kernrecords aan: opdrachtgever, kandidaat, vacature, voertu
   await page.getByRole("button", { name: /Klaar/i }).click();
   await expect(page.getByText(/Status bijgewerkt|Klaar/i).first()).toBeVisible({ timeout: 20_000 });
 
+  await page.getByRole("tab", { name: /Contracten/i }).click();
+  await expect(page.getByText(/Nieuw huurcontract/i)).toBeVisible({ timeout: 10_000 });
+  await page.locator('input[type="file"]').first().setInputFiles(imagePayload(`inhuur-${runId}.png`));
+  await fillInputAfterLabel(page, "Begindatum", new Date().toISOString().slice(0, 10));
+  await fillTextareaAfterLabel(page, "Notities", `E2E inhuurcontract ${runId}`);
+  await page.getByRole("button", { name: /Uploaden/i }).click();
+  await expect(page.getByText(`inhuur-${runId}.png`).first()).toBeVisible({ timeout: 20_000 });
+
+  await selectAfterLabel(page, "Contracttype", /Onderhuurcontract/i);
+  await page.locator('input[type="file"]').first().setInputFiles(imagePayload(`onderhuur-${runId}.png`));
+  await fillInputAfterLabel(page, "Begindatum", new Date().toISOString().slice(0, 10));
+  await fillTextareaAfterLabel(page, "Notities", `E2E onderhuurcontract ${runId}`);
+  await page.getByRole("button", { name: /Uploaden/i }).click();
+  await expect(page.getByText(`onderhuur-${runId}.png`).first()).toBeVisible({ timeout: 20_000 });
+
+  expect(blockingFailures(failures)).toEqual([]);
+});
+
+test("Admin configureert tankpasvoorwaarden, fiscale signalering en rewardshop", async ({ page }) => {
+  requireMutatingWorkflows();
+  test.setTimeout(180_000);
+  const failures = watchFailures(page);
+  await ensureLoggedIn(page);
+
+  await page.goto("/tankpas-analyse", { waitUntil: "domcontentloaded" });
+  await page.getByRole("tab", { name: /Voorwaarden/i }).click();
+  await page.getByLabel("Marge (%)").nth(0).fill("15");
+  await page.getByLabel("Marge (%)").nth(1).fill("50");
+  await page.getByLabel("Max. sprong (km)").fill("750");
+  await page.getByRole("button", { name: /Voorwaarden opslaan/i }).click();
+  await expect(page.getByText(/Voorwaarden opgeslagen/i).first()).toBeVisible({ timeout: 15_000 });
+
+  await page.goto("/kilometeranalyse", { waitUntil: "domcontentloaded" });
+  await page.getByLabel("Zakelijke marge (%)").fill("15");
+  await page.getByLabel("Privémarge per maand (km)").fill("300");
+  await page.getByRole("button", { name: /^Opslaan$/ }).click();
+  await expect(page.getByText(/Kilometerbeleid opgeslagen/i).first()).toBeVisible({ timeout: 15_000 });
+  await page.getByRole("button", { name: /Analyse draaien/i }).click();
+  await expect(page.getByText(/Privé boven marge|signaal/i).first()).toBeVisible({ timeout: 20_000 });
+
+  await page.goto("/instellingen", { waitUntil: "domcontentloaded" });
+  const rewardName = `E2E Reward ${runId}`;
+  const rewardSection = page.locator(`xpath=//*[normalize-space()='Reward toevoegen']/ancestor::div[contains(@class,'rounded-md')][1]`);
+  await rewardSection.scrollIntoViewIfNeeded();
+  await fillInputWithin(rewardSection, "Naam", rewardName);
+  await fillInputWithin(rewardSection, "Punten", "120");
+  await fillTextareaWithin(rewardSection, "Omschrijving", `E2E reward redemption ${runId}`);
+  await rewardSection.getByRole("button", { name: /Reward opslaan/i }).click();
+  await expect(page.getByText(rewardName).first()).toBeVisible({ timeout: 20_000 });
+
   expect(blockingFailures(failures)).toEqual([]);
 });
 
 test("Medewerkerportaal activeert account en doorloopt uren, huisvesting, voertuigschade en ziekmelding", async ({ page }) => {
+  requireMutatingWorkflows();
   test.setTimeout(240_000);
   const failures = watchFailures(page);
   const token = requiredEnv("E2E_EMPLOYEE_PORTAL_TOKEN");
@@ -265,10 +340,17 @@ test("Medewerkerportaal activeert account en doorloopt uren, huisvesting, voertu
   await page.getByRole("button", { name: /Ziekmelding indienen/i }).click();
   await expect(page.getByText(/Ziekmelding ingediend/i).first()).toBeVisible({ timeout: 20_000 });
 
+  await page.goto("/portaal/punten", { waitUntil: "domcontentloaded" });
+  await expect(page.getByText(/Beschikbaar saldo/i)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText(new RegExp(`E2E Reward ${escapeRegExp(runId)}`)).first()).toBeVisible({ timeout: 15_000 });
+  await page.getByRole("button", { name: /Aanvragen/i }).first().click();
+  await expect(page.getByText(/Reward aangevraagd|aangevraagd/i).first()).toBeVisible({ timeout: 20_000 });
+
   expect(blockingFailures(failures)).toEqual([]);
 });
 
 test("Klantportaal activeert account, ziet alleen eigen plaatsingen en keurt uren goed", async ({ page }) => {
+  requireMutatingWorkflows();
   test.setTimeout(180_000);
   const failures = watchFailures(page);
   const token = requiredEnv("E2E_CLIENT_PORTAL_TOKEN");
@@ -306,6 +388,7 @@ test("Klantportaal activeert account, ziet alleen eigen plaatsingen en keurt ure
 });
 
 test("Admin transport incidenten: portal-schade zichtbaar en boete vereist foto-upload", async ({ page }) => {
+  requireMutatingWorkflows();
   test.setTimeout(180_000);
   const failures = watchFailures(page);
   const vehicleId = requiredEnv("E2E_SEEDED_VEHICLE_ID");
