@@ -1,5 +1,6 @@
 import { createAdminClient, requireInternalProfile } from "../_shared/auth.ts";
 import { auditOutlookAction, graphJson, json, loadProviderForAccount, mailboxBasePath } from "../_shared/outlook-accounts.ts";
+import { appendAccountSignatureIfMissing, sanitizeEmailHtml } from "../_shared/outlook-signature.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -33,14 +34,6 @@ function base64ByteLength(base64: string) {
   return Math.floor((clean.length * 3) / 4) - padding;
 }
 
-function stripUnsafeHtml(html: string) {
-  return html
-    .replace(/<\s*(script|iframe|object|embed|form|input|button|meta|link)[\s\S]*?<\s*\/\s*\1\s*>/gi, "")
-    .replace(/<\s*(script|iframe|object|embed|form|input|button|meta|link)\b[^>]*\/?>/gi, "")
-    .replace(/\son[a-z]+\s*=\s*(['"]).*?\1/gi, "")
-    .replace(/\s(href|src)\s*=\s*(['"])\s*javascript:[\s\S]*?\2/gi, "");
-}
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405, corsHeaders);
@@ -53,7 +46,7 @@ Deno.serve(async (req) => {
   const ccRecipients = recipients(body.cc);
   const bccRecipients = recipients(body.bcc);
   const subject = String(body.subject ?? "").trim();
-  const html = stripUnsafeHtml(String(body.html ?? body.htmlBody ?? ""));
+  const html = sanitizeEmailHtml(String(body.html ?? body.htmlBody ?? ""));
   if (toRecipients.length === 0) return json({ error: "to_required" }, 400, corsHeaders);
   if (!subject) return json({ error: "subject_required" }, 400, corsHeaders);
   if (!html.trim()) return json({ error: "html_required" }, 400, corsHeaders);
@@ -85,6 +78,23 @@ Deno.serve(async (req) => {
       require: "mail_send",
       allowSystemDefault: !body.account_id,
     });
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("full_name, email")
+      .eq("id", auth.userId)
+      .maybeSingle();
+    const { data: org } = await admin
+      .from("organizations")
+      .select("name")
+      .eq("id", auth.organizationId)
+      .maybeSingle();
+    const from = provider.account.mailbox_email || provider.account.from_email;
+    const finalHtml = appendAccountSignatureIfMissing(html, provider.account, {
+      senderName: profile?.full_name?.trim() || "Het JA Werkt team",
+      senderEmail: profile?.email ?? null,
+      mailboxEmail: from,
+      organizationName: org?.name ?? null,
+    });
 
     await graphJson(admin, provider, `${mailboxBasePath(provider.account)}/sendMail`, {
       method: "POST",
@@ -92,7 +102,7 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         message: {
           subject,
-          body: { contentType: "HTML", content: html },
+          body: { contentType: "HTML", content: finalHtml },
           toRecipients,
           ccRecipients,
           bccRecipients,
@@ -110,10 +120,10 @@ Deno.serve(async (req) => {
       channel: "email",
       direction: "outbound",
       subject,
-      body: html,
+      body: finalHtml,
       email_to: toRecipients.map((r) => r.emailAddress.address),
       email_cc: ccRecipients.map((r) => r.emailAddress.address),
-      email_from: provider.account.mailbox_email || provider.account.from_email,
+      email_from: from,
       sent_at: new Date().toISOString(),
       sent_by: auth.userId,
     } as any).then(() => {});
@@ -127,11 +137,11 @@ Deno.serve(async (req) => {
         action: "send_mail",
         to: toRecipients.map((r) => r.emailAddress.address),
         subject,
-        from: provider.account.mailbox_email || provider.account.from_email,
+        from,
       },
     });
 
-    return json({ ok: true, account_id: provider.account.id, from: provider.account.mailbox_email || provider.account.from_email }, 200, corsHeaders);
+    return json({ ok: true, account_id: provider.account.id, from }, 200, corsHeaders);
   } catch (error) {
     const err = error as any;
     return json({ error: err.message || "outlook_send_failed", retry_after: err.retryAfter }, err.status || 400, corsHeaders);

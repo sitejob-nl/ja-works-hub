@@ -9,7 +9,7 @@ function escapeHtml(s: string): string {
     .replace(/'/g, '&#039;');
 }
 
-function plaintextToHtml(text: string): string {
+export function plaintextToHtml(text: string): string {
   return escapeHtml(text).replace(/\r?\n/g, '<br>');
 }
 

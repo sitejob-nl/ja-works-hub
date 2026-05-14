@@ -58,6 +58,9 @@ export type MailAccountRow = {
   last_error: string | null;
   last_connected_at: string | null;
   refreshing_at: string | null;
+  signature_enabled?: boolean | null;
+  signature_html?: string | null;
+  signature_json?: unknown | null;
   deleted_at: string | null;
 };
 
@@ -111,6 +114,9 @@ export type OutlookAccountOption = {
   microsoft_access_ok: boolean;
   is_default_for_organization: boolean;
   is_default_for_user: boolean;
+  signature_enabled: boolean;
+  signature_html: string | null;
+  signature_json: unknown | null;
   capabilities: {
     mail_read: boolean;
     mail_send: boolean;
@@ -253,6 +259,9 @@ export function toAccountOption(account: MailAccountRow, grant: AccessGrant | nu
     microsoft_access_ok: account.status === "connected",
     is_default_for_organization: Boolean(account.is_default_for_organization),
     is_default_for_user: Boolean(account.is_default_for_user),
+    signature_enabled: account.signature_enabled !== false,
+    signature_html: account.signature_html ?? null,
+    signature_json: account.signature_json ?? null,
     capabilities: {
       mail_read: Boolean(account.mail_read_enabled),
       mail_send: Boolean(account.mail_send_enabled),

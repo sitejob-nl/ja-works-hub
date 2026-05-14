@@ -6,6 +6,7 @@ import {
   mailboxBasePath,
   type OutlookCapability,
 } from "./outlook-accounts.ts";
+import { appendAccountSignatureIfMissing } from "./outlook-signature.ts";
 
 interface SendViaOutlookAccountParams {
   orgId: string;
@@ -31,30 +32,6 @@ interface SendResult {
   from?: string | null;
 }
 
-const SIGNATURE_MARKER = "ja-werkt-signature";
-
-export function buildSignatureBlock(senderName: string): string {
-  return `<div data-signature="${SIGNATURE_MARKER}" style="margin-top:24px;padding-top:12px;border-top:1px solid #e5e7eb;color:#334155;font-size:14px;line-height:1.5;">
-  <p style="margin:0;">Met vriendelijke groet,</p>
-  <p style="margin:4px 0 0;font-weight:600;">${escapeHtml(senderName)}</p>
-  <p style="margin:8px 0 0;color:#94a3b8;font-size:12px;">Verstuurd via JA Werkt</p>
-</div>`;
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
-
-function appendSignatureIfMissing(html: string, senderName: string): string {
-  if (html.includes(`data-signature="${SIGNATURE_MARKER}"`)) return html;
-  return html + buildSignatureBlock(senderName);
-}
-
 function recipientList(value: string | string[]) {
   return (Array.isArray(value) ? value : [value])
     .map((email) => String(email ?? "").trim())
@@ -62,18 +39,23 @@ function recipientList(value: string | string[]) {
     .map((address) => ({ emailAddress: { address } }));
 }
 
-async function resolveSenderName(admin: ReturnType<typeof createAdminClient>, sentBy?: string, senderName?: string | null) {
+async function resolveSenderContext(admin: ReturnType<typeof createAdminClient>, orgId: string, sentBy?: string, senderName?: string | null) {
   if (senderName === null) return null;
-  if (typeof senderName === "string" && senderName.trim()) return senderName.trim();
-  if (!sentBy) return "Het JA Werkt team";
 
-  const { data: profile } = await admin
-    .from("profiles")
-    .select("full_name")
-    .eq("id", sentBy)
-    .maybeSingle();
+  const [{ data: profile }, { data: org }] = await Promise.all([
+    sentBy
+      ? admin.from("profiles").select("full_name, email").eq("id", sentBy).maybeSingle()
+      : Promise.resolve({ data: null }),
+    admin.from("organizations").select("name").eq("id", orgId).maybeSingle(),
+  ]);
 
-  return profile?.full_name?.trim() || "Het JA Werkt team";
+  return {
+    senderName: typeof senderName === "string" && senderName.trim()
+      ? senderName.trim()
+      : profile?.full_name?.trim() || "Het JA Werkt team",
+    senderEmail: profile?.email ?? null,
+    organizationName: org?.name ?? null,
+  };
 }
 
 export async function sendViaOutlookAccount(params: SendViaOutlookAccountParams): Promise<SendResult> {
@@ -91,11 +73,14 @@ export async function sendViaOutlookAccount(params: SendViaOutlookAccountParams)
       bypassJaGrants: true,
     });
 
-    const senderName = await resolveSenderName(admin, params.sentBy, params.senderName);
-    const finalBody = senderName === null
-      ? params.htmlBody
-      : appendSignatureIfMissing(params.htmlBody, senderName);
+    const senderContext = await resolveSenderContext(admin, params.orgId, params.sentBy, params.senderName);
     const from = provider.account.mailbox_email || provider.account.from_email;
+    const finalBody = senderContext === null
+      ? params.htmlBody
+      : appendAccountSignatureIfMissing(params.htmlBody, provider.account, {
+        ...senderContext,
+        mailboxEmail: from,
+      });
 
     await graphJson(admin, provider, `${mailboxBasePath(provider.account)}/sendMail`, {
       method: "POST",

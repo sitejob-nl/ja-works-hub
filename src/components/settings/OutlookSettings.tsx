@@ -2,17 +2,20 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/contexts/AuthContext';
 import { invokeOutlookFunction, useOutlookAccounts, type OutlookAccount } from '@/hooks/useOutlookAccounts';
-import { AlertTriangle, Building2, CalendarCheck, CheckCircle2, Loader2, Mail, Plus, RotateCcw, ShieldCheck, Trash2, User } from 'lucide-react';
+import EmailSignatureEditor from '@/components/email/EmailSignatureEditor';
+import { AlertTriangle, Building2, CalendarCheck, CheckCircle2, Loader2, Mail, PenLine, Plus, RotateCcw, ShieldCheck, Trash2, User } from 'lucide-react';
 
 type AdminUser = {
   id: string;
@@ -33,6 +36,12 @@ type Grant = {
 type AdminAccount = OutlookAccount & {
   raw: Record<string, any>;
   grants: Grant[];
+};
+
+type SignatureDraft = {
+  enabled: boolean;
+  html: string;
+  json: string;
 };
 
 function accountName(account: OutlookAccount) {
@@ -57,14 +66,26 @@ function needsMicrosoftConsent(account?: OutlookAccount | null) {
   return Boolean(account && /consent|AADSTS65001|toestemming/i.test(`${account.status} ${account.status_reason ?? ''}`));
 }
 
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 const OutlookSettings = () => {
   const { profile } = useAuth();
   const isAdmin = profile?.role === 'admin';
+  const orgId = profile?.organization_id;
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [sharedName, setSharedName] = useState('');
   const [sharedEmail, setSharedEmail] = useState('');
   const [connectingKey, setConnectingKey] = useState<string | null>(null);
+  const [signatureAccount, setSignatureAccount] = useState<OutlookAccount | null>(null);
+  const [signatureDraft, setSignatureDraft] = useState<SignatureDraft>({ enabled: true, html: '', json: '' });
 
   const visible = useOutlookAccounts('any');
   const adminList = useQuery({
@@ -137,6 +158,7 @@ const OutlookSettings = () => {
       if (actionName === 'test_calendar') toast.success('Agendatoegang getest');
       if (actionName === 'set_default') toast.success('Standaard mailbox bijgewerkt');
       if (actionName === 'delete_account') toast.success('Mailbox verwijderd');
+      if (actionName === 'update_signature') toast.success('Handtekening opgeslagen');
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -171,6 +193,75 @@ const OutlookSettings = () => {
     }
     return map;
   }, [personalAccounts]);
+
+  const defaultSignatureHtml = (account: OutlookAccount) => {
+    const name = account.name || '{{afzender_naam}}';
+    const email = account.email || '{{mailbox_email}}';
+    return `<p>Met vriendelijke groet,</p><p><strong>${escapeHtml(name)}</strong></p><p>${escapeHtml(email)}</p>`;
+  };
+
+  const accountSignatureJson = (account: OutlookAccount) => {
+    if (!account.signature_json) return '';
+    return typeof account.signature_json === 'string'
+      ? account.signature_json
+      : JSON.stringify(account.signature_json);
+  };
+
+  const openSignatureEditor = (account: OutlookAccount) => {
+    setSignatureAccount(account);
+    setSignatureDraft({
+      enabled: account.signature_enabled !== false,
+      html: account.signature_html || defaultSignatureHtml(account),
+      json: accountSignatureJson(account),
+    });
+  };
+
+  const saveSignature = async () => {
+    if (!signatureAccount) return;
+    await action.mutateAsync({
+      action: 'update_signature',
+      account_id: signatureAccount.account_id,
+      signature_enabled: signatureDraft.enabled,
+      signature_html: signatureDraft.html,
+      signature_json: signatureDraft.json,
+    });
+    setSignatureAccount(null);
+  };
+
+  const uploadSignatureImage = async (file: File) => {
+    if (!orgId) throw new Error('Organisatie ontbreekt');
+    if (!file.type.startsWith('image/')) {
+      toast.error('Kies een afbeelding');
+      throw new Error('invalid_image');
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('Afbeelding is te groot. Maximaal 2 MB.');
+      throw new Error('image_too_large');
+    }
+
+    const extByType: Record<string, string> = {
+      'image/jpeg': 'jpg',
+      'image/png': 'png',
+      'image/webp': 'webp',
+      'image/gif': 'gif',
+    };
+    const ext = extByType[file.type] || file.name.split('.').pop()?.toLowerCase() || 'png';
+    const path = `${orgId}/signatures/${crypto.randomUUID()}.${ext}`;
+    const { error } = await supabase.storage
+      .from('organization-logos')
+      .upload(path, file, { upsert: false, contentType: file.type });
+    if (error) {
+      toast.error('Afbeelding uploaden mislukt: ' + error.message);
+      throw error;
+    }
+    return supabase.storage.from('organization-logos').getPublicUrl(path).data.publicUrl;
+  };
+
+  const renderSignatureButton = (account: OutlookAccount) => (
+    <Button variant="outline" size="sm" onClick={() => openSignatureEditor(account)} className="gap-2">
+      <PenLine className="h-4 w-4" /> Handtekening
+    </Button>
+  );
 
   const grantByAccount = useMemo(() => {
     const map = new Map<string, Map<string, Grant>>();
@@ -269,6 +360,7 @@ const OutlookSettings = () => {
   const loading = visible.isLoading || (isAdmin && adminList.isLoading);
 
   return (
+    <>
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
@@ -373,6 +465,7 @@ const OutlookSettings = () => {
                         )}
                         <Button variant="outline" size="sm" onClick={() => action.mutate({ action: 'test_mail', account_id: orgCredential.account_id })}>Test mail</Button>
                         <Button variant="outline" size="sm" onClick={() => action.mutate({ action: 'test_calendar', account_id: orgCredential.account_id })}>Test agenda</Button>
+                        {renderSignatureButton(orgCredential)}
                         <Button variant="outline" size="sm" onClick={() => action.mutate({ action: 'set_default', account_id: orgCredential.account_id })}>Maak default</Button>
                       </div>
                     )}
@@ -425,6 +518,7 @@ const OutlookSettings = () => {
                         <div className="flex flex-wrap gap-2">
                           <Button variant="outline" size="sm" onClick={() => action.mutate({ action: 'test_mail', account_id: account.account_id })}>Test mail</Button>
                           <Button variant="outline" size="sm" onClick={() => action.mutate({ action: 'test_calendar', account_id: account.account_id })}>Test agenda</Button>
+                          {renderSignatureButton(account)}
                           <Button variant="outline" size="sm" onClick={() => action.mutate({ action: 'set_default', account_id: account.account_id })}>Default</Button>
                           <Button variant="ghost" size="icon" className="text-destructive" onClick={() => action.mutate({ action: 'delete_account', account_id: account.account_id })}>
                             <Trash2 className="h-4 w-4" />
@@ -479,10 +573,13 @@ const OutlookSettings = () => {
                             </p>
                             {account?.status_reason && <p className="mt-1 text-xs text-destructive">{account.status_reason}</p>}
                           </div>
-                          <Button size="sm" variant="outline" onClick={() => connect.mutate({ scope: 'personal', targetUserId: user.id })} disabled={connectingKey === key} className="gap-2">
-                            {connectingKey === key ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
-                            {account ? 'Herkoppelen' : 'Koppelen'}
-                          </Button>
+                          <div className="flex flex-wrap gap-2">
+                            {account && renderSignatureButton(account)}
+                            <Button size="sm" variant="outline" onClick={() => connect.mutate({ scope: 'personal', targetUserId: user.id })} disabled={connectingKey === key} className="gap-2">
+                              {connectingKey === key ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+                              {account ? 'Herkoppelen' : 'Koppelen'}
+                            </Button>
+                          </div>
                         </div>
                       </div>
                     );
@@ -499,6 +596,9 @@ const OutlookSettings = () => {
                     {personalAccount.capabilities.mail_read && <span className="inline-flex items-center gap-1"><Mail className="h-3 w-3" /> Mail</span>}
                     {personalAccount.capabilities.calendar_read && <span className="inline-flex items-center gap-1"><CalendarCheck className="h-3 w-3" /> Agenda</span>}
                   </div>
+                  <div className="mt-3">
+                    {renderSignatureButton(personalAccount)}
+                  </div>
                 </div>
               ) : (
                 <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">Je persoonlijke mailbox is nog niet gekoppeld.</p>
@@ -508,6 +608,33 @@ const OutlookSettings = () => {
         )}
       </CardContent>
     </Card>
+
+    <Dialog open={Boolean(signatureAccount)} onOpenChange={(open) => !open && setSignatureAccount(null)}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>Handtekening instellen</DialogTitle>
+        </DialogHeader>
+        {signatureAccount && (
+          <EmailSignatureEditor
+            key={signatureAccount.account_id}
+            enabled={signatureDraft.enabled}
+            html={signatureDraft.html}
+            json={signatureDraft.json}
+            onEnabledChange={(enabled) => setSignatureDraft((current) => ({ ...current, enabled }))}
+            onChange={(html, json) => setSignatureDraft((current) => ({ ...current, html, json }))}
+            onUploadImage={uploadSignatureImage}
+          />
+        )}
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => setSignatureAccount(null)}>Annuleren</Button>
+          <Button onClick={saveSignature} disabled={action.isPending} className="gap-2">
+            {action.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+            Opslaan
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 };
 

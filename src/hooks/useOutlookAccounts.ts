@@ -21,6 +21,9 @@ export interface OutlookAccount {
   microsoft_access_ok: boolean;
   is_default_for_organization: boolean;
   is_default_for_user: boolean;
+  signature_enabled: boolean;
+  signature_html: string | null;
+  signature_json: unknown | null;
   capabilities: {
     mail_read: boolean;
     mail_send: boolean;

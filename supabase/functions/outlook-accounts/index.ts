@@ -12,6 +12,7 @@ import {
   type MailAccountRow,
   type OutlookCapability,
 } from "../_shared/outlook-accounts.ts";
+import { sanitizeEmailHtml } from "../_shared/outlook-signature.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -33,6 +34,18 @@ function isAdmin(role: string | null | undefined) {
 
 function cleanName(input: unknown, fallback: string) {
   return String(input ?? "").trim().slice(0, 120) || fallback;
+}
+
+function parseSignatureJson(input: unknown): unknown | null {
+  if (!input) return null;
+  if (typeof input === "string") {
+    try {
+      return JSON.parse(input);
+    } catch {
+      return null;
+    }
+  }
+  return input;
 }
 
 async function internalUsers(admin: ReturnType<typeof createAdminClient>, organizationId: string) {
@@ -87,6 +100,24 @@ Deno.serve(async (req) => {
     if (action === "visible") {
       const accounts = await listVisibleAccounts(admin, auth.organizationId, auth.userId, (body.capability || "any") as OutlookCapability, auth.role);
       return json({ accounts }, 200, corsHeaders);
+    }
+
+    if (action === "update_signature") {
+      const account = await loadAccount(admin, auth.organizationId, body.account_id);
+      if (!account) return json({ error: "mail_account_not_found" }, 404, corsHeaders);
+      const canManage = isAdmin(auth.role) || (account.scope === "personal" && account.owner_user_id === auth.userId);
+      if (!canManage) return json({ error: "Je mag deze handtekening niet beheren" }, 403, corsHeaders);
+
+      const signatureHtml = sanitizeEmailHtml(String(body.signature_html ?? "")).trim();
+      if (signatureHtml.length > 50000) return json({ error: "Handtekening is te groot" }, 400, corsHeaders);
+
+      const { error } = await admin.from("mail_accounts").update({
+        signature_enabled: body.signature_enabled !== false,
+        signature_html: signatureHtml || null,
+        signature_json: parseSignatureJson(body.signature_json),
+      }).eq("id", account.id);
+      if (error) throw error;
+      return json({ ok: true }, 200, corsHeaders);
     }
 
     if (!isAdmin(auth.role)) return json({ error: "Alleen admins kunnen Outlook mailboxen beheren" }, 403, corsHeaders);

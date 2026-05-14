@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useOutlookInvoke } from '@/hooks/useOutlookAccounts';
-import { useAuth } from '@/contexts/AuthContext';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { Send, Loader2, X, Paperclip } from 'lucide-react';
-import { buildEmailHtmlWithSignature } from '@/lib/email-signature';
+import { plaintextToHtml } from '@/lib/email-signature';
 import { sanitizeHtml } from '@/lib/sanitize-html';
 
 interface EmailComposeProps {
@@ -30,9 +29,7 @@ interface EmailComposeProps {
 
 const EmailCompose = ({ open, onOpenChange, replyTo, defaultTo, defaultSubject, selectedAccount }: EmailComposeProps) => {
   const callOutlook = useOutlookInvoke();
-  const { profile } = useAuth();
   const queryClient = useQueryClient();
-  const senderName = profile?.full_name?.trim() || '';
 
   const isReply = !!replyTo;
   const isForward = replyTo?.mode === 'forward';
@@ -54,7 +51,7 @@ const EmailCompose = ({ open, onOpenChange, replyTo, defaultTo, defaultSubject, 
 
       if (toRecipients.length === 0) throw new Error('Vul minimaal één ontvanger in');
 
-      const htmlBody = buildEmailHtmlWithSignature(body, senderName);
+      const htmlBody = plaintextToHtml(body.trimEnd());
 
       return callOutlook('outlook-send-mail', {
         account_id: selectedAccount,
@@ -142,8 +139,7 @@ const EmailCompose = ({ open, onOpenChange, replyTo, defaultTo, defaultSubject, 
           />
 
           <p className="text-xs text-muted-foreground">
-            Onderaan wordt automatisch toegevoegd:{' '}
-            <span className="font-medium">Met vriendelijke groet, {senderName || 'Het JA Werkt team'}</span>
+            De ingestelde Outlook-handtekening van de afzender wordt automatisch toegevoegd bij verzenden.
           </p>
         </div>
 

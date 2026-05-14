@@ -4709,6 +4709,9 @@ export type Database = {
           refreshing_at: string | null
           reply_to_email: string | null
           scope: string
+          signature_enabled: boolean
+          signature_html: string | null
+          signature_json: Json | null
           status: string
           updated_at: string
         }
@@ -4742,6 +4745,9 @@ export type Database = {
           refreshing_at?: string | null
           reply_to_email?: string | null
           scope: string
+          signature_enabled?: boolean
+          signature_html?: string | null
+          signature_json?: Json | null
           status?: string
           updated_at?: string
         }
@@ -4775,6 +4781,9 @@ export type Database = {
           refreshing_at?: string | null
           reply_to_email?: string | null
           scope?: string
+          signature_enabled?: boolean
+          signature_html?: string | null
+          signature_json?: Json | null
           status?: string
           updated_at?: string
         }
