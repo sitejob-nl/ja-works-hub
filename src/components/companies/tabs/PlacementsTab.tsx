@@ -1,4 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
+import { BriefcaseBusiness } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -45,10 +47,35 @@ const PlacementsTab = ({ companyId }: { companyId: string }) => {
             {placements.map((p: any) => {
               const candidate = p.candidates ?? p.employees?.candidates;
               const name = candidate ? `${candidate.first_name} ${candidate.last_name}` : '—';
+              const candidateId = p.candidate_id ?? p.employees?.candidate_id ?? candidate?.id;
               return (
                 <TableRow key={p.id}>
-                  <TableCell className="font-medium">{name}</TableCell>
-                  <TableCell>{p.function_name}</TableCell>
+                  <TableCell className="font-medium">
+                    {candidateId ? (
+                      <Link to={`/kandidaten/${candidateId}`} className="hover:text-primary transition-colors">
+                        {name}
+                      </Link>
+                    ) : (
+                      name
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <Link to={`/plaatsingen/${p.id}`} className="hover:text-primary transition-colors">
+                        {p.function_name}
+                      </Link>
+                      {p.vacancy_id && (
+                        <Link
+                          to={`/vacatures/${p.vacancy_id}`}
+                          className="text-muted-foreground hover:text-primary transition-colors"
+                          aria-label="Open vacature"
+                          title="Open vacature"
+                        >
+                          <BriefcaseBusiness className="h-4 w-4" />
+                        </Link>
+                      )}
+                    </div>
+                  </TableCell>
                   <TableCell>{formatDate(p.start_date)}</TableCell>
                   <TableCell>{formatDate(p.end_date)}</TableCell>
                   <TableCell>{formatEUR(p.hourly_rate)}</TableCell>
