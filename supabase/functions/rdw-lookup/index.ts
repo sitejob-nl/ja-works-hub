@@ -92,6 +92,7 @@ Deno.serve(async (req) => {
       doors: v.aantal_deuren ? parseInt(v.aantal_deuren) : null,
       first_registration: v.datum_eerste_toelating || null,
       first_registration_nl: v.datum_eerste_tenaamstelling_in_nederland || null,
+      last_registration: v.datum_tenaamstelling || null,
       apk_expiry: v.vervaldatum_apk || null,
       insurance_expiry: v.vervaldatum_apk_dt || null,
       emission_class: v.zuinigheidsclassificatie || null,

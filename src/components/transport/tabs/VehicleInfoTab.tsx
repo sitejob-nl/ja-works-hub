@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { formatDate } from '@/lib/format';
 import { differenceInCalendarDays, parseISO } from 'date-fns';
 import { logAudit } from '@/lib/audit';
-import { normalizeRdwFuel, yearFromRdwDate } from '@/lib/rdw';
+import { lookupRdw, normalizeRdwFuel, yearFromRdwDate } from '@/lib/rdw';
 import { toast } from 'sonner';
 import { Car, Check, X } from 'lucide-react';
 
@@ -18,13 +18,7 @@ const VehicleInfoTab = ({ vehicle, activeAssignment }: { vehicle: any; activeAss
   const qc = useQueryClient();
 
   const rdwLookup = useMutation({
-    mutationFn: async (plate: string) => {
-      const { data, error } = await supabase.functions.invoke('rdw-lookup', {
-        body: { license_plate: plate },
-      });
-      if (error) throw error;
-      return data;
-    },
+    mutationFn: (plate: string) => lookupRdw(plate),
     onSuccess: (data) => {
       setRdwPreview(data);
       toast.success('RDW-gegevens opgehaald');
@@ -48,7 +42,8 @@ const VehicleInfoTab = ({ vehicle, activeAssignment }: { vehicle: any; activeAss
       if (year) payload.year = year;
       if (rdwPreview.apk_expiry) payload.apk_expiry = rdwPreview.apk_expiry;
       if (rdwPreview.first_registration) payload.first_registration = rdwPreview.first_registration;
-      if (rdwPreview.first_registration_nl) payload.first_registration_nl = rdwPreview.first_registration_nl;
+      const registrationDate = rdwPreview.last_registration ?? rdwPreview.first_registration_nl;
+      if (registrationDate) payload.first_registration_nl = registrationDate;
       if (rdwPreview.seats) payload.seats = rdwPreview.seats;
       if (rdwPreview.doors != null) payload.doors = rdwPreview.doors;
       if (rdwPreview.weight) payload.weight = rdwPreview.weight;
@@ -84,7 +79,8 @@ const VehicleInfoTab = ({ vehicle, activeAssignment }: { vehicle: any; activeAss
             {rdwPreview.color && <div><span className="text-muted-foreground">Kleur:</span> {rdwPreview.color}</div>}
             {rdwPreview.fuel_type && <div><span className="text-muted-foreground">Brandstof:</span> {rdwPreview.fuel_type}</div>}
             {rdwPreview.first_registration && <div><span className="text-muted-foreground">1e toelating:</span> {formatDate(rdwPreview.first_registration)}</div>}
-            {rdwPreview.first_registration_nl && <div><span className="text-muted-foreground">Tenaamstelling NL:</span> {formatDate(rdwPreview.first_registration_nl)}</div>}
+            {rdwPreview.last_registration && <div><span className="text-muted-foreground">Laatste tenaamstelling:</span> {formatDate(rdwPreview.last_registration)}</div>}
+            {!rdwPreview.last_registration && rdwPreview.first_registration_nl && <div><span className="text-muted-foreground">Tenaamstelling NL:</span> {formatDate(rdwPreview.first_registration_nl)}</div>}
             {rdwPreview.apk_expiry && <div><span className="text-muted-foreground">APK vervalt:</span> {formatDate(rdwPreview.apk_expiry)}</div>}
             {rdwPreview.fuel_consumption != null && <div><span className="text-muted-foreground">Gemengd verbruik:</span> {rdwPreview.fuel_consumption} l/100km</div>}
             {rdwPreview.seats && <div><span className="text-muted-foreground">Zitplaatsen:</span> {rdwPreview.seats}</div>}
@@ -112,7 +108,7 @@ const VehicleInfoTab = ({ vehicle, activeAssignment }: { vehicle: any; activeAss
           <div className="flex justify-between"><span className="text-muted-foreground">Merk</span><span>{vehicle.brand ?? '—'}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">Model</span><span>{vehicle.model ?? '—'}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">Bouwjaar</span><span>{vehicle.year ?? '—'}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Tenaamstelling NL</span><span>{vehicle.first_registration_nl ? formatDate(vehicle.first_registration_nl) : '—'}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Laatste tenaamstelling</span><span>{vehicle.first_registration_nl ? formatDate(vehicle.first_registration_nl) : '—'}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">Aantal deuren</span><span>{vehicle.doors ?? '—'}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">Zitplaatsen</span><span>{vehicle.seats ?? '—'}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">Brandstof</span><span>{vehicle.fuel_type ?? '—'}</span></div>

@@ -15,6 +15,7 @@ export type RdwLookupResult = {
   doors: number | null;
   first_registration: string | null;
   first_registration_nl: string | null;
+  last_registration: string | null;
   apk_expiry: string | null;
   insurance_expiry: string | null;
   emission_class: string | null;
@@ -67,5 +68,6 @@ export const lookupRdw = async (licensePlate: string): Promise<RdwLookupResult> 
     apk_expiry: formatRdwDate(raw.apk_expiry),
     first_registration: formatRdwDate(raw.first_registration),
     first_registration_nl: formatRdwDate(raw.first_registration_nl),
+    last_registration: formatRdwDate(raw.last_registration),
   };
 };
