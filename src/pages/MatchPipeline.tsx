@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { Link } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent } from '@/components/ui/card';
@@ -25,27 +26,46 @@ const COLUMNS = [
 const sourceLabel: Record<string, string> = {
   sollicitatie: 'Sollicitatie',
   intern_gematcht: 'Intern',
+  eigen_match: 'Eigen match',
   jobmarket: 'Jobmarket',
   extern: 'Extern',
   linkedin: 'LinkedIn',
   facebook: 'Facebook',
+  carerix: 'Carerix',
 };
+
+type PipelineScope = 'active' | 'archive' | 'all';
+
+const PIPELINE_SCOPES: { key: PipelineScope; label: string }[] = [
+  { key: 'active', label: 'Actueel' },
+  { key: 'archive', label: 'Gesloten/vervuld' },
+  { key: 'all', label: 'Alles' },
+];
 
 const MatchPipeline = () => {
   const orgId = useOrganizationId();
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [vacancyFilter, setVacancyFilter] = useState('all');
+  const [pipelineScope, setPipelineScope] = useState<PipelineScope>('active');
 
   const { data: matches = [], isLoading } = useQuery({
-    queryKey: ['match-pipeline', orgId],
+    queryKey: ['match-pipeline', orgId, pipelineScope],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('matches')
-        .select('*, candidates!matches_candidate_id_fkey(id, first_name, last_name, phone, compliance_status), vacancies!matches_vacancy_id_fkey(id, title, companies!vacancies_company_id_fkey(id, name))')
+        .select('*, candidates!matches_candidate_id_fkey(id, first_name, last_name, phone, compliance_status), vacancies!inner(id, title, status, companies!vacancies_company_id_fkey(id, name))')
         .eq('organization_id', orgId)
         .neq('status', 'geplaatst')
         .order('created_at', { ascending: false });
+
+      if (pipelineScope === 'active') {
+        query = query.eq('vacancies.status', 'open' as any);
+      } else if (pipelineScope === 'archive') {
+        query = query.in('vacancies.status', ['gesloten', 'vervuld'] as any);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
       return data ?? [];
     },
@@ -60,15 +80,15 @@ const MatchPipeline = () => {
       if (error) throw error;
     },
     onMutate: async ({ matchId, status }) => {
-      await qc.cancelQueries({ queryKey: ['match-pipeline', orgId] });
-      const previous = qc.getQueryData<any[]>(['match-pipeline', orgId]);
-      qc.setQueryData<any[]>(['match-pipeline', orgId], (old) =>
+      await qc.cancelQueries({ queryKey: ['match-pipeline', orgId, pipelineScope] });
+      const previous = qc.getQueryData<any[]>(['match-pipeline', orgId, pipelineScope]);
+      qc.setQueryData<any[]>(['match-pipeline', orgId, pipelineScope], (old) =>
         (old ?? []).map((m: any) => (m.id === matchId ? { ...m, status } : m))
       );
       return { previous };
     },
     onError: (e: any, _vars, ctx) => {
-      if (ctx?.previous) qc.setQueryData(['match-pipeline', orgId], ctx.previous);
+      if (ctx?.previous) qc.setQueryData(['match-pipeline', orgId, pipelineScope], ctx.previous);
       toast.error(e.message);
     },
     onSuccess: (_data, vars) => {
@@ -84,6 +104,11 @@ const MatchPipeline = () => {
     const { draggableId, destination, source } = result;
     if (!destination || destination.droppableId === source.droppableId) return;
     statusMutation.mutate({ matchId: draggableId, status: destination.droppableId });
+  };
+
+  const setScope = (scope: PipelineScope) => {
+    setPipelineScope(scope);
+    setVacancyFilter('all');
   };
 
   // Get unique vacancies for filter
@@ -124,7 +149,22 @@ const MatchPipeline = () => {
         </div>
       </div>
 
-      <div className="flex gap-3">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+        <div className="inline-flex w-fit rounded-md border bg-card p-1">
+          {PIPELINE_SCOPES.map((scope) => (
+            <Button
+              key={scope.key}
+              type="button"
+              variant={pipelineScope === scope.key ? 'secondary' : 'ghost'}
+              size="sm"
+              className="h-8 rounded-sm px-3"
+              aria-pressed={pipelineScope === scope.key}
+              onClick={() => setScope(scope.key)}
+            >
+              {scope.label}
+            </Button>
+          ))}
+        </div>
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input placeholder="Zoek op naam, vacature of bedrijf..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
