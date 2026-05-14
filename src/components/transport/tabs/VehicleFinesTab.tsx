@@ -25,9 +25,11 @@ import {
 import { toast } from 'sonner';
 import { formatDate, formatEUR } from '@/lib/format';
 import { logAudit } from '@/lib/audit';
+import { differenceInCalendarDays, parseISO } from 'date-fns';
 
 const emptyFine = {
   fine_date: '',
+  due_date: '',
   amount: '',
   description: '',
   reference_number: '',
@@ -36,6 +38,19 @@ const emptyFine = {
 };
 
 const isImagePath = (path: string) => /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(path);
+
+const getDueDateBadge = (dueDate: string | null | undefined, paid: boolean) => {
+  if (paid) return null;
+  if (!dueDate) return null;
+  try {
+    const days = differenceInCalendarDays(parseISO(dueDate), new Date());
+    if (days < 0) return { label: `${Math.abs(days)}d te laat`, className: 'bg-red-100 text-red-600 border-0' };
+    if (days <= 7) return { label: `${days}d`, className: 'bg-orange-100 text-orange-600 border-0' };
+  } catch {
+    return null;
+  }
+  return null;
+};
 
 const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
   const orgId = useOrganizationId();
@@ -49,6 +64,7 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
 
   // Backwards-compatible aliases for inline form-binding (less code churn)
   const fineDate = form.fine_date; const setFineDate = (v: string) => setForm(f => ({ ...f, fine_date: v }));
+  const dueDate = form.due_date; const setDueDate = (v: string) => setForm(f => ({ ...f, due_date: v }));
   const amount = form.amount; const setAmount = (v: string) => setForm(f => ({ ...f, amount: v }));
   const description = form.description; const setDescription = (v: string) => setForm(f => ({ ...f, description: v }));
   const referenceNumber = form.reference_number; const setReferenceNumber = (v: string) => setForm(f => ({ ...f, reference_number: v }));
@@ -60,6 +76,7 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
     queryFn: async () => {
       const { data, error } = await supabase.from('vehicle_fines').select(`
         *,
+        candidates!vehicle_fines_candidate_id_fkey(id, first_name, last_name),
         employees!vehicle_fines_employee_id_fkey(id, candidates!employees_candidate_id_fkey(first_name, last_name))
       `).eq('vehicle_id', vehicle.id).order('fine_date', { ascending: false });
       if (error) throw error;
@@ -90,10 +107,18 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
   const { data: assignedEmployees } = useQuery({
     queryKey: ['vehicle-assigned-employees-fines', vehicle.id],
     queryFn: async () => {
-      const { data, error } = await supabase.from('vehicle_assignments').select('employees!vehicle_assignments_employee_id_fkey(id, candidates!employees_candidate_id_fkey(first_name, last_name))').eq('vehicle_id', vehicle.id);
+      const { data, error } = await supabase.from('vehicle_assignments').select(`
+        candidate_id,
+        employees!vehicle_assignments_employee_id_fkey(
+          id,
+          candidates!employees_candidate_id_fkey(id, first_name, last_name)
+        )
+      `).eq('vehicle_id', vehicle.id);
       if (error) throw error;
       const unique = new Map<string, any>();
-      (data ?? []).forEach((a: any) => { if (a.employees) unique.set(a.employees.id, a.employees); });
+      (data ?? []).forEach((a: any) => {
+        if (a.employees) unique.set(a.employees.id, { ...a.employees, candidate_id: a.candidate_id ?? a.employees.candidates?.id ?? null });
+      });
       return Array.from(unique.values());
     },
     enabled: sheetOpen,
@@ -120,6 +145,7 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
     setEditingFine(f);
     setForm({
       fine_date: f.fine_date ?? '',
+      due_date: f.due_date ?? '',
       amount: f.amount != null ? String(f.amount) : '',
       description: f.description ?? '',
       reference_number: f.reference_number ?? '',
@@ -146,12 +172,15 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
         newPhotoPaths.push(path);
       }
 
+      const selectedEmployee = (assignedEmployees ?? []).find((employee: any) => employee.id === employeeId);
       const payload: any = {
         fine_date: fineDate,
+        due_date: dueDate || null,
         amount: parseFloat(amount),
         description: description || null,
         reference_number: referenceNumber || null,
         employee_id: employeeId || null,
+        candidate_id: selectedEmployee?.candidate_id ?? editingFine?.candidate_id ?? null,
         notes: notes || null,
         photos: [...existingPhotos, ...newPhotoPaths],
       };
@@ -169,6 +198,7 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
     },
     onSuccess: (recordId) => {
       qc.invalidateQueries({ queryKey: ['vehicle-fines', vehicle.id] });
+      qc.invalidateQueries({ queryKey: ['transport-fines'] });
       logAudit({ action: editingId ? 'update' : 'create', tableName: 'vehicle_fines', recordId });
       toast.success(editingId ? 'Boete bijgewerkt' : 'Boete geregistreerd');
       closeSheet();
@@ -187,6 +217,7 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
     },
     onSuccess: (fine) => {
       qc.invalidateQueries({ queryKey: ['vehicle-fines', vehicle.id] });
+      qc.invalidateQueries({ queryKey: ['transport-fines'] });
       logAudit({ action: 'delete', tableName: 'vehicle_fines', recordId: fine.id });
       toast.success('Boete verwijderd');
       setFineToDelete(null);
@@ -204,6 +235,7 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['vehicle-fines', vehicle.id] });
+      qc.invalidateQueries({ queryKey: ['transport-fines'] });
       toast.success('Betaalstatus bijgewerkt');
     },
     onError: (e: any) => toast.error(e.message),
@@ -220,6 +252,7 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
           <TableHeader>
             <TableRow>
               <TableHead>Datum</TableHead>
+              <TableHead>Uiterste betaaldatum</TableHead>
               <TableHead>Bedrag</TableHead>
               <TableHead>Beschrijving</TableHead>
               <TableHead>Referentie</TableHead>
@@ -231,10 +264,17 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
           </TableHeader>
           <TableBody>
             {(fines ?? []).map((f: any) => {
-              const c = f.employees?.candidates as any;
+              const c = (f.candidates ?? f.employees?.candidates) as any;
+              const dueBadge = getDueDateBadge(f.due_date, f.paid);
               return (
                 <TableRow key={f.id}>
                   <TableCell>{formatDate(f.fine_date)}</TableCell>
+                  <TableCell>
+                    <span className="inline-flex items-center gap-2">
+                      <span>{formatDate(f.due_date)}</span>
+                      {dueBadge && <Badge variant="secondary" className={`text-[10px] ${dueBadge.className}`}>{dueBadge.label}</Badge>}
+                    </span>
+                  </TableCell>
                   <TableCell>{formatEUR(f.amount)}</TableCell>
                   <TableCell>{f.description ?? '—'}</TableCell>
                   <TableCell>{f.reference_number ?? '—'}</TableCell>
@@ -299,7 +339,7 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
               );
             })}
             {(fines ?? []).length === 0 && (
-              <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">Geen boetes geregistreerd</TableCell></TableRow>
+              <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-8">Geen boetes geregistreerd</TableCell></TableRow>
             )}
           </TableBody>
         </Table>
@@ -310,6 +350,7 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
           <SheetHeader><SheetTitle>{editingId ? 'Boete bewerken' : 'Nieuwe boete'}</SheetTitle></SheetHeader>
           <div className="space-y-4 mt-6">
             <div><Label>Datum *</Label><Input type="date" value={fineDate} onChange={(e) => setFineDate(e.target.value)} /></div>
+            <div><Label>Uiterste betaaldatum</Label><Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></div>
             <div><Label>Bedrag (€) *</Label><Input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
             <div><Label>Beschrijving</Label><Input value={description} onChange={(e) => setDescription(e.target.value)} /></div>
             <div><Label>Referentienummer</Label><Input value={referenceNumber} onChange={(e) => setReferenceNumber(e.target.value)} /></div>
@@ -321,7 +362,7 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
               {files.length === 0 && !editingFine?.photos?.length && <p className="text-xs text-destructive mt-1">Minimaal één foto of scan is verplicht.</p>}
             </div>
             <div>
-              <Label>Medewerker (optioneel)</Label>
+              <Label>Medewerker / persoon (optioneel)</Label>
               <Select value={employeeId} onValueChange={setEmployeeId}>
                 <SelectTrigger><SelectValue placeholder="Selecteer medewerker" /></SelectTrigger>
                 <SelectContent>

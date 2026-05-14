@@ -106,6 +106,7 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
             <TableHeader>
               <TableRow>
                 <TableHead>Datum</TableHead>
+                <TableHead>Uiterste betaaldatum</TableHead>
                 <TableHead>Bedrag</TableHead>
                 <TableHead>Beschrijving</TableHead>
                 <TableHead>Betaald</TableHead>
@@ -115,6 +116,7 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
               {fines.map((f: any) => (
                 <TableRow key={f.id}>
                   <TableCell>{formatDate(f.fine_date)}</TableCell>
+                  <TableCell>{formatDate(f.due_date)}</TableCell>
                   <TableCell className="font-medium">{formatEUR(f.amount)}</TableCell>
                   <TableCell>{f.description ?? '—'}</TableCell>
                   <TableCell>

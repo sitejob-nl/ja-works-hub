@@ -9,8 +9,10 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { formatDate } from '@/lib/format';
 import { differenceInCalendarDays, parseISO } from 'date-fns';
+import TransportFinesTab from '@/components/transport/TransportFinesTab';
 
 
 const PAGE_SIZE = 10;
@@ -137,102 +139,115 @@ const Transport = () => {
         </div>
       </div>
 
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Zoek op kenteken, merk of model..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} className="pl-9" />
-        </div>
-        <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(0); }}>
-          <SelectTrigger className="w-40"><SelectValue placeholder="Status" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Alle statussen</SelectItem>
-            {Object.entries(statusLabel).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <span className="text-sm text-muted-foreground">{total} voertuigen</span>
-      </div>
+      <Tabs defaultValue="voertuigen" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="voertuigen">Voertuigen</TabsTrigger>
+          <TabsTrigger value="boetes">Boetes</TabsTrigger>
+        </TabsList>
 
-      {!isLoading && vehicles.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <Car className="h-12 w-12 text-muted-foreground/40 mb-4" />
-          <p className="text-lg font-medium text-muted-foreground">Nog geen voertuigen</p>
-          <Button onClick={() => navigate('/transport/new')} variant="outline" className="mt-4 gap-2"><Plus className="h-4 w-4" /> Voeg je eerste voertuig toe</Button>
-        </div>
-      ) : (
-        <>
-          <div className="bg-card rounded-lg border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Kenteken</TableHead>
-                  <TableHead>Merk / Model</TableHead>
-                  <TableHead>Bouwjaar</TableHead>
-                  <TableHead>Brandstof</TableHead>
-                  <TableHead className="text-right">Deuren</TableHead>
-                  <TableHead className="text-right">KM-stand</TableHead>
-                  <TableHead>APK</TableHead>
-                  <TableHead>Tankpas</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Toegewezen aan</TableHead>
-                  <TableHead>Notitie</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {vehicles.map((v: any, i: number) => {
-                  const activeAssignment = (v.vehicle_assignments as any[])?.find((a: any) => !a.returned_date);
-                  const assignee = activeAssignment?.employees?.candidates as any;
-                  return (
-                    <TableRow key={v.id} className={i % 2 === 1 ? 'bg-background' : ''}>
-                      <TableCell>
-                        <Link to={`/transport/${v.id}`} className="font-medium text-foreground hover:text-primary transition-colors">{v.license_plate}</Link>
-                      </TableCell>
-                      <TableCell>{[v.brand, v.model].filter(Boolean).join(' ') || '—'}</TableCell>
-                      <TableCell>{v.year ?? '—'}</TableCell>
-                      <TableCell>{v.fuel_type ?? '—'}</TableCell>
-                      <TableCell className="text-right">{v.doors ?? '—'}</TableCell>
-                      <TableCell className="text-right">{v.current_mileage != null ? v.current_mileage.toLocaleString('nl-NL') : '—'}</TableCell>
-                      <TableCell>
-                        {(() => {
-                          if (!v.apk_expiry) return <span className="text-muted-foreground">—</span>;
-                          const days = (() => { try { return differenceInCalendarDays(parseISO(v.apk_expiry), new Date()); } catch { return null; } })();
-                          const variant = days != null && days < 0 ? 'destructive' : days != null && days < 60 ? 'secondary' : null;
-                          return (
-                            <span className="flex items-center gap-2 text-xs">
-                              <span>{formatDate(v.apk_expiry)}</span>
-                              {variant && <Badge variant={variant} className="text-[10px]">{days! < 0 ? `${Math.abs(days!)}d verlopen` : `${days}d`}</Badge>}
-                            </span>
-                          );
-                        })()}
-                      </TableCell>
-                      <TableCell className="font-mono text-xs">{v.fuel_card_reference ?? '—'}</TableCell>
-                      <TableCell><Badge variant="secondary" className={statusBadge[v.status] ?? ''}>{statusLabel[v.status] ?? v.status}</Badge></TableCell>
-                      <TableCell>{assignee ? `${assignee.first_name} ${assignee.last_name}` : '—'}</TableCell>
-                      <TableCell className="max-w-[200px]">
-                        {v.notes ? (
-                          <span className="text-xs text-muted-foreground truncate block" title={v.notes}>{v.notes}</span>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+        <TabsContent value="voertuigen" className="space-y-4">
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input placeholder="Zoek op kenteken, merk of model..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} className="pl-9" />
+            </div>
+            <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(0); }}>
+              <SelectTrigger className="w-40"><SelectValue placeholder="Status" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Alle statussen</SelectItem>
+                {Object.entries(statusLabel).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <span className="text-sm text-muted-foreground">{total} voertuigen</span>
           </div>
-          {totalPages > 1 && (
-            <Pagination>
-              <PaginationContent>
-                <PaginationItem><PaginationPrevious onClick={() => setPage(Math.max(0, page - 1))} className={page === 0 ? 'pointer-events-none opacity-50' : 'cursor-pointer'} /></PaginationItem>
-                {Array.from({ length: totalPages }, (_, i) => (
-                  <PaginationItem key={i}><PaginationLink isActive={i === page} onClick={() => setPage(i)} className="cursor-pointer">{i + 1}</PaginationLink></PaginationItem>
-                ))}
-                <PaginationItem><PaginationNext onClick={() => setPage(Math.min(totalPages - 1, page + 1))} className={page >= totalPages - 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'} /></PaginationItem>
-              </PaginationContent>
-            </Pagination>
+
+          {!isLoading && vehicles.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <Car className="h-12 w-12 text-muted-foreground/40 mb-4" />
+              <p className="text-lg font-medium text-muted-foreground">Nog geen voertuigen</p>
+              <Button onClick={() => navigate('/transport/new')} variant="outline" className="mt-4 gap-2"><Plus className="h-4 w-4" /> Voeg je eerste voertuig toe</Button>
+            </div>
+          ) : (
+            <>
+              <div className="bg-card rounded-lg border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Kenteken</TableHead>
+                      <TableHead>Merk / Model</TableHead>
+                      <TableHead>Bouwjaar</TableHead>
+                      <TableHead>Brandstof</TableHead>
+                      <TableHead className="text-right">Deuren</TableHead>
+                      <TableHead className="text-right">KM-stand</TableHead>
+                      <TableHead>APK</TableHead>
+                      <TableHead>Tankpas</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Toegewezen aan</TableHead>
+                      <TableHead>Notitie</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {vehicles.map((v: any, i: number) => {
+                      const activeAssignment = (v.vehicle_assignments as any[])?.find((a: any) => !a.returned_date);
+                      const assignee = activeAssignment?.employees?.candidates as any;
+                      return (
+                        <TableRow key={v.id} className={i % 2 === 1 ? 'bg-background' : ''}>
+                          <TableCell>
+                            <Link to={`/transport/${v.id}`} className="font-medium text-foreground hover:text-primary transition-colors">{v.license_plate}</Link>
+                          </TableCell>
+                          <TableCell>{[v.brand, v.model].filter(Boolean).join(' ') || '—'}</TableCell>
+                          <TableCell>{v.year ?? '—'}</TableCell>
+                          <TableCell>{v.fuel_type ?? '—'}</TableCell>
+                          <TableCell className="text-right">{v.doors ?? '—'}</TableCell>
+                          <TableCell className="text-right">{v.current_mileage != null ? v.current_mileage.toLocaleString('nl-NL') : '—'}</TableCell>
+                          <TableCell>
+                            {(() => {
+                              if (!v.apk_expiry) return <span className="text-muted-foreground">—</span>;
+                              const days = (() => { try { return differenceInCalendarDays(parseISO(v.apk_expiry), new Date()); } catch { return null; } })();
+                              const variant = days != null && days < 0 ? 'destructive' : days != null && days < 60 ? 'secondary' : null;
+                              return (
+                                <span className="flex items-center gap-2 text-xs">
+                                  <span>{formatDate(v.apk_expiry)}</span>
+                                  {variant && <Badge variant={variant} className="text-[10px]">{days! < 0 ? `${Math.abs(days!)}d verlopen` : `${days}d`}</Badge>}
+                                </span>
+                              );
+                            })()}
+                          </TableCell>
+                          <TableCell className="font-mono text-xs">{v.fuel_card_reference ?? '—'}</TableCell>
+                          <TableCell><Badge variant="secondary" className={statusBadge[v.status] ?? ''}>{statusLabel[v.status] ?? v.status}</Badge></TableCell>
+                          <TableCell>{assignee ? `${assignee.first_name} ${assignee.last_name}` : '—'}</TableCell>
+                          <TableCell className="max-w-[200px]">
+                            {v.notes ? (
+                              <span className="text-xs text-muted-foreground truncate block" title={v.notes}>{v.notes}</span>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+              {totalPages > 1 && (
+                <Pagination>
+                  <PaginationContent>
+                    <PaginationItem><PaginationPrevious onClick={() => setPage(Math.max(0, page - 1))} className={page === 0 ? 'pointer-events-none opacity-50' : 'cursor-pointer'} /></PaginationItem>
+                    {Array.from({ length: totalPages }, (_, i) => (
+                      <PaginationItem key={i}><PaginationLink isActive={i === page} onClick={() => setPage(i)} className="cursor-pointer">{i + 1}</PaginationLink></PaginationItem>
+                    ))}
+                    <PaginationItem><PaginationNext onClick={() => setPage(Math.min(totalPages - 1, page + 1))} className={page >= totalPages - 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'} /></PaginationItem>
+                  </PaginationContent>
+                </Pagination>
+              )}
+            </>
           )}
-        </>
-      )}
+        </TabsContent>
+
+        <TabsContent value="boetes">
+          <TransportFinesTab />
+        </TabsContent>
+      </Tabs>
 
       
     </div>

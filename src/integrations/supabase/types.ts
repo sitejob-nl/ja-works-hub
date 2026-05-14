@@ -12,6 +12,31 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.1"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       ai_usage_log: {
@@ -235,6 +260,94 @@ export type Database = {
           },
         ]
       }
+      birthday_campaign_logs: {
+        Row: {
+          birthday_date: string
+          candidate_id: string
+          communication_id: string | null
+          created_at: string
+          email_template_id: string | null
+          error: string | null
+          id: string
+          loyalty_transaction_id: string | null
+          notification_id: string | null
+          organization_id: string
+          points_awarded: number
+          status: string
+        }
+        Insert: {
+          birthday_date: string
+          candidate_id: string
+          communication_id?: string | null
+          created_at?: string
+          email_template_id?: string | null
+          error?: string | null
+          id?: string
+          loyalty_transaction_id?: string | null
+          notification_id?: string | null
+          organization_id: string
+          points_awarded?: number
+          status?: string
+        }
+        Update: {
+          birthday_date?: string
+          candidate_id?: string
+          communication_id?: string | null
+          created_at?: string
+          email_template_id?: string | null
+          error?: string | null
+          id?: string
+          loyalty_transaction_id?: string | null
+          notification_id?: string | null
+          organization_id?: string
+          points_awarded?: number
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "birthday_campaign_logs_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "birthday_campaign_logs_communication_id_fkey"
+            columns: ["communication_id"]
+            isOneToOne: false
+            referencedRelation: "communications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "birthday_campaign_logs_email_template_id_fkey"
+            columns: ["email_template_id"]
+            isOneToOne: false
+            referencedRelation: "email_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "birthday_campaign_logs_loyalty_transaction_id_fkey"
+            columns: ["loyalty_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "loyalty_transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "birthday_campaign_logs_notification_id_fkey"
+            columns: ["notification_id"]
+            isOneToOne: false
+            referencedRelation: "employee_notifications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "birthday_campaign_logs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bulk_campaigns: {
         Row: {
           cancelled_at: string | null
@@ -402,6 +515,73 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      candidate_data_quality_flags: {
+        Row: {
+          candidate_id: string
+          created_at: string
+          details: Json
+          flag_type: string
+          id: string
+          organization_id: string
+          resolved_at: string | null
+          resolved_by: string | null
+          severity: string
+          source: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          candidate_id: string
+          created_at?: string
+          details?: Json
+          flag_type: string
+          id?: string
+          organization_id: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          severity?: string
+          source?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          candidate_id?: string
+          created_at?: string
+          details?: Json
+          flag_type?: string
+          id?: string
+          organization_id?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          severity?: string
+          source?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "candidate_data_quality_flags_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "candidate_data_quality_flags_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "candidate_data_quality_flags_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -1689,36 +1869,58 @@ export type Database = {
       }
       contract_templates: {
         Row: {
+          approved_at: string | null
+          approved_by: string | null
           content: string
           created_at: string
           created_by: string | null
           id: string
           is_active: boolean
+          is_placeholder: boolean
           name: string
           organization_id: string
+          template_status: string
+          template_type: string
           updated_at: string
         }
         Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
           content: string
           created_at?: string
           created_by?: string | null
           id?: string
           is_active?: boolean
+          is_placeholder?: boolean
           name: string
           organization_id: string
+          template_status?: string
+          template_type?: string
           updated_at?: string
         }
         Update: {
+          approved_at?: string | null
+          approved_by?: string | null
           content?: string
           created_at?: string
           created_by?: string | null
           id?: string
           is_active?: boolean
+          is_placeholder?: boolean
           name?: string
           organization_id?: string
+          template_status?: string
+          template_type?: string
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "contract_templates_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "contract_templates_created_by_fkey"
             columns: ["created_by"]
@@ -1743,13 +1945,21 @@ export type Database = {
           created_by: string | null
           employee_id: string
           id: string
+          legal_document_type: string | null
           organization_id: string
           pdf_url: string | null
           sent_at: string | null
           sign_token: string | null
+          signature_evidence: Json
+          signature_request_id: string | null
           signed_at: string | null
+          signed_by_name: string | null
+          signed_ip: string | null
           status: Database["public"]["Enums"]["contract_status"]
           template_id: string | null
+          template_version_id: string | null
+          template_version_name: string | null
+          template_version_status: string | null
           title: string
           updated_at: string
         }
@@ -1760,13 +1970,21 @@ export type Database = {
           created_by?: string | null
           employee_id: string
           id?: string
+          legal_document_type?: string | null
           organization_id: string
           pdf_url?: string | null
           sent_at?: string | null
           sign_token?: string | null
+          signature_evidence?: Json
+          signature_request_id?: string | null
           signed_at?: string | null
+          signed_by_name?: string | null
+          signed_ip?: string | null
           status?: Database["public"]["Enums"]["contract_status"]
           template_id?: string | null
+          template_version_id?: string | null
+          template_version_name?: string | null
+          template_version_status?: string | null
           title: string
           updated_at?: string
         }
@@ -1777,13 +1995,21 @@ export type Database = {
           created_by?: string | null
           employee_id?: string
           id?: string
+          legal_document_type?: string | null
           organization_id?: string
           pdf_url?: string | null
           sent_at?: string | null
           sign_token?: string | null
+          signature_evidence?: Json
+          signature_request_id?: string | null
           signed_at?: string | null
+          signed_by_name?: string | null
+          signed_ip?: string | null
           status?: Database["public"]["Enums"]["contract_status"]
           template_id?: string | null
+          template_version_id?: string | null
+          template_version_name?: string | null
+          template_version_status?: string | null
           title?: string
           updated_at?: string
         }
@@ -1826,6 +2052,13 @@ export type Database = {
           {
             foreignKeyName: "contracts_template_id_fkey"
             columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "contract_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contracts_template_version_id_fkey"
+            columns: ["template_version_id"]
             isOneToOne: false
             referencedRelation: "contract_templates"
             referencedColumns: ["id"]
@@ -2703,6 +2936,279 @@ export type Database = {
           },
         ]
       }
+      fiscal_mileage_reviews: {
+        Row: {
+          actual_business_km: number
+          actual_private_km: number
+          actual_total_km: number
+          business_margin_pct: number
+          candidate_id: string | null
+          created_at: string
+          excess_km: number
+          expected_business_km: number | null
+          explanation: string | null
+          id: string
+          organization_id: string
+          period_end: string
+          period_start: string
+          placement_id: string | null
+          private_allowance_km: number
+          reason: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          severity: string
+          source_data: Json
+          status: string
+          updated_at: string
+          vehicle_id: string | null
+        }
+        Insert: {
+          actual_business_km?: number
+          actual_private_km?: number
+          actual_total_km?: number
+          business_margin_pct?: number
+          candidate_id?: string | null
+          created_at?: string
+          excess_km?: number
+          expected_business_km?: number | null
+          explanation?: string | null
+          id?: string
+          organization_id: string
+          period_end: string
+          period_start: string
+          placement_id?: string | null
+          private_allowance_km?: number
+          reason: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          severity?: string
+          source_data?: Json
+          status?: string
+          updated_at?: string
+          vehicle_id?: string | null
+        }
+        Update: {
+          actual_business_km?: number
+          actual_private_km?: number
+          actual_total_km?: number
+          business_margin_pct?: number
+          candidate_id?: string | null
+          created_at?: string
+          excess_km?: number
+          expected_business_km?: number | null
+          explanation?: string | null
+          id?: string
+          organization_id?: string
+          period_end?: string
+          period_start?: string
+          placement_id?: string | null
+          private_allowance_km?: number
+          reason?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          severity?: string
+          source_data?: Json
+          status?: string
+          updated_at?: string
+          vehicle_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fiscal_mileage_reviews_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fiscal_mileage_reviews_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fiscal_mileage_reviews_placement_id_fkey"
+            columns: ["placement_id"]
+            isOneToOne: false
+            referencedRelation: "placements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fiscal_mileage_reviews_placement_id_fkey"
+            columns: ["placement_id"]
+            isOneToOne: false
+            referencedRelation: "v_active_placements"
+            referencedColumns: ["placement_id"]
+          },
+          {
+            foreignKeyName: "fiscal_mileage_reviews_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fiscal_mileage_reviews_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fuel_analysis_results: {
+        Row: {
+          actual_cost_eur: number
+          actual_liters: number
+          created_at: string
+          delta_liters: number | null
+          delta_pct: number | null
+          expected_liters: number | null
+          id: string
+          license_plate_snapshot: string | null
+          margin_pct: number
+          notes: string | null
+          organization_id: string
+          reviewed: boolean
+          reviewed_at: string | null
+          reviewed_by: string | null
+          run_id: string
+          status: string
+          updated_at: string
+          vehicle_id: string | null
+        }
+        Insert: {
+          actual_cost_eur?: number
+          actual_liters?: number
+          created_at?: string
+          delta_liters?: number | null
+          delta_pct?: number | null
+          expected_liters?: number | null
+          id?: string
+          license_plate_snapshot?: string | null
+          margin_pct: number
+          notes?: string | null
+          organization_id: string
+          reviewed?: boolean
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          run_id: string
+          status: string
+          updated_at?: string
+          vehicle_id?: string | null
+        }
+        Update: {
+          actual_cost_eur?: number
+          actual_liters?: number
+          created_at?: string
+          delta_liters?: number | null
+          delta_pct?: number | null
+          expected_liters?: number | null
+          id?: string
+          license_plate_snapshot?: string | null
+          margin_pct?: number
+          notes?: string | null
+          organization_id?: string
+          reviewed?: boolean
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          run_id?: string
+          status?: string
+          updated_at?: string
+          vehicle_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fuel_analysis_results_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fuel_analysis_results_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fuel_analysis_results_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "fuel_analysis_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fuel_analysis_results_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fuel_analysis_runs: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          margin_pct: number
+          ontrack_import_batch_id: string | null
+          organization_id: string
+          period_end: string
+          period_start: string
+          q8_batch_id: string | null
+          status: string
+          summary: Json
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          margin_pct?: number
+          ontrack_import_batch_id?: string | null
+          organization_id: string
+          period_end: string
+          period_start: string
+          q8_batch_id?: string | null
+          status?: string
+          summary?: Json
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          margin_pct?: number
+          ontrack_import_batch_id?: string | null
+          organization_id?: string
+          period_end?: string
+          period_start?: string
+          q8_batch_id?: string | null
+          status?: string
+          summary?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fuel_analysis_runs_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fuel_analysis_runs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       fuel_card_imports: {
         Row: {
           created_at: string
@@ -3096,6 +3602,103 @@ export type Database = {
           },
           {
             foreignKeyName: "housing_assignments_unit_id_fkey"
+            columns: ["unit_id"]
+            isOneToOne: false
+            referencedRelation: "v_unit_occupancy"
+            referencedColumns: ["unit_id"]
+          },
+        ]
+      }
+      housing_cleaning_tasks: {
+        Row: {
+          assigned_to: string | null
+          completed_at: string | null
+          completion_photos: string[]
+          created_at: string
+          created_by: string | null
+          description: string | null
+          due_date: string | null
+          id: string
+          organization_id: string
+          priority: string
+          property_id: string
+          status: string
+          title: string
+          unit_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          assigned_to?: string | null
+          completed_at?: string | null
+          completion_photos?: string[]
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          due_date?: string | null
+          id?: string
+          organization_id: string
+          priority?: string
+          property_id: string
+          status?: string
+          title: string
+          unit_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          assigned_to?: string | null
+          completed_at?: string | null
+          completion_photos?: string[]
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          due_date?: string | null
+          id?: string
+          organization_id?: string
+          priority?: string
+          property_id?: string
+          status?: string
+          title?: string
+          unit_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "housing_cleaning_tasks_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "housing_cleaning_tasks_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "housing_cleaning_tasks_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "housing_cleaning_tasks_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "housing_cleaning_tasks_unit_id_fkey"
+            columns: ["unit_id"]
+            isOneToOne: false
+            referencedRelation: "units"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "housing_cleaning_tasks_unit_id_fkey"
             columns: ["unit_id"]
             isOneToOne: false
             referencedRelation: "v_unit_occupancy"
@@ -3850,6 +4453,365 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyalty_accounts: {
+        Row: {
+          balance_points: number
+          candidate_id: string
+          created_at: string
+          id: string
+          lifetime_earned_points: number
+          lifetime_spent_points: number
+          organization_id: string
+          updated_at: string
+        }
+        Insert: {
+          balance_points?: number
+          candidate_id: string
+          created_at?: string
+          id?: string
+          lifetime_earned_points?: number
+          lifetime_spent_points?: number
+          organization_id: string
+          updated_at?: string
+        }
+        Update: {
+          balance_points?: number
+          candidate_id?: string
+          created_at?: string
+          id?: string
+          lifetime_earned_points?: number
+          lifetime_spent_points?: number
+          organization_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_accounts_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_accounts_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyalty_transactions: {
+        Row: {
+          account_id: string
+          candidate_id: string
+          created_at: string
+          created_by: string | null
+          description: string
+          id: string
+          metadata: Json
+          organization_id: string
+          points: number
+          source: string
+          source_ref: string | null
+        }
+        Insert: {
+          account_id: string
+          candidate_id: string
+          created_at?: string
+          created_by?: string | null
+          description: string
+          id?: string
+          metadata?: Json
+          organization_id: string
+          points: number
+          source?: string
+          source_ref?: string | null
+        }
+        Update: {
+          account_id?: string
+          candidate_id?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string
+          id?: string
+          metadata?: Json
+          organization_id?: string
+          points?: number
+          source?: string
+          source_ref?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_transactions_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "loyalty_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_transactions_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_transactions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_transactions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mail_account_secrets: {
+        Row: {
+          created_at: string
+          mail_account_id: string
+          secret_encrypted: string
+          secret_kind: string
+          secret_version: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          mail_account_id: string
+          secret_encrypted: string
+          secret_kind?: string
+          secret_version?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          mail_account_id?: string
+          secret_encrypted?: string
+          secret_kind?: string
+          secret_version?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mail_account_secrets_mail_account_id_fkey"
+            columns: ["mail_account_id"]
+            isOneToOne: true
+            referencedRelation: "mail_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mail_account_user_access: {
+        Row: {
+          can_delete_mail: boolean
+          can_read_calendar: boolean
+          can_read_mail: boolean
+          can_send_mail: boolean
+          can_write_calendar: boolean
+          created_at: string
+          created_by: string | null
+          id: string
+          mail_account_id: string
+          organization_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          can_delete_mail?: boolean
+          can_read_calendar?: boolean
+          can_read_mail?: boolean
+          can_send_mail?: boolean
+          can_write_calendar?: boolean
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          mail_account_id: string
+          organization_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          can_delete_mail?: boolean
+          can_read_calendar?: boolean
+          can_read_mail?: boolean
+          can_send_mail?: boolean
+          can_write_calendar?: boolean
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          mail_account_id?: string
+          organization_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mail_account_user_access_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mail_account_user_access_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mail_account_user_access_organization_id_mail_account_id_fkey"
+            columns: ["organization_id", "mail_account_id"]
+            isOneToOne: false
+            referencedRelation: "mail_accounts"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "mail_account_user_access_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mail_accounts: {
+        Row: {
+          auth_account_id: string | null
+          calendar_id: string | null
+          calendar_owner_email: string | null
+          calendar_path_kind: string
+          calendar_read_enabled: boolean
+          calendar_write_enabled: boolean
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          display_name: string
+          from_email: string
+          id: string
+          is_default_for_organization: boolean
+          is_default_for_user: boolean
+          last_connected_at: string | null
+          last_error: string | null
+          legacy_microsoft_config_id: string | null
+          mail_delete_enabled: boolean
+          mail_read_enabled: boolean
+          mail_send_enabled: boolean
+          mailbox_email: string | null
+          mailbox_mode: string
+          mailbox_name: string | null
+          organization_id: string
+          owner_user_id: string | null
+          provider: string
+          refreshing_at: string | null
+          reply_to_email: string | null
+          scope: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          auth_account_id?: string | null
+          calendar_id?: string | null
+          calendar_owner_email?: string | null
+          calendar_path_kind?: string
+          calendar_read_enabled?: boolean
+          calendar_write_enabled?: boolean
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          display_name?: string
+          from_email?: string
+          id?: string
+          is_default_for_organization?: boolean
+          is_default_for_user?: boolean
+          last_connected_at?: string | null
+          last_error?: string | null
+          legacy_microsoft_config_id?: string | null
+          mail_delete_enabled?: boolean
+          mail_read_enabled?: boolean
+          mail_send_enabled?: boolean
+          mailbox_email?: string | null
+          mailbox_mode?: string
+          mailbox_name?: string | null
+          organization_id: string
+          owner_user_id?: string | null
+          provider?: string
+          refreshing_at?: string | null
+          reply_to_email?: string | null
+          scope: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          auth_account_id?: string | null
+          calendar_id?: string | null
+          calendar_owner_email?: string | null
+          calendar_path_kind?: string
+          calendar_read_enabled?: boolean
+          calendar_write_enabled?: boolean
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          display_name?: string
+          from_email?: string
+          id?: string
+          is_default_for_organization?: boolean
+          is_default_for_user?: boolean
+          last_connected_at?: string | null
+          last_error?: string | null
+          legacy_microsoft_config_id?: string | null
+          mail_delete_enabled?: boolean
+          mail_read_enabled?: boolean
+          mail_send_enabled?: boolean
+          mailbox_email?: string | null
+          mailbox_mode?: string
+          mailbox_name?: string | null
+          organization_id?: string
+          owner_user_id?: string | null
+          provider?: string
+          refreshing_at?: string | null
+          reply_to_email?: string | null
+          scope?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mail_accounts_auth_same_org_fkey"
+            columns: ["organization_id", "auth_account_id"]
+            isOneToOne: false
+            referencedRelation: "mail_accounts"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "mail_accounts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mail_accounts_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mail_accounts_owner_user_id_fkey"
+            columns: ["owner_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -4699,6 +5661,60 @@ export type Database = {
           },
         ]
       }
+      outlook_oauth_states: {
+        Row: {
+          created_at: string
+          expires_at: string
+          id: string
+          nonce_hash: string
+          organization_id: string
+          return_to: string | null
+          scope: string
+          state_hash: string
+          used_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at: string
+          id?: string
+          nonce_hash: string
+          organization_id: string
+          return_to?: string | null
+          scope: string
+          state_hash: string
+          used_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          nonce_hash?: string
+          organization_id?: string
+          return_to?: string | null
+          scope?: string
+          state_hash?: string
+          used_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "outlook_oauth_states_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outlook_oauth_states_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payslips: {
         Row: {
           allowances_total: number | null
@@ -5524,6 +6540,73 @@ export type Database = {
           },
         ]
       }
+      property_contracts: {
+        Row: {
+          contract_type: string
+          created_at: string
+          end_date: string | null
+          file_path: string
+          id: string
+          notes: string | null
+          organization_id: string
+          original_name: string
+          property_id: string
+          start_date: string | null
+          updated_at: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          contract_type?: string
+          created_at?: string
+          end_date?: string | null
+          file_path: string
+          id?: string
+          notes?: string | null
+          organization_id: string
+          original_name: string
+          property_id: string
+          start_date?: string | null
+          updated_at?: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          contract_type?: string
+          created_at?: string
+          end_date?: string | null
+          file_path?: string
+          id?: string
+          notes?: string | null
+          organization_id?: string
+          original_name?: string
+          property_id?: string
+          start_date?: string | null
+          updated_at?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "property_contracts_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_contracts_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_contracts_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       property_owners: {
         Row: {
           contact_person: string | null
@@ -5848,6 +6931,150 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      reward_catalog: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          image_url: string | null
+          is_active: boolean
+          name: string
+          organization_id: string
+          points_cost: number
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          image_url?: string | null
+          is_active?: boolean
+          name: string
+          organization_id: string
+          points_cost: number
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          image_url?: string | null
+          is_active?: boolean
+          name?: string
+          organization_id?: string
+          points_cost?: number
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reward_catalog_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reward_catalog_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      reward_redemptions: {
+        Row: {
+          account_id: string
+          candidate_id: string
+          created_at: string
+          decided_at: string | null
+          fulfilled_at: string | null
+          handled_by: string | null
+          id: string
+          notes: string | null
+          organization_id: string
+          points_cost: number
+          requested_at: string
+          reward_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          candidate_id: string
+          created_at?: string
+          decided_at?: string | null
+          fulfilled_at?: string | null
+          handled_by?: string | null
+          id?: string
+          notes?: string | null
+          organization_id: string
+          points_cost: number
+          requested_at?: string
+          reward_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          candidate_id?: string
+          created_at?: string
+          decided_at?: string | null
+          fulfilled_at?: string | null
+          handled_by?: string | null
+          id?: string
+          notes?: string | null
+          organization_id?: string
+          points_cost?: number
+          requested_at?: string
+          reward_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reward_redemptions_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "loyalty_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reward_redemptions_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reward_redemptions_handled_by_fkey"
+            columns: ["handled_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reward_redemptions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reward_redemptions_reward_id_fkey"
+            columns: ["reward_id"]
+            isOneToOne: false
+            referencedRelation: "reward_catalog"
             referencedColumns: ["id"]
           },
         ]
@@ -6578,62 +7805,80 @@ export type Database = {
       vehicle_damage_reports: {
         Row: {
           candidate_id: string | null
+          contact_phone_shared: boolean
+          contact_route: string
           cost_estimate: number | null
           created_at: string
           damage_type: string
           description: string | null
           employee_id: string
+          external_contact_email: string | null
           garage_email: string | null
           garage_notified: boolean | null
           garage_notified_at: string | null
           id: string
+          internal_contact_email: string | null
           organization_id: string
           photos: string[] | null
           reported_at: string
           resolution_notes: string | null
           resolved: boolean | null
           resolved_at: string | null
+          route_status: string
           updated_at: string
+          urgency: string
           vehicle_id: string
         }
         Insert: {
           candidate_id?: string | null
+          contact_phone_shared?: boolean
+          contact_route?: string
           cost_estimate?: number | null
           created_at?: string
           damage_type: string
           description?: string | null
           employee_id: string
+          external_contact_email?: string | null
           garage_email?: string | null
           garage_notified?: boolean | null
           garage_notified_at?: string | null
           id?: string
+          internal_contact_email?: string | null
           organization_id: string
           photos?: string[] | null
           reported_at?: string
           resolution_notes?: string | null
           resolved?: boolean | null
           resolved_at?: string | null
+          route_status?: string
           updated_at?: string
+          urgency?: string
           vehicle_id: string
         }
         Update: {
           candidate_id?: string | null
+          contact_phone_shared?: boolean
+          contact_route?: string
           cost_estimate?: number | null
           created_at?: string
           damage_type?: string
           description?: string | null
           employee_id?: string
+          external_contact_email?: string | null
           garage_email?: string | null
           garage_notified?: boolean | null
           garage_notified_at?: string | null
           id?: string
+          internal_contact_email?: string | null
           organization_id?: string
           photos?: string[] | null
           reported_at?: string
           resolution_notes?: string | null
           resolved?: boolean | null
           resolved_at?: string | null
+          route_status?: string
           updated_at?: string
+          urgency?: string
           vehicle_id?: string
         }
         Relationships: [
@@ -6680,6 +7925,7 @@ export type Database = {
           candidate_id: string | null
           created_at: string
           description: string | null
+          due_date: string | null
           employee_id: string | null
           fine_date: string
           id: string
@@ -6687,6 +7933,7 @@ export type Database = {
           organization_id: string
           paid: boolean
           paid_at: string | null
+          photos: string[]
           reference_number: string | null
           vehicle_id: string
         }
@@ -6695,6 +7942,7 @@ export type Database = {
           candidate_id?: string | null
           created_at?: string
           description?: string | null
+          due_date?: string | null
           employee_id?: string | null
           fine_date: string
           id?: string
@@ -6702,6 +7950,7 @@ export type Database = {
           organization_id: string
           paid?: boolean
           paid_at?: string | null
+          photos?: string[]
           reference_number?: string | null
           vehicle_id: string
         }
@@ -6710,6 +7959,7 @@ export type Database = {
           candidate_id?: string | null
           created_at?: string
           description?: string | null
+          due_date?: string | null
           employee_id?: string | null
           fine_date?: string
           id?: string
@@ -6717,6 +7967,7 @@ export type Database = {
           organization_id?: string
           paid?: boolean
           paid_at?: string | null
+          photos?: string[]
           reference_number?: string | null
           vehicle_id?: string
         }
@@ -6751,6 +8002,70 @@ export type Database = {
           },
           {
             foreignKeyName: "vehicle_fines_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vehicle_period_mileage: {
+        Row: {
+          created_at: string
+          id: string
+          kilometers: number
+          license_plate_snapshot: string | null
+          odometer_end: number | null
+          odometer_start: number | null
+          organization_id: string
+          raw_data: Json | null
+          run_id: string
+          source: string
+          vehicle_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          kilometers: number
+          license_plate_snapshot?: string | null
+          odometer_end?: number | null
+          odometer_start?: number | null
+          organization_id: string
+          raw_data?: Json | null
+          run_id: string
+          source?: string
+          vehicle_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          kilometers?: number
+          license_plate_snapshot?: string | null
+          odometer_end?: number | null
+          odometer_start?: number | null
+          organization_id?: string
+          raw_data?: Json | null
+          run_id?: string
+          source?: string
+          vehicle_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vehicle_period_mileage_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_period_mileage_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "fuel_analysis_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_period_mileage_vehicle_id_fkey"
             columns: ["vehicle_id"]
             isOneToOne: false
             referencedRelation: "vehicles"
@@ -6963,6 +8278,41 @@ export type Database = {
           },
         ]
       }
+      v_carerix_document_validation: {
+        Row: {
+          candidate_id: string | null
+          carerix_id: string | null
+          created_at: string | null
+          document_id: string | null
+          download_status: string | null
+          failure_reason: string | null
+          file_path: string | null
+          first_name: string | null
+          is_cv: boolean | null
+          last_name: string | null
+          name: string | null
+          notes: string | null
+          organization_id: string | null
+          status: Database["public"]["Enums"]["document_status"] | null
+          type: Database["public"]["Enums"]["document_type"] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "documents_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "documents_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       v_employee_compliance: {
         Row: {
           compliance_status:
@@ -7017,12 +8367,24 @@ export type Database = {
       }
     }
     Functions: {
+      admin_adjust_loyalty_points: {
+        Args: {
+          p_candidate_id: string
+          p_description: string
+          p_points: number
+        }
+        Returns: string
+      }
       check_rate_limit: {
         Args: {
           p_channel: Database["public"]["Enums"]["communication_channel"]
           p_org_id: string
           p_window_type: Database["public"]["Enums"]["rate_limit_window"]
         }
+        Returns: boolean
+      }
+      claim_mail_account_refresh: {
+        Args: { p_lock_timeout_seconds?: number; p_mail_account_id: string }
         Returns: boolean
       }
       consume_ai_credits: {
@@ -7064,6 +8426,7 @@ export type Database = {
           token_endpoint: string
         }[]
       }
+      get_client_portal_company_id: { Args: never; Returns: string }
       get_employee_id: { Args: never; Returns: string }
       get_exact_token: {
         Args: { p_org_id: string }
@@ -7134,6 +8497,19 @@ export type Database = {
           p_channel: Database["public"]["Enums"]["communication_channel"]
           p_org_id: string
         }
+        Returns: undefined
+      }
+      redeem_reward: { Args: { p_reward_id: string }; Returns: string }
+      refresh_candidate_data_quality_flags: {
+        Args: { p_org_id?: string }
+        Returns: {
+          inserted: number
+          open_total: number
+          resolved: number
+        }[]
+      }
+      release_mail_account_refresh: {
+        Args: { p_mail_account_id: string }
         Returns: undefined
       }
       sa_get_audit_log: {
@@ -7452,6 +8828,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       audit_action: [
