@@ -53,9 +53,22 @@ function errorMessage(data: any, fallback: string) {
   return typeof raw === 'string' ? raw : raw?.message || fallback;
 }
 
+async function readFunctionError(error: any) {
+  const fallback = error?.message || 'Outlook actie mislukt';
+  const response = error?.context;
+  if (!response || typeof response.clone !== 'function') return fallback;
+
+  try {
+    const data = await response.clone().json();
+    return errorMessage(data, fallback);
+  } catch {
+    return fallback;
+  }
+}
+
 export async function invokeOutlookFunction<T = any>(functionName: string, body: Record<string, unknown>): Promise<T> {
   const { data, error } = await supabase.functions.invoke(functionName, { body });
-  if (error) throw new Error(error.message);
+  if (error) throw new Error(await readFunctionError(error));
   if ((data as any)?.error) throw new Error(errorMessage(data, 'Outlook actie mislukt'));
   return data as T;
 }

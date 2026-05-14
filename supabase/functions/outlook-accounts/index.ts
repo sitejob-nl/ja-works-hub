@@ -9,6 +9,7 @@ import {
   loadProviderForAccount,
   mailboxBasePath,
   toAccountOption,
+  isConsentError,
   type MailAccountRow,
   type OutlookCapability,
 } from "../_shared/outlook-accounts.ts";
@@ -83,6 +84,28 @@ async function adminList(admin: ReturnType<typeof createAdminClient>, organizati
       grants: grantsByAccount.get(account.id) ?? [],
     })),
   };
+}
+
+function errorMessage(error: unknown, fallback = "Outlook test mislukt") {
+  const message = error instanceof Error ? error.message : String(error || fallback);
+  return (message || fallback).slice(0, 500);
+}
+
+async function markTestFailure(
+  admin: ReturnType<typeof createAdminClient>,
+  organizationId: string,
+  accountId: unknown,
+  error: unknown,
+) {
+  const id = String(accountId ?? "");
+  if (!id) return;
+
+  const account = await loadAccount(admin, organizationId, id);
+  if (!account) return;
+
+  const last_error = errorMessage(error);
+  const status = isConsentError(last_error) ? "needs_reconnect" : "failed";
+  await admin.from("mail_accounts").update({ status, last_error }).eq("id", account.id);
 }
 
 Deno.serve(async (req) => {
@@ -239,82 +262,94 @@ Deno.serve(async (req) => {
     }
 
     if (action === "test_mail") {
-      const provider = await loadProviderForAccount(admin, auth.organizationId, {
-        accountId: body.account_id,
-        userId: auth.userId,
-        role: auth.role,
-        require: "none",
-        allowUnready: true,
-      });
-      await graphJson(admin, provider, `${mailboxBasePath(provider.account)}/mailFolders/inbox`, {
-        headers: { Prefer: 'outlook.body-content-type="text"' },
-      });
-      const { error } = await admin.from("mail_accounts").update({
-        mail_read_enabled: true,
-        mail_send_enabled: true,
-        mail_delete_enabled: provider.account.mailbox_mode === "shared",
-        status: "connected",
-        last_error: null,
-        last_connected_at: new Date().toISOString(),
-      }).eq("id", provider.account.id);
-      if (error) throw error;
-      return json({ ok: true }, 200, corsHeaders);
+      try {
+        const provider = await loadProviderForAccount(admin, auth.organizationId, {
+          accountId: body.account_id,
+          userId: auth.userId,
+          role: auth.role,
+          require: "none",
+          allowUnready: true,
+        });
+        await graphJson(admin, provider, `${mailboxBasePath(provider.account)}/mailFolders/inbox`, {
+          headers: { Prefer: 'outlook.body-content-type="text"' },
+        });
+        const { error } = await admin.from("mail_accounts").update({
+          mail_read_enabled: true,
+          mail_send_enabled: true,
+          mail_delete_enabled: provider.account.mailbox_mode === "shared",
+          status: "connected",
+          last_error: null,
+          last_connected_at: new Date().toISOString(),
+        }).eq("id", provider.account.id);
+        if (error) throw error;
+        return json({ ok: true }, 200, corsHeaders);
+      } catch (error) {
+        await markTestFailure(admin, auth.organizationId, body.account_id, error);
+        throw error;
+      }
     }
 
     if (action === "test_calendar") {
-      const provider = await loadProviderForAccount(admin, auth.organizationId, {
-        accountId: body.account_id,
-        userId: auth.userId,
-        role: auth.role,
-        require: "none",
-        allowUnready: true,
-      });
-      const start = new Date();
-      const end = new Date(Date.now() + 24 * 60 * 60 * 1000);
-      let patch: Record<string, unknown> = {
-        calendar_read_enabled: true,
-        calendar_write_enabled: true,
-        calendar_path_kind: "mailbox_primary",
-        calendar_id: null,
-        status: "connected",
-        last_error: null,
-      };
       try {
-        await graphJson(admin, provider, graphUrl(`${mailboxBasePath(provider.account)}/calendar/calendarView`, {
-          startDateTime: start.toISOString(),
-          endDateTime: end.toISOString(),
-          "$top": 1,
-        }));
-      } catch (err) {
-        if (provider.account.mailbox_mode !== "shared") throw err;
-        const calendars = await graphJson<{ value?: any[] }>(admin, provider, graphUrl("/me/calendars", {
-          "$select": "id,name,owner,canEdit",
-          "$top": 100,
-        }));
-        const found = (calendars.value ?? []).find((cal: any) =>
-          String(cal.owner?.address ?? "").toLowerCase() === String(provider.account.mailbox_email ?? "").toLowerCase()
-        );
-        if (!found?.id) throw err;
-        await graphJson(admin, provider, graphUrl(`/me/calendars/${encodeURIComponent(found.id)}/calendarView`, {
-          startDateTime: start.toISOString(),
-          endDateTime: end.toISOString(),
-          "$top": 1,
-        }));
-        patch = {
-          ...patch,
-          calendar_path_kind: "graph_calendar_id",
-          calendar_id: found.id,
-          calendar_write_enabled: Boolean(found.canEdit ?? true),
+        const provider = await loadProviderForAccount(admin, auth.organizationId, {
+          accountId: body.account_id,
+          userId: auth.userId,
+          role: auth.role,
+          require: "none",
+          allowUnready: true,
+        });
+        const start = new Date();
+        const end = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        let patch: Record<string, unknown> = {
+          calendar_read_enabled: true,
+          calendar_write_enabled: true,
+          calendar_path_kind: "mailbox_primary",
+          calendar_id: null,
+          status: "connected",
+          last_error: null,
         };
-      }
+        try {
+          await graphJson(admin, provider, graphUrl(`${mailboxBasePath(provider.account)}/calendar/calendarView`, {
+            startDateTime: start.toISOString(),
+            endDateTime: end.toISOString(),
+            "$top": 1,
+          }));
+        } catch (err) {
+          if (provider.account.mailbox_mode !== "shared") throw err;
+          const calendars = await graphJson<{ value?: any[] }>(admin, provider, graphUrl("/me/calendars", {
+            "$select": "id,name,owner,canEdit",
+            "$top": 100,
+          }));
+          const found = (calendars.value ?? []).find((cal: any) =>
+            String(cal.owner?.address ?? "").toLowerCase() === String(provider.account.mailbox_email ?? "").toLowerCase()
+          );
+          if (!found?.id) throw err;
+          await graphJson(admin, provider, graphUrl(`/me/calendars/${encodeURIComponent(found.id)}/calendarView`, {
+            startDateTime: start.toISOString(),
+            endDateTime: end.toISOString(),
+            "$top": 1,
+          }));
+          patch = {
+            ...patch,
+            calendar_path_kind: "graph_calendar_id",
+            calendar_id: found.id,
+            calendar_write_enabled: Boolean(found.canEdit ?? true),
+          };
+        }
 
-      const { error } = await admin.from("mail_accounts").update(patch).eq("id", provider.account.id);
-      if (error) throw error;
-      return json({ ok: true, locator: patch.calendar_path_kind }, 200, corsHeaders);
+        const { error } = await admin.from("mail_accounts").update(patch).eq("id", provider.account.id);
+        if (error) throw error;
+        return json({ ok: true, locator: patch.calendar_path_kind }, 200, corsHeaders);
+      } catch (error) {
+        await markTestFailure(admin, auth.organizationId, body.account_id, error);
+        throw error;
+      }
     }
 
     return json({ error: "unknown_action" }, 400, corsHeaders);
   } catch (error) {
-    return json({ error: (error as Error).message }, 400, corsHeaders);
+    const err = error as Error & { status?: number; retryAfter?: number };
+    const status = Number.isInteger(err.status) && err.status! >= 400 && err.status! < 600 ? err.status! : 400;
+    return json({ error: err.message, retry_after: err.retryAfter }, status, corsHeaders);
   }
 });
