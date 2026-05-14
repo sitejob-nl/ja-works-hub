@@ -9,6 +9,20 @@ const corsHeaders = {
 const RDW_VEHICLE_URL = "https://opendata.rdw.nl/resource/m9d7-ebf2.json";
 const RDW_FUEL_URL = "https://opendata.rdw.nl/resource/8ys7-d773.json";
 
+const parseRdwInteger = (value: unknown): number | null => {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number.parseInt(String(value), 10);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const parseRdwDoors = (value: unknown): number | null => {
+  const doors = parseRdwInteger(value);
+  // RDW heeft veel records met 0 of leeg voor aantal_deuren. Dat is voor
+  // planning onbekend/niet bruikbaar, geen echte "0 deuren".
+  if (doors === null || doors <= 0 || doors > 12) return null;
+  return doors;
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -89,7 +103,7 @@ Deno.serve(async (req) => {
       weight: v.massa_ledig_voertuig ? parseInt(v.massa_ledig_voertuig) : null,
       max_weight: v.toegestane_maximum_massa_voertuig ? parseInt(v.toegestane_maximum_massa_voertuig) : null,
       seats: v.aantal_zitplaatsen ? parseInt(v.aantal_zitplaatsen) : null,
-      doors: v.aantal_deuren ? parseInt(v.aantal_deuren) : null,
+      doors: parseRdwDoors(v.aantal_deuren),
       first_registration: v.datum_eerste_toelating || null,
       first_registration_nl: v.datum_eerste_tenaamstelling_in_nederland || null,
       last_registration: v.datum_tenaamstelling || null,
