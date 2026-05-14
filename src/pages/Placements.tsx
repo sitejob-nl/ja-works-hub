@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Search, Users, CalendarClock, TrendingUp } from 'lucide-react';
+import { Search, Users, CalendarClock, TrendingUp, BriefcaseBusiness } from 'lucide-react';
 import { formatDate, formatEUR } from '@/lib/format';
 import { payrollerLabel } from '@/lib/payroller';
 
@@ -36,7 +36,7 @@ export default function PlacementsPage() {
     queryFn: async () => {
       let q = supabase
         .from('placements')
-        .select('*, companies!placements_company_id_fkey(name), candidates!placements_candidate_id_fkey(id, first_name, last_name), employees!placements_employee_id_fkey(id, candidates!employees_candidate_id_fkey(first_name, last_name))')
+        .select('*, companies!placements_company_id_fkey(id, name), candidates!placements_candidate_id_fkey(id, first_name, last_name), employees!placements_employee_id_fkey(id, candidate_id, candidates!employees_candidate_id_fkey(id, first_name, last_name))')
         .eq('organization_id', orgId)
         .order('start_date', { ascending: false });
       if (statusFilter !== 'all') q = q.eq('status', statusFilter);
@@ -143,11 +143,47 @@ export default function PlacementsPage() {
                 ) : filtered.map((p: any) => {
                   const cand = (p.candidates as any) ?? (p.employees as any)?.candidates;
                   const st = statusBadge[p.status] || statusBadge.gepland;
+                  const candidateName = cand ? `${cand.first_name} ${cand.last_name}`.trim() : '—';
+                  const candidateId = p.candidate_id ?? (p.employees as any)?.candidate_id ?? cand?.id;
+                  const companyName = (p.companies as any)?.name ?? '—';
+                  const companyId = p.company_id ?? (p.companies as any)?.id;
                   return (
-                    <TableRow key={p.id} className="cursor-pointer" onClick={() => window.location.href = `/plaatsingen/${p.id}`}>
-                      <TableCell className="font-medium">{cand?.first_name} {cand?.last_name}</TableCell>
-                      <TableCell>{(p.companies as any)?.name ?? '—'}</TableCell>
-                      <TableCell>{p.function_name}</TableCell>
+                    <TableRow key={p.id}>
+                      <TableCell className="font-medium">
+                        {candidateId ? (
+                          <Link to={`/kandidaten/${candidateId}`} className="hover:text-primary transition-colors">
+                            {candidateName}
+                          </Link>
+                        ) : (
+                          candidateName
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {companyId ? (
+                          <Link to={`/opdrachtgevers/${companyId}`} className="hover:text-primary transition-colors">
+                            {companyName}
+                          </Link>
+                        ) : (
+                          companyName
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Link to={`/plaatsingen/${p.id}`} className="hover:text-primary transition-colors">
+                            {p.function_name || 'Plaatsing'}
+                          </Link>
+                          {p.vacancy_id && (
+                            <Link
+                              to={`/vacatures/${p.vacancy_id}`}
+                              className="text-muted-foreground hover:text-primary transition-colors"
+                              aria-label="Open vacature"
+                              title="Open vacature"
+                            >
+                              <BriefcaseBusiness className="h-4 w-4" />
+                            </Link>
+                          )}
+                        </div>
+                      </TableCell>
                       <TableCell>{p.payroller ? <Badge variant="outline" className="text-xs">{payrollerLabel[p.payroller] ?? p.payroller}</Badge> : <span className="text-muted-foreground">—</span>}</TableCell>
                       <TableCell className="text-xs whitespace-nowrap">{formatDate(p.start_date)} — {formatDate(p.expected_end_date || p.end_date)}</TableCell>
                       <TableCell className="font-mono text-xs">{formatEUR(p.client_hourly_rate || p.hourly_rate)}</TableCell>

@@ -71,7 +71,8 @@ const Planning = () => {
           employees!placements_employee_id_fkey(
             id,
             status,
-            candidates!employees_candidate_id_fkey(first_name, last_name)
+            candidate_id,
+            candidates!employees_candidate_id_fkey(id, first_name, last_name)
           ),
           candidates!placements_candidate_id_fkey(id, first_name, last_name),
           companies!placements_company_id_fkey(id, name)
@@ -379,6 +380,8 @@ const Planning = () => {
 const PlacementCell = ({ placement, navigate }: { placement: any; navigate: any }) => {
   const comp = placement.companies;
   const cand = placement.candidates ?? placement.employees?.candidates;
+  const candidateId = placement.candidate_id ?? placement.employees?.candidate_id ?? cand?.id;
+  const companyId = placement.company_id ?? comp?.id;
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -407,9 +410,11 @@ const PlacementCell = ({ placement, navigate }: { placement: any; navigate: any 
           </div>
           <div><span className="font-medium text-foreground">Compliance:</span> <Badge variant={placement.compliance_check_passed ? 'default' : 'destructive'} className="ml-1">{placement.compliance_check_passed ? 'OK' : 'Niet voldaan'}</Badge></div>
         </div>
-        <div className="flex gap-2 pt-2">
-          <Button size="sm" variant="outline" onClick={() => navigate(`/kandidaten/${placement.candidate_id}`)}>Medewerker</Button>
-          <Button size="sm" variant="outline" onClick={() => navigate(`/opdrachtgevers/${placement.company_id}`)}>Opdrachtgever</Button>
+        <div className="flex flex-wrap gap-2 pt-2">
+          {candidateId && <Button size="sm" variant="outline" onClick={() => navigate(`/kandidaten/${candidateId}`)}>Medewerker</Button>}
+          {companyId && <Button size="sm" variant="outline" onClick={() => navigate(`/opdrachtgevers/${companyId}`)}>Opdrachtgever</Button>}
+          <Button size="sm" variant="outline" onClick={() => navigate(`/plaatsingen/${placement.id}`)}>Plaatsing</Button>
+          {placement.vacancy_id && <Button size="sm" variant="outline" onClick={() => navigate(`/vacatures/${placement.vacancy_id}`)}>Vacature</Button>}
         </div>
       </PopoverContent>
     </Popover>

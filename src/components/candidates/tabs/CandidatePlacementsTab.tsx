@@ -1,4 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
+import { BriefcaseBusiness } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -17,7 +19,7 @@ const CandidatePlacementsTab = ({ candidateId }: { candidateId: string }) => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('placements')
-        .select('*, companies!placements_company_id_fkey(name)')
+        .select('*, companies!placements_company_id_fkey(id, name)')
         .eq('candidate_id', candidateId)
         .order('start_date', { ascending: false });
       if (error) throw error;
@@ -41,18 +43,46 @@ const CandidatePlacementsTab = ({ candidateId }: { candidateId: string }) => {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {placements.map((p: any) => (
-              <TableRow key={p.id}>
-                <TableCell className="font-medium">{p.companies?.name ?? '—'}</TableCell>
-                <TableCell>{p.function_name}</TableCell>
-                <TableCell>{formatDate(p.start_date)}</TableCell>
-                <TableCell>{formatDate(p.end_date)}</TableCell>
-                <TableCell>{formatEUR(p.hourly_rate)}</TableCell>
-                <TableCell>
-                  <Badge variant="secondary" className={statusColors[p.status] ?? ''}>{p.status.replace('_', ' ')}</Badge>
-                </TableCell>
-              </TableRow>
-            ))}
+            {placements.map((p: any) => {
+              const companyName = p.companies?.name ?? '—';
+              const companyId = p.company_id ?? p.companies?.id;
+              return (
+                <TableRow key={p.id}>
+                  <TableCell className="font-medium">
+                    {companyId ? (
+                      <Link to={`/opdrachtgevers/${companyId}`} className="hover:text-primary transition-colors">
+                        {companyName}
+                      </Link>
+                    ) : (
+                      companyName
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <Link to={`/plaatsingen/${p.id}`} className="hover:text-primary transition-colors">
+                        {p.function_name || 'Plaatsing'}
+                      </Link>
+                      {p.vacancy_id && (
+                        <Link
+                          to={`/vacatures/${p.vacancy_id}`}
+                          className="text-muted-foreground hover:text-primary transition-colors"
+                          aria-label="Open vacature"
+                          title="Open vacature"
+                        >
+                          <BriefcaseBusiness className="h-4 w-4" />
+                        </Link>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell>{formatDate(p.start_date)}</TableCell>
+                  <TableCell>{formatDate(p.end_date)}</TableCell>
+                  <TableCell>{formatEUR(p.hourly_rate)}</TableCell>
+                  <TableCell>
+                    <Badge variant="secondary" className={statusColors[p.status] ?? ''}>{p.status.replace('_', ' ')}</Badge>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
             {placements.length === 0 && (
               <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">Nog geen plaatsingen</TableCell></TableRow>
             )}

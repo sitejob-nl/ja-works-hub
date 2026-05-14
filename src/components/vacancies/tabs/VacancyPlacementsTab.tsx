@@ -27,7 +27,7 @@ const VacancyPlacementsTab = ({ vacancyId }: { vacancyId: string }) => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('placements')
-        .select(`*, candidates!placements_candidate_id_fkey(id, first_name, last_name), employees!placements_employee_id_fkey(id, candidates!employees_candidate_id_fkey(first_name, last_name))`)
+        .select(`*, candidates!placements_candidate_id_fkey(id, first_name, last_name), employees!placements_employee_id_fkey(id, candidate_id, candidates!employees_candidate_id_fkey(id, first_name, last_name))`)
         .eq('vacancy_id', vacancyId)
         .order('start_date', { ascending: false });
       if (error) throw error;
@@ -62,12 +62,17 @@ const VacancyPlacementsTab = ({ vacancyId }: { vacancyId: string }) => {
             const emp = p.employees as any;
             const cand = ((p.candidates as any) ?? emp?.candidates) as any;
             const name = cand ? `${cand.first_name} ${cand.last_name}` : '—';
+            const candidateId = p.candidate_id ?? emp?.candidate_id ?? cand?.id;
             return (
               <TableRow key={p.id}>
                 <TableCell>
-                  {p.candidate_id ? <Link to={`/kandidaten/${p.candidate_id}`} className="font-medium hover:text-primary">{name}</Link> : name}
+                  {candidateId ? <Link to={`/kandidaten/${candidateId}`} className="font-medium hover:text-primary transition-colors">{name}</Link> : name}
                 </TableCell>
-                <TableCell>{p.function_name}</TableCell>
+                <TableCell>
+                  <Link to={`/plaatsingen/${p.id}`} className="hover:text-primary transition-colors">
+                    {p.function_name || 'Plaatsing'}
+                  </Link>
+                </TableCell>
                 <TableCell>{formatDate(p.start_date)}</TableCell>
                 <TableCell>{formatDate(p.end_date)}</TableCell>
                 <TableCell>{formatEUR(p.hourly_rate)}</TableCell>
