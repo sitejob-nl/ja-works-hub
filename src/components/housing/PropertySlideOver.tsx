@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
@@ -13,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 import { geocodeAndSaveProperty } from '@/lib/distance';
 import OwnerSelector from '@/components/housing/OwnerSelector';
+import { Upload } from 'lucide-react';
 
 interface Props {
   open: boolean;
@@ -25,6 +27,7 @@ const toNum = (v: string) => (v ? Number(v) : null);
 
 const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
   const orgId = useOrganizationId();
+  const { user } = useAuth();
   const qc = useQueryClient();
   const isEdit = !!property;
 
@@ -32,7 +35,7 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
     name: '', address_street: '', address_postal: '', address_city: '',
     // owner
     owner_id: null as string | null,
-    rental_contract_url: '', ownership_type: '',
+    ownership_type: '',
     rental_contract_start_date: '', rental_contract_end_date: '', rental_contract_notes: '',
     // permits
     has_rental_permit: false, rental_permit_number: '', rental_permit_expiry: '',
@@ -48,6 +51,7 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
   };
 
   const [form, setForm] = useState(defaults);
+  const [rentalContractFile, setRentalContractFile] = useState<File | null>(null);
 
   useEffect(() => {
     if (property) {
@@ -55,7 +59,6 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
         name: property.name ?? '', address_street: property.address_street ?? '',
         address_postal: property.address_postal ?? '', address_city: property.address_city ?? '',
         owner_id: property.owner_id ?? null,
-        rental_contract_url: property.rental_contract_url ?? '',
         ownership_type: property.ownership_type ?? '',
         rental_contract_start_date: property.rental_contract_start_date ?? '',
         rental_contract_end_date: property.rental_contract_end_date ?? '',
@@ -80,6 +83,7 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
     } else {
       setForm(defaults);
     }
+    setRentalContractFile(null);
   }, [property, open]);
 
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
@@ -89,6 +93,37 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
     return vals.reduce((s, v) => s + (v ? Number(v) : 0), 0);
   }, [form.monthly_rent, form.cost_gas, form.cost_water, form.cost_electra, form.cost_municipal_tax, form.cost_other]);
 
+  const uploadRentalContract = async (propertyId: string) => {
+    if (!rentalContractFile) return false;
+
+    const ext = rentalContractFile.name.split('.').pop()?.toLowerCase() || 'pdf';
+    const path = `${orgId}/${propertyId}/${crypto.randomUUID()}.${ext}`;
+    const { error: uploadError } = await supabase.storage
+      .from('property-contracts')
+      .upload(path, rentalContractFile, { upsert: false });
+
+    if (uploadError) throw uploadError;
+
+    const { error: contractError } = await supabase.from('property_contracts' as any).insert({
+      organization_id: orgId,
+      property_id: propertyId,
+      file_path: path,
+      original_name: rentalContractFile.name,
+      contract_type: 'inhuur',
+      start_date: form.rental_contract_start_date || null,
+      end_date: form.rental_contract_end_date || null,
+      notes: form.rental_contract_notes || null,
+      uploaded_by: user?.id ?? null,
+    });
+
+    if (contractError) {
+      await supabase.storage.from('property-contracts').remove([path]);
+      throw contractError;
+    }
+
+    return true;
+  };
+
   const mutation = useMutation({
     mutationFn: async () => {
       const payload = {
@@ -97,7 +132,6 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
         address_postal: form.address_postal,
         address_city: form.address_city,
         owner_id: form.owner_id,
-        rental_contract_url: form.rental_contract_url || null,
         ownership_type: form.ownership_type || null,
         rental_contract_start_date: form.rental_contract_start_date || null,
         rental_contract_end_date: form.rental_contract_end_date || null,
@@ -121,25 +155,33 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
         total_capacity: form.total_capacity ? Number(form.total_capacity) : 0,
         notes: form.notes || null,
       };
+      let propertyId: string;
       if (isEdit) {
         const { error } = await supabase.from('properties').update(payload).eq('id', property.id);
         if (error) throw error;
-        return property.id as string;
+        propertyId = property.id as string;
       } else {
         const { data, error } = await supabase.from('properties').insert({ ...payload, organization_id: orgId }).select('id').single();
         if (error) throw error;
-        return data.id as string;
+        propertyId = data.id as string;
       }
+
+      const uploadedContract = await uploadRentalContract(propertyId);
+      return { propertyId, uploadedContract };
     },
-    onSuccess: (savedId: string) => {
+    onSuccess: ({ propertyId, uploadedContract }: { propertyId: string; uploadedContract: boolean }) => {
       qc.invalidateQueries({ queryKey: ['properties'] });
       qc.invalidateQueries({ queryKey: ['property'] });
-      toast.success(isEdit ? 'Pand bijgewerkt' : 'Pand aangemaakt');
+      qc.invalidateQueries({ queryKey: ['property-contracts'] });
+      qc.invalidateQueries({ queryKey: ['property-contracts-recent'] });
+      toast.success(uploadedContract
+        ? (isEdit ? 'Pand bijgewerkt en contract geüpload' : 'Pand aangemaakt en contract geüpload')
+        : (isEdit ? 'Pand bijgewerkt' : 'Pand aangemaakt'));
       onOpenChange(false);
       // Fire-and-forget geocoding
-      geocodeAndSaveProperty(savedId, form.address_street, form.address_postal, form.address_city);
+      geocodeAndSaveProperty(propertyId, form.address_street, form.address_postal, form.address_city);
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => toast.error(e.message ?? 'Opslaan of uploaden mislukt'),
   });
 
   const SectionHeader = ({ children }: { children: React.ReactNode }) => (
@@ -187,7 +229,20 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
                   </SelectContent>
                 </Select>
               </div>
-              <div><Label>Link huurcontract</Label><Input value={form.rental_contract_url} onChange={(e) => set('rental_contract_url', e.target.value)} /></div>
+              <div>
+                <Label>Huurcontractbestand</Label>
+                <Input
+                  type="file"
+                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                  onChange={(e) => setRentalContractFile(e.target.files?.[0] ?? null)}
+                />
+                {rentalContractFile && (
+                  <p className="mt-1 truncate text-xs text-muted-foreground">
+                    <Upload className="mr-1 inline h-3 w-3" />
+                    {rentalContractFile.name}
+                  </p>
+                )}
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div><Label>Huurcontract begindatum</Label><Input type="date" value={form.rental_contract_start_date} onChange={(e) => set('rental_contract_start_date', e.target.value)} /></div>

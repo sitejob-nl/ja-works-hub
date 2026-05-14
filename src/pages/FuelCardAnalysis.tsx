@@ -19,6 +19,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { toast } from 'sonner';
 import { formatDate, formatEUR } from '@/lib/format';
 import { logAudit } from '@/lib/audit';
+import { isLikelyVehiclePlateReference, normalizeVehicleRef } from '@/lib/fuel-analysis';
 import { Upload, AlertTriangle, CheckCircle2, StickyNote, Car, UserRound, CreditCard, Trash2, Settings2, Save, Info } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import Papa from 'papaparse';
@@ -355,6 +356,8 @@ const FuelCardAnalysis = () => {
         onDone={() => {
           qc.invalidateQueries({ queryKey: ['fuel-transactions'] });
           qc.invalidateQueries({ queryKey: ['fuel-card-imports'] });
+          qc.invalidateQueries({ queryKey: ['fuel-analysis-data-quality'] });
+          qc.invalidateQueries({ queryKey: ['vehicles'] });
         }}
       />
 
@@ -709,17 +712,30 @@ const NumberField = ({ label, value, onChange }: { label: string; value: number;
 
 /* ─── Import Sheet ──────────────────────────────────────── */
 
-type ColMap = { datum: string; kenteken: string; liters: string; bedrag: string; prijs: string; station: string };
+type ColMap = {
+  datum: string;
+  kenteken: string;
+  kaartnummer: string;
+  liters: string;
+  bedrag: string;
+  prijs: string;
+  station: string;
+};
 
-const Q8_SIGNATURE = ['Kentekenplaat', 'Hoeveelheid', 'transactie datum'];
-const Q8_PRESET = {
+const EMPTY_COL_MAP: ColMap = { datum: '', kenteken: '', kaartnummer: '', liters: '', bedrag: '', prijs: '', station: '' };
+const Q8_CARD_COLUMN = 'Kaartnummer';
+const Q8_PLATE_COLUMN = 'Kentekenplaat';
+const Q8_REFERENCE_COLUMN = 'Referentie kaartgebruik';
+const Q8_SIGNATURE = [Q8_CARD_COLUMN, 'Hoeveelheid', 'transactie datum'];
+const q8PresetForHeaders = (headers: string[]): ColMap => ({
   datum: 'transactie datum',
-  kenteken: 'Kentekenplaat',
+  kenteken: headers.includes(Q8_REFERENCE_COLUMN) ? Q8_REFERENCE_COLUMN : Q8_PLATE_COLUMN,
+  kaartnummer: headers.includes(Q8_CARD_COLUMN) ? Q8_CARD_COLUMN : '',
   liters: 'Hoeveelheid',
   bedrag: 'Bedrag incl BTW',
   prijs: 'Pompprijs incl. BTW',
   station: 'Site',
-} satisfies ColMap;
+});
 
 type ExistingImport = { id: string; file_name: string | null; transaction_count: number; created_at: string };
 
@@ -738,16 +754,16 @@ const ImportSheet = ({ open, onOpenChange, orgId, conditions, onDone }: {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [rows, setRows] = useState<Record<string, string>[]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
-  const [colMap, setColMap] = useState<ColMap>({ datum: '', kenteken: '', liters: '', bedrag: '', prijs: '', station: '' });
+  const [colMap, setColMap] = useState<ColMap>(EMPTY_COL_MAP);
   const [importing, setImporting] = useState(false);
-  const [result, setResult] = useState<{ imported: number; flags: number; kmUpdates: number } | null>(null);
+  const [result, setResult] = useState<{ imported: number; flags: number; kmUpdates: number; fuelCardUpdates: number } | null>(null);
   const [autoDetected, setAutoDetected] = useState(false);
   const [fileMeta, setFileMeta] = useState<{ name: string; hash: string } | null>(null);
   const [existing, setExisting] = useState<ExistingImport | null>(null);
 
   const reset = () => {
     setStep(1); setRows([]); setHeaders([]);
-    setColMap({ datum: '', kenteken: '', liters: '', bedrag: '', prijs: '', station: '' });
+    setColMap(EMPTY_COL_MAP);
     setResult(null); setAutoDetected(false); setFileMeta(null); setExisting(null);
   };
 
@@ -785,9 +801,10 @@ const ImportSheet = ({ open, onOpenChange, orgId, conditions, onDone }: {
         setHeaders(headersList);
         setRows(stringRows);
 
-        const isQ8 = Q8_SIGNATURE.every((h) => headersList.includes(h));
+        const isQ8 = Q8_SIGNATURE.every((h) => headersList.includes(h))
+          && (headersList.includes(Q8_REFERENCE_COLUMN) || headersList.includes(Q8_PLATE_COLUMN));
         if (isQ8) {
-          setColMap(Q8_PRESET);
+          setColMap(q8PresetForHeaders(headersList));
           setAutoDetected(true);
           setStep(3);
         } else {
@@ -806,10 +823,19 @@ const ImportSheet = ({ open, onOpenChange, orgId, conditions, onDone }: {
       header: true,
       skipEmptyLines: true,
       complete: (res) => {
-        setHeaders(res.meta.fields ?? []);
+        const fields = res.meta.fields ?? [];
+        setHeaders(fields);
         setRows(res.data as Record<string, string>[]);
-        setAutoDetected(false);
-        setStep(2);
+        const isQ8 = Q8_SIGNATURE.every((h) => fields.includes(h))
+          && (fields.includes(Q8_REFERENCE_COLUMN) || fields.includes(Q8_PLATE_COLUMN));
+        if (isQ8) {
+          setColMap(q8PresetForHeaders(fields));
+          setAutoDetected(true);
+          setStep(3);
+        } else {
+          setAutoDetected(false);
+          setStep(2);
+        }
       },
       error: () => toast.error('CSV parse fout'),
     });
@@ -839,8 +865,11 @@ const ImportSheet = ({ open, onOpenChange, orgId, conditions, onDone }: {
       const vehicleById: Record<string, any> = {};
       (vehicles ?? []).forEach(v => {
         vehicleById[v.id] = v;
-        if (v.license_plate) vehicleByPlate[v.license_plate.toUpperCase().replace(/[^A-Z0-9]/g, '')] = v;
-        if (v.fuel_card_reference) vehicleByRef[v.fuel_card_reference.toUpperCase().trim()] = v;
+        if (v.license_plate) vehicleByPlate[normalizeVehicleRef(v.license_plate)] = v;
+        if (v.fuel_card_reference) {
+          vehicleByRef[v.fuel_card_reference.toUpperCase().trim()] = v;
+          vehicleByRef[normalizeVehicleRef(v.fuel_card_reference)] = v;
+        }
       });
       const assignmentByVehicle: Record<string, string> = {};
       (assignments ?? []).forEach(a => { assignmentByVehicle[a.vehicle_id] = a.employee_id; });
@@ -848,14 +877,22 @@ const ImportSheet = ({ open, onOpenChange, orgId, conditions, onDone }: {
       const inserts: any[] = [];
       const rowMeta: Array<{ vehicleId: string | null; odometer: number | null; transactionDate: string; rowIndex: number }> = [];
       const maxKmByVehicle: Record<string, number> = {};
-      // Q8 herhaalt het kenteken niet op vervolg-rijen — blanco kentekens
-      // erven van de eerstvolgende niet-blanco rij erboven (forward-fill).
-      let lastPlate = '';
+      const fuelCardByVehicle: Record<string, string> = {};
+      const readCell = (row: Record<string, string>, column: string) => (column ? String(row[column] ?? '').trim() : '');
+      // Oudere Q8 exports hadden soms lege kentekenregels. Alleen dan vullen
+      // we door; zodra `Referentie kaartgebruik` bestaat, is die leidend per rij.
+      const canForwardFillPlate = !headers.includes(Q8_REFERENCE_COLUMN);
+      let lastPlateRef = '';
       for (const row of rows) {
-        const rawDate = row[colMap.datum] ?? '';
-        const rowPlate = (row[colMap.kenteken] ?? '').trim();
-        if (rowPlate) lastPlate = rowPlate;
-        const rawRef = rowPlate || lastPlate;
+        const rawDate = readCell(row, colMap.datum);
+        const mappedRef = readCell(row, colMap.kenteken);
+        const referenceUsage = readCell(row, Q8_REFERENCE_COLUMN);
+        const q8Plate = readCell(row, Q8_PLATE_COLUMN);
+        const rawCard = readCell(row, colMap.kaartnummer) || readCell(row, Q8_CARD_COLUMN);
+        const plateCandidate = [mappedRef, referenceUsage, q8Plate].find(isLikelyVehiclePlateReference) ?? '';
+        if (plateCandidate) lastPlateRef = plateCandidate;
+        const rawRef = plateCandidate || (canForwardFillPlate ? lastPlateRef : '') || mappedRef || referenceUsage || q8Plate;
+        const displayPlateRef = (isLikelyVehiclePlateReference(q8Plate) ? q8Plate : plateCandidate) || '';
         const rawLiters = row[colMap.liters] ?? '0';
         const rawAmount = row[colMap.bedrag] ?? '0';
         const rawPrice = colMap.prijs ? (row[colMap.prijs] ?? null) : null;
@@ -880,13 +917,17 @@ const ImportSheet = ({ open, onOpenChange, orgId, conditions, onDone }: {
         }
         if (!parsedDate) continue;
 
-        const normalRef = rawRef.toUpperCase().replace(/[^A-Z0-9]/g, '');
-        const rawCard = String(row['Kaartnummer'] ?? '').trim();
+        const normalRef = normalizeVehicleRef(rawRef);
+        const normalCard = normalizeVehicleRef(rawCard);
         const vehicle = vehicleByPlate[normalRef]
           ?? vehicleByRef[rawRef.toUpperCase().trim()]
-          ?? (rawCard ? vehicleByRef[rawCard.toUpperCase()] : null);
+          ?? (normalCard ? vehicleByRef[normalCard] : null)
+          ?? (rawCard ? vehicleByRef[rawCard.toUpperCase().trim()] : null);
         const vehicleId = vehicle?.id ?? null;
         const employeeId = vehicleId ? (assignmentByVehicle[vehicleId] ?? null) : null;
+        if (vehicleId && rawCard && !fuelCardByVehicle[vehicleId]) {
+          fuelCardByVehicle[vehicleId] = rawCard;
+        }
 
         // Fraud checks
         let flagOverCap = false;
@@ -898,19 +939,18 @@ const ImportSheet = ({ open, onOpenChange, orgId, conditions, onDone }: {
         const odometer = parseFloat(rawKm);
         const validOdometer = Number.isFinite(odometer) && odometer > 0 ? odometer : null;
 
-        // raw_data krijgt de forward-filled kenteken zodat blanco rijen ook
-        // het juiste kenteken (met streepjes) tonen in de UI.
-        const filledRow = rawRef && !row['Kentekenplaat']
-          ? { ...row, Kentekenplaat: rawRef }
+        // raw_data krijgt een ingevuld kenteken zodat blanco Q8-velden ook
+        // het juiste kenteken tonen, zonder algemene tankpassen als kenteken te tonen.
+        const filledRow = displayPlateRef && !row[Q8_PLATE_COLUMN]
+          ? { ...row, [Q8_PLATE_COLUMN]: displayPlateRef }
           : row;
 
         const insertIndex = inserts.length;
         inserts.push({
           organization_id: orgId,
           import_batch_id: batchId,
-          fuel_card_reference: rawRef.trim() || rawCard,
-          // Kenteken-met-streepjes uit Q8 prefereren boven de stripped form in DB.
-          license_plate: rawRef.trim().toUpperCase() || vehicle?.license_plate || null,
+          fuel_card_reference: rawCard || rawRef.trim(),
+          license_plate: (displayPlateRef || vehicle?.license_plate || '').toUpperCase() || null,
           transaction_date: parsedDate,
           liters,
           amount_eur: amount,
@@ -1056,8 +1096,28 @@ const ImportSheet = ({ open, onOpenChange, orgId, conditions, onDone }: {
         }
       }
 
+      let fuelCardUpdates = 0;
+      for (const [vehicleId, fuelCardReference] of Object.entries(fuelCardByVehicle)) {
+        const v = (vehicles ?? []).find(x => x.id === vehicleId);
+        const current = String(v?.fuel_card_reference ?? '').trim();
+        if (fuelCardReference && current !== fuelCardReference) {
+          const { error } = await supabase.from('vehicles').update({ fuel_card_reference: fuelCardReference }).eq('id', vehicleId);
+          if (!error) {
+            fuelCardUpdates += 1;
+            void logAudit({
+              action: 'update',
+              tableName: 'vehicles',
+              recordId: vehicleId,
+              oldValues: { fuel_card_reference: current || null },
+              newValues: { fuel_card_reference: fuelCardReference },
+              reason: 'q8-import-fuel-card-reference',
+            });
+          }
+        }
+      }
+
       const flagCount = inserts.filter(i => i.flag_over_capacity || i.flag_multiple_same_day || i.flag_excessive_consumption).length;
-      setResult({ imported: totalInserted, flags: flagCount, kmUpdates });
+      setResult({ imported: totalInserted, flags: flagCount, kmUpdates, fuelCardUpdates });
       setStep(3);
       onDone();
     } catch (e: any) {
@@ -1069,7 +1129,8 @@ const ImportSheet = ({ open, onOpenChange, orgId, conditions, onDone }: {
 
   const mapFields: { key: keyof ColMap; label: string; required: boolean }[] = [
     { key: 'datum', label: 'Datum', required: true },
-    { key: 'kenteken', label: 'Kenteken / Referentie', required: true },
+    { key: 'kenteken', label: 'Kenteken', required: true },
+    { key: 'kaartnummer', label: 'Tankpas / Kaartnummer', required: false },
     { key: 'liters', label: 'Liters', required: true },
     { key: 'bedrag', label: 'Bedrag (EUR)', required: true },
     { key: 'prijs', label: 'Prijs per liter', required: false },
@@ -1186,6 +1247,9 @@ const ImportSheet = ({ open, onOpenChange, orgId, conditions, onDone }: {
             )}
             {result.kmUpdates > 0 && (
               <p className="text-sm text-muted-foreground">{result.kmUpdates} voertuig{result.kmUpdates === 1 ? '' : 'en'} kilometerstand bijgewerkt</p>
+            )}
+            {result.fuelCardUpdates > 0 && (
+              <p className="text-sm text-muted-foreground">{result.fuelCardUpdates} tankpas{result.fuelCardUpdates === 1 ? '' : 'sen'} aan kenteken gekoppeld</p>
             )}
             <Button className="mt-4" onClick={() => { reset(); onOpenChange(false); }}>Sluiten</Button>
           </div>

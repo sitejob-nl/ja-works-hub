@@ -44,6 +44,14 @@ export function normalizeVehicleRef(value: string | null | undefined) {
   return String(value ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 }
 
+export function isLikelyVehiclePlateReference(value: string | null | undefined) {
+  const normalized = normalizeVehicleRef(value);
+  return normalized.length >= 5
+    && normalized.length <= 8
+    && /[A-Z]/.test(normalized)
+    && /\d/.test(normalized);
+}
+
 export function round2(value: number) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
