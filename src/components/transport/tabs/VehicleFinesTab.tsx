@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
-import { Plus, MoreHorizontal, Pencil, Trash2, Upload } from 'lucide-react';
+import { FileText, MoreHorizontal, Pencil, Plus, Trash2, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -35,6 +35,8 @@ const emptyFine = {
   notes: '',
 };
 
+const isImagePath = (path: string) => /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(path);
+
 const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
   const orgId = useOrganizationId();
   const qc = useQueryClient();
@@ -63,6 +65,26 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
       if (error) throw error;
       return data ?? [];
     },
+  });
+
+  const finePhotoPaths = Array.from(
+    new Set((fines ?? []).flatMap((fine: any) => (fine.photos ?? []) as string[]))
+  );
+
+  const { data: finePhotoUrls = {} } = useQuery({
+    queryKey: ['vehicle-fine-photo-urls', vehicle.id, finePhotoPaths],
+    queryFn: async () => {
+      const entries = await Promise.all(
+        finePhotoPaths.map(async (path) => {
+          const { data, error } = await supabase.storage.from('documents').createSignedUrl(path, 60 * 10);
+          if (error) return [path, null] as const;
+          return [path, data.signedUrl] as const;
+        })
+      );
+      return Object.fromEntries(entries.filter(([, url]) => Boolean(url))) as Record<string, string>;
+    },
+    enabled: finePhotoPaths.length > 0,
+    staleTime: 5 * 60 * 1000,
   });
 
   const { data: assignedEmployees } = useQuery({
@@ -107,8 +129,6 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
     setFiles([]);
     setSheetOpen(true);
   };
-
-  const getPhotoUrl = (path: string) => supabase.storage.from('documents').getPublicUrl(path).data.publicUrl;
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -222,8 +242,25 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
                     {f.photos?.length > 0 ? (
                       <div className="flex items-center gap-1">
                         {f.photos.slice(0, 2).map((path: string, index: number) => (
-                          <a key={path} href={getPhotoUrl(path)} target="_blank" rel="noopener noreferrer" className="h-8 w-8 overflow-hidden rounded border block">
-                            <img src={getPhotoUrl(path)} alt={`Boete ${index + 1}`} className="h-full w-full object-cover" />
+                          <a
+                            key={path}
+                            href={finePhotoUrls[path] ?? undefined}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="h-8 w-8 overflow-hidden rounded border bg-muted text-muted-foreground flex items-center justify-center"
+                            onClick={(event) => {
+                              if (!finePhotoUrls[path]) {
+                                event.preventDefault();
+                                toast.error('Bestand wordt nog geladen of is niet beschikbaar');
+                              }
+                            }}
+                            title={`Boete ${index + 1} openen`}
+                          >
+                            {isImagePath(path) && finePhotoUrls[path] ? (
+                              <img src={finePhotoUrls[path]} alt={`Boete ${index + 1}`} className="h-full w-full object-cover" />
+                            ) : (
+                              <FileText className="h-4 w-4" />
+                            )}
                           </a>
                         ))}
                         {f.photos.length > 2 && <span className="text-xs text-muted-foreground">+{f.photos.length - 2}</span>}
@@ -278,7 +315,7 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
             <div><Label>Referentienummer</Label><Input value={referenceNumber} onChange={(e) => setReferenceNumber(e.target.value)} /></div>
             <div>
               <Label>{editingId ? "Extra foto's toevoegen" : "Foto boete *"}</Label>
-              <Input type="file" accept="image/*" multiple onChange={(e) => setFiles(Array.from(e.target.files ?? []).slice(0, 4))} />
+              <Input type="file" accept="image/*,application/pdf" multiple onChange={(e) => setFiles(Array.from(e.target.files ?? []).slice(0, 4))} />
               {files.length > 0 && <p className="text-xs text-muted-foreground mt-1">{files.length} bestand(en) geselecteerd</p>}
               {editingFine?.photos?.length > 0 && <p className="text-xs text-muted-foreground mt-1">{editingFine.photos.length} bestaande foto('s) blijven bewaard.</p>}
               {files.length === 0 && !editingFine?.photos?.length && <p className="text-xs text-destructive mt-1">Minimaal één foto of scan is verplicht.</p>}
