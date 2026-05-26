@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import {
   Users, Briefcase, Building2, Home, Clock, Truck,
@@ -105,6 +105,7 @@ const OnboardingWizard = ({ open, onComplete, userName }: OnboardingWizardProps)
   return (
     <Dialog open={open} onOpenChange={() => {}}>
       <DialogContent className="sm:max-w-lg p-0 gap-0 overflow-hidden [&>button]:hidden" onInteractOutside={e => e.preventDefault()}>
+        <DialogTitle className="sr-only">Welkom bij SiteJob</DialogTitle>
         {/* Progress bar */}
         <div className="h-1 bg-muted">
           <div

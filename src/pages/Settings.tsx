@@ -25,6 +25,8 @@ import VoysSettings from '@/components/settings/VoysSettings';
 import PropertyOwnersSettings from '@/components/settings/PropertyOwnersSettings';
 import AiCvProviderSettings from '@/components/settings/AiCvProviderSettings';
 import EngagementSettings from '@/components/settings/EngagementSettings';
+import SkillCatalogSettings from '@/components/settings/SkillCatalogSettings';
+import MatchFeedbackReasonsSettings from '@/components/settings/MatchFeedbackReasonsSettings';
 import { applyBranding, BRANDING_DEFAULTS, type BrandingSettings } from '@/lib/branding';
 import AddressAutocomplete from '@/components/shared/AddressAutocomplete';
 import { resolveAddressCoordinates } from '@/lib/pdok';
@@ -500,6 +502,10 @@ const Settings = () => {
 
           {/* Engagement / loyalty */}
           <EngagementSettings />
+
+          {/* Matching */}
+          <SkillCatalogSettings />
+          <MatchFeedbackReasonsSettings />
 
           {/* Microsoft 365 */}
           <OutlookSettings />

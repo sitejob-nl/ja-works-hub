@@ -11,12 +11,16 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
 import { Search, Users, CalendarClock, TrendingUp, BriefcaseBusiness } from 'lucide-react';
 import { formatDate, formatEUR } from '@/lib/format';
 import { payrollerLabel } from '@/lib/payroller';
+import { getPaginationRange } from '@/lib/pagination';
 
 type PlacementStatus = Database['public']['Enums']['placement_status'];
 type PayrollerType = Database['public']['Enums']['payroller_type'];
+
+const PAGE_SIZE = 25;
 
 const statusBadge: Record<string, { class: string; label: string }> = {
   gepland: { class: 'bg-blue-100 text-blue-700 border-0', label: 'Gepland' },
@@ -25,12 +29,21 @@ const statusBadge: Record<string, { class: string; label: string }> = {
   voortijdig_beeindigd: { class: 'bg-red-100 text-red-600 border-0', label: 'Voortijdig beëindigd' },
 };
 
+const asSingle = <T,>(value: T | T[] | null | undefined): T | null => {
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value ?? null;
+};
+
+const getPlacementCandidate = (placement: any) =>
+  asSingle(placement.candidates) ?? asSingle(asSingle(placement.employees)?.candidates);
+
 export default function PlacementsPage() {
   const navigate = useNavigate();
   const orgId = useOrganizationId();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<PlacementStatus | 'all'>('all');
   const [payrollerFilter, setPayrollerFilter] = useState<PayrollerType | 'all'>('all');
+  const [page, setPage] = useState(0);
 
   const { data: placements, isLoading } = useQuery({
     queryKey: ['placements-list', orgId, statusFilter, payrollerFilter],
@@ -51,10 +64,14 @@ export default function PlacementsPage() {
   const filtered = (placements ?? []).filter((p: any) => {
     if (!search) return true;
     const s = search.toLowerCase();
-    const cand = (p.candidates as any) ?? (p.employees as any)?.candidates;
+    const cand = getPlacementCandidate(p);
     const name = `${cand?.first_name ?? ''} ${cand?.last_name ?? ''}`.toLowerCase();
     return name.includes(s) || p.function_name?.toLowerCase().includes(s) || (p.companies as any)?.name?.toLowerCase().includes(s);
   });
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+  const currentPage = totalPages > 0 ? Math.min(page, totalPages - 1) : 0;
+  const pageStart = currentPage * PAGE_SIZE;
+  const visiblePlacements = filtered.slice(pageStart, pageStart + PAGE_SIZE);
 
   const now = new Date();
   const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
@@ -96,9 +113,9 @@ export default function PlacementsPage() {
       <div className="flex items-center gap-3 mb-4 flex-wrap">
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Zoek op naam, functie, bedrijf..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
+          <Input placeholder="Zoek op naam, functie, bedrijf..." value={search} onChange={e => { setSearch(e.target.value); setPage(0); }} className="pl-9" />
         </div>
-        <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as PlacementStatus | 'all')}>
+        <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v as PlacementStatus | 'all'); setPage(0); }}>
           <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Alle statussen</SelectItem>
@@ -108,7 +125,7 @@ export default function PlacementsPage() {
             <SelectItem value="voortijdig_beeindigd">Voortijdig beëindigd</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={payrollerFilter} onValueChange={(v) => setPayrollerFilter(v as PayrollerType | 'all')}>
+        <Select value={payrollerFilter} onValueChange={(v) => { setPayrollerFilter(v as PayrollerType | 'all'); setPage(0); }}>
           <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Alle payrollers</SelectItem>
@@ -141,10 +158,12 @@ export default function PlacementsPage() {
               <TableBody>
                 {filtered.length === 0 ? (
                   <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">Geen plaatsingen gevonden</TableCell></TableRow>
-                ) : filtered.map((p: any) => {
-                  const cand = (p.candidates as any) ?? (p.employees as any)?.candidates;
+                ) : visiblePlacements.map((p: any) => {
+                  const cand = getPlacementCandidate(p);
                   const st = statusBadge[p.status] || statusBadge.gepland;
-                  const candidateName = cand ? `${cand.first_name} ${cand.last_name}`.trim() : '—';
+                  const candidateName = cand
+                    ? `${cand.first_name ?? ''} ${cand.last_name ?? ''}`.trim() || 'Onbekende kandidaat'
+                    : '—';
                   const companyName = (p.companies as any)?.name ?? '—';
                   return (
                     <TableRow key={p.id} className="cursor-pointer" onClick={() => navigate(`/plaatsingen/${p.id}`)}>
@@ -173,6 +192,47 @@ export default function PlacementsPage() {
           )}
         </CardContent>
       </Card>
+
+      {!isLoading && filtered.length > 0 && (
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-muted-foreground">
+            Toon {pageStart + 1}-{Math.min(pageStart + PAGE_SIZE, filtered.length)} van {filtered.length} plaatsingen
+          </p>
+          {totalPages > 1 && (
+            <Pagination className="sm:justify-end">
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious
+                    onClick={() => setPage(Math.max(0, currentPage - 1))}
+                    className={currentPage === 0 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                  />
+                </PaginationItem>
+                {getPaginationRange(currentPage, totalPages).map((item, i) => (
+                  <PaginationItem key={`${item}-${i}`}>
+                    {typeof item === 'number' ? (
+                      <PaginationLink
+                        isActive={item === currentPage}
+                        onClick={() => setPage(item)}
+                        className="cursor-pointer"
+                      >
+                        {item + 1}
+                      </PaginationLink>
+                    ) : (
+                      <PaginationEllipsis />
+                    )}
+                  </PaginationItem>
+                ))}
+                <PaginationItem>
+                  <PaginationNext
+                    onClick={() => setPage(Math.min(totalPages - 1, currentPage + 1))}
+                    className={currentPage >= totalPages - 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                  />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
+          )}
+        </div>
+      )}
     </div>
   );
 }

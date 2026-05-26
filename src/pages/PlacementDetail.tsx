@@ -43,6 +43,11 @@ const housingPaymentLabel: Record<string, string> = {
 
 const DAYS = ['ma', 'di', 'wo', 'do', 'vr', 'za', 'zo'];
 
+const asSingle = <T,>(value: T | T[] | null | undefined): T | null => {
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value ?? null;
+};
+
 const PlacementDetail = () => {
   const { id } = useParams<{ id: string }>();
   const orgId = useOrganizationId();
@@ -80,11 +85,12 @@ const PlacementDetail = () => {
     enabled: !!id && !!placement?.organization_id,
   });
 
-  const placementCandidate = (placement?.candidates as any) ?? placement?.employees?.candidates;
+  const placementCandidate = asSingle((placement as any)?.candidates) ??
+    asSingle(asSingle((placement as any)?.employees)?.candidates);
   const carerixMeta = (carerixMapping?.metadata as Record<string, any> | null) ?? null;
 
   const candidateName = placementCandidate
-    ? `${placementCandidate.first_name} ${placementCandidate.last_name}`
+    ? `${placementCandidate.first_name ?? ''} ${placementCandidate.last_name ?? ''}`.trim() || 'Onbekende kandidaat'
     : placement?.function_name ?? 'Plaatsing';
   const placementSublabel = placement?.companies && placement?.function_name
     ? `${(placement.companies as any).name} - ${placement.function_name}`
@@ -158,8 +164,8 @@ const PlacementDetail = () => {
   if (isLoading) return <div className="p-8 text-muted-foreground">Laden...</div>;
   if (!placement) return <div className="p-8 text-muted-foreground">Niet gevonden</div>;
 
-  const emp = placement.employees as any;
-  const cand = ((placement as any).candidates ?? emp?.candidates) as any;
+  const emp = asSingle((placement as any).employees);
+  const cand = asSingle((placement as any).candidates) ?? asSingle((emp as any)?.candidates);
   const company = placement.companies as any;
   const canTerminate = placement.status === 'actief' || placement.status === 'gepland';
 

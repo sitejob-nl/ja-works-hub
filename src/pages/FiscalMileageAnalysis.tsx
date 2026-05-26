@@ -271,16 +271,16 @@ const FiscalMileageAnalysis = () => {
         </CardHeader>
         <CardContent className="grid md:grid-cols-5 gap-4 items-end">
           <div>
-            <Label>Maand</Label>
-            <Input type="date" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} />
+            <Label htmlFor="fiscal-mileage-period">Maand</Label>
+            <Input id="fiscal-mileage-period" type="date" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} />
           </div>
           <div>
-            <Label>Zakelijke marge (%)</Label>
-            <Input type="number" value={draft.business_margin_pct} onChange={(e) => setDraftValue('business_margin_pct', Number(e.target.value))} />
+            <Label htmlFor="fiscal-mileage-business-margin">Zakelijke marge (%)</Label>
+            <Input id="fiscal-mileage-business-margin" type="number" value={draft.business_margin_pct} onChange={(e) => setDraftValue('business_margin_pct', Number(e.target.value))} />
           </div>
           <div>
-            <Label>Privémarge per maand (km)</Label>
-            <Input type="number" value={draft.monthly_private_allowance_km} onChange={(e) => setDraftValue('monthly_private_allowance_km', Number(e.target.value))} />
+            <Label htmlFor="fiscal-mileage-private-allowance">Privémarge per maand (km)</Label>
+            <Input id="fiscal-mileage-private-allowance" type="number" value={draft.monthly_private_allowance_km} onChange={(e) => setDraftValue('monthly_private_allowance_km', Number(e.target.value))} />
           </div>
           <div className="flex items-center justify-between rounded-md border p-3">
             <Label>Analyse actief</Label>

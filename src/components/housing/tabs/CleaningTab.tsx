@@ -86,11 +86,19 @@ export default function CleaningTab({ property }: { property: any }) {
         priority: form.priority,
         created_by: user?.id ?? null,
       };
-      const { data, error } = await supabase.from('housing_cleaning_tasks' as any).insert(payload).select('id').single();
+      const { data, error } = await supabase
+        .from('housing_cleaning_tasks' as any)
+        .insert(payload)
+        .select('*, units(name), assignee:profiles!housing_cleaning_tasks_assigned_to_fkey(full_name,email)')
+        .single();
       if (error) throw error;
       return data;
     },
     onSuccess: (data: any) => {
+      qc.setQueryData<any[]>(['housing-cleaning-tasks', property.id], (current = []) => {
+        if (current.some((task) => task.id === data.id)) return current;
+        return [...current, data];
+      });
       qc.invalidateQueries({ queryKey: ['housing-cleaning-tasks', property.id] });
       qc.invalidateQueries({ queryKey: ['housing-cleaning-overview'] });
       logAudit({ action: 'create', tableName: 'housing_cleaning_tasks', recordId: data.id });

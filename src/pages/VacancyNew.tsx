@@ -17,6 +17,11 @@ import { toast } from 'sonner';
 
 const FUNCTION_FREE_TEXT = '__free_text__';
 
+const formatCompanyLocation = (company?: {
+  address_street?: string | null;
+  address_city?: string | null;
+} | null) => [company?.address_street, company?.address_city].filter(Boolean).join(', ');
+
 const VacancyNew = () => {
   const orgId = useOrganizationId();
   const { user } = useAuth();
@@ -48,7 +53,11 @@ const VacancyNew = () => {
   const { data: companies } = useQuery({
     queryKey: ['companies-active'],
     queryFn: async () => {
-      const { data, error } = await supabase.from('companies').select('id, name').eq('is_active', true).order('name');
+      const { data, error } = await supabase
+        .from('companies')
+        .select('id, name, address_street, address_city')
+        .eq('is_active', true)
+        .order('name');
       if (error) throw error;
       return data ?? [];
     },
@@ -60,7 +69,7 @@ const VacancyNew = () => {
       if (!form.company_id) return [];
       const { data, error } = await supabase
         .from('company_functions')
-        .select('id, name, default_hourly_rate, salary_min, salary_max, required_skills')
+        .select('id, name, description, default_hourly_rate, salary_min, salary_max, required_skills')
         .eq('company_id', form.company_id)
         .eq('is_active', true)
         .order('name');
@@ -73,7 +82,18 @@ const VacancyNew = () => {
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
 
   const handleCompanyChange = (companyId: string) => {
-    setForm((f) => ({ ...f, company_id: companyId, function_id: '', title: '' }));
+    setForm((f) => {
+      const previousLocation = formatCompanyLocation(companies?.find((c) => c.id === f.company_id));
+      const nextLocation = formatCompanyLocation(companies?.find((c) => c.id === companyId));
+      const shouldUseCompanyLocation = !f.location || f.location === previousLocation;
+      return {
+        ...f,
+        company_id: companyId,
+        function_id: '',
+        title: '',
+        location: shouldUseCompanyLocation ? nextLocation : f.location,
+      };
+    });
   };
 
   const handleFunctionChange = (value: string) => {
@@ -86,6 +106,7 @@ const VacancyNew = () => {
       ...f,
       function_id: value,
       title: fn?.name ?? '',
+      description: f.description || fn?.description || '',
       hourly_rate: f.hourly_rate || (fn?.default_hourly_rate ? String(fn.default_hourly_rate) : ''),
       salary_min: f.salary_min || (fn?.salary_min != null ? String(fn.salary_min) : ''),
       salary_max: f.salary_max || (fn?.salary_max != null ? String(fn.salary_max) : ''),
@@ -95,6 +116,10 @@ const VacancyNew = () => {
 
   const mutation = useMutation({
     mutationFn: async () => {
+      if (!form.hourly_rate) {
+        throw new Error('Uurtarief is verplicht voor een vacature.');
+      }
+
       let finalFunctionId: string | null = null;
 
       if (form.function_id && form.function_id !== FUNCTION_FREE_TEXT) {
@@ -106,6 +131,7 @@ const VacancyNew = () => {
             organization_id: orgId,
             company_id: form.company_id,
             name: form.title.trim(),
+            description: form.description || null,
             default_hourly_rate: form.hourly_rate ? parseFloat(form.hourly_rate) : null,
             salary_min: form.salary_min ? parseFloat(form.salary_min) : null,
             salary_max: form.salary_max ? parseFloat(form.salary_max) : null,
@@ -157,6 +183,7 @@ const VacancyNew = () => {
   const canSubmit =
     !!form.company_id &&
     !!form.title.trim() &&
+    !!form.hourly_rate &&
     (form.start_date_kind === 'asap' || !!form.start_date) &&
     !mutation.isPending;
 
@@ -274,8 +301,8 @@ const VacancyNew = () => {
               <Input type="number" step="0.01" value={form.salary_max} onChange={(e) => set('salary_max', e.target.value)} placeholder="bv. 28.00" />
             </div>
             <div className="space-y-1.5">
-              <Label>Uurtarief (€)</Label>
-              <Input type="number" step="0.01" value={form.hourly_rate} onChange={(e) => set('hourly_rate', e.target.value)} placeholder="optioneel" />
+              <Label>Uurtarief (€) *</Label>
+              <Input type="number" step="0.01" value={form.hourly_rate} onChange={(e) => set('hourly_rate', e.target.value)} placeholder="bv. 42.50" />
             </div>
           </div>
           <div className="space-y-1.5"><Label>Vereiste vaardigheden</Label><TagInput value={form.required_skills} onChange={(v) => set('required_skills', v)} placeholder="Typ vaardigheid + Enter" /></div>

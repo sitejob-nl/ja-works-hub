@@ -16,6 +16,7 @@ import type {
   CREmployee,
   CRJob,
   CRMatch,
+  CRNote,
   CRTodo,
   CXCandidate,
   CXCompany,
@@ -31,20 +32,25 @@ import {
   crEmployeesQuery,
   crJobsQuery,
   crMatchesQuery,
+  crNotesQuery,
+  type CRNoteBodyField,
   crPlacementJobsQuery,
   crTodosQuery,
   watermarkQualifier,
 } from './queries.ts';
 import {
+  classifyCRTodo,
   mapCRAttachmentToDocument,
   mapCREmployee,
   mapCRJobToVacancy,
   mapCRJobToPlacement,
   mapCRMatch,
-  mapCRTodoToNote,
+  mapCRNoteToNote,
+  mapCRTodoToTask,
   mapCandidate,
   mapCompany,
   mapContact,
+  splitCREmployeeProfileNotes,
 } from './mappers.ts';
 
 export interface PageStats {
@@ -83,8 +89,12 @@ const emptyStats = (total = 0): PageStats => ({
 // Helper: marks `stats.done` based on Carerix' `last` flag on the page response.
 // Runners signal explicitly when their last page is processed so the worker
 // doesn't need to guess based on page-size arithmetic.
+function isLastPage<T>(pageData: { last?: boolean; items: T[] }): boolean {
+  return pageData.last === true || pageData.items.length === 0;
+}
+
 function markDone<T>(stats: PageStats, pageData: { last?: boolean; items: T[] }): void {
-  stats.done = pageData.last === true || pageData.items.length === 0;
+  stats.done = isLastPage(pageData);
 }
 
 // Result of a CR*-query that may be rejected by the tenant's scope-set.
@@ -123,6 +133,7 @@ const ENRICH_FIELDS = [
   'address_street',
   'address_city',
   'address_postal',
+  'notes',
 ];
 
 async function bulkEnrichCandidates(
@@ -643,6 +654,208 @@ export async function runDocumentsPage(
   return stats;
 }
 
+type NoteParentCarrier = {
+  toEmployee?: { _id?: string };
+  toCompany?: { _id?: string };
+  toMatch?: { _id?: string };
+  toJob?: { _id?: string };
+  toContact?: { _id?: string };
+};
+
+function resolveNoteParent(
+  ctx: RunnerContext,
+  item: NoteParentCarrier,
+): { relatedEntityId: string; relatedEntityType: string } | null {
+  // Resolve relation in volgorde: candidate → company → match → vacancy → contact.
+  // De eerste parent die in onze idMapper voorkomt wint. Hierdoor redden we
+  // activiteiten die in Carerix alleen aan een match/job/contact hangen.
+  const tryParents: Array<[string, string, string]> = [
+    [item.toEmployee?._id ?? '', 'candidate', 'kandidaat'],
+    [item.toCompany?._id ?? '', 'company', 'opdrachtgever'],
+    [item.toMatch?._id ?? '', 'match', 'match'],
+    [item.toJob?._id ?? '', 'vacancy', 'vacature'],
+    [item.toContact?._id ?? '', 'contact', 'contact'],
+  ];
+
+  for (const [carerixId, mapperType, entityType] of tryParents) {
+    if (!carerixId) continue;
+    const id = ctx.idMapper.get(mapperType, String(carerixId));
+    if (id) return { relatedEntityId: id, relatedEntityType: entityType };
+  }
+  return null;
+}
+
+async function processCRTodoForNotes(
+  ctx: RunnerContext,
+  todo: CRTodo,
+  stats: PageStats,
+): Promise<void> {
+  const parent = resolveNoteParent(ctx, todo);
+  if (!parent) {
+    stats.skipped++;
+    return;
+  }
+
+  const carerixTodoId = String(todo._id);
+  // Older runs mapped all CRTodos to `note`. Check both keys to keep the live
+  // sync idempotent when a tenant has already imported this record.
+  if (ctx.idMapper.get('note', carerixTodoId) || ctx.idMapper.get('task', carerixTodoId)) {
+    stats.skipped++;
+    return;
+  }
+
+  const todoKind = classifyCRTodo(todo);
+  if (todoKind === 'task') {
+    const payload = mapCRTodoToTask(
+      todo,
+      parent.relatedEntityId,
+      parent.relatedEntityType,
+      ctx.createdByUserId,
+      ctx.organizationId,
+    );
+    if (!payload) {
+      stats.skipped++;
+      return;
+    }
+    await insertIfNew(ctx, 'recruiter_tasks', 'task', carerixTodoId, payload, stats, {
+      subject: todo.subject,
+      statusDisplay: todo.statusDisplay,
+    }, { carerix_entity: 'CRTodo', crtodo_kind: todoKind });
+    return;
+  }
+
+  // CRTodo also contains reminders, e-mails and meeting/activity entries. Those
+  // are not candidate notes in Carerix and should not pollute the Notities tab.
+  stats.skipped++;
+}
+
+async function processCRNoteForNotes(
+  ctx: RunnerContext,
+  note: CRNote,
+  stats: PageStats,
+  bodyField?: CRNoteBodyField,
+): Promise<void> {
+  const parent = resolveNoteParent(ctx, note);
+  if (!parent) {
+    stats.skipped++;
+    return;
+  }
+
+  const carerixNoteId = String(note._id);
+  if (ctx.idMapper.get('note', carerixNoteId) || ctx.idMapper.get('task', carerixNoteId)) {
+    stats.skipped++;
+    return;
+  }
+
+  const payload = mapCRNoteToNote(
+    note,
+    parent.relatedEntityId,
+    parent.relatedEntityType,
+    ctx.createdByUserId!,
+    ctx.organizationId,
+  );
+  if (!payload) {
+    stats.skipped++;
+    return;
+  }
+  await insertIfNew(ctx, 'notes', 'note', carerixNoteId, payload, stats, {
+    subject: note.subject,
+  }, { carerix_entity: 'CRNote', crnote_body_field: bodyField ?? null });
+}
+
+function fallbackProfileNoteDate(emp: CREmployee): string {
+  const raw = emp.modificationDate ?? emp.creationDate;
+  const d = raw ? new Date(raw) : null;
+  return d && !isNaN(d.getTime()) ? d.toISOString() : new Date().toISOString();
+}
+
+async function processCREmployeeProfileNotes(
+  ctx: RunnerContext,
+  emp: CREmployee,
+  stats: PageStats,
+): Promise<void> {
+  const entries = splitCREmployeeProfileNotes(emp.notes);
+  if (entries.length === 0) {
+    stats.skipped++;
+    return;
+  }
+
+  const candidateId = ctx.idMapper.get('candidate', String(emp._id));
+  if (!candidateId) {
+    stats.skipped += entries.length;
+    return;
+  }
+
+  if (!ctx.createdByUserId) {
+    stats.skipped += entries.length;
+    return;
+  }
+
+  for (const entry of entries) {
+    const createdAt = entry.createdAt ?? fallbackProfileNoteDate(emp);
+    const externalId = `CREmployee.notes:${emp._id}:${entry.index}:${entry.marker ?? 'zonder-datum'}`;
+    await insertIfNew(ctx, 'notes', 'note', externalId, {
+      body: entry.body,
+      related_entity_id: candidateId,
+      related_entity_type: 'kandidaat',
+      created_by: ctx.createdByUserId,
+      organization_id: ctx.organizationId,
+      is_internal: true,
+      created_at: createdAt,
+      updated_at: createdAt,
+    }, stats, {
+      carerix_employee_id: String(emp._id),
+      segment_index: entry.index,
+    }, {
+      carerix_entity: 'CREmployee',
+      carerix_field: 'notes',
+      carerix_employee_id: String(emp._id),
+      segment_index: entry.index,
+      marker: entry.marker,
+    });
+  }
+}
+
+const CR_NOTE_BODY_FIELDS: CRNoteBodyField[] = ['message', 'body', 'text', 'content'];
+
+async function tryCRNotesPage(
+  ctx: RunnerContext,
+  page: number,
+  size: number,
+  qualifier?: string,
+): Promise<{ pageData: PageResponse<CRNote> | null; reason: string | null; bodyField?: CRNoteBodyField }> {
+  let lastReason: string | null = null;
+
+  for (const bodyField of CR_NOTE_BODY_FIELDS) {
+    const result = await tryQuery<{ crNotePage: PageResponse<CRNote> }>(
+      ctx,
+      crNotesQuery(page, size, qualifier, bodyField),
+    );
+    if (result.data?.crNotePage) {
+      return { pageData: result.data.crNotePage, reason: null, bodyField };
+    }
+
+    lastReason = result.reason ?? 'crNotePage onverwachts leeg';
+    if (
+      /Cannot query field ["'`]?crNotePage|access denied|forbidden|insufficient_scope|403|401/i.test(
+        lastReason,
+      )
+    ) {
+      break;
+    }
+    if (!/Cannot query field|FieldUndefined|undefined field|Validation error/i.test(lastReason)) {
+      break;
+    }
+  }
+
+  return { pageData: null, reason: lastReason ?? 'crNotePage onverwachts leeg' };
+}
+
+function combineReasons(reasons: Array<string | null | undefined>): string | undefined {
+  const clean = reasons.filter((reason): reason is string => Boolean(reason));
+  return clean.length > 0 ? clean.join(' | ') : undefined;
+}
+
 export async function runNotesPage(
   ctx: RunnerContext,
   page: number,
@@ -655,61 +868,58 @@ export async function runNotesPage(
     };
   }
   const watermark = watermarkQualifier(ctx.modifiedSince);
-  const result = await tryQuery<{ crToDoPage: PageResponse<CRTodo> }>(
+  const todoResult = await tryQuery<{ crToDoPage: PageResponse<CRTodo> }>(
     ctx,
     crTodosQuery(page, size, watermark),
   );
-  if (!result.data?.crToDoPage) {
-    return { ...emptyStats(0), skipReason: result.reason ?? 'crToDoPage onverwachts leeg' };
+  const noteResult = await tryCRNotesPage(ctx, page, size, watermark);
+  const employeeResult = await tryQuery<{ crEmployeePage: PageResponse<CREmployee> }>(
+    ctx,
+    crEmployeesQuery(page, size, watermark),
+  );
+
+  const todoPageData = todoResult.data?.crToDoPage ?? null;
+  const notePageData = noteResult.pageData;
+  const employeePageData = employeeResult.data?.crEmployeePage ?? null;
+  if (!todoPageData && !notePageData && !employeePageData) {
+    return {
+      ...emptyStats(0),
+      skipReason: combineReasons([
+        todoResult.reason ?? 'crToDoPage onverwachts leeg',
+        noteResult.reason ?? 'crNotePage onverwachts leeg',
+        employeeResult.reason ?? 'crEmployeePage onverwachts leeg',
+      ]),
+    };
   }
 
-  const pageData = result.data.crToDoPage;
-  const stats = emptyStats(pageData.totalElements);
+  const stats = emptyStats(
+    (todoPageData?.totalElements ?? 0) +
+      (notePageData?.totalElements ?? 0) +
+      (employeePageData?.totalElements ?? 0),
+  );
 
-  for (const todo of pageData.items) {
-    // Resolve relation in volgorde: candidate → company → match → vacancy → contact.
-    // De eerste parent die in onze idMapper voorkomt wint. Hierdoor redden we
-    // todos die in Carerix alleen aan een match/job/contact hangen.
-    // entityType matcht de UI-conventie (kandidaat/opdrachtgever/vacature/etc.),
-    // mapperType is de interne idMapper-key.
-    const tryParents: Array<[string, string, string]> = [
-      [todo.toEmployee?._id ?? '', 'candidate', 'kandidaat'],
-      [todo.toCompany?._id ?? '', 'company', 'opdrachtgever'],
-      [todo.toMatch?._id ?? '', 'match', 'match'],
-      [todo.toJob?._id ?? '', 'vacancy', 'vacature'],
-      [todo.toContact?._id ?? '', 'contact', 'contact'],
-    ];
-
-    let relatedEntityId: string | null = null;
-    let relatedEntityType: string | null = null;
-    for (const [carerixId, mapperType, entityType] of tryParents) {
-      if (!carerixId) continue;
-      const id = ctx.idMapper.get(mapperType, String(carerixId));
-      if (id) {
-        relatedEntityId = id;
-        relatedEntityType = entityType;
-        break;
-      }
+  if (todoPageData) {
+    for (const todo of todoPageData.items) {
+      await processCRTodoForNotes(ctx, todo, stats);
     }
-    if (!relatedEntityId || !relatedEntityType) {
-      stats.skipped++;
-      continue;
-    }
-
-    const payload = mapCRTodoToNote(
-      todo,
-      relatedEntityId,
-      relatedEntityType,
-      ctx.createdByUserId,
-      ctx.organizationId,
-    );
-    if (!payload) {
-      stats.skipped++;
-      continue;
-    }
-    await insertIfNew(ctx, 'notes', 'note', String(todo._id), payload, stats);
   }
-  markDone(stats, pageData);
+
+  if (notePageData) {
+    for (const note of notePageData.items) {
+      await processCRNoteForNotes(ctx, note, stats, noteResult.bodyField);
+    }
+  }
+
+  if (employeePageData) {
+    for (const emp of employeePageData.items) {
+      await processCREmployeeProfileNotes(ctx, emp, stats);
+    }
+  }
+
+  stats.done =
+    (todoPageData ? isLastPage(todoPageData) : true) &&
+    (notePageData ? isLastPage(notePageData) : true) &&
+    (employeePageData ? isLastPage(employeePageData) : true);
   return stats;
 }
 

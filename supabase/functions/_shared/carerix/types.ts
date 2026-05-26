@@ -109,6 +109,7 @@ export interface CREmployee {
   phoneNumber?: string;
   mobileNumber?: string;
   phoneNumberBusiness?: string;
+  notes?: string;
   toStatusNode?: CRStatusNode;
   toUser?: CRRef;
   modificationDate?: string;
@@ -230,6 +231,20 @@ export interface CRTodo {
   creationDate?: string;
 }
 
+export interface CRNote {
+  _id: string;
+  subject?: string;
+  // GraphQL-query aliases the tenant-specific body field to `message`.
+  message?: string;
+  toEmployee?: CRRef;
+  toCompany?: CRRef;
+  toContact?: CRRef;
+  toMatch?: CRRef;
+  toJob?: CRRef;
+  modificationDate?: string;
+  creationDate?: string;
+}
+
 // =====================================================================
 // Sync orchestration
 // =====================================================================
@@ -285,6 +300,6 @@ export const ENTITY_DEPENDENCIES: Record<EntityName, EntityName[]> = {
   matches: ['candidates', 'vacancies'],
   placements: ['candidates', 'companies'],
   documents: ['candidates'],
-  notes: ['candidates', 'companies'],
+  notes: ['candidates', 'companies', 'matches', 'vacancies', 'contacts'],
   employment: [],
 };

@@ -55,8 +55,24 @@ const Vacancies = () => {
   const { data, isLoading } = useQuery({
     queryKey: ['vacancies', search, statusFilter, urgencyFilter, page],
     queryFn: async () => {
+      const searchTerm = search.trim();
+      let matchingCompanyIds: string[] = [];
+      if (searchTerm) {
+        const { data: companyMatches, error: companyErr } = await supabase
+          .from('companies')
+          .select('id')
+          .ilike('name', `%${searchTerm}%`)
+          .limit(50);
+        if (companyErr) throw companyErr;
+        matchingCompanyIds = (companyMatches ?? []).map((company) => company.id);
+      }
+
       let query = supabase.from('vacancies').select(`*, companies!vacancies_company_id_fkey(name)`, { count: 'exact' });
-      if (search) query = query.or(`title.ilike.%${search}%,location.ilike.%${search}%`);
+      if (searchTerm && matchingCompanyIds.length > 0) {
+        query = query.or(`title.ilike.%${searchTerm}%,company_id.in.(${matchingCompanyIds.join(',')})`);
+      } else if (searchTerm) {
+        query = query.ilike('title', `%${searchTerm}%`);
+      }
       if (statusFilter !== 'all') query = query.eq('status', statusFilter as any);
       if (urgencyFilter !== 'all') query = query.eq('urgency', parseInt(urgencyFilter));
       query = query
@@ -101,7 +117,7 @@ const Vacancies = () => {
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Zoek op titel of locatie..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} className="pl-9" />
+          <Input placeholder="Zoek op functietitel of opdrachtgever..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} className="pl-9" />
         </div>
         <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(0); }}>
           <SelectTrigger className="w-36"><SelectValue placeholder="Status" /></SelectTrigger>

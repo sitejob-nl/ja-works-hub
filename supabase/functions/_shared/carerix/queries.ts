@@ -88,6 +88,7 @@ export function crEmployeesQuery(page: number, size: number, qualifier?: string)
         phoneNumber
         mobileNumber
         phoneNumberBusiness
+        notes
         birthDate
         homeStreet
         homeNumber
@@ -265,6 +266,39 @@ export function crTodosQuery(page: number, size: number, qualifier?: string): st
         isTask
         isMeeting
         isEmail
+        toEmployee { _id }
+        toCompany { _id }
+        toContact { _id }
+        toMatch { _id }
+        toJob { _id }
+      }
+    }
+  }`;
+}
+
+export type CRNoteBodyField = 'message' | 'body' | 'text' | 'content';
+
+function crNoteBodySelection(bodyField: CRNoteBodyField): string {
+  return bodyField === 'message' ? 'message' : `message: ${bodyField}`;
+}
+
+export function crNotesQuery(
+  page: number,
+  size: number,
+  qualifier?: string,
+  bodyField: CRNoteBodyField = 'message',
+): string {
+  // CRNote is exposed separately in some Carerix tenants. The body field varies
+  // by schema/version, so the runner retries this query with aliased variants.
+  return `query {
+    crNotePage(${pageable(page, size)}${NORESTRICT}${qualifierClause(qualifier)}) {
+      totalElements last
+      items {
+        _id
+        subject
+        ${crNoteBodySelection(bodyField)}
+        creationDate
+        modificationDate
         toEmployee { _id }
         toCompany { _id }
         toContact { _id }

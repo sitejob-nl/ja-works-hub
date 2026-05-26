@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, type ReactNode } from 'react';
+import { useEffect, useId, useState, useMemo, type ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
@@ -703,12 +703,15 @@ const ConditionRow = ({ title, description, enabled, onEnabled, children }: {
   </div>
 );
 
-const NumberField = ({ label, value, onChange }: { label: string; value: number; onChange: (value: string) => void }) => (
-  <div className="space-y-1.5 max-w-40">
-    <Label>{label}</Label>
-    <Input type="number" value={value} onChange={(e) => onChange(e.target.value)} />
-  </div>
-);
+const NumberField = ({ label, value, onChange }: { label: string; value: number; onChange: (value: string) => void }) => {
+  const id = useId();
+  return (
+    <div className="space-y-1.5 max-w-40">
+      <Label htmlFor={id}>{label}</Label>
+      <Input id={id} type="number" value={value} onChange={(e) => onChange(e.target.value)} />
+    </div>
+  );
+};
 
 /* ─── Import Sheet ──────────────────────────────────────── */
 

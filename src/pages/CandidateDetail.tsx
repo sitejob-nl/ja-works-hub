@@ -36,11 +36,13 @@ import EmployeeRegulationsTab from '@/components/employees/tabs/EmployeeRegulati
 import EmployeePortalTab from '@/components/employees/tabs/EmployeePortalTab';
 import { useModuleEnabled } from '@/hooks/useModuleEnabled';
 import { useTrackPageVisit } from '@/hooks/useTrackPageVisit';
+import { useTabSearchParam } from '@/hooks/useTabSearchParam';
 import type { Database } from '@/integrations/supabase/types';
 
 type CandidateStatus = Database['public']['Enums']['candidate_status'];
 
 const statusBadge: Record<string, string> = {
+  lead: 'bg-purple-100 text-purple-700 border-0',
   nieuw: 'bg-muted text-muted-foreground border-0',
   werkzoekend: 'bg-stat-green/10 text-stat-green border-0',
   in_screening: 'bg-yellow-100 text-yellow-700 border-0',
@@ -56,11 +58,11 @@ const complianceBadge: Record<string, string> = {
 };
 
 const statusLabel: Record<string, string> = {
-  nieuw: 'Nieuw', werkzoekend: 'Werkzoekend', in_screening: 'In screening',
+  lead: 'Lead', nieuw: 'Nieuw', werkzoekend: 'Werkzoekend', in_screening: 'In screening',
   geplaatst: 'Geplaatst', niet_beschikbaar: 'Niet beschikbaar', uitgeschreven: 'Uitgeschreven',
 };
 
-const allStatuses: CandidateStatus[] = ['nieuw', 'werkzoekend', 'in_screening', 'geplaatst', 'niet_beschikbaar', 'uitgeschreven'];
+const allStatuses: CandidateStatus[] = ['lead', 'nieuw', 'werkzoekend', 'in_screening', 'geplaatst', 'niet_beschikbaar', 'uitgeschreven'];
 
 const CandidateDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -68,6 +70,7 @@ const CandidateDetail = () => {
   const navigate = useNavigate();
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [activeTab, setActiveTab] = useTabSearchParam('profiel');
   const aiEnabled = useModuleEnabled('ai-analyse');
 
   const { data: candidate, isLoading } = useQuery({
@@ -247,7 +250,7 @@ const CandidateDetail = () => {
         </DialogContent>
       </Dialog>
 
-      <Tabs defaultValue="profiel">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">
           <TabsList className="w-max sm:w-auto">
             <TabsTrigger value="profiel">Profiel</TabsTrigger>

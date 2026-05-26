@@ -9,6 +9,7 @@ import type {
   CREmployee,
   CRJob,
   CRMatch,
+  CRNote,
   CRTodo,
   CRWorkHistory,
   CXCandidate,
@@ -43,6 +44,87 @@ function isoDay(raw: string | undefined | null): string | null {
   const d = new Date(raw);
   if (isNaN(d.getTime())) return null;
   return d.toISOString().slice(0, 10);
+}
+
+export interface CarerixProfileNoteEntry {
+  body: string;
+  createdAt: string | null;
+  marker: string | null;
+  index: number;
+}
+
+const PROFILE_NOTE_MARKER = /\[([A-Z]{1,6})\s+(\d{2})-(\d{2})-(\d{4})\s+(\d{2}):(\d{2})\]/g;
+
+function lastSundayOfMonth(year: number, monthIndex: number): number {
+  const d = new Date(Date.UTC(year, monthIndex + 1, 0));
+  return d.getUTCDate() - d.getUTCDay();
+}
+
+function amsterdamOffset(year: number, month: number, day: number, hour: number): '+01:00' | '+02:00' {
+  if (month < 3 || month > 10) return '+01:00';
+  if (month > 3 && month < 10) return '+02:00';
+
+  if (month === 3) {
+    const dstStart = lastSundayOfMonth(year, 2);
+    return day > dstStart || (day === dstStart && hour >= 2) ? '+02:00' : '+01:00';
+  }
+
+  const dstEnd = lastSundayOfMonth(year, 9);
+  return day < dstEnd || (day === dstEnd && hour < 3) ? '+02:00' : '+01:00';
+}
+
+function markerToAmsterdamIso(match: RegExpMatchArray): string | null {
+  const [, , dd, mm, yyyy, hh, min] = match;
+  const year = Number(yyyy);
+  const month = Number(mm);
+  const day = Number(dd);
+  const hour = Number(hh);
+  const minute = Number(min);
+  if (!year || !month || !day || Number.isNaN(hour) || Number.isNaN(minute)) return null;
+
+  const offset = amsterdamOffset(year, month, day, hour);
+  return `${yyyy}-${mm}-${dd}T${hh}:${min}:00${offset}`;
+}
+
+export function splitCREmployeeProfileNotes(raw: string | undefined | null): CarerixProfileNoteEntry[] {
+  const text = raw?.trim();
+  if (!text) return [];
+
+  const entries: CarerixProfileNoteEntry[] = [];
+  const matcher = new RegExp(PROFILE_NOTE_MARKER);
+  let start = 0;
+  let index = 0;
+
+  for (const match of text.matchAll(PROFILE_NOTE_MARKER)) {
+    const matchIndex = match.index ?? 0;
+    const end = matchIndex + match[0].length;
+    const body = text.slice(start, end).trim();
+    if (body) {
+      entries.push({
+        body,
+        createdAt: markerToAmsterdamIso(match),
+        marker: match[0],
+        index,
+      });
+      index++;
+    }
+    start = end;
+  }
+
+  const tail = text.slice(start).trim();
+  if (tail) {
+    const tailMatch = matcher.exec(tail);
+    entries.push({
+      body: tail,
+      createdAt: tailMatch ? markerToAmsterdamIso(tailMatch) : null,
+      marker: tailMatch?.[0] ?? null,
+      index,
+    });
+  }
+
+  return entries.length > 0
+    ? entries
+    : [{ body: text, createdAt: null, marker: null, index: 0 }];
 }
 
 // =====================================================================
@@ -116,6 +198,7 @@ export function mapCREmployee(e: CREmployee, orgId: string): Record<string, unkn
     address_street: addressStreet,
     address_city: e.homeCity ?? null,
     address_postal: e.homePostalCode ?? null,
+    notes: e.notes?.trim() || null,
     status,
     source: 'carerix',
     compliance_status: 'incompleet',
@@ -272,6 +355,87 @@ export function mapCRAttachmentToDocument(
   };
 }
 
+type CRTodoKind = 'task' | 'meeting' | 'email' | 'note';
+
+const crTodoKindLabels: Record<CRTodoKind, string> = {
+  task: 'taak',
+  meeting: 'afspraak',
+  email: 'e-mail',
+  note: 'notitie',
+};
+
+export function classifyCRTodo(t: CRTodo): CRTodoKind {
+  const status = (t.statusDisplay ?? '').toLowerCase();
+  if (t.isEmail || /\be-?mail\b/.test(status)) return 'email';
+  if (t.isMeeting || /afspraak|meeting|gesprek/.test(status)) return 'meeting';
+  if (t.isTask || t.deadline || /taak|todo|to do/.test(status)) return 'task';
+  return 'note';
+}
+
+function hasCRTodoSignal(t: CRTodo): boolean {
+  return Boolean(
+    t.subject?.trim() ||
+      t.message?.trim() ||
+      t.startDate ||
+      t.endDate ||
+      t.deadline ||
+      t.statusDisplay ||
+      t.isTask ||
+      t.isMeeting ||
+      t.isEmail,
+  );
+}
+
+function crTodoMetadataBlock(t: CRTodo): string | null {
+  const kind = classifyCRTodo(t);
+  const lines = [
+    `Type: Carerix ${crTodoKindLabels[kind]}`,
+    t.statusDisplay ? `Status: ${t.statusDisplay}` : null,
+    t.startDate ? `Start: ${t.startDate}` : null,
+    t.endDate ? `Einde: ${t.endDate}` : null,
+    t.deadline ? `Deadline: ${t.deadline}` : null,
+    t.creationDate ? `Aangemaakt in Carerix: ${t.creationDate}` : null,
+    t.modificationDate ? `Laatst gewijzigd in Carerix: ${t.modificationDate}` : null,
+  ].filter(Boolean);
+
+  return lines.length > 0 ? lines.join('\n') : null;
+}
+
+function isCompletedCRTodo(t: CRTodo): boolean {
+  const status = (t.statusDisplay ?? '').toLowerCase();
+  return /afgerond|gereed|gesloten|uitgevoerd|done|completed|complete|closed/.test(status);
+}
+
+export function mapCRTodoToTask(
+  t: CRTodo,
+  relatedEntityId: string,
+  relatedEntityType: string,
+  assignedToUserId: string | null | undefined,
+  orgId: string,
+): Record<string, unknown> | null {
+  if (classifyCRTodo(t) !== 'task' || !hasCRTodoSignal(t)) return null;
+
+  const completed = isCompletedCRTodo(t);
+  const metadata = crTodoMetadataBlock(t);
+  const description = [t.message?.trim(), metadata].filter(Boolean).join('\n\n').trim();
+
+  return {
+    title: t.subject?.trim() || 'Carerix taak',
+    description: description || null,
+    priority: 'medium',
+    status: completed ? 'done' : 'open',
+    category: 'opvolging',
+    related_entity_id: relatedEntityId,
+    related_entity_type: relatedEntityType,
+    assigned_to: assignedToUserId ?? null,
+    due_date: isoDay(t.deadline ?? t.endDate ?? t.startDate),
+    completed_at: completed ? isoDate(t.endDate ?? t.modificationDate ?? t.deadline) : null,
+    organization_id: orgId,
+    ai_generated: false,
+    ai_reasoning: `Geimporteerd uit Carerix CRTodo ${t._id}.`,
+  };
+}
+
 export function mapCRTodoToNote(
   t: CRTodo,
   relatedEntityId: string,
@@ -279,9 +443,58 @@ export function mapCRTodoToNote(
   createdByUserId: string,
   orgId: string,
 ): Record<string, unknown> | null {
-  // CRToDo gebruikt `message` ipv `body`. Geen subject/message → niets te
-  // migreren (mogelijk een leeg agendablokje).
-  const body = [t.subject, t.message].filter(Boolean).join('\n\n').trim();
+  // CRToDo gebruikt `message` ipv `body`. We bewaren ook type/datum/status,
+  // zodat afspraken en e-mails niet meer als anonieme notities landen.
+  if (!hasCRTodoSignal(t)) return null;
+  const metadata = crTodoMetadataBlock(t);
+  const body = [t.subject?.trim(), t.message?.trim(), metadata]
+    .filter(Boolean)
+    .join('\n\n')
+    .trim();
+  if (!body) return null;
+
+  return {
+    body,
+    related_entity_id: relatedEntityId,
+    related_entity_type: relatedEntityType,
+    created_by: createdByUserId,
+    organization_id: orgId,
+    is_internal: true,
+  };
+}
+
+function hasCRNoteSignal(n: CRNote): boolean {
+  return Boolean(
+    n.subject?.trim() ||
+      n.message?.trim() ||
+      n.creationDate ||
+      n.modificationDate,
+  );
+}
+
+function crNoteMetadataBlock(n: CRNote): string | null {
+  const lines = [
+    'Type: Carerix notitie',
+    n.creationDate ? `Aangemaakt in Carerix: ${n.creationDate}` : null,
+    n.modificationDate ? `Laatst gewijzigd in Carerix: ${n.modificationDate}` : null,
+  ].filter(Boolean);
+
+  return lines.length > 0 ? lines.join('\n') : null;
+}
+
+export function mapCRNoteToNote(
+  n: CRNote,
+  relatedEntityId: string,
+  relatedEntityType: string,
+  createdByUserId: string,
+  orgId: string,
+): Record<string, unknown> | null {
+  if (!hasCRNoteSignal(n)) return null;
+  const metadata = crNoteMetadataBlock(n);
+  const body = [n.subject?.trim(), n.message?.trim(), metadata]
+    .filter(Boolean)
+    .join('\n\n')
+    .trim();
   if (!body) return null;
 
   return {

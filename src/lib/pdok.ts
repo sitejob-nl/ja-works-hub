@@ -18,6 +18,16 @@ export type PdokAddress = AddressValue & {
 };
 
 const PDOK_BASE_URL = 'https://api.pdok.nl/bzk/locatieserver/search/v3_1';
+const PDOK_TIMEOUT_MS = 4000;
+
+async function fetchPdok(url: string): Promise<Response> {
+  return Promise.race([
+    fetch(url),
+    new Promise<Response>((resolve) => {
+      globalThis.setTimeout(() => resolve(new Response(null, { status: 504 })), PDOK_TIMEOUT_MS);
+    }),
+  ]);
+}
 
 const parsePoint = (point: string | null | undefined): { lat: number; lng: number } | null => {
   const match = point?.match(/POINT\(([-\d.]+)\s+([-\d.]+)\)/);
@@ -58,7 +68,7 @@ export async function suggestPdokAddresses(query: string, rows = 6): Promise<Pdo
     fl: 'id,weergavenaam,type',
   });
 
-  const res = await fetch(`${PDOK_BASE_URL}/suggest?${params.toString()}`);
+  const res = await fetchPdok(`${PDOK_BASE_URL}/suggest?${params.toString()}`);
   if (!res.ok) return [];
 
   const data = await res.json();
@@ -73,7 +83,7 @@ export async function lookupPdokAddress(id: string): Promise<PdokAddress | null>
     fl: 'id,weergavenaam,straatnaam,huisnummer,huisletter,huisnummertoevoeging,postcode,woonplaatsnaam,centroide_ll',
   });
 
-  const res = await fetch(`${PDOK_BASE_URL}/lookup?${params.toString()}`);
+  const res = await fetchPdok(`${PDOK_BASE_URL}/lookup?${params.toString()}`);
   if (!res.ok) return null;
 
   const data = await res.json();
@@ -92,7 +102,7 @@ export async function geocodePdokAddress(address: Pick<AddressValue, 'street' | 
   });
 
   try {
-    const res = await fetch(`${PDOK_BASE_URL}/free?${params.toString()}`);
+    const res = await fetchPdok(`${PDOK_BASE_URL}/free?${params.toString()}`);
     if (!res.ok) return null;
 
     const data = await res.json();

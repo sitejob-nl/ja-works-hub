@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Plus, Pencil, Trash2, Lock } from 'lucide-react';
-import { formatRelativeTime } from '@/lib/format';
+import { formatDateTime, formatRelativeTime } from '@/lib/format';
 import { toast } from 'sonner';
 
 type EntityType = 'kandidaat' | 'opdrachtgever' | 'vacature' | 'plaatsing';
@@ -188,7 +188,9 @@ const NotesSection = ({ entityId, entityType }: NotesSectionProps) => {
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium">{note.created_by_display_name ?? 'Onbekend'}</span>
-                  <span className="text-xs text-muted-foreground">{formatRelativeTime(note.created_at)}</span>
+                  <span className="text-xs text-muted-foreground" title={formatRelativeTime(note.created_at)}>
+                    {formatDateTime(note.created_at)}
+                  </span>
                   {note.is_internal && (
                     <Badge variant="secondary" className="text-[10px] gap-1">
                       <Lock className="h-2.5 w-2.5" />Intern

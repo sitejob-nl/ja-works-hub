@@ -23,6 +23,7 @@ import VehicleAssignmentsTab from '@/components/transport/tabs/VehicleAssignment
 import VehicleMileageTab from '@/components/transport/tabs/VehicleMileageTab';
 import VehicleFinesTab from '@/components/transport/tabs/VehicleFinesTab';
 import VehicleDamageTab from '@/components/transport/tabs/VehicleDamageTab';
+import { useTabSearchParam } from '@/hooks/useTabSearchParam';
 
 const statusBadge: Record<string, string> = {
   beschikbaar: 'bg-stat-green/10 text-stat-green border-0',
@@ -39,6 +40,7 @@ const VehicleDetail = () => {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [activeTab, setActiveTab] = useTabSearchParam('gegevens');
 
   const { data: vehicle, isLoading } = useQuery({
     queryKey: ['vehicle', id],
@@ -220,7 +222,7 @@ const VehicleDetail = () => {
         </AlertDialogContent>
       </AlertDialog>
 
-      <Tabs defaultValue="gegevens">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">
           <TabsList className="w-max sm:w-auto">
             <TabsTrigger value="gegevens">Gegevens</TabsTrigger>

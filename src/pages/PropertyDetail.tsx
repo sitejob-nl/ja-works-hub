@@ -27,6 +27,7 @@ import InspectionsTab from '@/components/housing/tabs/InspectionsTab';
 import OwnerTab from '@/components/housing/tabs/OwnerTab';
 import CleaningTab from '@/components/housing/tabs/CleaningTab';
 import PropertyContractsTab from '@/components/housing/tabs/PropertyContractsTab';
+import { useTabSearchParam } from '@/hooks/useTabSearchParam';
 
 const PropertyDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -34,6 +35,7 @@ const PropertyDetail = () => {
   const qc = useQueryClient();
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [activeTab, setActiveTab] = useTabSearchParam('kamers');
 
   const { data: property, isLoading } = useQuery({
     queryKey: ['property', id],
@@ -156,7 +158,7 @@ const PropertyDetail = () => {
         </div>
       </div>
 
-      <Tabs defaultValue="kamers">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">
           <TabsList className="w-max sm:w-auto">
             <TabsTrigger value="kamers">Kamers</TabsTrigger>

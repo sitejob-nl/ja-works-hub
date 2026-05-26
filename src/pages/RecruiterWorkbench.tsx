@@ -61,6 +61,23 @@ const RecruiterWorkbench = () => {
     },
   });
 
+  const { data: urgentVacancies = [] } = useQuery({
+    queryKey: ['workbench-urgent-vacancies', orgId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('vacancies')
+        .select('id, title, required_count, filled_count, urgency, start_date, start_date_text, created_at, companies!vacancies_company_id_fkey(name)')
+        .eq('organization_id', orgId)
+        .eq('status', 'open' as any)
+        .eq('urgency', 3)
+        .order('start_date', { ascending: true, nullsFirst: false })
+        .limit(6);
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!orgId,
+  });
+
   const updateTask = useMutation({
     mutationFn: async ({ id, updates }: { id: string; updates: Record<string, any> }) => {
       const { error } = await supabase.from('recruiter_tasks' as any).update(updates).eq('id', id);
@@ -204,6 +221,58 @@ const RecruiterWorkbench = () => {
           </CardContent>
         </Card>
       </div>
+
+      {urgentVacancies.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 text-destructive" />
+                  Urgente vacatures
+                </CardTitle>
+                <CardDescription>Open vacatures met urgentie 3 en nog te vullen plaatsen</CardDescription>
+              </div>
+              <Badge variant="secondary" className="bg-red-100 text-red-700 border-0">
+                {urgentVacancies.length}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {urgentVacancies.map((vacancy: any) => {
+              const openSlots = Math.max((vacancy.required_count ?? 0) - (vacancy.filled_count ?? 0), 0);
+              const createdDays = vacancy.created_at
+                ? Math.max(0, Math.floor((Date.now() - new Date(vacancy.created_at).getTime()) / 86400000))
+                : null;
+
+              return (
+                <div key={vacancy.id} className="rounded-md border bg-background p-3 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Link to={`/vacatures/${vacancy.id}`} className="font-medium text-sm hover:text-primary truncate">
+                        {vacancy.title}
+                      </Link>
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                        {openSlots} open
+                      </Badge>
+                    </div>
+                    <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground flex-wrap">
+                      <span>{(vacancy.companies as any)?.name ?? 'Opdrachtgever onbekend'}</span>
+                      <span>Start: {vacancy.start_date_text || formatDate(vacancy.start_date)}</span>
+                      {createdDays != null && <span>{createdDays} dagen open</span>}
+                    </div>
+                  </div>
+                  <Button asChild size="sm" variant="outline" className="h-8 shrink-0">
+                    <Link to={`/vacatures/${vacancy.id}`}>
+                      <ExternalLink className="h-3.5 w-3.5 mr-1" /> Open
+                    </Link>
+                  </Button>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Filters */}
       <div className="flex items-center gap-2 flex-wrap">

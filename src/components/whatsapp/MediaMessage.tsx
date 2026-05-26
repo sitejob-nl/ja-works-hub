@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { FileText, Play, Download, MapPin, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 
 interface MediaMessageProps {
   type: string;
@@ -29,6 +29,7 @@ export function MediaMessage({ type, body, mediaId }: MediaMessageProps) {
               </div>
               <Dialog open={lightboxOpen} onOpenChange={setLightboxOpen}>
                 <DialogContent className="max-w-3xl">
+                  <DialogTitle className="sr-only">Media voorbeeld</DialogTitle>
                   <p className="text-center text-muted-foreground">
                     Media laden vereist download via Meta API
                   </p>

@@ -151,6 +151,9 @@ verify_jwt = false
 [functions.candidate-profile]
 verify_jwt = false
 
+[functions.candidate-signup]
+verify_jwt = false
+
 [functions.portal-activate]
 verify_jwt = false
 

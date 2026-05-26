@@ -10,10 +10,14 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
 import PlacementSheet from '@/components/vacancies/PlacementSheet';
+import { calculateCandidateVacancyMatch, shouldShowCandidateForVacancy, type MatchBreakdown } from '@/lib/matching';
 
 const COLUMNS = [
   { key: 'nieuwe_match', label: 'Nieuwe match', color: 'bg-amber-500' },
@@ -29,6 +33,12 @@ const sourceLabel: Record<string, string> = {
   sollicitatie: 'Sollicitatie', eigen_match: 'Eigen match', facebook: 'Facebook', jobmarket: 'Jobmarket', linkedin: 'LinkedIn', overig: 'Overig',
 };
 
+const scoreBadgeClass: Record<MatchBreakdown['label'], string> = {
+  groen: 'bg-stat-green/10 text-stat-green border-0',
+  oranje: 'bg-yellow-100 text-yellow-700 border-0',
+  rood: 'bg-red-100 text-red-600 border-0',
+};
+
 const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
   const orgId = useOrganizationId();
   const { user } = useAuth();
@@ -38,6 +48,10 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
   const [previewMatchId, setPreviewMatchId] = useState<string | null>(null);
   const [previewData, setPreviewData] = useState<{ to: string; contact_name: string; subject: string; html: string } | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [showWeakMatches, setShowWeakMatches] = useState(false);
+  const [feedbackRequest, setFeedbackRequest] = useState<{ matchId: string; fromStatus: string; toStatus: string } | null>(null);
+  const [feedbackReasonId, setFeedbackReasonId] = useState('');
+  const [feedbackNotes, setFeedbackNotes] = useState('');
 
   const { data: matches } = useQuery({
     queryKey: ['vacancy-matches', vacancy.id],
@@ -52,38 +66,115 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
     },
   });
 
+  const { data: vacancyCanonicalSkills = [] } = useQuery({
+    queryKey: ['vacancy-canonical-skills', vacancy.id],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('vacancy_required_skills')
+        .select('skills!inner(name)')
+        .eq('vacancy_id', vacancy.id);
+      if (error) throw error;
+      return (data ?? []).map((row: any) => row.skills?.name).filter(Boolean);
+    },
+  });
+
+  const { data: feedbackReasons = [] } = useQuery({
+    queryKey: ['match-feedback-reasons', orgId],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('match_feedback_reasons')
+        .select('*')
+        .eq('organization_id', orgId)
+        .eq('is_active', true)
+        .order('applies_to')
+        .order('sort_order');
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!orgId,
+  });
+
   const { data: availableCandidates } = useQuery({
-    queryKey: ['available-candidates-for-vacancy', vacancy.id, candidateSearch],
+    queryKey: [
+      'available-candidates-for-vacancy',
+      vacancy.id,
+      candidateSearch,
+      showWeakMatches,
+      vacancy.required_skills,
+      vacancy.required_certifications,
+      vacancy.requires_drivers_license,
+      vacancyCanonicalSkills,
+    ],
     queryFn: async () => {
       const matchedIds = (matches ?? []).map((m: any) => m.candidate_id);
-      let query = supabase.from('candidates').select('id, first_name, last_name, skills, compliance_status')
+      let query = supabase.from('candidates').select('id, first_name, last_name, status, skills, certifications, has_drivers_license, compliance_status, address_city, availability_notes, ai_function_group, ai_target_functions, ai_reliability_score')
         .in('status', ['nieuw', 'in_behandeling', 'beschikbaar'] as any);
       if (candidateSearch) {
         query = query.or(`first_name.ilike.%${candidateSearch}%,last_name.ilike.%${candidateSearch}%`);
       }
-      const { data, error } = await query.order('first_name').limit(20);
+      const { data, error } = await query.order('first_name').limit(150);
       if (error) throw error;
-      return (data ?? []).filter((c: any) => !matchedIds.includes(c.id));
+      const candidates = data ?? [];
+      const candidateIds = candidates.map((candidate: any) => candidate.id);
+      const canonicalByCandidate = new Map<string, string[]>();
+      if (candidateIds.length > 0) {
+        const { data: skillRows, error: skillError } = await (supabase as any)
+          .from('candidate_skills')
+          .select('candidate_id, skills!inner(name)')
+          .in('candidate_id', candidateIds);
+        if (skillError) throw skillError;
+        for (const row of skillRows ?? []) {
+          const list = canonicalByCandidate.get(row.candidate_id) ?? [];
+          if (row.skills?.name) list.push(row.skills.name);
+          canonicalByCandidate.set(row.candidate_id, list);
+        }
+      }
+      const vacancyForScore = {
+        ...vacancy,
+        canonical_required_skills: vacancyCanonicalSkills,
+      };
+      return candidates
+        .filter((c: any) => !matchedIds.includes(c.id))
+        .map((c: any) => {
+          const enrichedCandidate = { ...c, canonical_skills: canonicalByCandidate.get(c.id) ?? [] };
+          const { show, score } = shouldShowCandidateForVacancy(enrichedCandidate, vacancyForScore, showWeakMatches || !!candidateSearch);
+          return { ...enrichedCandidate, _showForVacancy: show, _vacancyScore: score };
+        })
+        .filter((c: any) => c._showForVacancy)
+        .sort((a: any, b: any) => {
+          const scoreDiff = b._vacancyScore.matchPercent - a._vacancyScore.matchPercent;
+          if (scoreDiff !== 0) return scoreDiff;
+          const skillDiff = b._vacancyScore.skillMatches.length - a._vacancyScore.skillMatches.length;
+          if (skillDiff !== 0) return skillDiff;
+          return `${a.first_name ?? ''} ${a.last_name ?? ''}`.localeCompare(`${b.first_name ?? ''} ${b.last_name ?? ''}`);
+        })
+        .slice(0, 20);
     },
     enabled: !!matches,
   });
 
   const proposeMutation = useMutation({
-    mutationFn: async (candidateId: string) => {
-      const { data: match, error } = await supabase.from('matches').insert({
+    mutationFn: async (candidate: any) => {
+      const score = candidate._vacancyScore ?? calculateCandidateVacancyMatch(candidate, { ...vacancy, canonical_required_skills: vacancyCanonicalSkills });
+      const { data: match, error } = await (supabase as any).from('matches').insert({
         organization_id: orgId,
         vacancy_id: vacancy.id,
-        candidate_id: candidateId,
+        candidate_id: candidate.id,
         proposed_by: user?.id ?? null,
         status: 'nieuwe_match' as any,
         source: 'eigen_match',
+        match_score: score.matchPercent,
+        match_reasoning: score.reasoning,
+        match_breakdown: score as any,
+        distance_km: score.distance.distanceKm,
+        duration_min: score.distance.durationMin,
       }).select('id').single();
       if (error) throw error;
 
       // Trigger AI match scoring
       try {
         await supabase.functions.invoke('calculate-match', {
-          body: { match_id: match.id, candidate_id: candidateId, vacancy_id: vacancy.id },
+          body: { match_id: match.id, candidate_id: candidate.id, vacancy_id: vacancy.id },
         });
       } catch { /* non-blocking */ }
     },
@@ -112,9 +203,27 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
   });
 
   const statusMutation = useMutation({
-    mutationFn: async ({ matchId, status }: { matchId: string; status: string }) => {
+    mutationFn: async ({ matchId, status, reasonId, notes }: { matchId: string; status: string; reasonId?: string | null; notes?: string | null }) => {
+      const current = (matches ?? []).find((m: any) => m.id === matchId) as any;
+      if (status === 'afgewezen' && !reasonId) throw new Error('Kies een feedbackreden voor afwijzen');
+
       const { error } = await supabase.from('matches').update({ status, status_changed_at: new Date().toISOString() } as any).eq('id', matchId);
       if (error) throw error;
+
+      if (reasonId || notes || ['afgewezen', 'geaccepteerd', 'geplaatst'].includes(status)) {
+        const { error: feedbackError } = await (supabase as any).from('match_feedback_events').insert({
+          organization_id: orgId,
+          match_id: matchId,
+          from_status: current?.status ?? null,
+          to_status: status,
+          reason_id: reasonId ?? null,
+          notes: notes?.trim() || null,
+          created_by: user?.id ?? null,
+          match_score_snapshot: current?.match_score ?? null,
+          match_breakdown_snapshot: current?.match_breakdown ?? null,
+        });
+        if (feedbackError) throw feedbackError;
+      }
     },
     onMutate: async ({ matchId, status }) => {
       await qc.cancelQueries({ queryKey: ['vacancy-matches', vacancy.id] });
@@ -190,7 +299,39 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
   const onDragEnd = (result: DropResult) => {
     const { draggableId, destination, source } = result;
     if (!destination || destination.droppableId === source.droppableId) return;
+    if (['afgewezen', 'geaccepteerd', 'geplaatst'].includes(destination.droppableId)) {
+      setFeedbackRequest({ matchId: draggableId, fromStatus: source.droppableId, toStatus: destination.droppableId });
+      setFeedbackReasonId('');
+      setFeedbackNotes('');
+      return;
+    }
     statusMutation.mutate({ matchId: draggableId, status: destination.droppableId });
+  };
+
+  const requestStatusChange = (matchId: string, fromStatus: string, toStatus: string) => {
+    if (['afgewezen', 'geaccepteerd', 'geplaatst'].includes(toStatus)) {
+      setFeedbackRequest({ matchId, fromStatus, toStatus });
+      setFeedbackReasonId('');
+      setFeedbackNotes('');
+      return;
+    }
+    statusMutation.mutate({ matchId, status: toStatus });
+  };
+
+  const submitFeedbackStatusChange = () => {
+    if (!feedbackRequest) return;
+    statusMutation.mutate({
+      matchId: feedbackRequest.matchId,
+      status: feedbackRequest.toStatus,
+      reasonId: feedbackReasonId || null,
+      notes: feedbackNotes,
+    }, {
+      onSuccess: () => {
+        setFeedbackRequest(null);
+        setFeedbackReasonId('');
+        setFeedbackNotes('');
+      },
+    });
   };
 
   return (
@@ -257,6 +398,17 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
                                   {m.match_reasoning && (
                                     <p className="text-[11px] text-muted-foreground line-clamp-2">{m.match_reasoning}</p>
                                   )}
+                                  {(m.duration_min || m.distance_km) && (
+                                    <p className="text-[11px] text-muted-foreground">
+                                      Reistijd: {m.duration_min ? `${Math.round(m.duration_min)} min` : 'onbekend'}{m.distance_km ? `, ${Math.round(m.distance_km)} km` : ''}
+                                    </p>
+                                  )}
+                                  {m.match_breakdown?.positives?.length > 0 && (
+                                    <p className="text-[11px] text-emerald-700 line-clamp-1">{m.match_breakdown.positives[0]}</p>
+                                  )}
+                                  {m.match_breakdown?.missing?.length > 0 && (
+                                    <p className="text-[11px] text-amber-700 line-clamp-1">{m.match_breakdown.missing[0]}</p>
+                                  )}
                                   <div className="flex gap-1 pt-1">
                                     {col.key === 'voorgesteld' && (
                                       <Button size="sm" variant="outline" className="h-7 text-xs flex-1" onClick={() => openPreview(m.id)} disabled={previewLoading && previewMatchId === m.id}>
@@ -269,7 +421,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
                                       </Button>
                                     )}
                                     {col.key !== 'afgewezen' && col.key !== 'geaccepteerd' && (
-                                      <Button size="sm" variant="ghost" className="h-7 text-xs text-red-600" onClick={() => statusMutation.mutate({ matchId: m.id, status: 'afgewezen' })}>
+                                      <Button size="sm" variant="ghost" className="h-7 text-xs text-red-600" onClick={() => requestStatusChange(m.id, col.key, 'afgewezen')}>
                                         <X className="h-3 w-3" />
                                       </Button>
                                     )}
@@ -292,30 +444,58 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
 
       <div className="border-t pt-6 space-y-4">
         <div>
-          <h3 className="font-semibold text-base">Kandidaat zoeken in eigen database</h3>
-          <p className="text-xs text-muted-foreground mt-0.5">Voeg een bestaande kandidaat toe als nieuwe match</p>
+          <h3 className="font-semibold text-base">Beste kandidaten uit eigen database</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">Gefilterd op vacature-eisen voordat je handmatig een match toevoegt</p>
+          <div className="flex gap-1 mt-2 flex-wrap">
+            {(vacancy.required_skills ?? []).map((s: string) => <Badge key={`skill-${s}`} variant="secondary" className="text-xs">{s}</Badge>)}
+            {vacancyCanonicalSkills.filter((s: string) => !(vacancy.required_skills ?? []).includes(s)).map((s: string) => <Badge key={`canonical-skill-${s}`} variant="secondary" className="text-xs">{s}</Badge>)}
+            {(vacancy.required_certifications ?? []).map((c: string) => <Badge key={`cert-${c}`} variant="outline" className="text-xs">{c}</Badge>)}
+            {vacancy.requires_drivers_license && <Badge variant="outline" className="text-xs">Rijbewijs</Badge>}
+          </div>
         </div>
-        <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Zoek kandidaat..." value={candidateSearch} onChange={(e) => setCandidateSearch(e.target.value)} className="pl-9" />
+        <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
+          <div className="relative max-w-md flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input placeholder="Zoek kandidaat..." value={candidateSearch} onChange={(e) => setCandidateSearch(e.target.value)} className="pl-9" />
+          </div>
+          <Button
+            type="button"
+            variant={showWeakMatches ? 'secondary' : 'outline'}
+            size="sm"
+            onClick={() => setShowWeakMatches((value) => !value)}
+          >
+            {showWeakMatches ? 'Alle kandidaten zichtbaar' : 'Toon ook zwakkere matches'}
+          </Button>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
           {(availableCandidates ?? []).map((c: any) => (
             <Card key={c.id} className="p-3">
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <Link to={`/kandidaten/${c.id}`} className="font-medium text-sm hover:text-primary truncate block">{c.first_name} {c.last_name}</Link>
-                  <div className="flex gap-1 mt-1 flex-wrap">
-                    {(c.skills ?? []).slice(0, 3).map((s: string) => <Badge key={s} variant="outline" className="text-xs">{s}</Badge>)}
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Link to={`/kandidaten/${c.id}`} className="font-medium text-sm hover:text-primary truncate block">{c.first_name} {c.last_name}</Link>
+                    <Badge className={cn('text-[10px] px-1.5 py-0 flex-shrink-0', scoreBadgeClass[c._vacancyScore.label as MatchBreakdown['label']])}>
+                        {c._vacancyScore.matchPercent}% match
+                    </Badge>
                   </div>
+                  <div className="flex gap-1 mt-1 flex-wrap">
+                    {c._vacancyScore.skillMatches.slice(0, 3).map((s: string) => <Badge key={`skill-${s}`} variant="outline" className="text-xs">{s}</Badge>)}
+                    {c._vacancyScore.certificationMatches.slice(0, 2).map((s: string) => <Badge key={`cert-${s}`} variant="outline" className="text-xs">{s}</Badge>)}
+                    {vacancy.requires_drivers_license && c.has_drivers_license && <Badge variant="outline" className="text-xs">Rijbewijs</Badge>}
+                    {c._vacancyScore.skillMatches.length === 0 && c._vacancyScore.certificationMatches.length === 0 && (c.skills ?? []).slice(0, 3).map((s: string) => <Badge key={s} variant="outline" className="text-xs">{s}</Badge>)}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2 line-clamp-2">{c._vacancyScore.reasoning}</p>
+                  {c._vacancyScore.missing.length > 0 && (
+                    <p className="text-[11px] text-amber-700 mt-1 line-clamp-2">{c._vacancyScore.missing[0]}</p>
+                  )}
                 </div>
-                <Button size="sm" variant="outline" onClick={() => proposeMutation.mutate(c.id)} disabled={proposeMutation.isPending} className="flex-shrink-0">
+                <Button size="sm" variant="outline" onClick={() => proposeMutation.mutate(c)} disabled={proposeMutation.isPending} className="flex-shrink-0">
                   <UserPlus className="h-3 w-3 mr-1" /> Nieuwe match
                 </Button>
               </div>
             </Card>
           ))}
-          {(availableCandidates ?? []).length === 0 && <p className="text-sm text-muted-foreground">Geen beschikbare kandidaten gevonden</p>}
+          {(availableCandidates ?? []).length === 0 && <p className="text-sm text-muted-foreground">Geen beschikbare kandidaten met deze vacature-eisen gevonden</p>}
         </div>
       </div>
 
@@ -353,6 +533,47 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
               disabled={!previewData || sendProposalMutation.isPending}
             >
               {sendProposalMutation.isPending ? 'Versturen...' : 'Versturen naar opdrachtgever'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!feedbackRequest} onOpenChange={(open) => { if (!open) setFeedbackRequest(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Feedback vastleggen</DialogTitle>
+            <DialogDescription>
+              Leg vast waarom deze match naar {feedbackRequest?.toStatus?.replaceAll('_', ' ')} gaat.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Reden{feedbackRequest?.toStatus === 'afgewezen' ? ' *' : ''}</Label>
+              <Select value={feedbackReasonId} onValueChange={setFeedbackReasonId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Kies een reden" />
+                </SelectTrigger>
+                <SelectContent>
+                  {feedbackReasons
+                    .filter((reason: any) => reason.applies_to === feedbackRequest?.toStatus)
+                    .map((reason: any) => (
+                      <SelectItem key={reason.id} value={reason.id}>{reason.reason}</SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Notitie</Label>
+              <Textarea value={feedbackNotes} onChange={(event) => setFeedbackNotes(event.target.value)} placeholder="Optionele toelichting" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setFeedbackRequest(null)}>Annuleren</Button>
+            <Button
+              onClick={submitFeedbackStatusChange}
+              disabled={statusMutation.isPending || (feedbackRequest?.toStatus === 'afgewezen' && !feedbackReasonId)}
+            >
+              Status bijwerken
             </Button>
           </DialogFooter>
         </DialogContent>

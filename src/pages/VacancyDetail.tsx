@@ -12,6 +12,7 @@ import VacancyDetailsTab from '@/components/vacancies/tabs/VacancyDetailsTab';
 import VacancyMatchesTab from '@/components/vacancies/tabs/VacancyMatchesTab';
 import VacancyPlacementsTab from '@/components/vacancies/tabs/VacancyPlacementsTab';
 import { useTrackPageVisit } from '@/hooks/useTrackPageVisit';
+import { useTabSearchParam } from '@/hooks/useTabSearchParam';
 import NotesSection from '@/components/shared/NotesSection';
 import TasksSection from '@/components/shared/TasksSection';
 
@@ -32,6 +33,7 @@ const VacancyDetail = () => {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useTabSearchParam('details');
 
   const { data: vacancy, isLoading } = useQuery({
     queryKey: ['vacancy', id],
@@ -130,7 +132,7 @@ const VacancyDetail = () => {
         </div>
       </div>
 
-      <Tabs defaultValue="details">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">
           <TabsList className="w-max sm:w-auto">
             <TabsTrigger value="details">Details</TabsTrigger>

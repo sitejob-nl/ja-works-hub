@@ -20,6 +20,7 @@ import { getPaginationRange } from '@/lib/pagination';
 const PAGE_SIZE = 10;
 
 const statusBadge: Record<string, string> = {
+  lead: 'bg-purple-100 text-purple-700 border-0',
   nieuw: 'bg-muted text-muted-foreground border-0',
   werkzoekend: 'bg-stat-green/10 text-stat-green border-0',
   in_screening: 'bg-yellow-100 text-yellow-700 border-0',
@@ -35,7 +36,7 @@ const complianceBadge: Record<string, string> = {
 };
 
 const statusLabel: Record<string, string> = {
-  nieuw: 'Nieuw', werkzoekend: 'Werkzoekend', in_screening: 'In screening',
+  lead: 'Lead', nieuw: 'Nieuw', werkzoekend: 'Werkzoekend', in_screening: 'In screening',
   geplaatst: 'Geplaatst', niet_beschikbaar: 'Niet beschikbaar', uitgeschreven: 'Uitgeschreven',
 };
 

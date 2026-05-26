@@ -16,7 +16,8 @@
     "test:e2e": "playwright test --config=scripts/playwright.config.ts",
     "test:e2e:api": "playwright test --config=scripts/playwright.config.ts e2e-api-contracts.spec.ts e2e-public-pages.spec.ts",
     "test:e2e:flows": "playwright test --config=scripts/playwright.config.ts e2e-critical-flows.spec.ts",
-    "test:e2e:meeting": "playwright test --config=scripts/playwright.config.ts e2e-meeting-coverage.spec.ts"
+    "test:e2e:meeting": "playwright test --config=scripts/playwright.config.ts e2e-meeting-coverage.spec.ts",
+    "seed:demo": "node scripts/seed-demo-org.mjs"
   },
   "dependencies": {
     "@hello-pangea/dnd": "^18.0.1",

@@ -1,6 +1,6 @@
 # Open gaps & roadmap
 
-Project-management state from client meetings — moved out of CLAUDE.md because it decays fast and isn't codebase guidance. Last updated from meetings through 2026-04-30.
+Project-management state from client meetings — moved out of CLAUDE.md because it decays fast and isn't codebase guidance. Last updated from meetings through 2026-05-14. Fix plan: `docs/meeting-fix-plan-2026-05-14.md`.
 
 ## Closed na sprints 1/2/3/5/D3
 
@@ -17,10 +17,22 @@ Project-management state from client meetings — moved out of CLAUDE.md because
 
 ## Nog open
 
+- **05-14 data cleanup / Carerix SSOT** — import bevriezen, deduplicatie, test-vacatures opschonen en foutieve historische koppelingen herstellen; zie `docs/meeting-open-points-2026-05-14.md`.
+- **05-14 Carerix notities/taken** — codepad splitst `CRTodo` nu naar notes/tasks plus meeting/e-mail metadata en importeert aparte `CRNote`-notities naar gekoppelde kandidaten/bedrijven/matches/vacatures/contacten; productiedata-steekproef en historische validatie blijven open.
+- **05-14 vacature-template verdieping** — vacature-aanmaak/-bewerken erft beschrijving, locatie, tarief en skills; UI-flow en tariefacceptatie nog valideren.
+- **05-14 skill-based matching vanuit vacature** — matchtab filtert/scored nu op vacature-eisen vóór handmatige match; browser/API-regressie nog toevoegen.
+- **05-14 urgentie-dashboard** — workbench toont nu open urgentie-3 vacatures met opdrachtgever, startdatum, ouderdom en open plaatsen; browservalidatie blijft open.
+- **05-14 recruitment intake funnel** — publieke `/solliciteren/:slug` route + `candidate-signup` edge function zijn gedeployed en production-smoke gevalideerd met verplichte CV, leadstatus, bronlabel, recruiter-taak en notificatie; lead-promotie naar kandidaat blijft acceptatiepunt.
+- **05-14 bulk kandidaat-notificaties** — matchpipeline heeft nu selectie + bulkactie voor portal/appmeldingen en outbound e-mailrecords; echte Outlook/WhatsApp-verzending blijft bewust een apart kanaalbesluit.
+- **05-14 kandidaatvoorstel branding/AI-rapport** — voorstelmail gebruikt nu org-naam/logo/contact en compacte AI-rapportsectie; preview/send-validatie blijft open.
+- **05-14 screening-call ondersteuning** — screeningtab toont nu ontbrekende kernvelden, callvragen en kan een opvolgtaak maken; browservalidatie blijft open.
+- **05-14 navigatiestate** — kandidaat-, vacature-, opdrachtgever-, voertuig- en panddetailtabs bewaren nu `?tab=` in de URL; browserregressie blijft open.
+- **05-14 zoek/functiefilters** — vacature- en matchpipeline zoeken gebruikt nu functietitel + opdrachtgever; regressietest/browservalidatie blijft open.
+- **05-14 Exact scopebesluit** — meeting noemt Exact out-of-scope, bestaande module staat wel in app; expliciet acceptatie-/scopebesluit nodig.
 - **Schoonmaak-module** (C5) — `cleaning_schedules` + `cleaning_logs` + tab + dashboard widget
 - **Kosten-reminder edge function** (C3) — cron, 3 mnd → `recruiter_tasks`
 - **Buddy app CSV-import** (C9) — handmatig data uit Buddy migreren
-- **AI e-mail triage** (D1) — classificatie + reply-suggesties bovenop Microsoft Graph
+- **AI e-mail triage** (D1) — Outlook inbox toont nu heuristische AI-triage en kan een gekoppelde taak + communicatie-record maken; reply-suggesties blijven open.
 - **Carerix productie-import acceptatie** (D2) — CR*-scope, documentenbytes, notities/taken en echte data-validatie; zie `docs/carerix-integratie-audit.md`
 - **Outbound SMS** (D4) — provider-keuze (MessageBird/Twilio) eerst nodig
 - **WhatsApp inbound replies** (D5) — UI-check of webhook → chat-UI werkt
@@ -42,3 +54,4 @@ Project-management state from client meetings — moved out of CLAUDE.md because
 - Camera integration on dashboard
 - WordPress lead webhook (can be routed via `candidate_signup_links`)
 - Partner portal for external recruiter CV uploads
+- Meta/Facebook Ads Library + Higgsfield marketing automation

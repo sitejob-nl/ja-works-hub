@@ -59,8 +59,10 @@ test.describe("Meeting coverage browser QA — JA Werkt / VDS", () => {
     await expectText(page, /Schade/i, "voertuig detail schade tab");
 
     await page.getByRole("tab", { name: /Boetes/i }).click();
+    await expect(page, "voertuig tabstate boetes").toHaveURL(/tab=boetes/);
     await expectText(page, /Foto|Bewijs|Boete/i, "boete foto/bewijs");
     await page.getByRole("tab", { name: /Schade/i }).click();
+    await expect(page, "voertuig tabstate schade").toHaveURL(/tab=schade/);
     await expectText(page, /Foto|Schademelding|Nieuwe melding/i, "schade foto/melding");
     await attachScreenshot(page, "meeting-voertuig-incidenten");
   });
@@ -83,12 +85,40 @@ test.describe("Meeting coverage browser QA — JA Werkt / VDS", () => {
     await expectText(page, /Eigenaar/i, "pand eigenaar tab");
 
     await page.getByRole("tab", { name: /Contracten/i }).click();
+    await expect(page, "pand tabstate contracten").toHaveURL(/tab=contracten/);
     await expectText(page, /Inhuur|Onderhuur|Contract/i, "inhuur/onderhuur contracten");
     await page.getByRole("tab", { name: /Eigenaar/i }).click();
+    await expect(page, "pand tabstate eigenaar").toHaveURL(/tab=eigenaar/);
     await expectText(page, /Notities|Geen notities|Contract/i, "eigenaar notities/contracten");
     await page.getByRole("tab", { name: /Schoonmaak/i }).click();
+    await expect(page, "pand tabstate schoonmaak").toHaveURL(/tab=schoonmaak/);
     await expectText(page, /Schoonmaak|foto|taak/i, "schoonmaak taak/foto flow");
     await attachScreenshot(page, "meeting-pand-detail");
+  });
+
+  test("05-14 vacature, matching en workbench regressies zijn zichtbaar", async ({ page }) => {
+    await page.goto("/workbench", { waitUntil: "domcontentloaded" });
+    await expectText(page, /Workbench/i, "workbench pagina");
+    await expectText(page, /Kritiek|Hoge prioriteit|AI Prioriteiten/i, "workbench prioriteiten");
+    await attachScreenshot(page, "meeting-0514-workbench");
+
+    await page.goto("/vacatures", { waitUntil: "domcontentloaded" });
+    await expect(page.getByPlaceholder(/functietitel of opdrachtgever/i), "vacature zoekveld").toBeVisible();
+    await attachScreenshot(page, "meeting-0514-vacatures");
+
+    const firstVacancy = page.locator('a[href^="/vacatures/"]').first();
+    await expect(firstVacancy, "minimaal een vacaturedetail-link voor 05-14 meetingcheck").toBeVisible({ timeout: 30_000 });
+    await firstVacancy.click();
+    await expectText(page, /Matches/i, "vacature detail matches tab");
+    await page.getByRole("tab", { name: /Matches/i }).click();
+    await expect(page, "vacature tabstate matches").toHaveURL(/tab=matches/);
+    await expectText(page, /Beste kandidaten uit eigen database|Gefilterd op vacature-eisen/i, "skill-first matchlijst");
+    await attachScreenshot(page, "meeting-0514-vacature-matches");
+
+    await page.goto("/match-pipeline", { waitUntil: "domcontentloaded" });
+    await expect(page.getByPlaceholder(/kandidaat, functietitel of opdrachtgever/i), "matchpipeline zoekveld").toBeVisible();
+    await expectText(page, /Notificeer kandidaten|Selecteer zichtbare matches/i, "matchpipeline bulk kandidaatnotificaties");
+    await attachScreenshot(page, "meeting-0514-matchpipeline");
   });
 
   test("Instellingen tonen Outlook, Exact, engagement en juridische templates", async ({ page }) => {
@@ -110,6 +140,10 @@ test.describe("Meeting coverage browser QA — JA Werkt / VDS", () => {
     await expectText(page, /E-mail/i, "mail pagina");
     await expectText(page, /Outlook|mailbox|Naar Instellingen|Nieuw bericht/i, "mailbox state");
     await attachScreenshot(page, "meeting-email");
+
+    await page.goto("/solliciteren/e2e-onbekende-link", { waitUntil: "domcontentloaded" });
+    await expectText(page, /Ongeldige aanmeldlink|Aanmeldlink verlopen|Aanmeldlink gesloten/i, "publieke recruitment intake route");
+    await attachScreenshot(page, "meeting-public-intake-invalid-link");
 
     await page.goto("/portaal/login", { waitUntil: "domcontentloaded" });
     await expectText(page, /E-mailadres|Wachtwoord|Inloggen/i, "medewerkerportaal login");

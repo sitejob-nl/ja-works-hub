@@ -27,7 +27,7 @@ De runners verwerken nu:
 - `matches` via `crMatchPage`.
 - `placements` via `crWorkHistoryPage`.
 - `documents` via `crEmployee(_id).attachments`, daarna bytes via `crAttachment(_id) { content }`.
-- `notes` via `crToDoPage`.
+- `notes` via echte `crNotePage` records. `CRTodo` wordt alleen nog gebruikt voor echte recruiter-taken; e-mails, afspraken en reminders worden niet als notitie opgeslagen.
 
 `employment` is bewust geen aparte runner: in deze tenant is werkhistorie gemodelleerd als `CRWorkHistory` en komt die in JA Werkt terecht als `placements`.
 
@@ -36,6 +36,10 @@ De runners verwerken nu:
 - De OAuth-scope staat standaard op `urn:cx/cx5Wrapper:data:manage`, precies de scope die nodig is voor het rijke Carerix-schema.
 - De importvolgorde respecteert afhankelijkheden: bedrijven en kandidaten eerst, daarna vacatures/matches/plaatsingen/documenten/notities.
 - `external_mappings` houdt Carerix-ID's apart van JA Werkt-ID's, waardoor reruns idempotent kunnen zijn.
+- Productie-run 2026-05-19 `7a976991-9188-4077-8983-fdc81313e9cc` heeft de notes-only import afgerond: 24.835 Carerix activity/note records gevonden, 2.220 nieuwe records aangemaakt, 22.615 bestaande records overgeslagen, 0 failures. Daarna is de worker aangescherpt: `CRTodo`-mail/afspraak/reminder komt niet meer in de Notities-tab.
+- Cleanup/herimport 2026-05-19 `b1099c47-c954-4fef-b96b-352e8b0b5a7f`: alle 4.287 oude Carerix-note-cards zonder metadata verwijderd en opnieuw geimporteerd met de aangescherpte runner. Eindstand: 465 `CRNote`-notities in `notes`, 0 `CRTodo`-notities, 4.829 `CRTodo`-records als `recruiter_tasks`.
+- Backfill 2026-05-19 `ef4e77e7-b37c-4db2-81ee-d27435d1c318`: `CREmployee.notes` wordt nu opgesplitst op `[JA dd-mm-yyyy HH:mm]` markers en als interne kandidaatnotities opgeslagen. Eindstand: 2.628 profielnotitie-cards, 465 `CRNote`-cards, 0 `CRTodo`-notitiecards.
+- `crNotePage` bevat 492 echte `CRNote` records; 465 daarvan zijn als JA Werkt-notitie gekoppeld aan `kandidaat`. De resterende 27 hebben in Carerix geen parent-ref (`toEmployee`, `toCompany`, `toMatch`, `toJob`, `toContact` en secundaire `toNote`/`toTask`/`toMeeting`/`toEmail`/`toVacancy` leeg) en vragen een handmatig scope-/cleanupbesluit.
 - De documentflow is correct in twee stappen gesplitst: metadata eerst, bytes daarna. Dat past beter bij Supabase Edge soft deadlines.
 - Attachment-discovery loopt door alle attachment-pages per kandidaat, niet alleen de eerste 100.
 - `norestrict: true` staat aan in de `CR*`-queries, waardoor historie en soft-deleted records niet stilletjes buiten beeld vallen.
@@ -49,8 +53,8 @@ De runners verwerken nu:
 2. Er is nog geen REST fallback.
    GraphQL `crAttachment(_id) { content }` is goed als het werkt, maar Carerix' legacy REST `/CRAttachment/{id}?show=content` en `/CREmployee/{id}/attachment?tag=cv` zijn nuttig als GraphQL-content of tagfiltering tenant-specifiek hapert.
 
-3. Notities en taken worden nog samengevoegd als notes.
-   `CRToDo` bevat `isNote`, `isTask`, `isMeeting`, `isEmail`. Nu komt alles als interne note terecht. Taken met deadline/status horen deels naar `recruiter_tasks`.
+3. De laatste parentloze Carerix-notities vragen nog een businessbesluit.
+   De echte `CRNote`-records met kandidaat-parent zijn gekoppeld; 27 `CRNote`-records hebben geen bruikbare parent-ref en kunnen niet automatisch aan een kandidaat of opdrachtgever worden gehangen zonder Carerix cleanup.
 
 4. `CRMatch` en `CRWorkHistory` moeten businessmatig nog worden gevalideerd.
    De code zet `CRMatch` in `matches` en `CRWorkHistory` in `placements`. Dat is logisch, maar de eerdere migratie-designnotitie noemde `CRMatch -> placements`. De juiste interpretatie moet met echte JA Werkt-data worden bevestigd.
@@ -66,7 +70,7 @@ De runners verwerken nu:
 1. Draai met echte JA Werkt-credentials `carerix-test` en `carerix-introspect`. Zonder actieve `CR*`-scope is volledige import niet acceptatieklaar.
 2. Voeg `crCompanyPage` en `crContactPage` runners toe en map adressen, KVK, telefoons, contactrollen en status/custom fields.
 3. Handel niet-PDF CV's expliciet af via conversie/OCR of handmatige taak.
-4. Split `CRToDo`: notities naar `notes`, taken met deadline/status naar `recruiter_tasks`, meetings eventueel naar activity/notes met type metadata.
+4. Beslis wat te doen met de 27 parentloze `CRNote`-records: in Carerix opschonen/koppelen, als algemene migratienotitie bewaren, of bewust negeren.
 5. Valideer met productiedata of `CRWorkHistory` echt de plaatsing-SSOT is en of `CRMatch` alleen pipeline moet blijven.
 6. Voeg REST fallback toe voor attachments en eventueel `describe`-metadata.
 7. Bouw `carerix-webhook` pas na succesvolle bulkimport; anders debug je tegelijk bulk en realtime.

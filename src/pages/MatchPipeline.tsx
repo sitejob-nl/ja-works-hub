@@ -2,13 +2,15 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
+import { useAuth } from '@/contexts/AuthContext';
 import { Link } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent } from '@/components/ui/card';
-import { GitCompareArrows, Search, User, Building2, Briefcase, Star } from 'lucide-react';
+import { Bell, GitCompareArrows, Mail, Search, User, Building2, Briefcase, Star } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
@@ -44,17 +46,19 @@ const PIPELINE_SCOPES: { key: PipelineScope; label: string }[] = [
 
 const MatchPipeline = () => {
   const orgId = useOrganizationId();
+  const { user } = useAuth();
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [vacancyFilter, setVacancyFilter] = useState('all');
   const [pipelineScope, setPipelineScope] = useState<PipelineScope>('active');
+  const [selectedMatchIds, setSelectedMatchIds] = useState<Set<string>>(new Set());
 
   const { data: matches = [], isLoading } = useQuery({
     queryKey: ['match-pipeline', orgId, pipelineScope],
     queryFn: async () => {
       let query = supabase
         .from('matches')
-        .select('*, candidates!matches_candidate_id_fkey(id, first_name, last_name, phone, compliance_status), vacancies!inner(id, title, status, companies!vacancies_company_id_fkey(id, name))')
+        .select('*, candidates!matches_candidate_id_fkey(id, first_name, last_name, phone, email, compliance_status, portal_enabled), vacancies!inner(id, title, status, companies!vacancies_company_id_fkey(id, name))')
         .eq('organization_id', orgId)
         .neq('status', 'geplaatst')
         .order('created_at', { ascending: false });
@@ -100,6 +104,86 @@ const MatchPipeline = () => {
     },
   });
 
+  const bulkNotifyMutation = useMutation({
+    mutationFn: async (matchIds: string[]) => {
+      const selectedMatches = (matches as any[]).filter((match) => matchIds.includes(match.id));
+      if (selectedMatches.length === 0) throw new Error('Selecteer eerst matches');
+
+      const now = new Date().toISOString();
+      const notificationRows = selectedMatches.map((match) => {
+        const candidate = match.candidates;
+        const vacancy = match.vacancies;
+        const company = vacancy?.companies as any;
+        return {
+          organization_id: orgId,
+          candidate_id: candidate?.id ?? null,
+          type: 'overig',
+          severity: 'info',
+          title: `Nieuwe vacature: ${vacancy?.title ?? 'vacature'}`,
+          message: `${company?.name ? `${company.name} zoekt versterking. ` : ''}Je recruiter heeft je gematcht op deze vacature en neemt contact met je op.`,
+          reference_table: 'matches',
+          reference_id: match.id,
+          created_at: now,
+        };
+      });
+
+      const emailRows = selectedMatches
+        .filter((match) => Boolean(match.candidates?.email))
+        .map((match) => {
+          const candidate = match.candidates;
+          const vacancy = match.vacancies;
+          const company = vacancy?.companies as any;
+          const subject = `Nieuwe vacature: ${vacancy?.title ?? 'mogelijk passende functie'}`;
+          const body = [
+            `Hoi ${candidate?.first_name ?? ''},`,
+            '',
+            `We hebben een mogelijke match voor je gevonden: ${vacancy?.title ?? 'een passende vacature'}${company?.name ? ` bij ${company.name}` : ''}.`,
+            'Je recruiter neemt contact met je op om de details en je interesse te bespreken.',
+            '',
+            'Met vriendelijke groet,',
+            'JA Werkt',
+          ].join('\n');
+
+          return {
+            organization_id: orgId,
+            candidate_id: candidate.id,
+            channel: 'email',
+            direction: 'outbound',
+            subject,
+            body,
+            email_to: [candidate.email],
+            sent_at: now,
+            sent_by: user?.id ?? null,
+            message_type: 'bulk_match_notification',
+          };
+        });
+
+      const { error: notificationError } = await supabase
+        .from('employee_notifications')
+        .insert(notificationRows as any[]);
+      if (notificationError) throw notificationError;
+
+      if (emailRows.length > 0) {
+        const { error: communicationError } = await supabase
+          .from('communications')
+          .insert(emailRows as any[]);
+        if (communicationError) throw communicationError;
+      }
+
+      return {
+        notifications: notificationRows.length,
+        emails: emailRows.length,
+      };
+    },
+    onSuccess: (result) => {
+      setSelectedMatchIds(new Set());
+      qc.invalidateQueries({ queryKey: ['notifications'] });
+      qc.invalidateQueries({ queryKey: ['communications'] });
+      toast.success(`${result.notifications} appmeldingen en ${result.emails} e-mailrecords aangemaakt`);
+    },
+    onError: (error: any) => toast.error(error.message ?? 'Bulknotificaties mislukt'),
+  });
+
   const onDragEnd = (result: DropResult) => {
     const { draggableId, destination, source } = result;
     if (!destination || destination.droppableId === source.droppableId) return;
@@ -109,6 +193,7 @@ const MatchPipeline = () => {
   const setScope = (scope: PipelineScope) => {
     setPipelineScope(scope);
     setVacancyFilter('all');
+    setSelectedMatchIds(new Set());
   };
 
   // Get unique vacancies for filter
@@ -131,6 +216,32 @@ const MatchPipeline = () => {
     }
     return true;
   });
+
+  const selectedVisibleMatches = filtered.filter((match) => selectedMatchIds.has(match.id));
+  const selectedCount = selectedVisibleMatches.length;
+  const canToggleVisible = filtered.length > 0;
+  const allVisibleSelected = canToggleVisible && filtered.every((match) => selectedMatchIds.has(match.id));
+
+  const toggleMatch = (matchId: string) => {
+    setSelectedMatchIds((current) => {
+      const next = new Set(current);
+      if (next.has(matchId)) next.delete(matchId);
+      else next.add(matchId);
+      return next;
+    });
+  };
+
+  const toggleVisibleMatches = () => {
+    setSelectedMatchIds((current) => {
+      const next = new Set(current);
+      if (allVisibleSelected) {
+        filtered.forEach((match) => next.delete(match.id));
+      } else {
+        filtered.forEach((match) => next.add(match.id));
+      }
+      return next;
+    });
+  };
 
   // Group by status
   const grouped: Record<string, any[]> = {};
@@ -167,15 +278,51 @@ const MatchPipeline = () => {
         </div>
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Zoek op naam, vacature of bedrijf..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
+          <Input placeholder="Zoek op kandidaat, functietitel of opdrachtgever..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
         </div>
         <Select value={vacancyFilter} onValueChange={setVacancyFilter}>
           <SelectTrigger className="w-56"><SelectValue placeholder="Vacature" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Alle vacatures</SelectItem>
-            {vacancies.map((v: any) => <SelectItem key={v.id} value={v.id}>{v.title}</SelectItem>)}
+            {vacancies.map((v: any) => (
+              <SelectItem key={v.id} value={v.id}>
+                {v.title} - {(v.companies as any)?.name ?? 'Opdrachtgever onbekend'}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
+      </div>
+
+      <div className="flex flex-col gap-3 rounded-lg border bg-card p-3 sm:flex-row sm:items-center sm:justify-between">
+        <label className="flex items-center gap-2 text-sm">
+          <Checkbox
+            checked={allVisibleSelected}
+            onCheckedChange={toggleVisibleMatches}
+            disabled={!canToggleVisible}
+          />
+          <span>{allVisibleSelected ? 'Zichtbare matches geselecteerd' : 'Selecteer zichtbare matches'}</span>
+        </label>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <span className="text-sm text-muted-foreground">{selectedCount} geselecteerd</span>
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => bulkNotifyMutation.mutate(selectedVisibleMatches.map((match) => match.id))}
+            disabled={selectedCount === 0 || bulkNotifyMutation.isPending}
+          >
+            {bulkNotifyMutation.isPending ? (
+              <>
+                <Bell className="mr-2 h-4 w-4 animate-pulse" />
+                Aanmaken...
+              </>
+            ) : (
+              <>
+                <Mail className="mr-2 h-4 w-4" />
+                Notificeer kandidaten
+              </>
+            )}
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (
@@ -209,7 +356,11 @@ const MatchPipeline = () => {
                               {...provided.dragHandleProps}
                               className={cn(snapshot.isDragging && 'opacity-90')}
                             >
-                              <MatchCard match={m} />
+                              <MatchCard
+                                match={m}
+                                selected={selectedMatchIds.has(m.id)}
+                                onToggle={() => toggleMatch(m.id)}
+                              />
                             </div>
                           )}
                         </Draggable>
@@ -227,7 +378,7 @@ const MatchPipeline = () => {
   );
 };
 
-function MatchCard({ match }: { match: any }) {
+function MatchCard({ match, selected, onToggle }: { match: any; selected: boolean; onToggle: () => void }) {
   const candidate = match.candidates;
   const vacancy = match.vacancies;
   const company = vacancy?.companies as any;
@@ -238,6 +389,14 @@ function MatchCard({ match }: { match: any }) {
         <Link to={`/vacatures/${vacancy?.id}`} className="block" onClick={e => e.stopPropagation()}>
           <div className="flex items-start justify-between gap-1">
             <div className="flex items-center gap-1.5 text-sm font-medium truncate">
+              <span onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
+                <Checkbox
+                  checked={selected}
+                  onCheckedChange={onToggle}
+                  aria-label={`Selecteer match ${candidate?.first_name ?? ''} ${candidate?.last_name ?? ''}`}
+                  className="mr-0.5"
+                />
+              </span>
               <User className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
               <span className="truncate">{candidate?.first_name} {candidate?.last_name}</span>
             </div>

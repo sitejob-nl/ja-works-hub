@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useOutlookAccounts, useOutlookInvoke } from '@/hooks/useOutlookAccounts';
+import { useAuth } from '@/contexts/AuthContext';
+import { useOrganizationId } from '@/hooks/useOrganizationId';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -10,6 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import {
   Mail, MailOpen, Search, RefreshCw, Loader2, Paperclip, ChevronLeft, ChevronRight,
   Reply, ReplyAll, Forward, Trash2, Archive, MailPlus, Inbox, Send as SendIcon, FileText, Star, AlertCircle,
+  Brain, ClipboardList,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import EmailCompose from './EmailCompose';
@@ -36,6 +40,7 @@ interface EmailMessage {
 }
 
 type FolderKey = 'inbox' | 'sentitems' | 'drafts' | 'deleteditems' | 'archive';
+type TriageLabel = 'CV' | 'Klantvraag' | 'Partner' | 'Ruis' | 'Review';
 
 const folders: { key: FolderKey; label: string; icon: any }[] = [
   { key: 'inbox', label: 'Postvak IN', icon: Inbox },
@@ -56,8 +61,72 @@ function senderName(msg: EmailMessage) {
   return msg.from?.name || msg.from?.address || 'Onbekend';
 }
 
+function plainText(value?: string) {
+  return (value ?? '')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function classifyEmailMessage(msg: EmailMessage) {
+  const attachmentNames = (msg.attachments ?? [])
+    .filter((attachment) => !attachment.is_inline)
+    .map((attachment) => attachment.name)
+    .join(' ');
+  const content = [
+    msg.subject,
+    msg.preview,
+    plainText(msg.body_html),
+    attachmentNames,
+    msg.from?.address,
+  ].join(' ').toLowerCase();
+
+  const has = (pattern: RegExp) => pattern.test(content);
+  let label: TriageLabel = 'Review';
+  let priority: 'high' | 'medium' | 'low' = 'medium';
+  let category = 'email triage';
+  let reasoning = 'Geen harde match gevonden; recruiterreview nodig.';
+
+  if (has(/\b(cv|resume|curriculum|sollicitatie|solliciteren|application|motivatiebrief)\b/i)) {
+    label = 'CV';
+    priority = 'high';
+    category = 'cv intake';
+    reasoning = 'Bericht bevat CV/sollicitatie-signalen of relevante bijlage.';
+  } else if (has(/\b(vacature|opdracht|aanvraag|planning|tarief|uren|factuur|plaatsing|kandidaat nodig)\b/i)) {
+    label = 'Klantvraag';
+    priority = 'high';
+    category = 'klantvraag';
+    reasoning = 'Bericht lijkt een klantvraag over vacature, planning, tarief, uren of factuur.';
+  } else if (has(/\b(bureau|agency|partner|leverancier|recruiter|samenwerking)\b/i)) {
+    label = 'Partner';
+    priority = 'medium';
+    category = 'partner';
+    reasoning = 'Bericht lijkt afkomstig van of bedoeld voor een externe partner.';
+  } else if (has(/\b(unsubscribe|uitschrijven|nieuwsbrief|noreply|no-reply|marketing|webinar|advertentie)\b/i)) {
+    label = 'Ruis';
+    priority = 'low';
+    category = 'ruis';
+    reasoning = 'Bericht bevat nieuwsbrief-, marketing- of no-reply-signalen.';
+  }
+
+  return { label, priority, category, reasoning };
+}
+
+const triageBadgeClass: Record<TriageLabel, string> = {
+  CV: 'bg-stat-green/10 text-stat-green border-0',
+  Klantvraag: 'bg-orange-100 text-orange-700 border-0',
+  Partner: 'bg-blue-100 text-blue-700 border-0',
+  Ruis: 'bg-muted text-muted-foreground border-0',
+  Review: 'bg-yellow-100 text-yellow-700 border-0',
+};
+
 const EmailInbox = ({ selectedAccount }: { selectedAccount?: string }) => {
   const callOutlook = useOutlookInvoke();
+  const organizationId = useOrganizationId();
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
   const { accounts } = useOutlookAccounts('mail_read');
   const activeAccount = accounts.find((account) => account.account_id === selectedAccount);
   const canRead = Boolean(
@@ -123,6 +192,115 @@ const EmailInbox = ({ selectedAccount }: { selectedAccount?: string }) => {
       return data.message;
     },
     enabled: !!selectedId && canRead,
+  });
+  const triage = selectedMessage ? classifyEmailMessage(selectedMessage) : null;
+
+  const triageMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedMessage || !triage) throw new Error('Geen bericht geselecteerd');
+      const sender = selectedMessage.from?.address?.trim().toLowerCase() ?? '';
+      const previewText = plainText(selectedMessage.preview || selectedMessage.body_html).slice(0, 1200);
+      let candidateId: string | null = null;
+      let companyId: string | null = null;
+      let companyContactId: string | null = null;
+
+      if (sender) {
+        const { data: candidate } = await supabase
+          .from('candidates')
+          .select('id')
+          .eq('organization_id', organizationId)
+          .eq('email', sender)
+          .limit(1)
+          .maybeSingle();
+        candidateId = candidate?.id ?? null;
+
+        if (!candidateId) {
+          const { data: contact } = await supabase
+            .from('company_contacts')
+            .select('id, company_id')
+            .eq('organization_id', organizationId)
+            .eq('email', sender)
+            .limit(1)
+            .maybeSingle();
+          companyContactId = contact?.id ?? null;
+          companyId = contact?.company_id ?? null;
+        }
+
+        if (!candidateId && !companyId) {
+          const { data: company } = await supabase
+            .from('companies')
+            .select('id')
+            .eq('organization_id', organizationId)
+            .or(`email.eq.${sender},invoice_email.eq.${sender}`)
+            .limit(1)
+            .maybeSingle();
+          companyId = company?.id ?? null;
+        }
+      }
+
+      const { data: existingCommunication } = await supabase
+        .from('communications')
+        .select('id')
+        .eq('organization_id', organizationId)
+        .eq('email_message_id', selectedMessage.id)
+        .maybeSingle();
+
+      if (!existingCommunication) {
+        const { error: communicationError } = await supabase.from('communications').insert({
+          organization_id: organizationId,
+          candidate_id: candidateId,
+          company_id: companyId,
+          company_contact_id: companyContactId,
+          channel: 'email',
+          direction: 'inbound',
+          subject: selectedMessage.subject || '(Geen onderwerp)',
+          body: previewText || null,
+          email_from: sender || null,
+          email_to: selectedMessage.to?.map((recipient) => recipient.address).filter(Boolean) ?? null,
+          email_cc: selectedMessage.cc?.map((recipient) => recipient.address).filter(Boolean) ?? null,
+          email_message_id: selectedMessage.id,
+          email_attachments: selectedMessage.attachments?.map((attachment) => ({
+            name: attachment.name,
+            size: attachment.size,
+            is_inline: attachment.is_inline,
+          })) ?? null,
+          sent_at: selectedMessage.received_at ?? new Date().toISOString(),
+          sent_by: user?.id ?? null,
+          message_type: `ai_triage_${triage.label.toLowerCase()}`,
+        } as any);
+        if (communicationError) throw communicationError;
+      }
+
+      const { error: taskError } = await supabase.from('recruiter_tasks' as any).insert({
+        organization_id: organizationId,
+        assigned_to: user?.id ?? null,
+        title: `${triage.label}: ${selectedMessage.subject || '(Geen onderwerp)'}`,
+        description: [
+          `Afzender: ${sender || 'onbekend'}`,
+          `Classificatie: ${triage.label}`,
+          `Reden: ${triage.reasoning}`,
+          previewText ? `Preview: ${previewText}` : null,
+        ].filter(Boolean).join('\n'),
+        priority: triage.priority,
+        category: triage.category,
+        related_entity_type: candidateId ? 'kandidaat' : companyId ? 'opdrachtgever' : null,
+        related_entity_id: candidateId ?? companyId,
+        ai_generated: true,
+        ai_reasoning: triage.reasoning,
+        status: 'open',
+      });
+      if (taskError) throw taskError;
+
+      return { label: triage.label };
+    },
+    onSuccess: ({ label }) => {
+      queryClient.invalidateQueries({ queryKey: ['communications'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks-overview'] });
+      queryClient.invalidateQueries({ queryKey: ['recruiter-tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['open-task-count'] });
+      toast.success(`Triagetaak aangemaakt (${label})`);
+    },
+    onError: (error: any) => toast.error(error.message ?? 'Triagetaak kon niet worden aangemaakt'),
   });
 
   // Mark as read
@@ -431,6 +609,42 @@ const EmailInbox = ({ selectedAccount }: { selectedAccount?: string }) => {
                         {att.size && <span className="text-muted-foreground">({Math.round(att.size / 1024)}KB)</span>}
                       </Badge>
                     ))}
+                </div>
+              )}
+
+              {triage && (
+                <div className="mt-3 flex flex-col gap-3 rounded-md border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-start gap-3">
+                    <Brain className="mt-0.5 h-4 w-4 text-primary" />
+                    <div className="space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-medium">AI triage</span>
+                        <Badge variant="secondary" className={triageBadgeClass[triage.label]}>
+                          {triage.label}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground">{triage.reasoning}</p>
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => triageMutation.mutate()}
+                    disabled={triageMutation.isPending}
+                  >
+                    {triageMutation.isPending ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Aanmaken...
+                      </>
+                    ) : (
+                      <>
+                        <ClipboardList className="mr-2 h-4 w-4" />
+                        Maak triagetaak
+                      </>
+                    )}
+                  </Button>
                 </div>
               )}
             </div>

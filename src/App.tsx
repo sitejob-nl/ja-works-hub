@@ -60,6 +60,7 @@ import CarerixImport from "@/pages/CarerixImport";
 import Installeren from "@/pages/Installeren";
 import ContractSign from "@/pages/ContractSign";
 import CandidateProfile from "@/pages/CandidateProfile";
+import PublicCandidateSignup from "@/pages/PublicCandidateSignup";
 import Register from "@/pages/Register";
 import PortalActivate from "@/pages/PortalActivate";
 import FuelCardAnalysis from "@/pages/FuelCardAnalysis";
@@ -200,6 +201,7 @@ const App = () => (
             <Route path="/match-response/:token" element={<MatchResponse />} />
             <Route path="/match/reageer/:token" element={<MatchResponse />} />
             <Route path="/profiel/:token" element={<CandidateProfile />} />
+            <Route path="/solliciteren/:slug" element={<PublicCandidateSignup />} />
             <Route path="/portaal/activeren/:token" element={<PortalActivate />} />
             <Route path="/portaal/login" element={<PortalLogin />} />
             {/* Client portal (opdrachtgever) public routes */}

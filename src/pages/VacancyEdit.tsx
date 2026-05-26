@@ -15,6 +15,11 @@ import { toast } from 'sonner';
 
 const FUNCTION_FREE_TEXT = '__free_text__';
 
+const formatCompanyLocation = (company?: {
+  address_street?: string | null;
+  address_city?: string | null;
+} | null) => [company?.address_street, company?.address_city].filter(Boolean).join(', ');
+
 const VacancyEdit = () => {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
@@ -33,7 +38,11 @@ const VacancyEdit = () => {
   const { data: companies } = useQuery({
     queryKey: ['companies-active'],
     queryFn: async () => {
-      const { data, error } = await supabase.from('companies').select('id, name').eq('is_active', true).order('name');
+      const { data, error } = await supabase
+        .from('companies')
+        .select('id, name, address_street, address_city')
+        .eq('is_active', true)
+        .order('name');
       if (error) throw error;
       return data ?? [];
     },
@@ -94,7 +103,7 @@ const VacancyEdit = () => {
       if (!form.company_id) return [];
       const { data, error } = await supabase
         .from('company_functions')
-        .select('id, name, default_hourly_rate, salary_min, salary_max, required_skills')
+        .select('id, name, description, default_hourly_rate, salary_min, salary_max, required_skills')
         .eq('company_id', form.company_id)
         .eq('is_active', true)
         .order('name');
@@ -106,6 +115,20 @@ const VacancyEdit = () => {
 
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
 
+  const handleCompanyChange = (companyId: string) => {
+    setForm((f) => {
+      const previousLocation = formatCompanyLocation(companies?.find((c) => c.id === f.company_id));
+      const nextLocation = formatCompanyLocation(companies?.find((c) => c.id === companyId));
+      const shouldUseCompanyLocation = !f.location || f.location === previousLocation;
+      return {
+        ...f,
+        company_id: companyId,
+        function_id: '',
+        location: shouldUseCompanyLocation ? nextLocation : f.location,
+      };
+    });
+  };
+
   const handleFunctionChange = (value: string) => {
     if (value === FUNCTION_FREE_TEXT) {
       setForm((f) => ({ ...f, function_id: FUNCTION_FREE_TEXT }));
@@ -116,6 +139,7 @@ const VacancyEdit = () => {
       ...f,
       function_id: value,
       title: fn?.name ?? f.title,
+      description: f.description || fn?.description || '',
       hourly_rate: f.hourly_rate || (fn?.default_hourly_rate ? String(fn.default_hourly_rate) : ''),
       salary_min: f.salary_min || (fn?.salary_min != null ? String(fn.salary_min) : ''),
       salary_max: f.salary_max || (fn?.salary_max != null ? String(fn.salary_max) : ''),
@@ -135,6 +159,7 @@ const VacancyEdit = () => {
             organization_id: (vacancy as any).organization_id,
             company_id: form.company_id,
             name: form.title.trim(),
+            description: form.description || null,
             default_hourly_rate: form.hourly_rate ? parseFloat(form.hourly_rate) : null,
             salary_min: form.salary_min ? parseFloat(form.salary_min) : null,
             salary_max: form.salary_max ? parseFloat(form.salary_max) : null,
@@ -201,7 +226,7 @@ const VacancyEdit = () => {
         <div className="space-y-5">
           <div className="space-y-1.5">
             <Label>Opdrachtgever *</Label>
-            <Select value={form.company_id} onValueChange={(v) => set('company_id', v)}>
+            <Select value={form.company_id} onValueChange={handleCompanyChange}>
               <SelectTrigger><SelectValue placeholder="Selecteer opdrachtgever" /></SelectTrigger>
               <SelectContent>
                 {(companies ?? []).map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}

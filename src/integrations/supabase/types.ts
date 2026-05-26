@@ -12,6 +12,31 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.1"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       ai_usage_log: {
@@ -764,6 +789,55 @@ export type Database = {
           },
         ]
       }
+      candidate_skills: {
+        Row: {
+          candidate_id: string
+          confidence: number | null
+          created_at: string
+          organization_id: string
+          skill_id: string
+          source: string
+        }
+        Insert: {
+          candidate_id: string
+          confidence?: number | null
+          created_at?: string
+          organization_id: string
+          skill_id: string
+          source?: string
+        }
+        Update: {
+          candidate_id?: string
+          confidence?: number | null
+          created_at?: string
+          organization_id?: string
+          skill_id?: string
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "candidate_skills_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "candidate_skills_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "candidate_skills_skill_id_fkey"
+            columns: ["skill_id"]
+            isOneToOne: false
+            referencedRelation: "skills"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       candidates: {
         Row: {
           address_city: string | null
@@ -1374,6 +1448,7 @@ export type Database = {
         Row: {
           body: string | null
           call_duration_seconds: number | null
+          call_summary: string | null
           candidate_id: string | null
           channel: Database["public"]["Enums"]["communication_channel"]
           company_contact_id: string | null
@@ -1395,12 +1470,14 @@ export type Database = {
           sent_by: string | null
           subject: string | null
           transcription: string | null
+          voys_call_id: string | null
           whatsapp_message_id: string | null
           whatsapp_status: string | null
         }
         Insert: {
           body?: string | null
           call_duration_seconds?: number | null
+          call_summary?: string | null
           candidate_id?: string | null
           channel: Database["public"]["Enums"]["communication_channel"]
           company_contact_id?: string | null
@@ -1422,12 +1499,14 @@ export type Database = {
           sent_by?: string | null
           subject?: string | null
           transcription?: string | null
+          voys_call_id?: string | null
           whatsapp_message_id?: string | null
           whatsapp_status?: string | null
         }
         Update: {
           body?: string | null
           call_duration_seconds?: number | null
+          call_summary?: string | null
           candidate_id?: string | null
           channel?: Database["public"]["Enums"]["communication_channel"]
           company_contact_id?: string | null
@@ -1449,6 +1528,7 @@ export type Database = {
           sent_by?: string | null
           subject?: string | null
           transcription?: string | null
+          voys_call_id?: string | null
           whatsapp_message_id?: string | null
           whatsapp_status?: string | null
         }
@@ -1707,6 +1787,55 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      company_function_skills: {
+        Row: {
+          company_function_id: string
+          created_at: string
+          is_required: boolean
+          organization_id: string
+          skill_id: string
+          weight: number
+        }
+        Insert: {
+          company_function_id: string
+          created_at?: string
+          is_required?: boolean
+          organization_id: string
+          skill_id: string
+          weight?: number
+        }
+        Update: {
+          company_function_id?: string
+          created_at?: string
+          is_required?: boolean
+          organization_id?: string
+          skill_id?: string
+          weight?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_function_skills_company_function_id_fkey"
+            columns: ["company_function_id"]
+            isOneToOne: false
+            referencedRelation: "company_functions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "company_function_skills_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "company_function_skills_skill_id_fkey"
+            columns: ["skill_id"]
+            isOneToOne: false
+            referencedRelation: "skills"
             referencedColumns: ["id"]
           },
         ]
@@ -4818,6 +4947,191 @@ export type Database = {
           },
         ]
       }
+      match_distance_cache: {
+        Row: {
+          calculated_at: string
+          candidate_id: string
+          destination_lat: number | null
+          destination_lng: number | null
+          distance_km: number | null
+          duration_min: number | null
+          expires_at: string
+          id: string
+          organization_id: string
+          origin_lat: number | null
+          origin_lng: number | null
+          provider: string
+          status: string
+          vacancy_id: string
+        }
+        Insert: {
+          calculated_at?: string
+          candidate_id: string
+          destination_lat?: number | null
+          destination_lng?: number | null
+          distance_km?: number | null
+          duration_min?: number | null
+          expires_at?: string
+          id?: string
+          organization_id: string
+          origin_lat?: number | null
+          origin_lng?: number | null
+          provider?: string
+          status?: string
+          vacancy_id: string
+        }
+        Update: {
+          calculated_at?: string
+          candidate_id?: string
+          destination_lat?: number | null
+          destination_lng?: number | null
+          distance_km?: number | null
+          duration_min?: number | null
+          expires_at?: string
+          id?: string
+          organization_id?: string
+          origin_lat?: number | null
+          origin_lng?: number | null
+          provider?: string
+          status?: string
+          vacancy_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "match_distance_cache_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "match_distance_cache_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "match_distance_cache_vacancy_id_fkey"
+            columns: ["vacancy_id"]
+            isOneToOne: false
+            referencedRelation: "vacancies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      match_feedback_events: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          from_status: Database["public"]["Enums"]["match_status"] | null
+          id: string
+          match_breakdown_snapshot: Json | null
+          match_id: string
+          match_score_snapshot: number | null
+          notes: string | null
+          organization_id: string
+          reason_id: string | null
+          to_status: Database["public"]["Enums"]["match_status"]
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          from_status?: Database["public"]["Enums"]["match_status"] | null
+          id?: string
+          match_breakdown_snapshot?: Json | null
+          match_id: string
+          match_score_snapshot?: number | null
+          notes?: string | null
+          organization_id: string
+          reason_id?: string | null
+          to_status: Database["public"]["Enums"]["match_status"]
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          from_status?: Database["public"]["Enums"]["match_status"] | null
+          id?: string
+          match_breakdown_snapshot?: Json | null
+          match_id?: string
+          match_score_snapshot?: number | null
+          notes?: string | null
+          organization_id?: string
+          reason_id?: string | null
+          to_status?: Database["public"]["Enums"]["match_status"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "match_feedback_events_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "match_feedback_events_match_id_fkey"
+            columns: ["match_id"]
+            isOneToOne: false
+            referencedRelation: "matches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "match_feedback_events_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "match_feedback_events_reason_id_fkey"
+            columns: ["reason_id"]
+            isOneToOne: false
+            referencedRelation: "match_feedback_reasons"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      match_feedback_reasons: {
+        Row: {
+          applies_to: Database["public"]["Enums"]["match_status"]
+          created_at: string
+          id: string
+          is_active: boolean
+          organization_id: string
+          reason: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          applies_to: Database["public"]["Enums"]["match_status"]
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          organization_id: string
+          reason: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          applies_to?: Database["public"]["Enums"]["match_status"]
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          organization_id?: string
+          reason?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "match_feedback_reasons_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       match_proposal_tokens: {
         Row: {
           contact_email: string | null
@@ -4873,7 +5187,10 @@ export type Database = {
         Row: {
           candidate_id: string
           created_at: string
+          distance_km: number | null
+          duration_min: number | null
           id: string
+          match_breakdown: Json | null
           match_reasoning: string | null
           match_score: number | null
           notes: string | null
@@ -4891,7 +5208,10 @@ export type Database = {
         Insert: {
           candidate_id: string
           created_at?: string
+          distance_km?: number | null
+          duration_min?: number | null
           id?: string
+          match_breakdown?: Json | null
           match_reasoning?: string | null
           match_score?: number | null
           notes?: string | null
@@ -4909,7 +5229,10 @@ export type Database = {
         Update: {
           candidate_id?: string
           created_at?: string
+          distance_km?: number | null
+          duration_min?: number | null
           id?: string
+          match_breakdown?: Json | null
           match_reasoning?: string | null
           match_score?: number | null
           notes?: string | null
@@ -7188,6 +7511,98 @@ export type Database = {
           },
         ]
       }
+      skill_aliases: {
+        Row: {
+          alias: string
+          created_at: string
+          id: string
+          is_active: boolean
+          normalized_alias: string
+          organization_id: string
+          skill_id: string
+          source: string
+          updated_at: string
+        }
+        Insert: {
+          alias: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          normalized_alias: string
+          organization_id: string
+          skill_id: string
+          source?: string
+          updated_at?: string
+        }
+        Update: {
+          alias?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          normalized_alias?: string
+          organization_id?: string
+          skill_id?: string
+          source?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "skill_aliases_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "skill_aliases_skill_id_fkey"
+            columns: ["skill_id"]
+            isOneToOne: false
+            referencedRelation: "skills"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      skills: {
+        Row: {
+          category: string | null
+          created_at: string
+          id: string
+          is_active: boolean
+          name: string
+          normalized_name: string
+          organization_id: string
+          updated_at: string
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name: string
+          normalized_name: string
+          organization_id: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          normalized_name?: string
+          organization_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "skills_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       subscription_plans: {
         Row: {
           created_at: string | null
@@ -7732,6 +8147,55 @@ export type Database = {
           },
         ]
       }
+      vacancy_required_skills: {
+        Row: {
+          created_at: string
+          is_required: boolean
+          organization_id: string
+          skill_id: string
+          vacancy_id: string
+          weight: number
+        }
+        Insert: {
+          created_at?: string
+          is_required?: boolean
+          organization_id: string
+          skill_id: string
+          vacancy_id: string
+          weight?: number
+        }
+        Update: {
+          created_at?: string
+          is_required?: boolean
+          organization_id?: string
+          skill_id?: string
+          vacancy_id?: string
+          weight?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vacancy_required_skills_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vacancy_required_skills_skill_id_fkey"
+            columns: ["skill_id"]
+            isOneToOne: false
+            referencedRelation: "skills"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vacancy_required_skills_vacancy_id_fkey"
+            columns: ["vacancy_id"]
+            isOneToOne: false
+            referencedRelation: "vacancies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       vehicle_assignments: {
         Row: {
           assigned_date: string
@@ -8164,6 +8628,56 @@ export type Database = {
           },
         ]
       }
+      voys_config: {
+        Row: {
+          api_token: string
+          client_id: string | null
+          client_uuid: string | null
+          connected_at: string | null
+          created_at: string | null
+          id: string
+          is_connected: boolean | null
+          last_sync_at: string | null
+          organization_id: string
+          updated_at: string | null
+          user_uuid: string | null
+        }
+        Insert: {
+          api_token: string
+          client_id?: string | null
+          client_uuid?: string | null
+          connected_at?: string | null
+          created_at?: string | null
+          id?: string
+          is_connected?: boolean | null
+          last_sync_at?: string | null
+          organization_id: string
+          updated_at?: string | null
+          user_uuid?: string | null
+        }
+        Update: {
+          api_token?: string
+          client_id?: string | null
+          client_uuid?: string | null
+          connected_at?: string | null
+          created_at?: string | null
+          id?: string
+          is_connected?: boolean | null
+          last_sync_at?: string | null
+          organization_id?: string
+          updated_at?: string | null
+          user_uuid?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voys_config_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       whatsapp_config: {
         Row: {
           access_token: string | null
@@ -8435,6 +8949,7 @@ export type Database = {
         }[]
       }
       get_client_portal_company_id: { Args: never; Returns: string }
+      get_employee_candidate_id: { Args: never; Returns: string }
       get_employee_id: { Args: never; Returns: string }
       get_exact_token: {
         Args: { p_org_id: string }
@@ -8486,6 +9001,15 @@ export type Database = {
         Args: never
         Returns: Database["public"]["Enums"]["user_role"]
       }
+      get_voys_token: {
+        Args: { p_org_id: string }
+        Returns: {
+          api_token: string
+          client_id: string
+          client_uuid: string
+          user_uuid: string
+        }[]
+      }
       get_whatsapp_token: {
         Args: { p_org_id: string }
         Returns: {
@@ -8499,6 +9023,7 @@ export type Database = {
       is_internal_user: { Args: never; Returns: boolean }
       is_superadmin: { Args: never; Returns: boolean }
       next_invoice_number: { Args: { org_id: string }; Returns: string }
+      normalize_skill_name: { Args: { value: string }; Returns: string }
       peek_credit_balance: { Args: { p_org_id: string }; Returns: number }
       record_rate_limit: {
         Args: {
@@ -8598,6 +9123,10 @@ export type Database = {
         Args: { p_amount_cents: number; p_note?: string; p_org_id: string }
         Returns: number
       }
+      upsert_skill_for_org: {
+        Args: { p_name: string; p_organization_id: string }
+        Returns: string
+      }
     }
     Enums: {
       audit_action:
@@ -8627,6 +9156,7 @@ export type Database = {
         | "in_screening"
         | "niet_beschikbaar"
         | "uitgeschreven"
+        | "lead"
       communication_channel: "whatsapp" | "email" | "voip" | "notitie" | "sms"
       compliance_status: "incompleet" | "compleet" | "verlopen"
       contact_role: "admin" | "plaatsing" | "hr" | "overig"
@@ -8836,6 +9366,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       audit_action: [
@@ -8867,6 +9400,7 @@ export const Constants = {
         "in_screening",
         "niet_beschikbaar",
         "uitgeschreven",
+        "lead",
       ],
       communication_channel: ["whatsapp", "email", "voip", "notitie", "sms"],
       compliance_status: ["incompleet", "compleet", "verlopen"],

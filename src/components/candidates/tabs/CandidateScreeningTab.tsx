@@ -42,6 +42,26 @@ const RESULT_OPTIONS = [
   { value: 'goedgekeurd', label: 'Goedgekeurd' },
 ];
 
+const CORE_PROFILE_FIELDS: Array<{ label: string; isMissing: (candidate: any) => boolean; question: string }> = [
+  { label: 'Telefoonnummer', isMissing: (c) => !c.phone, question: 'Wat is je actuele telefoonnummer en ben je daarop via WhatsApp bereikbaar?' },
+  { label: 'E-mailadres', isMissing: (c) => !c.email, question: 'Welk e-mailadres mogen we gebruiken voor documenten en planning?' },
+  { label: 'Geboortedatum', isMissing: (c) => !c.date_of_birth, question: 'Wat is je geboortedatum voor de personeelsadministratie?' },
+  { label: 'Nationaliteit', isMissing: (c) => !c.nationality, question: 'Wat is je nationaliteit en heb je aanvullende werkdocumenten nodig?' },
+  { label: 'Adres', isMissing: (c) => !c.address_street || !c.address_postal || !c.address_city, question: 'Wat is je huidige woonadres en verblijfplaats?' },
+  { label: 'Talen', isMissing: (c) => !Array.isArray(c.languages) || c.languages.length === 0, question: 'Welke talen spreek je en op welk niveau?' },
+  { label: 'Vaardigheden', isMissing: (c) => !Array.isArray(c.skills) || c.skills.length === 0, question: 'Welke concrete vaardigheden of machines beheers je?' },
+  { label: 'Certificaten', isMissing: (c) => !Array.isArray(c.certifications) || c.certifications.length === 0, question: 'Welke certificaten heb je en zijn die nog geldig?' },
+  { label: 'CV', isMissing: (c) => !c.cv_file_url && !c.cv_raw_text, question: 'Kun je je meest recente CV of werkervaring toesturen?' },
+];
+
+const getMissingProfileFields = (candidate: any) =>
+  CORE_PROFILE_FIELDS.filter((field) => field.isMissing(candidate));
+
+const buildCallQuestions = (candidate: any, aiQuestions: string[]) => {
+  if (aiQuestions.length > 0) return aiQuestions;
+  return getMissingProfileFields(candidate).map((field) => field.question).slice(0, 6);
+};
+
 interface ScreeningData {
   professional: {
     rating: string;
@@ -121,8 +141,11 @@ const CandidateScreeningTab = ({
   const { user } = useAuth();
   const [data, setData] = useState<ScreeningData>(() => getInitialData(candidate));
   const [saving, setSaving] = useState(false);
+  const [creatingTask, setCreatingTask] = useState(false);
 
   const interviewQuestions: string[] = candidate.ai_interview_questions ?? [];
+  const callQuestions = buildCallQuestions(candidate, interviewQuestions);
+  const missingProfileFields = getMissingProfileFields(candidate);
   const riskFactors: string[] = candidate.ai_risk_factors ?? [];
   const skills: string[] = candidate.skills ?? [];
 
@@ -189,10 +212,87 @@ const CandidateScreeningTab = ({
     }
   };
 
+  const handleCreateFollowupTask = async () => {
+    setCreatingTask(true);
+    try {
+      const missingText = missingProfileFields.map((field) => field.label).join(', ') || 'Geen kernvelden ontbreken';
+      const questionsText = callQuestions.length > 0
+        ? `\n\nTe stellen vragen:\n${callQuestions.map((q) => `- ${q}`).join('\n')}`
+        : '';
+      const { error } = await supabase.from('recruiter_tasks' as any).insert({
+        organization_id: candidate.organization_id,
+        assigned_to: user?.id ?? null,
+        title: `Screening aanvullen: ${candidate.first_name} ${candidate.last_name}`,
+        description: `Ontbrekende gegevens: ${missingText}${questionsText}`,
+        priority: missingProfileFields.length >= 4 ? 'high' : 'medium',
+        category: 'opvolging',
+        status: 'open',
+        related_entity_type: 'kandidaat',
+        related_entity_id: candidate.id,
+        ai_generated: false,
+      });
+      if (error) throw error;
+      toast.success('Opvolgtaak aangemaakt');
+    } catch (e: any) {
+      toast.error(e.message || 'Kon opvolgtaak niet maken');
+    } finally {
+      setCreatingTask(false);
+    }
+  };
+
   const isComplete = candidate.screened_at != null;
 
   return (
     <div className="space-y-6">
+      {(missingProfileFields.length > 0 || callQuestions.length > 0) && (
+        <Card className="p-5 space-y-4 border-l-4 border-l-amber-500 bg-amber-50/40">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-600" />
+                <h3 className="font-semibold text-sm">Screening voorbereiding</h3>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Ontbrekende kandidaatdata en callvragen voor dit gesprek.
+              </p>
+            </div>
+            <Button size="sm" variant="outline" onClick={handleCreateFollowupTask} disabled={creatingTask}>
+              {creatingTask ? 'Aanmaken...' : 'Maak taak'}
+            </Button>
+          </div>
+
+          {missingProfileFields.length > 0 && (
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground uppercase tracking-wide">
+                Ontbreekt nog
+              </Label>
+              <div className="flex gap-2 flex-wrap">
+                {missingProfileFields.map((field) => (
+                  <Badge key={field.label} variant="secondary" className="bg-amber-100 text-amber-800 border-0">
+                    {field.label}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {callQuestions.length > 0 && (
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground uppercase tracking-wide">
+                Te stellen vragen
+              </Label>
+              <div className="space-y-2">
+                {callQuestions.map((question, i) => (
+                  <div key={`${question}-${i}`} className="rounded-md border bg-background p-2 text-sm">
+                    {question}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </Card>
+      )}
+
       {/* Section A: Vakinhoudelijke Screening */}
       <Card className="p-5 space-y-5">
         <div className="flex items-center gap-2">
