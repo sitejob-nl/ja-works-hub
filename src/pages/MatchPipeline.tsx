@@ -44,6 +44,45 @@ const PIPELINE_SCOPES: { key: PipelineScope; label: string }[] = [
   { key: 'all', label: 'Alles' },
 ];
 
+const MATCH_PIPELINE_PAGE_SIZE = 1000;
+const MATCH_PIPELINE_SELECT =
+  '*, candidates!matches_candidate_id_fkey(id, first_name, last_name, phone, email, compliance_status, portal_enabled), vacancies!inner(id, title, status, companies!vacancies_company_id_fkey(id, name))';
+
+async function fetchMatchPipelinePage(orgId: string | null | undefined, pipelineScope: PipelineScope, from: number, to: number) {
+  let query = supabase
+    .from('matches')
+    .select(MATCH_PIPELINE_SELECT)
+    .eq('organization_id', orgId)
+    .neq('status', 'geplaatst')
+    .order('created_at', { ascending: false })
+    .range(from, to);
+
+  if (pipelineScope === 'active') {
+    query = query.eq('vacancies.status', 'open' as any);
+  } else if (pipelineScope === 'archive') {
+    query = query.in('vacancies.status', ['gesloten', 'vervuld'] as any);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return data ?? [];
+}
+
+async function fetchAllMatchPipelineRows(orgId: string | null | undefined, pipelineScope: PipelineScope) {
+  const rows: any[] = [];
+
+  for (let page = 0; ; page += 1) {
+    const from = page * MATCH_PIPELINE_PAGE_SIZE;
+    const to = from + MATCH_PIPELINE_PAGE_SIZE - 1;
+    const pageRows = await fetchMatchPipelinePage(orgId, pipelineScope, from, to);
+    rows.push(...pageRows);
+
+    if (pageRows.length < MATCH_PIPELINE_PAGE_SIZE) break;
+  }
+
+  return rows;
+}
+
 const MatchPipeline = () => {
   const orgId = useOrganizationId();
   const { user } = useAuth();
@@ -55,24 +94,8 @@ const MatchPipeline = () => {
 
   const { data: matches = [], isLoading } = useQuery({
     queryKey: ['match-pipeline', orgId, pipelineScope],
-    queryFn: async () => {
-      let query = supabase
-        .from('matches')
-        .select('*, candidates!matches_candidate_id_fkey(id, first_name, last_name, phone, email, compliance_status, portal_enabled), vacancies!inner(id, title, status, companies!vacancies_company_id_fkey(id, name))')
-        .eq('organization_id', orgId)
-        .neq('status', 'geplaatst')
-        .order('created_at', { ascending: false });
-
-      if (pipelineScope === 'active') {
-        query = query.eq('vacancies.status', 'open' as any);
-      } else if (pipelineScope === 'archive') {
-        query = query.in('vacancies.status', ['gesloten', 'vervuld'] as any);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return data ?? [];
-    },
+    queryFn: () => fetchAllMatchPipelineRows(orgId, pipelineScope),
+    enabled: !!orgId,
   });
 
   const statusMutation = useMutation({
