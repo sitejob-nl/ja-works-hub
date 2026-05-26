@@ -63,6 +63,31 @@ describe('Fase 1 vacaturematching', () => {
   it('normalizes common Fase 1 aliases', () => {
     expect(normalizeSkillName('MIG/MAG')).toBe('mig mag lassen');
     expect(normalizeSkillName('VCA Basis')).toBe('vca');
+    expect(normalizeSkillName('Forklift driver')).toBe('heftruck');
+    expect(normalizeSkillName('Heftruck certificatie')).toBe('heftruck');
+    expect(normalizeSkillName('Reachtruck chauffeur')).toBe('reachtruck');
+    expect(normalizeSkillName('Quality Control')).toBe('kwaliteitscontrole');
+    expect(normalizeSkillName('Technical drawing')).toBe('technische tekening lezen');
+  });
+
+  it('matches CV-language aliases against recruiter vacancy skills', () => {
+    const score = calculateCandidateVacancyMatch({
+      skills: ['CO2 lasser', 'Forklift driver', 'VCA diploma', 'Technical drawing'],
+      certifications: ['Basisveiligheid VCA'],
+      has_drivers_license: true,
+      availability_notes: 'Beschikbaar',
+      ai_reliability_score: 7,
+    }, {
+      title: 'MIG-MAG lasser',
+      required_skills: ['MIG-MAG lassen', 'Heftruck', 'Technische tekening lezen'],
+      required_certifications: ['VCA'],
+      requires_drivers_license: true,
+    });
+
+    expect(score.hardBlocks).toEqual([]);
+    expect(score.skillMatches).toEqual(['MIG-MAG lassen', 'Heftruck', 'Technische tekening lezen']);
+    expect(score.certificationMatches).toEqual(['VCA']);
+    expect(score.matchPercent).toBeGreaterThanOrEqual(80);
   });
 
   it('hides non-matching candidates from the default vacancy shortlist', () => {

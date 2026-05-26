@@ -352,8 +352,18 @@ async function seed() {
   for (const alias of [
     ["MIG-MAG lassen", "MIG/MAG"],
     ["MIG-MAG lassen", "migmag"],
+    ["MIG-MAG lassen", "CO2 lassen"],
+    ["MIG-MAG lassen", "CO2 lasser"],
     ["Heftruck", "Heftruckchauffeur"],
+    ["Heftruck", "Heftruck certificaat"],
+    ["Heftruck", "Forklift driver"],
+    ["Reachtruck", "Reachtruck chauffeur"],
+    ["Productiewerk", "Productiemedewerker"],
+    ["Kwaliteitscontrole", "Quality Control"],
+    ["Kwaliteitscontrole", "QC"],
     ["VCA", "VCA Basis"],
+    ["VCA", "VCA diploma"],
+    ["HACCP", "Food safety"],
   ]) {
     const { data: skill } = await supabase.from("skills")
       .select("id")

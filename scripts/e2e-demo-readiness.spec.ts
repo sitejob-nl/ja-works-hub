@@ -91,6 +91,7 @@ test.describe("Demo readiness QA", () => {
     await expectText(page, /Milan\s+Kowalski|Nieuwe match|match/i, "matchflow zichtbaar");
 
     await page.goto("/instellingen", { waitUntil: "domcontentloaded" });
+    await page.getByRole("tab", { name: /Matching/i }).click();
     await expectText(page, /Match-feedbackredenen/i, "feedbackbeheer zichtbaar");
     await expectText(page, /Mist verplichte vaardigheden|Reistijd te hoog|Niet beschikbaar/i, "demo feedbackredenen zichtbaar");
 
