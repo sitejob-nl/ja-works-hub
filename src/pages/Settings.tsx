@@ -8,8 +8,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
-import { Settings as SettingsIcon, Upload, Palette, Building2, User, LogOut, Trash2, FileSpreadsheet, RotateCcw } from 'lucide-react';
+import { Brain, BriefcaseBusiness, Database, FileText, Link2, Settings as SettingsIcon, Upload, Palette, Building2, User, LogOut, Trash2, FileSpreadsheet, RotateCcw } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import WhatsAppSettings from '@/components/settings/WhatsAppSettings';
 import ExactOnlineSettings from '@/components/settings/ExactOnlineSettings';
@@ -342,225 +343,222 @@ const Settings = () => {
   }
 
   return (
-    <div>
-      <h1 className="text-2xl font-semibold mb-1">Instellingen</h1>
-      <p className="text-sm text-muted-foreground mb-6">Organisatie- en gebruikersinstellingen</p>
+    <div className="space-y-5">
+      <div>
+        <h1 className="text-2xl font-semibold mb-1">Instellingen</h1>
+        <p className="text-sm text-muted-foreground">Organisatie- en gebruikersinstellingen</p>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left column */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Organization info */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Building2 className="h-4 w-4" /> Organisatie gegevens
-              </CardTitle>
-              <CardDescription>Algemene informatie van je organisatie</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <Label>Organisatienaam</Label>
-                  <Input value={orgName} onChange={e => setOrgName(e.target.value)} />
-                </div>
-                <div>
-                  <Label>E-mail</Label>
-                  <Input value={orgEmail} onChange={e => setOrgEmail(e.target.value)} type="email" />
-                </div>
-                <div>
-                  <Label>Telefoon</Label>
-                  <Input value={orgPhone} onChange={e => setOrgPhone(e.target.value)} />
-                </div>
-                <div>
-                  <Label>Website</Label>
-                  <Input value={orgWebsite} onChange={e => setOrgWebsite(e.target.value)} />
-                </div>
-              </div>
+        <div className="lg:col-span-2">
+          <Tabs defaultValue="algemeen" className="space-y-4">
+            <div className="overflow-x-auto pb-1">
+              <TabsList className="h-auto w-max justify-start gap-1 bg-muted/70 p-1">
+                <TabsTrigger value="algemeen" className="gap-2 px-3 py-2">
+                  <SettingsIcon className="h-4 w-4" /> Algemeen
+                </TabsTrigger>
+                <TabsTrigger value="koppelingen" className="gap-2 px-3 py-2">
+                  <Link2 className="h-4 w-4" /> Koppelingen
+                </TabsTrigger>
+                <TabsTrigger value="matching" className="gap-2 px-3 py-2">
+                  <BriefcaseBusiness className="h-4 w-4" /> Matching
+                </TabsTrigger>
+                <TabsTrigger value="hr" className="gap-2 px-3 py-2">
+                  <FileText className="h-4 w-4" /> HR & documenten
+                </TabsTrigger>
+                <TabsTrigger value="data" className="gap-2 px-3 py-2">
+                  <Database className="h-4 w-4" /> Data
+                </TabsTrigger>
+              </TabsList>
+            </div>
 
-              <Separator />
-
-              <div className="space-y-4">
-                <AddressAutocomplete
-                  value={{ street: orgStreet, postal: orgPostal, city: orgCity, lat: orgLat, lng: orgLng }}
-                  onChange={(address) => {
-                    setOrgStreet(address.street);
-                    setOrgPostal(address.postal);
-                    setOrgCity(address.city);
-                    setOrgLat(address.lat ?? null);
-                    setOrgLng(address.lng ?? null);
-                  }}
-                  gridClassName="grid-cols-1 sm:grid-cols-3 gap-4"
-                  streetClassName="sm:col-span-2"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <Label>KVK nummer</Label>
-                  <Input value={orgKvk} onChange={e => setOrgKvk(e.target.value)} />
-                </div>
-                <div>
-                  <Label>BTW nummer</Label>
-                  <Input value={orgBtw} onChange={e => setOrgBtw(e.target.value)} />
-                </div>
-              </div>
-
-              <div className="flex justify-end">
-                <Button onClick={handleSaveOrg} disabled={updateOrg.isPending || savingOrg}>Opslaan</Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Branding */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
+            <TabsContent value="algemeen" className="mt-0 space-y-5">
+              <Card>
+                <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-base">
-                    <Palette className="h-4 w-4" /> Branding & Kleuren
+                    <Building2 className="h-4 w-4" /> Organisatie gegevens
                   </CardTitle>
-                  <CardDescription>Pas het uiterlijk van het platform aan per organisatie</CardDescription>
-                </div>
-                <Button size="sm" variant="ghost" onClick={handleResetBranding}>
-                  <RotateCcw className="h-3.5 w-3.5 mr-1.5" /> Standaard
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Accent color */}
-              <div>
-                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 block">Accentkleur</Label>
-                <ColorPickerRow presets={ACCENT_PRESETS} value={accentColor} onChange={handleSetAccent} columns={8} />
-              </div>
-
-              <Separator />
-
-              {/* Sidebar color */}
-              <div>
-                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 block">Sidebar kleur</Label>
-                <ColorPickerRow presets={SIDEBAR_PRESETS} value={settings.sidebar_bg ?? BRANDING_DEFAULTS.sidebar_bg} onChange={handleSetSidebarBg} columns={8} />
-              </div>
-
-              <Separator />
-
-              {/* Background color */}
-              <div>
-                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 block">Achtergrondkleur</Label>
-                <ColorPickerRow presets={BG_PRESETS} value={settings.background ?? BRANDING_DEFAULTS.background} onChange={handleSetBackground} columns={6} />
-              </div>
-
-              <Separator />
-
-              {/* Live preview */}
-              <div>
-                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 block">Voorbeeld</Label>
-                <div className="flex rounded-lg overflow-hidden border border-border h-24">
-                  <div
-                    className="w-16 p-2 flex flex-col gap-1.5"
-                    style={{ backgroundColor: `hsl(${settings.sidebar_bg ?? BRANDING_DEFAULTS.sidebar_bg})` }}
-                  >
-                    {[1, 2, 3].map(i => (
-                      <div
-                        key={i}
-                        className="h-2 rounded-sm"
-                        style={{
-                          backgroundColor: i === 1
-                            ? `hsl(${accentColor})`
-                            : `hsl(${settings.sidebar_fg ?? BRANDING_DEFAULTS.sidebar_fg} / 0.3)`,
-                        }}
-                      />
-                    ))}
-                  </div>
-                  <div
-                    className="flex-1 p-3 flex flex-col gap-2"
-                    style={{ backgroundColor: `hsl(${settings.background ?? BRANDING_DEFAULTS.background})` }}
-                  >
-                    <div className="h-2.5 w-20 rounded-sm" style={{ backgroundColor: `hsl(${settings.heading ?? BRANDING_DEFAULTS.heading})` }} />
-                    <div
-                      className="flex-1 rounded-md p-2"
-                      style={{ backgroundColor: `hsl(${settings.card ?? BRANDING_DEFAULTS.card})` }}
-                    >
-                      <div className="h-2 w-16 rounded-sm" style={{ backgroundColor: `hsl(${accentColor})` }} />
+                  <CardDescription>Algemene informatie van je organisatie</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <Label>Organisatienaam</Label>
+                      <Input value={orgName} onChange={e => setOrgName(e.target.value)} />
+                    </div>
+                    <div>
+                      <Label>E-mail</Label>
+                      <Input value={orgEmail} onChange={e => setOrgEmail(e.target.value)} type="email" />
+                    </div>
+                    <div>
+                      <Label>Telefoon</Label>
+                      <Input value={orgPhone} onChange={e => setOrgPhone(e.target.value)} />
+                    </div>
+                    <div>
+                      <Label>Website</Label>
+                      <Input value={orgWebsite} onChange={e => setOrgWebsite(e.target.value)} />
                     </div>
                   </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
 
-          {/* WhatsApp */}
-          <WhatsAppSettings />
+                  <Separator />
 
-          {/* Exact Online */}
-          <ExactOnlineSettings />
+                  <AddressAutocomplete
+                    value={{ street: orgStreet, postal: orgPostal, city: orgCity, lat: orgLat, lng: orgLng }}
+                    onChange={(address) => {
+                      setOrgStreet(address.street);
+                      setOrgPostal(address.postal);
+                      setOrgCity(address.city);
+                      setOrgLat(address.lat ?? null);
+                      setOrgLng(address.lng ?? null);
+                    }}
+                    gridClassName="grid-cols-1 sm:grid-cols-3 gap-4"
+                    streetClassName="sm:col-span-2"
+                  />
 
-          {/* Voys Telefonie */}
-          <VoysSettings />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <Label>KVK nummer</Label>
+                      <Input value={orgKvk} onChange={e => setOrgKvk(e.target.value)} />
+                    </div>
+                    <div>
+                      <Label>BTW nummer</Label>
+                      <Input value={orgBtw} onChange={e => setOrgBtw(e.target.value)} />
+                    </div>
+                  </div>
 
-          {/* AI CV-analyse provider + saldo */}
-          <AiCvProviderSettings />
+                  <div className="flex justify-end">
+                    <Button onClick={handleSaveOrg} disabled={updateOrg.isPending || savingOrg}>Opslaan</Button>
+                  </div>
+                </CardContent>
+              </Card>
 
-          {/* Engagement / loyalty */}
-          <EngagementSettings />
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <CardTitle className="flex items-center gap-2 text-base">
+                        <Palette className="h-4 w-4" /> Branding & kleuren
+                      </CardTitle>
+                      <CardDescription>Pas het uiterlijk van het platform aan per organisatie</CardDescription>
+                    </div>
+                    <Button size="sm" variant="ghost" onClick={handleResetBranding}>
+                      <RotateCcw className="h-3.5 w-3.5 mr-1.5" /> Standaard
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div>
+                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 block">Accentkleur</Label>
+                    <ColorPickerRow presets={ACCENT_PRESETS} value={accentColor} onChange={handleSetAccent} columns={8} />
+                  </div>
 
-          {/* Matching */}
-          <SkillCatalogSettings />
-          <MatchFeedbackReasonsSettings />
+                  <Separator />
 
-          {/* Microsoft 365 */}
-          <OutlookSettings />
+                  <div>
+                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 block">Sidebar kleur</Label>
+                    <ColorPickerRow presets={SIDEBAR_PRESETS} value={settings.sidebar_bg ?? BRANDING_DEFAULTS.sidebar_bg} onChange={handleSetSidebarBg} columns={8} />
+                  </div>
 
-          {/* Data Export */}
-          <DataExport />
+                  <Separator />
 
-          {/* Compliance Rules */}
-          <ComplianceRulesSettings />
+                  <div>
+                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 block">Achtergrondkleur</Label>
+                    <ColorPickerRow presets={BG_PRESETS} value={settings.background ?? BRANDING_DEFAULTS.background} onChange={handleSetBackground} columns={6} />
+                  </div>
 
-          {/* Reglementen */}
-          <RegulationsSettings />
+                  <Separator />
 
-          {/* Contracttemplates */}
-          <ContractTemplatesSettings />
+                  <div>
+                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 block">Voorbeeld</Label>
+                    <div className="flex rounded-lg overflow-hidden border border-border h-24">
+                      <div
+                        className="w-16 p-2 flex flex-col gap-1.5"
+                        style={{ backgroundColor: `hsl(${settings.sidebar_bg ?? BRANDING_DEFAULTS.sidebar_bg})` }}
+                      >
+                        {[1, 2, 3].map(i => (
+                          <div
+                            key={i}
+                            className="h-2 rounded-sm"
+                            style={{
+                              backgroundColor: i === 1
+                                ? `hsl(${accentColor})`
+                                : `hsl(${settings.sidebar_fg ?? BRANDING_DEFAULTS.sidebar_fg} / 0.3)`,
+                            }}
+                          />
+                        ))}
+                      </div>
+                      <div
+                        className="flex-1 p-3 flex flex-col gap-2"
+                        style={{ backgroundColor: `hsl(${settings.background ?? BRANDING_DEFAULTS.background})` }}
+                      >
+                        <div className="h-2.5 w-20 rounded-sm" style={{ backgroundColor: `hsl(${settings.heading ?? BRANDING_DEFAULTS.heading})` }} />
+                        <div
+                          className="flex-1 rounded-md p-2"
+                          style={{ backgroundColor: `hsl(${settings.card ?? BRANDING_DEFAULTS.card})` }}
+                        >
+                          <div className="h-2 w-16 rounded-sm" style={{ backgroundColor: `hsl(${accentColor})` }} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-          {/* Onboarding formulieren */}
-          <OnboardingFormSettings />
+            <TabsContent value="koppelingen" className="mt-0 space-y-5">
+              <WhatsAppSettings />
+              <OutlookSettings />
+              <ExactOnlineSettings />
+              <VoysSettings />
+              <AiCvProviderSettings />
+            </TabsContent>
 
-          {/* Beëindigingsredenen */}
-          <TerminationReasonsSettings />
+            <TabsContent value="matching" className="mt-0 space-y-5">
+              <SkillCatalogSettings />
+              <MatchFeedbackReasonsSettings />
+              <EngagementSettings />
+            </TabsContent>
 
-          {/* Eigenaren / Verhuurders */}
-          <PropertyOwnersSettings />
+            <TabsContent value="hr" className="mt-0 space-y-5">
+              <ComplianceRulesSettings />
+              <RegulationsSettings />
+              <ContractTemplatesSettings />
+              <OnboardingFormSettings />
+              <TerminationReasonsSettings />
+              <PropertyOwnersSettings />
+            </TabsContent>
 
-          {/* Extra velden */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Extra velden</CardTitle>
-              <CardDescription>Voeg aangepaste velden toe aan kandidaten, opdrachtgevers en meer</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <CustomFieldsSettings />
-            </CardContent>
-          </Card>
+            <TabsContent value="data" className="mt-0 space-y-5">
+              <DataExport />
 
-          {/* Data Import */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <FileSpreadsheet className="h-4 w-4" /> Data importeren
-              </CardTitle>
-              <CardDescription>Importeer kandidaten en opdrachtgevers vanuit Excel of CSV</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button asChild>
-                <Link to="/importeren">Naar import wizard</Link>
-              </Button>
-            </CardContent>
-          </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Extra velden</CardTitle>
+                  <CardDescription>Voeg aangepaste velden toe aan kandidaten, opdrachtgevers en meer</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <CustomFieldsSettings />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <FileSpreadsheet className="h-4 w-4" /> Data importeren
+                  </CardTitle>
+                  <CardDescription>Importeer kandidaten en opdrachtgevers vanuit Excel of CSV</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Button asChild>
+                    <Link to="/importeren">Naar import wizard</Link>
+                  </Button>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
         </div>
 
-        {/* Right column */}
-        <div className="space-y-6">
-          {/* Logo */}
+        <aside className="space-y-5 lg:sticky lg:top-4 lg:self-start">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
@@ -596,7 +594,6 @@ const Settings = () => {
             </CardContent>
           </Card>
 
-          {/* Current user */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
@@ -622,7 +619,7 @@ const Settings = () => {
               </Button>
             </CardContent>
           </Card>
-        </div>
+        </aside>
       </div>
     </div>
   );

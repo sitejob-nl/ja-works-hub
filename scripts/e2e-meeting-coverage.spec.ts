@@ -123,9 +123,16 @@ test.describe("Meeting coverage browser QA — JA Werkt / VDS", () => {
 
   test("Instellingen tonen Outlook, Exact, engagement en juridische templates", async ({ page }) => {
     await page.goto("/instellingen", { waitUntil: "domcontentloaded" });
+    await expectText(page, /Algemeen|Koppelingen|Matching|HR & documenten|Data/i, "instellingen tabs");
+
+    await page.getByRole("tab", { name: /Koppelingen/i }).click();
     await expectText(page, /Exact Online/i, "Exact Online settings");
     await expectText(page, /Microsoft 365|Outlook/i, "Outlook settings");
+
+    await page.getByRole("tab", { name: /Matching/i }).click();
     await expectText(page, /Verjaardagen|punten|rewards/i, "engagement settings");
+
+    await page.getByRole("tab", { name: /HR & documenten/i }).click();
     await expectText(page, /Contracttemplates|Algemene voorwaarden|Voertuigovereenkomst/i, "juridische templates");
     await attachScreenshot(page, "meeting-instellingen");
 
