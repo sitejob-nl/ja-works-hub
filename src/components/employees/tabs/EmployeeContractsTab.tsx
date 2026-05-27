@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { useAuth } from '@/contexts/AuthContext';
+import { usePublicUrl } from '@/hooks/usePublicUrl';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -37,6 +38,7 @@ const resolveEmployeeId = async (candidateId: string) => {
 const EmployeeContractsTab = ({ candidateId, candidate, employment }: { candidateId: string; candidate: any; employment?: any }) => {
   const orgId = useOrganizationId();
   const { user } = useAuth();
+  const { buildUrl } = usePublicUrl();
   const qc = useQueryClient();
   const [creating, setCreating] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState('');
@@ -156,7 +158,7 @@ const EmployeeContractsTab = ({ candidateId, candidate, employment }: { candidat
   });
 
   const copySignLink = (contract: any) => {
-    const url = `${window.location.origin}/contract/sign/${contract.sign_token}`;
+    const url = buildUrl(`/contract/sign/${contract.sign_token}`);
     navigator.clipboard.writeText(url);
     toast.success('Tekenlink gekopieerd naar klembord');
   };

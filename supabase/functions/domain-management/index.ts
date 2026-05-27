@@ -70,11 +70,6 @@ function validateDomainInput(domainInput: string, domainType: DomainType, primar
   };
 }
 
-function vercelQuery(): string {
-  const teamId = Deno.env.get("VERCEL_TEAM_ID");
-  return teamId ? `?teamId=${encodeURIComponent(teamId)}` : "";
-}
-
 function vercelProjectId(): string {
   const projectId = Deno.env.get("VERCEL_PROJECT_ID");
   if (!projectId) throw new Error("VERCEL_PROJECT_ID ontbreekt");

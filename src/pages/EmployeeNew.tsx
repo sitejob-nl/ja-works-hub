@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
+import { usePublicUrl } from '@/hooks/usePublicUrl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -21,6 +22,7 @@ const complianceBadge: Record<string, string> = {
 
 const EmployeeNew = () => {
   const orgId = useOrganizationId();
+  const { buildUrl } = usePublicUrl();
   const qc = useQueryClient();
   const navigate = useNavigate();
 
@@ -84,7 +86,7 @@ const EmployeeNew = () => {
       });
 
       if (result?.token) {
-        const link = `${window.location.origin}/onboarding/${result.token}`;
+        const link = buildUrl(`/onboarding/${result.token}`);
         navigator.clipboard.writeText(link).then(() => {
           toast.success('Medewerker aangemaakt! Onboarding link gekopieerd naar klembord.');
         }).catch(() => {

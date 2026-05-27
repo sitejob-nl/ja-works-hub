@@ -1,5 +1,6 @@
 import { sendViaOutlookAccount } from "../_shared/outlook-send.ts";
 import { createAdminClient, requireInternalProfile } from "../_shared/auth.ts";
+import { buildOrganizationPublicUrl } from "../_shared/public-url.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -202,7 +203,7 @@ Deno.serve(async (req) => {
       .select("name, email, phone, logo_url")
       .eq("id", orgId)
       .maybeSingle();
-    const orgName = org?.name || "JA Werkt";
+    const orgName = org?.name || "je organisatie";
 
     const { data: contacts } = await serviceClient
       .from("company_contacts")
@@ -261,8 +262,7 @@ Deno.serve(async (req) => {
       return json({ error: "Failed to create proposal token" }, 500);
     }
 
-    const siteUrl = Deno.env.get("SITE_URL") || Deno.env.get("SUPABASE_URL")!.replace(".supabase.co", ".netlify.app");
-    const responseUrl = `${siteUrl}/match-response/${token.token}`;
+    const responseUrl = await buildOrganizationPublicUrl(serviceClient, orgId, `/match-response/${token.token}`);
     const html = buildProposalEmailHtml({ ...emailData, responseUrl });
 
     const outlookResult = await sendViaOutlookAccount({

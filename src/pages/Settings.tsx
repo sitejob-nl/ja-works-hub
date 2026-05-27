@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
-import { Brain, BriefcaseBusiness, Database, FileText, Link2, Settings as SettingsIcon, Upload, Palette, Building2, User, LogOut, Trash2, FileSpreadsheet, RotateCcw } from 'lucide-react';
+import { Brain, BriefcaseBusiness, Database, FileText, Globe2, Link2, Settings as SettingsIcon, Upload, Palette, Building2, User, LogOut, Trash2, FileSpreadsheet, RotateCcw } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import WhatsAppSettings from '@/components/settings/WhatsAppSettings';
 import ExactOnlineSettings from '@/components/settings/ExactOnlineSettings';
@@ -28,6 +28,7 @@ import AiCvProviderSettings from '@/components/settings/AiCvProviderSettings';
 import EngagementSettings from '@/components/settings/EngagementSettings';
 import SkillCatalogSettings from '@/components/settings/SkillCatalogSettings';
 import MatchFeedbackReasonsSettings from '@/components/settings/MatchFeedbackReasonsSettings';
+import DomainSettings from '@/components/settings/DomainSettings';
 import { applyBranding, BRANDING_DEFAULTS, type BrandingSettings } from '@/lib/branding';
 import AddressAutocomplete from '@/components/shared/AddressAutocomplete';
 import { resolveAddressCoordinates } from '@/lib/pdok';
@@ -360,6 +361,9 @@ const Settings = () => {
                 <TabsTrigger value="koppelingen" className="gap-2 px-3 py-2">
                   <Link2 className="h-4 w-4" /> Koppelingen
                 </TabsTrigger>
+                <TabsTrigger value="domeinen" className="gap-2 px-3 py-2">
+                  <Globe2 className="h-4 w-4" /> Domeinen
+                </TabsTrigger>
                 <TabsTrigger value="matching" className="gap-2 px-3 py-2">
                   <BriefcaseBusiness className="h-4 w-4" /> Matching
                 </TabsTrigger>
@@ -511,6 +515,10 @@ const Settings = () => {
               <ExactOnlineSettings />
               <VoysSettings />
               <AiCvProviderSettings />
+            </TabsContent>
+
+            <TabsContent value="domeinen" className="mt-0 space-y-5">
+              <DomainSettings />
             </TabsContent>
 
             <TabsContent value="matching" className="mt-0 space-y-5">

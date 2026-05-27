@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
+import { usePublicUrl } from '@/hooks/usePublicUrl';
 import { useOutlookAccounts, useOutlookInvoke } from '@/hooks/useOutlookAccounts';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
@@ -33,6 +34,7 @@ function replaceVars(text: string, vars: Record<string, string>): string {
 const PortalActivateSheet = ({ open, onOpenChange, candidateId: candidateIdProp, employeeId, candidateEmail }: Props) => {
   const candidateId = candidateIdProp ?? employeeId!;
   const orgId = useOrganizationId();
+  const { buildUrl } = usePublicUrl();
   const callOutlook = useOutlookInvoke();
   const { hasUsableAccounts } = useOutlookAccounts('mail_send');
   const isConnected = hasUsableAccounts;
@@ -143,7 +145,7 @@ const PortalActivateSheet = ({ open, onOpenChange, candidateId: candidateIdProp,
         .single();
       if (inviteError) throw inviteError;
 
-      const link = `${window.location.origin}/portaal/activeren/${invite.token}`;
+      const link = buildUrl(`/portaal/activeren/${invite.token}`);
 
       // 3. Send email via Outlook if connected
       if (isConnected) {
@@ -205,7 +207,7 @@ const PortalActivateSheet = ({ open, onOpenChange, candidateId: candidateIdProp,
         .single();
       if (error) throw error;
 
-      const link = `${window.location.origin}/portaal/activeren/${invite.token}`;
+      const link = buildUrl(`/portaal/activeren/${invite.token}`);
 
       // Send via Outlook
       if (isConnected) {

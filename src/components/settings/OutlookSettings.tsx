@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/contexts/AuthContext';
+import { usePublicUrl } from '@/hooks/usePublicUrl';
 import { invokeOutlookFunction, useOutlookAccounts, type OutlookAccount } from '@/hooks/useOutlookAccounts';
 import EmailSignatureEditor from '@/components/email/EmailSignatureEditor';
 import { AlertTriangle, Building2, CalendarCheck, CheckCircle2, Loader2, Mail, PenLine, Plus, RotateCcw, ShieldCheck, Trash2, User } from 'lucide-react';
@@ -77,6 +78,7 @@ function escapeHtml(value: string) {
 
 const OutlookSettings = () => {
   const { profile } = useAuth();
+  const { buildUrl } = usePublicUrl();
   const isAdmin = profile?.role === 'admin';
   const orgId = profile?.organization_id;
   const queryClient = useQueryClient();
@@ -129,7 +131,7 @@ const OutlookSettings = () => {
     }) => {
       const key = adminConsent ? 'organization:admin-consent' : targetUserId ? `${scope}:${targetUserId}` : scope;
       setConnectingKey(key);
-      const returnTo = `${window.location.origin}${window.location.pathname}`;
+      const returnTo = buildUrl('/instellingen');
       return invokeOutlookFunction<{ authorization_url: string }>('outlook-start', {
         scope,
         target_user_id: targetUserId,

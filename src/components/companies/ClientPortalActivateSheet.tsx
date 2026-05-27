@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
+import { usePublicUrl } from '@/hooks/usePublicUrl';
+import { useAuth } from '@/contexts/AuthContext';
 import { useOutlookAccounts, useOutlookInvoke } from '@/hooks/useOutlookAccounts';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
@@ -21,6 +23,8 @@ interface Props {
 
 const ClientPortalActivateSheet = ({ open, onOpenChange, contactId, companyId, contactEmail, contactName }: Props) => {
   const orgId = useOrganizationId();
+  const { buildUrl } = usePublicUrl();
+  const { profile } = useAuth();
   const callOutlook = useOutlookInvoke();
   const { hasUsableAccounts } = useOutlookAccounts('mail_send');
   const isConnected = hasUsableAccounts;
@@ -43,7 +47,7 @@ const ClientPortalActivateSheet = ({ open, onOpenChange, contactId, companyId, c
         .single();
       if (error) throw error;
 
-      const link = `${window.location.origin}/klantportaal/activeren/${invite.token}`;
+      const link = buildUrl(`/klantportaal/activeren/${invite.token}`);
       setInviteLink(link);
       return link;
     },
@@ -71,7 +75,7 @@ const ClientPortalActivateSheet = ({ open, onOpenChange, contactId, companyId, c
         <p>U bent uitgenodigd voor het opdrachtgeverportaal. Via dit portaal kunt u ingediende uren goedkeuren en uw plaatsingen inzien.</p>
         <p><a href="${inviteLink}" style="display:inline-block;padding:10px 20px;background:#2563eb;color:#fff;border-radius:6px;text-decoration:none;">Account activeren</a></p>
         <p>Deze link is 7 dagen geldig.</p>
-        <p>Met vriendelijke groet,<br/>JA Werkt</p>
+        <p>Met vriendelijke groet,<br/>${profile?.full_name || 'Het team'}</p>
       `;
       await callOutlook('outlook-send-mail', {
         to: [email],

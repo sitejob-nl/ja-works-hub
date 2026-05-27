@@ -1,5 +1,6 @@
 import { createAdminClient } from "../_shared/auth.ts";
 import { OUTLOOK_SCOPES, isConsentError, consentRequiredMessage, storeTokenSecret } from "../_shared/outlook-accounts.ts";
+import { buildOrganizationPublicUrl } from "../_shared/public-url.ts";
 
 const TOKEN_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/token";
 const GRAPH_ME_URL = "https://graph.microsoft.com/v1.0/me?$select=id,displayName,mail,userPrincipalName";
@@ -74,6 +75,10 @@ function statusRedirect(returnTo: string, params: Record<string, string>) {
   return new Response(null, { status: 303, headers: { Location: url.toString(), "Cache-Control": "no-store" } });
 }
 
+async function fallbackReturnTo(admin: ReturnType<typeof createAdminClient>, organizationId: string) {
+  return await buildOrganizationPublicUrl(admin, organizationId, "/instellingen");
+}
+
 Deno.serve(async (req) => {
   const url = new URL(req.url);
   const code = url.searchParams.get("code");
@@ -138,7 +143,7 @@ Deno.serve(async (req) => {
       },
     } as any).then(() => {});
 
-    return statusRedirect(state.return_to || `${Deno.env.get("FRONTEND_URL") || "https://ja-werkt.lovable.app"}/instellingen`, {
+    return statusRedirect(state.return_to || await fallbackReturnTo(admin, state.organization_id), {
       outlook_admin_consent: "1",
       outlook_scope: state.scope,
     });
@@ -308,5 +313,5 @@ Deno.serve(async (req) => {
     },
   } as any).then(() => {});
 
-  return connectedRedirect(state.return_to || `${Deno.env.get("FRONTEND_URL") || "https://ja-werkt.lovable.app"}/instellingen`, state.scope);
+  return connectedRedirect(state.return_to || await fallbackReturnTo(admin, state.organization_id), state.scope);
 });

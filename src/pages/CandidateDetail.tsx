@@ -37,6 +37,7 @@ import EmployeePortalTab from '@/components/employees/tabs/EmployeePortalTab';
 import { useModuleEnabled } from '@/hooks/useModuleEnabled';
 import { useTrackPageVisit } from '@/hooks/useTrackPageVisit';
 import { useTabSearchParam } from '@/hooks/useTabSearchParam';
+import { usePublicUrl } from '@/hooks/usePublicUrl';
 import type { Database } from '@/integrations/supabase/types';
 
 type CandidateStatus = Database['public']['Enums']['candidate_status'];
@@ -71,6 +72,7 @@ const CandidateDetail = () => {
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [activeTab, setActiveTab] = useTabSearchParam('profiel');
+  const { buildUrl } = usePublicUrl();
   const aiEnabled = useModuleEnabled('ai-analyse');
 
   const { data: candidate, isLoading } = useQuery({
@@ -137,7 +139,7 @@ const CandidateDetail = () => {
     }
   };
 
-  const profileUrl = activeToken?.token ? `${window.location.origin}/profiel/${activeToken.token}` : '';
+  const profileUrl = activeToken?.token ? buildUrl(`/profiel/${activeToken.token}`) : '';
   const isTokenActive = activeToken && !activeToken.used_at && new Date(activeToken.expires_at) > new Date();
 
   const handleCopy = () => {

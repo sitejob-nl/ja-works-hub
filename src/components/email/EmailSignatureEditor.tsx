@@ -27,8 +27,8 @@ const SIGNATURE_VARIABLES = [
 
 const PREVIEW_VALUES: Record<string, string> = {
   '{{afzender_naam}}': 'Sanne Janssen',
-  '{{afzender_email}}': 'sanne@jawerkt.nl',
-  '{{mailbox_email}}': 'planning@jawerkt.nl',
+  '{{afzender_email}}': 'sanne@example.com',
+  '{{mailbox_email}}': 'planning@example.com',
   '{{organisatie_naam}}': 'JA Werkt',
 };
 

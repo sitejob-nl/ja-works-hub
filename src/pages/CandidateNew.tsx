@@ -1,22 +1,31 @@
 import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { useAuth } from '@/contexts/AuthContext';
+import { usePublicUrl } from '@/hooks/usePublicUrl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Badge } from '@/components/ui/badge';
 import TagInput from '@/components/ui/tag-input';
-import { ChevronRight, Copy, MessageCircle, Mail, Check, AlertTriangle } from 'lucide-react';
+import { ChevronRight, Copy, MessageCircle, Mail, Check, AlertTriangle, ChevronsUpDown, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { logAudit } from '@/lib/audit';
 import { useDeduplication } from '@/hooks/useDeduplication';
 import AddressAutocomplete from '@/components/shared/AddressAutocomplete';
 import { resolveAddressCoordinates } from '@/lib/pdok';
+
+type SkillOption = {
+  id: string;
+  name: string;
+};
 
 const sources = [
   { value: 'website', label: 'Website' },
@@ -29,6 +38,7 @@ const sources = [
 
 const CandidateNew = () => {
   const orgId = useOrganizationId();
+  const { buildUrl } = usePublicUrl();
   const { profile } = useAuth();
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -37,6 +47,7 @@ const CandidateNew = () => {
   const [createdCandidate, setCreatedCandidate] = useState<{ id: string; first_name: string; phone: string | null; email: string | null } | null>(null);
   const [profileToken, setProfileToken] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [skillsOpen, setSkillsOpen] = useState(false);
 
   const [form, setForm] = useState({
     first_name: '', last_name: '', date_of_birth: '', nationality: '',
@@ -47,6 +58,21 @@ const CandidateNew = () => {
   });
 
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
+
+  const { data: skillOptions = [] } = useQuery({
+    queryKey: ['candidate-skill-options', orgId],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('skills')
+        .select('id, name')
+        .eq('organization_id', orgId)
+        .eq('is_active', true)
+        .order('name');
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!orgId,
+  });
 
   const { data: duplicates = [] } = useDeduplication({
     email: form.email,
@@ -106,7 +132,7 @@ const CandidateNew = () => {
     onError: (e: any) => toast.error(e.message),
   });
 
-  const profileUrl = profileToken ? `${window.location.origin}/profiel/${profileToken}` : '';
+  const profileUrl = profileToken ? buildUrl(`/profiel/${profileToken}`) : '';
   const orgName = profile?.full_name ? profile.full_name.split(' ')[0] : 'ons';
   const whatsAppText = `Hoi ${createdCandidate?.first_name}, je bent aangemeld. Vul je profiel aan via deze link: ${profileUrl}`;
 
@@ -126,6 +152,19 @@ const CandidateNew = () => {
     const subject = encodeURIComponent('Vul je profiel aan');
     const body = encodeURIComponent(`Hoi ${createdCandidate?.first_name},\n\nJe bent aangemeld. Vul je profiel aan via deze link:\n${profileUrl}\n\nMet vriendelijke groet`);
     window.open(`mailto:${createdCandidate?.email ?? ''}?subject=${subject}&body=${body}`);
+  };
+
+  const toggleSkill = (skillName: string) => {
+    setForm((current) => ({
+      ...current,
+      skills: current.skills.includes(skillName)
+        ? current.skills.filter((skill) => skill !== skillName)
+        : [...current.skills, skillName],
+    }));
+  };
+
+  const removeSkill = (skillName: string) => {
+    set('skills', form.skills.filter((skill) => skill !== skillName));
   };
 
   if (step === 'link' && createdCandidate) {
@@ -225,7 +264,50 @@ const CandidateNew = () => {
               <div className="max-w-xs space-y-1.5"><Label>Verloopdatum rijbewijs</Label><Input type="date" value={form.drivers_license_expiry} onChange={(e) => set('drivers_license_expiry', e.target.value)} /></div>
             )}
           </div>
-          <div className="space-y-1.5"><Label>Vaardigheden</Label><TagInput value={form.skills} onChange={(v) => set('skills', v)} placeholder="Typ vaardigheid + Enter" /></div>
+          <div className="space-y-1.5">
+            <Label>Vaardigheden</Label>
+            <Popover open={skillsOpen} onOpenChange={setSkillsOpen}>
+              <PopoverTrigger asChild>
+                <Button type="button" variant="outline" role="combobox" className="w-full justify-between font-normal">
+                  <span className={form.skills.length > 0 ? 'text-foreground' : 'text-muted-foreground'}>
+                    {form.skills.length > 0 ? `${form.skills.length} vaardigheid${form.skills.length === 1 ? '' : 'en'} geselecteerd` : 'Kies vaardigheden'}
+                  </span>
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                <Command>
+                  <CommandInput placeholder="Zoek vaardigheid..." />
+                  <CommandList>
+                    <CommandEmpty>Geen vaardigheden gevonden.</CommandEmpty>
+                    <CommandGroup>
+                      {skillOptions.map((skill: SkillOption) => {
+                        const selected = form.skills.includes(skill.name);
+                        return (
+                          <CommandItem key={skill.id} value={skill.name} onSelect={() => toggleSkill(skill.name)}>
+                            <Check className={`mr-2 h-4 w-4 ${selected ? 'opacity-100' : 'opacity-0'}`} />
+                            {skill.name}
+                          </CommandItem>
+                        );
+                      })}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+            {form.skills.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {form.skills.map((skill) => (
+                  <Badge key={skill} variant="secondary" className="gap-1 text-xs">
+                    {skill}
+                    <button type="button" className="rounded-sm hover:text-destructive" onClick={() => removeSkill(skill)} aria-label={`${skill} verwijderen`}>
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </div>
           <div className="space-y-1.5"><Label>Talen</Label><TagInput value={form.languages} onChange={(v) => set('languages', v)} placeholder="Typ taal + Enter" /></div>
           <div className="space-y-1.5">
             <Label>Bron</Label>

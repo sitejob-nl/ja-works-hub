@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
+import { usePublicUrl } from '@/hooks/usePublicUrl';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -26,6 +27,7 @@ interface Props {
 
 const HireEmployeeSheet = ({ open, onOpenChange }: Props) => {
   const orgId = useOrganizationId();
+  const { buildUrl } = usePublicUrl();
   const qc = useQueryClient();
   const [step, setStep] = useState<1 | 2>(1);
   const [candidateSearch, setCandidateSearch] = useState('');
@@ -96,7 +98,7 @@ const HireEmployeeSheet = ({ open, onOpenChange }: Props) => {
       });
 
       if (result?.token) {
-        const link = `${window.location.origin}/onboarding/${result.token}`;
+        const link = buildUrl(`/onboarding/${result.token}`);
         navigator.clipboard.writeText(link).then(() => {
           toast.success('Medewerker aangemaakt! Onboarding link gekopieerd naar klembord.');
         }).catch(() => {

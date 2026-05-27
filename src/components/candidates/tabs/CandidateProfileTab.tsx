@@ -8,6 +8,7 @@ import { formatDate } from '@/lib/format';
 import { Copy, Check, MessageCircle, Mail, Link2, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { useDecryptedCandidate } from '@/hooks/useDecryptedCandidate';
+import { usePublicUrl } from '@/hooks/usePublicUrl';
 import SensitiveField from '@/components/ui/sensitive-field';
 import CustomFieldsSection from '@/components/shared/CustomFieldsSection';
 
@@ -21,6 +22,7 @@ const Field = ({ label, value }: { label: string; value: string | null | undefin
 const CandidateProfileTab = ({ candidate }: { candidate: any }) => {
   const qc = useQueryClient();
   const [copied, setCopied] = useState(false);
+  const { buildUrl } = usePublicUrl();
   const { data: sensitive, isLoading: sensitiveLoading } = useDecryptedCandidate(candidate.id);
   const address = [candidate.address_street, candidate.address_postal, candidate.address_city].filter(Boolean).join(', ') || null;
 
@@ -59,7 +61,7 @@ const CandidateProfileTab = ({ candidate }: { candidate: any }) => {
     onError: (e: any) => toast.error(e.message),
   });
 
-  const profileUrl = activeToken ? `${window.location.origin}/profiel/${activeToken.token}` : '';
+  const profileUrl = activeToken ? buildUrl(`/profiel/${activeToken.token}`) : '';
 
   const handleCopy = () => {
     navigator.clipboard.writeText(profileUrl);

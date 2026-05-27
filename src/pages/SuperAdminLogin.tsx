@@ -64,7 +64,7 @@ const SuperAdminLogin = () => {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="admin@jawerkt.nl"
+              placeholder="admin@example.com"
               required
               autoComplete="email"
               className="bg-zinc-900 border-zinc-700 text-white placeholder:text-zinc-500"

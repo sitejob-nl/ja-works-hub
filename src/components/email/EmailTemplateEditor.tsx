@@ -69,8 +69,8 @@ const DUMMY_DATA: Record<string, string> = {
   '{{stad}}': 'Helmond',
   '{{organisatie_naam}}': 'JA Werkt',
   '{{datum_vandaag}}': new Date().toLocaleDateString('nl-NL'),
-  '{{portaal_link}}': 'https://app.jawerkt.nl/portaal/activeren/abc123',
-  '{{activatie_link}}': 'https://app.jawerkt.nl/portaal/activeren/abc123',
+  '{{portaal_link}}': 'https://app.example.com/portaal/activeren/abc123',
+  '{{activatie_link}}': 'https://app.example.com/portaal/activeren/abc123',
 };
 
 function replaceVariables(html: string): string {

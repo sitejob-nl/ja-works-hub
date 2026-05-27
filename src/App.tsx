@@ -7,6 +7,7 @@ import { RecentItemsProvider } from "@/contexts/RecentItemsContext";
 import { SuperAdminProvider } from "@/contexts/SuperAdminContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import TenantHostGuard from "@/components/TenantHostGuard";
 import AppLayout from "@/components/layout/AppLayout";
 import SuperAdminLayout from "@/components/layout/SuperAdminLayout";
 import Login from "@/pages/Login";
@@ -136,7 +137,9 @@ const App = () => (
               <AuthProvider>
                 <ProtectedRoute>
                   <RecentItemsProvider>
-                    <AppLayout />
+                    <TenantHostGuard>
+                      <AppLayout />
+                    </TenantHostGuard>
                   </RecentItemsProvider>
                 </ProtectedRoute>
               </AuthProvider>

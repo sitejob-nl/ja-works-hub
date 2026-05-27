@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendViaOutlookAccount } from "../_shared/outlook-send.ts";
+import { buildOrganizationPublicUrl } from "../_shared/public-url.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -111,14 +112,12 @@ Deno.serve(async (req) => {
     const cand: any = invite.candidate;
     const org: any = invite.organization;
     const firstName = cand?.first_name ?? "medewerker";
-    const orgName = org?.name ?? "JA Werkt";
-
-    // Build activation URL — settings.portal_url override, else fallback to SITE_URL env
-    const portalBase =
-      (org?.settings && typeof org.settings === "object" && (org.settings as any).portal_url) ??
-      Deno.env.get("SITE_URL") ??
-      "https://app.jawerkt.nl";
-    const activationUrl = `${portalBase.replace(/\/$/, "")}/portaal/activeren/${invite.token}`;
+    const orgName = org?.name ?? "je organisatie";
+    const activationUrl = await buildOrganizationPublicUrl(
+      service,
+      invite.organization_id,
+      `/portaal/activeren/${invite.token}`,
+    );
 
     const subject = `Welkom — activeer je medewerkersportaal`;
     const html = buildInviteEmailHtml({ firstName, orgName, activationUrl });

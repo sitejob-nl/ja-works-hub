@@ -1,5 +1,6 @@
 import { createAdminClient, requireInternalProfile } from "../_shared/auth.ts";
 import { OUTLOOK_ADMIN_CONSENT_SCOPES, OUTLOOK_SCOPES, json } from "../_shared/outlook-accounts.ts";
+import { getOrganizationPublicBaseUrl } from "../_shared/public-url.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -38,8 +39,8 @@ function redirectUri() {
   return `${Deno.env.get("SUPABASE_URL")}/functions/v1/outlook-callback`;
 }
 
-function safeReturnTo(input: unknown) {
-  const fallback = Deno.env.get("FRONTEND_URL") || Deno.env.get("SITE_URL") || "https://ja-werkt.lovable.app";
+async function safeReturnTo(admin: ReturnType<typeof createAdminClient>, organizationId: string, input: unknown) {
+  const fallback = await getOrganizationPublicBaseUrl(admin, organizationId);
   if (!input) return `${fallback}/instellingen`;
   try {
     const url = new URL(String(input));
@@ -61,6 +62,7 @@ Deno.serve(async (req) => {
   const stateSecret = Deno.env.get("OUTLOOK_OAUTH_STATE_SECRET") || Deno.env.get("MICROSOFT_CLIENT_SECRET");
   if (!clientId || !stateSecret) return json({ error: "outlook_secrets_missing" }, 500, corsHeaders);
 
+  const admin = createAdminClient();
   const body = await req.json().catch(() => ({}));
   const scope = body.scope === "personal" ? "personal" : "organization";
   if (scope === "organization" && auth.role !== "admin") return json({ error: "Alleen admins kunnen bedrijfsmail koppelen" }, 403, corsHeaders);
@@ -69,7 +71,6 @@ Deno.serve(async (req) => {
   let targetUserId = auth.userId;
   if (scope === "personal" && body.target_user_id && body.target_user_id !== auth.userId) {
     if (auth.role !== "admin") return json({ error: "Alleen admins kunnen voor een andere medewerker koppelen" }, 403, corsHeaders);
-    const admin = createAdminClient();
     const { data: targetProfile, error: targetError } = await admin
       .from("profiles")
       .select("id")
@@ -89,13 +90,12 @@ Deno.serve(async (req) => {
     target_user_id: targetUserId,
     scope,
     consent_flow: consentFlow,
-    return_to: safeReturnTo(body.return_to),
+    return_to: await safeReturnTo(admin, auth.organizationId, body.return_to),
     nonce,
     iat: Math.floor(Date.now() / 1000),
   };
   const state = await signedState(payload, stateSecret);
 
-  const admin = createAdminClient();
   const { error } = await admin.from("outlook_oauth_states").insert({
     organization_id: auth.organizationId,
     user_id: auth.userId,
