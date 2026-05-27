@@ -10,6 +10,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import TagInput from '@/components/ui/tag-input';
+import SkillMultiSelect from '@/components/shared/SkillMultiSelect';
 import { ChevronRight, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -323,7 +324,10 @@ const VacancyEdit = () => {
               <Input type="number" step="0.01" value={form.hourly_rate} onChange={(e) => set('hourly_rate', e.target.value)} placeholder="optioneel" />
             </div>
           </div>
-          <div className="space-y-1.5"><Label>Vereiste vaardigheden</Label><TagInput value={form.required_skills} onChange={(v) => set('required_skills', v)} placeholder="Typ vaardigheid + Enter" /></div>
+          <div className="space-y-1.5">
+            <Label>Vereiste vaardigheden</Label>
+            <SkillMultiSelect value={form.required_skills} onChange={(v) => set('required_skills', v)} />
+          </div>
           <div className="space-y-1.5"><Label>Vereiste certificaten</Label><TagInput value={form.required_certifications} onChange={(v) => set('required_certifications', v)} placeholder="Typ certificaat + Enter" /></div>
           <div className="flex items-center gap-2">
             <Checkbox checked={form.requires_drivers_license} onCheckedChange={(v) => set('requires_drivers_license', !!v)} id="dl" />

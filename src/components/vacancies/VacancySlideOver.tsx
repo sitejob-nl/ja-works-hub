@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import TagInput from '@/components/ui/tag-input';
+import SkillMultiSelect from '@/components/shared/SkillMultiSelect';
 import { toast } from 'sonner';
 
 interface Props {
@@ -150,7 +151,10 @@ const VacancySlideOver = ({ open, onOpenChange, vacancy }: Props) => {
             <div><Label>Einddatum</Label><Input type="date" value={form.end_date} onChange={(e) => set('end_date', e.target.value)} /></div>
           </div>
           <div><Label>Uurtarief (€)</Label><Input type="number" step="0.01" value={form.hourly_rate} onChange={(e) => set('hourly_rate', e.target.value)} /></div>
-          <div><Label>Vereiste vaardigheden</Label><TagInput value={form.required_skills} onChange={(v) => set('required_skills', v)} placeholder="Typ vaardigheid + Enter" /></div>
+          <div>
+            <Label>Vereiste vaardigheden</Label>
+            <SkillMultiSelect value={form.required_skills} onChange={(v) => set('required_skills', v)} />
+          </div>
           <div><Label>Vereiste certificaten</Label><TagInput value={form.required_certifications} onChange={(v) => set('required_certifications', v)} placeholder="Typ certificaat + Enter" /></div>
           <div className="flex items-center gap-2">
             <Checkbox checked={form.requires_drivers_license} onCheckedChange={(v) => set('requires_drivers_license', !!v)} id="dl" />
