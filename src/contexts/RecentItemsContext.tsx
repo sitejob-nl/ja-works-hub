@@ -29,7 +29,7 @@ function getStorageKey(orgId: string) {
 
 function loadItems(orgId: string): RecentItem[] {
   try {
-    const raw = localStorage.getItem(getStorageKey(orgId));
+    const raw = sessionStorage.getItem(getStorageKey(orgId));
     return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
@@ -38,7 +38,7 @@ function loadItems(orgId: string): RecentItem[] {
 
 function saveItems(orgId: string, items: RecentItem[]) {
   try {
-    localStorage.setItem(getStorageKey(orgId), JSON.stringify(items));
+    sessionStorage.setItem(getStorageKey(orgId), JSON.stringify(items));
   } catch {
     // quota exceeded — in-memory state still works
   }

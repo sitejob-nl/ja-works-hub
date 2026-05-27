@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import type { Tables } from '@/integrations/supabase/types';
+import { useSessionIdleTimeout } from '@/hooks/useSessionIdleTimeout';
+import { signOutAndRedirect } from '@/lib/session-security';
 
 type Profile = Tables<'profiles'>;
 
@@ -102,12 +104,13 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, []);
 
   const signOut = async () => {
-    await supabase.auth.signOut();
     setProfile(null);
     setEmployee(null);
     setCandidate(null);
-    navigate('/portaal/login', { replace: true });
+    await signOutAndRedirect('/portaal/login');
   };
+
+  useSessionIdleTimeout(!!session, signOut);
 
   if (loading) {
     return (

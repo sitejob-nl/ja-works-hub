@@ -2,6 +2,8 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import type { Database, Tables } from '@/integrations/supabase/types';
+import { useSessionIdleTimeout } from '@/hooks/useSessionIdleTimeout';
+import { signOutAndRedirect } from '@/lib/session-security';
 
 type Profile = Tables<'profiles'>;
 
@@ -90,9 +92,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const signOut = async () => {
-    await supabase.auth.signOut();
     setProfile(null);
+    await signOutAndRedirect('/login');
   };
+
+  useSessionIdleTimeout(!!session, signOut);
 
   return (
     <AuthContext.Provider value={{ session, user, profile, role: (profile?.role as UserRole) ?? null, loading, signOut }}>

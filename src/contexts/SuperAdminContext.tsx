@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
+import { useSessionIdleTimeout } from '@/hooks/useSessionIdleTimeout';
+import { signOutAndRedirect } from '@/lib/session-security';
 
 interface SuperAdminContextType {
   session: Session | null;
@@ -68,9 +70,11 @@ export const SuperAdminProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, []);
 
   const signOut = async () => {
-    await supabase.auth.signOut();
     setIsSuperAdmin(false);
+    await signOutAndRedirect('/superadmin/login');
   };
+
+  useSessionIdleTimeout(!!session, signOut);
 
   return (
     <SuperAdminContext.Provider value={{ session, user, isSuperAdmin, loading, signOut }}>
