@@ -29,7 +29,12 @@ import { logAudit } from '@/lib/audit';
 const WEEKS_PER_MONTH = 4.33;
 
 const ACTIVE_HOUSING_STATUSES = ['ingecheckt', 'gereserveerd'] as const;
-const HOUSING_CANDIDATE_STATUSES = ['actief', 'onboarding', 'ziek'] as const;
+const EXCLUDED_CANDIDATE_STATUSES = ['inactief', 'afgewezen', 'uitgeschreven', 'niet_beschikbaar'] as const;
+
+const isAssignableHousingCandidate = (candidate: any) => {
+  if (candidate.employee_status === 'uit_dienst') return false;
+  return !EXCLUDED_CANDIDATE_STATUSES.includes(candidate.status);
+};
 
 const resolveEmployeeId = async (candidate: any, organizationId: string, startDate: string) => {
   const { data: existing, error: existingError } = await supabase
@@ -101,12 +106,11 @@ const ResidentsTab = ({ property }: { property: any }) => {
       const occupiedIds = (activeAssigns ?? []).map((a: any) => a.candidate_id).filter(Boolean);
 
       let query = supabase.from('candidates')
-        .select('id, first_name, last_name, employee_number, employee_status')
+        .select('id, first_name, last_name, employee_number, employee_status, status, email, phone')
         .eq('organization_id', orgId!)
-        .in('employee_status', HOUSING_CANDIDATE_STATUSES as any)
         .order('first_name')
         .order('last_name')
-        .limit(20);
+        .limit(50);
 
       const search = empSearch.trim();
       if (search) {
@@ -116,7 +120,7 @@ const ResidentsTab = ({ property }: { property: any }) => {
 
       const { data, error } = await query;
       if (error) throw error;
-      return (data ?? []).filter((e: any) => !occupiedIds.includes(e.id));
+      return (data ?? []).filter((e: any) => !occupiedIds.includes(e.id) && isAssignableHousingCandidate(e));
     },
     enabled: assigning && step === 1 && !!orgId,
   });
