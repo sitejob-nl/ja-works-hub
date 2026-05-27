@@ -27,9 +27,7 @@ export function normalizeDomainInput(value: string, type: DomainType): string {
 }
 
 export function apexFromDomain(domain: string): string {
-  const clean = normalizeHost(domain).replace(/^\*\./, '');
-  const parts = clean.split('.').filter(Boolean);
-  return parts.length >= 2 ? parts.slice(-2).join('.') : clean;
+  return normalizeHost(domain).replace(/^\*\./, '');
 }
 
 export function defaultPrimaryHostname(domain: string, type: DomainType): string {

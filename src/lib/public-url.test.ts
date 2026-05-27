@@ -17,7 +17,7 @@ describe('public-url helpers', () => {
   });
 
   it('derives apex and default primary hostname', () => {
-    expect(apexFromDomain('*.customer.example.com')).toBe('example.com');
+    expect(apexFromDomain('*.customer.example.com')).toBe('customer.example.com');
     expect(defaultPrimaryHostname('*.example.com', 'wildcard')).toBe('app.example.com');
     expect(defaultPrimaryHostname('portal.example.com', 'exact')).toBe('portal.example.com');
   });

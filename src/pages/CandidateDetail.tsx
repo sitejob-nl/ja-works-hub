@@ -38,6 +38,7 @@ import { useModuleEnabled } from '@/hooks/useModuleEnabled';
 import { useTrackPageVisit } from '@/hooks/useTrackPageVisit';
 import { useTabSearchParam } from '@/hooks/useTabSearchParam';
 import { usePublicUrl } from '@/hooks/usePublicUrl';
+import { useOutlookAccounts, useOutlookInvoke } from '@/hooks/useOutlookAccounts';
 import type { Database } from '@/integrations/supabase/types';
 
 type CandidateStatus = Database['public']['Enums']['candidate_status'];
@@ -73,6 +74,8 @@ const CandidateDetail = () => {
   const [copied, setCopied] = useState(false);
   const [activeTab, setActiveTab] = useTabSearchParam('profiel');
   const { buildUrl } = usePublicUrl();
+  const callOutlook = useOutlookInvoke();
+  const { hasUsableAccounts } = useOutlookAccounts('mail_send');
   const aiEnabled = useModuleEnabled('ai-analyse');
 
   const { data: candidate, isLoading } = useQuery({
@@ -156,10 +159,39 @@ const CandidateDetail = () => {
   };
 
   const handleEmail = () => {
-    const subject = encodeURIComponent('Vul je profiel aan');
-    const body = encodeURIComponent(`Hoi ${candidate?.first_name},\n\nVul je profiel aan via deze link:\n${profileUrl}\n\nMet vriendelijke groet`);
-    window.open(`mailto:${candidate?.email ?? ''}?subject=${subject}&body=${body}`);
+    if (!candidate?.email) return;
+    if (!hasUsableAccounts) {
+      toast.error('Geen verbonden e-mailaccount gevonden. Koppel eerst Outlook via Instellingen.');
+      return;
+    }
+    sendProfileLinkMutation.mutate();
   };
+
+  const sendProfileLinkMutation = useMutation({
+    mutationFn: async () => {
+      if (!candidate?.email) throw new Error('Geen e-mailadres bekend');
+      const html = `
+        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:600px;margin:0 auto;color:#334155;">
+          <p>Hoi ${candidate.first_name},</p>
+          <p>Vul je profiel aan via onderstaande link:</p>
+          <p>
+            <a href="${profileUrl}" style="display:inline-block;background:#1e293b;color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:6px;font-weight:600;">
+              Profiel aanvullen
+            </a>
+          </p>
+          <p style="color:#64748b;font-size:13px;">Lukt de knop niet? Gebruik dan deze link:<br>${profileUrl}</p>
+        </div>
+      `;
+      return callOutlook('outlook-send-mail', {
+        to: [candidate.email],
+        subject: 'Vul je profiel aan',
+        html,
+        candidate_id: candidate.id,
+      });
+    },
+    onSuccess: () => toast.success('Uitnodiging verstuurd via het verbonden e-mailaccount'),
+    onError: (error: Error) => toast.error(`E-mail versturen mislukt: ${error.message}`),
+  });
 
   const isEmployee = candidate?.employee_status != null;
   const employments = ((candidate as any)?.candidate_employment ?? [])
@@ -240,8 +272,8 @@ const CandidateDetail = () => {
                 </Button>
               )}
               {candidate.email && (
-                <Button variant="outline" onClick={handleEmail} className="gap-2">
-                  <Mail className="h-4 w-4" /> E-mail
+                <Button variant="outline" onClick={handleEmail} disabled={sendProfileLinkMutation.isPending} className="gap-2">
+                  <Mail className="h-4 w-4" /> {sendProfileLinkMutation.isPending ? 'Versturen...' : 'E-mail'}
                 </Button>
               )}
             </div>
