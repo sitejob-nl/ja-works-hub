@@ -1572,6 +1572,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "communications_placement_id_fkey"
+            columns: ["placement_id"]
+            isOneToOne: false
+            referencedRelation: "v_active_placements"
+            referencedColumns: ["placement_id"]
+          },
+          {
             foreignKeyName: "communications_sent_by_fkey"
             columns: ["sent_by"]
             isOneToOne: false
@@ -1615,6 +1622,7 @@ export type Database = {
           organization_id: string
           phone: string | null
           sbi_codes: string[] | null
+          timesheet_entry_flow: string
           updated_at: string
           vat_rate: number | null
           visit_address_city: string | null
@@ -1659,6 +1667,7 @@ export type Database = {
           organization_id: string
           phone?: string | null
           sbi_codes?: string[] | null
+          timesheet_entry_flow?: string
           updated_at?: string
           vat_rate?: number | null
           visit_address_city?: string | null
@@ -1703,6 +1712,7 @@ export type Database = {
           organization_id?: string
           phone?: string | null
           sbi_codes?: string[] | null
+          timesheet_entry_flow?: string
           updated_at?: string
           vat_rate?: number | null
           visit_address_city?: string | null
@@ -5899,6 +5909,91 @@ export type Database = {
           },
         ]
       }
+      organization_domains: {
+        Row: {
+          apex_domain: string
+          created_at: string
+          created_by: string | null
+          dns_config: Json
+          domain: string
+          domain_type: string
+          id: string
+          is_primary: boolean
+          last_checked_at: string | null
+          organization_id: string
+          primary_hostname: string
+          removed_at: string | null
+          status: string
+          updated_at: string
+          updated_by: string | null
+          vercel_project_domain: Json
+          verification: Json
+          verified_at: string | null
+        }
+        Insert: {
+          apex_domain: string
+          created_at?: string
+          created_by?: string | null
+          dns_config?: Json
+          domain: string
+          domain_type: string
+          id?: string
+          is_primary?: boolean
+          last_checked_at?: string | null
+          organization_id: string
+          primary_hostname: string
+          removed_at?: string | null
+          status?: string
+          updated_at?: string
+          updated_by?: string | null
+          vercel_project_domain?: Json
+          verification?: Json
+          verified_at?: string | null
+        }
+        Update: {
+          apex_domain?: string
+          created_at?: string
+          created_by?: string | null
+          dns_config?: Json
+          domain?: string
+          domain_type?: string
+          id?: string
+          is_primary?: boolean
+          last_checked_at?: string | null
+          organization_id?: string
+          primary_hostname?: string
+          removed_at?: string | null
+          status?: string
+          updated_at?: string
+          updated_by?: string | null
+          vercel_project_domain?: Json
+          verification?: Json
+          verified_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organization_domains_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_domains_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_domains_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organization_modules: {
         Row: {
           enabled: boolean | null
@@ -8738,6 +8833,60 @@ export type Database = {
           },
         ]
       }
+      whatsapp_conversation_states: {
+        Row: {
+          candidate_id: string | null
+          context: Json
+          created_at: string
+          expires_at: string
+          flow_type: string
+          id: string
+          organization_id: string
+          phone: string
+          step: string
+          updated_at: string
+        }
+        Insert: {
+          candidate_id?: string | null
+          context?: Json
+          created_at?: string
+          expires_at?: string
+          flow_type: string
+          id?: string
+          organization_id: string
+          phone: string
+          step: string
+          updated_at?: string
+        }
+        Update: {
+          candidate_id?: string | null
+          context?: Json
+          created_at?: string
+          expires_at?: string
+          flow_type?: string
+          id?: string
+          organization_id?: string
+          phone?: string
+          step?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_conversation_states_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_conversation_states_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       whatsapp_templates: {
         Row: {
           category: string
@@ -9033,6 +9182,7 @@ export type Database = {
       is_internal_user: { Args: never; Returns: boolean }
       is_superadmin: { Args: never; Returns: boolean }
       next_invoice_number: { Args: { org_id: string }; Returns: string }
+      normalize_domain_host: { Args: { p_host: string }; Returns: string }
       normalize_skill_name: { Args: { value: string }; Returns: string }
       peek_credit_balance: { Args: { p_org_id: string }; Returns: number }
       record_rate_limit: {
@@ -9054,6 +9204,16 @@ export type Database = {
       release_mail_account_refresh: {
         Args: { p_mail_account_id: string }
         Returns: undefined
+      }
+      resolve_organization_domain: {
+        Args: { p_host: string }
+        Returns: {
+          domain: string
+          domain_type: string
+          is_primary: boolean
+          organization_id: string
+          primary_hostname: string
+        }[]
       }
       sa_get_audit_log: {
         Args: { p_limit?: number; p_offset?: number }
@@ -9169,7 +9329,7 @@ export type Database = {
         | "lead"
       communication_channel: "whatsapp" | "email" | "voip" | "notitie" | "sms"
       compliance_status: "incompleet" | "compleet" | "verlopen"
-      contact_role: "admin" | "administratie" | "plaatsing" | "hr" | "overig"
+      contact_role: "admin" | "plaatsing" | "hr" | "overig" | "administratie"
       contract_status: "concept" | "verzonden" | "getekend" | "verlopen"
       document_status:
         | "geldig"
@@ -9414,7 +9574,7 @@ export const Constants = {
       ],
       communication_channel: ["whatsapp", "email", "voip", "notitie", "sms"],
       compliance_status: ["incompleet", "compleet", "verlopen"],
-      contact_role: ["admin", "administratie", "plaatsing", "hr", "overig"],
+      contact_role: ["admin", "plaatsing", "hr", "overig", "administratie"],
       contract_status: ["concept", "verzonden", "getekend", "verlopen"],
       document_status: [
         "geldig",
