@@ -37,6 +37,29 @@ import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.mjs?url';
 const formatEuro = (cents: number) =>
   (cents / 100).toLocaleString('nl-NL', { style: 'currency', currency: 'EUR' });
 
+const CV_ACCEPT = [
+  '.pdf',
+  '.doc',
+  '.docx',
+  '.txt',
+  '.rtf',
+  '.jpg',
+  '.jpeg',
+  '.png',
+  '.webp',
+  '.tif',
+  '.tiff',
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'text/plain',
+  'text/rtf',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/tiff',
+].join(',');
+
 const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => {
   const qc = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -126,23 +149,106 @@ const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => 
     return ocrPages.join('\n\n').trim();
   };
 
-  // Extract text from uploaded PDF using pdf.js
+  const extractDocxText = async (file: File) => {
+    const { unzipSync, strFromU8 } = await import('fflate');
+    const zip = unzipSync(new Uint8Array(await file.arrayBuffer()));
+    const documentParts = Object.keys(zip)
+      .filter((path) => /^word\/(document|header\d+|footer\d+|footnotes|endnotes)\.xml$/.test(path))
+      .sort((a, b) => {
+        if (a === 'word/document.xml') return -1;
+        if (b === 'word/document.xml') return 1;
+        return a.localeCompare(b);
+      });
+
+    const parser = new DOMParser();
+    const sections: string[] = [];
+
+    for (const part of documentParts) {
+      const xml = strFromU8(zip[part]);
+      const doc = parser.parseFromString(xml, 'application/xml');
+      const paragraphs = Array.from(doc.getElementsByTagName('w:p'));
+      const text = paragraphs
+        .map((paragraph) => Array.from(paragraph.getElementsByTagName('w:t'))
+          .map((node) => node.textContent ?? '')
+          .join('')
+          .trim())
+        .filter(Boolean)
+        .join('\n');
+      if (text) sections.push(text);
+    }
+
+    return sections.join('\n\n').replace(/\n{3,}/g, '\n\n').trim();
+  };
+
+  const extractLegacyDocText = async (file: File) => {
+    const buffer = await file.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    const utf8 = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+    const utf16 = new TextDecoder('utf-16le', { fatal: false }).decode(bytes);
+    const clean = (value: string) => value
+      .replace(/[^\S\r\n]+/g, ' ')
+      .replace(/[^\p{L}\p{N}\p{P}\p{Zs}\r\n@+/-]/gu, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+    const candidates = [clean(utf8), clean(utf16)].sort((a, b) => b.length - a.length);
+    return candidates[0] ?? '';
+  };
+
+  const extractRtfText = async (file: File) => {
+    const value = await file.text();
+    return value
+      .replace(/\\par[d]?/g, '\n')
+      .replace(/\\'[0-9a-fA-F]{2}/g, ' ')
+      .replace(/\\[a-zA-Z]+\d* ?/g, '')
+      .replace(/[{}]/g, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  };
+
+  const extractImageText = async (file: File) => {
+    toast.info('OCR wordt gestart voor de afbeelding; dit kan even duren.');
+    const { createWorker } = await import('tesseract.js');
+    const worker = await createWorker('eng');
+    try {
+      const result = await worker.recognize(file);
+      return result.data.text.replace(/\s{3,}/g, '\n').trim();
+    } finally {
+      await worker.terminate();
+    }
+  };
+
+  const extractCvTextFromFile = async (file: File) => {
+    const name = file.name.toLowerCase();
+    const type = file.type.toLowerCase();
+
+    if (type === 'application/pdf' || name.endsWith('.pdf')) return extractPdfText(file);
+    if (type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || name.endsWith('.docx')) return extractDocxText(file);
+    if (type === 'application/msword' || name.endsWith('.doc')) return extractLegacyDocText(file);
+    if (type === 'text/plain' || name.endsWith('.txt')) return file.text();
+    if (type === 'text/rtf' || name.endsWith('.rtf')) return extractRtfText(file);
+    if (type.startsWith('image/') || /\.(jpe?g|png|webp|tiff?)$/i.test(name)) return extractImageText(file);
+
+    throw new Error('Dit bestandstype wordt nog niet ondersteund voor AI-analyse');
+  };
+
+  // Extract text from uploaded CV/document/image and store the original file.
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.type !== 'application/pdf' && !file.name.endsWith('.pdf')) {
-      toast.error('Alleen PDF bestanden worden ondersteund');
+    if (file.size > 15 * 1024 * 1024) {
+      toast.error('Bestand is te groot (maximaal 15 MB)');
       return;
     }
 
     setExtracting(true);
     try {
       // Upload to Supabase storage for reference
-      const filePath = `${candidate.organization_id}/${candidate.id}/cv_${Date.now()}.pdf`;
+      const ext = file.name.split('.').pop()?.toLowerCase() || 'bin';
+      const filePath = `${candidate.organization_id}/${candidate.id}/cv_${Date.now()}.${ext}`;
       const { error: uploadError } = await supabase.storage
         .from('documents')
-        .upload(filePath, file, { upsert: true });
+        .upload(filePath, file, { upsert: true, contentType: file.type || undefined });
 
       if (uploadError) {
         console.warn('Storage upload failed (non-critical):', uploadError);
@@ -155,17 +261,17 @@ const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => 
           .eq('id', candidate.id);
       }
 
-      const text = await extractPdfText(file);
+      const text = await extractCvTextFromFile(file);
 
       if (text.length > 100) {
         const cleaned = text.replace(/\n{3,}/g, '\n\n').trim();
         setCvText(cleaned);
-        toast.success(`Tekst uit PDF geëxtraheerd (${cleaned.length} tekens)`);
+        toast.success(`Tekst uit ${file.name} geëxtraheerd (${cleaned.length} tekens)`);
       } else {
-        toast.info('PDF bevat te weinig herkenbare tekst. Controleer het bestand of plak de tekst hieronder.');
+        toast.info('Bestand bevat te weinig herkenbare tekst. Controleer het bestand of plak de tekst hieronder.');
       }
     } catch (err: any) {
-      toast.error('Fout bij het lezen van de PDF');
+      toast.error(err?.message || 'Fout bij het lezen van het bestand');
       console.error(err);
     } finally {
       setExtracting(false);
@@ -375,7 +481,7 @@ const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => 
             <input
               ref={fileInputRef}
               type="file"
-              accept=".pdf"
+              accept={CV_ACCEPT}
               className="hidden"
               onChange={handleFileUpload}
             />
@@ -387,7 +493,7 @@ const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => 
               className="gap-1.5"
             >
               {extracting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-              PDF uploaden
+              Bestand uploaden
             </Button>
           </div>
         </div>
@@ -395,7 +501,7 @@ const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => 
         <Textarea
           value={cvText}
           onChange={(e) => setCvText(e.target.value)}
-          placeholder="Plak hier de CV-tekst van de kandidaat, of upload een PDF hierboven..."
+          placeholder="Plak hier de CV-tekst van de kandidaat, of upload een PDF, Word-document of afbeelding hierboven..."
           className="min-h-[200px] font-mono text-xs leading-relaxed"
           disabled={isAnalyzing}
         />
