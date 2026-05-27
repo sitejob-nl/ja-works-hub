@@ -1,7 +1,8 @@
 // supabase/functions/whatsapp-webhook/index.ts
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { normalizePhone } from "../_shared/whatsapp-utils.ts";
+import { getWhatsAppCredentials, META_API_BASE, normalizePhone } from "../_shared/whatsapp-utils.ts";
 import { cascadeSickReport } from "../_shared/sick-report-handler.ts";
+import { getWhatsAppAutomationSettings } from "../_shared/whatsapp-automation-settings.ts";
 
 const OPT_OUT_KEYWORDS = ["stop", "afmelden", "uitschrijven", "stoppen", "unsubscribe"];
 // Substring match — any of these anywhere in the message triggers sick flow.
@@ -258,38 +259,35 @@ async function processInboundMessage(
         .eq("status", "pending");
     }
 
-    // Sick-leave detection — auto-create sick_report + cascade notifications
-    const isSick = !isOptOut && SICK_KEYWORDS.some((kw) => lowerBody.includes(kw));
-    if (isSick && candidateId) {
-      // Prevent duplicate: skip als er al een open sick_report in laatste 12u is
-      const cutoff = new Date(Date.now() - 12 * 3600_000).toISOString();
-      const { data: recent } = await supabase
-        .from("sick_reports")
-        .select("id")
-        .eq("candidate_id", candidateId)
-        .is("actual_return_date", null)
-        .gte("reported_at", cutoff)
-        .limit(1);
+    const handledState = !isOptOut && candidateId
+      ? await processPendingConversationState(supabase, orgId, candidateId, from, body, timestamp)
+      : false;
 
-      if (!recent || recent.length === 0) {
-        const { data: inserted } = await supabase
-          .from("sick_reports")
-          .insert({
+    // Sick-leave detection — auto-create sick_report + cascade notifications
+    const automation = await getWhatsAppAutomationSettings(supabase, orgId);
+    const isSick = !isOptOut && SICK_KEYWORDS.some((kw) => lowerBody.includes(kw));
+    if (!handledState && automation.sick_report_enabled && isSick && candidateId) {
+      if (automation.sick_report_ask_reason) {
+        await supabase.from("whatsapp_conversation_states").upsert(
+          {
             organization_id: orgId,
             candidate_id: candidateId,
-            notes: `Automatisch uit WhatsApp: "${body.slice(0, 500)}"`,
-            reported_at: timestamp,
-          })
-          .select("id")
-          .single();
-
-        if (inserted?.id) {
-          try {
-            await cascadeSickReport(supabase, inserted.id, null);
-          } catch (e) {
-            console.error("cascadeSickReport failed:", e);
-          }
-        }
+            phone: from,
+            flow_type: "sick_report",
+            step: "awaiting_reason",
+            context: { initial_message: body, reported_at: timestamp },
+            expires_at: new Date(Date.now() + 2 * 3600_000).toISOString(),
+          },
+          { onConflict: "organization_id,phone,flow_type" },
+        );
+        await sendWhatsAppDirect(
+          supabase,
+          orgId,
+          from,
+          "Dank je, we hebben je herkend. Wat is de reden van je ziekmelding? Stuur kort je klacht of toelichting terug.",
+        );
+      } else {
+        await createSickReportFromWhatsApp(supabase, orgId, candidateId, body, timestamp);
       }
     }
   }
@@ -317,6 +315,128 @@ async function processInboundMessage(
       console.log("Duplicate message skipped:", messageId);
     }
   }
+}
+
+async function sendWhatsAppDirect(supabase: any, orgId: string, to: string, text: string) {
+  const creds = await getWhatsAppCredentials(supabase, orgId);
+  if (!creds) return { ok: false, error: "WhatsApp niet geconfigureerd" };
+
+  const res = await fetch(`${META_API_BASE}/${creds.phone_number_id}/messages`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${creds.access_token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to: normalizePhone(to).replace("+", ""),
+      type: "text",
+      text: { body: text },
+    }),
+  });
+
+  if (!res.ok) return { ok: false, error: await res.text() };
+  return { ok: true };
+}
+
+function amsterdamHHMM(iso: string): string {
+  const parts = new Intl.DateTimeFormat("nl-NL", {
+    timeZone: "Europe/Amsterdam",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date(iso));
+  const hour = parts.find((p) => p.type === "hour")?.value ?? "00";
+  const minute = parts.find((p) => p.type === "minute")?.value ?? "00";
+  return `${hour}:${minute}`;
+}
+
+async function createSickReportFromWhatsApp(
+  supabase: any,
+  orgId: string,
+  candidateId: string,
+  reason: string,
+  timestamp: string,
+) {
+  const automation = await getWhatsAppAutomationSettings(supabase, orgId);
+  const cutoff = new Date(Date.now() - 12 * 3600_000).toISOString();
+  const { data: recent } = await supabase
+    .from("sick_reports")
+    .select("id")
+    .eq("candidate_id", candidateId)
+    .is("actual_return_date", null)
+    .gte("reported_at", cutoff)
+    .limit(1);
+
+  if (recent?.length) return null;
+
+  const reportedTime = amsterdamHHMM(timestamp);
+  const deadlineLabel = reportedTime <= automation.sick_report_deadline_time ? "voor deadline" : "na deadline";
+  const { data: inserted } = await supabase
+    .from("sick_reports")
+    .insert({
+      organization_id: orgId,
+      candidate_id: candidateId,
+      notes: `Automatisch uit WhatsApp (${deadlineLabel}, deadline ${automation.sick_report_deadline_time}): "${reason.slice(0, 500)}"`,
+      reported_at: timestamp,
+    })
+    .select("id")
+    .single();
+
+  if (inserted?.id) {
+    try {
+      await cascadeSickReport(supabase, inserted.id, null);
+    } catch (e) {
+      console.error("cascadeSickReport failed:", e);
+    }
+  }
+
+  return inserted?.id ?? null;
+}
+
+async function processPendingConversationState(
+  supabase: any,
+  orgId: string,
+  candidateId: string,
+  phone: string,
+  body: string,
+  timestamp: string,
+) {
+  const { data: state } = await supabase
+    .from("whatsapp_conversation_states")
+    .select("*")
+    .eq("organization_id", orgId)
+    .eq("phone", phone)
+    .eq("flow_type", "sick_report")
+    .gt("expires_at", new Date().toISOString())
+    .maybeSingle();
+
+  if (!state || state.step !== "awaiting_reason") return false;
+
+  const reason = `${state.context?.initial_message ? `${state.context.initial_message}\n` : ""}Reden: ${body}`;
+  const reportId = await createSickReportFromWhatsApp(
+    supabase,
+    orgId,
+    candidateId,
+    reason,
+    state.context?.reported_at ?? timestamp,
+  );
+
+  await supabase
+    .from("whatsapp_conversation_states")
+    .delete()
+    .eq("id", state.id);
+
+  if (!reportId) {
+    await sendWhatsAppDirect(
+      supabase,
+      orgId,
+      phone,
+      "Je ziekmelding lijkt al geregistreerd. Je intercedent neemt contact met je op.",
+    );
+  }
+
+  return true;
 }
 
 async function processStatusUpdate(supabase: any, status: any) {

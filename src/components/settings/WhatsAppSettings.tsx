@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { MessageSquare, ExternalLink, Loader2, CheckCircle2, XCircle, RefreshCw, Unlink, RefreshCcw, User } from 'lucide-react';
+import WhatsAppAutomationSettings from './WhatsAppAutomationSettings';
 
 const VERTICAL_OPTIONS = [
   { value: 'UNDEFINED', label: 'Niet opgegeven' },
@@ -348,15 +349,7 @@ const WhatsAppSettings = () => {
 
   const disconnectMutation = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase
-        .from('whatsapp_config' as any)
-        .update({
-          is_active: false,
-          phone_number_id: null,
-          waba_id: null,
-          display_phone: null,
-        } as any)
-        .eq('organization_id', orgId);
+      const { error } = await supabase.functions.invoke('whatsapp-disconnect');
       if (error) throw error;
     },
     onSuccess: () => {
@@ -524,6 +517,9 @@ const WhatsAppSettings = () => {
 
       {/* ── Section 2: Account Status (only when connected) ── */}
       {isConnected && <AccountStatusSection />}
+
+      {/* ── Section 3: Automations ── */}
+      {isRegistered && <WhatsAppAutomationSettings />}
 
       {/* ── Section 3: Business Profile (only when connected) ── */}
       {isConnected && <BusinessProfileSection />}

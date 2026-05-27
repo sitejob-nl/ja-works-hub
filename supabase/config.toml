@@ -52,6 +52,9 @@ verify_jwt = false
 [functions.whatsapp-send]
 verify_jwt = false
 
+[functions.whatsapp-disconnect]
+verify_jwt = false
+
 [functions.whatsapp-templates-sync]
 verify_jwt = false
 

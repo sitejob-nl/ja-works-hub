@@ -1,6 +1,7 @@
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendViaOutlookAccount } from "./outlook-send.ts";
 import { getWhatsAppCredentials, normalizePhone, META_API_BASE } from "./whatsapp-utils.ts";
+import { getWhatsAppAutomationSettings, mergeTemplate } from "./whatsapp-automation-settings.ts";
 
 export interface SickReportCascadeResult {
   task_created: boolean;
@@ -82,6 +83,7 @@ export async function cascadeSickReport(
 
   if (repErr || !report) return result;
   const orgId = report.organization_id;
+  const automation = await getWhatsAppAutomationSettings(service, orgId);
 
   // Fetch candidate + current placement + company + contacts
   const { data: candidate } = await service
@@ -133,12 +135,13 @@ export async function cascadeSickReport(
     }
 
     if (assignedTo) {
+      const isAfterDeadline = String(report.notes ?? "").toLowerCase().includes("na deadline");
       const { error: taskErr } = await service.from("recruiter_tasks").insert({
         organization_id: orgId,
         assigned_to: assignedTo,
         title: `Ziekmelding van ${candidateName}`,
         description: report.notes ? `Klacht: ${report.notes}` : "Geen toelichting opgegeven.",
-        priority: "high",
+        priority: isAfterDeadline ? automation.sick_report_after_deadline_task_priority : "high",
         status: "open",
         category: "sick_report",
         related_entity_type: "sick_report",
@@ -225,12 +228,17 @@ export async function cascadeSickReport(
   }
 
   // ── 4. WhatsApp confirmation to candidate ──
-  if (candidate.phone) {
+  if (automation.sick_report_enabled && candidate.phone) {
+    const confirmation = mergeTemplate(automation.sick_report_confirmation_message, {
+      first_name: candidate.first_name,
+      last_name: candidate.last_name,
+      reported_date: new Date(report.reported_at).toLocaleDateString("nl-NL"),
+    });
     const wa = await sendWhatsAppDirect(
       service,
       orgId,
       candidate.phone,
-      `Hoi ${candidate.first_name},\n\nJe ziekmelding van ${new Date(report.reported_at).toLocaleDateString("nl-NL")} is geregistreerd. Beterschap! Je intercedent neemt contact met je op.\n\n— JA Werkt`
+      confirmation,
     );
     result.whatsapp_sent = wa.ok;
     if (!wa.ok) result.whatsapp_error = wa.error;

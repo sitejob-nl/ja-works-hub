@@ -1,5 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendViaOutlookAccount } from "../_shared/outlook-send.ts";
+import { getWhatsAppCredentials, normalizePhone, META_API_BASE } from "../_shared/whatsapp-utils.ts";
+import { getWhatsAppAutomationSettings, mergeTemplate as mergeWhatsAppTemplate } from "../_shared/whatsapp-automation-settings.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -48,6 +50,29 @@ function mergeTemplate(content: string, vars: Record<string, string | null | und
     (text, [key, value]) => text.replaceAll(`{{${key}}}`, escapeHtml(String(value ?? ""))),
     content,
   );
+}
+
+async function sendWhatsAppDirect(service: any, orgId: string, to: string, text: string) {
+  const creds = await getWhatsAppCredentials(service, orgId);
+  if (!creds) return { ok: false, error: "WhatsApp niet geconfigureerd" };
+
+  const res = await fetch(`${META_API_BASE}/${creds.phone_number_id}/messages`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${creds.access_token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to: normalizePhone(to).replace("+", ""),
+      type: "text",
+      text: { body: text },
+    }),
+  });
+
+  if (!res.ok) return { ok: false, error: await res.text() };
+  const body = await res.json();
+  return { ok: true, message_id: body.messages?.[0]?.id };
 }
 
 function templateToEmailHtml(template: { name: string; content: string }, vars: Record<string, string | null | undefined>): string {
@@ -292,6 +317,7 @@ Deno.serve(async (req) => {
       .select(`
         *,
         companies:company_id(id, name, email, phone, address_city),
+        candidate:candidate_id(id, first_name, last_name, email, phone, employee_number),
         employees:employee_id(
           id,
           candidate_id,
@@ -308,7 +334,7 @@ Deno.serve(async (req) => {
 
     const company = (placement as any).companies;
     const employee = (placement as any).employees;
-    const candidate = employee?.candidates;
+    const candidate = (placement as any).candidate ?? employee?.candidates;
     const vacancy = (placement as any).vacancies;
 
     if (!candidate) {
@@ -352,6 +378,7 @@ Deno.serve(async (req) => {
     const { data: generalTerms } = await activeTemplateQuery("general_terms");
     const { data: clientTemplate } = await activeTemplateQuery("placement_confirmation_client");
     const { data: employeeTemplate } = await activeTemplateQuery("placement_confirmation_employee");
+    const automation = await getWhatsAppAutomationSettings(serviceClient, orgId);
 
     const missingTemplates: string[] = [];
     if (send_to_client && !clientTemplate) missingTemplates.push("plaatsingsbevestiging opdrachtgever");
@@ -365,6 +392,7 @@ Deno.serve(async (req) => {
     }
 
     const templateVars = {
+      first_name: candidate.first_name,
       employee_name: candidateName,
       employee_number: candidate.employee_number,
       start_date: formatDate(startDate),
@@ -387,6 +415,7 @@ Deno.serve(async (req) => {
       .limit(5);
 
     const primaryContact = contacts?.find((c: any) => c.is_primary) ?? contacts?.[0] ?? null;
+    const whatsappResults: any = {};
 
     // ── Client email ──
     if (send_to_client) {
@@ -452,6 +481,38 @@ Deno.serve(async (req) => {
       };
     }
 
+    // ── Client WhatsApp confirmation ──
+    if (send_to_client && automation.placement_client_whatsapp_enabled) {
+      const clientPhone = primaryContact?.phone ?? company?.phone;
+      if (clientPhone) {
+        const text = mergeWhatsAppTemplate(automation.placement_client_message, {
+          ...templateVars,
+          contact_name: primaryContact?.full_name ?? companyName,
+        } as any);
+        const wa = await sendWhatsAppDirect(serviceClient, orgId, clientPhone, text);
+        whatsappResults.client_whatsapp = { to: clientPhone, success: wa.ok, error: wa.error };
+        if (wa.ok) {
+          await serviceClient.from("communications").insert({
+            organization_id: orgId,
+            candidate_id: candidate.id,
+            company_id: company.id,
+            company_contact_id: primaryContact?.id ?? null,
+            channel: "whatsapp",
+            direction: "outbound",
+            subject: `WhatsApp plaatsingsbevestiging opdrachtgever`,
+            body: text,
+            sent_at: new Date().toISOString(),
+            sent_by: userId,
+            whatsapp_message_id: wa.message_id ?? null,
+            whatsapp_status: wa.message_id ? "pending" : null,
+            message_type: "text",
+          });
+        }
+      } else {
+        whatsappResults.client_whatsapp = { success: false, error: "Geen telefoonnummer gevonden voor opdrachtgever" };
+      }
+    }
+
     // ── Employee email ──
     if (send_to_employee) {
       const subject = `Plaatsingsbevestiging - ${functionName} bij ${companyName}`;
@@ -505,7 +566,34 @@ Deno.serve(async (req) => {
       };
     }
 
-    return json({ success: true, ...results });
+    // ── Employee WhatsApp confirmation ──
+    if (send_to_employee && automation.placement_employee_whatsapp_enabled) {
+      if (candidate.phone) {
+        const text = mergeWhatsAppTemplate(automation.placement_employee_message, templateVars as any);
+        const wa = await sendWhatsAppDirect(serviceClient, orgId, candidate.phone, text);
+        whatsappResults.employee_whatsapp = { to: candidate.phone, success: wa.ok, error: wa.error };
+        if (wa.ok) {
+          await serviceClient.from("communications").insert({
+            organization_id: orgId,
+            candidate_id: candidate.id,
+            company_id: company.id,
+            channel: "whatsapp",
+            direction: "outbound",
+            subject: `WhatsApp plaatsingsbevestiging medewerker`,
+            body: text,
+            sent_at: new Date().toISOString(),
+            sent_by: userId,
+            whatsapp_message_id: wa.message_id ?? null,
+            whatsapp_status: wa.message_id ? "pending" : null,
+            message_type: "text",
+          });
+        }
+      } else {
+        whatsappResults.employee_whatsapp = { success: false, error: "Kandidaat heeft geen telefoonnummer" };
+      }
+    }
+
+    return json({ success: true, ...results, whatsapp: whatsappResults });
   } catch (err) {
     console.error("send-placement-confirmation error:", err);
     return json({ error: "Internal server error" }, 500);

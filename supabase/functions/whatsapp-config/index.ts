@@ -46,7 +46,7 @@ Deno.serve(async (req) => {
     }
 
     // Handle disconnect
-    if (body.action === "disconnect") {
+    if (body.action === "disconnect" || body.action === "suspended") {
       await serviceClient
         .from("whatsapp_config")
         .update({
@@ -59,8 +59,8 @@ Deno.serve(async (req) => {
         })
         .eq("id", config.id);
 
-      console.log("WhatsApp disconnected for org:", config.organization_id);
-      return jsonOk({ status: "disconnected" });
+      console.log(`WhatsApp ${body.action} for org:`, config.organization_id);
+      return jsonOk({ status: body.action });
     }
 
     // Handle credential push

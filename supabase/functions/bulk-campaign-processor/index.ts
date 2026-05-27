@@ -8,9 +8,8 @@ import {
   getWhatsAppCredentials,
   META_API_BASE,
 } from "../_shared/whatsapp-utils.ts";
+import { getWhatsAppAutomationSettings } from "../_shared/whatsapp-automation-settings.ts";
 
-const BATCH_SIZE = 50;
-const MAX_CONCURRENT = 5;
 const MAX_RETRIES = 3;
 const RETRY_DELAYS = [60, 300, 900]; // 1min, 5min, 15min in seconds
 
@@ -20,23 +19,44 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const serviceClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
+    const { campaign_id } = await req.json();
+    if (!campaign_id) return jsonError("campaign_id is verplicht", 400);
+
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
       { global: { headers: { Authorization: req.headers.get("Authorization")! } } }
     );
 
-    const auth = await getAuthenticatedOrg(req, supabase);
-    if (auth instanceof Response) return auth;
-    const { orgId, userId } = auth;
+    const automatedKey = req.headers.get("X-Automated-Key");
+    const cronSecret = req.headers.get("X-Cron-Secret");
+    const expectedAutomatedKey = Deno.env.get("AUTOMATED_KEY");
+    const expectedCronSecret = Deno.env.get("CRON_SECRET");
+    let orgId: string;
+    let userId: string | null;
 
-    const { campaign_id } = await req.json();
-    if (!campaign_id) return jsonError("campaign_id is verplicht", 400);
-
-    const serviceClient = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
+    if (
+      (expectedAutomatedKey && automatedKey === expectedAutomatedKey) ||
+      (expectedCronSecret && cronSecret === expectedCronSecret)
+    ) {
+      const { data: camp } = await serviceClient
+        .from("bulk_campaigns")
+        .select("organization_id, created_by")
+        .eq("id", campaign_id)
+        .single();
+      if (!camp) return jsonError("Campagne niet gevonden", 404);
+      orgId = camp.organization_id;
+      userId = camp.created_by ?? null;
+    } else {
+      const auth = await getAuthenticatedOrg(req, supabase);
+      if (auth instanceof Response) return auth;
+      orgId = auth.orgId;
+      userId = auth.userId;
+    }
 
     // Load campaign — verify org ownership and valid status
     const { data: campaign, error: campError } = await serviceClient
@@ -47,14 +67,34 @@ Deno.serve(async (req) => {
       .single();
 
     if (campError || !campaign) return jsonError("Campagne niet gevonden", 404);
-    if (campaign.status !== "running" && campaign.status !== "scheduled") {
-      return jsonError("Campagne is niet actief (verwacht: running of scheduled)", 400);
+    if (!["draft", "running", "scheduled", "paused"].includes(campaign.status)) {
+      return jsonError("Campagne kan niet worden verwerkt vanuit deze status", 400);
+    }
+
+    const automation = await getWhatsAppAutomationSettings(serviceClient, orgId);
+    if (!automation.bulk_enabled) {
+      return jsonError("WhatsApp bulkcommunicatie is uitgeschakeld voor deze organisatie", 403);
+    }
+
+    const rateLimitPerMinute = automation.bulk_rate_limit_per_minute;
+    const rateLimitPerHour = automation.bulk_rate_limit_per_hour;
+    const batchSize = Math.max(1, automation.bulk_batch_size);
+    const maxConcurrent = Math.max(1, automation.bulk_max_concurrent);
+    const delayBetweenBatchesMs = Math.max(0, automation.bulk_delay_between_batches_ms);
+
+    if (campaign.status === "scheduled" && campaign.scheduled_at && new Date(campaign.scheduled_at).getTime() > Date.now()) {
+      return jsonError("Campagne staat gepland voor later", 400);
     }
 
     // Set status to running with timestamp
     await serviceClient
       .from("bulk_campaigns")
-      .update({ status: "running", started_at: new Date().toISOString() })
+      .update({
+        status: "running",
+        started_at: campaign.started_at ?? new Date().toISOString(),
+        rate_limit_per_minute: rateLimitPerMinute,
+        rate_limit_per_hour: rateLimitPerHour,
+      })
       .eq("id", campaign_id);
 
     // Get WhatsApp credentials
@@ -67,15 +107,31 @@ Deno.serve(async (req) => {
       return jsonError("WhatsApp niet geconfigureerd voor deze organisatie", 400);
     }
 
-    // Load recipients: pending OR (failed AND retry_count < MAX_RETRIES)
+    await ensureRecipients(serviceClient, campaign, orgId);
+
+    // Load recipients: pending OR (failed AND retry_count < MAX_RETRIES and retry time has passed)
     const { data: recipients } = await serviceClient
       .from("campaign_recipients")
       .select("id, candidate_id, status, retry_count, candidates!inner(first_name, last_name, phone)")
       .eq("campaign_id", campaign_id)
       .or(`status.eq.pending,and(status.eq.failed,retry_count.lt.${MAX_RETRIES})`)
+      .or(`next_retry_at.is.null,next_retry_at.lte.${new Date().toISOString()}`)
       .order("id");
 
     if (!recipients?.length) {
+      const { data: deferredRetries } = await serviceClient
+        .from("campaign_recipients")
+        .select("id")
+        .eq("campaign_id", campaign_id)
+        .eq("status", "failed")
+        .lt("retry_count", MAX_RETRIES)
+        .gt("next_retry_at", new Date().toISOString())
+        .limit(1);
+
+      if (deferredRetries?.length) {
+        return jsonOk({ status: "waiting_for_retry", sent: 0, failed: 0 });
+      }
+
       await serviceClient
         .from("bulk_campaigns")
         .update({ status: "completed", completed_at: new Date().toISOString() })
@@ -86,8 +142,8 @@ Deno.serve(async (req) => {
     let sentCount = 0;
     let failedCount = 0;
 
-    // Process in batches of BATCH_SIZE
-    for (let i = 0; i < recipients.length; i += BATCH_SIZE) {
+    // Process in configurable batches
+    for (let i = 0; i < recipients.length; i += batchSize) {
       // Check if campaign was paused or cancelled between batches
       const { data: currentCampaign } = await serviceClient
         .from("bulk_campaigns")
@@ -100,12 +156,12 @@ Deno.serve(async (req) => {
         break;
       }
 
-      const batch = recipients.slice(i, i + BATCH_SIZE);
+      const batch = recipients.slice(i, i + batchSize);
 
       // Process batch with concurrency limit of MAX_CONCURRENT
       const results = await processWithConcurrency(
         batch,
-        MAX_CONCURRENT,
+        maxConcurrent,
         async (recipient: any) => {
           const candidate = recipient.candidates;
           if (!candidate?.phone) {
@@ -124,6 +180,20 @@ Deno.serve(async (req) => {
           );
 
           try {
+            const { data: withinMinute } = await serviceClient.rpc("check_rate_limit", {
+              p_org_id: orgId,
+              p_channel: "whatsapp",
+              p_window_type: "minute",
+            });
+            const { data: withinHour } = await serviceClient.rpc("check_rate_limit", {
+              p_org_id: orgId,
+              p_channel: "whatsapp",
+              p_window_type: "hour",
+            });
+            if (withinMinute === false || withinHour === false) {
+              return { recipientId: recipient.id, success: false, retryable: true, error: "Rate limit bereikt" };
+            }
+
             // Send directly to Meta API — avoids double rate limiting via whatsapp-send
             const metaResponse = await fetch(
               `${META_API_BASE}/${creds.phone_number_id}/messages`,
@@ -189,6 +259,10 @@ Deno.serve(async (req) => {
       for (const result of results) {
         if (result.success) {
           sentCount++;
+          await serviceClient.rpc("record_rate_limit", {
+            p_org_id: orgId,
+            p_channel: "whatsapp",
+          });
           await serviceClient
             .from("campaign_recipients")
             .update({
@@ -239,18 +313,18 @@ Deno.serve(async (req) => {
         })
         .eq("id", campaign_id);
 
-      // 2-second delay between batches for rate limiting
-      if (i + BATCH_SIZE < recipients.length) {
-        await new Promise((r) => setTimeout(r, 2000));
+      // Configurable delay between batches for rate limiting
+      if (i + batchSize < recipients.length && delayBetweenBatchesMs > 0) {
+        await new Promise((r) => setTimeout(r, delayBetweenBatchesMs));
       }
     }
 
-    // Mark completed only if no pending recipients remain
+    // Mark completed only if no pending or retryable recipients remain
     const { data: remaining } = await serviceClient
       .from("campaign_recipients")
       .select("id")
       .eq("campaign_id", campaign_id)
-      .eq("status", "pending")
+      .or(`status.eq.pending,and(status.eq.failed,retry_count.lt.${MAX_RETRIES})`)
       .limit(1);
 
     if (!remaining?.length) {
@@ -266,6 +340,41 @@ Deno.serve(async (req) => {
     return jsonError("Interne fout", 500);
   }
 });
+
+async function ensureRecipients(serviceClient: any, campaign: any, orgId: string) {
+  const { count } = await serviceClient
+    .from("campaign_recipients")
+    .select("id", { count: "exact", head: true })
+    .eq("campaign_id", campaign.id);
+
+  if ((count ?? 0) > 0) return;
+
+  const { data: candidates, error } = await serviceClient.rpc("get_campaign_candidates", {
+    p_org_id: orgId,
+    p_filter: campaign.segment_filter ?? {},
+    p_channel: "whatsapp",
+  });
+
+  if (error) throw error;
+
+  const rows = (candidates ?? []).map((candidate: any) => ({
+    organization_id: orgId,
+    campaign_id: campaign.id,
+    candidate_id: candidate.candidate_id,
+    status: "pending",
+  }));
+
+  if (rows.length > 0) {
+    await serviceClient
+      .from("campaign_recipients")
+      .upsert(rows, { onConflict: "campaign_id,candidate_id", ignoreDuplicates: true });
+  }
+
+  await serviceClient
+    .from("bulk_campaigns")
+    .update({ total_recipients: rows.length })
+    .eq("id", campaign.id);
+}
 
 /**
  * Process an array of items with a maximum concurrency limit.
