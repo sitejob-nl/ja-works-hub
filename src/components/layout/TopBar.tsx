@@ -42,39 +42,40 @@ const TopBar = ({ onMenuClick }: TopBarProps) => {
 
   // Debounced search
   useEffect(() => {
-    if (!query || query.length < 2) {
+    const searchTerm = query.trim();
+    if (!searchTerm || searchTerm.length < 2) {
       setResults({ candidates: [], employees: [], companies: [] });
       return;
     }
     const timer = setTimeout(async () => {
-      const q = `%${query}%`;
-      const [candRes, compRes] = await Promise.all([
+      const q = `%${searchTerm}%`;
+      const [candRes, empRes, compRes] = await Promise.all([
         supabase
           .from('candidates')
           .select('id, first_name, last_name, email, phone')
           .or(`first_name.ilike.${q},last_name.ilike.${q},email.ilike.${q},phone.ilike.${q}`)
-          .limit(5),
+          .order('last_name', { ascending: true, nullsFirst: false })
+          .order('first_name', { ascending: true, nullsFirst: false })
+          .limit(20),
+        supabase
+          .from('candidates')
+          .select('id, first_name, last_name, employee_number')
+          .not('employee_status', 'is', null)
+          .or(`first_name.ilike.${q},last_name.ilike.${q},employee_number.ilike.${q}`)
+          .order('last_name', { ascending: true, nullsFirst: false })
+          .order('first_name', { ascending: true, nullsFirst: false })
+          .limit(20),
         supabase
           .from('companies')
           .select('id, name, email')
           .or(`name.ilike.${q},email.ilike.${q}`)
-          .limit(5),
+          .order('name', { ascending: true })
+          .limit(10),
       ]);
-
-      // Employees via candidates join
-      const empRes = await supabase
-        .from('employees')
-        .select('id, employee_number, candidates!employees_candidate_id_fkey(first_name, last_name)')
-        .limit(5);
-
-      const filteredEmps = (empRes.data ?? []).filter((e: any) => {
-        const name = `${e.candidates?.first_name ?? ''} ${e.candidates?.last_name ?? ''}`.toLowerCase();
-        return name.includes(query.toLowerCase()) || (e.employee_number ?? '').toLowerCase().includes(query.toLowerCase());
-      }).slice(0, 5);
 
       setResults({
         candidates: candRes.data ?? [],
-        employees: filteredEmps,
+        employees: empRes.data ?? [],
         companies: compRes.data ?? [],
       });
     }, 300);
@@ -147,8 +148,8 @@ const TopBar = ({ onMenuClick }: TopBarProps) => {
           {results.employees.length > 0 && (
             <CommandGroup heading="In dienst">
               {results.employees.map((e: any) => (
-                <CommandItem key={e.id} onSelect={() => { navigate(`/kandidaten/${e.candidates?.id ?? e.candidate_id}`); setOpen(false); setQuery(''); }}>
-                  <span>{e.candidates?.first_name} {e.candidates?.last_name}</span>
+                <CommandItem key={e.id} onSelect={() => { navigate(`/kandidaten/${e.id}`); setOpen(false); setQuery(''); }}>
+                  <span>{e.first_name} {e.last_name}</span>
                   {e.employee_number && <span className="ml-auto text-xs text-muted-foreground">#{e.employee_number}</span>}
                 </CommandItem>
               ))}

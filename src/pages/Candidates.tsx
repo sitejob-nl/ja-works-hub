@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Users, Plus, Search, Upload, CheckCircle2, XCircle, FolderHeart, SlidersHorizontal, UserPlus, Check, X, KeyRound } from 'lucide-react';
+import { Users, Plus, Search, Upload, CheckCircle2, XCircle, FolderHeart, SlidersHorizontal, UserPlus, Check, X, KeyRound, ArrowUpDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -107,6 +107,8 @@ const getProfileLinkStatus = (candidate: any, tokens: any[]) => {
   return { label: 'Link verstuurd', className: 'bg-yellow-100 text-yellow-700 border-0' };
 };
 
+const candidateName = (candidate: any) => `${candidate.last_name ?? ''} ${candidate.first_name ?? ''}`.trim().toLowerCase();
+
 const Candidates = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -116,6 +118,7 @@ const Candidates = () => {
   const [statusFilter, setStatusFilter] = useState('all');
   const [employeeStatusFilter, setEmployeeStatusFilter] = useState('all');
   const [complianceFilter, setComplianceFilter] = useState('all');
+  const [nameSort, setNameSort] = useState<'none' | 'asc' | 'desc'>('none');
   const [page, setPage] = useState(0);
   const [importOpen, setImportOpen] = useState(false);
   const [importPreset, setImportPreset] = useState<'carerix' | 'buddy' | null>(null);
@@ -139,9 +142,14 @@ const Candidates = () => {
     }
   };
 
+  const toggleNameSort = () => {
+    setNameSort((current) => current === 'asc' ? 'desc' : 'asc');
+    setPage(0);
+  };
+
   // Query for "Alle" tab
   const { data, isLoading } = useQuery({
-    queryKey: ['candidates', search, statusFilter, complianceFilter, cvSearch, page],
+    queryKey: ['candidates', search, statusFilter, complianceFilter, cvSearch, nameSort, page],
     queryFn: async () => {
       let query = supabase.from('candidates').select('*', { count: 'exact' });
       if (search) {
@@ -152,7 +160,14 @@ const Candidates = () => {
       }
       if (statusFilter !== 'all') query = query.eq('status', statusFilter as any);
       if (complianceFilter !== 'all') query = query.eq('compliance_status', complianceFilter as any);
-      query = query.order('created_at', { ascending: false }).range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+      if (nameSort === 'none') {
+        query = query.order('created_at', { ascending: false });
+      } else {
+        query = query
+          .order('last_name', { ascending: nameSort === 'asc', nullsFirst: false })
+          .order('first_name', { ascending: nameSort === 'asc', nullsFirst: false });
+      }
+      query = query.range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
       const { data, count, error } = await query;
       if (error) throw error;
       return { candidates: data ?? [], total: count ?? 0 };
@@ -162,7 +177,7 @@ const Candidates = () => {
 
   // Query for "In dienst" tab
   const { data: employeeData, isLoading: employeesLoading } = useQuery({
-    queryKey: ['candidates-in-dienst', search, employeeStatusFilter, page],
+    queryKey: ['candidates-in-dienst', search, employeeStatusFilter, nameSort, page],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('placements')
@@ -207,6 +222,13 @@ const Candidates = () => {
 
         return haystack.includes(searchValue);
       });
+      if (nameSort !== 'none') {
+        filtered.sort((a: any, b: any) => {
+          const result = candidateName(a).localeCompare(candidateName(b), 'nl', { sensitivity: 'base' });
+          return nameSort === 'asc' ? result : -result;
+        });
+      }
+
       const start = page * PAGE_SIZE;
 
       return { employees: filtered.slice(start, start + PAGE_SIZE), total: filtered.length };
@@ -419,7 +441,13 @@ const Candidates = () => {
                       <TableHead className="w-10">
                         <Checkbox checked={allOnPageSelected} onCheckedChange={toggleAll} />
                       </TableHead>
-                      <TableHead>Naam</TableHead>
+                      <TableHead>
+                        <Button type="button" variant="ghost" size="sm" className="-ml-3 gap-1.5" onClick={toggleNameSort}>
+                          Naam
+                          <ArrowUpDown className="h-3.5 w-3.5" />
+                          {nameSort !== 'none' && <span className="text-xs text-muted-foreground">{nameSort === 'asc' ? 'A-Z' : 'Z-A'}</span>}
+                        </Button>
+                      </TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Profiel</TableHead>
                       <TableHead>Telefoon</TableHead>
@@ -543,7 +571,13 @@ const Candidates = () => {
                 <Table className="min-w-[820px]">
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Naam</TableHead>
+                      <TableHead>
+                        <Button type="button" variant="ghost" size="sm" className="-ml-3 gap-1.5" onClick={toggleNameSort}>
+                          Naam
+                          <ArrowUpDown className="h-3.5 w-3.5" />
+                          {nameSort !== 'none' && <span className="text-xs text-muted-foreground">{nameSort === 'asc' ? 'A-Z' : 'Z-A'}</span>}
+                        </Button>
+                      </TableHead>
                       <TableHead>Medewerkernr.</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Compliance</TableHead>
