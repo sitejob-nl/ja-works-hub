@@ -32,6 +32,7 @@ import { formatDate } from '@/lib/format';
 import AiAnalysisCard from '@/components/AiAnalysisCard';
 import AiAnalysisShareDialog from '@/components/candidates/AiAnalysisShareDialog';
 import { logAudit } from '@/lib/audit';
+import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.mjs?url';
 
 const formatEuro = (cents: number) =>
   (cents / 100).toLocaleString('nl-NL', { style: 'currency', currency: 'EUR' });
@@ -75,7 +76,57 @@ const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => 
     };
   }, [candidate.id, qc]);
 
-  // Extract text from uploaded PDF using browser FileReader
+  const extractPdfText = async (file: File) => {
+    const pdfjsLib = await import('pdfjs-dist');
+    pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+    const data = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data }).promise;
+    const pages: string[] = [];
+
+    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+      const page = await pdf.getPage(pageNumber);
+      const content = await page.getTextContent();
+      const pageText = content.items
+        .map((item: any) => ('str' in item ? item.str : ''))
+        .filter(Boolean)
+        .join(' ')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+      if (pageText) pages.push(pageText);
+    }
+
+    const text = pages.join('\n\n').trim();
+    if (text.length > 100) return text;
+
+    toast.info('Geen tekstlaag gevonden. OCR wordt gestart; dit kan even duren.');
+    const { createWorker } = await import('tesseract.js');
+    const worker = await createWorker('eng');
+    const ocrPages: string[] = [];
+
+    try {
+      for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+        const page = await pdf.getPage(pageNumber);
+        const viewport = page.getViewport({ scale: 2 });
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        if (!context) continue;
+
+        canvas.width = Math.ceil(viewport.width);
+        canvas.height = Math.ceil(viewport.height);
+
+        await page.render({ canvas, canvasContext: context, viewport }).promise;
+        const result = await worker.recognize(canvas);
+        const pageText = result.data.text.replace(/\s{3,}/g, '\n').trim();
+        if (pageText) ocrPages.push(pageText);
+      }
+    } finally {
+      await worker.terminate();
+    }
+
+    return ocrPages.join('\n\n').trim();
+  };
+
+  // Extract text from uploaded PDF using pdf.js
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -104,26 +155,14 @@ const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => 
           .eq('id', candidate.id);
       }
 
-      // Extract text client-side using pdf.js would be ideal, but for now
-      // we'll prompt the user to paste text or use a simple extraction
-      // For now: read as text (works for text-based PDFs)
-      const text = await file.text();
-      
-      // Basic check if it's readable text
-      const readableChars = text.replace(/[^\x20-\x7E\xC0-\xFF]/g, '').length;
-      const ratio = readableChars / Math.max(text.length, 1);
-      
-      if (ratio > 0.3 && readableChars > 100) {
-        // Decent text extraction
-        const cleaned = text
-          .replace(/[^\x20-\x7E\xC0-\xFF\n]/g, ' ')
-          .replace(/\s{3,}/g, '\n')
-          .replace(/\n{3,}/g, '\n\n')
-          .trim();
+      const text = await extractPdfText(file);
+
+      if (text.length > 100) {
+        const cleaned = text.replace(/\n{3,}/g, '\n\n').trim();
         setCvText(cleaned);
-        toast.success('Tekst uit PDF geëxtraheerd');
+        toast.success(`Tekst uit PDF geëxtraheerd (${cleaned.length} tekens)`);
       } else {
-        toast.info('PDF bevat waarschijnlijk gescande afbeeldingen. Plak de CV-tekst handmatig hieronder.');
+        toast.info('PDF bevat te weinig herkenbare tekst. Controleer het bestand of plak de tekst hieronder.');
       }
     } catch (err: any) {
       toast.error('Fout bij het lezen van de PDF');

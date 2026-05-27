@@ -1,6 +1,6 @@
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
-import { AlertTriangle, Briefcase, Target, Clock, MessageSquare, User, TrendingUp, Star } from 'lucide-react';
+import { AlertTriangle, Briefcase, Target, Clock, MessageSquare, User, TrendingUp, Star, FileText } from 'lucide-react';
 import WorkHistoryTimeline from '@/components/candidates/WorkHistoryTimeline';
 
 interface AiAnalysis {
@@ -13,8 +13,10 @@ interface AiAnalysis {
   competenties?: {
     hard_skills?: string[];
     soft_skills?: string[];
-    certificaten?: Array<{ naam: string; relevant: boolean; toelichting: string }>;
+    certificaten?: Array<string | { naam: string; relevant?: boolean; toelichting?: string }>;
+    talen?: Array<{ taal: string; niveau: string }>;
   };
+  opleidingen?: Array<{ naam: string; instelling: string; periode: string; niveau: string }>;
   eigenschappen?: {
     gemiddelde_dienstverband_maanden?: number;
     type?: string;
@@ -204,16 +206,46 @@ const AiAnalysisCard = ({ analysis }: { analysis: AiAnalysis }) => {
             {analysis.competenties.certificaten && analysis.competenties.certificaten.length > 0 && (
               <div>
                 <p className="text-xs text-muted-foreground mb-1">Certificaten</p>
-                {analysis.competenties.certificaten.map((c, i) => (
-                  <div key={i} className="text-sm flex items-center gap-2">
-                    <Badge variant={c.relevant ? 'default' : 'outline'} className={`text-xs ${c.relevant ? 'bg-stat-green/10 text-stat-green border-0' : ''}`}>
-                      {c.relevant ? 'Relevant' : 'Beperkt'}
-                    </Badge>
-                    <span>{c.naam}</span>
-                  </div>
-                ))}
+                {analysis.competenties.certificaten.map((cert, i) => {
+                  const c = typeof cert === 'string' ? { naam: cert, relevant: true } : cert;
+                  return (
+                    <div key={i} className="text-sm flex items-center gap-2">
+                      <Badge variant={c.relevant ? 'default' : 'outline'} className={`text-xs ${c.relevant ? 'bg-stat-green/10 text-stat-green border-0' : ''}`}>
+                        {c.relevant ? 'Relevant' : 'Beperkt'}
+                      </Badge>
+                      <span>{c.naam}</span>
+                    </div>
+                  );
+                })}
               </div>
             )}
+            {analysis.competenties.talen && analysis.competenties.talen.length > 0 && (
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Talen</p>
+                <div className="flex flex-wrap gap-1">
+                  {analysis.competenties.talen.map((t, i) => (
+                    <Badge key={i} variant="outline" className="text-xs">
+                      {t.taal}{t.niveau ? ` - ${t.niveau}` : ''}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+          </Section>
+        )}
+
+        {analysis.opleidingen && analysis.opleidingen.length > 0 && (
+          <Section icon={FileText} title="Opleidingen">
+            <div className="space-y-2">
+              {analysis.opleidingen.map((opleiding, i) => (
+                <div key={i} className="text-sm border-l-2 border-muted pl-3 py-1">
+                  <p className="font-medium">{opleiding.naam}</p>
+                  <p className="text-muted-foreground">
+                    {[opleiding.instelling, opleiding.niveau, opleiding.periode].filter(Boolean).join(' - ')}
+                  </p>
+                </div>
+              ))}
+            </div>
           </Section>
         )}
 

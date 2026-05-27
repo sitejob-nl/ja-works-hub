@@ -170,12 +170,36 @@ const Onboarding = () => {
     }
   };
 
+  const fileToBase64 = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
   const handleSubmitDynamic = async () => {
     if (!validateStep(currentStep)) return;
     setSubmitting(true);
 
     try {
       const addressGeo = await resolveDynamicAddressGeo();
+      const fileFields = steps.flatMap(step => step.fields).filter(field => field.field_type === 'file');
+      const documents: Array<{ type: string; name: string; data: string }> = [];
+
+      for (const field of fileFields) {
+        const file = files[field.id];
+        if (!file) continue;
+        if (file.size > 10 * 1024 * 1024) {
+          throw new Error(`${field.label} is groter dan 10MB`);
+        }
+        documents.push({
+          type: field.document_type || 'onboarding_formulier',
+          name: file.name,
+          data: await fileToBase64(file),
+        });
+      }
+
       const res = await fetch(`${SUPABASE_URL}/functions/v1/onboarding-submit`, {
         method: 'POST',
         headers: {
@@ -189,6 +213,7 @@ const Onboarding = () => {
           responses: values,
           address_geo: addressGeo,
           documents_accepted: true,
+          documents,
         }),
       });
 
@@ -209,14 +234,6 @@ const Onboarding = () => {
   };
 
   // Fallback submit (old behavior)
-  const fileToBase64 = (file: File): Promise<string> =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-
   const handleSubmitFallback = async () => {
     if (!fallbackForm.bsn || !fallbackForm.iban || !fallbackForm.date_of_birth) {
       toast.error('Vul alle verplichte velden in (BSN, IBAN, geboortedatum)');
@@ -325,9 +342,13 @@ const Onboarding = () => {
               <span className="text-sm text-muted-foreground">
                 {files[field.id] ? files[field.id].name : 'Bestand kiezen...'}
               </span>
-              <input type="file" className="hidden" onChange={e => {
+              <input type="file" accept="image/*,.pdf" className="hidden" onChange={e => {
                 const file = e.target.files?.[0];
                 if (file) {
+                  if (file.size > 10 * 1024 * 1024) {
+                    setValidationErrors(errors => ({ ...errors, [field.id]: 'Bestand mag maximaal 10MB zijn' }));
+                    return;
+                  }
                   setFiles(f => ({ ...f, [field.id]: file }));
                   setValue(field.id, file.name);
                 }

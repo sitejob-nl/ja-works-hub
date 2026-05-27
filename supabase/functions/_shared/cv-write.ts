@@ -15,9 +15,21 @@ export async function writeCvAnalysisToCandidate(
 ): Promise<void> {
   const hardSkills = analysis?.competenties?.hard_skills ?? [];
   const softSkills = analysis?.competenties?.soft_skills ?? [];
-  const certifications = analysis?.competenties?.certificaten ?? [];
+  const certifications = (analysis?.competenties?.certificaten ?? [])
+    .map((cert) => typeof cert === "string" ? cert : cert?.naam)
+    .filter(Boolean);
+  const languages = (analysis?.competenties?.talen ?? [])
+    .map((lang) => [lang?.taal, lang?.niveau].filter(Boolean).join(" - "))
+    .filter(Boolean);
   const allSkills = [...new Set([...hardSkills, ...softSkills])].filter(Boolean);
   const targetFunctions = analysis?.doelgroep?.functies ?? [];
+  const stability = analysis?.werkhistorie?.patroon ?? null;
+  const redFlags = [
+    ...(analysis?.werkhistorie?.gaten ?? [])
+      .filter((gap) => (gap.duur_maanden ?? 0) >= 3)
+      .map((gap) => `Gat in CV: ${gap.periode} (${gap.duur_maanden} maanden)`),
+    ...(analysis?.plaatsingsadvies?.risicos ?? []),
+  ];
 
   const update: Record<string, unknown> = {
     ai_analysis: analysis,
@@ -32,10 +44,14 @@ export async function writeCvAnalysisToCandidate(
     ai_summary: analysis?.samenvatting?.profiel ?? null,
     ai_target_functions: targetFunctions,
     ai_positive_signals: analysis?.samenvatting?.positieve_signalen ?? [],
+    ai_red_flags: [...new Set(redFlags)].slice(0, 12),
+    ai_stability: stability,
+    ai_languages: analysis?.competenties?.talen ?? [],
   };
 
   if (allSkills.length > 0) update.skills = allSkills;
   if (certifications.length > 0) update.certifications = certifications;
+  if (languages.length > 0) update.languages = languages;
 
   const { error } = await admin
     .from("candidates")
