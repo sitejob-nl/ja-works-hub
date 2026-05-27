@@ -16,7 +16,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Badge } from '@/components/ui/badge';
 import TagInput from '@/components/ui/tag-input';
-import { ChevronRight, Copy, MessageCircle, Mail, Check, AlertTriangle, ChevronsUpDown, X } from 'lucide-react';
+import { ChevronRight, Copy, MessageCircle, Mail, Check, AlertTriangle, ChevronsUpDown, X, KeyRound } from 'lucide-react';
 import { toast } from 'sonner';
 import { logAudit } from '@/lib/audit';
 import { useDeduplication } from '@/hooks/useDeduplication';
@@ -50,6 +50,7 @@ const CandidateNew = () => {
   const [profileToken, setProfileToken] = useState<string | null>(null);
   const [portalInviteUrl, setPortalInviteUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [portalCopied, setPortalCopied] = useState(false);
   const [skillsOpen, setSkillsOpen] = useState(false);
 
   const [form, setForm] = useState({
@@ -146,6 +147,14 @@ const CandidateNew = () => {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handlePortalCopy = () => {
+    if (!portalInviteUrl) return;
+    navigator.clipboard.writeText(portalInviteUrl);
+    setPortalCopied(true);
+    toast.success('Portaalactivatielink gekopieerd');
+    setTimeout(() => setPortalCopied(false), 2000);
+  };
+
   const handleWhatsApp = () => {
     const phone = createdCandidate?.phone?.replace(/[^0-9+]/g, '') ?? '';
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(whatsAppText)}`, '_blank');
@@ -157,16 +166,20 @@ const CandidateNew = () => {
       toast.error('Geen verbonden e-mailaccount gevonden. Koppel eerst Outlook via Instellingen.');
       return;
     }
-    sendPortalInviteMutation.mutate();
+    portalInviteMutation.mutate({ sendEmail: true });
   };
 
-  const sendPortalInviteMutation = useMutation({
-    mutationFn: async () => {
+  const handleCreatePortalLink = () => {
+    portalInviteMutation.mutate({ sendEmail: false });
+  };
+
+  const portalInviteMutation = useMutation({
+    mutationFn: async ({ sendEmail }: { sendEmail: boolean }) => {
       if (!createdCandidate?.email) throw new Error('Geen e-mailadres bekend');
 
       const { data: existingInvite, error: existingError } = await supabase
         .from('portal_invites')
-        .select('id')
+        .select('id, token')
         .eq('candidate_id', createdCandidate.id)
         .is('used_at', null)
         .gt('expires_at', new Date().toISOString())
@@ -176,6 +189,7 @@ const CandidateNew = () => {
       if (existingError) throw existingError;
 
       let inviteId = existingInvite?.id;
+      let inviteToken = existingInvite?.token;
       if (!inviteId) {
         const { data: invite, error: inviteError } = await supabase
           .from('portal_invites')
@@ -184,10 +198,11 @@ const CandidateNew = () => {
             candidate_id: createdCandidate.id,
             email: createdCandidate.email,
           })
-          .select('id')
+          .select('id, token')
           .single();
         if (inviteError) throw inviteError;
         inviteId = invite.id;
+        inviteToken = invite.token;
       }
 
       const { error: candidateError } = await supabase
@@ -196,21 +211,29 @@ const CandidateNew = () => {
         .eq('id', createdCandidate.id);
       if (candidateError) throw candidateError;
 
+      if (!sendEmail) {
+        return {
+          sent: false,
+          activation_url: buildUrl(`/portaal/activeren/${inviteToken}`),
+          sendEmail,
+        };
+      }
+
       const { data, error } = await supabase.functions.invoke('send-portal-invite', {
         body: { invite_id: inviteId },
       });
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
       if (!(data as any)?.sent) throw new Error((data as any)?.error ?? 'E-mail versturen mislukt');
-      return data as { sent: boolean; activation_url?: string; error?: string };
+      return { ...(data as { sent: boolean; activation_url?: string; error?: string }), sendEmail };
     },
     onSuccess: (data) => {
       if (data.activation_url) setPortalInviteUrl(data.activation_url);
       qc.invalidateQueries({ queryKey: ['candidates'] });
-      toast.success('Portaaluitnodiging verstuurd via het verbonden e-mailaccount');
+      toast.success(data.sendEmail ? 'Portaaluitnodiging verstuurd via het verbonden e-mailaccount' : 'Portaalactivatielink aangemaakt');
     },
     onError: (error: Error) => {
-      toast.error(`E-mail versturen mislukt: ${error.message}`);
+      toast.error(error.message);
     },
   });
 
@@ -233,17 +256,17 @@ const CandidateNew = () => {
         <div className="flex items-center gap-1 text-sm text-muted-foreground">
           <Link to="/kandidaten" className="hover:text-foreground transition-colors">Kandidaten</Link>
           <ChevronRight className="h-3 w-3" />
-          <span className="text-foreground">Profiellink versturen</span>
+          <span className="text-foreground">Links versturen</span>
         </div>
 
-        <h1 className="text-2xl font-semibold">Profiellink versturen</h1>
+        <h1 className="text-2xl font-semibold">Links versturen</h1>
         <p className="text-muted-foreground">
-          {createdCandidate.first_name} is aangemaakt. Verstuur de profiellink zodat de kandidaat zelf de rest kan aanvullen.
+          {createdCandidate.first_name} is aangemaakt. Gebruik de profiellink voor gegevens aanvullen, of de portaalactivatielink voor medewerkersportaal-login.
         </p>
 
         <div className="bg-card rounded-lg border p-6 max-w-xl space-y-5">
           <div className="space-y-2">
-            <Label>Profiellink</Label>
+            <Label>Profiel aanvullen</Label>
             <div className="flex gap-2">
               <Input value={profileUrl} readOnly className="font-mono text-xs" />
               <Button variant="outline" size="icon" onClick={handleCopy}>
@@ -251,12 +274,27 @@ const CandidateNew = () => {
               </Button>
             </div>
           </div>
-          {portalInviteUrl && (
-            <div className="rounded-md border bg-muted/50 p-3">
-              <p className="text-xs text-muted-foreground mb-1">Portaalactivatielink verstuurd</p>
-              <p className="text-sm font-mono break-all">{portalInviteUrl}</p>
+
+          <div className="space-y-2 rounded-md border bg-muted/40 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <Label>Medewerkersportaal activeren</Label>
+                <p className="text-xs text-muted-foreground mt-1">Hiermee stelt de medewerker een wachtwoord in voor het portaal.</p>
+              </div>
+              <Button type="button" variant="outline" size="sm" onClick={handleCreatePortalLink} disabled={!createdCandidate.email || portalInviteMutation.isPending} className="gap-1.5 shrink-0">
+                <KeyRound className="h-3.5 w-3.5" />
+                Link maken
+              </Button>
             </div>
-          )}
+            {portalInviteUrl && (
+              <div className="flex gap-2">
+                <Input value={portalInviteUrl} readOnly className="font-mono text-xs bg-background" />
+                <Button variant="outline" size="icon" onClick={handlePortalCopy}>
+                  {portalCopied ? <Check className="h-4 w-4 text-stat-green" /> : <Copy className="h-4 w-4" />}
+                </Button>
+              </div>
+            )}
+          </div>
 
           <div className="flex gap-3 pt-2">
             {createdCandidate.phone && (
@@ -265,8 +303,8 @@ const CandidateNew = () => {
               </Button>
             )}
             {createdCandidate.email && (
-              <Button variant="outline" onClick={handleEmail} disabled={sendPortalInviteMutation.isPending} className="gap-2">
-                <Mail className="h-4 w-4" /> {sendPortalInviteMutation.isPending ? 'Versturen...' : 'Verstuur portaaluitnodiging via email'}
+              <Button variant="outline" onClick={handleEmail} disabled={portalInviteMutation.isPending} className="gap-2">
+                <Mail className="h-4 w-4" /> {portalInviteMutation.isPending ? 'Versturen...' : 'Verstuur portaaluitnodiging via email'}
               </Button>
             )}
           </div>
