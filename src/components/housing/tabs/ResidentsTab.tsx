@@ -28,15 +28,31 @@ import { logAudit } from '@/lib/audit';
 
 const WEEKS_PER_MONTH = 4.33;
 
-const resolveEmployeeId = async (candidateId: string) => {
-  const { data, error } = await supabase
+const ACTIVE_HOUSING_STATUSES = ['ingecheckt', 'gereserveerd'] as const;
+const HOUSING_CANDIDATE_STATUSES = ['actief', 'onboarding', 'ziek'] as const;
+
+const resolveEmployeeId = async (candidate: any, organizationId: string, startDate: string) => {
+  const { data: existing, error: existingError } = await supabase
     .from('employees')
     .select('id')
-    .eq('candidate_id', candidateId)
+    .eq('candidate_id', candidate.id)
     .maybeSingle();
-  if (error) throw error;
-  if (!data?.id) throw new Error('Geen medewerkerrecord gevonden voor deze kandidaat');
-  return data.id;
+  if (existingError) throw existingError;
+  if (existing?.id) return existing.id;
+
+  const { data: created, error: createError } = await supabase
+    .from('employees')
+    .insert({
+      organization_id: organizationId,
+      candidate_id: candidate.id,
+      employee_number: candidate.employee_number ?? null,
+      start_date: startDate,
+      status: (candidate.employee_status === 'ziek' ? 'ziek' : candidate.employee_status ?? 'actief') as any,
+    })
+    .select('id')
+    .single();
+  if (createError) throw createError;
+  return created.id;
 };
 
 const ResidentsTab = ({ property }: { property: any }) => {
@@ -73,44 +89,48 @@ const ResidentsTab = ({ property }: { property: any }) => {
   );
   const activeAssignments = allAssignments.filter((a: any) => a.status === 'ingecheckt' || a.status === 'gereserveerd');
 
-  // Query employees (candidates with employee_status) without active housing
+  // Query workers from candidates (merged employee model) without active housing.
   const { data: availableEmployees = [] } = useQuery({
-    queryKey: ['available-employees-housing', empSearch],
+    queryKey: ['available-employees-housing', orgId, empSearch],
     queryFn: async () => {
-      const { data: activeAssigns } = await supabase.from('housing_assignments')
+      const { data: activeAssigns, error: activeAssignsError } = await supabase.from('housing_assignments')
         .select('candidate_id')
-        .eq('status', 'ingecheckt');
+        .eq('organization_id', orgId!)
+        .in('status', ACTIVE_HOUSING_STATUSES as any);
+      if (activeAssignsError) throw activeAssignsError;
       const occupiedIds = (activeAssigns ?? []).map((a: any) => a.candidate_id).filter(Boolean);
 
-      const query = supabase.from('candidates')
-        .select('id, first_name, last_name, employee_number')
-        .in('employee_status', ['actief', 'onboarding'] as any)
+      let query = supabase.from('candidates')
+        .select('id, first_name, last_name, employee_number, employee_status')
+        .eq('organization_id', orgId!)
+        .in('employee_status', HOUSING_CANDIDATE_STATUSES as any)
+        .order('first_name')
+        .order('last_name')
         .limit(20);
+
+      const search = empSearch.trim();
+      if (search) {
+        const term = search.replace(/[%,]/g, ' ');
+        query = query.or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%,employee_number.ilike.%${term}%`);
+      }
 
       const { data, error } = await query;
       if (error) throw error;
-      let results = (data ?? []).filter((e: any) => !occupiedIds.includes(e.id));
-      if (empSearch) {
-        const s = empSearch.toLowerCase();
-        results = results.filter((e: any) =>
-          `${e.first_name} ${e.last_name}`.toLowerCase().includes(s)
-        );
-      }
-      return results;
+      return (data ?? []).filter((e: any) => !occupiedIds.includes(e.id));
     },
-    enabled: assigning && step === 1,
+    enabled: assigning && step === 1 && !!orgId,
   });
 
   // Available units
   const availableUnits = units.filter((u: any) => {
-    const occ = (u.housing_assignments ?? []).filter((a: any) => a.status === 'ingecheckt').length;
+    const occ = (u.housing_assignments ?? []).filter((a: any) => ACTIVE_HOUSING_STATUSES.includes(a.status)).length;
     return occ < (u.capacity ?? 0) && u.status === 'beschikbaar';
   });
 
   const assign = useMutation({
     mutationFn: async () => {
       const deductionNum = form.deduction_amount ? Number(form.deduction_amount) : null;
-      const employeeId = await resolveEmployeeId(selectedEmployee.id);
+      const employeeId = await resolveEmployeeId(selectedEmployee, orgId!, form.check_in_date);
       const { error } = await supabase.from('housing_assignments').insert({
         organization_id: orgId,
         unit_id: selectedUnit.id,
@@ -228,7 +248,7 @@ const ResidentsTab = ({ property }: { property: any }) => {
       if (targetUnit.status !== 'beschikbaar') {
         throw new Error(`Kamer "${targetUnit.name}" is niet beschikbaar (status: ${targetUnit.status}).`);
       }
-      const occupied = (targetUnit.housing_assignments ?? []).filter((a: any) => a.status === 'ingecheckt' && a.id !== movingAssignment.id).length;
+      const occupied = (targetUnit.housing_assignments ?? []).filter((a: any) => ACTIVE_HOUSING_STATUSES.includes(a.status) && a.id !== movingAssignment.id).length;
       if (occupied >= (targetUnit.capacity ?? 0)) {
         throw new Error(`Kamer "${targetUnit.name}" is vol (${occupied}/${targetUnit.capacity}).`);
       }
@@ -322,7 +342,7 @@ const ResidentsTab = ({ property }: { property: any }) => {
     return (targetProp.units ?? []).filter((u: any) => {
       if (u.id === movingAssignment.unit_id) return false;
       if (u.status !== 'beschikbaar') return false;
-      const occupied = (u.housing_assignments ?? []).filter((a: any) => a.status === 'ingecheckt').length;
+      const occupied = (u.housing_assignments ?? []).filter((a: any) => ACTIVE_HOUSING_STATUSES.includes(a.status)).length;
       return occupied < (u.capacity ?? 0);
     });
   })();
@@ -340,7 +360,7 @@ const ResidentsTab = ({ property }: { property: any }) => {
         <SheetContent className="sm:max-w-lg overflow-y-auto">
           <SheetHeader>
             <SheetTitle>
-              {step === 1 ? 'Selecteer medewerker' : step === 2 ? 'Selecteer kamer' : 'Details invullen'}
+              {step === 1 ? 'Selecteer kandidaat/medewerker' : step === 2 ? 'Selecteer kamer' : 'Details invullen'}
             </SheetTitle>
           </SheetHeader>
           <div className="mt-6 space-y-4">
@@ -348,9 +368,9 @@ const ResidentsTab = ({ property }: { property: any }) => {
               <>
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input placeholder="Zoek medewerker..." value={empSearch} onChange={(e) => setEmpSearch(e.target.value)} className="pl-9" />
+                  <Input placeholder="Zoek kandidaat of medewerker..." value={empSearch} onChange={(e) => setEmpSearch(e.target.value)} className="pl-9" />
                 </div>
-                {availableEmployees.length === 0 && <p className="text-sm text-muted-foreground text-center py-6">Geen beschikbare medewerkers</p>}
+                {availableEmployees.length === 0 && <p className="text-sm text-muted-foreground text-center py-6">Geen beschikbare kandidaten/medewerkers</p>}
                 <div className="space-y-2">
                   {availableEmployees.map((e: any) => (
                     <button key={e.id} onClick={() => { setSelectedEmployee(e); setStep(2); }}
@@ -371,7 +391,7 @@ const ResidentsTab = ({ property }: { property: any }) => {
                 {availableUnits.length === 0 && <p className="text-sm text-muted-foreground text-center py-6">Geen kamers met beschikbare capaciteit</p>}
                 <div className="space-y-2">
                   {availableUnits.map((u: any) => {
-                    const occ = (u.housing_assignments ?? []).filter((a: any) => a.status === 'ingecheckt').length;
+                    const occ = (u.housing_assignments ?? []).filter((a: any) => ACTIVE_HOUSING_STATUSES.includes(a.status)).length;
                     return (
                       <button key={u.id} onClick={() => {
                           setSelectedUnit(u);
@@ -390,7 +410,7 @@ const ResidentsTab = ({ property }: { property: any }) => {
             {step === 3 && (
               <>
                 <div className="p-3 rounded-lg bg-muted/50 border space-y-1">
-                  <p className="text-sm"><span className="text-muted-foreground">Medewerker:</span> {selectedEmployee?.first_name} {selectedEmployee?.last_name}</p>
+                  <p className="text-sm"><span className="text-muted-foreground">Kandidaat/medewerker:</span> {selectedEmployee?.first_name} {selectedEmployee?.last_name}</p>
                   <p className="text-sm"><span className="text-muted-foreground">Kamer:</span> {selectedUnit?.name}</p>
                 </div>
                 <div><Label>Check-in datum *</Label><Input type="date" value={form.check_in_date} onChange={(e) => setForm(f => ({ ...f, check_in_date: e.target.value }))} /></div>
@@ -437,7 +457,7 @@ const ResidentsTab = ({ property }: { property: any }) => {
           {editingAssignment && (
             <div className="mt-6 space-y-4">
               <div className="p-3 rounded-lg bg-muted/50 border space-y-1">
-                <p className="text-sm"><span className="text-muted-foreground">Medewerker:</span> {editingAssignment.candidates?.first_name} {editingAssignment.candidates?.last_name}</p>
+                <p className="text-sm"><span className="text-muted-foreground">Kandidaat/medewerker:</span> {editingAssignment.candidates?.first_name} {editingAssignment.candidates?.last_name}</p>
                 <p className="text-sm"><span className="text-muted-foreground">Kamer:</span> {editingAssignment.unitName}</p>
                 <p className="text-xs text-muted-foreground">Voor wijzigen van kamer of pand: gebruik 'Verplaatsen'.</p>
               </div>
@@ -496,7 +516,7 @@ const ResidentsTab = ({ property }: { property: any }) => {
                       {moveTargets.map((p: any) => {
                         const totalCap = (p.units ?? []).reduce((s: number, u: any) => s + (u.capacity ?? 0), 0);
                         const occ = (p.units ?? []).reduce((s: number, u: any) =>
-                          s + (u.housing_assignments ?? []).filter((a: any) => a.status === 'ingecheckt').length, 0);
+                          s + (u.housing_assignments ?? []).filter((a: any) => ACTIVE_HOUSING_STATUSES.includes(a.status)).length, 0);
                         const free = totalCap - occ;
                         const isCurrent = p.id === property.id;
                         return (
@@ -531,7 +551,7 @@ const ResidentsTab = ({ property }: { property: any }) => {
                   ) : (
                     <div className="space-y-2">
                       {moveTargetUnits.map((u: any) => {
-                        const occ = (u.housing_assignments ?? []).filter((a: any) => a.status === 'ingecheckt').length;
+                        const occ = (u.housing_assignments ?? []).filter((a: any) => ACTIVE_HOUSING_STATUSES.includes(a.status)).length;
                         return (
                           <button
                             key={u.id}
