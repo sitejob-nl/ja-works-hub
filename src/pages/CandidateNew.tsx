@@ -5,7 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePublicUrl } from '@/hooks/usePublicUrl';
-import { useOutlookAccounts, useOutlookInvoke } from '@/hooks/useOutlookAccounts';
+import { useOutlookAccounts } from '@/hooks/useOutlookAccounts';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -41,7 +41,6 @@ const CandidateNew = () => {
   const orgId = useOrganizationId();
   const { buildUrl } = usePublicUrl();
   const { profile } = useAuth();
-  const callOutlook = useOutlookInvoke();
   const { hasUsableAccounts } = useOutlookAccounts('mail_send');
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -49,6 +48,7 @@ const CandidateNew = () => {
   const [step, setStep] = useState<'form' | 'link'>('form');
   const [createdCandidate, setCreatedCandidate] = useState<{ id: string; first_name: string; phone: string | null; email: string | null } | null>(null);
   const [profileToken, setProfileToken] = useState<string | null>(null);
+  const [portalInviteUrl, setPortalInviteUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [skillsOpen, setSkillsOpen] = useState(false);
 
@@ -157,35 +157,57 @@ const CandidateNew = () => {
       toast.error('Geen verbonden e-mailaccount gevonden. Koppel eerst Outlook via Instellingen.');
       return;
     }
-    sendProfileLinkMutation.mutate();
+    sendPortalInviteMutation.mutate();
   };
 
-  const sendProfileLinkMutation = useMutation({
+  const sendPortalInviteMutation = useMutation({
     mutationFn: async () => {
       if (!createdCandidate?.email) throw new Error('Geen e-mailadres bekend');
-      const senderName = profile?.full_name || orgName;
-      const html = `
-        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:600px;margin:0 auto;color:#334155;">
-          <p>Hoi ${createdCandidate.first_name},</p>
-          <p>Je bent aangemeld. Vul je profiel aan via onderstaande link:</p>
-          <p>
-            <a href="${profileUrl}" style="display:inline-block;background:#1e293b;color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:6px;font-weight:600;">
-              Profiel aanvullen
-            </a>
-          </p>
-          <p style="color:#64748b;font-size:13px;">Lukt de knop niet? Gebruik dan deze link:<br>${profileUrl}</p>
-          <p>Met vriendelijke groet,<br><strong>${senderName}</strong></p>
-        </div>
-      `;
-      return callOutlook('outlook-send-mail', {
-        to: [createdCandidate.email],
-        subject: 'Vul je profiel aan',
-        html,
-        candidate_id: createdCandidate.id,
+
+      const { data: existingInvite, error: existingError } = await supabase
+        .from('portal_invites')
+        .select('id')
+        .eq('candidate_id', createdCandidate.id)
+        .is('used_at', null)
+        .gt('expires_at', new Date().toISOString())
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (existingError) throw existingError;
+
+      let inviteId = existingInvite?.id;
+      if (!inviteId) {
+        const { data: invite, error: inviteError } = await supabase
+          .from('portal_invites')
+          .insert({
+            organization_id: orgId,
+            candidate_id: createdCandidate.id,
+            email: createdCandidate.email,
+          })
+          .select('id')
+          .single();
+        if (inviteError) throw inviteError;
+        inviteId = invite.id;
+      }
+
+      const { error: candidateError } = await supabase
+        .from('candidates')
+        .update({ portal_enabled: true })
+        .eq('id', createdCandidate.id);
+      if (candidateError) throw candidateError;
+
+      const { data, error } = await supabase.functions.invoke('send-portal-invite', {
+        body: { invite_id: inviteId },
       });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      if (!(data as any)?.sent) throw new Error((data as any)?.error ?? 'E-mail versturen mislukt');
+      return data as { sent: boolean; activation_url?: string; error?: string };
     },
-    onSuccess: () => {
-      toast.success('Uitnodiging verstuurd via het verbonden e-mailaccount');
+    onSuccess: (data) => {
+      if (data.activation_url) setPortalInviteUrl(data.activation_url);
+      qc.invalidateQueries({ queryKey: ['candidates'] });
+      toast.success('Portaaluitnodiging verstuurd via het verbonden e-mailaccount');
     },
     onError: (error: Error) => {
       toast.error(`E-mail versturen mislukt: ${error.message}`);
@@ -229,6 +251,12 @@ const CandidateNew = () => {
               </Button>
             </div>
           </div>
+          {portalInviteUrl && (
+            <div className="rounded-md border bg-muted/50 p-3">
+              <p className="text-xs text-muted-foreground mb-1">Portaalactivatielink verstuurd</p>
+              <p className="text-sm font-mono break-all">{portalInviteUrl}</p>
+            </div>
+          )}
 
           <div className="flex gap-3 pt-2">
             {createdCandidate.phone && (
@@ -237,8 +265,8 @@ const CandidateNew = () => {
               </Button>
             )}
             {createdCandidate.email && (
-              <Button variant="outline" onClick={handleEmail} disabled={sendProfileLinkMutation.isPending} className="gap-2">
-                <Mail className="h-4 w-4" /> {sendProfileLinkMutation.isPending ? 'Versturen...' : 'Verstuur via email'}
+              <Button variant="outline" onClick={handleEmail} disabled={sendPortalInviteMutation.isPending} className="gap-2">
+                <Mail className="h-4 w-4" /> {sendPortalInviteMutation.isPending ? 'Versturen...' : 'Verstuur portaaluitnodiging via email'}
               </Button>
             )}
           </div>

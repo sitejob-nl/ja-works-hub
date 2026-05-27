@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Users, Plus, Search, Upload, CheckCircle2, XCircle, FolderHeart, SlidersHorizontal, UserPlus, Check, X } from 'lucide-react';
+import { Users, Plus, Search, Upload, CheckCircle2, XCircle, FolderHeart, SlidersHorizontal, UserPlus, Check, X, KeyRound } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -14,6 +14,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import ImportWizard from '@/components/import/ImportWizard';
 import AddToPoolSheet from '@/components/talentpools/AddToPoolSheet';
+import PortalActivateSheet from '@/components/employees/PortalActivateSheet';
 import { formatDate } from '@/lib/format';
 import { getPaginationRange } from '@/lib/pagination';
 
@@ -120,6 +121,7 @@ const Candidates = () => {
   const [importPreset, setImportPreset] = useState<'carerix' | 'buddy' | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [poolSheetOpen, setPoolSheetOpen] = useState(false);
+  const [portalCandidate, setPortalCandidate] = useState<any | null>(null);
   const [cvSearch, setCvSearch] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -177,6 +179,7 @@ const Candidates = () => {
             last_name,
             employee_number,
             employee_status,
+            email,
             compliance_status,
             portal_enabled,
             housing_assignments!housing_assignments_candidate_id_fkey(id, status)
@@ -410,7 +413,7 @@ const Candidates = () => {
           ) : (
             <>
               <div className="bg-card rounded-lg border overflow-x-auto">
-                <Table className="min-w-[700px]">
+                <Table className="min-w-[820px]">
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-10">
@@ -423,6 +426,7 @@ const Candidates = () => {
                       <TableHead>E-mail</TableHead>
                       <TableHead>Vaardigheden</TableHead>
                       <TableHead>Compliance</TableHead>
+                      <TableHead className="text-right">Acties</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -477,6 +481,18 @@ const Candidates = () => {
                               {c.compliance_status}
                             </Badge>
                           </TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="gap-1.5"
+                              disabled={!c.email}
+                              onClick={() => setPortalCandidate(c)}
+                            >
+                              <KeyRound className="h-3.5 w-3.5" />
+                              Portaal
+                            </Button>
+                          </TableCell>
                         </TableRow>
                       );
                     })}
@@ -524,7 +540,7 @@ const Candidates = () => {
           ) : (
             <>
               <div className="bg-card rounded-lg border overflow-x-auto">
-                <Table className="min-w-[700px]">
+                <Table className="min-w-[820px]">
                   <TableHeader>
                     <TableRow>
                       <TableHead>Naam</TableHead>
@@ -535,6 +551,7 @@ const Candidates = () => {
                       <TableHead>Huisvesting</TableHead>
                       <TableHead>Portaal</TableHead>
                       <TableHead>Actieve plaatsing</TableHead>
+                      <TableHead className="text-right">Acties</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -580,6 +597,18 @@ const Candidates = () => {
                               </div>
                             ) : '—'}
                           </TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="gap-1.5"
+                              disabled={!c.email}
+                              onClick={() => setPortalCandidate(c)}
+                            >
+                              <KeyRound className="h-3.5 w-3.5" />
+                              {c.portal_enabled ? 'Opnieuw' : 'Uitnodigen'}
+                            </Button>
+                          </TableCell>
                         </TableRow>
                       );
                     })}
@@ -620,6 +649,14 @@ const Candidates = () => {
         candidateIds={Array.from(selected)}
         onDone={() => setSelected(new Set())}
       />
+      {portalCandidate && (
+        <PortalActivateSheet
+          open={!!portalCandidate}
+          onOpenChange={(open) => { if (!open) setPortalCandidate(null); }}
+          candidateId={portalCandidate.id}
+          candidateEmail={portalCandidate.email}
+        />
+      )}
     </div>
   );
 };
