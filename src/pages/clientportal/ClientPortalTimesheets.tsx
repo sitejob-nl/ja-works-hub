@@ -10,7 +10,9 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { ChevronLeft, ChevronRight, Check, X } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ChevronLeft, ChevronRight, Check, Plus, X } from 'lucide-react';
 import { formatDate } from '@/lib/format';
 import { toast } from 'sonner';
 
@@ -27,6 +29,12 @@ const ClientPortalTimesheets = () => {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [rejectId, setRejectId] = useState<string | null>(null);
   const [rejectNotes, setRejectNotes] = useState('');
+  const [entryOpen, setEntryOpen] = useState(false);
+  const [entryForm, setEntryForm] = useState({ placement_id: '', work_date: '', hours: '8', overtime_hours: '0', notes: '' });
+
+  const entryFlow = company?.timesheet_entry_flow ?? 'medewerker';
+  const canClientEnter = entryFlow === 'opdrachtgever' || entryFlow === 'kloksysteem';
+  const sourceForFlow = entryFlow === 'kloksysteem' ? 'kloksysteem' : 'klantportaal';
 
   // Week navigation
   const [weekOffset, setWeekOffset] = useState(0);
@@ -45,17 +53,24 @@ const ClientPortalTimesheets = () => {
   const weekLabel = `${weekStart.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })} - ${weekEnd.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' })}`;
 
   const { data: timesheets = [], isLoading } = useQuery({
-    queryKey: ['client-portal-timesheets', company?.id, weekOffset, tab],
+    queryKey: ['client-portal-timesheets', company?.id, weekOffset, tab, entryFlow],
     queryFn: async () => {
       let query = supabase
         .from('timesheets')
-        .select('id, work_date, hours, overtime_hours, status, client_approved, client_approved_at, client_rejection_notes, candidates!timesheets_candidate_id_fkey(first_name, last_name), placements!inner(company_id, function_name)')
+        .select('id, work_date, hours, overtime_hours, status, source, employee_confirmed, employee_confirmed_at, client_approved, client_approved_at, client_rejection_notes, candidates!timesheets_candidate_id_fkey(first_name, last_name), placements!inner(company_id, function_name)')
         .eq('placements.company_id', company!.id)
         .gte('work_date', weekStart.toISOString().split('T')[0])
         .lte('work_date', weekEnd.toISOString().split('T')[0])
         .order('work_date');
 
-      if (tab === 'pending') {
+      if (canClientEnter) {
+        query = query.eq('source', sourceForFlow as any).eq('client_approved', true);
+        if (tab === 'pending') {
+          query = query.eq('employee_confirmed', false);
+        } else {
+          query = query.eq('employee_confirmed', true);
+        }
+      } else if (tab === 'pending') {
         query = query.in('status', ['groen', 'oranje', 'rood'] as any).is('client_approved', null);
       } else {
         query = query.not('client_approved', 'is', null);
@@ -66,6 +81,21 @@ const ClientPortalTimesheets = () => {
       return data ?? [];
     },
     enabled: !!company?.id,
+  });
+
+  const { data: activePlacements = [] } = useQuery({
+    queryKey: ['client-portal-active-placements-for-timesheet-entry', company?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('placements')
+        .select('id, employee_id, candidate_id, function_name, hourly_rate, candidates!placements_candidate_id_fkey(first_name, last_name)')
+        .eq('company_id', company!.id)
+        .eq('status', 'actief' as any)
+        .order('start_date', { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!company?.id && canClientEnter,
   });
 
   const approveMutation = useMutation({
@@ -112,6 +142,45 @@ const ClientPortalTimesheets = () => {
     onError: (e: any) => toast.error(e.message),
   });
 
+  const createTimesheetMutation = useMutation({
+    mutationFn: async () => {
+      const placement = activePlacements.find((p: any) => p.id === entryForm.placement_id) as any;
+      if (!placement) throw new Error('Selecteer een plaatsing');
+      const hours = Number(entryForm.hours);
+      const overtime = Number(entryForm.overtime_hours || 0);
+      if (!entryForm.work_date) throw new Error('Kies een datum');
+      if (!hours || hours <= 0 || hours > 24) throw new Error('Uren moeten tussen 0 en 24 liggen');
+      if (overtime < 0 || overtime > 24) throw new Error('Overuren moeten tussen 0 en 24 liggen');
+
+      const { error } = await supabase.from('timesheets').insert({
+        organization_id: company!.organization_id,
+        placement_id: placement.id,
+        employee_id: placement.employee_id,
+        candidate_id: placement.candidate_id,
+        work_date: entryForm.work_date,
+        hours,
+        overtime_hours: overtime || null,
+        hourly_rate: placement.hourly_rate ?? null,
+        notes: entryForm.notes || null,
+        source: sourceForFlow as any,
+        status: 'concept' as any,
+        client_approved: true,
+        client_approved_at: new Date().toISOString(),
+        client_approved_by: session?.user?.id,
+        employee_confirmed: false,
+      } as any);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['client-portal-timesheets'] });
+      qc.invalidateQueries({ queryKey: ['client-portal-stats'] });
+      setEntryOpen(false);
+      setEntryForm({ placement_id: '', work_date: '', hours: '8', overtime_hours: '0', notes: '' });
+      toast.success('Uren doorgegeven aan medewerker');
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
   const toggleSelect = (id: string) => {
     setSelected(prev => {
       const next = new Set(prev);
@@ -134,13 +203,27 @@ const ClientPortalTimesheets = () => {
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold">Uren</h1>
-        <Tabs value={tab} onValueChange={(v) => { setTab(v as any); setSelected(new Set()); }}>
-          <TabsList>
-            <TabsTrigger value="pending">Te beoordelen</TabsTrigger>
-            <TabsTrigger value="reviewed">Beoordeeld</TabsTrigger>
-          </TabsList>
-        </Tabs>
+        <div>
+          <h1 className="text-xl font-semibold">Uren</h1>
+          {canClientEnter && (
+            <p className="text-xs text-muted-foreground mt-1">
+              {entryFlow === 'kloksysteem' ? 'Kloksysteemuren worden door de medewerker bevestigd.' : 'Doorgegeven uren worden door de medewerker bevestigd.'}
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {canClientEnter && (
+            <Button size="sm" onClick={() => setEntryOpen(true)} className="gap-1.5">
+              <Plus className="h-4 w-4" /> Uren doorgeven
+            </Button>
+          )}
+          <Tabs value={tab} onValueChange={(v) => { setTab(v as any); setSelected(new Set()); }}>
+            <TabsList>
+              <TabsTrigger value="pending">{canClientEnter ? 'Wacht op medewerker' : 'Te beoordelen'}</TabsTrigger>
+              <TabsTrigger value="reviewed">{canClientEnter ? 'Bevestigd' : 'Beoordeeld'}</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
       </div>
 
       {/* Week navigation */}
@@ -160,7 +243,7 @@ const ClientPortalTimesheets = () => {
       </div>
 
       {/* Bulk actions */}
-      {isPending && selected.size > 0 && (
+      {!canClientEnter && isPending && selected.size > 0 && (
         <div className="flex items-center gap-3 bg-primary/5 rounded-lg border border-primary/20 p-3">
           <span className="text-sm font-medium">{selected.size} geselecteerd</span>
           <Button size="sm" onClick={() => approveMutation.mutate(Array.from(selected))} disabled={approveMutation.isPending} className="gap-1">
@@ -174,14 +257,16 @@ const ClientPortalTimesheets = () => {
         <p className="text-muted-foreground text-center py-8">Laden...</p>
       ) : timesheets.length === 0 ? (
         <p className="text-muted-foreground text-center py-8">
-          {isPending ? 'Geen uren te beoordelen deze week' : 'Geen beoordeelde uren deze week'}
+          {canClientEnter
+            ? (isPending ? 'Geen doorgegeven uren die nog wachten op medewerkerbevestiging' : 'Geen bevestigde uren deze week')
+            : (isPending ? 'Geen uren te beoordelen deze week' : 'Geen beoordeelde uren deze week')}
         </p>
       ) : (
         <div className="bg-card rounded-lg border">
           <Table>
             <TableHeader>
               <TableRow>
-                {isPending && (
+                {isPending && !canClientEnter && (
                   <TableHead className="w-10">
                     <Checkbox checked={selected.size === timesheets.length && timesheets.length > 0} onCheckedChange={toggleAll} />
                   </TableHead>
@@ -190,14 +275,14 @@ const ClientPortalTimesheets = () => {
                 <TableHead>Datum</TableHead>
                 <TableHead>Uren</TableHead>
                 <TableHead>Overuren</TableHead>
-                <TableHead>AI Status</TableHead>
-                {isPending ? <TableHead className="text-right">Acties</TableHead> : <TableHead>Beoordeling</TableHead>}
+                <TableHead>{canClientEnter ? 'Status' : 'AI Status'}</TableHead>
+                {canClientEnter ? <TableHead>Medewerker</TableHead> : isPending ? <TableHead className="text-right">Acties</TableHead> : <TableHead>Beoordeling</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {timesheets.map((t: any) => (
                 <TableRow key={t.id}>
-                  {isPending && (
+                  {isPending && !canClientEnter && (
                     <TableCell>
                       <Checkbox checked={selected.has(t.id)} onCheckedChange={() => toggleSelect(t.id)} />
                     </TableCell>
@@ -213,7 +298,15 @@ const ClientPortalTimesheets = () => {
                       {t.status}
                     </Badge>
                   </TableCell>
-                  {isPending ? (
+                  {canClientEnter ? (
+                    <TableCell>
+                      {t.employee_confirmed ? (
+                        <Badge variant="secondary" className="text-xs bg-stat-green/10 text-stat-green border-0">Bevestigd</Badge>
+                      ) : (
+                        <Badge variant="secondary" className="text-xs bg-yellow-100 text-yellow-700 border-0">Wacht op bevestiging</Badge>
+                      )}
+                    </TableCell>
+                  ) : isPending ? (
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
                         <Button size="sm" variant="outline" onClick={() => approveMutation.mutate([t.id])} disabled={approveMutation.isPending} className="gap-1 h-7 text-xs">
@@ -261,6 +354,53 @@ const ClientPortalTimesheets = () => {
             <Button variant="ghost" onClick={() => setRejectId(null)}>Annuleren</Button>
             <Button variant="destructive" onClick={() => rejectId && rejectMutation.mutate({ id: rejectId, notes: rejectNotes })} disabled={rejectMutation.isPending}>
               Afkeuren
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={entryOpen} onOpenChange={setEntryOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Uren doorgeven</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Plaatsing *</Label>
+              <Select value={entryForm.placement_id} onValueChange={(value) => setEntryForm((f) => ({ ...f, placement_id: value }))}>
+                <SelectTrigger><SelectValue placeholder="Selecteer medewerker en functie" /></SelectTrigger>
+                <SelectContent>
+                  {activePlacements.map((p: any) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.candidates?.first_name} {p.candidates?.last_name} — {p.function_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="space-y-2">
+                <Label>Datum *</Label>
+                <Input type="date" value={entryForm.work_date} onChange={(e) => setEntryForm((f) => ({ ...f, work_date: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>Uren *</Label>
+                <Input type="number" min="0" max="24" step="0.25" value={entryForm.hours} onChange={(e) => setEntryForm((f) => ({ ...f, hours: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>Overuren</Label>
+                <Input type="number" min="0" max="24" step="0.25" value={entryForm.overtime_hours} onChange={(e) => setEntryForm((f) => ({ ...f, overtime_hours: e.target.value }))} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Opmerking</Label>
+              <Textarea value={entryForm.notes} onChange={(e) => setEntryForm((f) => ({ ...f, notes: e.target.value }))} rows={3} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setEntryOpen(false)}>Annuleren</Button>
+            <Button onClick={() => createTimesheetMutation.mutate()} disabled={createTimesheetMutation.isPending}>
+              {createTimesheetMutation.isPending ? 'Opslaan...' : 'Doorgeven'}
             </Button>
           </DialogFooter>
         </DialogContent>

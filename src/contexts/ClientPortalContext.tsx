@@ -51,7 +51,7 @@ export const ClientPortalProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
     const { data: cc } = await supabase
       .from('company_contacts')
-      .select('*, companies!company_contacts_company_id_fkey(id, name)')
+      .select('*, companies!company_contacts_company_id_fkey(id, organization_id, name, timesheet_entry_flow)')
       .eq('auth_user_id', userId)
       .maybeSingle();
 

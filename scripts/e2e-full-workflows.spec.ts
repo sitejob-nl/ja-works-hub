@@ -1,5 +1,5 @@
 import { expect, Locator, Page, test } from "@playwright/test";
-import { ensureLoggedIn } from "./e2e-helpers";
+import { ensureLoggedIn, getAccessToken, SUPABASE_ANON, SUPABASE_URL } from "./e2e-helpers";
 
 test.describe.configure({ mode: "serial" });
 
@@ -18,6 +18,51 @@ function requiredEnv(name: string): string {
   const value = process.env[name];
   if (!value) test.skip(true, `${name} niet gezet; full workflow e2e overgeslagen`);
   return value!;
+}
+
+async function authHeaders(page: Page) {
+  const token = await getAccessToken(page);
+  if (!token) throw new Error("Geen admin access token beschikbaar voor full workflow e2e");
+  return {
+    apikey: SUPABASE_ANON,
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+  };
+}
+
+async function restGet<T>(page: Page, table: string, query: string): Promise<T[]> {
+  const res = await page.request.get(`${SUPABASE_URL}/rest/v1/${table}?${query}`, {
+    headers: await authHeaders(page),
+  });
+  expect(res.ok(), `${table} select faalde: ${await res.text()}`).toBeTruthy();
+  return (await res.json()) as T[];
+}
+
+async function restPatch(page: Page, table: string, filter: string, data: Record<string, unknown>): Promise<void> {
+  const res = await page.request.patch(`${SUPABASE_URL}/rest/v1/${table}?${filter}`, {
+    headers: {
+      ...(await authHeaders(page)),
+      Prefer: "return=minimal",
+    },
+    data,
+  });
+  expect(res.ok(), `${table} update faalde: ${await res.text()}`).toBeTruthy();
+}
+
+async function expectTimesheetConfirmed(page: Page, candidateId: string, notes: string): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        const rows = await restGet<{ employee_confirmed: boolean; status: string }>(
+          page,
+          "timesheets",
+          `select=employee_confirmed,status&candidate_id=eq.${candidateId}&notes=eq.${encodeURIComponent(notes)}&limit=1`,
+        );
+        return rows[0] ? `${rows[0].employee_confirmed}:${rows[0].status}` : "missing";
+      },
+      { timeout: 20_000 },
+    )
+    .toBe("true:ingediend");
 }
 
 function xpathLiteral(value: string): string {
@@ -75,6 +120,39 @@ function imagePayload(name = "qa-proof.png") {
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function dateToIsoDate(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function currentWeekBounds(): { start: Date; end: Date } {
+  const now = new Date();
+  const start = new Date(now);
+  const day = start.getDay() || 7;
+  start.setDate(start.getDate() - day + 1);
+  start.setHours(12, 0, 0, 0);
+
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  return { start, end };
+}
+
+async function chooseFreeCurrentWeekDate(page: Page, candidateId: string): Promise<string> {
+  const { start, end } = currentWeekBounds();
+  const existing = await restGet<{ work_date: string }>(
+    page,
+    "timesheets",
+    `select=work_date&candidate_id=eq.${candidateId}&work_date=gte.${dateToIsoDate(start)}&work_date=lte.${dateToIsoDate(end)}`,
+  );
+  const taken = new Set(existing.map((row) => row.work_date));
+  for (let offset = 0; offset < 7; offset++) {
+    const date = new Date(start);
+    date.setDate(start.getDate() + offset);
+    const iso = dateToIsoDate(date);
+    if (!taken.has(iso)) return iso;
+  }
+  throw new Error("Geen vrije dag in de huidige week gevonden voor opdrachtgever-urenflow");
 }
 
 async function loginPortal(page: Page, url: string, email: string, password: string): Promise<void> {
@@ -291,6 +369,8 @@ test("Admin configureert tankpasvoorwaarden, fiscale signalering en rewardshop",
   await expect(page.getByText(/Privé boven marge|signaal/i).first()).toBeVisible({ timeout: 20_000 });
 
   await page.goto("/instellingen", { waitUntil: "domcontentloaded" });
+  await page.getByRole("tab", { name: /Matching/i }).click();
+  await expect(page.getByText(/Verjaardagen, punten & rewards/i)).toBeVisible({ timeout: 15_000 });
   const rewardName = `E2E Reward ${runId}`;
   const rewardSection = page.locator(`xpath=//*[normalize-space()='Reward toevoegen']/ancestor::div[contains(@class,'rounded-md')][1]`);
   await rewardSection.scrollIntoViewIfNeeded();
@@ -384,6 +464,17 @@ test("Klantportaal activeert account, ziet alleen eigen plaatsingen en keurt ure
   const employeeName = requiredEnv("E2E_SEEDED_EMPLOYEE_NAME");
   const foreignEmployeeName = requiredEnv("E2E_FOREIGN_EMPLOYEE_NAME");
 
+  await ensureLoggedIn(page);
+  const companies = await restGet<{ id: string }>(
+    page,
+    "companies",
+    `select=id&name=eq.${encodeURIComponent(companyName)}&limit=1`,
+  );
+  expect(companies[0]?.id, "Demo-opdrachtgever niet gevonden").toBeTruthy();
+  await restPatch(page, "companies", `id=eq.${companies[0].id}`, {
+    timesheet_entry_flow: "medewerker",
+  });
+
   await activatePortalAccount(page, `/klantportaal/activeren/${token}`, email, password);
 
   await loginPortal(page, "/klantportaal/login", email, password);
@@ -411,6 +502,71 @@ test("Klantportaal activeert account, ziet alleen eigen plaatsingen en keurt ure
     await expect(page.getByText(employeeName).first()).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(/Goedgekeurd/i).first()).toBeVisible();
   }
+
+  expect(blockingFailures(failures)).toEqual([]);
+});
+
+test("Klantportaal geeft uren door en medewerker bevestigt deze in medewerkerportaal", async ({ page }) => {
+  requireMutatingWorkflows();
+  test.setTimeout(180_000);
+  const failures = watchFailures(page);
+  const clientEmail = requiredEnv("E2E_CLIENT_PORTAL_EMAIL");
+  const employeeEmail = requiredEnv("E2E_EMPLOYEE_PORTAL_EMAIL");
+  const password = requiredEnv("E2E_PORTAL_PASSWORD");
+  const companyName = requiredEnv("E2E_SEEDED_COMPANY_NAME");
+  const employeeName = requiredEnv("E2E_SEEDED_EMPLOYEE_NAME");
+
+  await ensureLoggedIn(page);
+
+  const companies = await restGet<{ id: string }>(
+    page,
+    "companies",
+    `select=id&name=eq.${encodeURIComponent(companyName)}&limit=1`,
+  );
+  expect(companies[0]?.id, "Demo-opdrachtgever niet gevonden").toBeTruthy();
+  await restPatch(page, "companies", `id=eq.${companies[0].id}`, {
+    timesheet_entry_flow: "opdrachtgever",
+  });
+
+  const candidates = await restGet<{ id: string }>(
+    page,
+    "candidates",
+    `select=id&email=eq.${encodeURIComponent(employeeEmail)}&limit=1`,
+  );
+  expect(candidates[0]?.id, "Demo-medewerker niet gevonden").toBeTruthy();
+  const workDate = await chooseFreeCurrentWeekDate(page, candidates[0].id);
+  const notes = `E2E opdrachtgeveruren ${runId}`;
+
+  await loginPortal(page, "/klantportaal/login", clientEmail, password);
+  await page.goto("/klantportaal/uren", { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("button", { name: /Uren doorgeven/i })).toBeVisible({ timeout: 15_000 });
+  await page.getByRole("button", { name: /Uren doorgeven/i }).click();
+  await page.getByRole("combobox").first().click();
+  await page.getByRole("option", { name: new RegExp(escapeRegExp(employeeName)) }).first().click();
+  await page.locator('input[type="date"]').fill(workDate);
+  await page.locator('input[type="number"]').nth(0).fill("6.5");
+  await page.locator('input[type="number"]').nth(1).fill("1");
+  await page.locator("textarea").fill(notes);
+  await page.getByRole("button", { name: /^Doorgeven$/ }).click();
+  await expect(page.getByText(/Uren doorgegeven aan medewerker/i).first()).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText(employeeName).first()).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText(/Wacht op bevestiging/i).first()).toBeVisible({ timeout: 20_000 });
+
+  await loginPortal(page, "/portaal/login", employeeEmail, password);
+  await page.goto("/portaal/uren", { waitUntil: "domcontentloaded" });
+  await expect(page.getByText(notes).first()).toBeVisible({ timeout: 20_000 });
+  const employeeTimesheetRow = page.locator("div", { hasText: notes }).filter({
+    has: page.getByRole("button", { name: /Bevestig/i }),
+  }).first();
+  await employeeTimesheetRow.getByRole("button", { name: /Bevestig/i }).click();
+  await expectTimesheetConfirmed(page, candidates[0].id, notes);
+
+  await loginPortal(page, "/klantportaal/login", clientEmail, password);
+  await page.goto("/klantportaal/uren", { waitUntil: "domcontentloaded" });
+  await page.getByRole("tab", { name: /Bevestigd/i }).click();
+  await expect(page.getByText(employeeName).first()).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText(/Bevestigd/i).first()).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText(notes)).toHaveCount(0);
 
   expect(blockingFailures(failures)).toEqual([]);
 });

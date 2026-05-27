@@ -16,7 +16,7 @@ import { Link } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
 
 const CONTACT_ROLES = [
-  { value: 'admin', label: 'Admin' },
+  { value: 'administratie', label: 'Administratie' },
   { value: 'plaatsing', label: 'Plaatsing' },
   { value: 'hr', label: 'HR' },
   { value: 'overig', label: 'Overig' },
@@ -25,10 +25,16 @@ const CONTACT_ROLES = [
 type ContactRole = Database['public']['Enums']['contact_role'];
 
 const ROLE_COLORS: Record<string, string> = {
+  administratie: 'bg-blue-50 text-blue-700',
   admin: 'bg-blue-50 text-blue-700',
   plaatsing: 'bg-green-50 text-green-700',
   hr: 'bg-purple-50 text-purple-700',
   overig: 'bg-gray-50 text-gray-600',
+};
+
+const roleLabel = (role: string) => {
+  if (role === 'admin') return 'Administratie';
+  return CONTACT_ROLES.find(r => r.value === role)?.label ?? role;
 };
 
 interface FormState {
@@ -136,7 +142,7 @@ const ContactsTab = ({ companyId }: { companyId: string }) => {
       first_name: c.first_name ?? '',
       last_name: c.last_name ?? '',
       function_title: c.function_title ?? '',
-      role: c.role ?? 'overig',
+      role: c.role === 'admin' ? 'administratie' : c.role ?? 'overig',
       phone: c.phone ?? '',
       email: c.email ?? '',
       linkedin_url: c.linkedin_url ?? '',
@@ -251,7 +257,7 @@ const ContactsTab = ({ companyId }: { companyId: string }) => {
                   <TableCell>
                     {c.role ? (
                       <Badge variant="secondary" className={`text-[10px] ${ROLE_COLORS[c.role] || ''}`}>
-                        {CONTACT_ROLES.find(r => r.value === c.role)?.label ?? c.role}
+                        {roleLabel(c.role)}
                       </Badge>
                     ) : '—'}
                   </TableCell>

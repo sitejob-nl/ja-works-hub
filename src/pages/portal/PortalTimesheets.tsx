@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { ChevronLeft, ChevronRight, Plus, Send } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Plus, Send } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, startOfWeek, endOfWeek, addWeeks, eachDayOfInterval, isSameDay, getISOWeek } from 'date-fns';
 import { nl } from 'date-fns/locale';
@@ -91,7 +91,7 @@ const PortalTimesheets = () => {
   });
 
   const totalHours = timesheets?.reduce((sum, t) => sum + (Number(t.hours) || 0) + (Number(t.overtime_hours) || 0), 0) ?? 0;
-  const conceptEntries = timesheets?.filter((t) => t.status === 'concept') ?? [];
+  const conceptEntries = timesheets?.filter((t) => t.status === 'concept' && t.employee_confirmed === true) ?? [];
   const hasConceptEntries = conceptEntries.length > 0;
 
   const getEntryForDay = (day: Date) => {
@@ -150,6 +150,27 @@ const PortalTimesheets = () => {
     },
   });
 
+  const confirmEmployerEntry = useMutation({
+    mutationFn: async (timesheetId: string) => {
+      const { error } = await supabase
+        .from('timesheets')
+        .update({
+          employee_confirmed: true,
+          employee_confirmed_at: new Date().toISOString(),
+          status: 'ingediend' as any,
+        })
+        .eq('id', timesheetId)
+        .eq('candidate_id', employeeId!);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['portal-timesheets'] });
+      qc.invalidateQueries({ queryKey: ['portal-hours'] });
+      toast.success('Uren bevestigd');
+    },
+    onError: (err: any) => toast.error(err.message || 'Bevestigen mislukt'),
+  });
+
   const resetForm = () => {
     setHours(8);
     setOvertimeHours(0);
@@ -195,12 +216,12 @@ const PortalTimesheets = () => {
           const isToday = isSameDay(day, new Date());
           const canAdd = !entry || entry.status === 'afgekeurd';
           const isRejected = entry?.status === 'afgekeurd';
+          const needsEmployeeConfirmation = entry && ['klantportaal', 'kloksysteem'].includes(entry.source) && entry.employee_confirmed !== true;
 
           return (
-            <button
+            <div
               key={day.toISOString()}
               onClick={() => canAdd && openDayEntry(day)}
-              disabled={!canAdd}
               className={`w-full flex items-center justify-between px-4 py-3 text-left transition-colors ${
                 canAdd ? 'hover:bg-muted/50 cursor-pointer' : 'cursor-default'
               } ${isToday ? 'bg-primary/5' : ''}`}
@@ -224,6 +245,11 @@ const PortalTimesheets = () => {
                       {isRejected && entry.notes && (
                         <p className="text-xs text-destructive mt-0.5">{entry.notes}</p>
                       )}
+                      {needsEmployeeConfirmation && (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Door opdrachtgever doorgegeven{entry.notes ? `: ${entry.notes}` : ''}
+                        </p>
+                      )}
                     </div>
                   ) : (
                     <span className="text-sm text-muted-foreground">—</span>
@@ -234,14 +260,28 @@ const PortalTimesheets = () => {
               <div className="flex items-center gap-2">
                 {entry && (
                   <Badge variant="secondary" className={`text-[10px] ${statusBadge[entry.status] ?? ''}`}>
-                    {statusLabel[entry.status] ?? entry.status}
+                    {needsEmployeeConfirmation ? 'Te bevestigen' : statusLabel[entry.status] ?? entry.status}
                   </Badge>
+                )}
+                {needsEmployeeConfirmation && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 gap-1"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      confirmEmployerEntry.mutate(entry.id);
+                    }}
+                    disabled={confirmEmployerEntry.isPending}
+                  >
+                    <Check className="h-3 w-3" /> Bevestig
+                  </Button>
                 )}
                 {canAdd && (
                   <Plus className="h-4 w-4 text-muted-foreground" />
                 )}
               </div>
-            </button>
+            </div>
           );
         })}
       </div>

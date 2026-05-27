@@ -1465,6 +1465,7 @@ export type Database = {
           media_id: string | null
           message_type: string | null
           organization_id: string
+          placement_id: string | null
           recording_url: string | null
           sent_at: string
           sent_by: string | null
@@ -1494,6 +1495,7 @@ export type Database = {
           media_id?: string | null
           message_type?: string | null
           organization_id: string
+          placement_id?: string | null
           recording_url?: string | null
           sent_at?: string
           sent_by?: string | null
@@ -1523,6 +1525,7 @@ export type Database = {
           media_id?: string | null
           message_type?: string | null
           organization_id?: string
+          placement_id?: string | null
           recording_url?: string | null
           sent_at?: string
           sent_by?: string | null
@@ -1559,6 +1562,13 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "communications_placement_id_fkey"
+            columns: ["placement_id"]
+            isOneToOne: false
+            referencedRelation: "placements"
             referencedColumns: ["id"]
           },
           {
@@ -9159,7 +9169,7 @@ export type Database = {
         | "lead"
       communication_channel: "whatsapp" | "email" | "voip" | "notitie" | "sms"
       compliance_status: "incompleet" | "compleet" | "verlopen"
-      contact_role: "admin" | "plaatsing" | "hr" | "overig"
+      contact_role: "admin" | "administratie" | "plaatsing" | "hr" | "overig"
       contract_status: "concept" | "verzonden" | "getekend" | "verlopen"
       document_status:
         | "geldig"
@@ -9404,7 +9414,7 @@ export const Constants = {
       ],
       communication_channel: ["whatsapp", "email", "voip", "notitie", "sms"],
       compliance_status: ["incompleet", "compleet", "verlopen"],
-      contact_role: ["admin", "plaatsing", "hr", "overig"],
+      contact_role: ["admin", "administratie", "plaatsing", "hr", "overig"],
       contract_status: ["concept", "verzonden", "getekend", "verlopen"],
       document_status: [
         "geldig",

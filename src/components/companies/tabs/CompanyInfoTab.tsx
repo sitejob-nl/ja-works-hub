@@ -23,6 +23,11 @@ const Field = ({ label, value }: { label: string; value: string | null | undefin
 );
 
 const legalFormOptions = ['BV', 'NV', 'VOF', 'Eenmanszaak', 'Stichting', 'Coöperatie', 'Maatschap', 'CV', 'Overig'];
+const timesheetFlowLabel: Record<string, string> = {
+  medewerker: 'Medewerker voert uren in',
+  opdrachtgever: 'Opdrachtgever geeft uren door',
+  kloksysteem: 'Kloksysteem opdrachtgever',
+};
 
 const CompanyInfoTab = ({ company }: { company: any }) => {
   const [editing, setEditing] = useState(false);
@@ -119,6 +124,7 @@ const CompanyInfoTab = ({ company }: { company: any }) => {
         authorized_signatory: form.authorized_signatory, vat_rate: form.vat_rate ? parseFloat(form.vat_rate) : null,
         invoice_email: form.invoice_email, invoice_cc: form.invoice_cc,
         invoice_company_name: form.invoice_company_name,
+        timesheet_entry_flow: form.timesheet_entry_flow ?? 'medewerker',
         phone: form.phone, email: form.email, website: form.website, notes: form.notes,
         // Keep old address fields synced with visit address
         address_street: form.visit_address_street, address_postal: form.visit_address_postal,
@@ -273,6 +279,17 @@ const CompanyInfoTab = ({ company }: { company: any }) => {
             <div><Label>Factuur e-mail</Label><Input type="email" value={form.invoice_email ?? ''} onChange={e => set('invoice_email', e.target.value)} /></div>
             <div><Label>Factuur CC</Label><Input type="email" value={form.invoice_cc ?? ''} onChange={e => set('invoice_cc', e.target.value)} /></div>
             <div><Label>Factuurnaam (afwijkend)</Label><Input value={form.invoice_company_name ?? ''} onChange={e => set('invoice_company_name', e.target.value)} /></div>
+            <div>
+              <Label>Urenstroom</Label>
+              <Select value={form.timesheet_entry_flow ?? 'medewerker'} onValueChange={v => set('timesheet_entry_flow', v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="medewerker">Medewerker voert uren in</SelectItem>
+                  <SelectItem value="opdrachtgever">Opdrachtgever geeft uren door</SelectItem>
+                  <SelectItem value="kloksysteem">Kloksysteem opdrachtgever</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
 
@@ -388,6 +405,7 @@ const CompanyInfoTab = ({ company }: { company: any }) => {
           <Field label="Factuur e-mail" value={company.invoice_email} />
           <Field label="Factuur CC" value={company.invoice_cc} />
           {company.invoice_company_name && <Field label="Factuurnaam" value={company.invoice_company_name} />}
+          <Field label="Urenstroom" value={timesheetFlowLabel[company.timesheet_entry_flow ?? 'medewerker'] ?? company.timesheet_entry_flow} />
         </div>
 
         <div className="bg-card rounded-lg border p-6 space-y-4">

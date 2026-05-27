@@ -22,6 +22,7 @@ import { payrollerLabel } from '@/lib/payroller';
 import PlacementHourTypesTab from '@/components/placements/tabs/PlacementHourTypesTab';
 import PlacementTravelTypesTab from '@/components/placements/tabs/PlacementTravelTypesTab';
 import PlacementAllowancesTab from '@/components/placements/tabs/PlacementAllowancesTab';
+import PlacementCommunicationTab from '@/components/placements/tabs/PlacementCommunicationTab';
 import { useTrackPageVisit } from '@/hooks/useTrackPageVisit';
 import NotesSection from '@/components/shared/NotesSection';
 import TasksSection from '@/components/shared/TasksSection';
@@ -330,6 +331,7 @@ const PlacementDetail = () => {
             <TabsTrigger value="uurtypes">Uurtypes</TabsTrigger>
             <TabsTrigger value="reistypes">Reistypes</TabsTrigger>
             <TabsTrigger value="vergoedingen">Vergoedingen</TabsTrigger>
+            <TabsTrigger value="communicatie">Communicatie</TabsTrigger>
             <TabsTrigger value="notities">Notities</TabsTrigger>
             <TabsTrigger value="taken">Taken</TabsTrigger>
           </TabsList>
@@ -337,6 +339,14 @@ const PlacementDetail = () => {
         <TabsContent value="uurtypes"><PlacementHourTypesTab placementId={id!} organizationId={placement.organization_id} /></TabsContent>
         <TabsContent value="reistypes"><PlacementTravelTypesTab placementId={id!} organizationId={placement.organization_id} /></TabsContent>
         <TabsContent value="vergoedingen"><PlacementAllowancesTab placementId={id!} organizationId={placement.organization_id} /></TabsContent>
+        <TabsContent value="communicatie">
+          <PlacementCommunicationTab
+            placementId={id!}
+            organizationId={placement.organization_id}
+            candidateId={placement.candidate_id}
+            companyId={placement.company_id}
+          />
+        </TabsContent>
         <TabsContent value="notities"><NotesSection entityId={id!} entityType="plaatsing" /></TabsContent>
         <TabsContent value="taken"><TasksSection entityId={id!} entityType="plaatsing" /></TabsContent>
       </Tabs>

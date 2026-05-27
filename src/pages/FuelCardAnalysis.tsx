@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { useAuth } from '@/contexts/AuthContext';
+import { getDrivingDistance } from '@/lib/distance';
 
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -20,11 +21,11 @@ import { toast } from 'sonner';
 import { formatDate, formatEUR } from '@/lib/format';
 import { logAudit } from '@/lib/audit';
 import { isLikelyVehiclePlateReference, normalizeVehicleRef } from '@/lib/fuel-analysis';
-import { Upload, AlertTriangle, CheckCircle2, StickyNote, Car, UserRound, CreditCard, Trash2, Settings2, Save, Info } from 'lucide-react';
+import { Upload, AlertTriangle, CheckCircle2, StickyNote, Car, UserRound, CreditCard, Trash2, Settings2, Save, Info, CalendarDays } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
-import { startOfMonth, endOfMonth, format } from 'date-fns';
+import { addDays, endOfMonth, endOfWeek, format, startOfMonth, startOfWeek, subWeeks } from 'date-fns';
 
 /* ─── helpers ────────────────────────────────────────────── */
 
@@ -48,6 +49,9 @@ type FuelAnalysisConditions = {
   tank_capacity_margin_pct: number;
   consumption_enabled: boolean;
   consumption_margin_pct: number;
+  route_consumption_enabled: boolean;
+  route_consumption_margin_pct: number;
+  route_distance_multiplier: number;
   mileage_jump_enabled: boolean;
   mileage_jump_max_km: number;
 };
@@ -57,10 +61,16 @@ const DEFAULT_FUEL_CONDITIONS: FuelAnalysisConditions = {
   tank_capacity_enabled: true,
   tank_capacity_margin_pct: 10,
   consumption_enabled: true,
-  consumption_margin_pct: 50,
+  consumption_margin_pct: 10,
+  route_consumption_enabled: true,
+  route_consumption_margin_pct: 10,
+  route_distance_multiplier: 1.25,
   mileage_jump_enabled: true,
   mileage_jump_max_km: 300,
 };
+
+const DEFAULT_WORK_DAYS = ['ma', 'di', 'wo', 'do', 'vr'];
+const DAY_KEY: Record<number, string> = { 0: 'zo', 1: 'ma', 2: 'di', 3: 'wo', 4: 'do', 5: 'vr', 6: 'za' };
 
 type FuelAnalysisDataQuality = {
   vehiclesTotal: number;
@@ -86,6 +96,9 @@ const coerceConditions = (value: unknown): FuelAnalysisConditions => {
     tank_capacity_margin_pct: clampNumber(raw.tank_capacity_margin_pct, DEFAULT_FUEL_CONDITIONS.tank_capacity_margin_pct, 0, 100),
     consumption_enabled: raw.consumption_enabled ?? DEFAULT_FUEL_CONDITIONS.consumption_enabled,
     consumption_margin_pct: clampNumber(raw.consumption_margin_pct, DEFAULT_FUEL_CONDITIONS.consumption_margin_pct, 0, 300),
+    route_consumption_enabled: raw.route_consumption_enabled ?? DEFAULT_FUEL_CONDITIONS.route_consumption_enabled,
+    route_consumption_margin_pct: clampNumber(raw.route_consumption_margin_pct, DEFAULT_FUEL_CONDITIONS.route_consumption_margin_pct, 0, 300),
+    route_distance_multiplier: clampNumber(raw.route_distance_multiplier, DEFAULT_FUEL_CONDITIONS.route_distance_multiplier, 1, 2.5),
     mileage_jump_enabled: raw.mileage_jump_enabled ?? DEFAULT_FUEL_CONDITIONS.mileage_jump_enabled,
     mileage_jump_max_km: clampNumber(raw.mileage_jump_max_km, DEFAULT_FUEL_CONDITIONS.mileage_jump_max_km, 1, 5000),
   };
@@ -95,6 +108,36 @@ const appendFlagNote = (insert: any, note: string) => {
   insert.flag_notes = [insert.flag_notes, note].filter(Boolean).join('\n');
 };
 
+const isoDate = (date: Date) => format(date, 'yyyy-MM-dd');
+const currentWeekStart = () => isoDate(startOfWeek(new Date(), { weekStartsOn: 1 }));
+
+const dateInRange = (date: string | null | undefined, start: string, end: string) => {
+  if (!date) return false;
+  return date >= start && date <= end;
+};
+
+const countWorkDays = (startIso: string, endIso: string, workDays: string[] | null | undefined) => {
+  const wanted = new Set((workDays?.length ? workDays : DEFAULT_WORK_DAYS).map(day => day.toLowerCase()));
+  let count = 0;
+  const cursor = new Date(`${startIso}T00:00:00`);
+  const end = new Date(`${endIso}T00:00:00`);
+  while (cursor <= end) {
+    if (wanted.has(DAY_KEY[cursor.getDay()])) count += 1;
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return count;
+};
+
+const haversineKm = (fromLat: number, fromLng: number, toLat: number, toLng: number) => {
+  const toRad = (value: number) => (value * Math.PI) / 180;
+  const earthKm = 6371;
+  const dLat = toRad(toLat - fromLat);
+  const dLng = toRad(toLng - fromLng);
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(toRad(fromLat)) * Math.cos(toRad(toLat)) * Math.sin(dLng / 2) ** 2;
+  return earthKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
 /* ─── Component ──────────────────────────────────────────── */
 
 const FuelCardAnalysis = () => {
@@ -102,6 +145,7 @@ const FuelCardAnalysis = () => {
   const { user } = useAuth();
   const qc = useQueryClient();
   const [importOpen, setImportOpen] = useState(false);
+  const [selectedWeekStart, setSelectedWeekStart] = useState(currentWeekStart());
 
   /* ── Queries ─────────────────────────────────────── */
 
@@ -164,6 +208,22 @@ const FuelCardAnalysis = () => {
   const flagged = useMemo(() => transactions.filter(t => !t.reviewed && (t.flag_over_capacity || t.flag_multiple_same_day || t.flag_excessive_consumption)), [transactions]);
   const allFlagged = useMemo(() => transactions.filter(t => t.flag_over_capacity || t.flag_multiple_same_day || t.flag_excessive_consumption), [transactions]);
   const transactionsWithoutVehicle = useMemo(() => transactions.filter(t => !t.vehicle_id).length, [transactions]);
+  const selectedWeekEnd = useMemo(
+    () => isoDate(endOfWeek(new Date(`${selectedWeekStart}T00:00:00`), { weekStartsOn: 1 })),
+    [selectedWeekStart],
+  );
+  const weeklyOpenFlags = useMemo(
+    () => flagged.filter(t => dateInRange(t.transaction_date, selectedWeekStart, selectedWeekEnd)),
+    [flagged, selectedWeekStart, selectedWeekEnd],
+  );
+  const weeklyAllTransactions = useMemo(
+    () => transactions.filter(t => dateInRange(t.transaction_date, selectedWeekStart, selectedWeekEnd)),
+    [transactions, selectedWeekStart, selectedWeekEnd],
+  );
+  const weeklyAllFlags = useMemo(
+    () => allFlagged.filter(t => dateInRange(t.transaction_date, selectedWeekStart, selectedWeekEnd)),
+    [allFlagged, selectedWeekStart, selectedWeekEnd],
+  );
 
   /* ── KPIs ────────────────────────────────────────── */
 
@@ -275,6 +335,7 @@ const FuelCardAnalysis = () => {
       <Tabs defaultValue="flags">
         <TabsList>
           <TabsTrigger value="flags">Afwijkingen{flagged.length > 0 && ` (${flagged.length})`}</TabsTrigger>
+          <TabsTrigger value="weekly">Weekoverzicht</TabsTrigger>
           <TabsTrigger value="all">Alle transacties</TabsTrigger>
           <TabsTrigger value="conditions">Voorwaarden</TabsTrigger>
           <TabsTrigger value="history">Import geschiedenis</TabsTrigger>
@@ -285,6 +346,20 @@ const FuelCardAnalysis = () => {
           {flagged.length === 0 ? (
             <p className="text-sm text-muted-foreground">Geen openstaande afwijkingen</p>
           ) : flagged.map(t => <FlagCard key={t.id} t={t} onReview={() => markReviewed.mutate(t.id)} onSaveNote={(note) => saveNote.mutate({ id: t.id, note })} />)}
+        </TabsContent>
+
+        {/* ── Wekelijks overzicht ───────────────────── */}
+        <TabsContent value="weekly" className="mt-4">
+          <WeeklyOverview
+            weekStart={selectedWeekStart}
+            weekEnd={selectedWeekEnd}
+            onWeekStartChange={setSelectedWeekStart}
+            transactions={weeklyAllTransactions}
+            allFlags={weeklyAllFlags}
+            openFlags={weeklyOpenFlags}
+            onReview={(id) => markReviewed.mutate(id)}
+            onSaveNote={(id, note) => saveNote.mutate({ id, note })}
+          />
         </TabsContent>
 
         {/* ── Alle transacties ──────────────────────── */}
@@ -526,6 +601,99 @@ const FlagCard = ({ t, onReview, onSaveNote }: { t: any; onReview: () => void; o
   );
 };
 
+const WeeklyOverview = ({ weekStart, weekEnd, onWeekStartChange, transactions, allFlags, openFlags, onReview, onSaveNote }: {
+  weekStart: string;
+  weekEnd: string;
+  onWeekStartChange: (value: string) => void;
+  transactions: any[];
+  allFlags: any[];
+  openFlags: any[];
+  onReview: (id: string) => void;
+  onSaveNote: (id: string, note: string) => void;
+}) => {
+  const weekOptions = useMemo(() => {
+    const base = startOfWeek(new Date(), { weekStartsOn: 1 });
+    return Array.from({ length: 8 }, (_, index) => {
+      const start = subWeeks(base, index);
+      const end = endOfWeek(start, { weekStartsOn: 1 });
+      return { value: isoDate(start), label: `${format(start, 'dd-MM-yyyy')} t/m ${format(end, 'dd-MM-yyyy')}` };
+    });
+  }, []);
+  const greenCount = Math.max(0, transactions.length - allFlags.length);
+  const reviewedFlags = allFlags.filter(t => t.reviewed).length;
+  const redCount = allFlags.filter(t => t.flag_over_capacity || t.flag_multiple_same_day).length;
+  const orangeCount = Math.max(0, allFlags.length - redCount);
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardContent className="pt-5 pb-5 space-y-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-start gap-3">
+              <div className="h-9 w-9 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
+                <CalendarDays className="h-4 w-4 text-primary" />
+              </div>
+              <div>
+                <h2 className="text-base font-semibold">Wekelijks Q8-overzicht</h2>
+                <p className="text-sm text-muted-foreground">
+                  Groen blijft uit de werklijst; alleen open oranje/rode afwijkingen staan hieronder.
+                </p>
+              </div>
+            </div>
+            <Select value={weekStart} onValueChange={onWeekStartChange}>
+              <SelectTrigger className="w-full md:w-[260px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {weekOptions.map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <WeeklyStat label="Periode" value={`${formatDate(weekStart)} - ${formatDate(weekEnd)}`} />
+            <WeeklyStat label="Groen automatisch door" value={greenCount.toString()} tone="green" />
+            <WeeklyStat label="Oranje" value={orangeCount.toString()} tone={orangeCount > 0 ? 'orange' : 'green'} />
+            <WeeklyStat label="Rood" value={redCount.toString()} tone={redCount > 0 ? 'red' : 'green'} />
+            <WeeklyStat label="Afgehandeld" value={reviewedFlags.toString()} />
+          </div>
+        </CardContent>
+      </Card>
+
+      {openFlags.length === 0 ? (
+        <Card className="border-green-200 bg-green-50/50">
+          <CardContent className="pt-5 pb-5 flex items-center gap-3">
+            <CheckCircle2 className="h-5 w-5 text-green-700" />
+            <p className="text-sm font-medium">Geen openstaande Q8-afwijkingen voor deze week.</p>
+          </CardContent>
+        </Card>
+      ) : (
+        openFlags.map(t => (
+          <FlagCard
+            key={t.id}
+            t={t}
+            onReview={() => onReview(t.id)}
+            onSaveNote={(note) => onSaveNote(t.id, note)}
+          />
+        ))
+      )}
+    </div>
+  );
+};
+
+const WeeklyStat = ({ label, value, tone = 'default' }: { label: string; value: string; tone?: 'default' | 'green' | 'orange' | 'red' }) => {
+  const toneClass = {
+    default: '',
+    green: 'border-green-200 bg-green-50 text-green-800',
+    orange: 'border-amber-200 bg-amber-50 text-amber-800',
+    red: 'border-destructive/30 bg-destructive/5 text-destructive',
+  }[tone];
+  return (
+    <div className={`rounded-md border px-3 py-2 ${toneClass}`}>
+      <p className="text-xs opacity-80">{label}</p>
+      <p className="text-lg font-semibold">{value}</p>
+    </div>
+  );
+};
+
 /* ─── All Transactions Table ────────────────────────────── */
 
 const AllTransactionsTable = ({ data }: { data: any[] }) => (
@@ -658,6 +826,26 @@ const ConditionsTab = ({ conditions, onSave, saving }: {
               value={draft.consumption_margin_pct}
               onChange={(value) => setNumber('consumption_margin_pct', value, DEFAULT_FUEL_CONDITIONS.consumption_margin_pct, 0, 300)}
             />
+          </ConditionRow>
+
+          <ConditionRow
+            title="Verbruik op basis van woonadres en werklocatie"
+            description="Vergelijk liters met woon-werkafstand, werkrooster en gemiddeld voertuigverbruik."
+            enabled={draft.route_consumption_enabled}
+            onEnabled={(v) => setBool('route_consumption_enabled', v)}
+          >
+            <div className="grid gap-3 sm:grid-cols-2">
+              <NumberField
+                label="Marge (%)"
+                value={draft.route_consumption_margin_pct}
+                onChange={(value) => setNumber('route_consumption_margin_pct', value, DEFAULT_FUEL_CONDITIONS.route_consumption_margin_pct, 0, 300)}
+              />
+              <NumberField
+                label="Routefactor"
+                value={draft.route_distance_multiplier}
+                onChange={(value) => setNumber('route_distance_multiplier', value, DEFAULT_FUEL_CONDITIONS.route_distance_multiplier, 1, 2.5)}
+              />
+            </div>
           </ConditionRow>
 
           <ConditionRow
@@ -858,10 +1046,17 @@ const ImportSheet = ({ open, onOpenChange, orgId, conditions, onDone }: {
         if (delImpErr) throw delImpErr;
       }
 
-      // Fetch vehicles for matching
+      // Fetch vehicles, active assignments and active placements for matching.
       const { data: vehicles } = await supabase.from('vehicles').select('id, license_plate, fuel_card_reference, tank_capacity_liters, avg_consumption_per_100km, current_mileage').eq('organization_id', orgId);
-      // Fetch active assignments
-      const { data: assignments } = await supabase.from('vehicle_assignments').select('vehicle_id, employee_id').is('returned_date', null);
+      const { data: assignments } = await supabase
+        .from('vehicle_assignments')
+        .select('vehicle_id, employee_id, employees(id, candidate_id, candidates(first_name, last_name, address_lat, address_lng))')
+        .is('returned_date', null);
+      const { data: placements } = await supabase
+        .from('placements')
+        .select('id, candidate_id, employee_id, start_date, end_date, status, work_days, work_location, companies!placements_company_id_fkey(name, address_lat, address_lng, visit_address_lat, visit_address_lng)')
+        .eq('organization_id', orgId)
+        .in('status', ['actief', 'gepland']);
 
       const vehicleByPlate: Record<string, any> = {};
       const vehicleByRef: Record<string, any> = {};
@@ -875,7 +1070,23 @@ const ImportSheet = ({ open, onOpenChange, orgId, conditions, onDone }: {
         }
       });
       const assignmentByVehicle: Record<string, string> = {};
-      (assignments ?? []).forEach(a => { assignmentByVehicle[a.vehicle_id] = a.employee_id; });
+      const candidateByVehicle: Record<string, any> = {};
+      (assignments ?? []).forEach((a: any) => {
+        assignmentByVehicle[a.vehicle_id] = a.employee_id;
+        const candidate = a.employees?.candidates ?? null;
+        if (candidate) {
+          candidateByVehicle[a.vehicle_id] = {
+            id: a.employees?.candidate_id ?? null,
+            ...candidate,
+          };
+        }
+      });
+      const placementsByCandidate: Record<string, any[]> = {};
+      (placements ?? []).forEach((placement: any) => {
+        if (!placement.candidate_id) return;
+        if (!placementsByCandidate[placement.candidate_id]) placementsByCandidate[placement.candidate_id] = [];
+        placementsByCandidate[placement.candidate_id].push(placement);
+      });
 
       const inserts: any[] = [];
       const rowMeta: Array<{ vehicleId: string | null; odometer: number | null; transactionDate: string; rowIndex: number }> = [];
@@ -928,6 +1139,7 @@ const ImportSheet = ({ open, onOpenChange, orgId, conditions, onDone }: {
           ?? (rawCard ? vehicleByRef[rawCard.toUpperCase().trim()] : null);
         const vehicleId = vehicle?.id ?? null;
         const employeeId = vehicleId ? (assignmentByVehicle[vehicleId] ?? null) : null;
+        const candidateId = vehicleId ? (candidateByVehicle[vehicleId]?.id ?? null) : null;
         if (vehicleId && rawCard && !fuelCardByVehicle[vehicleId]) {
           fuelCardByVehicle[vehicleId] = rawCard;
         }
@@ -961,6 +1173,7 @@ const ImportSheet = ({ open, onOpenChange, orgId, conditions, onDone }: {
           station_name: rawStation?.trim() || null,
           vehicle_id: vehicleId,
           employee_id: employeeId,
+          candidate_id: candidateId,
           flag_over_capacity: flagOverCap,
           raw_data: filledRow,
         });
@@ -1048,6 +1261,79 @@ const ImportSheet = ({ open, onOpenChange, orgId, conditions, onDone }: {
             lastKm = meta.odometer;
           });
         });
+      }
+
+      // Route-based consumption check: home address -> active work location.
+      if (conditions.route_consumption_enabled) {
+        const byVehicle: Record<string, typeof rowMeta> = {};
+        rowMeta.forEach((meta) => {
+          if (!meta.vehicleId) return;
+          if (!byVehicle[meta.vehicleId]) byVehicle[meta.vehicleId] = [];
+          byVehicle[meta.vehicleId].push(meta);
+        });
+
+        const distanceCache = new Map<string, { distanceKm: number; source: 'mapbox' | 'estimated' } | null>();
+        const getRouteDistance = async (homeLat: number, homeLng: number, workLat: number, workLng: number) => {
+          const key = `${homeLat},${homeLng}__${workLat},${workLng}`;
+          if (distanceCache.has(key)) return distanceCache.get(key) ?? null;
+          const driving = await getDrivingDistance(homeLat, homeLng, workLat, workLng);
+          const result = driving?.distanceKm
+            ? { distanceKm: driving.distanceKm, source: 'mapbox' as const }
+            : {
+              distanceKm: Math.round(haversineKm(homeLat, homeLng, workLat, workLng) * conditions.route_distance_multiplier * 10) / 10,
+              source: 'estimated' as const,
+            };
+          distanceCache.set(key, result);
+          return result;
+        };
+
+        for (const [vehicleId, metas] of Object.entries(byVehicle)) {
+          const vehicle = vehicleById[vehicleId];
+          const avgConsumption = Number(vehicle?.avg_consumption_per_100km);
+          const candidate = candidateByVehicle[vehicleId];
+          if (!candidate?.id || !Number.isFinite(avgConsumption) || avgConsumption <= 0) continue;
+          if (!Number.isFinite(Number(candidate.address_lat)) || !Number.isFinite(Number(candidate.address_lng))) continue;
+
+          const sorted = [...metas].sort((a, b) => {
+            const dateCmp = a.transactionDate.localeCompare(b.transactionDate);
+            return dateCmp !== 0 ? dateCmp : a.rowIndex - b.rowIndex;
+          });
+          let lastTransactionDate: string | null = null;
+
+          for (const meta of sorted) {
+            const insert = inserts[meta.rowIndex];
+            const candidatePlacements = placementsByCandidate[candidate.id] ?? [];
+            const placement = candidatePlacements.find((p: any) => (
+              p.start_date <= meta.transactionDate
+              && (!p.end_date || p.end_date >= meta.transactionDate)
+            )) ?? candidatePlacements[0];
+            const company = placement?.companies;
+            const workLat = Number(company?.visit_address_lat ?? company?.address_lat);
+            const workLng = Number(company?.visit_address_lng ?? company?.address_lng);
+            if (!placement || !Number.isFinite(workLat) || !Number.isFinite(workLng)) continue;
+
+            const route = await getRouteDistance(Number(candidate.address_lat), Number(candidate.address_lng), workLat, workLng);
+            if (!route?.distanceKm) continue;
+
+            const periodStart = lastTransactionDate
+              ? isoDate(addDays(new Date(`${lastTransactionDate}T00:00:00`), 1))
+              : isoDate(addDays(new Date(`${meta.transactionDate}T00:00:00`), -6));
+            const workDayCount = countWorkDays(periodStart, meta.transactionDate, placement.work_days);
+            const expectedKm = route.distanceKm * 2 * workDayCount;
+            const expectedLiters = (expectedKm * avgConsumption) / 100;
+            const allowedLiters = expectedLiters * (1 + conditions.route_consumption_margin_pct / 100);
+
+            if (workDayCount > 0 && insert.liters > allowedLiters) {
+              insert.flag_excessive_consumption = true;
+              appendFlagNote(
+                insert,
+                `Woon-werkverbruik ${insert.liters.toFixed(1)}L; verwacht ca. ${expectedLiters.toFixed(1)}L voor ${Math.round(expectedKm)} km (${workDayCount} werkdagen, ${route.source === 'mapbox' ? 'rijafstand' : 'geschatte routeafstand'} ${route.distanceKm} km enkele reis) + ${conditions.route_consumption_margin_pct}% marge.`,
+              );
+            }
+
+            lastTransactionDate = meta.transactionDate;
+          }
+        }
       }
 
       // Maak fuel_card_imports row met aggregaten — id wordt batchId
