@@ -37,6 +37,45 @@ import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.mjs?url';
 const formatEuro = (cents: number) =>
   (cents / 100).toLocaleString('nl-NL', { style: 'currency', currency: 'EUR' });
 
+const extractFunctionErrorMessage = async (error: unknown) => {
+  const fallback = error instanceof Error ? error.message : 'Kon analyse niet starten';
+  const context = (error as { context?: unknown })?.context;
+
+  let payload: unknown = null;
+  if (context instanceof Response) {
+    const text = await context.clone().text().catch(() => '');
+    if (text) {
+      try {
+        payload = JSON.parse(text);
+      } catch {
+        payload = { error: text };
+      }
+    }
+  } else if (context && typeof context === 'object' && 'body' in context) {
+    payload = (context as { body?: unknown }).body;
+    if (typeof payload === 'string') {
+      try {
+        payload = JSON.parse(payload);
+      } catch {
+        payload = { error: payload };
+      }
+    }
+  }
+
+  if (payload && typeof payload === 'object') {
+    const body = payload as { error?: unknown; details?: unknown; message?: unknown };
+    const message = body.error ?? body.message;
+    if (typeof message === 'string' && message.trim()) {
+      const details = typeof body.details === 'string' && body.details.trim()
+        ? ` (${body.details.trim().slice(0, 180)})`
+        : '';
+      return `${message}${details}`;
+    }
+  }
+
+  return fallback;
+};
+
 const CV_ACCEPT = [
   '.pdf',
   '.doc',
@@ -321,20 +360,7 @@ const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => 
       const { data, error } = await supabase.functions.invoke('analyze-cv', { body });
 
       if (error) {
-        // Edge runtime mapt non-2xx naar FunctionsHttpError. context.body bevat ons JSON-foutbericht.
-        const ctxBody = (error as { context?: { body?: unknown } }).context?.body;
-        let parsed: { error?: string; balance_cents?: number; required_cents?: number } | null = null;
-        if (typeof ctxBody === 'string') {
-          try { parsed = JSON.parse(ctxBody); } catch { /* ignore */ }
-        } else if (ctxBody && typeof ctxBody === 'object') {
-          parsed = ctxBody as typeof parsed;
-        }
-        if (parsed?.error) {
-          const err = new Error(parsed.error) as Error & { balance_cents?: number };
-          if (typeof parsed.balance_cents === 'number') err.balance_cents = parsed.balance_cents;
-          throw err;
-        }
-        throw error;
+        throw new Error(await extractFunctionErrorMessage(error));
       }
       if (data?.error) throw new Error(data.error);
       return data;
