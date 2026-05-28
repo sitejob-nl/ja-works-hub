@@ -13,9 +13,12 @@ import { useMyDecryptedData } from '@/hooks/useDecryptedCandidate';
 import SensitiveField from '@/components/ui/sensitive-field';
 import AddressAutocomplete from '@/components/shared/AddressAutocomplete';
 import { resolveAddressCoordinates } from '@/lib/pdok';
+import { useTranslation } from '@/hooks/useTranslation';
+import type { PlatformLanguage } from '@/contexts/translation-context';
 
 const PortalProfile = () => {
   const { employee, candidate } = usePortal();
+  const { language, setLanguage } = useTranslation();
   const qc = useQueryClient();
   const { data: sensitive, isLoading: sensitiveLoading } = useMyDecryptedData();
 
@@ -26,7 +29,7 @@ const PortalProfile = () => {
   const [city, setCity] = useState('');
   const [addressLat, setAddressLat] = useState<number | null>(null);
   const [addressLng, setAddressLng] = useState<number | null>(null);
-  const [lang, setLang] = useState('nl');
+  const [lang, setLang] = useState<PlatformLanguage>('nl');
 
   useEffect(() => {
     if (candidate) {
@@ -39,9 +42,13 @@ const PortalProfile = () => {
       setAddressLng(candidate.address_lng ?? null);
     }
     if (employee) {
-      setLang(employee.portal_language ?? 'nl');
+      setLang(employee.portal_language === 'en' ? 'en' : 'nl');
     }
   }, [candidate, employee]);
+
+  useEffect(() => {
+    setLang(language);
+  }, [language]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -130,7 +137,11 @@ const PortalProfile = () => {
           />
           <div className="space-y-1.5">
             <Label>Taal portaal</Label>
-            <Select value={lang} onValueChange={setLang}>
+            <Select value={lang} onValueChange={(value) => {
+              const nextLanguage = value === 'en' ? 'en' : 'nl';
+              setLang(nextLanguage);
+              setLanguage(nextLanguage);
+            }}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="nl">Nederlands</SelectItem>

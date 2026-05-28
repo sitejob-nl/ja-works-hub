@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -7,6 +7,9 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CheckCircle2, AlertTriangle, Loader2, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
+import { LanguageToggle } from '@/components/translation/LanguageToggle';
+import { useTranslation } from '@/hooks/useTranslation';
+import type { PlatformLanguage } from '@/contexts/translation-context';
 
 async function inspectPortalInvite(token: string) {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -27,12 +30,17 @@ async function inspectPortalInvite(token: string) {
 
 const PortalActivate = () => {
   const { token } = useParams<{ token: string }>();
+  const { language: platformLanguage, setLanguage: setPlatformLanguage } = useTranslation();
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [language, setLanguage] = useState('nl');
+  const [portalLanguage, setPortalLanguage] = useState<PlatformLanguage>(platformLanguage);
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [activated, setActivated] = useState(false);
+
+  useEffect(() => {
+    setPortalLanguage(platformLanguage);
+  }, [platformLanguage]);
 
   // Validate token and fetch invite data
   const { data: invite, isLoading, error } = useQuery({
@@ -64,7 +72,7 @@ const PortalActivate = () => {
           'apikey': anonKey,
           'Authorization': `Bearer ${anonKey}`,
         },
-        body: JSON.stringify({ token, password, language }),
+        body: JSON.stringify({ token, password, language: portalLanguage }),
       });
       const data = await res.json();
 
@@ -83,6 +91,9 @@ const PortalActivate = () => {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="absolute right-4 top-4">
+          <LanguageToggle />
+        </div>
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
     );
@@ -92,6 +103,9 @@ const PortalActivate = () => {
   if (error || !invite) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="absolute right-4 top-4">
+          <LanguageToggle />
+        </div>
         <div className="bg-card rounded-xl border shadow-sm p-8 max-w-md w-full text-center space-y-4">
           <AlertTriangle className="h-12 w-12 text-destructive mx-auto" />
           <h1 className="text-xl font-semibold">Link ongeldig of verlopen</h1>
@@ -107,6 +121,9 @@ const PortalActivate = () => {
   if (activated) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="absolute right-4 top-4">
+          <LanguageToggle />
+        </div>
         <div className="bg-card rounded-xl border shadow-sm p-8 max-w-md w-full text-center space-y-4">
           <CheckCircle2 className="h-12 w-12 text-stat-green mx-auto" />
           <h1 className="text-xl font-semibold">Je account is aangemaakt!</h1>
@@ -124,6 +141,9 @@ const PortalActivate = () => {
   // Activation form
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
+      <div className="absolute right-4 top-4">
+        <LanguageToggle />
+      </div>
       <div className="bg-card rounded-xl border shadow-sm p-8 max-w-md w-full space-y-6">
         {/* Logo + org name */}
           <div className="flex flex-col items-center gap-3">
@@ -194,7 +214,11 @@ const PortalActivate = () => {
           {/* Language */}
           <div className="space-y-2">
             <Label htmlFor="lang">Taal</Label>
-            <Select value={language} onValueChange={setLanguage}>
+            <Select value={portalLanguage} onValueChange={(value) => {
+              const nextLanguage = value === 'en' ? 'en' : 'nl';
+              setPortalLanguage(nextLanguage);
+              setPlatformLanguage(nextLanguage);
+            }}>
               <SelectTrigger id="lang">
                 <SelectValue />
               </SelectTrigger>

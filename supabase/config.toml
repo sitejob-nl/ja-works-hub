@@ -124,6 +124,9 @@ verify_jwt = false
 [functions.rdw-lookup]
 verify_jwt = false
 
+[functions.translate-platform]
+verify_jwt = false
+
 [functions.analyze-cv]
 verify_jwt = false
 

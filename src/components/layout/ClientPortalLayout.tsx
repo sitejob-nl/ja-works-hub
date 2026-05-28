@@ -3,6 +3,8 @@ import { useClientPortal } from '@/contexts/ClientPortalContext';
 import { Home, Clock, MapPin, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { LanguageToggle } from '@/components/translation/LanguageToggle';
+import { TranslationProvider } from '@/contexts/TranslationContext';
 
 const tabs = [
   { label: 'Dashboard', icon: Home, path: '/klantportaal' },
@@ -17,7 +19,8 @@ const ClientPortalLayout = () => {
   const initials = (companyName || contactName).slice(0, 2).toUpperCase();
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <TranslationProvider>
+      <div className="min-h-screen bg-background flex flex-col">
       {/* Top bar */}
       <header className="bg-card border-b px-4 py-3 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
@@ -36,6 +39,7 @@ const ClientPortalLayout = () => {
               {contactName.charAt(0).toUpperCase()}
             </div>
           </div>
+          <LanguageToggle compact />
           <Button variant="ghost" size="icon" onClick={signOut} className="h-8 w-8 text-muted-foreground" title="Uitloggen">
             <LogOut className="h-4 w-4" />
           </Button>
@@ -88,7 +92,8 @@ const ClientPortalLayout = () => {
           </NavLink>
         ))}
       </nav>
-    </div>
+      </div>
+    </TranslationProvider>
   );
 };
 

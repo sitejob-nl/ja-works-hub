@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { LanguageToggle } from '@/components/translation/LanguageToggle';
 
 const PortalLogin = () => {
   const navigate = useNavigate();
@@ -42,6 +43,9 @@ const PortalLogin = () => {
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
+      <div className="absolute right-4 top-4">
+        <LanguageToggle />
+      </div>
       <div className="bg-card rounded-xl border shadow-sm p-8 max-w-sm w-full space-y-6">
         <div className="flex flex-col items-center gap-3">
           <div className="h-12 w-12 rounded-lg bg-primary flex items-center justify-center">

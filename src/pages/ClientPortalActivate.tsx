@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { CheckCircle2, AlertTriangle, Loader2, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
+import { LanguageToggle } from '@/components/translation/LanguageToggle';
 
 async function inspectClientPortalInvite(token: string) {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -76,6 +77,9 @@ const ClientPortalActivate = () => {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="absolute right-4 top-4">
+          <LanguageToggle />
+        </div>
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
     );
@@ -84,6 +88,9 @@ const ClientPortalActivate = () => {
   if (error || !invite) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="absolute right-4 top-4">
+          <LanguageToggle />
+        </div>
         <div className="bg-card rounded-xl border shadow-sm p-8 max-w-md w-full text-center space-y-4">
           <AlertTriangle className="h-12 w-12 text-destructive mx-auto" />
           <h1 className="text-xl font-semibold">Link ongeldig of verlopen</h1>
@@ -98,6 +105,9 @@ const ClientPortalActivate = () => {
   if (activated) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="absolute right-4 top-4">
+          <LanguageToggle />
+        </div>
         <div className="bg-card rounded-xl border shadow-sm p-8 max-w-md w-full text-center space-y-4">
           <CheckCircle2 className="h-12 w-12 text-stat-green mx-auto" />
           <h1 className="text-xl font-semibold">Je account is aangemaakt!</h1>
@@ -112,6 +122,9 @@ const ClientPortalActivate = () => {
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
+      <div className="absolute right-4 top-4">
+        <LanguageToggle />
+      </div>
       <div className="bg-card rounded-xl border shadow-sm p-8 max-w-md w-full space-y-6">
         <div className="flex flex-col items-center gap-3">
           <div className="h-12 w-12 rounded-lg bg-primary flex items-center justify-center">
