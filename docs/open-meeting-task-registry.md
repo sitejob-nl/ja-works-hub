@@ -4,6 +4,7 @@ Implementation registry for the remaining JA Werkt / VDS Automotive meeting gaps
 
 Detailed 2026-05-14 open-point analysis: `docs/meeting-open-points-2026-05-14.md`.
 Phased fix plan: `docs/meeting-fix-plan-2026-05-14.md`.
+Detailed 2026-05-27 open-point analysis: `docs/meeting-open-points-2026-05-27.md`.
 
 | ID | Scope | Owner | Status | Verification |
 |---|---|---|---|---|
@@ -27,6 +28,13 @@ Phased fix plan: `docs/meeting-fix-plan-2026-05-14.md`.
 | 0514-EMAIL-TRIAGE | AI mail classification and routing for CVs, klantvragen and noise | Codex code agent | Implemented, pending validation | Outlook inbox test: classify, assign owner, create linked candidate/task where needed |
 | 0514-MARKETING | Meta Ads Library + Higgsfield + campaign performance feedback loop | TBD | Open | Scope decision first; then API integration smoke and cost/error handling tests |
 | 0514-EXACT-SCOPE | Resolve Exact out-of-scope conflict versus existing Exact module | Product/client | Decision needed | Written scope decision and separate Exact acceptance result if kept active |
+| 0527-FUNNEL | Instroom/lead funnel for website leads before qualified candidate pool | Codex code agent | Implemented, pending validation | Instroomfunnel tab with drag/drop statuses and required notes for candidate/no-candidate decisions; duplicate/re-entry policy remains product validation |
+| 0527-PROFILE-WORKSPACE | Candidate profile as central workspace: notes, screening AI, housing, transport, tasks | Codex code agent | In progress | Candidate detail UI review plus task assignment, housing/transport assignment smoke |
+| 0527-AI-BACKFILL | AI enrichment of ~1,900 candidates using CV and internal notes | Product + Codex code agent | Open | Batch plan, function group taxonomy, dry-run report, cost/runtime guardrails |
+| 0527-WEBSITE-MATCH-INBOUND | Vacancy-specific website applications routed to "Nieuwe match" / fast path | Codex code agent | Implemented, pending validation | Vacancy signup links create public application flow, required CV/profile and automatic "Nieuwe match" with website source label; website publishing sync remains separate |
+| 0527-TASK-DELEGATION | Candidate tasks can be delegated to colleagues and appear in personal funnel | Codex code agent | In progress | Create candidate task for another profile and verify Workbench visibility |
+| 0527-DOC-FORMATS | CV/AI upload supports PDF, DOC, DOCX, JPG/JPEG, PNG and ODT | Codex code agent | In progress | Upload/extract smoke per file type, graceful fallback for OCR/ODT failures |
+| 0527-DATA-COMPLIANCE | ICE/EU/NL phone fields, incomplete criteria, BSN/nationality/language migration and AVG decisions | Product/client + Codex code agent | Decision needed | Written compliance decisions plus migration/field acceptance tests |
 
 Quality gates before completion:
 

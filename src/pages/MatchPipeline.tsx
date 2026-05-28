@@ -27,6 +27,8 @@ const COLUMNS = [
 
 const sourceLabel: Record<string, string> = {
   sollicitatie: 'Sollicitatie',
+  website_sollicitatie: 'Website sollicitatie',
+  public_signup: 'Website intake',
   intern_gematcht: 'Intern',
   eigen_match: 'Eigen match',
   jobmarket: 'Jobmarket',

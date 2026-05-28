@@ -15,17 +15,22 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import ImportWizard from '@/components/import/ImportWizard';
 import AddToPoolSheet from '@/components/talentpools/AddToPoolSheet';
 import PortalActivateSheet from '@/components/employees/PortalActivateSheet';
+import LeadFunnelBoard from '@/components/candidates/LeadFunnelBoard';
 import { formatDate } from '@/lib/format';
 import { getPaginationRange } from '@/lib/pagination';
 
 const PAGE_SIZE = 10;
 
 const statusBadge: Record<string, string> = {
-  lead: 'bg-purple-100 text-purple-700 border-0',
+  lead: 'bg-sky-100 text-sky-700 border-0',
   nieuw: 'bg-muted text-muted-foreground border-0',
+  in_behandeling: 'bg-amber-100 text-amber-700 border-0',
+  beschikbaar: 'bg-stat-green/10 text-stat-green border-0',
   werkzoekend: 'bg-stat-green/10 text-stat-green border-0',
   in_screening: 'bg-yellow-100 text-yellow-700 border-0',
   geplaatst: 'bg-blue-100 text-blue-700 border-0',
+  inactief: 'bg-muted text-muted-foreground border-0',
+  afgewezen: 'bg-red-100 text-red-600 border-0',
   niet_beschikbaar: 'bg-orange-100 text-orange-600 border-0',
   uitgeschreven: 'bg-red-100 text-red-600 border-0',
 };
@@ -37,8 +42,10 @@ const complianceBadge: Record<string, string> = {
 };
 
 const statusLabel: Record<string, string> = {
-  lead: 'Lead', nieuw: 'Nieuw', werkzoekend: 'Werkzoekend', in_screening: 'In screening',
-  geplaatst: 'Geplaatst', niet_beschikbaar: 'Niet beschikbaar', uitgeschreven: 'Uitgeschreven',
+  lead: 'Lead', nieuw: 'Nieuw', in_behandeling: 'In behandeling', beschikbaar: 'Beschikbaar',
+  werkzoekend: 'Werkzoekend', in_screening: 'In screening', geplaatst: 'Geplaatst',
+  inactief: 'Inactief', afgewezen: 'Afgewezen', niet_beschikbaar: 'Niet beschikbaar',
+  uitgeschreven: 'Uitgeschreven',
 };
 
 const employeeStatusBadge: Record<string, string> = {
@@ -108,12 +115,17 @@ const getProfileLinkStatus = (candidate: any, tokens: any[]) => {
 };
 
 const candidateName = (candidate: any) => `${candidate.last_name ?? ''} ${candidate.first_name ?? ''}`.trim().toLowerCase();
+type CandidateTab = 'alle' | 'instroom' | 'in-dienst';
 
 const Candidates = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const initialTab = searchParams.get('tab') === 'in-dienst' ? 'in-dienst' : 'alle';
-  const [activeTab, setActiveTab] = useState<'alle' | 'in-dienst'>(initialTab);
+  const initialTab: CandidateTab = searchParams.get('tab') === 'in-dienst'
+    ? 'in-dienst'
+    : searchParams.get('tab') === 'instroom'
+      ? 'instroom'
+      : 'alle';
+  const [activeTab, setActiveTab] = useState<CandidateTab>(initialTab);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [employeeStatusFilter, setEmployeeStatusFilter] = useState('all');
@@ -129,13 +141,15 @@ const Candidates = () => {
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const handleTabChange = (tab: string) => {
-    setActiveTab(tab as 'alle' | 'in-dienst');
+    setActiveTab(tab as CandidateTab);
     setPage(0);
     setSearch('');
     setStatusFilter('all');
     setEmployeeStatusFilter('all');
     setSelected(new Set());
-    if (tab === 'in-dienst') {
+    if (tab === 'instroom') {
+      setSearchParams({ tab: 'instroom' });
+    } else if (tab === 'in-dienst') {
       setSearchParams({ tab: 'in-dienst' });
     } else {
       setSearchParams({});
@@ -328,6 +342,7 @@ const Candidates = () => {
       <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList>
           <TabsTrigger value="alle">Alle kandidaten</TabsTrigger>
+          <TabsTrigger value="instroom">Instroomfunnel</TabsTrigger>
           <TabsTrigger value="in-dienst">In dienst</TabsTrigger>
         </TabsList>
       </Tabs>
@@ -407,7 +422,7 @@ const Candidates = () => {
       )}
 
       {/* Bulk action bar */}
-      {selected.size > 0 && (
+      {activeTab === 'alle' && selected.size > 0 && (
         <div className="bg-primary/5 border border-primary/20 rounded-lg px-4 py-2.5 flex items-center justify-between gap-3">
           <span className="text-sm font-medium">{selected.size} geselecteerd</span>
           <div className="flex gap-2">
@@ -420,6 +435,8 @@ const Candidates = () => {
           </div>
         </div>
       )}
+
+      {activeTab === 'instroom' && <LeadFunnelBoard />}
 
       {/* ===== ALLE KANDIDATEN TAB ===== */}
       {activeTab === 'alle' && (

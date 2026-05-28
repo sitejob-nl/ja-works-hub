@@ -12,6 +12,7 @@ import { usePublicUrl } from '@/hooks/usePublicUrl';
 import { useOutlookAccounts, useOutlookInvoke } from '@/hooks/useOutlookAccounts';
 import SensitiveField from '@/components/ui/sensitive-field';
 import CustomFieldsSection from '@/components/shared/CustomFieldsSection';
+import { CandidatePreferencesTab } from '@/components/candidates/tabs/CandidatePreferencesTab';
 
 const Field = ({ label, value }: { label: string; value: string | null | undefined }) => (
   <div>
@@ -189,6 +190,10 @@ const CandidateProfileTab = ({ candidate }: { candidate: any }) => {
             <p className="text-sm whitespace-pre-wrap">{candidate.notes}</p>
           </div>
         )}
+      </div>
+
+      <div className="md:col-span-2">
+        <CandidatePreferencesTab candidateId={candidate.id} />
       </div>
 
       {/* Profile Link Section - spans full width */}

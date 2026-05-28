@@ -10,6 +10,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AlertTriangle, ClipboardCheck, Star, User, Briefcase } from 'lucide-react';
 import { toast } from 'sonner';
+import { useModuleEnabled } from '@/hooks/useModuleEnabled';
+import CandidateAiTab from '@/components/candidates/tabs/CandidateAiTab';
 
 const PERSONAL_QUESTIONS = [
   { key: 'woonsituatie', label: 'Woonsituatie stabiel?' },
@@ -142,6 +144,7 @@ const CandidateScreeningTab = ({
   const [data, setData] = useState<ScreeningData>(() => getInitialData(candidate));
   const [saving, setSaving] = useState(false);
   const [creatingTask, setCreatingTask] = useState(false);
+  const aiEnabled = useModuleEnabled('ai-analyse');
 
   const interviewQuestions: string[] = candidate.ai_interview_questions ?? [];
   const callQuestions = buildCallQuestions(candidate, interviewQuestions);
@@ -244,6 +247,8 @@ const CandidateScreeningTab = ({
 
   return (
     <div className="space-y-6">
+      {aiEnabled && <CandidateAiTab candidate={candidate} />}
+
       {(missingProfileFields.length > 0 || callQuestions.length > 0) && (
         <Card className="p-5 space-y-4 border-l-4 border-l-amber-500 bg-amber-50/40">
           <div className="flex items-start justify-between gap-3">

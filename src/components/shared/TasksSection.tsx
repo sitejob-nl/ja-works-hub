@@ -23,7 +23,7 @@ interface TasksSectionProps {
   entityType: EntityType;
 }
 
-const emptyForm = { title: '', description: '', priority: 'medium', due_date: '' };
+const emptyForm = { title: '', description: '', priority: 'medium', due_date: '', assigned_to: '' };
 
 const TasksSection = ({ entityId, entityType }: TasksSectionProps) => {
   const orgId = useOrganizationId();
@@ -31,6 +31,21 @@ const TasksSection = ({ entityId, entityType }: TasksSectionProps) => {
   const qc = useQueryClient();
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState(emptyForm);
+
+  const { data: assignees = [] } = useQuery({
+    queryKey: ['task-assignees', orgId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, full_name, email')
+        .eq('organization_id', orgId)
+        .eq('is_active', true)
+        .order('full_name');
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!orgId,
+  });
 
   const { data: tasks = [] } = useQuery({
     queryKey: ['entity-tasks', entityType, entityId],
@@ -72,7 +87,7 @@ const TasksSection = ({ entityId, entityType }: TasksSectionProps) => {
         due_date: form.due_date || null,
         related_entity_id: entityId,
         related_entity_type: entityType,
-        assigned_to: user?.id,
+        assigned_to: form.assigned_to === 'unassigned' ? null : (form.assigned_to || user?.id),
         status: 'open',
         ai_generated: false,
       });
@@ -92,12 +107,21 @@ const TasksSection = ({ entityId, entityType }: TasksSectionProps) => {
   const activeTasks = tasks.filter((t: any) => t.status !== 'done' && t.status !== 'dismissed');
   const completedTasks = tasks.filter((t: any) => t.status === 'done');
   const isOverdue = (date: string | null) => date && new Date(date) < new Date();
+  const assignedToValue = form.assigned_to || user?.id || 'unassigned';
 
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h3 className="font-medium">Taken</h3>
-        <Button size="sm" variant="outline" onClick={() => setAdding(true)} className="gap-1">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            setForm((current) => ({ ...current, assigned_to: current.assigned_to || user?.id || 'unassigned' }));
+            setAdding(true);
+          }}
+          className="gap-1"
+        >
           <Plus className="h-3.5 w-3.5" />Nieuwe taak
         </Button>
       </div>
@@ -122,6 +146,20 @@ const TasksSection = ({ entityId, entityType }: TasksSectionProps) => {
               <Label>Deadline</Label>
               <Input type="date" value={form.due_date} onChange={(e) => setForm(f => ({ ...f, due_date: e.target.value }))} />
             </div>
+          </div>
+          <div>
+            <Label>Toewijzen aan</Label>
+            <Select value={assignedToValue} onValueChange={(v) => setForm(f => ({ ...f, assigned_to: v }))}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="unassigned">Nog niet toegewezen</SelectItem>
+                {assignees.map((assignee: any) => (
+                  <SelectItem key={assignee.id} value={assignee.id}>
+                    {assignee.id === user?.id ? 'Mijzelf' : (assignee.full_name || assignee.email)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="flex justify-end gap-2">
             <Button variant="ghost" size="sm" onClick={() => { setAdding(false); setForm(emptyForm); }}>Annuleren</Button>
