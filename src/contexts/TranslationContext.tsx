@@ -14,8 +14,14 @@ const SOURCE_LANGUAGE: PlatformLanguage = 'nl';
 const TARGET_LANGUAGE: PlatformLanguage = 'en';
 const MAX_BATCH_ITEMS = 80;
 const MAX_TEXT_LENGTH = 900;
+const TRANSLATABLE_ATTRIBUTES = ['placeholder', 'title', 'aria-label'] as const;
 
 const nodeTranslations = new WeakMap<Text, TranslationRecord>();
+const attributeTranslations = new WeakMap<Element, Map<string, TranslationRecord>>();
+
+type TranslationTarget =
+  | { type: 'text'; node: Text; original: string }
+  | { type: 'attribute'; element: Element; attribute: string; original: string };
 
 function normalizeLanguage(value: PlatformLanguage | null | undefined): PlatformLanguage {
   return value === TARGET_LANGUAGE ? TARGET_LANGUAGE : SOURCE_LANGUAGE;
@@ -62,6 +68,21 @@ function shouldSkipElement(element: Element | null): boolean {
   );
 }
 
+function shouldSkipAttributeElement(element: Element | null): boolean {
+  if (!element) return true;
+  const tag = element.tagName.toLowerCase();
+  return (
+    tag === 'script' ||
+    tag === 'style' ||
+    tag === 'noscript' ||
+    tag === 'svg' ||
+    tag === 'path' ||
+    tag === 'code' ||
+    tag === 'pre' ||
+    element.closest('[data-no-translate="true"], [contenteditable="true"]') !== null
+  );
+}
+
 function normalizedText(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
 }
@@ -102,13 +123,85 @@ function cacheKey(text: string, targetLanguage: PlatformLanguage): string {
   return `${targetLanguage}:${text}`;
 }
 
+function getAttributeRecord(element: Element, attribute: string): TranslationRecord | undefined {
+  return attributeTranslations.get(element)?.get(attribute);
+}
+
+function setAttributeRecord(element: Element, attribute: string, record: TranslationRecord) {
+  const records = attributeTranslations.get(element) ?? new Map<string, TranslationRecord>();
+  records.set(attribute, record);
+  attributeTranslations.set(element, records);
+}
+
+function collectAttributeTargets(root: HTMLElement): TranslationTarget[] {
+  const elements = [root, ...Array.from(root.querySelectorAll('*'))];
+  const targets: TranslationTarget[] = [];
+
+  elements.forEach((element) => {
+    if (shouldSkipAttributeElement(element)) return;
+
+    TRANSLATABLE_ATTRIBUTES.forEach((attribute) => {
+      const current = element.getAttribute(attribute);
+      if (!current) return;
+
+      const previous = getAttributeRecord(element, attribute);
+      if (previous?.targetLanguage === TARGET_LANGUAGE && current === previous.translated) return;
+
+      const original = normalizedText(current);
+      if (!isTranslatableText(original)) return;
+      targets.push({ type: 'attribute', element, attribute, original });
+    });
+  });
+
+  return targets;
+}
+
+function collectTranslationTargets(root: HTMLElement): TranslationTarget[] {
+  const textTargets = collectTextNodes(root).flatMap<TranslationTarget>((node) => {
+    const current = node.nodeValue ?? '';
+    const previous = nodeTranslations.get(node);
+    if (previous?.targetLanguage === TARGET_LANGUAGE && current === previous.translated) return [];
+
+    const original = normalizedText(current);
+    if (!isTranslatableText(original)) return [];
+    return [{ type: 'text', node, original }];
+  });
+
+  return [...textTargets, ...collectAttributeTargets(root)];
+}
+
+function applyTranslation(target: TranslationTarget, translated: string) {
+  if (target.type === 'text') {
+    target.node.nodeValue = withOriginalSpacing(target.node.nodeValue ?? '', translated);
+    nodeTranslations.set(target.node, {
+      original: target.original,
+      translated,
+      targetLanguage: TARGET_LANGUAGE,
+    });
+    return;
+  }
+
+  target.element.setAttribute(target.attribute, translated);
+  setAttributeRecord(target.element, target.attribute, {
+    original: target.original,
+    translated,
+    targetLanguage: TARGET_LANGUAGE,
+  });
+}
+
 interface TranslationProviderProps {
   children: ReactNode;
   initialLanguage?: PlatformLanguage | null;
   onLanguageChange?: (language: PlatformLanguage) => void;
+  enableRuntimeTranslation?: boolean;
 }
 
-export function TranslationProvider({ children, initialLanguage, onLanguageChange }: TranslationProviderProps) {
+export function TranslationProvider({
+  children,
+  initialLanguage,
+  onLanguageChange,
+  enableRuntimeTranslation = true,
+}: TranslationProviderProps) {
   const [language, setLanguageState] = useState<PlatformLanguage>(() => (
     initialLanguage ? normalizeLanguage(initialLanguage) : readInitialLanguage()
   ));
@@ -137,6 +230,7 @@ export function TranslationProvider({ children, initialLanguage, onLanguageChang
   const restoreDutch = useCallback(() => {
     const root = document.getElementById('root');
     if (!root) return;
+
     collectTextNodes(root).forEach((node) => {
       const record = nodeTranslations.get(node);
       if (record?.targetLanguage === TARGET_LANGUAGE && node.nodeValue === record.translated) {
@@ -144,10 +238,23 @@ export function TranslationProvider({ children, initialLanguage, onLanguageChang
       }
       nodeTranslations.delete(node);
     });
+
+    [root, ...Array.from(root.querySelectorAll('*'))].forEach((element) => {
+      const records = attributeTranslations.get(element);
+      if (!records) return;
+
+      TRANSLATABLE_ATTRIBUTES.forEach((attribute) => {
+        const record = records.get(attribute);
+        if (record?.targetLanguage === TARGET_LANGUAGE && element.getAttribute(attribute) === record.translated) {
+          element.setAttribute(attribute, record.original);
+        }
+        records.delete(attribute);
+      });
+    });
   }, []);
 
   const translateNow = useCallback(async () => {
-    if (languageRef.current !== TARGET_LANGUAGE) {
+    if (!enableRuntimeTranslation || languageRef.current !== TARGET_LANGUAGE) {
       restoreDutch();
       return;
     }
@@ -155,29 +262,20 @@ export function TranslationProvider({ children, initialLanguage, onLanguageChang
     const root = document.getElementById('root');
     if (!root) return;
 
-    const nodes = collectTextNodes(root);
+    const targets = collectTranslationTargets(root);
     const uncached = new Set<string>();
-    const nodeTexts: Array<{ node: Text; original: string }> = [];
 
-    nodes.forEach((node) => {
-      const current = node.nodeValue ?? '';
-      const previous = nodeTranslations.get(node);
-      if (previous?.targetLanguage === TARGET_LANGUAGE && current === previous.translated) return;
-
-      const original = normalizedText(current);
-      if (!isTranslatableText(original)) return;
-
-      nodeTexts.push({ node, original });
+    targets.forEach(({ original }) => {
       if (!cacheRef.current[cacheKey(original, TARGET_LANGUAGE)]) {
         uncached.add(original);
       }
     });
 
-    nodeTexts.forEach(({ node, original }) => {
+    targets.forEach((target) => {
+      const { original } = target;
       const translated = cacheRef.current[cacheKey(original, TARGET_LANGUAGE)];
       if (!translated) return;
-      nodeTranslations.set(node, { original, translated, targetLanguage: TARGET_LANGUAGE });
-      node.nodeValue = withOriginalSpacing(node.nodeValue ?? '', translated);
+      applyTranslation(target, translated);
     });
 
     const texts = Array.from(uncached).slice(0, MAX_BATCH_ITEMS);
@@ -202,17 +300,17 @@ export function TranslationProvider({ children, initialLanguage, onLanguageChang
     });
     writeCache(cacheRef.current);
 
-    nodeTexts.forEach(({ node, original }) => {
+    targets.forEach((target) => {
+      const { original } = target;
       const translated = cacheRef.current[cacheKey(original, TARGET_LANGUAGE)];
       if (!translated) return;
-      nodeTranslations.set(node, { original, translated, targetLanguage: TARGET_LANGUAGE });
-      node.nodeValue = withOriginalSpacing(node.nodeValue ?? '', translated);
+      applyTranslation(target, translated);
     });
 
     if (uncached.size > MAX_BATCH_ITEMS && languageRef.current === TARGET_LANGUAGE) {
       window.setTimeout(translateNow, 200);
     }
-  }, [restoreDutch]);
+  }, [enableRuntimeTranslation, restoreDutch]);
 
   const scheduleTranslation = useCallback(() => {
     window.clearTimeout(pendingTimerRef.current);

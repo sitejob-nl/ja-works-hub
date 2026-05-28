@@ -23,6 +23,7 @@ interface LanguageToggleProps {
 export function LanguageToggle({ compact = false, className }: LanguageToggleProps) {
   const { language, isTranslating, setLanguage } = useTranslation();
   const active = languages.find((item) => item.value === language) ?? languages[0];
+  const title = language === 'en' ? 'Change language' : 'Taal wisselen';
 
   return (
     <DropdownMenu>
@@ -31,7 +32,7 @@ export function LanguageToggle({ compact = false, className }: LanguageTogglePro
           variant="ghost"
           size={compact ? 'icon' : 'sm'}
           className={cn(compact ? 'h-8 w-8' : 'gap-1.5', className)}
-          title="Taal wisselen"
+          title={title}
           data-no-translate="true"
         >
           {isTranslating ? <Languages className="h-4 w-4 animate-pulse" /> : <Globe className="h-4 w-4" />}

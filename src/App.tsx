@@ -206,11 +206,11 @@ const App = () => (
             <Route path="/match/reageer/:token" element={<MatchResponse />} />
             <Route path="/profiel/:token" element={<CandidateProfile />} />
             <Route path="/solliciteren/:slug" element={<PublicCandidateSignup />} />
-            <Route path="/portaal/activeren/:token" element={<TranslationProvider><PortalActivate /></TranslationProvider>} />
-            <Route path="/portaal/login" element={<TranslationProvider><PortalLogin /></TranslationProvider>} />
+            <Route path="/portaal/activeren/:token" element={<TranslationProvider enableRuntimeTranslation={false}><PortalActivate /></TranslationProvider>} />
+            <Route path="/portaal/login" element={<TranslationProvider enableRuntimeTranslation={false}><PortalLogin /></TranslationProvider>} />
             {/* Client portal (opdrachtgever) public routes */}
-            <Route path="/klantportaal/activeren/:token" element={<TranslationProvider><ClientPortalActivate /></TranslationProvider>} />
-            <Route path="/klantportaal/login" element={<TranslationProvider><ClientPortalLogin /></TranslationProvider>} />
+            <Route path="/klantportaal/activeren/:token" element={<TranslationProvider enableRuntimeTranslation={false}><ClientPortalActivate /></TranslationProvider>} />
+            <Route path="/klantportaal/login" element={<TranslationProvider enableRuntimeTranslation={false}><ClientPortalLogin /></TranslationProvider>} />
             {/* Portal (medewerker) routes */}
             <Route path="/portaal" element={
               <PortalProvider><PortalLayout /></PortalProvider>

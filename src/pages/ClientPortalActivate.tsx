@@ -7,6 +7,54 @@ import { Label } from '@/components/ui/label';
 import { CheckCircle2, AlertTriangle, Loader2, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { LanguageToggle } from '@/components/translation/LanguageToggle';
+import { useTranslation } from '@/hooks/useTranslation';
+
+const copy = {
+  nl: {
+    missingToken: 'Geen token',
+    activationFailed: 'Activatie mislukt',
+    accountCreatedToast: 'Account aangemaakt!',
+    activationError: 'Er ging iets mis bij het activeren',
+    invalidTitle: 'Link ongeldig of verlopen',
+    invalidBody: 'Deze activatielink is ongeldig of verlopen. Neem contact op met het uitzendbureau voor een nieuwe uitnodiging.',
+    successTitle: 'Je account is aangemaakt!',
+    successBody: 'Je kunt nu inloggen op het opdrachtgeverportaal.',
+    goToLogin: 'Naar inloggen',
+    activateTitle: 'Portaal activeren',
+    portalName: 'Opdrachtgeverportaal',
+    email: 'E-mailadres',
+    password: 'Wachtwoord',
+    passwordPlaceholder: 'Minimaal 6 tekens',
+    passwordRequired: 'Minimaal 6 tekens vereist',
+    confirmPassword: 'Wachtwoord bevestigen',
+    confirmPlaceholder: 'Herhaal wachtwoord',
+    passwordsMismatch: 'Wachtwoorden komen niet overeen',
+    creatingAccount: 'Account aanmaken...',
+    createAccount: 'Account aanmaken',
+  },
+  en: {
+    missingToken: 'Missing token',
+    activationFailed: 'Activation failed',
+    accountCreatedToast: 'Account created!',
+    activationError: 'Something went wrong while activating your account',
+    invalidTitle: 'Link invalid or expired',
+    invalidBody: 'This activation link is invalid or expired. Contact the agency for a new invitation.',
+    successTitle: 'Your account has been created!',
+    successBody: 'You can now log in to the client portal.',
+    goToLogin: 'Go to login',
+    activateTitle: 'Activate portal',
+    portalName: 'Client portal',
+    email: 'Email address',
+    password: 'Password',
+    passwordPlaceholder: 'At least 6 characters',
+    passwordRequired: 'At least 6 characters required',
+    confirmPassword: 'Confirm password',
+    confirmPlaceholder: 'Repeat password',
+    passwordsMismatch: 'Passwords do not match',
+    creatingAccount: 'Creating account...',
+    createAccount: 'Create account',
+  },
+};
 
 async function inspectClientPortalInvite(token: string) {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -27,6 +75,8 @@ async function inspectClientPortalInvite(token: string) {
 
 const ClientPortalActivate = () => {
   const { token } = useParams<{ token: string }>();
+  const { language } = useTranslation();
+  const t = copy[language];
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -36,7 +86,7 @@ const ClientPortalActivate = () => {
   const { data: invite, isLoading, error } = useQuery({
     queryKey: ['client-portal-invite', token],
     queryFn: async () => {
-      if (!token) throw new Error('Geen token');
+      if (!token) throw new Error(t.missingToken);
       return inspectClientPortalInvite(token);
     },
     enabled: !!token,
@@ -63,12 +113,12 @@ const ClientPortalActivate = () => {
         body: JSON.stringify({ token, password }),
       });
       const data = await res.json();
-      if (!res.ok || data?.error) throw new Error(data?.error || 'Activatie mislukt');
+      if (!res.ok || data?.error) throw new Error(data?.error || t.activationFailed);
 
       setActivated(true);
-      toast.success('Account aangemaakt!');
+      toast.success(t.accountCreatedToast);
     } catch (err: any) {
-      toast.error(err.message || 'Er ging iets mis bij het activeren');
+      toast.error(err.message || t.activationError);
     } finally {
       setSubmitting(false);
     }
@@ -93,9 +143,9 @@ const ClientPortalActivate = () => {
         </div>
         <div className="bg-card rounded-xl border shadow-sm p-8 max-w-md w-full text-center space-y-4">
           <AlertTriangle className="h-12 w-12 text-destructive mx-auto" />
-          <h1 className="text-xl font-semibold">Link ongeldig of verlopen</h1>
+          <h1 className="text-xl font-semibold">{t.invalidTitle}</h1>
           <p className="text-muted-foreground text-sm">
-            Deze activatielink is ongeldig of verlopen. Neem contact op met het uitzendbureau voor een nieuwe uitnodiging.
+            {t.invalidBody}
           </p>
         </div>
       </div>
@@ -110,10 +160,10 @@ const ClientPortalActivate = () => {
         </div>
         <div className="bg-card rounded-xl border shadow-sm p-8 max-w-md w-full text-center space-y-4">
           <CheckCircle2 className="h-12 w-12 text-stat-green mx-auto" />
-          <h1 className="text-xl font-semibold">Je account is aangemaakt!</h1>
-          <p className="text-muted-foreground text-sm">Je kunt nu inloggen op het opdrachtgeverportaal.</p>
+          <h1 className="text-xl font-semibold">{t.successTitle}</h1>
+          <p className="text-muted-foreground text-sm">{t.successBody}</p>
           <Button asChild className="w-full">
-            <Link to="/klantportaal/login">Naar inloggen</Link>
+            <Link to="/klantportaal/login">{t.goToLogin}</Link>
           </Button>
         </div>
       </div>
@@ -131,26 +181,26 @@ const ClientPortalActivate = () => {
             <span className="text-primary-foreground font-bold text-lg">JA</span>
           </div>
           <div className="text-center">
-            <h1 className="text-xl font-semibold">Portaal activeren</h1>
-            <p className="text-sm text-muted-foreground">Opdrachtgeverportaal</p>
+            <h1 className="text-xl font-semibold">{t.activateTitle}</h1>
+            <p className="text-sm text-muted-foreground">{t.portalName}</p>
           </div>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="email">E-mailadres</Label>
+            <Label htmlFor="email">{t.email}</Label>
             <Input id="email" type="email" value={invite.email} readOnly className="bg-muted" />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="password">Wachtwoord</Label>
+            <Label htmlFor="password">{t.password}</Label>
             <div className="relative">
               <Input
                 id="password"
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Minimaal 6 tekens"
+                placeholder={t.passwordPlaceholder}
                 minLength={6}
                 required
               />
@@ -160,27 +210,27 @@ const ClientPortalActivate = () => {
               </button>
             </div>
             {password.length > 0 && password.length < 6 && (
-              <p className="text-xs text-destructive">Minimaal 6 tekens vereist</p>
+              <p className="text-xs text-destructive">{t.passwordRequired}</p>
             )}
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="confirm">Wachtwoord bevestigen</Label>
+            <Label htmlFor="confirm">{t.confirmPassword}</Label>
             <Input
               id="confirm"
               type={showPassword ? 'text' : 'password'}
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="Herhaal wachtwoord"
+              placeholder={t.confirmPlaceholder}
               required
             />
             {confirmPassword.length > 0 && password !== confirmPassword && (
-              <p className="text-xs text-destructive">Wachtwoorden komen niet overeen</p>
+              <p className="text-xs text-destructive">{t.passwordsMismatch}</p>
             )}
           </div>
 
           <Button type="submit" className="w-full" disabled={!isValid || submitting}>
-            {submitting ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Account aanmaken...</> : 'Account aanmaken'}
+            {submitting ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />{t.creatingAccount}</> : t.createAccount}
           </Button>
         </form>
       </div>
