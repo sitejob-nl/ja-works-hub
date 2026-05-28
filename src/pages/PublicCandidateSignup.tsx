@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { AlertTriangle, CheckCircle2, FileUp, Loader2, Send } from 'lucide-react';
+import { AlertTriangle, Briefcase, CheckCircle2, FileUp, Loader2, Send } from 'lucide-react';
 import { toast } from 'sonner';
 import TagInput from '@/components/ui/tag-input';
 import { Button } from '@/components/ui/button';
@@ -28,6 +28,12 @@ type SignupConfig = {
     email: string | null;
     phone: string | null;
   };
+  vacancy?: {
+    id: string;
+    title: string;
+    company_name: string | null;
+    status: string | null;
+  } | null;
 };
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -75,6 +81,9 @@ const PublicCandidateSignup = () => {
 
   const organizationName = config?.organization.name || 'JA Werkt';
   const sourceLabel = useMemo(() => config?.link.source_tag?.replace(/[_-]/g, ' ') ?? null, [config]);
+  const vacancyLabel = config?.vacancy
+    ? `${config.vacancy.title}${config.vacancy.company_name ? ` bij ${config.vacancy.company_name}` : ''}`
+    : null;
 
   useEffect(() => {
     if (!slug) {
@@ -187,7 +196,7 @@ const PublicCandidateSignup = () => {
           <CheckCircle2 className="mx-auto mb-4 h-12 w-12 text-stat-green" />
           <h1 className="text-xl font-semibold text-heading">Aanmelding ontvangen</h1>
           <p className="mt-3 text-sm text-muted-foreground">
-            Bedankt. Je CV staat klaar voor review door {organizationName}. Een recruiter neemt contact met je op.
+            Bedankt. Je CV staat klaar voor review door {organizationName}. {vacancyLabel ? `Je sollicitatie op ${vacancyLabel} is ontvangen.` : 'Een recruiter neemt contact met je op.'}
           </p>
         </section>
       </main>
@@ -230,6 +239,16 @@ const PublicCandidateSignup = () => {
 
         {config?.link.description ? (
           <p className="text-sm leading-6 text-muted-foreground">{config.link.description}</p>
+        ) : null}
+
+        {vacancyLabel ? (
+          <div className="flex items-start gap-3 rounded-lg border bg-card px-4 py-3 text-sm shadow-sm">
+            <Briefcase className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary" />
+            <div>
+              <div className="font-medium text-foreground">Sollicitatie op vacature</div>
+              <div className="text-muted-foreground">{vacancyLabel}</div>
+            </div>
+          </div>
         ) : null}
 
         <form onSubmit={handleSubmit} className="rounded-lg border bg-card p-5 shadow-sm sm:p-6">
@@ -350,11 +369,11 @@ const PublicCandidateSignup = () => {
                 <span className="text-sm font-medium">
                   {cvFile ? cvFile.name : 'Kies je CV-bestand'}
                 </span>
-                <span className="mt-1 text-xs text-muted-foreground">PDF, DOC, DOCX of TXT, maximaal 15 MB</span>
+                <span className="mt-1 text-xs text-muted-foreground">PDF, DOC, DOCX, TXT, JPG, PNG of ODT, maximaal 15 MB</span>
                 <Input
                   id="cv"
                   type="file"
-                  accept=".pdf,.doc,.docx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
+                  accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png,.odt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,image/jpeg,image/png,application/vnd.oasis.opendocument.text"
                   className="sr-only"
                   onChange={(event) => setCvFile(event.target.files?.[0] ?? null)}
                   required
@@ -376,7 +395,7 @@ const PublicCandidateSignup = () => {
               ) : (
                 <>
                   <Send className="mr-2 h-4 w-4" />
-                  Aanmelden
+                  {vacancyLabel ? 'Solliciteren' : 'Aanmelden'}
                 </>
               )}
             </Button>

@@ -30,7 +30,14 @@ const COLUMNS = [
 ] as const;
 
 const sourceLabel: Record<string, string> = {
-  sollicitatie: 'Sollicitatie', eigen_match: 'Eigen match', facebook: 'Facebook', jobmarket: 'Jobmarket', linkedin: 'LinkedIn', overig: 'Overig',
+  sollicitatie: 'Sollicitatie',
+  website_sollicitatie: 'Website sollicitatie',
+  public_signup: 'Website intake',
+  eigen_match: 'Eigen match',
+  facebook: 'Facebook',
+  jobmarket: 'Jobmarket',
+  linkedin: 'LinkedIn',
+  overig: 'Overig',
 };
 
 const scoreBadgeClass: Record<MatchBreakdown['label'], string> = {
@@ -108,7 +115,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
     queryFn: async () => {
       const matchedIds = (matches ?? []).map((m: any) => m.candidate_id);
       let query = supabase.from('candidates').select('id, first_name, last_name, status, skills, certifications, has_drivers_license, compliance_status, address_city, availability_notes, ai_function_group, ai_target_functions, ai_reliability_score')
-        .in('status', ['nieuw', 'in_behandeling', 'beschikbaar'] as any);
+        .in('status', ['nieuw', 'in_behandeling', 'beschikbaar', 'werkzoekend'] as any);
       if (candidateSearch) {
         query = query.or(`first_name.ilike.%${candidateSearch}%,last_name.ilike.%${candidateSearch}%`);
       }

@@ -80,6 +80,7 @@ const CV_ACCEPT = [
   '.pdf',
   '.doc',
   '.docx',
+  '.odt',
   '.txt',
   '.rtf',
   '.jpg',
@@ -91,6 +92,7 @@ const CV_ACCEPT = [
   'application/pdf',
   'application/msword',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.oasis.opendocument.text',
   'text/plain',
   'text/rtf',
   'image/jpeg',
@@ -219,6 +221,26 @@ const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => 
     return sections.join('\n\n').replace(/\n{3,}/g, '\n\n').trim();
   };
 
+  const extractOdtText = async (file: File) => {
+    const { unzipSync, strFromU8 } = await import('fflate');
+    const zip = unzipSync(new Uint8Array(await file.arrayBuffer()));
+    const content = zip['content.xml'];
+    if (!content) return '';
+
+    return strFromU8(content)
+      .replace(/<text:line-break\s*\/>/g, '\n')
+      .replace(/<\/text:(p|h)>/g, '\n')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&apos;/g, "'")
+      .replace(/&quot;/g, '"')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/[^\S\r\n]+/g, ' ')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  };
+
   const extractLegacyDocText = async (file: File) => {
     const buffer = await file.arrayBuffer();
     const bytes = new Uint8Array(buffer);
@@ -262,6 +284,7 @@ const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => 
 
     if (type === 'application/pdf' || name.endsWith('.pdf')) return extractPdfText(file);
     if (type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || name.endsWith('.docx')) return extractDocxText(file);
+    if (type === 'application/vnd.oasis.opendocument.text' || name.endsWith('.odt')) return extractOdtText(file);
     if (type === 'application/msword' || name.endsWith('.doc')) return extractLegacyDocText(file);
     if (type === 'text/plain' || name.endsWith('.txt')) return file.text();
     if (type === 'text/rtf' || name.endsWith('.rtf')) return extractRtfText(file);

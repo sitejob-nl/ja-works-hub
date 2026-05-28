@@ -24,7 +24,7 @@ const NotesSection = ({ entityId, entityType }: NotesSectionProps) => {
   const { user } = useAuth();
   const qc = useQueryClient();
   const [adding, setAdding] = useState(false);
-  const [form, setForm] = useState({ body: '', is_internal: false });
+  const [form, setForm] = useState({ body: '', is_internal: true });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editBody, setEditBody] = useState('');
 
@@ -104,7 +104,7 @@ const NotesSection = ({ entityId, entityType }: NotesSectionProps) => {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['notes', entityType, entityId] });
       setAdding(false);
-      setForm({ body: '', is_internal: false });
+      setForm({ body: '', is_internal: true });
       toast.success('Notitie toegevoegd');
     },
     onError: (e: any) => toast.error(e.message),
@@ -161,7 +161,7 @@ const NotesSection = ({ entityId, entityType }: NotesSectionProps) => {
             <Label htmlFor="intern">Intern (niet zichtbaar voor medewerker)</Label>
           </div>
           <div className="flex justify-end gap-2">
-            <Button variant="ghost" size="sm" onClick={() => { setAdding(false); setForm({ body: '', is_internal: false }); }}>Annuleren</Button>
+            <Button variant="ghost" size="sm" onClick={() => { setAdding(false); setForm({ body: '', is_internal: true }); }}>Annuleren</Button>
             <Button size="sm" onClick={() => add.mutate()} disabled={!form.body.trim() || add.isPending}>Opslaan</Button>
           </div>
         </div>

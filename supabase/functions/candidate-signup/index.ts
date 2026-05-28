@@ -14,6 +14,7 @@ const admin = createClient(
 type SignupLink = {
   id: string;
   organization_id: string;
+  vacancy_id: string | null;
   slug: string;
   title: string;
   description: string | null;
@@ -32,6 +33,14 @@ type SignupLink = {
     logo_url: string | null;
     email: string | null;
     phone: string | null;
+  } | null;
+  vacancies?: {
+    id: string;
+    title: string | null;
+    status: string | null;
+    companies?: {
+      name: string | null;
+    } | null;
   } | null;
 };
 
@@ -95,7 +104,7 @@ const publicLinkState = (link: SignupLink | null) => {
 const getSignupLink = async (slug: string) => {
   const { data, error } = await admin
     .from("candidate_signup_links")
-    .select("*, organizations(name, logo_url, email, phone)")
+    .select("*, organizations(name, logo_url, email, phone), vacancies!candidate_signup_links_vacancy_id_fkey(id, title, status, companies!vacancies_company_id_fkey(name))")
     .eq("slug", slug)
     .maybeSingle();
 
@@ -122,6 +131,14 @@ const publicPayload = (link: SignupLink) => ({
     email: link.organizations?.email ?? null,
     phone: link.organizations?.phone ?? null,
   },
+  vacancy: link.vacancy_id
+    ? {
+        id: link.vacancy_id,
+        title: link.vacancies?.title ?? "Vacature",
+        company_name: link.vacancies?.companies?.name ?? null,
+        status: link.vacancies?.status ?? null,
+      }
+    : null,
 });
 
 const errorPayload = (reason: string, status = 400) =>
@@ -288,8 +305,46 @@ Deno.serve(async (req) => {
         .eq("id", link.id);
     }
 
+    const vacancyTitle = link.vacancies?.title?.trim() || null;
+    const vacancyCompany = link.vacancies?.companies?.name?.trim() || null;
+    const vacancyLabel = vacancyTitle
+      ? `${vacancyTitle}${vacancyCompany ? ` bij ${vacancyCompany}` : ""}`
+      : null;
+
+    let matchId: string | null = null;
+    if (link.vacancy_id) {
+      const { data: existingMatch, error: existingMatchErr } = await admin
+        .from("matches")
+        .select("id")
+        .eq("organization_id", link.organization_id)
+        .eq("vacancy_id", link.vacancy_id)
+        .eq("candidate_id", candidateId)
+        .maybeSingle();
+      if (existingMatchErr) throw existingMatchErr;
+
+      if (existingMatch?.id) {
+        matchId = existingMatch.id;
+      } else {
+        const { data: insertedMatch, error: matchErr } = await admin
+          .from("matches")
+          .insert({
+            organization_id: link.organization_id,
+            vacancy_id: link.vacancy_id,
+            candidate_id: candidateId,
+            status: "nieuwe_match",
+            source: "website_sollicitatie",
+            notes: `Website-sollicitatie via ${link.title}${vacancyLabel ? ` voor ${vacancyLabel}` : ""}.`,
+          })
+          .select("id")
+          .single();
+        if (matchErr) throw matchErr;
+        matchId = insertedMatch.id;
+      }
+    }
+
     const detailLines = [
       `Bron: ${link.title}${link.source_tag ? ` (${link.source_tag})` : ""}`,
+      vacancyLabel ? `Vacature: ${vacancyLabel}` : null,
       `Naam: ${firstName} ${lastName}`,
       `E-mail: ${email}`,
       phone ? `Telefoon: ${phone}` : null,
@@ -301,16 +356,19 @@ Deno.serve(async (req) => {
 
     await admin.from("recruiter_tasks").insert({
       organization_id: link.organization_id,
-      title: `Nieuwe kandidaatlead: ${firstName} ${lastName}`,
+      title: link.vacancy_id
+        ? `Nieuwe vacature-sollicitatie: ${firstName} ${lastName}`
+        : `Nieuwe kandidaatlead: ${firstName} ${lastName}`,
       description: detailLines,
       priority: "high",
       status: "open",
-      category: "lead intake",
+      category: link.vacancy_id ? "vacature sollicitatie" : "lead intake",
       related_entity_type: "kandidaat",
       related_entity_id: candidateId,
       ai_generated: true,
-      ai_reasoning:
-        "Aangemaakt vanuit publieke 05-14 intakefunnel: recruiter moet CV beoordelen, ontbrekende data aanvullen en lead eventueel promoveren naar kandidaat.",
+      ai_reasoning: link.vacancy_id
+        ? "Aangemaakt vanuit publieke vacature-sollicitatie: recruiter moet CV beoordelen, match opvolgen en kandidaatstatus bewaken."
+        : "Aangemaakt vanuit publieke 05-14 intakefunnel: recruiter moet CV beoordelen, ontbrekende data aanvullen en lead eventueel promoveren naar kandidaat.",
     });
 
     const { error: notificationErr } = await admin.from("employee_notifications").insert({
@@ -318,14 +376,18 @@ Deno.serve(async (req) => {
       candidate_id: candidateId,
       type: "overig",
       severity: "urgent",
-      title: `Nieuwe kandidaatlead: ${firstName} ${lastName}`,
-      message: `${email} heeft zich aangemeld via ${link.title}. CV is ontvangen en wacht op recruiterreview.`,
-      reference_table: "candidates",
-      reference_id: candidateId,
+      title: link.vacancy_id
+        ? `Nieuwe vacature-sollicitatie: ${firstName} ${lastName}`
+        : `Nieuwe kandidaatlead: ${firstName} ${lastName}`,
+      message: link.vacancy_id
+        ? `${email} heeft gesolliciteerd${vacancyLabel ? ` op ${vacancyLabel}` : ""}. CV is ontvangen en er staat een match klaar.`
+        : `${email} heeft zich aangemeld via ${link.title}. CV is ontvangen en wacht op recruiterreview.`,
+      reference_table: matchId ? "matches" : "candidates",
+      reference_id: matchId ?? candidateId,
     });
     if (notificationErr) throw notificationErr;
 
-    return json({ success: true, candidate_id: candidateId });
+    return json({ success: true, candidate_id: candidateId, match_id: matchId });
   } catch (err) {
     console.error("candidate-signup error:", err);
     return json({ error: (err as Error).message }, 500);

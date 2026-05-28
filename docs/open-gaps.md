@@ -1,6 +1,6 @@
 # Open gaps & roadmap
 
-Project-management state from client meetings — moved out of CLAUDE.md because it decays fast and isn't codebase guidance. Last updated from meetings through 2026-05-14. Fix plan: `docs/meeting-fix-plan-2026-05-14.md`.
+Project-management state from client meetings — moved out of CLAUDE.md because it decays fast and isn't codebase guidance. Last updated from meetings through 2026-05-27. Fix plan for 05-14: `docs/meeting-fix-plan-2026-05-14.md`. Open-point analysis for 05-27: `docs/meeting-open-points-2026-05-27.md`.
 
 ## Closed na sprints 1/2/3/5/D3
 
@@ -17,6 +17,11 @@ Project-management state from client meetings — moved out of CLAUDE.md because
 
 ## Nog open
 
+- **05-27 instroomfunnel** — eerste lead-/kwalificatiekanban staat in Kandidaten met verplichte notitie bij toelaten/afwijzen; definitieve terminologie en re-entry/duplicaatbeleid blijven productvalidatie.
+- **05-27 kandidaatprofiel als centrale werkplek** — profieltabs compacter: notities direct naast profiel, communicatievoorkeur op profiel, AI onder Screening, huisvesting/vervoer/taken vanuit kandidaat. Eerste UI-richting is ingezet; toewijsacties voor huisvesting/auto blijven open.
+- **05-27 AI-verrijking bestaande database** — circa 1.900 kandidaten analyseren op CV én interne notities, met uitlegbare kandidaatkwaliteitsscore, functiegroep/taxonomie en fallback voor ontbrekende CV's.
+- **05-27 website/vacature-instroom** — vacature-specifieke sollicitatielinks maken nu verplicht CV/profiel en automatisch een "Nieuwe match" met bronlabel; vacatures publiceren/synchroniseren naar website blijft uitwerken.
+- **05-27 data/compliance** — ICE-telefoonnummer, EU/NL-telefoons, incomplete-statuscriteria, BSN/nationaliteit/taal-migratie, bewaartermijnen en AI/WhatsApp-AVG-besluiten zijn open.
 - **05-14 data cleanup / Carerix SSOT** — import bevriezen, deduplicatie, test-vacatures opschonen en foutieve historische koppelingen herstellen; zie `docs/meeting-open-points-2026-05-14.md`.
 - **05-14 Carerix notities/taken** — codepad splitst `CRTodo` nu naar notes/tasks plus meeting/e-mail metadata en importeert aparte `CRNote`-notities naar gekoppelde kandidaten/bedrijven/matches/vacatures/contacten; productiedata-steekproef en historische validatie blijven open.
 - **05-14 vacature-template verdieping** — vacature-aanmaak/-bewerken erft beschrijving, locatie, tarief en skills; UI-flow en tariefacceptatie nog valideren.

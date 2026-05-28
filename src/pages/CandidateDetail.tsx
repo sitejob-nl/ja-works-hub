@@ -15,11 +15,8 @@ import CandidateDocumentsTab from '@/components/candidates/tabs/CandidateDocumen
 import CandidateCommunicationTab from '@/components/candidates/tabs/CandidateCommunicationTab';
 import CandidateMatchesTab from '@/components/candidates/tabs/CandidateMatchesTab';
 import CandidatePlacementsTab from '@/components/candidates/tabs/CandidatePlacementsTab';
-import { CandidatePreferencesTab } from '@/components/candidates/tabs/CandidatePreferencesTab';
-import CandidateAiTab from '@/components/candidates/tabs/CandidateAiTab';
 import CandidateScreeningTab from '@/components/candidates/tabs/CandidateScreeningTab';
 import CandidateTalentpoolsTab from '@/components/candidates/tabs/CandidateTalentpoolsTab';
-import CandidateQualityFlags from '@/components/candidates/CandidateQualityFlags';
 import NotesSection from '@/components/shared/NotesSection';
 import TasksSection from '@/components/shared/TasksSection';
 import EmployeeEmploymentTab from '@/components/employees/tabs/EmployeeEmploymentTab';
@@ -34,7 +31,6 @@ import EmployeeTransportTab from '@/components/employees/tabs/EmployeeTransportT
 import EmployeeSickTab from '@/components/employees/tabs/EmployeeSickTab';
 import EmployeeRegulationsTab from '@/components/employees/tabs/EmployeeRegulationsTab';
 import EmployeePortalTab from '@/components/employees/tabs/EmployeePortalTab';
-import { useModuleEnabled } from '@/hooks/useModuleEnabled';
 import { useTrackPageVisit } from '@/hooks/useTrackPageVisit';
 import { useTabSearchParam } from '@/hooks/useTabSearchParam';
 import { usePublicUrl } from '@/hooks/usePublicUrl';
@@ -76,7 +72,6 @@ const CandidateDetail = () => {
   const { buildUrl } = usePublicUrl();
   const callOutlook = useOutlookInvoke();
   const { hasUsableAccounts } = useOutlookAccounts('mail_send');
-  const aiEnabled = useModuleEnabled('ai-analyse');
 
   const { data: candidate, isLoading } = useQuery({
     queryKey: ['candidate', id],
@@ -288,17 +283,16 @@ const CandidateDetail = () => {
         <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">
           <TabsList className="w-max sm:w-auto">
             <TabsTrigger value="profiel">Profiel</TabsTrigger>
+            <TabsTrigger value="notities">Notities</TabsTrigger>
+            <TabsTrigger value="screening" className="gap-1.5"><ClipboardCheck className="h-3.5 w-3.5" />Screening</TabsTrigger>
+            <TabsTrigger value="huisvesting">Huisvesting</TabsTrigger>
+            <TabsTrigger value="transport">Vervoer</TabsTrigger>
             <TabsTrigger value="documenten">Documenten</TabsTrigger>
             <TabsTrigger value="communicatie">Communicatie</TabsTrigger>
             <TabsTrigger value="matches">Matches</TabsTrigger>
             <TabsTrigger value="plaatsingen">Plaatsingen</TabsTrigger>
-            <TabsTrigger value="voorkeuren">Voorkeuren</TabsTrigger>
-            <TabsTrigger value="screening" className="gap-1.5"><ClipboardCheck className="h-3.5 w-3.5" />Screening</TabsTrigger>
-            <TabsTrigger value="datakwaliteit">Datakwaliteit</TabsTrigger>
-            <TabsTrigger value="notities">Notities</TabsTrigger>
             <TabsTrigger value="taken">Taken</TabsTrigger>
             <TabsTrigger value="talentpools">Pools</TabsTrigger>
-            {aiEnabled && <TabsTrigger value="ai" className="gap-1.5">AI Analyse</TabsTrigger>}
             {isEmployee && (
               <>
                 <TabsTrigger value="dienstverband">Dienst</TabsTrigger>
@@ -307,9 +301,7 @@ const CandidateDetail = () => {
                 <TabsTrigger value="reserveringen">Reserv.</TabsTrigger>
                 <TabsTrigger value="subsidies">Subsidies</TabsTrigger>
                 <TabsTrigger value="contracten">Contract</TabsTrigger>
-                <TabsTrigger value="huisvesting">Woning</TabsTrigger>
                 <TabsTrigger value="uren">Uren</TabsTrigger>
-                <TabsTrigger value="transport">Transport</TabsTrigger>
                 <TabsTrigger value="ziekte">Ziekte</TabsTrigger>
                 <TabsTrigger value="reglementen">Regl.</TabsTrigger>
                 <TabsTrigger value="portaal">Portaal</TabsTrigger>
@@ -322,13 +314,12 @@ const CandidateDetail = () => {
         <TabsContent value="communicatie"><CandidateCommunicationTab candidateId={id!} /></TabsContent>
         <TabsContent value="matches"><CandidateMatchesTab candidateId={id!} /></TabsContent>
         <TabsContent value="plaatsingen"><CandidatePlacementsTab candidateId={id!} /></TabsContent>
-        <TabsContent value="voorkeuren"><CandidatePreferencesTab candidateId={id!} /></TabsContent>
         <TabsContent value="screening"><CandidateScreeningTab key={(candidate as any)?.screened_at ?? 'unsaved'} candidate={candidate} onUpdate={() => qc.invalidateQueries({ queryKey: ['candidate', id] })} /></TabsContent>
-        <TabsContent value="datakwaliteit"><CandidateQualityFlags candidateId={id!} /></TabsContent>
         <TabsContent value="notities"><NotesSection entityId={id!} entityType="kandidaat" /></TabsContent>
+        <TabsContent value="huisvesting"><EmployeeHousingTab candidateId={id!} /></TabsContent>
+        <TabsContent value="transport"><EmployeeTransportTab candidateId={id!} /></TabsContent>
         <TabsContent value="taken"><TasksSection entityId={id!} entityType="kandidaat" /></TabsContent>
         <TabsContent value="talentpools"><CandidateTalentpoolsTab candidateId={id!} /></TabsContent>
-        {aiEnabled && <TabsContent value="ai"><CandidateAiTab candidate={candidate} /></TabsContent>}
         {isEmployee && (
           <>
             <TabsContent value="dienstverband"><EmployeeEmploymentTab candidateId={id!} candidate={candidate} employment={currentEmployment} /></TabsContent>
@@ -337,9 +328,7 @@ const CandidateDetail = () => {
             <TabsContent value="reserveringen"><EmployeeReservationsTab candidateId={id!} /></TabsContent>
             <TabsContent value="subsidies"><EmployeeSubsidiesTab candidateId={id!} /></TabsContent>
             <TabsContent value="contracten"><EmployeeContractsTab candidateId={id!} candidate={candidate} employment={currentEmployment} /></TabsContent>
-            <TabsContent value="huisvesting"><EmployeeHousingTab candidateId={id!} /></TabsContent>
             <TabsContent value="uren"><EmployeeTimesheetsTab candidateId={id!} /></TabsContent>
-            <TabsContent value="transport"><EmployeeTransportTab candidateId={id!} /></TabsContent>
             <TabsContent value="ziekte"><EmployeeSickTab candidateId={id!} candidate={candidate} /></TabsContent>
             <TabsContent value="reglementen"><EmployeeRegulationsTab candidateId={id!} /></TabsContent>
             <TabsContent value="portaal"><EmployeePortalTab candidateId={id!} candidate={candidate} /></TabsContent>

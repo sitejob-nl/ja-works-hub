@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import VacancyDetailsTab from '@/components/vacancies/tabs/VacancyDetailsTab';
 import VacancyMatchesTab from '@/components/vacancies/tabs/VacancyMatchesTab';
 import VacancyPlacementsTab from '@/components/vacancies/tabs/VacancyPlacementsTab';
+import VacancySignupLinkButton from '@/components/vacancies/VacancySignupLinkButton';
 import { useTrackPageVisit } from '@/hooks/useTrackPageVisit';
 import { useTabSearchParam } from '@/hooks/useTabSearchParam';
 import NotesSection from '@/components/shared/NotesSection';
@@ -102,6 +103,7 @@ const VacancyDetail = () => {
           </div>
         </div>
         <div className="flex gap-2 flex-wrap">
+          <VacancySignupLinkButton vacancy={vacancy} />
           <Button
             size="sm"
             className="gap-1"
