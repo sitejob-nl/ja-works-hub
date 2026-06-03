@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code when working with the JA Werkt codebase.
 
+> **Resuming active work:** read [HANDOVER_SESSION.md](HANDOVER_SESSION.md) first. This file is the stable codebase guide; the handover contains the current branch, dirty worktree and next actions.
+
 ## Project Overview
 
 **JA Werkt** is a multi-tenant staffing agency (uitzendbureau) SaaS platform built for JA Werkt, a temp agency specializing in labor migrants (arbeidsmigranten) in Brabant/Limburg, Netherlands. The platform consolidates multiple legacy systems (Carerix, Joboti, Umanga, OnTrack, Q8, Buddy) into a single system, while keeping Flexpedia as external payroll engine (loonmotor).
@@ -12,7 +14,7 @@ This file provides guidance to Claude Code when working with the JA Werkt codeba
 3. **Timesheets**: Enter hours (manual or CSV) → AI validation (edge function, 6 rules) → approval (individual or bulk) → rejected: reopen to concept
 4. **Self-service onboarding**: Intercedent generates link → worker opens `/onboarding/{token}` (public) → fill form + accept docs → token-based auth (7 days, single use)
 
-**Status:** Built in Lovable, now transitioning to Claude Code + VS Code for further development.
+**Status:** Originally built in Lovable; now actively developed in Claude Code/Codex + VS Code.
 
 > **Naast dit document:** zie [docs/handover-deep.md](docs/handover-deep.md) voor een diepe technische rondleiding (live Supabase-schema, RPCs, triggers, cron, edge function clusters, env vars, deployment). Bedoeld voor nieuwe ontwikkelaars en als referentie bij infra-werk.
 
@@ -22,6 +24,7 @@ This file provides guidance to Claude Code when working with the JA Werkt codeba
 npm run dev              # Dev server on port 8080
 npm run build            # Production build
 npm run build:dev        # Development build
+npm run typecheck        # TypeScript app + node configs
 npm run lint             # ESLint
 npm run test             # Vitest unit (single run)
 npm run test:watch       # Vitest unit (watch)
@@ -41,7 +44,7 @@ Edge functions are Deno/TypeScript and live in `supabase/functions/` (configured
 - **UI**: shadcn/ui (Radix) + Tailwind CSS 3, dark/light mode (next-themes), Sonner toasts, Recharts, Lucide icons
 - **Backend**: Supabase (PostgreSQL + Auth + Edge Functions + Realtime + Storage)
 - **PWA**: vite-plugin-pwa, standalone mode, auto-update, 5MB cache limit
-- **CSV/Excel**: PapaParse (CSV), xlsx (Excel export)
+- **CSV/Excel/Documents**: PapaParse (CSV), xlsx (Excel export), pdfjs-dist + Tesseract.js in UI; unpdf + fflate in edge functions
 - **Testing**: Vitest + Testing Library + jsdom (unit), Playwright (e2e via `tests/e2e/`)
 - **Build tooling**: lovable-tagger (dev only), autoprefixer, postcss
 
@@ -91,7 +94,7 @@ Standard React layout under `src/` — `components/`, `pages/`, `hooks/`, `lib/`
   - `termination-constants.ts` — exit-reason enums.
 - **`src/components/{candidates,companies,employees,housing,transport,vacancies}/`** — entity SlideOver + tabs pattern (CandidateSlideOver + 10 tabs, EmployeeDetail with 13 tabs, etc.).
 - **`src/components/placement/`** — `HousingSuggestions`, `PlacementConfirmation`, `PlacementTriggers` (the placement *flow*); separate from `src/components/placements/` (allowance/hour/travel-type config).
-- **`supabase/functions/`** — Deno edge functions; `supabase/migrations/` is the schema history.
+- **`supabase/functions/`** — Deno edge functions; shared helpers include `candidate-dossier.ts` for AI dossier assembly. `supabase/migrations/` is the schema history.
 - **`tests/e2e/`** — Playwright; `src/test/` — Vitest.
 
 ### Routes
@@ -161,7 +164,7 @@ Database triggers encrypt sensitive fields (BSN, IBAN, webhook secrets, access t
 
 ### Non-obvious columns & invariants
 
-- **`candidates.cv_pseudonymized_at`, `cv_pseudonymization_meta` (jsonb), `cv_has_photo`** — markers for AVG-pseudonimisering pipeline. AI-classification fields: `ai_status`, `ai_reliability_score`, `ai_classification`, `ai_function_group`, `ai_target_functions[]`, `ai_positive_signals[]`, `ai_red_flags[]`, `ai_risk_factors[]`, `ai_interview_questions[]`.
+- **`candidates.cv_pseudonymized_at`, `cv_pseudonymization_meta` (jsonb), `cv_has_photo`** — markers for AVG-pseudonimisering pipeline. `cv_raw_text` stores extracted document/CV text, while the AI prompt now uses a wider candidate dossier assembled server-side. AI-classification fields: `ai_status`, `ai_reliability_score`, `ai_classification`, `ai_function_group`, `ai_target_functions[]`, `ai_positive_signals[]`, `ai_red_flags[]`, `ai_risk_factors[]`, `ai_interview_questions[]`.
 - **`vacancies.urgency`** is `NOT NULL CHECK 1-3`. **`function_id`** is optional FK → `company_functions`. **`start_date_text`** holds free-text values like "Direct" / "ZSM" alongside the typed `start_date`.
 - **`properties.name` is nullable** (optionele bijnaam — UI is address-driven). **`owner_id`** FK → `property_owners`.
 - **`property_owners`** is master-data: 1 row per unique owner per org, `UNIQUE (organization_id, lower(name))`.
@@ -288,9 +291,9 @@ Canonical in [src/integrations/supabase/types.ts](src/integrations/supabase/type
 |----------|---------|
 | `calculate-match` | AI candidate-vacancy matching score |
 | `cv-rewrite` | AI-powered CV improvement |
-| `analyze-cv` | Submit CV for LLM analysis via VPS or Cloud. Pseudonimiseert naam/email/tel/BSN/IBAN vóór verzending |
+| `analyze-cv` | Submit kandidaatdossier for LLM analysis via VPS or Cloud. Builds dossier from CV/document text, profile and internal context; pseudonimiseert naam/email/tel/BSN/IBAN vóór verzending |
 | `analyze-cv-callback` | Receive async CV analysis results from LLM VPS |
-| `analyze-cv-batch` | **Backfill** voor bestaande CV's: download PDF uit storage → unpdf-extract → pseudonimiseer → VPS. Superadmin-auth, throttle 1.5s/CV |
+| `analyze-cv-batch` | **Backfill** voor bestaande kandidaten: select document/CV + notes/context → pseudonimiseer dossier → VPS. Superadmin-auth, throttle 1.5s/dossier |
 | `refresh-talentpool-members` | **Dynamische talentpools**: past `filter_criteria` toe + diff vs huidige leden. Single-mode (user-JWT) of cron-mode (`x-cron-secret`) |
 | `validate-timesheets` | AI validation of timesheet entries (6 rules) |
 | `recruiter-priorities` | Calculate recruiter task priorities |
@@ -346,24 +349,26 @@ Similar to WhatsApp — tenant registration via SiteJob Connect → OAuth popup 
 
 **UI:** `src/pages/ExactOnline.tsx`, `src/components/settings/ExactOnlineSettings.tsx`
 
-### AI / LLM — CV Analysis via VPS + optional Cloud
+### AI / LLM — Candidate dossier analysis via VPS + optional Cloud
 
 **Edge functions:** `analyze-cv`, `analyze-cv-callback`, `analyze-cv-batch`
 
-**Single-CV flow (`analyze-cv`):**
-1. PDF uploaded → text extracted client-side (`file.text()`, text-based PDFs only, no OCR)
-2. Server-side sanitization: prompt-injection stripping
-3. **AVG-pseudonimisering** (`_shared/cv-pseudonymize.ts`): naam → `[KANDIDAAT]`, emails → `[EMAIL]`, NL-telefoon → `[TELEFOON]`, BSN met 11-proef → `[BSN]`, IBAN → `[IBAN]`. Counts in `cv_pseudonymization_meta`.
-4. Provider-keuze: request override → `organizations.settings.cv_ai_provider` → default `vps`
-5. **VPS-pad:** text capped at 15.000 chars → POST naar `{OLLAMA_BASE_URL}/analyze` met callback URL → VPS verwerkt async → callt `analyze-cv-callback`
-6. **Cloud-pad:** Anthropic Claude Haiku 4.5 via `ANTHROPIC_API_KEY`, synchroon, met gesanitized org prompt-addendum, tool-schema output en credit-afschrijving via `consume_ai_credits`
-7. Results in candidate: ai_analysis, ai_status, ai_reliability_score, ai_function_group, ai_classification, etc.
+**Single-candidate flow (`analyze-cv`):**
+1. UI upload supports PDF, DOC/DOCX, ODT, TXT, RTF and images; PDF/image OCR happens client-side with pdfjs-dist + Tesseract.js where possible.
+2. Edge helper `_shared/candidate-dossier.ts` builds a server-side dossier from explicit CV text or best matching document, plus profile fields, internal notes, communication notes, placements and employment context.
+3. Server-side sanitization strips prompt-injection phrases and wraps the dossier as data.
+4. **AVG-pseudonimisering** (`_shared/cv-pseudonymize.ts`): naam → `[KANDIDAAT]`, emails → `[EMAIL]`, NL-telefoon → `[TELEFOON]`, BSN met 11-proef → `[BSN]`, IBAN → `[IBAN]`. Counts in `cv_pseudonymization_meta`.
+5. Provider-keuze: request override → `organizations.settings.cv_ai_provider` → default `vps`. Org prompt lives in `organizations.settings.candidate_analysis_prompt`; legacy `cv_prompt_addendum` is still read/written for compatibility.
+6. **VPS-pad:** dossier capped at ~28k chars, sent to `{OLLAMA_BASE_URL}/analyze` with `system_prompt`, JSON schema and callback URL. Current request remains backwards compatible via `cv_text`.
+7. **Cloud-pad:** Anthropic Claude Haiku 4.5 via `ANTHROPIC_API_KEY`, synchroon, met gesanitized org prompt, tool-schema output en credit-afschrijving via `consume_ai_credits`.
+8. Results in candidate: `ai_analysis`, `ai_status`, `ai_reliability_score`, `ai_function_group`, `ai_classification`, `ai_red_flags`, etc. New schema includes `dossier`, `manual_review_required`, `contra_indicaties` and `bronverwijzingen`.
 
 **Batch backfill (`analyze-cv-batch`):**
-- UI in `/superadmin/cv-backfill` (alleen superadmins)
-- Pakt N kandidaten met `cv_file_url` zonder voltooide analyse
-- Download PDF uit storage → **unpdf** text-extract → photo-detectie via `/Subtype /Image` byte-scan → pseudonimisering → VPS-call
-- Throttle 1.5s/CV. Max batch 25. Optie: mislukten opnieuw proberen.
+- UI in `/superadmin/cv-backfill` (alleen superadmins), now labelled AI Dossier Backfill.
+- Selects candidates with `ai_status` null/idle (and failed if requested), not only candidates with `cv_file_url`.
+- Chooses the best text document from `candidate.cv_file_url` or `documents` (`type=cv`, CV-like filename, recency), then adds internal notes/context.
+- Text extraction in the edge function supports PDF, DOCX, ODT, RTF, TXT and heuristic legacy DOC; image-only files are flagged but not OCRed server-side.
+- Throttle 1.5s/dossier. Max batch 25. Optie: mislukten opnieuw proberen.
 
 **LLM:** default lokaal/EU via Qwen3-14B op Hetzner VPS (`OLLAMA_BASE_URL` + `OLLAMA_API_KEY`). Optioneel sneller Cloud-pad via Anthropic Claude Haiku 4.5 (`ANTHROPIC_API_KEY`) met €50 starterbudget per organisatie in `organization_credits`.
 
@@ -379,6 +384,8 @@ Similar to WhatsApp — tenant registration via SiteJob Connect → OAuth popup 
    - `carerix-introspect` — discover available fields
    - `carerix-sync-start` / `carerix-sync-worker` / `carerix-sync-cancel` — paginated sync pipeline
    - Tokens decrypted via `get_carerix_token` RPC (hardened by `20260422120000_pre_handover_security_hardening.sql`)
+
+Current mapper focus: `CREmployee` enriches existing candidates with `employee_number`, BSN (through encrypted-column update path), nationality and normalized languages from CR fields plus `additionalInfo`. Tests live in `src/test/carerix-mappers.test.ts`.
 
 ### Microsoft 365 / Outlook — OAuth + API proxy
 
@@ -499,14 +506,14 @@ const { data: { user } } = await supabaseClient.auth.getUser(authHeader.replace(
 ### Integrations
 - WhatsApp: full code but not tested with real Meta credentials
 - Exact Online: depends on SiteJob Connect service
-- CV Analysis: text-based PDFs only (no OCR), basic prompt injection sanitization, **server-side AVG-pseudonimisering actief**
+- AI dossier analysis: UI has OCR for PDFs/images; server batch does not OCR image-only files. Prompt-injection sanitization + **server-side AVG-pseudonimisering actief**.
 
 ### Hardcoded Values
 - SiteJob Connect URLs hardcoded in edge functions
 - Meta Graph API version: `v25.0`
-- CV text cap: 15.000 chars
+- AI dossier cap: ~28.000 chars; selected document/CV text cap: ~16.000 chars
 - Campaign batch size: 50 recipients
-- AI CV batch throttle: 1500 ms/CV, max 25 per call
+- AI dossier batch throttle: 1500 ms/dossier, max 25 per call
 
 ### Open gaps & roadmap
 
@@ -523,7 +530,7 @@ Project-management state (closed sprints, open client-meeting items, Fase 2 miss
 **Edge function secrets (Supabase Dashboard or CLI):**
 - `OLLAMA_BASE_URL` — Hetzner VPS for LLM
 - `OLLAMA_API_KEY` — LLM API key
-- `ANTHROPIC_API_KEY` — optional Cloud CV-analysis provider (Claude Haiku 4.5)
+- `ANTHROPIC_API_KEY` — optional Cloud candidate-dossier analysis provider (Claude Haiku 4.5)
 - `KVK_API_KEY` — Chamber of Commerce API
 - `APIFY_API_TOKEN` — Apify web scraping
 - `EXA_API_KEY` — Exa people search
