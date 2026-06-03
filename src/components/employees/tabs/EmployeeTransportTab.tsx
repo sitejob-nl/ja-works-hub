@@ -12,6 +12,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { EntityLink } from '@/components/ui/entity-link';
 import { resolveEmployeeId } from '@/lib/assignments';
+import { vehicleFreeOn } from '@/lib/vehicle-availability';
 import { formatDate, formatEUR } from '@/lib/format';
 import { toast } from 'sonner';
 
@@ -36,18 +37,25 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
   const [assignedDate, setAssignedDate] = useState('');
   const [startMileage, setStartMileage] = useState('');
 
-  const { data: availableVehicles = [] } = useQuery({
-    queryKey: ['available-vehicles', orgId],
+  const { data: eligibleVehicles = [] } = useQuery({
+    queryKey: ['assignable-vehicles', orgId],
     queryFn: async () => {
+      // 'onderhoud'/'uit_dienst' vallen hard af; de rest beoordelen we op datum-bezetting.
       const { data, error } = await supabase.from('vehicles')
-        .select('id, license_plate, brand, model, current_mileage')
-        .eq('status', 'beschikbaar' as any)
+        .select('id, license_plate, brand, model, current_mileage, vehicle_assignments!vehicle_assignments_vehicle_id_fkey(id, assigned_date, returned_date)')
+        .in('status', ['beschikbaar', 'toegewezen'] as any)
         .order('license_plate');
       if (error) throw error;
       return data ?? [];
     },
     enabled: assignOpen,
   });
+
+  // Voertuigen die vrij zijn op de toewijsdatum (of vandaag als die nog leeg is).
+  // Een toekomstige datum toont voertuigen die tegen die tijd zijn ingeleverd.
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const effectiveDate = assignedDate || todayStr;
+  const availableVehicles = (eligibleVehicles as any[]).filter((v) => vehicleFreeOn(v, effectiveDate));
 
   const assignVehicle = useMutation({
     mutationFn: async () => {
@@ -201,21 +209,30 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
           <SheetHeader><SheetTitle>Voertuig toewijzen</SheetTitle></SheetHeader>
           <div className="space-y-4 mt-6">
             <div>
+              <Label>Toewijsdatum *</Label>
+              <Input
+                type="date"
+                value={assignedDate}
+                onChange={(e) => { setAssignedDate(e.target.value); setVehicleId(''); }}
+              />
+              <p className="text-xs text-muted-foreground mt-1">Standaard nu beschikbaar. Kies een toekomstige datum om voertuigen te tonen die dan vrij zijn.</p>
+            </div>
+            <div>
               <Label>Voertuig *</Label>
               <Select
                 value={vehicleId}
                 onValueChange={(v) => {
                   setVehicleId(v);
-                  const veh = (availableVehicles as any[]).find((x) => x.id === v);
+                  const veh = availableVehicles.find((x: any) => x.id === v);
                   if (veh?.current_mileage != null) setStartMileage(String(veh.current_mileage));
                 }}
               >
-                <SelectTrigger><SelectValue placeholder="Selecteer beschikbaar voertuig" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Selecteer voertuig" /></SelectTrigger>
                 <SelectContent>
-                  {(availableVehicles as any[]).length === 0 && (
-                    <div className="px-2 py-1.5 text-sm text-muted-foreground">Geen beschikbare voertuigen</div>
+                  {availableVehicles.length === 0 && (
+                    <div className="px-2 py-1.5 text-sm text-muted-foreground">Geen voertuigen vrij op deze datum</div>
                   )}
-                  {(availableVehicles as any[]).map((v) => (
+                  {availableVehicles.map((v: any) => (
                     <SelectItem key={v.id} value={v.id}>
                       {v.license_plate}{v.brand ? ` — ${v.brand} ${v.model ?? ''}` : ''}
                     </SelectItem>
@@ -223,7 +240,6 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
                 </SelectContent>
               </Select>
             </div>
-            <div><Label>Toewijsdatum *</Label><Input type="date" value={assignedDate} onChange={(e) => setAssignedDate(e.target.value)} /></div>
             <div><Label>Begin kilometerstand</Label><Input type="number" value={startMileage} onChange={(e) => setStartMileage(e.target.value)} /></div>
             <div className="flex justify-end gap-3 pt-4">
               <Button variant="ghost" onClick={() => setAssignOpen(false)}>Annuleren</Button>
