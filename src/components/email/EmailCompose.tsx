@@ -1,11 +1,20 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useOutlookInvoke } from '@/hooks/useOutlookAccounts';
+import { useOutlookAccounts, useOutlookInvoke } from '@/hooks/useOutlookAccounts';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { toast } from 'sonner';
 import { Send, Loader2, X, Paperclip } from 'lucide-react';
 import { plaintextToHtml } from '@/lib/email-signature';
@@ -30,9 +39,21 @@ interface EmailComposeProps {
 const EmailCompose = ({ open, onOpenChange, replyTo, defaultTo, defaultSubject, selectedAccount }: EmailComposeProps) => {
   const callOutlook = useOutlookInvoke();
   const queryClient = useQueryClient();
+  const { usableAccounts, defaultAccountId } = useOutlookAccounts('mail_send');
 
   const isReply = !!replyTo;
   const isForward = replyTo?.mode === 'forward';
+
+  // Afzender-mailbox: kies tussen je persoonlijke mailbox en de bedrijfsmailbox.
+  const [fromAccount, setFromAccount] = useState<string | undefined>(selectedAccount || defaultAccountId);
+  useEffect(() => {
+    if (!fromAccount && (selectedAccount || defaultAccountId)) {
+      setFromAccount(selectedAccount || defaultAccountId);
+    }
+  }, [selectedAccount, defaultAccountId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const personalAccounts = usableAccounts.filter((a) => a.scope === 'personal');
+  const orgAccounts = usableAccounts.filter((a) => a.scope === 'organization');
 
   const [to, setTo] = useState(defaultTo || (isReply && !isForward ? replyTo.from : '') || '');
   const [cc, setCc] = useState(replyTo?.mode === 'replyAll' ? (replyTo.toAll || []).join(', ') : '');
@@ -54,7 +75,7 @@ const EmailCompose = ({ open, onOpenChange, replyTo, defaultTo, defaultSubject, 
       const htmlBody = plaintextToHtml(body.trimEnd());
 
       return callOutlook('outlook-send-mail', {
-        account_id: selectedAccount,
+        account_id: fromAccount || selectedAccount,
         to: toRecipients,
         cc: ccRecipients,
         subject,
@@ -84,6 +105,38 @@ const EmailCompose = ({ open, onOpenChange, replyTo, defaultTo, defaultSubject, 
         </DialogHeader>
 
         <div className="space-y-3 flex-1 overflow-y-auto">
+          {usableAccounts.length > 1 && (
+            <div className="flex items-center gap-2">
+              <Label className="w-12 text-right text-muted-foreground text-sm">Van</Label>
+              <Select value={fromAccount} onValueChange={setFromAccount}>
+                <SelectTrigger className="flex-1">
+                  <SelectValue placeholder="Kies afzender-mailbox" />
+                </SelectTrigger>
+                <SelectContent>
+                  {personalAccounts.length > 0 && (
+                    <SelectGroup>
+                      <SelectLabel>Persoonlijk</SelectLabel>
+                      {personalAccounts.map((a) => (
+                        <SelectItem key={a.account_id} value={a.account_id}>
+                          {a.label || a.email || 'Persoonlijke mailbox'}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  )}
+                  {orgAccounts.length > 0 && (
+                    <SelectGroup>
+                      <SelectLabel>Bedrijf</SelectLabel>
+                      {orgAccounts.map((a) => (
+                        <SelectItem key={a.account_id} value={a.account_id}>
+                          {a.label || a.email || 'Bedrijfsmailbox'}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <Label className="w-12 text-right text-muted-foreground text-sm">Aan</Label>

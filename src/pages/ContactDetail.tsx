@@ -10,6 +10,8 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ChevronRight, Pencil, Check, X, ExternalLink, Star } from 'lucide-react';
+import { PhoneLink } from '@/components/ui/contact-links';
+import { MailButton } from '@/components/ui/mail-button';
 import { toast } from 'sonner';
 
 const ContactDetail = () => {
@@ -211,15 +213,11 @@ const ContactDetail = () => {
                 </div>
                 <div>
                   <dt className="text-xs text-muted-foreground">Telefoon</dt>
-                  <dd className="mt-0.5 text-sm">{contact.phone || '—'}</dd>
+                  <dd className="mt-0.5 text-sm"><PhoneLink phone={contact.phone} /></dd>
                 </div>
                 <div>
                   <dt className="text-xs text-muted-foreground">E-mail</dt>
-                  <dd className="mt-0.5 text-sm">
-                    {contact.email ? (
-                      <a href={`mailto:${contact.email}`} className="text-primary hover:underline">{contact.email}</a>
-                    ) : '—'}
-                  </dd>
+                  <dd className="mt-0.5 text-sm"><MailButton email={contact.email} asText /></dd>
                 </div>
                 <div>
                   <dt className="text-xs text-muted-foreground">LinkedIn</dt>

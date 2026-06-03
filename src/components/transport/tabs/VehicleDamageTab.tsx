@@ -27,6 +27,9 @@ import { toast } from 'sonner';
 import { formatDate, formatEUR } from '@/lib/format';
 import { Plus, ShieldAlert, CheckCircle2, Bell, MoreHorizontal, Pencil, Trash2, RotateCcw } from 'lucide-react';
 import { logAudit } from '@/lib/audit';
+import { EntityLink } from '@/components/ui/entity-link';
+import { PhoneLink } from '@/components/ui/contact-links';
+import { MailButton } from '@/components/ui/mail-button';
 import { DAMAGE_ROUTE_STATUS_LABELS, DAMAGE_TYPES, damageTypeIsUrgent, damageTypeLabel } from '@/lib/damage';
 import { normalizeDamageContactSettings } from '@/lib/engagement';
 
@@ -189,7 +192,7 @@ const VehicleDamageTab = ({ vehicle }: { vehicle: any }) => {
                 <div className="flex flex-wrap items-center gap-2 text-sm">
                   <span className="font-medium">{formatDate(r.reported_at)}</span>
                   <span className="text-muted-foreground">·</span>
-                  <span>{empName}</span>
+                  <EntityLink type="employee" id={r.employees?.id}>{empName}</EntityLink>
                   <Badge variant="secondary" className={typeBadgeClass[r.damage_type] ?? typeBadgeClass.overig}>{typeLabel}</Badge>
                   {r.urgency === 'urgent' && <Badge variant="secondary" className="bg-destructive/10 text-destructive border-0">Urgent</Badge>}
                   <Badge variant="outline">{DAMAGE_ROUTE_STATUS_LABELS[r.route_status] ?? r.route_status ?? 'Interne regie'}</Badge>
@@ -201,8 +204,8 @@ const VehicleDamageTab = ({ vehicle }: { vehicle: any }) => {
                 {/* Description */}
                 <p className="text-sm">{r.description}</p>
                 {canSeeDriverContact && emp && (
-                  <p className="text-xs text-muted-foreground">
-                    Contact bestuurder: {emp.phone || 'geen telefoon'}{emp.email ? ` · ${emp.email}` : ''}
+                  <p className="text-xs text-muted-foreground inline-flex flex-wrap items-center gap-1">
+                    Contact bestuurder: <PhoneLink phone={emp.phone} />{emp.email && <><span>·</span><MailButton email={emp.email} asText /></>}
                   </p>
                 )}
 

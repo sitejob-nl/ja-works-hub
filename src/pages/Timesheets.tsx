@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
+import { useSearchParamState } from '@/hooks/useSearchParamState';
 import { startOfWeek, endOfWeek, addWeeks, subWeeks, format, getISOWeek } from 'date-fns';
 import { nl } from 'date-fns/locale';
 import { Clock, Plus, Upload, ChevronLeft, ChevronRight, CheckCircle2, XCircle, AlertTriangle, Sparkles, FileText } from 'lucide-react';
@@ -17,6 +18,7 @@ import { logAudit } from '@/lib/audit';
 import { formatDate } from '@/lib/format';
 import TimesheetEntrySheet from '@/components/timesheets/TimesheetEntrySheet';
 import TimesheetCsvImport from '@/components/timesheets/TimesheetCsvImport';
+import { EntityLink } from '@/components/ui/entity-link';
 
 const PAGE_SIZE = 25;
 
@@ -46,7 +48,7 @@ const Timesheets = () => {
   const { user } = useAuth();
   const qc = useQueryClient();
   const [weekRef, setWeekRef] = useState(new Date());
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useSearchParamState<string>('status', 'all');
   const [employeeFilter, setEmployeeFilter] = useState('all');
   const [page, setPage] = useState(0);
   const [entryOpen, setEntryOpen] = useState(false);
@@ -77,7 +79,7 @@ const Timesheets = () => {
         ),
         placements!timesheets_placement_id_fkey(
           id,
-          companies!placements_company_id_fkey(name)
+          companies!placements_company_id_fkey(id, name)
         )
       `, { count: 'exact' })
         .gte('work_date', weekStart)
@@ -344,13 +346,17 @@ const Timesheets = () => {
                 {timesheets.map((t: any, i: number) => {
                   const cand = t.candidates as any;
                   const pl = t.placements as any;
-                  const companyName = (pl?.companies as any)?.name ?? '—';
+                  const company = pl?.companies as any;
                   const name = cand ? `${cand.first_name} ${cand.last_name}` : '—';
                   return (
                     <TableRow key={t.id} className={i % 2 === 1 ? 'bg-background' : ''}>
                       <TableCell><Checkbox checked={selected.has(t.id)} onCheckedChange={() => toggleSelect(t.id)} /></TableCell>
-                      <TableCell className="font-medium">{name}</TableCell>
-                      <TableCell>{companyName}</TableCell>
+                      <TableCell className="font-medium">
+                        <EntityLink type="candidate" id={cand?.id}>{name}</EntityLink>
+                      </TableCell>
+                      <TableCell>
+                        <EntityLink type="company" id={company?.id}>{company?.name ?? '—'}</EntityLink>
+                      </TableCell>
                       <TableCell>{formatDate(t.work_date)}</TableCell>
                       <TableCell className="text-right">{Number(t.hours).toFixed(2)}</TableCell>
                       <TableCell className="text-right">{Number(t.overtime_hours ?? 0).toFixed(2)}</TableCell>

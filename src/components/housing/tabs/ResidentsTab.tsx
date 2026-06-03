@@ -25,6 +25,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { formatDate, formatEUR } from '@/lib/format';
 import { toast } from 'sonner';
 import { logAudit } from '@/lib/audit';
+import { resolveEmployeeId } from '@/lib/assignments';
 
 const WEEKS_PER_MONTH = 4.33;
 
@@ -34,30 +35,6 @@ const EXCLUDED_CANDIDATE_STATUSES = ['inactief', 'afgewezen', 'uitgeschreven', '
 const isAssignableHousingCandidate = (candidate: any) => {
   if (candidate.employee_status === 'uit_dienst') return false;
   return !EXCLUDED_CANDIDATE_STATUSES.includes(candidate.status);
-};
-
-const resolveEmployeeId = async (candidate: any, organizationId: string, startDate: string) => {
-  const { data: existing, error: existingError } = await supabase
-    .from('employees')
-    .select('id')
-    .eq('candidate_id', candidate.id)
-    .maybeSingle();
-  if (existingError) throw existingError;
-  if (existing?.id) return existing.id;
-
-  const { data: created, error: createError } = await supabase
-    .from('employees')
-    .insert({
-      organization_id: organizationId,
-      candidate_id: candidate.id,
-      employee_number: candidate.employee_number ?? null,
-      start_date: startDate,
-      status: (candidate.employee_status === 'ziek' ? 'ziek' : candidate.employee_status ?? 'actief') as any,
-    })
-    .select('id')
-    .single();
-  if (createError) throw createError;
-  return created.id;
 };
 
 const ResidentsTab = ({ property }: { property: any }) => {

@@ -27,6 +27,7 @@ import {
 import { toast } from 'sonner';
 import { formatDate } from '@/lib/format';
 import { logAudit } from '@/lib/audit';
+import { EntityLink } from '@/components/ui/entity-link';
 
 const VehicleMileageTab = ({ vehicle }: { vehicle: any }) => {
   const orgId = useOrganizationId();
@@ -199,7 +200,11 @@ const VehicleMileageTab = ({ vehicle }: { vehicle: any }) => {
               return (
                 <TableRow key={e.id}>
                   <TableCell>{formatDate(e.entry_date)}</TableCell>
-                  <TableCell>{c ? `${c.first_name} ${c.last_name}` : '—'}</TableCell>
+                  <TableCell>
+                    <EntityLink type="employee" id={e.employees?.id}>
+                      {c ? `${c.first_name} ${c.last_name}` : '—'}
+                    </EntityLink>
+                  </TableCell>
                   <TableCell className="text-right">{e.start_km.toLocaleString('nl-NL')}</TableCell>
                   <TableCell className="text-right">{e.end_km.toLocaleString('nl-NL')}</TableCell>
                   <TableCell className="text-right">{(e.end_km - e.start_km).toLocaleString('nl-NL')}</TableCell>

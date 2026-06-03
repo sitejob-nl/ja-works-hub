@@ -6,6 +6,8 @@ import { Building2, Plus, Search, Upload, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { EntityLink } from '@/components/ui/entity-link';
+import { PhoneLink } from '@/components/ui/contact-links';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
@@ -130,7 +132,7 @@ const Companies = () => {
         .from('companies')
         .select(`
           *,
-          company_contacts!company_contacts_company_id_fkey(full_name, is_primary),
+          company_contacts!company_contacts_company_id_fkey(id, full_name, is_primary),
           placements!placements_company_id_fkey(id, status)
         `, { count: 'exact' });
 
@@ -243,8 +245,12 @@ const Companies = () => {
                         </Link>
                       </TableCell>
                       <TableCell>{c.address_city ?? '—'}</TableCell>
-                      <TableCell>{primaryContact?.full_name ?? '—'}</TableCell>
-                      <TableCell>{c.phone ?? '—'}</TableCell>
+                      <TableCell>
+                        <EntityLink type="contact" id={primaryContact?.id}>
+                          {primaryContact?.full_name ?? '—'}
+                        </EntityLink>
+                      </TableCell>
+                      <TableCell><PhoneLink phone={c.phone} /></TableCell>
                       <TableCell>
                         <Badge variant={c.is_active ? 'default' : 'secondary'} className={c.is_active ? 'bg-stat-green/10 text-stat-green border-0' : ''}>
                           {c.is_active ? 'Actief' : 'Inactief'}

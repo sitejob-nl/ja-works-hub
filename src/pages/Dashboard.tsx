@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   UserCheck, Briefcase, Home, Clock, CheckCircle2,
   FileWarning, UserX, AlertTriangle, Plus, Pencil, Trash2, RefreshCw,
@@ -30,19 +30,33 @@ interface StatCardProps {
   value: string | number;
   colorClass: string;
   bgClass: string;
+  /** Optionele deep-link: maakt de tegel klikbaar naar de onderliggende (gefilterde) lijst. */
+  to?: string;
 }
 
-const StatCard = ({ icon: Icon, label, value, colorClass, bgClass }: StatCardProps) => (
-  <div className="bg-card rounded-lg p-3 sm:p-5 shadow-sm border border-border">
-    <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
-      <div className={`h-8 w-8 sm:h-9 sm:w-9 rounded-lg ${bgClass} flex items-center justify-center`}>
-        <Icon className={`h-4 w-4 ${colorClass}`} />
+const StatCard = ({ icon: Icon, label, value, colorClass, bgClass, to }: StatCardProps) => {
+  const inner = (
+    <div className="bg-card rounded-lg p-3 sm:p-5 shadow-sm border border-border h-full">
+      <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
+        <div className={`h-8 w-8 sm:h-9 sm:w-9 rounded-lg ${bgClass} flex items-center justify-center`}>
+          <Icon className={`h-4 w-4 ${colorClass}`} />
+        </div>
+        <span className="text-xs sm:text-sm text-muted-foreground leading-tight">{label}</span>
       </div>
-      <span className="text-xs sm:text-sm text-muted-foreground leading-tight">{label}</span>
+      <p className="text-xl sm:text-2xl font-semibold">{value}</p>
     </div>
-    <p className="text-xl sm:text-2xl font-semibold">{value}</p>
-  </div>
-);
+  );
+
+  if (!to) return inner;
+  return (
+    <Link
+      to={to}
+      className="block rounded-lg transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      {inner}
+    </Link>
+  );
+};
 
 // ─── Alert types ───
 interface AlertItem {
@@ -372,10 +386,10 @@ const Dashboard = () => {
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <StatCard icon={UserCheck} label="Actieve medewerkers" value={stats.activeEmployees} colorClass="text-stat-blue" bgClass="bg-stat-blue/10" />
-        <StatCard icon={Briefcase} label="Open vacatures" value={stats.openVacancies} colorClass="text-stat-orange" bgClass="bg-stat-orange/10" />
-        <StatCard icon={Home} label="Bezetting" value={stats.occupancyRate} colorClass="text-stat-green" bgClass="bg-stat-green/10" />
-        <StatCard icon={Clock} label="Uren deze week" value={stats.weeklyHours} colorClass="text-stat-purple" bgClass="bg-stat-purple/10" />
+        <StatCard icon={UserCheck} label="Actieve medewerkers" value={stats.activeEmployees} colorClass="text-stat-blue" bgClass="bg-stat-blue/10" to="/medewerkers" />
+        <StatCard icon={Briefcase} label="Open vacatures" value={stats.openVacancies} colorClass="text-stat-orange" bgClass="bg-stat-orange/10" to="/vacatures" />
+        <StatCard icon={Home} label="Bezetting" value={stats.occupancyRate} colorClass="text-stat-green" bgClass="bg-stat-green/10" to="/huisvesting" />
+        <StatCard icon={Clock} label="Uren deze week" value={stats.weeklyHours} colorClass="text-stat-purple" bgClass="bg-stat-purple/10" to="/uren" />
       </div>
 
       {/* KPI Dashboard for management */}

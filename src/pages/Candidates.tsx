@@ -16,6 +16,8 @@ import ImportWizard from '@/components/import/ImportWizard';
 import AddToPoolSheet from '@/components/talentpools/AddToPoolSheet';
 import PortalActivateSheet from '@/components/employees/PortalActivateSheet';
 import LeadFunnelBoard from '@/components/candidates/LeadFunnelBoard';
+import { PhoneLink } from '@/components/ui/contact-links';
+import { MailButton } from '@/components/ui/mail-button';
 import { formatDate } from '@/lib/format';
 import { getPaginationRange } from '@/lib/pagination';
 
@@ -511,8 +513,8 @@ const Candidates = () => {
                               {profileStatus.label}
                             </Badge>
                           </TableCell>
-                          <TableCell>{c.phone ?? '—'}</TableCell>
-                          <TableCell>{c.email ?? '—'}</TableCell>
+                          <TableCell><PhoneLink phone={c.phone} /></TableCell>
+                          <TableCell><MailButton email={c.email} asText /></TableCell>
                           <TableCell>
                             <div className="flex gap-1 flex-wrap">
                               {skills.slice(0, 3).map((s: string) => (

@@ -17,6 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { Plus, FileText, Search, Eye, Send, CheckCircle2, Euro, Download, RefreshCw, Info } from 'lucide-react';
 import { formatDate, formatEUR } from '@/lib/format';
+import { EntityLink } from '@/components/ui/entity-link';
 import { logAudit } from '@/lib/audit';
 import { payrollerLabel, payrollerBadgeClass, JA_WERKT_PAYROLLERS } from '@/lib/payroller';
 
@@ -232,7 +233,7 @@ export default function InvoicesPage() {
                       return (
                         <TableRow key={inv.id} className="cursor-pointer" onClick={() => setSelectedInvoice(inv)}>
                           <TableCell className="font-mono text-xs font-medium">{inv.invoice_number}</TableCell>
-                          <TableCell>{inv.companies?.name ?? '—'}</TableCell>
+                          <TableCell><EntityLink type="company" id={inv.company_id}>{inv.companies?.name ?? '—'}</EntityLink></TableCell>
                           <TableCell>
                             <div className="flex gap-1 flex-wrap">
                               {(inv.payrollers ?? []).length > 0
@@ -687,7 +688,7 @@ function InvoiceDetailSheet({ invoice, lines, open, onOpenChange, onUpdate }: {
 
         <div className="space-y-4 mt-6">
           <div className="grid grid-cols-2 gap-4 text-sm">
-            <div><p className="text-muted-foreground">Opdrachtgever</p><p className="font-medium">{invoice.companies?.name}</p></div>
+            <div><p className="text-muted-foreground">Opdrachtgever</p><p className="font-medium"><EntityLink type="company" id={invoice.company_id}>{invoice.companies?.name ?? '—'}</EntityLink></p></div>
             <div><p className="text-muted-foreground">Factuurdatum</p><p>{formatDate(invoice.invoice_date)}</p></div>
             <div><p className="text-muted-foreground">Periode</p><p>{formatDate(invoice.period_start)} — {formatDate(invoice.period_end)}</p></div>
             <div><p className="text-muted-foreground">Vervaldatum</p><p>{formatDate(invoice.due_date)}</p></div>

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Link, useNavigate } from 'react-router-dom';
+import { useSearchParamState } from '@/hooks/useSearchParamState';
 import { UserCheck, UserPlus, Search, Check, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,7 +34,7 @@ const complianceBadge: Record<string, string> = {
 const Employees = () => {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useSearchParamState<string>('status', 'all');
   const [page, setPage] = useState(0);
 
   const { data, isLoading } = useQuery({

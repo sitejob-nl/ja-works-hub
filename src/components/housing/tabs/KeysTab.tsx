@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { EntityLink } from '@/components/ui/entity-link';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -250,7 +251,7 @@ const KeysTab = ({ propertyId }: { propertyId: string }) => {
                   <TableRow key={k.id}>
                     <TableCell className="font-medium">{k.key_number}</TableCell>
                     <TableCell>{k.units?.name ?? '—'}</TableCell>
-                    <TableCell>{k.employees?.candidates?.first_name} {k.employees?.candidates?.last_name}</TableCell>
+                    <TableCell><EntityLink type="employee" id={k.employee_id}>{k.employees?.candidates?.first_name} {k.employees?.candidates?.last_name}</EntityLink></TableCell>
                     <TableCell>{formatDate(k.issued_at)}</TableCell>
                     <TableCell>{endDate ? formatDate(endDate) : '—'}</TableCell>
                     <TableCell>

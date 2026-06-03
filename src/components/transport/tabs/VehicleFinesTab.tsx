@@ -26,6 +26,7 @@ import { toast } from 'sonner';
 import { formatDate, formatEUR } from '@/lib/format';
 import { logAudit } from '@/lib/audit';
 import { differenceInCalendarDays, parseISO } from 'date-fns';
+import { EntityLink } from '@/components/ui/entity-link';
 
 const emptyFine = {
   fine_date: '',
@@ -309,7 +310,11 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
                       <span className="text-xs text-destructive">Ontbreekt</span>
                     )}
                   </TableCell>
-                  <TableCell>{c ? `${c.first_name} ${c.last_name}` : '—'}</TableCell>
+                  <TableCell>
+                    <EntityLink type="employee" id={f.employees?.id}>
+                      {c ? `${c.first_name} ${c.last_name}` : '—'}
+                    </EntityLink>
+                  </TableCell>
                   <TableCell>
                     <Badge
                       variant="secondary"
