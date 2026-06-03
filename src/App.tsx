@@ -103,6 +103,7 @@ import ClientPortalTimesheets from "@/pages/clientportal/ClientPortalTimesheets"
 import ClientPortalPlacements from "@/pages/clientportal/ClientPortalPlacements";
 import ClientPortalLayout from "@/components/layout/ClientPortalLayout";
 import { ClientPortalProvider } from "@/contexts/ClientPortalContext";
+import { TranslationProvider } from "@/contexts/TranslationContext";
 
 const queryClient = new QueryClient();
 
@@ -205,11 +206,11 @@ const App = () => (
             <Route path="/match/reageer/:token" element={<MatchResponse />} />
             <Route path="/profiel/:token" element={<CandidateProfile />} />
             <Route path="/solliciteren/:slug" element={<PublicCandidateSignup />} />
-            <Route path="/portaal/activeren/:token" element={<PortalActivate />} />
-            <Route path="/portaal/login" element={<PortalLogin />} />
+            <Route path="/portaal/activeren/:token" element={<TranslationProvider enableRuntimeTranslation={false}><PortalActivate /></TranslationProvider>} />
+            <Route path="/portaal/login" element={<TranslationProvider enableRuntimeTranslation={false}><PortalLogin /></TranslationProvider>} />
             {/* Client portal (opdrachtgever) public routes */}
-            <Route path="/klantportaal/activeren/:token" element={<ClientPortalActivate />} />
-            <Route path="/klantportaal/login" element={<ClientPortalLogin />} />
+            <Route path="/klantportaal/activeren/:token" element={<TranslationProvider enableRuntimeTranslation={false}><ClientPortalActivate /></TranslationProvider>} />
+            <Route path="/klantportaal/login" element={<TranslationProvider enableRuntimeTranslation={false}><ClientPortalLogin /></TranslationProvider>} />
             {/* Portal (medewerker) routes */}
             <Route path="/portaal" element={
               <PortalProvider><PortalLayout /></PortalProvider>

@@ -1,11 +1,16 @@
+import { useCallback } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { usePortal } from '@/contexts/PortalContext';
-import { Home, Clock, FileText, Building, MoreHorizontal, LogOut, Globe, MapPin, Briefcase } from 'lucide-react';
+import { Home, Clock, FileText, Building, MoreHorizontal, LogOut, MapPin, Briefcase } from 'lucide-react';
 import PortalNotifications from '@/components/portal/PortalNotifications';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
+import { LanguageToggle } from '@/components/translation/LanguageToggle';
+import { TranslationProvider } from '@/contexts/TranslationContext';
+import type { PlatformLanguage } from '@/contexts/translation-context';
 import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 const mainTabs = [
   { label: 'Dashboard', icon: Home, path: '/portaal' },
@@ -27,19 +32,24 @@ const moreTabs = [
 ];
 
 const PortalLayout = () => {
-  const { profile, candidate, signOut, employee } = usePortal();
+  const { profile, candidate, signOut } = usePortal();
   const firstName = candidate?.first_name ?? profile?.full_name?.split(' ')[0] ?? '';
   const initials = firstName.charAt(0).toUpperCase();
+  const persistLanguage = useCallback((language: PlatformLanguage) => {
+    if (!candidate?.id) return;
 
-  const toggleLanguage = async () => {
-    if (!employee) return;
-    const newLang = employee.portal_language === 'en' ? 'nl' : 'en';
-    await supabase.from('candidates').update({ portal_language: newLang }).eq('id', employee.id);
-    window.location.reload();
-  };
+    supabase
+      .from('candidates')
+      .update({ portal_language: language })
+      .eq('id', candidate.id)
+      .then(({ error }) => {
+        if (error) toast.error('Taalvoorkeur opslaan mislukt');
+      });
+  }, [candidate?.id]);
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <TranslationProvider initialLanguage={candidate?.portal_language ?? 'nl'} onLanguageChange={persistLanguage}>
+      <div className="min-h-screen bg-background flex flex-col">
       {/* Top bar */}
       <header className="bg-card border-b px-4 py-3 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
@@ -52,9 +62,7 @@ const PortalLayout = () => {
         <div className="flex items-center gap-2">
           <PortalNotifications />
 
-          <Button variant="ghost" size="icon" onClick={toggleLanguage} className="h-8 w-8" title="Taal wisselen">
-            <Globe className="h-4 w-4" />
-          </Button>
+          <LanguageToggle compact />
 
           <div className="flex items-center gap-2">
             <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium text-primary">
@@ -147,7 +155,8 @@ const PortalLayout = () => {
           </DropdownMenuContent>
         </DropdownMenu>
       </nav>
-    </div>
+      </div>
+    </TranslationProvider>
   );
 };
 
