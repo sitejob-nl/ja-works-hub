@@ -17,7 +17,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
 import PlacementSheet from '@/components/vacancies/PlacementSheet';
-import { calculateCandidateVacancyMatch, shouldShowCandidateForVacancy, type MatchBreakdown } from '@/lib/matching';
+import { type MatchBreakdown } from '@/lib/matching';
 
 const COLUMNS = [
   { key: 'nieuwe_match', label: 'Nieuwe match', color: 'bg-amber-500' },
@@ -101,68 +101,35 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
     enabled: !!orgId,
   });
 
-  const { data: availableCandidates } = useQuery({
-    queryKey: [
-      'available-candidates-for-vacancy',
-      vacancy.id,
-      candidateSearch,
-      showWeakMatches,
-      vacancy.required_skills,
-      vacancy.required_certifications,
-      vacancy.requires_drivers_license,
-      vacancyCanonicalSkills,
-    ],
+  // Shortlist via de server-side rank-candidates edge function: rangschikt de VOLLEDIGE pool
+  // (geen limit-150-op-voornaam meer) met de gedeelde matching-core, inclusief afstand.
+  const { data: availableCandidates, isError: rankError } = useQuery({
+    queryKey: ['available-candidates-for-vacancy', vacancy.id, candidateSearch, showWeakMatches, (matches ?? []).length],
     queryFn: async () => {
       const matchedIds = (matches ?? []).map((m: any) => m.candidate_id);
-      let query = supabase.from('candidates').select('id, first_name, last_name, status, skills, certifications, has_drivers_license, compliance_status, address_city, availability_notes, ai_function_group, ai_target_functions, ai_reliability_score')
-        .in('status', ['nieuw', 'in_behandeling', 'beschikbaar', 'werkzoekend'] as any);
-      if (candidateSearch) {
-        query = query.or(`first_name.ilike.%${candidateSearch}%,last_name.ilike.%${candidateSearch}%`);
-      }
-      const { data, error } = await query.order('first_name').limit(150);
+      const { data, error } = await supabase.functions.invoke('rank-candidates', {
+        body: {
+          vacancy_id: vacancy.id,
+          include_weak: showWeakMatches || !!candidateSearch,
+          search: candidateSearch || undefined,
+          exclude_candidate_ids: matchedIds,
+          limit: 25,
+        },
+      });
       if (error) throw error;
-      const candidates = data ?? [];
-      const candidateIds = candidates.map((candidate: any) => candidate.id);
-      const canonicalByCandidate = new Map<string, string[]>();
-      if (candidateIds.length > 0) {
-        const { data: skillRows, error: skillError } = await (supabase as any)
-          .from('candidate_skills')
-          .select('candidate_id, skills!inner(name)')
-          .in('candidate_id', candidateIds);
-        if (skillError) throw skillError;
-        for (const row of skillRows ?? []) {
-          const list = canonicalByCandidate.get(row.candidate_id) ?? [];
-          if (row.skills?.name) list.push(row.skills.name);
-          canonicalByCandidate.set(row.candidate_id, list);
-        }
-      }
-      const vacancyForScore = {
-        ...vacancy,
-        canonical_required_skills: vacancyCanonicalSkills,
-      };
-      return candidates
-        .filter((c: any) => !matchedIds.includes(c.id))
-        .map((c: any) => {
-          const enrichedCandidate = { ...c, canonical_skills: canonicalByCandidate.get(c.id) ?? [] };
-          const { show, score } = shouldShowCandidateForVacancy(enrichedCandidate, vacancyForScore, showWeakMatches || !!candidateSearch);
-          return { ...enrichedCandidate, _showForVacancy: show, _vacancyScore: score };
-        })
-        .filter((c: any) => c._showForVacancy)
-        .sort((a: any, b: any) => {
-          const scoreDiff = b._vacancyScore.matchPercent - a._vacancyScore.matchPercent;
-          if (scoreDiff !== 0) return scoreDiff;
-          const skillDiff = b._vacancyScore.skillMatches.length - a._vacancyScore.skillMatches.length;
-          if (skillDiff !== 0) return skillDiff;
-          return `${a.first_name ?? ''} ${a.last_name ?? ''}`.localeCompare(`${b.first_name ?? ''} ${b.last_name ?? ''}`);
-        })
-        .slice(0, 20);
+      return ((data?.results ?? []) as any[]).map((r) => ({
+        ...r.candidate,
+        _showForVacancy: true,
+        _vacancyScore: r.breakdown,
+        _candidateQuality: r.candidate_quality,
+      }));
     },
     enabled: !!matches,
   });
 
   const proposeMutation = useMutation({
     mutationFn: async (candidate: any) => {
-      const score = candidate._vacancyScore ?? calculateCandidateVacancyMatch(candidate, { ...vacancy, canonical_required_skills: vacancyCanonicalSkills });
+      const score = candidate._vacancyScore;
       const { data: match, error } = await (supabase as any).from('matches').insert({
         organization_id: orgId,
         vacancy_id: vacancy.id,
@@ -170,11 +137,11 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
         proposed_by: user?.id ?? null,
         status: 'nieuwe_match' as any,
         source: 'eigen_match',
-        match_score: score.matchPercent,
-        match_reasoning: score.reasoning,
-        match_breakdown: score as any,
-        distance_km: score.distance.distanceKm,
-        duration_min: score.distance.durationMin,
+        match_score: score?.matchPercent ?? null,
+        match_reasoning: score?.reasoning ?? null,
+        match_breakdown: (score ?? null) as any,
+        distance_km: score?.distance?.km ?? null,
+        // duration_min wordt door calculate-match (Mapbox) gezet; shortlist heeft 'm niet.
       }).select('id').single();
       if (error) throw error;
 
@@ -484,6 +451,11 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
                     <Badge className={cn('text-[10px] px-1.5 py-0 flex-shrink-0', scoreBadgeClass[c._vacancyScore.label as MatchBreakdown['label']])}>
                         {c._vacancyScore.matchPercent}% match
                     </Badge>
+                    {typeof c._candidateQuality === 'number' && (
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 flex-shrink-0" title="Algemene AI-kwaliteitsscore (los van deze vacature)">
+                        ★ {c._candidateQuality}
+                      </Badge>
+                    )}
                   </div>
                   <div className="flex gap-1 mt-1 flex-wrap">
                     {c._vacancyScore.skillMatches.slice(0, 3).map((s: string) => <Badge key={`skill-${s}`} variant="outline" className="text-xs">{s}</Badge>)}
@@ -502,7 +474,8 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
               </div>
             </Card>
           ))}
-          {(availableCandidates ?? []).length === 0 && <p className="text-sm text-muted-foreground">Geen beschikbare kandidaten met deze vacature-eisen gevonden</p>}
+          {rankError && <p className="text-sm text-red-600">Kandidaten konden niet worden geladen. Probeer het opnieuw.</p>}
+          {!rankError && (availableCandidates ?? []).length === 0 && <p className="text-sm text-muted-foreground">Geen beschikbare kandidaten met deze vacature-eisen gevonden</p>}
         </div>
       </div>
 
