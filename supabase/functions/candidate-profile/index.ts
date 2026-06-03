@@ -73,10 +73,14 @@ Deno.serve(async (req) => {
           first_name: c?.first_name,
           last_name: c?.last_name,
           phone: c?.phone,
+          phone_nl: c?.phone_nl,
+          emergency_contact_name: c?.emergency_contact_name,
+          emergency_contact_phone: c?.emergency_contact_phone,
           email: c?.email,
           date_of_birth: c?.date_of_birth,
           nationality: c?.nationality,
           languages: c?.languages,
+          has_dutch_address: c?.has_dutch_address,
           address_street: c?.address_street,
           address_postal: c?.address_postal,
           address_city: c?.address_city,
@@ -127,8 +131,9 @@ Deno.serve(async (req) => {
       // Build update payload — COALESCE logic: only update non-empty values
       if (candidate_data && typeof candidate_data === "object") {
         const allowedFields = [
-          "phone", "email", "date_of_birth", "nationality", "languages",
-          "skills", "certifications", "address_street", "address_postal",
+          "phone", "phone_nl", "emergency_contact_name", "emergency_contact_phone",
+          "email", "date_of_birth", "nationality", "languages",
+          "skills", "certifications", "has_dutch_address", "address_street", "address_postal",
           "address_city", "address_country", "address_lat", "address_lng", "has_drivers_license",
           "drivers_license_expiry", "availability_notes",
           "cv_file_url", "profile_photo_url",

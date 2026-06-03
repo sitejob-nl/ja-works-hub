@@ -12,31 +12,6 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.1"
   }
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
   public: {
     Tables: {
       ai_usage_log: {
@@ -740,6 +715,7 @@ export type Database = {
           source_tag: string | null
           title: string
           updated_at: string
+          vacancy_id: string | null
         }
         Insert: {
           created_at?: string
@@ -759,6 +735,7 @@ export type Database = {
           source_tag?: string | null
           title?: string
           updated_at?: string
+          vacancy_id?: string | null
         }
         Update: {
           created_at?: string
@@ -778,6 +755,7 @@ export type Database = {
           source_tag?: string | null
           title?: string
           updated_at?: string
+          vacancy_id?: string | null
         }
         Relationships: [
           {
@@ -785,6 +763,13 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "candidate_signup_links_vacancy_id_fkey"
+            columns: ["vacancy_id"]
+            isOneToOne: false
+            referencedRelation: "vacancies"
             referencedColumns: ["id"]
           },
         ]
@@ -877,12 +862,15 @@ export type Database = {
           date_of_birth: string | null
           drivers_license_expiry: string | null
           email: string | null
+          emergency_contact_name: string | null
+          emergency_contact_phone: string | null
           employee_number: string | null
           employee_status: string | null
           external_id: string | null
           first_name: string
           gender: string | null
           has_drivers_license: boolean | null
+          has_dutch_address: boolean
           iban: string | null
           id: string
           id_document_number: string | null
@@ -899,6 +887,7 @@ export type Database = {
           onboarding_completed_at: string | null
           organization_id: string
           phone: string | null
+          phone_nl: string | null
           portal_activated_at: string | null
           portal_enabled: boolean | null
           portal_language: string | null
@@ -947,12 +936,15 @@ export type Database = {
           date_of_birth?: string | null
           drivers_license_expiry?: string | null
           email?: string | null
+          emergency_contact_name?: string | null
+          emergency_contact_phone?: string | null
           employee_number?: string | null
           employee_status?: string | null
           external_id?: string | null
           first_name: string
           gender?: string | null
           has_drivers_license?: boolean | null
+          has_dutch_address?: boolean
           iban?: string | null
           id?: string
           id_document_number?: string | null
@@ -969,6 +961,7 @@ export type Database = {
           onboarding_completed_at?: string | null
           organization_id: string
           phone?: string | null
+          phone_nl?: string | null
           portal_activated_at?: string | null
           portal_enabled?: boolean | null
           portal_language?: string | null
@@ -1017,12 +1010,15 @@ export type Database = {
           date_of_birth?: string | null
           drivers_license_expiry?: string | null
           email?: string | null
+          emergency_contact_name?: string | null
+          emergency_contact_phone?: string | null
           employee_number?: string | null
           employee_status?: string | null
           external_id?: string | null
           first_name?: string
           gender?: string | null
           has_drivers_license?: boolean | null
+          has_dutch_address?: boolean
           iban?: string | null
           id?: string
           id_document_number?: string | null
@@ -1039,6 +1035,7 @@ export type Database = {
           onboarding_completed_at?: string | null
           organization_id?: string
           phone?: string | null
+          phone_nl?: string | null
           portal_activated_at?: string | null
           portal_enabled?: boolean | null
           portal_language?: string | null
@@ -8157,6 +8154,7 @@ export type Database = {
           salary_display: string | null
           salary_max: number | null
           salary_min: number | null
+          skills_enriched_at: string | null
           skills_required: string[] | null
           start_date: string | null
           start_date_text: string | null
@@ -8185,6 +8183,7 @@ export type Database = {
           salary_display?: string | null
           salary_max?: number | null
           salary_min?: number | null
+          skills_enriched_at?: string | null
           skills_required?: string[] | null
           start_date?: string | null
           start_date_text?: string | null
@@ -8213,6 +8212,7 @@ export type Database = {
           salary_display?: string | null
           salary_max?: number | null
           salary_min?: number | null
+          skills_enriched_at?: string | null
           skills_required?: string[] | null
           start_date?: string | null
           start_date_text?: string | null
@@ -9289,6 +9289,10 @@ export type Database = {
       }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
+      sync_unit_status_from_assignments: {
+        Args: { p_unit_id: string }
+        Returns: undefined
+      }
       topup_ai_credits: {
         Args: { p_amount_cents: number; p_note?: string; p_org_id: string }
         Returns: number
@@ -9536,9 +9540,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {
       audit_action: [

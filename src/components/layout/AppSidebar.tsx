@@ -7,11 +7,10 @@ import { useQuery } from '@tanstack/react-query';
 import {
   LayoutDashboard, Building2, Users, UserCheck, UserRound, Home, Briefcase,
   Calendar, Clock, Car, MessageSquare, BookOpen, Settings, Mail,
-  ChevronLeft, ChevronRight, ChevronDown, Search, UserSearch, Calculator, ClipboardList, Fuel, FileText, BarChart3, CheckSquare, BarChart2, FolderHeart, GitCompareArrows, Database,
+  ChevronLeft, ChevronRight, Search, UserSearch, Calculator, ClipboardList, Fuel, FileText, BarChart3, CheckSquare, BarChart2, FolderHeart, GitCompareArrows, Database,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useEffect } from 'react';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 
 interface AppSidebarProps {
   onNavigate?: () => void;
@@ -241,15 +240,15 @@ const AppSidebar = ({ onNavigate }: AppSidebarProps) => {
             );
           }
 
+          // Groepen staan altijd open en zijn niet inklapbaar (klant-wens review 27-05).
           return (
-            <Collapsible key={gi} defaultOpen={true} className="mt-3">
-              <CollapsibleTrigger className="flex items-center justify-between w-full px-3 py-1 group cursor-pointer">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/50 group-hover:text-sidebar-foreground/70 transition-colors">
+            <div key={gi} className="mt-3">
+              <div className="px-3 py-1">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/50">
                   {group.label}
                 </span>
-                <ChevronDown className="h-3 w-3 text-sidebar-foreground/40 transition-transform duration-200 group-data-[state=closed]:-rotate-90" />
-              </CollapsibleTrigger>
-              <CollapsibleContent className="space-y-0.5 mt-0.5">
+              </div>
+              <div className="space-y-0.5 mt-0.5">
                 {group.items.map((item) => {
                   const isActive = location.pathname === item.path;
                   return (
@@ -274,8 +273,8 @@ const AppSidebar = ({ onNavigate }: AppSidebarProps) => {
                     </NavLink>
                   );
                 })}
-              </CollapsibleContent>
-            </Collapsible>
+              </div>
+            </div>
           );
         })}
       </nav>

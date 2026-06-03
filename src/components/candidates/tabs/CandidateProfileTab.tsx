@@ -141,8 +141,14 @@ const CandidateProfileTab = ({ candidate }: { candidate: any }) => {
       <div className="bg-card rounded-lg border p-6 space-y-4">
         <h3 className="font-medium">Contactgegevens</h3>
         <Field label="E-mail" value={candidate.email} />
-        <Field label="Telefoon" value={candidate.phone} />
+        <Field label="Telefoon (EU / buitenland)" value={candidate.phone} />
+        <Field label="Telefoon (NL)" value={candidate.phone_nl} />
+        <Field
+          label="Noodcontact (ICE)"
+          value={[candidate.emergency_contact_name, candidate.emergency_contact_phone].filter(Boolean).join(' · ') || null}
+        />
         <Field label="Adres" value={address} />
+        <Field label="Nederlands adres bekend" value={candidate.has_dutch_address ? 'Ja' : 'Nee'} />
       </div>
 
       <div className="bg-card rounded-lg border p-6 space-y-4">

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Link } from 'react-router-dom';
-import { Home, Plus, Search, LayoutGrid, List, Bed, Building2, ArrowUpDown, CheckCircle2, Wallet } from 'lucide-react';
+import { Home, Plus, Search, LayoutGrid, List, Bed, Building2, ArrowUpDown, CheckCircle2, Wallet, DoorOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -68,7 +68,12 @@ const Housing = () => {
         const currentOccupancy = units.reduce((s: number, u: any) =>
           s + ((u.housing_assignments ?? []).filter((a: any) => a.status === 'ingecheckt').length), 0);
         const percentage = totalCapacity > 0 ? Math.round((currentOccupancy / totalCapacity) * 100) : 0;
-        return { ...p, totalCapacity, currentOccupancy, percentage };
+        // Vrije kamers = kamers (units) met capaciteit die volledig leeg staan (0 bewoners ingecheckt).
+        const freeRooms = units.filter((u: any) =>
+          (u.capacity ?? 0) > 0
+          && (u.housing_assignments ?? []).filter((a: any) => a.status === 'ingecheckt').length === 0
+        ).length;
+        return { ...p, totalCapacity, currentOccupancy, percentage, freeRooms };
       });
     },
   });
@@ -143,6 +148,7 @@ const Housing = () => {
   const totalCapacity = properties.reduce((s: number, p: any) => s + (p.totalCapacity ?? 0), 0);
   const totalOccupancy = properties.reduce((s: number, p: any) => s + (p.currentOccupancy ?? 0), 0);
   const totalAvailable = totalCapacity - totalOccupancy;
+  const totalFreeRooms = properties.reduce((s: number, p: any) => s + (p.freeRooms ?? 0), 0);
   const overallPct = totalCapacity > 0 ? Math.round((totalOccupancy / totalCapacity) * 100) : 0;
   const totalMonthlyCost = properties.reduce((sum: number, p: any) => {
     return sum
@@ -174,7 +180,7 @@ const Housing = () => {
 
       {/* Top KPIs — focus op vrije plekken (klant-wens 2026-04-25) */}
       {properties.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
           <Card>
             <CardContent className="pt-6 flex items-center gap-4">
               <div className="h-10 w-10 rounded-md bg-stat-green/10 flex items-center justify-center">
@@ -183,6 +189,17 @@ const Housing = () => {
               <div>
                 <p className="text-2xl font-bold">{totalAvailable}</p>
                 <p className="text-xs text-muted-foreground">Vrije plekken nu</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6 flex items-center gap-4">
+              <div className="h-10 w-10 rounded-md bg-teal-100 flex items-center justify-center">
+                <DoorOpen className="h-5 w-5 text-teal-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{totalFreeRooms}</p>
+                <p className="text-xs text-muted-foreground">Vrije kamers (volledig leeg)</p>
               </div>
             </CardContent>
           </Card>
