@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Plus, Star, MoreHorizontal, Pencil, Trash2, RotateCcw } from 'lucide-react';
 import { formatDate } from '@/lib/format';
+import { EntityLink } from '@/components/ui/entity-link';
 import { toast } from 'sonner';
 import { logAudit } from '@/lib/audit';
 
@@ -475,7 +476,7 @@ const InspectionsTab = ({ propertyId }: { propertyId: string }) => {
                     </div>
 
                     {residentName && (
-                      <p className="text-xs text-muted-foreground">Bewoner: <span className="font-medium text-foreground">{residentName}</span></p>
+                      <p className="text-xs text-muted-foreground">Bewoner: <span className="font-medium text-foreground"><EntityLink type="employee" id={insp.housing_assignments?.employees?.id}>{residentName}</EntityLink></span></p>
                     )}
 
                     <p className="text-sm">{insp.description}</p>

@@ -6,6 +6,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { UserRound, Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { PhoneLink } from '@/components/ui/contact-links';
+import { MailButton } from '@/components/ui/mail-button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
 
@@ -112,8 +114,8 @@ const Contacts = () => {
                         </Link>
                       ) : '—'}
                     </TableCell>
-                    <TableCell>{c.phone ?? '—'}</TableCell>
-                    <TableCell>{c.email ?? '—'}</TableCell>
+                    <TableCell><PhoneLink phone={c.phone} /></TableCell>
+                    <TableCell><MailButton email={c.email} asText /></TableCell>
                     <TableCell>
                       {c.is_primary && (
                         <Badge variant="default" className="bg-stat-green/10 text-stat-green border-0">Primair</Badge>

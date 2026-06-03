@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Link, useNavigate } from 'react-router-dom';
+import { useSearchParamState } from '@/hooks/useSearchParamState';
 import { Briefcase, Plus, Search, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -48,7 +49,7 @@ const Vacancies = () => {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useSearchParamState<string>('status', 'all');
   const [urgencyFilter, setUrgencyFilter] = useState('all');
   const [page, setPage] = useState(0);
 

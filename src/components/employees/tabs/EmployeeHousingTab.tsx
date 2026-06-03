@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { EntityLink } from '@/components/ui/entity-link';
 import { formatDate, formatEUR } from '@/lib/format';
 
 const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
@@ -9,7 +10,7 @@ const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
     queryKey: ['housing-assignments', candidateId],
     queryFn: async () => {
       const { data, error } = await supabase.from('housing_assignments')
-        .select('*, units!housing_assignments_unit_id_fkey(name, properties!units_property_id_fkey(name))')
+        .select('*, units!housing_assignments_unit_id_fkey(id, name, properties!units_property_id_fkey(id, name))')
         .eq('candidate_id', candidateId)
         .order('check_in_date', { ascending: false });
       if (error) throw error;
@@ -37,7 +38,7 @@ const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
         <h3 className="font-medium mb-4">Huidige huisvesting</h3>
         {active ? (
           <div className="grid grid-cols-2 gap-4">
-            <div><p className="text-xs text-muted-foreground">Pand</p><p className="text-sm">{(active as any).units?.properties?.name ?? '—'}</p></div>
+            <div><p className="text-xs text-muted-foreground">Pand</p><p className="text-sm"><EntityLink type="property" id={(active as any).units?.properties?.id}>{(active as any).units?.properties?.name ?? '—'}</EntityLink></p></div>
             <div><p className="text-xs text-muted-foreground">Kamer</p><p className="text-sm">{(active as any).units?.name ?? '—'}</p></div>
             <div><p className="text-xs text-muted-foreground">Check-in</p><p className="text-sm">{formatDate(active.check_in_date)}</p></div>
             <div><p className="text-xs text-muted-foreground">Maandelijkse inhouding</p><p className="text-sm">{formatEUR(active.monthly_deduction)}</p></div>

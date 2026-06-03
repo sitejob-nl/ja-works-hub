@@ -22,6 +22,7 @@ import {
 import { Plus, ChevronDown, ChevronUp, Trash2, Pencil, Layers, X, LayoutGrid, List } from 'lucide-react';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { EntityLink } from '@/components/ui/entity-link';
 import { formatDate, formatEUR } from '@/lib/format';
 import { toast } from 'sonner';
 import type { Database } from '@/integrations/supabase/types';
@@ -339,7 +340,7 @@ const UnitsTab = ({ property }: { property: any }) => {
                       <div className="mt-2 space-y-1">
                         {occupants.map((a: any) => (
                           <p key={a.id} className="text-xs">
-                            {a.candidates?.first_name} {a.candidates?.last_name}
+                            <EntityLink type="candidate" id={a.candidates?.id}>{a.candidates?.first_name} {a.candidates?.last_name}</EntityLink>
                           </p>
                         ))}
                       </div>
@@ -356,7 +357,7 @@ const UnitsTab = ({ property }: { property: any }) => {
                     ) : (
                       assignments.map((a: any) => (
                         <div key={a.id} className="text-xs flex items-center justify-between">
-                          <span>{a.candidates?.first_name} {a.candidates?.last_name}</span>
+                          <span><EntityLink type="candidate" id={a.candidates?.id}>{a.candidates?.first_name} {a.candidates?.last_name}</EntityLink></span>
                           <span className="text-muted-foreground">
                             {formatDate(a.check_in_date)} — {a.check_out_date ? formatDate(a.check_out_date) : 'heden'}
                             {' '}
@@ -437,10 +438,12 @@ const UnitsTab = ({ property }: { property: any }) => {
                       <TableCell className="text-sm text-muted-foreground">
                         {occupants.length === 0
                           ? '—'
-                          : occupants
-                              .map((a: any) => `${a.candidates?.first_name ?? ''} ${a.candidates?.last_name ?? ''}`.trim())
-                              .filter(Boolean)
-                              .join(', ')}
+                          : occupants.map((a: any, i: number) => (
+                              <Fragment key={a.id}>
+                                {i > 0 && ', '}
+                                <EntityLink type="candidate" id={a.candidates?.id}>{`${a.candidates?.first_name ?? ''} ${a.candidates?.last_name ?? ''}`.trim()}</EntityLink>
+                              </Fragment>
+                            ))}
                       </TableCell>
                       <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="flex justify-end gap-1">
@@ -475,7 +478,7 @@ const UnitsTab = ({ property }: { property: any }) => {
                             <div className="space-y-1">
                               {assignments.map((a: any) => (
                                 <div key={a.id} className="text-xs flex items-center justify-between">
-                                  <span>{a.candidates?.first_name} {a.candidates?.last_name}</span>
+                                  <span><EntityLink type="candidate" id={a.candidates?.id}>{a.candidates?.first_name} {a.candidates?.last_name}</EntityLink></span>
                                   <span className="text-muted-foreground">
                                     {formatDate(a.check_in_date)} — {a.check_out_date ? formatDate(a.check_out_date) : 'heden'}
                                     {' '}

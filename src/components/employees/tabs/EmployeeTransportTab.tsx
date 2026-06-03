@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { EntityLink } from '@/components/ui/entity-link';
 import { formatDate, formatEUR } from '@/lib/format';
 
 const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
@@ -50,7 +51,7 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
         <h3 className="font-medium mb-4">Huidig voertuig</h3>
         {assignment ? (
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            <div><p className="text-xs text-muted-foreground">Kenteken</p><p className="text-sm font-medium">{assignment.vehicles?.license_plate}</p></div>
+            <div><p className="text-xs text-muted-foreground">Kenteken</p><p className="text-sm font-medium"><EntityLink type="vehicle" id={assignment.vehicle_id}>{assignment.vehicles?.license_plate}</EntityLink></p></div>
             <div><p className="text-xs text-muted-foreground">Merk</p><p className="text-sm">{assignment.vehicles?.brand ?? '—'}</p></div>
             <div><p className="text-xs text-muted-foreground">Model</p><p className="text-sm">{assignment.vehicles?.model ?? '—'}</p></div>
             <div><p className="text-xs text-muted-foreground">Toewijsdatum</p><p className="text-sm">{formatDate(assignment.assigned_date)}</p></div>

@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { EntityLink } from '@/components/ui/entity-link';
 import { formatDate } from '@/lib/format';
 
 const statusBadge: Record<string, string> = {
@@ -22,7 +23,7 @@ const CandidateMatchesTab = ({ candidateId }: { candidateId: string }) => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('matches')
-        .select('*, vacancies!matches_vacancy_id_fkey(title, companies!vacancies_company_id_fkey(name))')
+        .select('*, vacancies!matches_vacancy_id_fkey(id, title, companies!vacancies_company_id_fkey(id, name))')
         .eq('candidate_id', candidateId)
         .order('proposed_at', { ascending: false });
       if (error) throw error;
@@ -47,8 +48,12 @@ const CandidateMatchesTab = ({ candidateId }: { candidateId: string }) => {
           <TableBody>
             {matches.map((m: any) => (
               <TableRow key={m.id}>
-                <TableCell className="font-medium">{m.vacancies?.title ?? '—'}</TableCell>
-                <TableCell>{m.vacancies?.companies?.name ?? '—'}</TableCell>
+                <TableCell className="font-medium">
+                  <EntityLink type="vacancy" id={m.vacancy_id}>{m.vacancies?.title ?? '—'}</EntityLink>
+                </TableCell>
+                <TableCell>
+                  <EntityLink type="company" id={m.vacancies?.companies?.id}>{m.vacancies?.companies?.name ?? '—'}</EntityLink>
+                </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-2">
                     <Progress value={(m.match_score ?? 0) * 100} className="h-2 w-16" />

@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { Database } from '@/integrations/supabase/types';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
+import { useSearchParamState } from '@/hooks/useSearchParamState';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -12,10 +13,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
-import { Search, Users, CalendarClock, TrendingUp, BriefcaseBusiness } from 'lucide-react';
+import { Search, Users, CalendarClock, TrendingUp } from 'lucide-react';
 import { formatDate, formatEUR } from '@/lib/format';
 import { payrollerLabel } from '@/lib/payroller';
 import { getPaginationRange } from '@/lib/pagination';
+import { EntityLink } from '@/components/ui/entity-link';
 
 type PlacementStatus = Database['public']['Enums']['placement_status'];
 type PayrollerType = Database['public']['Enums']['payroller_type'];
@@ -41,7 +43,7 @@ export default function PlacementsPage() {
   const navigate = useNavigate();
   const orgId = useOrganizationId();
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<PlacementStatus | 'all'>('all');
+  const [statusFilter, setStatusFilter] = useSearchParamState<PlacementStatus | 'all'>('status', 'all');
   const [payrollerFilter, setPayrollerFilter] = useState<PayrollerType | 'all'>('all');
   const [page, setPage] = useState(0);
 
@@ -164,21 +166,19 @@ export default function PlacementsPage() {
                   const candidateName = cand
                     ? `${cand.first_name ?? ''} ${cand.last_name ?? ''}`.trim() || 'Onbekende kandidaat'
                     : '—';
-                  const companyName = (p.companies as any)?.name ?? '—';
+                  const company = (p.companies as any);
                   return (
                     <TableRow key={p.id} className="cursor-pointer" onClick={() => navigate(`/plaatsingen/${p.id}`)}>
-                      <TableCell className="font-medium">{candidateName}</TableCell>
-                      <TableCell>{companyName}</TableCell>
+                      <TableCell className="font-medium">
+                        <EntityLink type="candidate" id={cand?.id}>{candidateName}</EntityLink>
+                      </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-2">
-                          <span>{p.function_name || 'Plaatsing'}</span>
-                          {p.vacancy_id && (
-                            <BriefcaseBusiness
-                              className="h-4 w-4 text-muted-foreground"
-                              aria-label="Vacature gekoppeld"
-                            />
-                          )}
-                        </div>
+                        <EntityLink type="company" id={company?.id}>{company?.name ?? '—'}</EntityLink>
+                      </TableCell>
+                      <TableCell>
+                        <EntityLink type="vacancy" id={p.vacancy_id ?? null}>
+                          {p.function_name || 'Plaatsing'}
+                        </EntityLink>
                       </TableCell>
                       <TableCell>{p.payroller ? <Badge variant="outline" className="text-xs">{payrollerLabel[p.payroller] ?? p.payroller}</Badge> : <span className="text-muted-foreground">—</span>}</TableCell>
                       <TableCell className="text-xs whitespace-nowrap">{formatDate(p.start_date)} — {formatDate(p.expected_end_date || p.end_date)}</TableCell>

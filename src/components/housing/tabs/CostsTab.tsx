@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { logAudit } from '@/lib/audit';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { EntityLink } from '@/components/ui/entity-link';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -294,7 +295,7 @@ const CostsTab = ({ property }: { property: any }) => {
                 {allActive.map((a: any) => (
                   <TableRow key={a.id}>
                     <TableCell className="font-medium">
-                      {a.candidates?.first_name} {a.candidates?.last_name}
+                      <EntityLink type="candidate" id={a.candidates?.id}>{a.candidates?.first_name} {a.candidates?.last_name}</EntityLink>
                     </TableCell>
                     <TableCell>{a.unitName}</TableCell>
                     <TableCell>

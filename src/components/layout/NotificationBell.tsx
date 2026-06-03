@@ -1,6 +1,8 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { entityPath, type EntityType } from '@/lib/entity-routes';
 import { Bell, Check, X, Info, AlertTriangle, AlertOctagon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -42,8 +44,38 @@ const typeToCategory: Record<string, string> = {
   overig: 'overig',
 };
 
+// Map een notificatie naar de detailpagina van de betrokken entiteit.
+const REFERENCE_TABLE_TO_ENTITY: Record<string, EntityType> = {
+  candidates: 'candidate',
+  companies: 'company',
+  placements: 'placement',
+  vacancies: 'vacancy',
+  vehicles: 'vehicle',
+  properties: 'property',
+};
+
+function notificationLink(n: {
+  type?: string | null;
+  reference_table?: string | null;
+  reference_id?: string | null;
+  company_id?: string | null;
+  candidate_id?: string | null;
+  employee_id?: string | null;
+}): string | null {
+  if (n.type === 'uren_openstaand') return '/uren';
+  if (n.reference_table && n.reference_id) {
+    const entity = REFERENCE_TABLE_TO_ENTITY[n.reference_table];
+    if (entity) return entityPath(entity, n.reference_id) || null;
+  }
+  if (n.company_id) return entityPath('company', n.company_id) || null;
+  if (n.candidate_id) return entityPath('candidate', n.candidate_id) || null;
+  if (n.employee_id) return entityPath('employee', n.employee_id) || null;
+  return null;
+}
+
 const NotificationBell = () => {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState('alle');
 
@@ -130,6 +162,14 @@ const NotificationBell = () => {
               {filtered.map((n) => {
                 const sev = severityConfig[n.severity ?? 'info'] ?? severityConfig.info;
                 const SevIcon = sev.icon;
+                const link = notificationLink(n);
+                const openNotification = () => {
+                  if (!n.is_read) markRead.mutate(n.id);
+                  if (link) {
+                    setOpen(false);
+                    navigate(link);
+                  }
+                };
                 return (
                   <div
                     key={n.id}
@@ -138,7 +178,12 @@ const NotificationBell = () => {
                     <div className={`h-8 w-8 rounded-lg flex items-center justify-center shrink-0 ${sev.className}`}>
                       <SevIcon className="h-4 w-4" />
                     </div>
-                    <div className="flex-1 min-w-0">
+                    <button
+                      type="button"
+                      onClick={openNotification}
+                      className={`flex-1 min-w-0 text-left ${link ? 'cursor-pointer' : 'cursor-default'}`}
+                      title={link ? 'Open' : undefined}
+                    >
                       <p className={`text-sm leading-tight ${!n.is_read ? 'font-medium' : ''}`}>
                         {n.title}
                       </p>
@@ -148,7 +193,7 @@ const NotificationBell = () => {
                       <p className="text-[10px] text-muted-foreground mt-1">
                         {formatRelativeTime(n.created_at)}
                       </p>
-                    </div>
+                    </button>
                     <div className="flex flex-col gap-1 shrink-0">
                       {!n.is_read && (
                         <Button
