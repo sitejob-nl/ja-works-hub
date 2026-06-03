@@ -43,6 +43,7 @@ const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
   const orgId = useOrganizationId();
   const qc = useQueryClient();
   const [assignOpen, setAssignOpen] = useState(false);
+  const [propertyId, setPropertyId] = useState('');
   const [unitId, setUnitId] = useState('');
   const [checkInDate, setCheckInDate] = useState('');
   const [deductionAmount, setDeductionAmount] = useState('');
@@ -52,7 +53,7 @@ const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
     queryKey: ['available-units', orgId],
     queryFn: async () => {
       const { data, error } = await supabase.from('units')
-        .select('id, name, capacity, status, weekly_cost, properties!units_property_id_fkey(id, name), housing_assignments!housing_assignments_unit_id_fkey(id, status)')
+        .select('id, name, capacity, status, weekly_cost, properties!units_property_id_fkey(id, name, address_street, address_city), housing_assignments!housing_assignments_unit_id_fkey(id, status)')
         .eq('status', 'beschikbaar' as any)
         .order('name');
       if (error) throw error;
@@ -63,6 +64,13 @@ const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
     },
     enabled: assignOpen,
   });
+
+  const propertyLabel = (p: any) => p?.name || [p?.address_street, p?.address_city].filter(Boolean).join(', ') || 'Pand';
+  // Unieke panden die minstens één beschikbare kamer hebben.
+  const availableProperties = Array.from(
+    new Map((availableUnits as any[]).map((u) => [u.properties?.id, u.properties] as [string, any]).filter(([id]) => id)).values(),
+  );
+  const unitsForProperty = (availableUnits as any[]).filter((u) => u.properties?.id === propertyId);
 
   const assignRoom = useMutation({
     mutationFn: async () => {
@@ -90,7 +98,7 @@ const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
       qc.invalidateQueries({ queryKey: ['housing-assignments', candidateId] });
       toast.success('Kamer toegewezen');
       setAssignOpen(false);
-      setUnitId(''); setCheckInDate(''); setDeductionAmount('');
+      setPropertyId(''); setUnitId(''); setCheckInDate(''); setDeductionAmount('');
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -153,16 +161,30 @@ const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
           <SheetHeader><SheetTitle>Kamer toewijzen</SheetTitle></SheetHeader>
           <div className="space-y-4 mt-6">
             <div>
-              <Label>Kamer *</Label>
-              <Select value={unitId} onValueChange={setUnitId}>
-                <SelectTrigger><SelectValue placeholder="Selecteer beschikbare kamer" /></SelectTrigger>
+              <Label>Pand (adres) *</Label>
+              <Select value={propertyId} onValueChange={(v) => { setPropertyId(v); setUnitId(''); }}>
+                <SelectTrigger><SelectValue placeholder="Selecteer pand" /></SelectTrigger>
                 <SelectContent>
-                  {(availableUnits as any[]).length === 0 && (
-                    <div className="px-2 py-1.5 text-sm text-muted-foreground">Geen beschikbare kamers</div>
+                  {availableProperties.length === 0 && (
+                    <div className="px-2 py-1.5 text-sm text-muted-foreground">Geen panden met beschikbare kamers</div>
                   )}
-                  {(availableUnits as any[]).map((u) => (
+                  {availableProperties.map((p: any) => (
+                    <SelectItem key={p.id} value={p.id}>{propertyLabel(p)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Kamer *</Label>
+              <Select value={unitId} onValueChange={setUnitId} disabled={!propertyId}>
+                <SelectTrigger><SelectValue placeholder={propertyId ? 'Selecteer kamer' : 'Kies eerst een pand'} /></SelectTrigger>
+                <SelectContent>
+                  {propertyId && unitsForProperty.length === 0 && (
+                    <div className="px-2 py-1.5 text-sm text-muted-foreground">Geen beschikbare kamers in dit pand</div>
+                  )}
+                  {unitsForProperty.map((u: any) => (
                     <SelectItem key={u.id} value={u.id}>
-                      {u.properties?.name ?? '—'} — {u.name}{u.weekly_cost ? ` (${formatEUR(u.weekly_cost)}/wk)` : ''}
+                      {u.name}{u.weekly_cost ? ` (${formatEUR(u.weekly_cost)}/wk)` : ''}
                     </SelectItem>
                   ))}
                 </SelectContent>
