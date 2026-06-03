@@ -94,6 +94,13 @@ export interface CRStatusInfo {
   name?: string; // Carerix gebruikt `name`, niet `value`.
 }
 
+export interface CRDataNode {
+  _id: string;
+  value?: string;
+  label?: string;
+  tag?: string;
+}
+
 export interface CRMedium {
   _id: string;
   name?: string;
@@ -101,6 +108,7 @@ export interface CRMedium {
 
 export interface CREmployee {
   _id: string;
+  employeeID?: string | number;
   firstName?: string;
   lastName?: string;
   fullFirstNames?: string;
@@ -110,6 +118,15 @@ export interface CREmployee {
   mobileNumber?: string;
   phoneNumberBusiness?: string;
   notes?: string;
+  additionalInfo?: Record<string, unknown>;
+  nationality?: string;
+  sofiNumber?: string;
+  adminSofiNumber?: string;
+  socialSecurityNumber?: string;
+  systemLanguage?: string;
+  language?: string;
+  toLanguageNode?: CRDataNode;
+  toIdentificationCountryNode?: CRDataNode;
   toStatusNode?: CRStatusNode;
   toUser?: CRRef;
   modificationDate?: string;

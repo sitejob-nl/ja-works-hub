@@ -46,6 +46,86 @@ function isoDay(raw: string | undefined | null): string | null {
   return d.toISOString().slice(0, 10);
 }
 
+function cleanText(raw: unknown): string | null {
+  if (raw === null || raw === undefined) return null;
+  const value = String(raw).trim();
+  return value.length > 0 ? value : null;
+}
+
+function dataNodeValue(
+  node: { value?: string; label?: string; tag?: string } | undefined | null,
+): string | null {
+  return cleanText(node?.value) || cleanText(node?.label) || cleanText(node?.tag);
+}
+
+function normalizeLanguage(raw: unknown): string | null {
+  const value = cleanText(raw);
+  if (!value) return null;
+  const lower = value.toLowerCase();
+  const known: Record<string, string> = {
+    dutch: 'Nederlands',
+    nederlands: 'Nederlands',
+    nl: 'Nederlands',
+    english: 'Engels',
+    engels: 'Engels',
+    en: 'Engels',
+    polish: 'Pools',
+    pools: 'Pools',
+    pl: 'Pools',
+    romanian: 'Roemeens',
+    roemeens: 'Roemeens',
+    ro: 'Roemeens',
+    portuguese: 'Portugees',
+    portugees: 'Portugees',
+    pt: 'Portugees',
+    spanish: 'Spaans',
+    spaans: 'Spaans',
+    es: 'Spaans',
+  };
+  return known[lower] ?? value;
+}
+
+function splitLanguageValues(raw: unknown): Array<string | null> {
+  if (Array.isArray(raw)) return raw.map((value) => normalizeLanguage(value));
+  const value = cleanText(raw);
+  if (!value) return [];
+  return value.split(/[,;/|]+/).map((part) => normalizeLanguage(part));
+}
+
+function compactUnique(values: Array<string | null>): string[] | null {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const value of values) {
+    if (!value) continue;
+    const key = value.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(value);
+  }
+  return out.length > 0 ? out : null;
+}
+
+function normalizeKey(raw: string): string {
+  return raw.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function additionalInfoValue(
+  info: Record<string, unknown> | undefined,
+  candidates: string[],
+): unknown {
+  if (!info) return null;
+  const wanted = new Set(candidates.map(normalizeKey));
+  for (const [key, rawValue] of Object.entries(info)) {
+    if (!wanted.has(normalizeKey(key))) continue;
+    if (rawValue && typeof rawValue === 'object' && !Array.isArray(rawValue)) {
+      const objectValue = rawValue as Record<string, unknown>;
+      return objectValue.value ?? objectValue.label ?? objectValue.name ?? objectValue.displayName ?? rawValue;
+    }
+    return rawValue;
+  }
+  return null;
+}
+
 export interface CarerixProfileNoteEntry {
   body: string;
   createdAt: string | null;
@@ -188,13 +268,44 @@ export function mapCREmployee(e: CREmployee, orgId: string): Record<string, unkn
     .join(' ')
     .trim() || null;
   const status = mapStatus(statusMaps.candidate, statusValue(e.toStatusNode), 'nieuw');
+  const additionalNationality = additionalInfoValue(e.additionalInfo, [
+    'nationality',
+    'nationaliteit',
+    'nationaliteit kandidaat',
+  ]);
+  const additionalBsn = additionalInfoValue(e.additionalInfo, [
+    'bsn',
+    'sofinummer',
+    'sofi nummer',
+    'social security number',
+  ]);
+  const additionalLanguages = additionalInfoValue(e.additionalInfo, [
+    'languages',
+    'language',
+    'talen',
+    'taal',
+    'spreektalen',
+  ]);
+  const language = normalizeLanguage(dataNodeValue(e.toLanguageNode) || e.systemLanguage || e.language);
+  const nationality =
+    cleanText(e.nationality) ||
+    cleanText(additionalNationality) ||
+    dataNodeValue(e.toIdentificationCountryNode);
 
   return {
     first_name: e.firstName || e.fullFirstNames || 'Onbekend',
     last_name: e.lastName || 'Onbekend',
+    employee_number: cleanText(e.employeeID),
     email: e.emailAddress || e.emailAddressBusiness || null,
     phone: e.phoneNumber || e.mobileNumber || e.phoneNumberBusiness || null,
     date_of_birth: isoDay(e.birthDate),
+    nationality,
+    bsn:
+      cleanText(e.sofiNumber) ||
+      cleanText(e.adminSofiNumber) ||
+      cleanText(e.socialSecurityNumber) ||
+      cleanText(additionalBsn),
+    languages: compactUnique([language, ...splitLanguageValues(additionalLanguages)]),
     address_street: addressStreet,
     address_city: e.homeCity ?? null,
     address_postal: e.homePostalCode ?? null,
