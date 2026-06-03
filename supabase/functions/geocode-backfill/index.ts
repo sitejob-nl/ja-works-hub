@@ -29,24 +29,40 @@ function parsePoint(point?: string | null): { lat: number; lng: number } | null 
   return m ? { lng: Number(m[1]), lat: Number(m[2]) } : null;
 }
 
-// Geocodeer één vrije-tekst NL-adres. Retourneert coords alleen als de NL-postcode klopt.
-async function geocodeNL(q: string): Promise<{ lat: number; lng: number } | null> {
-  const pc = q.match(NL_POSTCODE);
-  if (!pc) return null; // geen NL-postcode → niet geocoderen (waarschijnlijk buitenland/junk)
-  const wanted = pc[1];
-  const params = new URLSearchParams({ q, rows: "1", fq: "type:adres", fl: "postcode,centroide_ll" });
+async function pdokQuery(q: string, type: "adres" | "postcode"): Promise<{ point: string; postcode: string } | null> {
+  const params = new URLSearchParams({ q, rows: "1", fq: `type:${type}`, fl: "postcode,centroide_ll" });
   try {
     const res = await fetch(`${PDOK}?${params}`);
     if (!res.ok) return null;
     const data = await res.json();
     const doc = data?.response?.docs?.[0];
-    if (!doc) return null;
-    const got = String(doc.postcode ?? "").replace(/\s+/g, "");
-    if (got.slice(0, 4) !== wanted) return null; // sanity: zelfde postcodegebied
-    return parsePoint(doc.centroide_ll);
+    if (!doc?.centroide_ll) return null;
+    return { point: doc.centroide_ll, postcode: String(doc.postcode ?? "").replace(/\s+/g, "") };
   } catch {
     return null;
   }
+}
+
+// Geocodeer één NL-adres. Coords alleen als de NL-postcode (4 cijfers) klopt.
+// Twee pogingen: (1) volledig adres (straat-niveau); (2) fallback op de KALE postcode
+// (postcode-centroid) voor adressen waar de postcode in rommelige tekst verstopt zit.
+async function geocodeNL(q: string): Promise<{ lat: number; lng: number } | null> {
+  const pc = q.match(NL_POSTCODE);
+  if (!pc) return null; // geen NL-postcode → niet geocoderen (waarschijnlijk buitenland/junk)
+  const wanted = pc[1];
+  const bare = `${pc[1]} ${pc[2].toUpperCase()}`;
+
+  const full = await pdokQuery(q, "adres");
+  if (full && full.postcode.slice(0, 4) === wanted) {
+    const p = parsePoint(full.point);
+    if (p) return p;
+  }
+  const pcRes = await pdokQuery(bare, "postcode");
+  if (pcRes && pcRes.postcode.slice(0, 4) === wanted) {
+    const p = parsePoint(pcRes.point);
+    if (p) return p;
+  }
+  return null;
 }
 
 async function selfTrigger(orgId: string) {
