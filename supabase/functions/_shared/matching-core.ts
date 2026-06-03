@@ -198,7 +198,10 @@ function distanceText(distance?: DistanceInfo): string {
 }
 
 function speaksDutch(candidate: MatchCandidate, norm: (s: string) => string): boolean {
-  return asStrings(candidate.languages).some((l) => DUTCH_LANGUAGE_KEYS.has(norm(l)) || DUTCH_LANGUAGE_KEYS.has(normalizeAliasKey(l)));
+  // Talen worden vaak als "Nederlands - B1" / "Nederlands - basis" opgeslagen, niet kaal
+  // "Nederlands". Daarom token-gewijs checken i.p.v. exacte match.
+  return asStrings(candidate.languages).some((l) =>
+    normalizeAliasKey(l).split(" ").some((tok) => DUTCH_LANGUAGE_KEYS.has(tok)));
 }
 
 // Generieke rol-vullers die op zichzelf géén functie-match mogen vormen.
@@ -211,8 +214,11 @@ function meaningfulTokens(value: string): Set<string> {
   return new Set(value.split(" ").filter((t) => t.length >= 4 && !FUNCTION_STOPWORDS.has(t)));
 }
 
-function hasFunctionSignal(candidate: MatchCandidate, vacancy: MatchVacancy, norm: (s: string) => string): boolean {
-  const title = norm(vacancy.title ?? "");
+function hasFunctionSignal(candidate: MatchCandidate, vacancy: MatchVacancy): boolean {
+  // Fuzzy titel-signaal: RAUW normaliseren (zonder alias-mapping), anders ontstaat asymmetrie —
+  // een losse skill 'productie' wordt door de alias 'productiewerk', terwijl het titel-token
+  // 'productie' rauw blijft, waardoor ze niet matchen.
+  const title = normalizeAliasKey(vacancy.title ?? "");
   if (!title) return false;
   const titleTokens = meaningfulTokens(title);
   const signals = [
@@ -220,7 +226,7 @@ function hasFunctionSignal(candidate: MatchCandidate, vacancy: MatchVacancy, nor
     ...(candidate.ai_target_functions ?? []),
     ...(candidate.skills ?? []),
     ...(candidate.canonical_skills ?? []),
-  ].filter(Boolean).map((v) => norm(String(v)));
+  ].filter(Boolean).map((v) => normalizeAliasKey(String(v)));
   // Match op exacte (alias-)gelijkheid of op een gedéélde betekenisvolle token (>=4 tekens,
   // geen stopwoord). Géén losse substring-bevatting meer → geen false positives als 'medewerker'/'ict'.
   for (const signal of signals) {
@@ -267,7 +273,7 @@ export function scoreMatch(candidate: MatchCandidate, vacancy: MatchVacancy, dis
   const components: Array<{ key: string; weight: number; fraction: number }> = [];
   if (reqSkillCount > 0) components.push({ key: "skills", weight: FIT_WEIGHTS.skills, fraction: skillMatches.length / reqSkillCount });
   if (reqCertCount > 0) components.push({ key: "certifications", weight: FIT_WEIGHTS.certifications, fraction: certMatches.length / reqCertCount });
-  components.push({ key: "functionGroup", weight: FIT_WEIGHTS.functionGroup, fraction: hasFunctionSignal(candidate, vacancy, norm) ? 1 : 0 });
+  components.push({ key: "functionGroup", weight: FIT_WEIGHTS.functionGroup, fraction: hasFunctionSignal(candidate, vacancy) ? 1 : 0 });
   if (distFrac != null) components.push({ key: "distance", weight: FIT_WEIGHTS.distance, fraction: distFrac });
   components.push({ key: "availability", weight: FIT_WEIGHTS.availability, fraction: candidate.availability_notes ? 1 : 0 });
 

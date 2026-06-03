@@ -121,6 +121,14 @@ describe('matching-v3 core', () => {
     expect(met.matchPercent).toBeGreaterThan(zonder.matchPercent);
   });
 
+  it('herkent Nederlands ook met niveau-suffix ("Nederlands - B1")', () => {
+    const score = scoreMatch(
+      { skills: ['productie'], languages: ['Pools - Native', 'Nederlands - B1'] },
+      { title: 'Productiemedewerker', required_skills: ['productie'] },
+    );
+    expect(score.bonuses).toContain('Spreekt Nederlands');
+  });
+
   it('eigen accommodatie (has_dutch_address) is een pluspunt', () => {
     const base = { skills: ['productie'] };
     const vacancy = { title: 'Productiemedewerker', required_skills: ['productie'] };
