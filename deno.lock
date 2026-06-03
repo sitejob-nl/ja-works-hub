@@ -6,7 +6,9 @@
   "remote": {
     "https://esm.sh/@supabase/supabase-js@2.105.3": "5a134c393ed588a62d398734c1af54ff1eab170090908bbaef624106b5201d41",
     "https://esm.sh/@supabase/supabase-js@2.49.1": "947c71e163ca8bb5b538eccb5ee86fbc8da6bcb916a861586db5fad1af4701bb",
-    "https://esm.sh/@supabase/supabase-js@2.98.0": "7c91584aa8d7c3b272be04122a907e00a7028a20d0eaf5e40b2eb1eed10f06b3"
+    "https://esm.sh/@supabase/supabase-js@2.98.0": "7c91584aa8d7c3b272be04122a907e00a7028a20d0eaf5e40b2eb1eed10f06b3",
+    "https://esm.sh/fflate@0.8.2": "e0cdd268850b4eac9ef9f188a3b4c5c9dd3ebd0f66c4006a13911b2a0c0512bb",
+    "https://esm.sh/unpdf@0.12.1": "fbffa8cb0799e760249fb47326cc2134abda5e15d1f71e2dc20c1594217aaad6"
   },
   "workspace": {
     "packageJson": {

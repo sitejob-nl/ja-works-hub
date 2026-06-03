@@ -23,12 +23,30 @@ export async function writeCvAnalysisToCandidate(
     .filter(Boolean);
   const allSkills = [...new Set([...hardSkills, ...softSkills])].filter(Boolean);
   const targetFunctions = analysis?.doelgroep?.functies ?? [];
-  const stability = analysis?.werkhistorie?.patroon ?? null;
+  // ai_stability heeft een DB-CHECK op {jobhopper, gemiddeld, loyaal}. Het v2-schema
+  // levert geen stabiliteits-enum meer, dus leiden we 'm af uit het gemiddelde
+  // dienstverband (<12 mnd = jobhopper, 12-24 = gemiddeld, >24 = loyaal). Bij onbekend: null.
+  // (werkhistorie.patroon — oplopend/stabiel/dalend/wisselend — blijft in ai_analysis bewaard.)
+  const avgTenureMonths = analysis?.eigenschappen?.gemiddelde_dienstverband_maanden;
+  const stability = typeof avgTenureMonths === "number" && avgTenureMonths > 0
+    ? (avgTenureMonths < 12 ? "jobhopper" : avgTenureMonths <= 24 ? "gemiddeld" : "loyaal")
+    : null;
+  const contraIndications = analysis?.plaatsingsadvies?.contra_indicaties ?? [];
+  const sourceRisks = (analysis?.plaatsingsadvies?.bronverwijzingen ?? [])
+    .filter((item) => item?.type === "risico" || item?.type === "contra_indicatie")
+    .map((item) => `${item.bron}: ${item.signaal}`)
+    .filter(Boolean);
+  const manualReview = analysis?.plaatsingsadvies?.manual_review_required
+    ? ["Handmatige review vereist volgens AI-analyse"]
+    : [];
   const redFlags = [
     ...(analysis?.werkhistorie?.gaten ?? [])
       .filter((gap) => (gap.duur_maanden ?? 0) >= 3)
       .map((gap) => `Gat in CV: ${gap.periode} (${gap.duur_maanden} maanden)`),
     ...(analysis?.plaatsingsadvies?.risicos ?? []),
+    ...contraIndications,
+    ...sourceRisks,
+    ...manualReview,
   ];
 
   const update: Record<string, unknown> = {
@@ -67,7 +85,7 @@ export async function writeCvAnalysisToCandidate(
 export interface UsageLogEntry {
   organization_id: string;
   user_id: string | null;
-  provider: "vps" | "cloud";
+  provider: "vps" | "cloud" | "gemini";
   model: string | null;
   input_tokens: number | null;
   output_tokens: number | null;

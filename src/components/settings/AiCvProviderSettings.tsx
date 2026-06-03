@@ -65,7 +65,11 @@ const AiCvProviderSettings = () => {
 
   const settings = (org?.settings as Record<string, unknown> | null) ?? {};
   const provider = (settings.cv_ai_provider === 'cloud' ? 'cloud' : 'vps') as 'vps' | 'cloud';
-  const savedAddendum = typeof settings.cv_prompt_addendum === 'string' ? settings.cv_prompt_addendum : '';
+  const savedAddendum = typeof settings.candidate_analysis_prompt === 'string'
+    ? settings.candidate_analysis_prompt
+    : typeof settings.cv_prompt_addendum === 'string'
+      ? settings.cv_prompt_addendum
+      : '';
 
   // Lokale form-state voor het addendum (apart van saved value)
   const [addendum, setAddendum] = useState(savedAddendum);
@@ -94,7 +98,7 @@ const AiCvProviderSettings = () => {
 
   const saveAddendum = useMutation({
     mutationFn: async (next: string) => {
-      const newSettings = { ...settings, cv_prompt_addendum: next };
+      const newSettings = { ...settings, candidate_analysis_prompt: next, cv_prompt_addendum: next };
       const { error } = await supabase
         .from('organizations')
         .update({ settings: newSettings })
@@ -103,7 +107,7 @@ const AiCvProviderSettings = () => {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['organization-ai-settings', orgId] });
-      toast.success('Prompt-addendum opgeslagen');
+      toast.success('Analyseprompt opgeslagen');
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -116,11 +120,10 @@ const AiCvProviderSettings = () => {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          <Brain className="h-4 w-4" /> AI CV-analyse
+          <Brain className="h-4 w-4" /> AI kandidaatdossier-analyse
         </CardTitle>
         <CardDescription>
-          Kies tussen onze eigen VPS (gratis, 1-3 min) en Cloud (sneller, ~10 sec, betaald per
-          analyse)
+          Analyseer CV, documenten en interne notities via VPS of Cloud.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -142,7 +145,7 @@ const AiCvProviderSettings = () => {
               <span className="ml-auto text-xs text-muted-foreground">gratis</span>
             </div>
             <p className="text-xs text-muted-foreground">
-              Eigen Hetzner-server met Qwen3-14B. Resultaat na 1-3 minuten via realtime-update.
+              Eigen Hetzner-server met Qwen3-14B. Gebruikt dezelfde systeem-prompt en verwerkt asynchroon.
             </p>
           </Label>
 
@@ -198,16 +201,17 @@ const AiCvProviderSettings = () => {
         </div>
 
         <p className="text-xs text-muted-foreground leading-relaxed">
-          Bij saldo €0 is de Cloud-knop in CV-analyses uitgeschakeld. Intercedenten kunnen dan
-          nog steeds VPS gebruiken (gratis, langzamer). Bijvullen gaat via SiteJob.
+          Bij saldo €0 is de Cloud-knop uitgeschakeld. Intercedenten kunnen dan nog steeds VPS
+          gebruiken. Bijvullen gaat via SiteJob.
         </p>
 
-        {/* Prompt-addendum (alleen Cloud-pad) */}
+        {/* Prompt-addendum voor Cloud en VPS */}
         <div className="border-t border-border pt-6 space-y-3">
           <div>
-            <Label className="text-sm font-medium">Eigen prompt-aanvulling (alleen Cloud)</Label>
+            <Label className="text-sm font-medium">Eigen analyseprompt</Label>
             <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-              Deze tekst wordt als organisatie-context aan de standaard analyse-prompt toegevoegd.
+              Deze tekst wordt als organisatie-context aan de standaard analyseprompt toegevoegd
+              en gaat mee naar zowel Cloud als de VPS-worker.
               Handig voor sector-specifieke focus, voorkeursfuncties of klant-specifieke nuances.
               <br />
               <span className="font-medium">Veiligheid:</span> de kerninstructies en het JSON-schema

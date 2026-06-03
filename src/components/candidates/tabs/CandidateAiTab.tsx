@@ -126,10 +126,10 @@ const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => 
           setCandidate((prev: any) => ({ ...prev, ...updated }));
 
           if (updated.ai_status === 'completed') {
-            toast.success('CV analyse voltooid!');
+            toast.success('Dossieranalyse voltooid!');
             qc.invalidateQueries({ queryKey: ['candidate', candidate.id] });
           } else if (updated.ai_status === 'failed') {
-            toast.error('CV analyse mislukt. Probeer het opnieuw.');
+            toast.error('Dossieranalyse mislukt. Probeer het opnieuw.');
           }
         }
       )
@@ -433,8 +433,8 @@ const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => 
           <div className="flex items-center gap-3">
             <Loader2 className="h-5 w-5 text-blue-500 animate-spin" />
             <div>
-              <p className="font-medium text-sm">CV wordt geanalyseerd...</p>
-              <p className="text-xs text-muted-foreground">Dit duurt 1-3 minuten. Het resultaat verschijnt automatisch.</p>
+              <p className="font-medium text-sm">Kandidaatdossier wordt geanalyseerd...</p>
+              <p className="text-xs text-muted-foreground">CV, profiel en interne notities worden meegenomen. Dit duurt 1-3 minuten.</p>
             </div>
           </div>
         </Card>
@@ -446,7 +446,7 @@ const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => 
             <XCircle className="h-5 w-5 text-red-500" />
             <div>
               <p className="font-medium text-sm">Analyse mislukt</p>
-              <p className="text-xs text-muted-foreground">Probeer het opnieuw of pas de CV-tekst aan.</p>
+              <p className="text-xs text-muted-foreground">Probeer het opnieuw of pas de CV-/dossierinput aan.</p>
             </div>
           </div>
         </Card>
@@ -524,7 +524,7 @@ const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => 
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <FileText className="h-4 w-4 text-muted-foreground" />
-            <h3 className="font-medium text-sm">CV Tekst</h3>
+            <h3 className="font-medium text-sm">CV Tekst / dossierinput</h3>
           </div>
           <div className="flex items-center gap-2">
             <input
@@ -550,7 +550,7 @@ const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => 
         <Textarea
           value={cvText}
           onChange={(e) => setCvText(e.target.value)}
-          placeholder="Plak hier de CV-tekst van de kandidaat, of upload een PDF, Word-document of afbeelding hierboven..."
+          placeholder="Plak hier de CV-tekst van de kandidaat, of upload een PDF, Word-document of afbeelding hierboven. Interne notities worden server-side automatisch toegevoegd."
           className="min-h-[200px] font-mono text-xs leading-relaxed"
           disabled={isAnalyzing}
         />
@@ -574,7 +574,7 @@ const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => 
                 ) : (
                   <>
                     <Brain className="h-4 w-4" />
-                    AI Analyse starten
+                    AI analyse starten
                     <ChevronDown className="h-3.5 w-3.5" />
                   </>
                 )}

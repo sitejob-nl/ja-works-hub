@@ -10,6 +10,19 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+function parseAnalysis(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  if (!trimmed) return value;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    const match = trimmed.match(/\{[\s\S]*\}/);
+    if (!match) return value;
+    return JSON.parse(match[0]);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -80,8 +93,25 @@ Deno.serve(async (req) => {
     // Success-pad — gemeenschappelijke write-helper
     console.log(`[analyze-cv-callback] Writing result for candidate=${candidate_id} org=${organization_id}`);
 
+    let parsedAnalysis: unknown;
     try {
-      await writeCvAnalysisToCandidate(supabase, candidate_id, organization_id, analysis);
+      parsedAnalysis = parseAnalysis(analysis);
+    } catch (parseErr) {
+      console.error("[analyze-cv-callback] Parse failed:", parseErr);
+      await supabase
+        .from("candidates")
+        .update({ ai_status: "failed" })
+        .eq("id", candidate_id)
+        .eq("organization_id", organization_id);
+
+      return new Response(
+        JSON.stringify({ success: false, error: `Analyse-JSON ongeldig: ${(parseErr as Error).message}` }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    try {
+      await writeCvAnalysisToCandidate(supabase, candidate_id, organization_id, parsedAnalysis as any);
     } catch (writeErr) {
       console.error("[analyze-cv-callback] Write failed:", writeErr);
       return new Response(
@@ -111,7 +141,7 @@ Deno.serve(async (req) => {
       record_id: candidate_id,
       new_values: {
         ai_status: "completed",
-        ai_reliability_score: analysis?.samenvatting?.plaatsbaarheid_score,
+        ai_reliability_score: (parsedAnalysis as any)?.samenvatting?.plaatsbaarheid_score,
         provider: "vps",
         model,
         duration_ms,

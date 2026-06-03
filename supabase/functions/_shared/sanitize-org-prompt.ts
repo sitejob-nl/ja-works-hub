@@ -15,7 +15,11 @@
 // alleen dat ze per ongeluk de structurele integriteit van het Cloud-pad
 // kapotmaken (bv. door content uit een Reddit-post te plakken).
 
-export const ORG_PROMPT_MAX_LENGTH = 2000;
+// 4000 i.p.v. 2000: JA Werkt's domeinprompt + plaatsingscriteria past anders niet
+// en de staart (laatst toegevoegde criteria) zou stil worden afgekapt. Nog steeds
+// een ruime bovengrens tegen DoS/cost-attacks. De dynamische skills-lijst wordt
+// in analyze-cv ná sanitization toegevoegd en valt buiten deze cap.
+export const ORG_PROMPT_MAX_LENGTH = 4000;
 
 // Patronen die WAARSCHIJNLIJK control-tokens of role-spoofing zijn.
 // Lijst is conservatief — als de admin echt iets vergelijkbaars wil zeggen,
