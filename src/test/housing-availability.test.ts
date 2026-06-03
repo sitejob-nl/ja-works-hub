@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bedsOccupiedOn, roomHasFreeBedOn } from '@/lib/assignments';
+import { bedsOccupiedOn, roomHasFreeBedOn } from '@/lib/housing-availability';
 
 describe('bedsOccupiedOn', () => {
   it('telt geen bedden in een lege kamer', () => {

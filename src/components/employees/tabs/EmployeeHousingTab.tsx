@@ -11,7 +11,8 @@ import { Label } from '@/components/ui/label';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { EntityLink } from '@/components/ui/entity-link';
-import { resolveEmployeeId, roomHasFreeBedOn } from '@/lib/assignments';
+import { resolveEmployeeId } from '@/lib/assignments';
+import { roomHasFreeBedOn } from '@/lib/housing-availability';
 import { formatDate, formatEUR } from '@/lib/format';
 import { toast } from 'sonner';
 
