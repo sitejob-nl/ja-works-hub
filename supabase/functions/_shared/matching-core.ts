@@ -70,8 +70,8 @@ export const FIT_WEIGHTS = {
   skills: 50,        // alleen van toepassing als de vacature vereiste skills heeft
   certifications: 13, // alleen van toepassing als de vacature vereiste certificaten heeft
   functionGroup: 12,
-  distance: 20,      // alleen van toepassing als er een afstandssignaal is
-  availability: 5,
+  distance: 20,      // alleen van toepassing als afstand BEKEND is (coördinaten) — anders niet meegeteld
+  availability: 5,   // alleen van toepassing als beschikbaarheid is INGEVULD — anders niet meegeteld
 };
 // Additieve pluspunten (geen straf bij afwezigheid), bovenop de fit, gekapt op 100.
 export const BONUS_POINTS = {
@@ -180,9 +180,10 @@ function distanceFraction(distance?: DistanceInfo): number | null {
     const km = distance.km;
     if (km <= 10) return 1; if (km <= 25) return 0.8; if (km <= 50) return 0.55; if (km <= 80) return 0.3; return 0.1;
   }
-  // Locatie onbekend (geen coördinaten / provider-fout): milde penalty i.p.v. uitsluiten, zodat
-  // kandidaten met een bekend, dichtbij adres hoger ranken dan kandidaten zonder locatie.
-  if (distance.status === "missing_coords" || distance.status === "provider_error") return 0.3;
+  // Locatie onbekend (geen coördinaten / provider-fout): NIET meetellen (geen straf). Afstand
+  // weegt alleen mee als ze bekend is; kandidaten met een bekend dichtbij-adres krijgen daardoor
+  // een positieve bijdrage en ranken vanzelf boven kandidaten zonder locatie — zonder dat de hele
+  // pool omlaag wordt getrokken zolang adressen nog niet gegeocodeerd zijn (klant-keuze).
   return null;
 }
 
@@ -275,7 +276,8 @@ export function scoreMatch(candidate: MatchCandidate, vacancy: MatchVacancy, dis
   if (reqCertCount > 0) components.push({ key: "certifications", weight: FIT_WEIGHTS.certifications, fraction: certMatches.length / reqCertCount });
   components.push({ key: "functionGroup", weight: FIT_WEIGHTS.functionGroup, fraction: hasFunctionSignal(candidate, vacancy) ? 1 : 0 });
   if (distFrac != null) components.push({ key: "distance", weight: FIT_WEIGHTS.distance, fraction: distFrac });
-  components.push({ key: "availability", weight: FIT_WEIGHTS.availability, fraction: candidate.availability_notes ? 1 : 0 });
+  // Beschikbaarheid telt alleen mee als ze ingevuld is (anders niet-van-toepassing, geen straf).
+  if (candidate.availability_notes) components.push({ key: "availability", weight: FIT_WEIGHTS.availability, fraction: 1 });
 
   const totalWeight = components.reduce((s, c) => s + c.weight, 0);
   const fit = totalWeight > 0 ? components.reduce((s, c) => s + c.fraction * c.weight, 0) / totalWeight * 100 : 0;
