@@ -70,25 +70,10 @@ Deno.serve(async (req) => {
     }
     const canonicalRequiredSkills = ((vacSkillRes.data ?? []) as any[]).map((r) => r.skills?.name).filter(Boolean);
 
-    // candidate_skills MOET gepagineerd (PostgREST kapt op 1000) — anders krijgt bij grote orgs
-    // het gros van de kandidaten geen canonieke skills en valt de scoring stil terug op vrije tekst.
-    const canonicalByCandidate = new Map<string, string[]>();
-    for (let from = 0; ; from += PAGE) {
-      const { data, error } = await userClient
-        .from("candidate_skills")
-        .select("candidate_id, skills!inner(name)")
-        .eq("organization_id", orgId)
-        .range(from, from + PAGE - 1);
-      if (error) return json({ error: "Kon skills niet laden" }, 500);
-      const rows = (data ?? []) as any[];
-      for (const row of rows) {
-        if (!row.skills?.name) continue;
-        const list = canonicalByCandidate.get(row.candidate_id) ?? [];
-        list.push(row.skills.name);
-        canonicalByCandidate.set(row.candidate_id, list);
-      }
-      if (rows.length < PAGE) break;
-    }
+    // We scoren op de candidates.skills-array (al op de rij) i.p.v. de candidate_skills-join.
+    // Bij grote orgs (JA Werkt: ~2000 kandidaten × vele skills = tienduizenden join-rijen) liep de
+    // org-brede candidate_skills-fetch tegen de edge-time-out (500 na ~95s). De gedeelde core
+    // normaliseert candidate.skills + de org-aliassen toch al, dus matching blijft gelijk.
 
     // ── Hele eligible pool ophalen (gepagineerd; PostgREST kapt standaard op 1000) ──
     const candidates: any[] = [];
@@ -120,7 +105,7 @@ Deno.serve(async (req) => {
       .map((c) => {
         const km = haversineKm(c.address_lat, c.address_lng, destLat, destLng);
         const distance = km != null ? { km, status: "estimated" as const } : { status: "missing_coords" as const };
-        const breakdown: MatchBreakdown = scoreMatch({ ...c, canonical_skills: canonicalByCandidate.get(c.id) ?? [] }, vacancyForScore, distance, orgAliases);
+        const breakdown: MatchBreakdown = scoreMatch(c, vacancyForScore, distance, orgAliases);
         return { candidate: c, breakdown };
       })
       .filter((r) => passesShortlist(r.breakdown, includeWeak))
