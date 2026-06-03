@@ -12,6 +12,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { EntityLink } from '@/components/ui/entity-link';
 import { resolveEmployeeId } from '@/lib/assignments';
+import { roomHasFreeBedOn } from '@/lib/housing-availability';
 import { formatDate, formatEUR } from '@/lib/format';
 import { toast } from 'sonner';
 
@@ -54,7 +55,7 @@ const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
     queryFn: async () => {
       // 'onderhoud'/'geblokkeerd' panden vallen hard af; de rest beoordelen we op datum-bezetting.
       const { data, error } = await supabase.from('units')
-        .select('id, name, capacity, status, weekly_cost, properties!units_property_id_fkey(id, name, address_street, address_city), housing_assignments!housing_assignments_unit_id_fkey(id, status, check_out_date)')
+        .select('id, name, capacity, status, weekly_cost, properties!units_property_id_fkey(id, name, address_street, address_city), housing_assignments!housing_assignments_unit_id_fkey(id, status, check_in_date, check_out_date)')
         .in('status', ['beschikbaar', 'gereserveerd', 'bezet'] as any)
         .order('name');
       if (error) throw error;
@@ -64,15 +65,12 @@ const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
   });
 
   const propertyLabel = (p: any) => p?.name || [p?.address_street, p?.address_city].filter(Boolean).join(', ') || 'Pand';
-  // Een bed telt als bezet op de incheck-datum tenzij de bewoner op/vóór die datum uitcheckt.
-  const occupancyOn = (u: any, dateStr: string) =>
-    (u.housing_assignments ?? []).filter(
-      (a: any) => (a.status === 'ingecheckt' || a.status === 'gereserveerd') && (a.check_out_date == null || a.check_out_date > dateStr),
-    ).length;
-  // Kamers met een vrij bed op de gekozen incheck-datum (lijst leeg tot er een datum is).
-  const availableUnits: any[] = checkInDate
-    ? (eligibleUnits as any[]).filter((u) => occupancyOn(u, checkInDate) < (u.capacity ?? 0))
-    : [];
+  // Effectieve datum: de gekozen incheck-datum, of vandaag als die nog leeg is.
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const effectiveDate = checkInDate || todayStr;
+  // Kamers met een vrij bed op de effectieve datum. Bij een toekomstige datum zie je
+  // dus de kamers die deze persoon dán krijgt (die tegen die tijd vrijkomen).
+  const availableUnits: any[] = (eligibleUnits as any[]).filter((u) => roomHasFreeBedOn(u, effectiveDate));
   // Unieke panden met minstens één beschikbare kamer op die datum.
   const availableProperties = Array.from(
     new Map(availableUnits.map((u) => [u.properties?.id, u.properties] as [string, any]).filter(([id]) => id)).values(),
@@ -111,18 +109,19 @@ const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
   });
 
   const active = assignments.find((a: any) => a.status === 'ingecheckt');
-  const hasActiveHousing = assignments.some((a: any) => a.status === 'ingecheckt' || a.status === 'gereserveerd');
+  const reserved = assignments.find((a: any) => a.status === 'gereserveerd');
+  const hasActiveHousing = !!active || !!reserved;
 
   return (
     <div className="space-y-6">
       <div className="bg-card rounded-lg border p-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="font-medium">Huidige huisvesting</h3>
+          <h3 className="font-medium">Huisvesting</h3>
           {!hasActiveHousing && (
             <Button size="sm" onClick={() => setAssignOpen(true)} className="gap-1"><Plus className="h-4 w-4" /> Wijs kamer toe</Button>
           )}
         </div>
-        {active ? (
+        {active && (
           <div className="grid grid-cols-2 gap-4">
             <div><p className="text-xs text-muted-foreground">Pand</p><p className="text-sm"><EntityLink type="property" id={(active as any).units?.properties?.id}>{(active as any).units?.properties?.name ?? '—'}</EntityLink></p></div>
             <div><p className="text-xs text-muted-foreground">Kamer</p><p className="text-sm">{(active as any).units?.name ?? '—'}</p></div>
@@ -131,7 +130,21 @@ const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
             <div><p className="text-xs text-muted-foreground">Borg betaald</p><p className="text-sm">{active.deposit_paid ? 'Ja' : 'Nee'}</p></div>
             <div><p className="text-xs text-muted-foreground">Huur betaald tot</p><p className="text-sm">{formatDate(active.rent_paid_until)}</p></div>
           </div>
-        ) : (
+        )}
+        {reserved && (
+          <div className={active ? 'mt-4 pt-4 border-t' : ''}>
+            <div className="flex items-center gap-2 mb-3">
+              <Badge variant="secondary" className="bg-blue-100 text-blue-700 border-0 text-xs">Gereserveerd</Badge>
+              <span className="text-xs text-muted-foreground">vanaf {formatDate(reserved.check_in_date)}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div><p className="text-xs text-muted-foreground">Pand</p><p className="text-sm"><EntityLink type="property" id={reserved.units?.properties?.id}>{reserved.units?.properties?.name ?? '—'}</EntityLink></p></div>
+              <div><p className="text-xs text-muted-foreground">Kamer</p><p className="text-sm">{reserved.units?.name ?? '—'}</p></div>
+              <div><p className="text-xs text-muted-foreground">Maandelijkse inhouding</p><p className="text-sm">{formatEUR(reserved.monthly_deduction)}</p></div>
+            </div>
+          </div>
+        )}
+        {!active && !reserved && (
           <p className="text-sm text-muted-foreground">Geen huisvesting toegewezen</p>
         )}
       </div>
@@ -174,12 +187,12 @@ const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
                 value={checkInDate}
                 onChange={(e) => { setCheckInDate(e.target.value); setPropertyId(''); setUnitId(''); }}
               />
-              <p className="text-xs text-muted-foreground mt-1">Bepaalt welke kamers vrij zijn op die datum.</p>
+              <p className="text-xs text-muted-foreground mt-1">Standaard nu beschikbaar. Kies een toekomstige datum om te zien welke kamer deze persoon dán krijgt.</p>
             </div>
             <div>
               <Label>Pand (adres) *</Label>
-              <Select value={propertyId} onValueChange={(v) => { setPropertyId(v); setUnitId(''); }} disabled={!checkInDate}>
-                <SelectTrigger><SelectValue placeholder={checkInDate ? 'Selecteer pand' : 'Kies eerst een datum'} /></SelectTrigger>
+              <Select value={propertyId} onValueChange={(v) => { setPropertyId(v); setUnitId(''); }}>
+                <SelectTrigger><SelectValue placeholder="Selecteer pand" /></SelectTrigger>
                 <SelectContent>
                   {availableProperties.length === 0 && (
                     <div className="px-2 py-1.5 text-sm text-muted-foreground">Geen panden met vrije kamers op deze datum</div>
