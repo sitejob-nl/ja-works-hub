@@ -55,10 +55,13 @@ describe('matching-v3 core', () => {
     expect(score.missing.some((m) => m.toLowerCase().includes('afstand'))).toBe(true);
   });
 
-  it('geeft een onbekende locatie (missing_coords) een milde penalty t.o.v. dichtbij', () => {
+  it('laat dichtbij boven onbekende locatie ranken (afstand telt alleen mee als bekend)', () => {
     const vacancy = { title: 'Productiemedewerker', required_skills: ['productie'] };
     const dichtbij = scoreMatch({ skills: ['productie'] }, vacancy, { km: 5, status: 'estimated' });
     const onbekend = scoreMatch({ skills: ['productie'] }, vacancy, { status: 'missing_coords' });
+    // Onbekende locatie wordt NIET gestraft (afstand telt niet mee), maar een bekend dichtbij-adres
+    // levert een positieve bijdrage → dichtbij rankt hoger, zonder de onbekende omlaag te trekken.
+    expect(onbekend.componentScores.distance).toBeUndefined();
     expect(dichtbij.matchPercent).toBeGreaterThan(onbekend.matchPercent);
   });
 
