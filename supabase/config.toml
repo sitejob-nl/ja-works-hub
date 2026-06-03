@@ -79,6 +79,9 @@ verify_jwt = false
 [functions.calculate-match]
 verify_jwt = false
 
+[functions.rank-candidates]
+verify_jwt = false
+
 [functions.cv-rewrite]
 verify_jwt = false
 

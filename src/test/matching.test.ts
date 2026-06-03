@@ -1,117 +1,148 @@
 import { describe, expect, it } from 'vitest';
-import { calculateCandidateVacancyMatch, normalizeSkillName, shouldShowCandidateForVacancy } from '@/lib/matching';
+// De scoring-kern is server-side en gedeeld; we testen 'm hier rechtstreeks (pure module).
+import {
+  scoreMatch,
+  passesShortlist,
+  normalizeSkillName,
+  haversineKm,
+} from '../../supabase/functions/_shared/matching-core.ts';
 
-const vacancy = {
-  title: 'MIG-MAG lasser',
-  location: 'Eindhoven',
-  required_skills: ['MIG-MAG lassen', 'Heftruck'],
-  required_certifications: ['VCA'],
-  requires_drivers_license: true,
-};
-
-describe('Fase 1 vacaturematching', () => {
-  it('scores a candidate across skills, certificates, license, location and availability', () => {
-    const score = calculateCandidateVacancyMatch({
-      skills: ['migmag', 'heftruckchauffeur'],
-      certifications: ['VCA Basis'],
-      has_drivers_license: true,
-      address_city: 'Eindhoven',
-      availability_notes: 'Per direct beschikbaar',
-      ai_function_group: 'lasser',
-      ai_reliability_score: 85,
-    }, vacancy, { status: 'ok', durationMin: 24, distanceKm: 18.4 });
-
+describe('matching-v3 core', () => {
+  it('scoort een sterke kandidaat hoog (skills + cert + rijbewijs + dichtbij) zonder blokkers', () => {
+    const score = scoreMatch(
+      {
+        skills: ['MIG-MAG lassen', 'Heftruck'],
+        certifications: ['VCA'],
+        has_drivers_license: true,
+        availability_notes: 'Per direct beschikbaar',
+        languages: ['Nederlands'],
+        has_dutch_address: true,
+      },
+      {
+        title: 'MIG-MAG lasser',
+        required_skills: ['MIG-MAG lassen', 'Heftruck'],
+        required_certifications: ['VCA'],
+        requires_drivers_license: true,
+      },
+      { km: 8, durationMin: 24, status: 'ok' },
+    );
+    expect(score.hardBlocks).toEqual([]);
     expect(score.label).toBe('groen');
     expect(score.matchPercent).toBeGreaterThanOrEqual(90);
-    expect(score.hardBlocks).toEqual([]);
     expect(score.skillMatches).toEqual(['MIG-MAG lassen', 'Heftruck']);
     expect(score.certificationMatches).toEqual(['VCA']);
-    expect(score.distance.durationMin).toBe(24);
-    expect(score.componentScores.distance).toBe(12);
+    expect(score.bonuses).toContain('Spreekt Nederlands');
+    expect(score.bonuses).toContain('Eigen accommodatie in NL');
   });
 
-  it('prefers canonical skill catalog values over legacy text arrays', () => {
-    const score = calculateCandidateVacancyMatch({
-      skills: ['Administratie'],
-      canonical_skills: ['MIG MAG Lassen', 'Heftruck'],
-      certifications: ['VCA'],
-      has_drivers_license: true,
-      availability_notes: 'Beschikbaar',
-    }, {
-      ...vacancy,
-      required_skills: ['Administratie'],
-      canonical_required_skills: ['migmag', 'heftruckchauffeur'],
-    });
-
+  it('prefereert de canonieke skill-catalogus boven losse tekst-arrays', () => {
+    const score = scoreMatch(
+      { skills: ['iets anders'], canonical_skills: ['MIG-MAG lassen'] },
+      { title: 'Lasser', required_skills: ['MIG-MAG lassen'] },
+    );
+    expect(score.skillMatches).toEqual(['MIG-MAG lassen']);
     expect(score.hardBlocks).toEqual([]);
-    expect(score.skillMatches).toEqual(['migmag', 'heftruckchauffeur']);
   });
 
-  it('does not block a match when Mapbox distance is unavailable', () => {
-    const score = calculateCandidateVacancyMatch({
-      skills: ['migmag', 'heftruckchauffeur'],
-      certifications: ['VCA Basis'],
-      has_drivers_license: true,
-      availability_notes: 'Per direct beschikbaar',
-    }, vacancy, { status: 'provider_error' });
-
+  it('blokkeert NIET als de afstand volledig ontbreekt (telt dan niet mee)', () => {
+    const score = scoreMatch(
+      { skills: ['productie'], availability_notes: 'beschikbaar' },
+      { title: 'Productiemedewerker', required_skills: ['productie'] },
+      undefined,
+    );
     expect(score.hardBlocks).toEqual([]);
-    expect(score.distance.status).toBe('provider_error');
-    expect(score.missing).toContain('Reistijd nog controleren');
+    expect(score.componentScores.distance).toBeUndefined();
+    expect(score.missing.some((m) => m.toLowerCase().includes('afstand'))).toBe(true);
   });
 
-  it('normalizes common Fase 1 aliases', () => {
+  it('geeft een onbekende locatie (missing_coords) een milde penalty t.o.v. dichtbij', () => {
+    const vacancy = { title: 'Productiemedewerker', required_skills: ['productie'] };
+    const dichtbij = scoreMatch({ skills: ['productie'] }, vacancy, { km: 5, status: 'estimated' });
+    const onbekend = scoreMatch({ skills: ['productie'] }, vacancy, { status: 'missing_coords' });
+    expect(dichtbij.matchPercent).toBeGreaterThan(onbekend.matchPercent);
+  });
+
+  it('maakt een eisloze vacature nooit vals "groen" zonder gematchte harde eis', () => {
+    const score = scoreMatch(
+      { ai_function_group: 'productie', availability_notes: 'beschikbaar' },
+      { title: 'Productiemedewerker', required_skills: [], required_certifications: [] },
+    );
+    // Functie-signaal + beschikbaarheid kunnen het % opdrijven, maar zonder gematchte harde eis
+    // mag het label niet groen worden.
+    expect(score.label).not.toBe('groen');
+  });
+
+  it('normaliseert veelvoorkomende blue-collar aliassen', () => {
     expect(normalizeSkillName('MIG/MAG')).toBe('mig mag lassen');
     expect(normalizeSkillName('VCA Basis')).toBe('vca');
     expect(normalizeSkillName('Forklift driver')).toBe('heftruck');
-    expect(normalizeSkillName('Heftruck certificatie')).toBe('heftruck');
     expect(normalizeSkillName('Reachtruck chauffeur')).toBe('reachtruck');
     expect(normalizeSkillName('Quality Control')).toBe('kwaliteitscontrole');
-    expect(normalizeSkillName('Technical drawing')).toBe('technische tekening lezen');
+    expect(normalizeSkillName('Schoonmaker')).toBe('schoonmaken');
   });
 
-  it('matches CV-language aliases against recruiter vacancy skills', () => {
-    const score = calculateCandidateVacancyMatch({
-      skills: ['CO2 lasser', 'Forklift driver', 'VCA diploma', 'Technical drawing'],
-      certifications: ['Basisveiligheid VCA'],
-      has_drivers_license: true,
-      availability_notes: 'Beschikbaar',
-      ai_reliability_score: 7,
-    }, {
-      title: 'MIG-MAG lasser',
-      required_skills: ['MIG-MAG lassen', 'Heftruck', 'Technische tekening lezen'],
-      required_certifications: ['VCA'],
-      requires_drivers_license: true,
-    });
-
-    expect(score.hardBlocks).toEqual([]);
-    expect(score.skillMatches).toEqual(['MIG-MAG lassen', 'Heftruck', 'Technische tekening lezen']);
-    expect(score.certificationMatches).toEqual(['VCA']);
-    expect(score.matchPercent).toBeGreaterThanOrEqual(80);
+  it('matcht org-aliassen die als argument worden meegegeven', () => {
+    const score = scoreMatch(
+      { skills: ['poetsen'] },
+      { title: 'Schoonmaak', required_skills: ['schoonmaken'] },
+      undefined,
+      { poetsen: 'schoonmaken' },
+    );
+    expect(score.skillMatches).toEqual(['schoonmaken']);
   });
 
-  it('hides non-matching candidates from the default vacancy shortlist', () => {
-    const result = shouldShowCandidateForVacancy({
-      skills: ['Administratie'],
-      certifications: ['BHV'],
-      has_drivers_license: false,
-      address_city: 'Tilburg',
-    }, vacancy);
-
-    expect(result.show).toBe(false);
-    expect(result.score.label).toBe('rood');
-    expect(result.score.hardBlocks).toContain('Geen match op verplichte vaardigheden');
-    expect(result.score.hardBlocks).toContain('Mist certificaat: VCA');
+  it('hard-blokt + verbergt kandidaten zonder skill-match en met ontbrekend certificaat', () => {
+    const score = scoreMatch(
+      { skills: ['administratie'] },
+      { title: 'Lasser', required_skills: ['MIG-MAG lassen'], required_certifications: ['VCA'] },
+    );
+    expect(score.label).toBe('rood');
+    expect(score.matchPercent).toBeLessThanOrEqual(30);
+    expect(score.hardBlocks).toContain('Geen match op verplichte vaardigheden');
+    expect(score.hardBlocks.some((b) => b.includes('VCA'))).toBe(true);
+    expect(passesShortlist(score)).toBe(false);
+    expect(passesShortlist(score, true)).toBe(true);
   });
 
-  it('can include weak matches when the recruiter deliberately broadens the search', () => {
-    const result = shouldShowCandidateForVacancy({
-      skills: ['Administratie'],
-      certifications: ['BHV'],
-      has_drivers_license: false,
-    }, vacancy, true);
+  it('blaast scores NIET op bij een vacature zonder eisen (geen gratis punten)', () => {
+    const score = scoreMatch(
+      { skills: ['lassen'] }, // geen functie-signaal, geen coords, geen beschikbaarheid
+      { title: 'Magazijnmedewerker', required_skills: [], required_certifications: [] },
+    );
+    // Oud model gaf hier ~55% gratis (skills 35 + certs 20). Nu laag.
+    expect(score.matchPercent).toBeLessThan(45);
+  });
 
-    expect(result.show).toBe(true);
-    expect(result.score.matchPercent).toBeLessThan(45);
+  it('Nederlands spreken is een pluspunt (hogere score, geen straf bij afwezigheid)', () => {
+    const base = { skills: ['productie'] };
+    const vacancy = { title: 'Productiemedewerker', required_skills: ['productie'] };
+    const zonder = scoreMatch({ ...base, languages: ['Pools'] }, vacancy);
+    const met = scoreMatch({ ...base, languages: ['Pools', 'Nederlands'] }, vacancy);
+    expect(met.matchPercent).toBeGreaterThan(zonder.matchPercent);
+  });
+
+  it('eigen accommodatie (has_dutch_address) is een pluspunt', () => {
+    const base = { skills: ['productie'] };
+    const vacancy = { title: 'Productiemedewerker', required_skills: ['productie'] };
+    const zonder = scoreMatch({ ...base }, vacancy);
+    const met = scoreMatch({ ...base, has_dutch_address: true }, vacancy);
+    expect(met.matchPercent).toBeGreaterThan(zonder.matchPercent);
+  });
+
+  it('houdt kandidaatkwaliteit LOS van de matchscore', () => {
+    const vacancy = { title: 'Productiemedewerker', required_skills: ['productie'] };
+    const laag = scoreMatch({ skills: ['productie'], ai_reliability_score: 3 }, vacancy);
+    const hoog = scoreMatch({ skills: ['productie'], ai_reliability_score: 9 }, vacancy);
+    // Matchscore identiek (kwaliteit telt niet mee), maar candidateQuality verschilt.
+    expect(hoog.matchPercent).toBe(laag.matchPercent);
+    expect(hoog.candidateQuality).toBe(90);
+    expect(laag.candidateQuality).toBe(30);
+  });
+
+  it('haversineKm berekent een plausibele afstand en is null bij ontbrekende coords', () => {
+    const eindhovenToTilburg = haversineKm(51.44, 5.47, 51.56, 5.09);
+    expect(eindhovenToTilburg).toBeGreaterThan(20);
+    expect(eindhovenToTilburg).toBeLessThan(45);
+    expect(haversineKm(null, 5, 51, 5)).toBeNull();
   });
 });
