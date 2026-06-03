@@ -49,28 +49,35 @@ const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
   const [deductionAmount, setDeductionAmount] = useState('');
   const [paymentFrequency, setPaymentFrequency] = useState<'wekelijks' | 'maandelijks'>('wekelijks');
 
-  const { data: availableUnits = [] } = useQuery({
-    queryKey: ['available-units', orgId],
+  const { data: eligibleUnits = [] } = useQuery({
+    queryKey: ['assignable-units', orgId],
     queryFn: async () => {
+      // 'onderhoud'/'geblokkeerd' panden vallen hard af; de rest beoordelen we op datum-bezetting.
       const { data, error } = await supabase.from('units')
-        .select('id, name, capacity, status, weekly_cost, properties!units_property_id_fkey(id, name, address_street, address_city), housing_assignments!housing_assignments_unit_id_fkey(id, status)')
-        .eq('status', 'beschikbaar' as any)
+        .select('id, name, capacity, status, weekly_cost, properties!units_property_id_fkey(id, name, address_street, address_city), housing_assignments!housing_assignments_unit_id_fkey(id, status, check_out_date)')
+        .in('status', ['beschikbaar', 'gereserveerd', 'bezet'] as any)
         .order('name');
       if (error) throw error;
-      return (data ?? []).filter((u: any) => {
-        const occ = (u.housing_assignments ?? []).filter((a: any) => a.status === 'ingecheckt' || a.status === 'gereserveerd').length;
-        return occ < (u.capacity ?? 0);
-      });
+      return data ?? [];
     },
     enabled: assignOpen,
   });
 
   const propertyLabel = (p: any) => p?.name || [p?.address_street, p?.address_city].filter(Boolean).join(', ') || 'Pand';
-  // Unieke panden die minstens één beschikbare kamer hebben.
+  // Een bed telt als bezet op de incheck-datum tenzij de bewoner op/vóór die datum uitcheckt.
+  const occupancyOn = (u: any, dateStr: string) =>
+    (u.housing_assignments ?? []).filter(
+      (a: any) => (a.status === 'ingecheckt' || a.status === 'gereserveerd') && (a.check_out_date == null || a.check_out_date > dateStr),
+    ).length;
+  // Kamers met een vrij bed op de gekozen incheck-datum (lijst leeg tot er een datum is).
+  const availableUnits: any[] = checkInDate
+    ? (eligibleUnits as any[]).filter((u) => occupancyOn(u, checkInDate) < (u.capacity ?? 0))
+    : [];
+  // Unieke panden met minstens één beschikbare kamer op die datum.
   const availableProperties = Array.from(
-    new Map((availableUnits as any[]).map((u) => [u.properties?.id, u.properties] as [string, any]).filter(([id]) => id)).values(),
+    new Map(availableUnits.map((u) => [u.properties?.id, u.properties] as [string, any]).filter(([id]) => id)).values(),
   );
-  const unitsForProperty = (availableUnits as any[]).filter((u) => u.properties?.id === propertyId);
+  const unitsForProperty = availableUnits.filter((u) => u.properties?.id === propertyId);
 
   const assignRoom = useMutation({
     mutationFn: async () => {
@@ -161,12 +168,21 @@ const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
           <SheetHeader><SheetTitle>Kamer toewijzen</SheetTitle></SheetHeader>
           <div className="space-y-4 mt-6">
             <div>
+              <Label>Check-in datum *</Label>
+              <Input
+                type="date"
+                value={checkInDate}
+                onChange={(e) => { setCheckInDate(e.target.value); setPropertyId(''); setUnitId(''); }}
+              />
+              <p className="text-xs text-muted-foreground mt-1">Bepaalt welke kamers vrij zijn op die datum.</p>
+            </div>
+            <div>
               <Label>Pand (adres) *</Label>
-              <Select value={propertyId} onValueChange={(v) => { setPropertyId(v); setUnitId(''); }}>
-                <SelectTrigger><SelectValue placeholder="Selecteer pand" /></SelectTrigger>
+              <Select value={propertyId} onValueChange={(v) => { setPropertyId(v); setUnitId(''); }} disabled={!checkInDate}>
+                <SelectTrigger><SelectValue placeholder={checkInDate ? 'Selecteer pand' : 'Kies eerst een datum'} /></SelectTrigger>
                 <SelectContent>
                   {availableProperties.length === 0 && (
-                    <div className="px-2 py-1.5 text-sm text-muted-foreground">Geen panden met beschikbare kamers</div>
+                    <div className="px-2 py-1.5 text-sm text-muted-foreground">Geen panden met vrije kamers op deze datum</div>
                   )}
                   {availableProperties.map((p: any) => (
                     <SelectItem key={p.id} value={p.id}>{propertyLabel(p)}</SelectItem>
@@ -180,7 +196,7 @@ const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
                 <SelectTrigger><SelectValue placeholder={propertyId ? 'Selecteer kamer' : 'Kies eerst een pand'} /></SelectTrigger>
                 <SelectContent>
                   {propertyId && unitsForProperty.length === 0 && (
-                    <div className="px-2 py-1.5 text-sm text-muted-foreground">Geen beschikbare kamers in dit pand</div>
+                    <div className="px-2 py-1.5 text-sm text-muted-foreground">Geen vrije kamers in dit pand op deze datum</div>
                   )}
                   {unitsForProperty.map((u: any) => (
                     <SelectItem key={u.id} value={u.id}>
@@ -190,7 +206,6 @@ const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
                 </SelectContent>
               </Select>
             </div>
-            <div><Label>Check-in datum *</Label><Input type="date" value={checkInDate} onChange={(e) => setCheckInDate(e.target.value)} /></div>
             <div>
               <Label>Inhouding</Label>
               <div className="flex gap-2">
