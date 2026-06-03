@@ -150,6 +150,17 @@ describe('matching-v3 core', () => {
     expect(laag.candidateQuality).toBe(30);
   });
 
+  it('rijbewijs is GEEN harde blokker: skill-matcher zonder rijbewijs blijft zichtbaar', () => {
+    const vacancy = { title: 'TIG Lasser', required_skills: ['lassen'], requires_drivers_license: true };
+    const zonder = scoreMatch({ skills: ['lassen'], has_drivers_license: false }, vacancy);
+    const met = scoreMatch({ skills: ['lassen'], has_drivers_license: true }, vacancy);
+    expect(zonder.hardBlocks).toEqual([]);
+    expect(zonder.missing.some((m) => m.toLowerCase().includes('rijbewijs'))).toBe(true);
+    expect(passesShortlist(zonder)).toBe(true);
+    expect(met.bonuses).toContain('Rijbewijs aanwezig');
+    expect(met.matchPercent).toBeGreaterThan(zonder.matchPercent);
+  });
+
   it('haversineKm berekent een plausibele afstand en is null bij ontbrekende coords', () => {
     const eindhovenToTilburg = haversineKm(51.44, 5.47, 51.56, 5.09);
     expect(eindhovenToTilburg).toBeGreaterThan(20);

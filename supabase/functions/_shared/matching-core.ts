@@ -77,6 +77,7 @@ export const FIT_WEIGHTS = {
 export const BONUS_POINTS = {
   language: 6,       // spreekt Nederlands
   accommodation: 4,  // eigen (NL) accommodatie
+  license: 5,        // rijbewijs aanwezig terwijl de vacature er om vraagt
 };
 
 const DUTCH_LANGUAGE_KEYS = new Set(["nederlands", "nederland", "dutch", "nl"]);
@@ -267,7 +268,9 @@ export function scoreMatch(candidate: MatchCandidate, vacancy: MatchVacancy, dis
 
   if (reqSkillCount > 0 && skillMatches.length === 0) hardBlocks.push("Geen match op verplichte vaardigheden");
   if (missingCerts.length > 0) hardBlocks.push(`Mist certificaat: ${missingCerts.join(", ")}`);
-  if (vacancy.requires_drivers_license && !candidate.has_drivers_license) hardBlocks.push("Rijbewijs vereist, maar niet aanwezig");
+  // Rijbewijs is GEEN harde blokker: de kandidaat-rijbewijsdata is onbetrouwbaar/leeg (zelden
+  // uit CV's overgenomen), dus erop blokkeren verbergt goede kandidaten onterecht. Het telt
+  // als pluspunt mee (zie hieronder); een gevraagd-maar-ontbrekend rijbewijs is een aandachtspunt.
 
   // ── Genormaliseerde fit ──────────────────────────────────────────────────
   const distFrac = distanceFraction(distance);
@@ -287,13 +290,13 @@ export function scoreMatch(candidate: MatchCandidate, vacancy: MatchVacancy, dis
   let bonus = 0;
   if (wantsDutch && speaksDutch(candidate, norm)) { bonus += BONUS_POINTS.language; bonuses.push("Spreekt Nederlands"); }
   if (candidate.has_dutch_address) { bonus += BONUS_POINTS.accommodation; bonuses.push("Eigen accommodatie in NL"); }
+  if (vacancy.requires_drivers_license && candidate.has_drivers_license) { bonus += BONUS_POINTS.license; bonuses.push("Rijbewijs aanwezig"); }
 
   // ── Eindscore ─────────────────────────────────────────────────────────────
   // matchPercent (incl. bonus) is voor ranking/weergave. Het LABEL leiden we af van de fit
   // (zonder bonus) zodat een pluspunt het label niet alléén optilt, én 'groen' vereist minstens
   // één positief gematchte HARDE eis — anders kan een eisloze vacature niet vals 'groen' worden.
-  const hardMatched = skillMatches.length > 0 || certMatches.length > 0
-    || (!!vacancy.requires_drivers_license && !!candidate.has_drivers_license);
+  const hardMatched = skillMatches.length > 0 || certMatches.length > 0;
   let matchPercent = Math.round(Math.max(0, Math.min(100, fit + bonus)));
   if (hardBlocks.length > 0) matchPercent = Math.min(matchPercent, 30); // blokkers zakken altijd weg
 
@@ -306,12 +309,12 @@ export function scoreMatch(candidate: MatchCandidate, vacancy: MatchVacancy, dis
   if (skillMatches.length > 0) positives.push(`Vaardigheden: ${skillMatches.join(", ")}`);
   else if (reqSkillCount === 0) positives.push("Geen specifieke skill-eisen op de vacature");
   if (certMatches.length > 0) positives.push(`Certificaten: ${certMatches.join(", ")}`);
-  if (vacancy.requires_drivers_license && candidate.has_drivers_license) positives.push("Rijbewijs aanwezig");
   if (distFrac != null) positives.push(distanceText(distance));
   if (candidate.availability_notes) positives.push("Beschikbaarheid ingevuld");
 
   if (missingSkills.length > 0) missing.push(`Ontbrekende vaardigheden: ${missingSkills.join(", ")}`);
   if (missingCerts.length > 0) missing.push(`Ontbrekende certificaten: ${missingCerts.join(", ")}`);
+  if (vacancy.requires_drivers_license && !candidate.has_drivers_license) missing.push("Rijbewijs gevraagd (niet geregistreerd bij kandidaat)");
   if (distFrac == null && (vacancy.location || vacancy.title)) missing.push("Afstand nog controleren (geen coördinaten)");
   if (!candidate.availability_notes) missing.push("Beschikbaarheid nog controleren");
 
@@ -327,6 +330,7 @@ export function scoreMatch(candidate: MatchCandidate, vacancy: MatchVacancy, dis
   for (const c of components) componentScores[c.key] = Math.round(c.fraction * c.weight);
   componentScores.languageBonus = wantsDutch && speaksDutch(candidate, norm) ? BONUS_POINTS.language : 0;
   componentScores.accommodationBonus = candidate.has_dutch_address ? BONUS_POINTS.accommodation : 0;
+  componentScores.licenseBonus = vacancy.requires_drivers_license && candidate.has_drivers_license ? BONUS_POINTS.license : 0;
 
   return {
     matchPercent,
