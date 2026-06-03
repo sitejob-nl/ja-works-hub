@@ -21,7 +21,10 @@ const nationalities = [
   { value: 'overig', label: 'Overig' },
 ];
 
-const languageOptions = ['Nederlands', 'Engels', 'Pools', 'Roemeens', 'Duits', 'Frans'];
+const languageOptions = [
+  'Nederlands', 'Engels', 'Duits', 'Frans', 'Pools', 'Roemeens', 'Bulgaars', 'Hongaars',
+  'Slowaaks', 'Tsjechisch', 'Oekraïens', 'Russisch', 'Spaans', 'Portugees', 'Italiaans',
+];
 
 type PageState = 'loading' | 'invalid' | 'expired' | 'used' | 'form' | 'success';
 
@@ -36,9 +39,11 @@ const CandidateProfile = () => {
 
   // Form state
   const [form, setForm] = useState({
-    first_name: '', last_name: '', phone: '', email: '',
+    first_name: '', last_name: '', phone: '', phone_nl: '', email: '',
+    emergency_contact_name: '', emergency_contact_phone: '',
     date_of_birth: '', nationality: '', nationality_other: '',
-    languages: [] as string[],
+    languages: [] as string[], language_other: '',
+    has_dutch_address: false,
     address_street: '', address_postal: '', address_city: '', address_country: 'Nederland',
     address_lat: null as number | null, address_lng: null as number | null,
     skills: [] as string[], certifications: [] as string[],
@@ -94,15 +99,24 @@ const CandidateProfile = () => {
         setOrganizationId(data.organization_id ?? '');
 
         const c = data.candidate;
+        const allLangs: string[] = c.languages ?? [];
+        const knownLangs = allLangs.filter((l) => languageOptions.includes(l));
+        const otherLangs = allLangs.filter((l) => !languageOptions.includes(l));
+        const hasNlAddress = c.has_dutch_address ?? (!!c.address_city && !!c.address_street);
         setForm({
           first_name: c.first_name ?? '',
           last_name: c.last_name ?? '',
           phone: c.phone ?? '',
+          phone_nl: c.phone_nl ?? '',
           email: c.email ?? '',
+          emergency_contact_name: c.emergency_contact_name ?? '',
+          emergency_contact_phone: c.emergency_contact_phone ?? '',
           date_of_birth: c.date_of_birth ?? '',
           nationality: c.nationality && nationalities.some(n => n.value === c.nationality) ? c.nationality : (c.nationality ? 'overig' : ''),
           nationality_other: c.nationality && !nationalities.some(n => n.value === c.nationality) ? c.nationality : '',
-          languages: c.languages ?? [],
+          languages: knownLangs,
+          language_other: otherLangs.join(', '),
+          has_dutch_address: hasNlAddress,
           address_street: c.address_street ?? '',
           address_postal: c.address_postal ?? '',
           address_city: c.address_city ?? '',
@@ -159,13 +173,17 @@ const CandidateProfile = () => {
       }
 
       const nationality = form.nationality === 'overig' ? form.nationality_other : form.nationality;
-      const address = await resolveAddressCoordinates({
-        street: form.address_street,
-        postal: form.address_postal,
-        city: form.address_city,
-        lat: form.address_lat,
-        lng: form.address_lng,
-      });
+      const extraLangs = form.language_other.split(',').map((l) => l.trim()).filter(Boolean);
+      const languages = [...new Set([...form.languages, ...extraLangs])];
+      const address = form.has_dutch_address
+        ? await resolveAddressCoordinates({
+            street: form.address_street,
+            postal: form.address_postal,
+            city: form.address_city,
+            lat: form.address_lat,
+            lng: form.address_lng,
+          })
+        : { lat: null, lng: null };
 
       const res = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/candidate-profile`,
@@ -180,14 +198,18 @@ const CandidateProfile = () => {
             token,
             candidate_data: {
               phone: form.phone || undefined,
+              phone_nl: form.phone_nl || undefined,
+              emergency_contact_name: form.emergency_contact_name || undefined,
+              emergency_contact_phone: form.emergency_contact_phone || undefined,
               email: form.email || undefined,
               date_of_birth: form.date_of_birth || undefined,
               nationality: nationality || undefined,
-              languages: form.languages.length ? form.languages : undefined,
-              address_street: form.address_street || undefined,
-              address_postal: form.address_postal || undefined,
-              address_city: form.address_city || undefined,
-              address_country: form.address_country || undefined,
+              languages: languages.length ? languages : undefined,
+              has_dutch_address: form.has_dutch_address,
+              address_street: form.has_dutch_address ? (form.address_street || undefined) : undefined,
+              address_postal: form.has_dutch_address ? (form.address_postal || undefined) : undefined,
+              address_city: form.has_dutch_address ? (form.address_city || undefined) : undefined,
+              address_country: form.has_dutch_address ? (form.address_country || undefined) : undefined,
               address_lat: address.lat ?? undefined,
               address_lng: address.lng ?? undefined,
               skills: form.skills.length ? form.skills : undefined,
@@ -302,13 +324,27 @@ const CandidateProfile = () => {
           </div>
 
           <div className="space-y-1.5">
-            <Label>Telefoonnummer</Label>
-            <Input value={form.phone} onChange={(e) => set('phone', e.target.value)} type="tel" className="h-12 text-base" />
+            <Label>Telefoon (EU / buitenland)</Label>
+            <Input value={form.phone} onChange={(e) => set('phone', e.target.value)} type="tel" placeholder="bijv. +40 ..." className="h-12 text-base" />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Telefoon (Nederlands)</Label>
+            <Input value={form.phone_nl} onChange={(e) => set('phone_nl', e.target.value)} type="tel" placeholder="bijv. +31 6 ..." className="h-12 text-base" />
           </div>
 
           <div className="space-y-1.5">
             <Label>E-mail</Label>
             <Input value={form.email} onChange={(e) => set('email', e.target.value)} type="email" className="h-12 text-base" />
+          </div>
+
+          <div className="space-y-2 rounded-lg bg-muted/40 p-3">
+            <Label className="text-sm font-medium">Noodcontact (ICE)</Label>
+            <div className="space-y-1.5">
+              <Input value={form.emergency_contact_name} onChange={(e) => set('emergency_contact_name', e.target.value)} placeholder="Naam noodcontact" className="h-12 text-base" />
+              <Input value={form.emergency_contact_phone} onChange={(e) => set('emergency_contact_phone', e.target.value)} type="tel" placeholder="Telefoonnummer noodcontact" className="h-12 text-base" />
+            </div>
+            <p className="text-xs text-muted-foreground">Wie kunnen we bellen in geval van nood?</p>
           </div>
 
           <div className="space-y-1.5">
@@ -348,6 +384,15 @@ const CandidateProfile = () => {
                 </div>
               ))}
             </div>
+            <div className="space-y-1.5 pt-1">
+              <Label className="text-sm">Anders, namelijk</Label>
+              <Input
+                value={form.language_other}
+                onChange={(e) => set('language_other', e.target.value)}
+                placeholder="Andere taal/talen (komma-gescheiden)"
+                className="h-12 text-base"
+              />
+            </div>
           </div>
         </div>
 
@@ -355,23 +400,40 @@ const CandidateProfile = () => {
         <div className="bg-card border rounded-xl p-6 space-y-4">
           <h2 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">Adres</h2>
 
-          <AddressAutocomplete
-            value={{ street: form.address_street, postal: form.address_postal, city: form.address_city, country: form.address_country, lat: form.address_lat, lng: form.address_lng }}
-            onChange={(address) => setForm((f) => ({
-              ...f,
-              address_street: address.street,
-              address_postal: address.postal,
-              address_city: address.city,
-              address_country: address.country ?? f.address_country,
-              address_lat: address.lat ?? null,
-              address_lng: address.lng ?? null,
-            }))}
-            gridClassName="grid-cols-2 gap-3"
-            streetClassName="col-span-2"
-            countryClassName="col-span-2"
-            showCountry
-            inputClassName="h-12 text-base"
-          />
+          <div className="flex items-start gap-2">
+            <Checkbox
+              id="has-dutch-address"
+              checked={form.has_dutch_address}
+              onCheckedChange={(v) => set('has_dutch_address', !!v)}
+            />
+            <Label htmlFor="has-dutch-address" className="text-sm cursor-pointer leading-snug">
+              Ik heb al een (vast) adres in Nederland
+            </Label>
+          </div>
+
+          {form.has_dutch_address ? (
+            <AddressAutocomplete
+              value={{ street: form.address_street, postal: form.address_postal, city: form.address_city, country: form.address_country, lat: form.address_lat, lng: form.address_lng }}
+              onChange={(address) => setForm((f) => ({
+                ...f,
+                address_street: address.street,
+                address_postal: address.postal,
+                address_city: address.city,
+                address_country: address.country ?? f.address_country,
+                address_lat: address.lat ?? null,
+                address_lng: address.lng ?? null,
+              }))}
+              gridClassName="grid-cols-2 gap-3"
+              streetClassName="col-span-2"
+              countryClassName="col-span-2"
+              showCountry
+              inputClassName="h-12 text-base"
+            />
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Geen Nederlands adres? Geen probleem — je recruiter helpt je verder met huisvesting.
+            </p>
+          )}
         </div>
 
         {/* Section 3: Werk & beschikbaarheid */}

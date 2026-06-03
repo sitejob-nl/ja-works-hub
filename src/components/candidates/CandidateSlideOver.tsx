@@ -32,7 +32,8 @@ const sources = [
 
 const emptyForm = {
   first_name: '', last_name: '', date_of_birth: '', nationality: '',
-  email: '', phone: '', address_street: '', address_postal: '', address_city: '',
+  email: '', phone: '', phone_nl: '', emergency_contact_name: '', emergency_contact_phone: '',
+  address_street: '', address_postal: '', address_city: '',
   address_lat: null as number | null, address_lng: null as number | null,
   bsn: '', iban: '', has_drivers_license: false, drivers_license_expiry: '',
   skills: [] as string[], languages: [] as string[], source: '', notes: '',
@@ -54,6 +55,9 @@ const CandidateSlideOver = ({ open, onOpenChange, candidate }: Props) => {
         nationality: candidate.nationality ?? '',
         email: candidate.email ?? '',
         phone: candidate.phone ?? '',
+        phone_nl: candidate.phone_nl ?? '',
+        emergency_contact_name: candidate.emergency_contact_name ?? '',
+        emergency_contact_phone: candidate.emergency_contact_phone ?? '',
         address_street: candidate.address_street ?? '',
         address_postal: candidate.address_postal ?? '',
         address_city: candidate.address_city ?? '',
@@ -95,6 +99,9 @@ const CandidateSlideOver = ({ open, onOpenChange, candidate }: Props) => {
         nationality: form.nationality || null,
         email: form.email || null,
         phone: form.phone || null,
+        phone_nl: form.phone_nl || null,
+        emergency_contact_name: form.emergency_contact_name || null,
+        emergency_contact_phone: form.emergency_contact_phone || null,
         address_street: form.address_street || null,
         address_postal: form.address_postal || null,
         address_city: form.address_city || null,
@@ -139,9 +146,14 @@ const CandidateSlideOver = ({ open, onOpenChange, candidate }: Props) => {
             <div><Label>Geboortedatum</Label><Input type="date" value={form.date_of_birth} onChange={(e) => set('date_of_birth', e.target.value)} /></div>
             <div><Label>Nationaliteit</Label><Input value={form.nationality} onChange={(e) => set('nationality', e.target.value)} /></div>
           </div>
+          <div><Label>E-mail</Label><Input value={form.email} onChange={(e) => set('email', e.target.value)} /></div>
           <div className="grid grid-cols-2 gap-3">
-            <div><Label>E-mail</Label><Input value={form.email} onChange={(e) => set('email', e.target.value)} /></div>
-            <div><Label>Telefoon</Label><Input value={form.phone} onChange={(e) => set('phone', e.target.value)} /></div>
+            <div><Label>Telefoon (EU / buitenland)</Label><Input value={form.phone} onChange={(e) => set('phone', e.target.value)} placeholder="+40 ..." /></div>
+            <div><Label>Telefoon (NL)</Label><Input value={form.phone_nl} onChange={(e) => set('phone_nl', e.target.value)} placeholder="+31 6 ..." /></div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><Label>Noodcontact (ICE) — naam</Label><Input value={form.emergency_contact_name} onChange={(e) => set('emergency_contact_name', e.target.value)} /></div>
+            <div><Label>Noodcontact (ICE) — telefoon</Label><Input value={form.emergency_contact_phone} onChange={(e) => set('emergency_contact_phone', e.target.value)} /></div>
           </div>
           <AddressAutocomplete
             value={{ street: form.address_street, postal: form.address_postal, city: form.address_city, lat: form.address_lat, lng: form.address_lng }}
