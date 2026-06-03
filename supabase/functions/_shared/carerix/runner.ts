@@ -127,14 +127,42 @@ async function tryQuery<T>(ctx: RunnerContext, gql: string): Promise<QueryResult
 // een NULL-veld hebben dat we kunnen vullen. Veel sneller dan per-candidate
 // SELECT+UPDATE — voorkomt soft-deadline timeouts.
 const ENRICH_FIELDS = [
+  'employee_number',
   'email',
   'phone',
   'date_of_birth',
+  'nationality',
+  'languages',
   'address_street',
   'address_city',
   'address_postal',
   'notes',
 ];
+
+function isBlankValue(value: unknown): boolean {
+  if (value === null || value === undefined) return true;
+  if (typeof value === 'string') return value.trim() === '';
+  if (Array.isArray(value)) return value.length === 0;
+  return false;
+}
+
+async function maybeEnrichSensitiveCandidate(
+  ctx: RunnerContext,
+  candidateId: string,
+  payload: Record<string, unknown>,
+): Promise<{ updated: boolean; error: string | null }> {
+  const bsn = payload.bsn;
+  if (typeof bsn !== 'string' || bsn.trim() === '') {
+    return { updated: false, error: null };
+  }
+
+  const { error: updateErr } = await ctx.admin
+    .from('candidates')
+    .update({ bsn })
+    .eq('id', candidateId);
+
+  return { updated: !updateErr, error: updateErr?.message ?? null };
+}
 
 async function bulkEnrichCandidates(
   ctx: RunnerContext,
@@ -172,19 +200,32 @@ async function bulkEnrichCandidates(
     for (const field of ENRICH_FIELDS) {
       const c = current[field];
       const i = item.payload[field];
-      if ((c === null || c === undefined || c === '') && i) fieldUpdates[field] = i;
+      if (isBlankValue(c) && !isBlankValue(i)) fieldUpdates[field] = i;
     }
-    if (Object.keys(fieldUpdates).length === 0) { stats.skipped++; continue; }
+
+    const sensitiveUpdate = maybeEnrichSensitiveCandidate(ctx, item.candidateId, item.payload);
+
+    if (Object.keys(fieldUpdates).length === 0) {
+      updatePromises.push(
+        sensitiveUpdate.then((res) => ({
+          candidateId: item.candidateId,
+          error: res.error,
+        })),
+      );
+      continue;
+    }
 
     updatePromises.push(
-      ctx.admin
-        .from('candidates')
-        .update(fieldUpdates)
-        .eq('id', item.candidateId)
-        .then((res: { error: { message: string } | null }) => ({
-          candidateId: item.candidateId,
-          error: res.error?.message ?? null,
-        })),
+      Promise.all([
+        ctx.admin
+          .from('candidates')
+          .update(fieldUpdates)
+          .eq('id', item.candidateId),
+        sensitiveUpdate,
+      ]).then(([plainRes, sensitiveRes]) => ({
+        candidateId: item.candidateId,
+        error: plainRes.error?.message ?? sensitiveRes.error,
+      })),
     );
   }
 

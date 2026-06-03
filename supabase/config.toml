@@ -133,6 +133,9 @@ verify_jwt = false
 [functions.analyze-cv-batch]
 verify_jwt = false
 
+[functions.enrich-vacancies]
+verify_jwt = false
+
 [functions.refresh-talentpool-members]
 verify_jwt = false
 
@@ -230,4 +233,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.carerix-attachment-download]
+verify_jwt = false
+
+[functions.carerix-doc-relabel]
 verify_jwt = false

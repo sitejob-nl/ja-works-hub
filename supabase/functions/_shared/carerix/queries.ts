@@ -89,7 +89,14 @@ export function crEmployeesQuery(page: number, size: number, qualifier?: string)
         mobileNumber
         phoneNumberBusiness
         notes
+        additionalInfo
         birthDate
+        employeeID
+        sofiNumber
+        adminSofiNumber
+        systemLanguage
+        toLanguageNode { _id value label tag }
+        toIdentificationCountryNode { _id value label tag }
         homeStreet
         homeNumber
         homeNumberSuffix
@@ -217,6 +224,22 @@ export function crAttachmentByIdQuery(attachmentId: string): string {
       label
       attachmentSize
       content
+    }
+  }`;
+}
+
+// Eén attachment ophalen MAAR ALLEEN metadata — GEEN `content`. Voor de
+// relabel/onderhoud-fase (carerix-doc-relabel function): we willen type/naam
+// corrigeren zonder de bytes opnieuw te downloaden (3800+ files = te zwaar).
+export function crAttachmentMetaQuery(attachmentId: string): string {
+  const safe = attachmentId.replace(/"/g, '\\"');
+  return `query {
+    crAttachment(_id: "${safe}") {
+      _id
+      downloadName
+      displayName
+      label
+      attachmentMimeType
     }
   }`;
 }

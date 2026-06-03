@@ -16,7 +16,14 @@ interface BatchResult {
   reason?: string;
   pseudonymized_meta?: { name: number; email: number; phone: number; bsn: number; iban: number };
   has_photo?: boolean;
+  selected_document?: { name?: string; reason?: string; type?: string | null } | null;
+  context_counts?: { notes?: number; communications?: number; placements?: number; employments?: number };
 }
+
+const textDocPattern = /\.(pdf|docx?|odt|rtf|txt)(?:$|[?#])/i;
+
+const applyOrgFilter = (query: any, orgFilter: string) =>
+  orgFilter ? query.eq('organization_id', orgFilter) : query;
 
 const SuperAdminCvBackfill = () => {
   const qc = useQueryClient();
@@ -26,30 +33,57 @@ const SuperAdminCvBackfill = () => {
   const [lastResults, setLastResults] = useState<BatchResult[] | null>(null);
 
   const { data: stats, isLoading: statsLoading } = useQuery({
-    queryKey: ['cv-backfill-stats'],
+    queryKey: ['cv-backfill-stats', orgFilter],
     queryFn: async () => {
       const [
         { count: total },
         { count: withCv },
         { count: completed },
-        { count: queued },
+        { count: idle },
+        { count: nullStatus },
+        { count: analyzing },
         { count: failed },
         { count: photoFlagged },
+        documentsRes,
+        notesRes,
+        commRes,
       ] = await Promise.all([
-        supabase.from('candidates').select('id', { count: 'exact', head: true }),
-        supabase.from('candidates').select('id', { count: 'exact', head: true }).not('cv_file_url', 'is', null),
-        supabase.from('candidates').select('id', { count: 'exact', head: true }).eq('ai_status', 'completed'),
-        supabase.from('candidates').select('id', { count: 'exact', head: true }).is('ai_status', null).not('cv_file_url', 'is', null),
-        supabase.from('candidates').select('id', { count: 'exact', head: true }).eq('ai_status', 'failed'),
-        supabase.from('candidates').select('id', { count: 'exact', head: true }).eq('cv_has_photo', true),
+        applyOrgFilter(supabase.from('candidates').select('id', { count: 'exact', head: true }), orgFilter),
+        applyOrgFilter(supabase.from('candidates').select('id', { count: 'exact', head: true }).not('cv_file_url', 'is', null), orgFilter),
+        applyOrgFilter(supabase.from('candidates').select('id', { count: 'exact', head: true }).eq('ai_status', 'completed'), orgFilter),
+        applyOrgFilter(supabase.from('candidates').select('id', { count: 'exact', head: true }).eq('ai_status', 'idle'), orgFilter),
+        applyOrgFilter(supabase.from('candidates').select('id', { count: 'exact', head: true }).is('ai_status', null), orgFilter),
+        applyOrgFilter(supabase.from('candidates').select('id', { count: 'exact', head: true }).eq('ai_status', 'analyzing'), orgFilter),
+        applyOrgFilter(supabase.from('candidates').select('id', { count: 'exact', head: true }).eq('ai_status', 'failed'), orgFilter),
+        applyOrgFilter(supabase.from('candidates').select('id', { count: 'exact', head: true }).eq('cv_has_photo', true), orgFilter),
+        applyOrgFilter(supabase.from('documents').select('candidate_id, type, name, file_path').not('file_path', 'is', null).limit(10000), orgFilter),
+        applyOrgFilter(supabase.from('notes').select('related_entity_id').in('related_entity_type', ['candidate', 'kandidaat']).limit(10000), orgFilter),
+        applyOrgFilter(supabase.from('communications').select('candidate_id').eq('channel', 'notitie').not('candidate_id', 'is', null).limit(10000), orgFilter),
       ]);
+      if (documentsRes.error) throw documentsRes.error;
+      if (notesRes.error) throw notesRes.error;
+      if (commRes.error) throw commRes.error;
+
+      const docs = (documentsRes.data ?? []) as Array<{ candidate_id: string; type: string; name: string | null; file_path: string | null }>;
+      const textDocCandidates = new Set(docs.filter((d) => textDocPattern.test(d.file_path ?? '')).map((d) => d.candidate_id));
+      const cvTypeCandidates = new Set(docs.filter((d) => d.type === 'cv').map((d) => d.candidate_id));
+      const cvLikeCandidates = new Set(docs.filter((d) => /(^|[^a-z])(cv|curriculum|vitae|resume)([^a-z]|$)/i.test(`${d.name ?? ''} ${d.file_path ?? ''}`)).map((d) => d.candidate_id));
+      const noteCandidates = new Set((notesRes.data ?? []).map((n: any) => n.related_entity_id).filter(Boolean));
+      const commCandidates = new Set((commRes.data ?? []).map((c: any) => c.candidate_id).filter(Boolean));
+
       return {
         total: total ?? 0,
         withCv: withCv ?? 0,
         completed: completed ?? 0,
-        queued: queued ?? 0,
+        queued: (idle ?? 0) + (nullStatus ?? 0),
+        analyzing: analyzing ?? 0,
         failed: failed ?? 0,
         photoFlagged: photoFlagged ?? 0,
+        cvTypeDocuments: cvTypeCandidates.size,
+        textDocuments: textDocCandidates.size,
+        cvLikeDocuments: cvLikeCandidates.size,
+        noteCandidates: noteCandidates.size,
+        commNoteCandidates: commCandidates.size,
       };
     },
     refetchInterval: 5000,
@@ -83,7 +117,7 @@ const SuperAdminCvBackfill = () => {
         toast.info(data.message ?? 'Geen kandidaten te verwerken');
       } else {
         const queued = data.results.filter((r) => r.status === 'queued').length;
-        toast.success(`${queued} CV's naar VPS gestuurd (${data.processed} verwerkt)`);
+        toast.success(`${queued} kandidaatdossiers naar VPS gestuurd (${data.processed} verwerkt)`);
       }
     },
     onError: (e: any) => toast.error(e.message ?? 'Batch mislukt'),
@@ -93,22 +127,24 @@ const SuperAdminCvBackfill = () => {
     <div className="p-6 max-w-5xl mx-auto space-y-6 text-zinc-200">
       <div className="flex items-center gap-3">
         <Brain className="h-6 w-6 text-red-500" />
-        <h1 className="text-2xl font-semibold text-white">AI CV Backfill</h1>
+        <h1 className="text-2xl font-semibold text-white">AI Dossier Backfill</h1>
       </div>
 
       <Card className="bg-zinc-900 border-zinc-800">
         <CardHeader>
           <CardTitle className="text-base text-white">Status</CardTitle>
-          <CardDescription className="text-zinc-400">Telling van kandidaten met CV en hun analyse-status</CardDescription>
+          <CardDescription className="text-zinc-400">Telling van analysebare kandidaten, documenten en notitiecontext</CardDescription>
         </CardHeader>
         <CardContent>
           {statsLoading ? (
             <Loader2 className="h-5 w-5 animate-spin text-zinc-400" />
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              <Stat label="Kandidaten met CV" value={stats?.withCv ?? 0} sub={`${stats?.total ?? 0} totaal`} />
+              <Stat label="Kandidaten totaal" value={stats?.total ?? 0} sub={`${stats?.withCv ?? 0} met cv_file_url`} />
+              <Stat label="Tekstdocumenten" value={stats?.textDocuments ?? 0} sub={`${stats?.cvTypeDocuments ?? 0} type CV · ${stats?.cvLikeDocuments ?? 0} CV-naam`} />
+              <Stat label="Met notities" value={stats?.noteCandidates ?? 0} sub={`${stats?.commNoteCandidates ?? 0} communicatie-notities`} />
               <Stat label="Voltooid" value={stats?.completed ?? 0} accent="green" />
-              <Stat label="Wachtrij" value={stats?.queued ?? 0} accent="amber" />
+              <Stat label="Te analyseren" value={stats?.queued ?? 0} accent="amber" sub={`${stats?.analyzing ?? 0} bezig`} />
               <Stat label="Mislukt" value={stats?.failed ?? 0} accent="red" />
               <Stat label="Met foto" value={stats?.photoFlagged ?? 0} accent="purple" icon={Image} />
               <Stat
@@ -126,7 +162,7 @@ const SuperAdminCvBackfill = () => {
           <CardTitle className="text-base text-white">Batch starten</CardTitle>
           <CardDescription className="text-zinc-400">
             <Shield className="h-3 w-3 inline mr-1" />
-            CV-tekst wordt server-side gepseudonimiseerd (naam/email/tel/BSN/IBAN) vóór verzending naar VPS-LLM.
+            Dossier wordt server-side opgebouwd uit CV/documenten en interne notities, daarna gepseudonimiseerd vóór verzending naar de VPS.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -173,10 +209,10 @@ const SuperAdminCvBackfill = () => {
               className="bg-red-600 hover:bg-red-700"
             >
               {runBatch.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              {runBatch.isPending ? `Verwerken (~${batchSize * 2}s)...` : `Verwerk ${batchSize} CV's`}
+              {runBatch.isPending ? `Verwerken (~${batchSize * 2}s)...` : `Verwerk ${batchSize} dossiers`}
             </Button>
             <p className="text-xs text-zinc-500 mt-2">
-              Throttle 1.5s/CV. Verwerk batches achter elkaar tot wachtrij leeg is.
+              Throttle 1.5s/dossier. Verwerk batches achter elkaar tot de wachtrij leeg is.
             </p>
           </div>
         </CardContent>
@@ -199,6 +235,16 @@ const SuperAdminCvBackfill = () => {
                     {r.pseudonymized_meta && (
                       <span className="text-xs text-zinc-500">
                         gestript: naam {r.pseudonymized_meta.name}, email {r.pseudonymized_meta.email}, tel {r.pseudonymized_meta.phone}, bsn {r.pseudonymized_meta.bsn}, iban {r.pseudonymized_meta.iban}
+                      </span>
+                    )}
+                    {r.selected_document?.name && (
+                      <span className="text-xs text-zinc-500">
+                        document: {r.selected_document.name} ({r.selected_document.reason})
+                      </span>
+                    )}
+                    {r.context_counts && (
+                      <span className="text-xs text-zinc-500">
+                        context: {r.context_counts.notes ?? 0} notities, {r.context_counts.communications ?? 0} comm.
                       </span>
                     )}
                     {r.reason && <span className="text-xs text-red-400">{r.reason}</span>}

@@ -36,13 +36,21 @@ interface AiAnalysis {
     termijn?: string;
     onderbouwing?: string;
     risicos?: string[];
+    contra_indicaties?: string[];
+    manual_review_required?: boolean;
     interviewvragen?: string[];
+    bronverwijzingen?: Array<{ bron: string; signaal: string; type: string }>;
   };
   samenvatting?: {
     profiel?: string;
     plaatsbaarheid_score?: number;
     topkwaliteit?: string;
     aandachtspunt?: string;
+  };
+  dossier?: {
+    input_bronnen?: string[];
+    betrouwbaarheid?: number;
+    toelichting?: string;
   };
 }
 
@@ -123,6 +131,28 @@ const AiAnalysisCard = ({ analysis }: { analysis: AiAnalysis }) => {
             <Badge variant="secondary">{analysis.doelgroep.niveau}</Badge>
           )}
         </div>
+      )}
+
+      {(analysis.plaatsingsadvies?.manual_review_required || analysis.dossier?.betrouwbaarheid != null) && (
+        <Card className={`p-4 ${analysis.plaatsingsadvies?.manual_review_required ? 'border-orange-300 bg-orange-50/60' : ''}`}>
+          <div className="flex flex-wrap items-center gap-2">
+            {analysis.plaatsingsadvies?.manual_review_required && (
+              <Badge className="bg-orange-100 text-orange-700 border-0 gap-1">
+                <AlertTriangle className="h-3 w-3" />
+                Handmatige review
+              </Badge>
+            )}
+            {analysis.dossier?.betrouwbaarheid != null && (
+              <Badge variant="outline">Dossierbetrouwbaarheid {analysis.dossier.betrouwbaarheid}/10</Badge>
+            )}
+            {analysis.dossier?.input_bronnen?.map((bron, i) => (
+              <Badge key={i} variant="secondary" className="text-xs">{bron}</Badge>
+            ))}
+          </div>
+          {analysis.dossier?.toelichting && (
+            <p className="text-sm text-muted-foreground mt-2">{analysis.dossier.toelichting}</p>
+          )}
+        </Card>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -299,6 +329,30 @@ const AiAnalysisCard = ({ analysis }: { analysis: AiAnalysis }) => {
                   <div className="space-y-1">
                     {analysis.plaatsingsadvies.risicos.map((r, i) => (
                       <p key={i} className="text-sm text-orange-600 bg-orange-50 rounded px-2 py-1">{r}</p>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {analysis.plaatsingsadvies.contra_indicaties && analysis.plaatsingsadvies.contra_indicaties.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-red-600 mb-1 flex items-center gap-1">
+                    <AlertTriangle className="h-3 w-3" /> Contra-indicaties
+                  </p>
+                  <div className="space-y-1">
+                    {analysis.plaatsingsadvies.contra_indicaties.map((r, i) => (
+                      <p key={i} className="text-sm text-red-600 bg-red-50 rounded px-2 py-1">{r}</p>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {analysis.plaatsingsadvies.bronverwijzingen && analysis.plaatsingsadvies.bronverwijzingen.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium mb-1">Bronverwijzingen</p>
+                  <div className="space-y-1">
+                    {analysis.plaatsingsadvies.bronverwijzingen.slice(0, 8).map((b, i) => (
+                      <p key={i} className="text-xs text-muted-foreground">
+                        <span className="font-medium">{b.bron}</span> · {b.type}: {b.signaal}
+                      </p>
                     ))}
                   </div>
                 </div>

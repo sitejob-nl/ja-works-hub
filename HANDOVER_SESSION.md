@@ -1,64 +1,99 @@
-# Session handover — 2026-05-06
+# Session handover — 2026-06-01
 
-Korte hand-off voor de volgende agent (Codex / Claude Code) zodat je direct verder kan zonder de hele sessie opnieuw te lezen. Dit is een **werk-in-uitvoering** doc — niet de formele client-handover (zie [HANDOVER.md](HANDOVER.md) van 2026-04-07).
+Korte hand-off voor Claude Code / Codex zodat je direct verder kan. Dit is de actuele werk-in-uitvoering snapshot; zie [HANDOVER.md](HANDOVER.md) voor de formele projectsamenvatting en [CLAUDE.md](CLAUDE.md) voor stabiele codebase-guidance.
 
 ## Lees eerst
 
-1. **[CLAUDE.md](CLAUDE.md)** — single source of truth voor architectuur, schema, integraties, MCP-workflow. Geldt 1-op-1 voor Codex (zie [AGENTS.md](AGENTS.md), is een 1-regel pointer).
-2. **[docs/open-gaps.md](docs/open-gaps.md)** — open client-meeting items + Fase 2 backlog. Recent uit CLAUDE.md gehaald omdat het project-state is, niet codebase-guidance.
-3. **Memory:** zie ook `meeting_jeroen_20260429.md` in auto-memory voor de meest recente meeting-besluiten.
+1. [CLAUDE.md](CLAUDE.md) — single source of truth voor architectuur, schema, integraties, commands en conventies.
+2. [docs/open-gaps.md](docs/open-gaps.md) — open meetingpunten t/m 2026-05-27.
+3. [docs/meeting-open-points-2026-05-27.md](docs/meeting-open-points-2026-05-27.md) — meest recente productrichting: leadfunnel, kandidaatprofiel als werkplek, AI-verrijking met notities.
+4. [docs/carerix-integratie-audit.md](docs/carerix-integratie-audit.md) — status en risico's van Carerix-productieimport.
 
-## Wat is er deze sessie gebeurd in CLAUDE.md
+## Branch en repo-status
 
-CLAUDE.md is teruggebracht van ~1240 → 591 regels. **Geen kennis weggegooid**, alleen gestructureerd:
+- Huidige branch: `codex/portal-i18n`.
+- Laatste commits: `5559b1f fix: complete portal translation coverage`, `4b7097b feat: add portal i18n toggle`, `ee61023 Merge pull request #1 from sitejob-nl/codex/instroom-fast-path`, `a0997a5 feat: add candidate intake funnel`.
+- Dirty worktree is verwacht; niets terugdraaien zonder expliciete opdracht.
+- Er zijn geen schema-migrations in de huidige dirty set; `src/integrations/supabase/types.ts` is niet aangepast.
 
-- AGENTS.md → 1-regel pointer naar CLAUDE.md (waren bijna identieke duplicaten, drift-risico).
-- README.md → vervangen (was Lovable boilerplate met `REPLACE_WITH_PROJECT_ID`).
-- Routes / Database Schema / Enums tables → drastisch ingekort. Patronen blijven, volledige lijsten staan in `src/App.tsx` en `src/integrations/supabase/types.ts`. Non-obvious invarianten (encrypted columns, dropped columns, dynamic-talentpool flags, `properties.name` nullable, `vacancies.urgency` CHECK 1-3, etc.) zijn behouden.
-- "Open gaps from client meetings" → verplaatst naar `docs/open-gaps.md`.
-- Directory tree → vervangen door notities-only lijst (paden zijn discoverable; alleen *gedrag* dat niet uit een `ls` blijkt staat erin).
+## Docs deze beurt
 
-## Werk-in-uitvoering (uncommitted in `main`)
+- `AGENTS.md` is bijgewerkt als compacte pointer naar `CLAUDE.md` plus actuele handover.
+- `CLAUDE.md` is bijgewerkt voor kandidaatdossier-AI, Carerix-enrichment en huidige commands.
+- `HANDOVER.md` en dit bestand zijn naar 2026-06-01 getrokken.
 
-### Twee nieuwe migrations (al toegepast op productie via Supabase MCP, lokaal nog niet gecommit):
+## Huidige uncommitted codewijzigingen
 
-1. **`supabase/migrations/20260429190000_company_functions_salary_skills.sql`**
-   - `company_functions` krijgt `salary_min numeric(10,2)`, `salary_max numeric(10,2)`, `required_skills text[]`.
-   - Bedoeling (meeting Jeroen 29-04): salaris-**range** op functie-niveau (geen vast uurtarief) + standaard-skills. Vacature erft beide als defaults bij aanmaken; user kan overschrijven. Skills voeden talentpool "Genereer uit functie".
+### AI kandidaatdossier-analyse v2
 
-2. **`supabase/migrations/20260430160000_vehicles_first_registration_nl.sql`**
-   - `vehicles.first_registration_nl text` — RDW-veld `datum_eerste_tenaamstelling_in_nederland`. Functioneel ~ aankoopdatum eerste NL-eigenaar.
+Bestanden:
+- `supabase/functions/_shared/candidate-dossier.ts` (nieuw)
+- `supabase/functions/analyze-cv/index.ts`
+- `supabase/functions/analyze-cv-batch/index.ts`
+- `supabase/functions/analyze-cv-callback/index.ts`
+- `supabase/functions/_shared/anthropic-cv.ts`
+- `supabase/functions/_shared/cv-prompt.ts`
+- `supabase/functions/_shared/cv-write.ts`
+- `src/components/AiAnalysisCard.tsx`
+- `src/components/candidates/tabs/CandidateAiTab.tsx`
+- `src/components/settings/AiCvProviderSettings.tsx`
+- `src/pages/superadmin/SuperAdminCvBackfill.tsx`
+- `deno.lock`
 
-### UI/edge-function wijzigingen die hierbij horen:
+Wat het doet:
+- Analyse heet functioneel nog `analyze-cv`, maar de input is nu een kandidaatdossier: CV/documenttekst, profielvelden, interne notities, communicatie, plaatsingen en arbeidsrelaties.
+- `_shared/candidate-dossier.ts` kiest het beste CV-/tekstdocument (`candidate.cv_file_url` of `documents`), extraheert PDF/DOCX/ODT/RTF/TXT/legacy DOC server-side en voegt interne context toe.
+- UI-upload in `CandidateAiTab` ondersteunt PDF, DOC/DOCX, ODT, TXT, RTF en afbeeldingen; PDF/image OCR gebeurt client-side met pdfjs-dist/Tesseract.js.
+- Dossier wordt server-side gesanitized, gepseudonimiseerd en naar VPS of Cloud gestuurd. VPS-request blijft backwards compatible via `cv_text`, maar stuurt nu ook `dossier_text`, `system_prompt`, `prompt_version`, tool/schema en input metadata mee.
+- Cloud-pad gebruikt dezelfde promptbasis en `organizations.settings.candidate_analysis_prompt`; legacy `cv_prompt_addendum` blijft compatibel.
+- Outputschema heeft nu `dossier`, `manual_review_required`, `contra_indicaties` en `bronverwijzingen`; `AiAnalysisCard` toont die.
+- Batchbackfill selecteert kandidaten zonder completed analyse, niet alleen kandidaten met `cv_file_url`, en toont document/context-statistieken.
 
-- `src/components/companies/tabs/CompanyFunctionsTab.tsx` — formulier uitgebreid met `salary_min`/`salary_max` (range) + `required_skills` via `TagInput`. `formatSalaryRange()` helper toegevoegd voor weergave.
-- `src/pages/VacancyNew.tsx` — neemt nu defaults over uit de gekoppelde `company_function` (28 regels diff).
-- `src/pages/Vacancies.tsx` — kleine UI-aanpassing voor de nieuwe range-weergave.
-- `src/pages/Talentpools.tsx` — "Genereer uit functie" flow gebruikt `required_skills` om `filter_criteria` te seeden (138 regels diff — dit is de grootste).
-- `src/pages/VehicleNew.tsx` + `VehicleEdit.tsx` — `first_registration_nl` veld toegevoegd, gevoed door RDW-lookup.
-- `supabase/functions/analyze-cv/index.ts` + `_shared/anthropic-cv.ts` + `_shared/cv-prompt.ts` — kleine tweaks aan de CV-pipeline (14/3/5 regels). Niet gerelateerd aan bovenstaande migrations.
-- `src/components/candidates/tabs/CandidateAiTab.tsx` — 11 regels diff, hoort bij CV-pipeline-tweaks.
+Let op:
+- Server-side batch OCR't image-only documenten niet; image OCR bestaat alleen in de UI-upload.
+- Controleer of de VPS-worker `system_prompt`/schema gebruikt of in elk geval geldig JSON blijft teruggeven. Callback kan stringified JSON parsen, maar slechte JSON zet de kandidaat op `failed`.
 
-### Niet gerelateerd, ook uncommitted:
+### Carerix enrichment
 
-- `eslint.config.js` (1 regel)
-- `.claude/settings.local.json`
-- `Panden/` (untracked dir — onduidelijk waarom dit hier staat, even checken voor je commit; kan een per-ongeluk gedropte map zijn)
+Bestanden:
+- `supabase/functions/_shared/carerix/mappers.ts`
+- `supabase/functions/_shared/carerix/queries.ts`
+- `supabase/functions/_shared/carerix/runner.ts`
+- `supabase/functions/_shared/carerix/types.ts`
+- `src/test/carerix-mappers.test.ts` (nieuw)
 
-## Voorgestelde volgende stappen
+Wat het doet:
+- `CREmployee` query haalt extra velden op: `employeeID`, BSN/SOFI-velden, `additionalInfo`, taalnode, identificatieland.
+- Mapper vult `employee_number`, `bsn`, `nationality` en genormaliseerde `languages` uit CR-velden en tenant-specifieke `additionalInfo`.
+- Runner bulk-enrichment vult ook arrays en stuurt BSN via een aparte update zodat DB-encryptietriggers blijven werken.
+- Nieuwe Vitest-test dekt identity/nationality/language mapping.
 
-1. **Doorlopen wat in-progress is** in `CompanyFunctionsTab.tsx` + `VacancyNew.tsx` + `Talentpools.tsx` — controleer of de salary-range UX klopt en of de skills-overerving uit `company_functions` → `vacancies` werkt zonder dubbele invoer.
-2. **Test de talentpool "Genereer uit functie"** end-to-end: functie met skills → maak pool → controleer of `filter_criteria` gevuld wordt en `refresh-talentpool-members` edge function de juiste matches oplevert.
-3. **Controleer `Panden/` directory** voor je iets commit — waarschijnlijk niet de bedoeling dat die in repo terechtkomt.
-4. **Commit-strategie:** drie aparte commits voorstel:
-   - `feat(functions): salaris-range + skills op company_functions, vacatures erven defaults` (migration + CompanyFunctionsTab + VacancyNew + Vacancies + Talentpools)
-   - `feat(transport): RDW datum-eerste-tenaamstelling op voertuigen` (migration + VehicleNew + VehicleEdit)
-   - `chore(cv): kleine tweaks aan analyze-cv pipeline` (de _shared + analyze-cv + CandidateAiTab files)
+## Open productcontext
 
-## Belangrijk om te weten voor de volgende agent
+- 2026-05-27 vraagt: instroom-/leadfunnel, kandidaatprofiel als centrale werkplek, AI-verrijking van ~1.900 kandidaten met CV én interne notities, en duidelijk onderscheid tussen algemene plaatsbaarheid en vacature-matchscore.
+- `docs/open-meeting-task-registry.md` markeert `0527-AI-BACKFILL`, `0527-PROFILE-WORKSPACE`, `0527-TASK-DELEGATION`, `0527-DOC-FORMATS` en `0527-DATA-COMPLIANCE` als nog open/in progress.
+- Carerix productie-import is ver gekomen, maar `crCompanyPage`/`crContactPage`, REST attachment fallback, 27 parentloze `CRNote` records en businessvalidatie van `CRMatch`/`CRWorkHistory` blijven aandachtspunten.
 
-- **Schema-wijzigingen via Supabase MCP** zijn al **live op productie** (project `noaupcteygfvlyymqtew`). De `.sql` files in `supabase/migrations/` zijn spiegel-files voor lokale dev/CI consistency — niet om opnieuw uit te voeren.
-- **Edge-function deploys**: gebruik `mcp__claude_ai_Supabase__deploy_edge_function`. Alle protected edge functions hebben `verify_jwt = false` met self-auth in body — dat is bewust (Supabase Edge Runtime kan ES256 niet valideren).
-- **Types regenereren** na schema-wijziging: `mcp__claude_ai_Supabase__generate_typescript_types` → schrijf naar `src/integrations/supabase/types.ts`. Hand-edit nooit.
-- **Encrypted velden**: lees nooit direct (`candidates.bsn`/`iban`, tokens in `whatsapp_config`/`exact_config`). Gebruik altijd de RPC-functies — zie CLAUDE.md sectie "Encrypted columns".
-- **Multi-tenant**: alle queries scoped op `organization_id` via `useOrganizationId()`. Hook **throwt** buiten AuthProvider — niet aanroepen in portal/superadmin/public routes.
+## Verificatie deze beurt
+
+- `git diff --check` — groen.
+- `npx vitest run src/test/carerix-mappers.test.ts` — groen, 2 tests.
+- `npm run typecheck` — groen.
+- Deno checks en functionele Supabase/VPS-runs zijn nog niet gedaan.
+
+## Aanbevolen volgende stappen
+
+1. Resterende edge-function checks draaien:
+   - `deno check supabase/functions/analyze-cv/index.ts`
+   - `deno check supabase/functions/analyze-cv-batch/index.ts`
+   - `deno check supabase/functions/analyze-cv-callback/index.ts`
+2. AI-flow testen met één kandidaat via Cloud en één via VPS: controleer `dossier_meta`, `ai_analysis.dossier`, red flags en realtime status.
+3. Superadmin backfill testen met kleine batch (`batch_size=1`) en `include_failed=false`; let op kandidaten zonder CV maar met notitiecontext.
+4. Beslissen of image-only server-side backfill OCR nodig is voor 05-27 `DOC-FORMATS`; anders expliciet als beperking laten staan.
+5. Deploy pas na checks via Supabase MCP: `analyze-cv`, `analyze-cv-batch`, `analyze-cv-callback` plus shared dependencies.
+
+## Commitstrategie
+
+- `docs: update claude and handover for june continuation`
+- `feat(ai): analyze candidate dossiers with internal context`
+- `feat(carerix): enrich candidate identity fields`
