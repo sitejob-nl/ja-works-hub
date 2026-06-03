@@ -1,9 +1,19 @@
-import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useOrganizationId } from '@/hooks/useOrganizationId';
+import { Plus } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { EntityLink } from '@/components/ui/entity-link';
+import { resolveEmployeeId } from '@/lib/assignments';
 import { formatDate, formatEUR } from '@/lib/format';
+import { toast } from 'sonner';
 
 const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
   const { data: assignments = [] } = useQuery({
@@ -30,12 +40,73 @@ const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
     },
   });
 
+  const orgId = useOrganizationId();
+  const qc = useQueryClient();
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [unitId, setUnitId] = useState('');
+  const [checkInDate, setCheckInDate] = useState('');
+  const [deductionAmount, setDeductionAmount] = useState('');
+  const [paymentFrequency, setPaymentFrequency] = useState<'wekelijks' | 'maandelijks'>('wekelijks');
+
+  const { data: availableUnits = [] } = useQuery({
+    queryKey: ['available-units', orgId],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('units')
+        .select('id, name, capacity, status, weekly_cost, properties!units_property_id_fkey(id, name), housing_assignments!housing_assignments_unit_id_fkey(id, status)')
+        .eq('status', 'beschikbaar' as any)
+        .order('name');
+      if (error) throw error;
+      return (data ?? []).filter((u: any) => {
+        const occ = (u.housing_assignments ?? []).filter((a: any) => a.status === 'ingecheckt' || a.status === 'gereserveerd').length;
+        return occ < (u.capacity ?? 0);
+      });
+    },
+    enabled: assignOpen,
+  });
+
+  const assignRoom = useMutation({
+    mutationFn: async () => {
+      const { data: candidate, error: candErr } = await supabase.from('candidates')
+        .select('id, employee_number, employee_status')
+        .eq('id', candidateId)
+        .single();
+      if (candErr) throw candErr;
+      const employeeId = await resolveEmployeeId(candidate, orgId, checkInDate);
+      const deductionNum = deductionAmount ? Number(deductionAmount) : null;
+      const { error } = await supabase.from('housing_assignments').insert({
+        organization_id: orgId,
+        unit_id: unitId,
+        employee_id: employeeId,
+        candidate_id: candidateId,
+        status: 'gereserveerd' as const,
+        check_in_date: checkInDate,
+        deduction_amount: deductionNum,
+        payment_frequency: paymentFrequency,
+        monthly_deduction: paymentFrequency === 'maandelijks' ? deductionNum : (deductionNum ? Math.round(deductionNum * 4.33 * 100) / 100 : null),
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['housing-assignments', candidateId] });
+      toast.success('Kamer toegewezen');
+      setAssignOpen(false);
+      setUnitId(''); setCheckInDate(''); setDeductionAmount('');
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
   const active = assignments.find((a: any) => a.status === 'ingecheckt');
+  const hasActiveHousing = assignments.some((a: any) => a.status === 'ingecheckt' || a.status === 'gereserveerd');
 
   return (
     <div className="space-y-6">
       <div className="bg-card rounded-lg border p-6">
-        <h3 className="font-medium mb-4">Huidige huisvesting</h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-medium">Huidige huisvesting</h3>
+          {!hasActiveHousing && (
+            <Button size="sm" onClick={() => setAssignOpen(true)} className="gap-1"><Plus className="h-4 w-4" /> Wijs kamer toe</Button>
+          )}
+        </div>
         {active ? (
           <div className="grid grid-cols-2 gap-4">
             <div><p className="text-xs text-muted-foreground">Pand</p><p className="text-sm"><EntityLink type="property" id={(active as any).units?.properties?.id}>{(active as any).units?.properties?.name ?? '—'}</EntityLink></p></div>
@@ -77,6 +148,49 @@ const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
           </Table>
         )}
       </div>
+      <Sheet open={assignOpen} onOpenChange={setAssignOpen}>
+        <SheetContent className="sm:max-w-md">
+          <SheetHeader><SheetTitle>Kamer toewijzen</SheetTitle></SheetHeader>
+          <div className="space-y-4 mt-6">
+            <div>
+              <Label>Kamer *</Label>
+              <Select value={unitId} onValueChange={setUnitId}>
+                <SelectTrigger><SelectValue placeholder="Selecteer beschikbare kamer" /></SelectTrigger>
+                <SelectContent>
+                  {(availableUnits as any[]).length === 0 && (
+                    <div className="px-2 py-1.5 text-sm text-muted-foreground">Geen beschikbare kamers</div>
+                  )}
+                  {(availableUnits as any[]).map((u) => (
+                    <SelectItem key={u.id} value={u.id}>
+                      {u.properties?.name ?? '—'} — {u.name}{u.weekly_cost ? ` (${formatEUR(u.weekly_cost)}/wk)` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div><Label>Check-in datum *</Label><Input type="date" value={checkInDate} onChange={(e) => setCheckInDate(e.target.value)} /></div>
+            <div>
+              <Label>Inhouding</Label>
+              <div className="flex gap-2">
+                <Input type="number" value={deductionAmount} onChange={(e) => setDeductionAmount(e.target.value)} placeholder="0,00" />
+                <Select value={paymentFrequency} onValueChange={(v) => setPaymentFrequency(v as 'wekelijks' | 'maandelijks')}>
+                  <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="wekelijks">per week</SelectItem>
+                    <SelectItem value="maandelijks">per maand</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 pt-4">
+              <Button variant="ghost" onClick={() => setAssignOpen(false)}>Annuleren</Button>
+              <Button onClick={() => assignRoom.mutate()} disabled={!unitId || !checkInDate || assignRoom.isPending}>
+                {assignRoom.isPending ? 'Toewijzen...' : 'Toewijzen'}
+              </Button>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 };
