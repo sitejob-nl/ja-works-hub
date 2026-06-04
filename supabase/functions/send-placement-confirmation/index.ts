@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendViaOutlookAccount } from "../_shared/outlook-send.ts";
 import { getWhatsAppCredentials, normalizePhone, META_API_BASE } from "../_shared/whatsapp-utils.ts";
 import { getWhatsAppAutomationSettings, mergeTemplate as mergeWhatsAppTemplate } from "../_shared/whatsapp-automation-settings.ts";
+import { isOutboundPaused } from "../_shared/outbound-pause.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -53,6 +54,7 @@ function mergeTemplate(content: string, vars: Record<string, string | null | und
 }
 
 async function sendWhatsAppDirect(service: any, orgId: string, to: string, text: string) {
+  if (await isOutboundPaused(service, orgId, "whatsapp")) return { ok: false, error: "Uitgaande WhatsApp staat op pauze" };
   const creds = await getWhatsAppCredentials(service, orgId);
   if (!creds) return { ok: false, error: "WhatsApp niet geconfigureerd" };
 
