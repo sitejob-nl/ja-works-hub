@@ -7,6 +7,7 @@ import {
   type OutlookCapability,
 } from "./outlook-accounts.ts";
 import { appendAccountSignatureIfMissing } from "./outlook-signature.ts";
+import { isOutboundPaused, logConceptCommunication } from "./outbound-pause.ts";
 
 interface SendViaOutlookAccountParams {
   orgId: string;
@@ -63,6 +64,29 @@ export async function sendViaOutlookAccount(params: SendViaOutlookAccountParams)
   const toRecipients = recipientList(params.to);
   const ccRecipients = params.cc?.length ? recipientList(params.cc) : [];
   if (toRecipients.length === 0) return { success: false, method: "none", error: "Geen ontvanger opgegeven" };
+
+  // Kill-switch: bij gepauzeerde uitgaande e-mail niets versturen, wel als concept loggen.
+  if (await isOutboundPaused(admin, params.orgId, "email")) {
+    if (params.logCommunication !== false) {
+      await logConceptCommunication(admin, {
+        orgId: params.orgId,
+        channel: "email",
+        subject: params.subject,
+        body: params.htmlBody,
+        emailTo: toRecipients.map((r) => r.emailAddress.address),
+        emailCc: ccRecipients.map((r) => r.emailAddress.address),
+        candidateId: params.candidateId ?? null,
+        companyId: params.companyId ?? null,
+        companyContactId: params.companyContactId ?? null,
+        sentBy: params.sentBy ?? null,
+      });
+    }
+    return {
+      success: false,
+      method: "none",
+      error: "Uitgaande e-mail staat op pauze (kill-switch actief). Bericht is als concept opgeslagen.",
+    };
+  }
 
   try {
     const provider = await loadProviderForAccount(admin, params.orgId, {

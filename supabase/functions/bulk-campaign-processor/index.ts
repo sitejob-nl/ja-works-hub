@@ -9,6 +9,7 @@ import {
   META_API_BASE,
 } from "../_shared/whatsapp-utils.ts";
 import { getWhatsAppAutomationSettings } from "../_shared/whatsapp-automation-settings.ts";
+import { isOutboundPaused } from "../_shared/outbound-pause.ts";
 
 const MAX_RETRIES = 3;
 const RETRY_DELAYS = [60, 300, 900]; // 1min, 5min, 15min in seconds
@@ -84,6 +85,12 @@ Deno.serve(async (req) => {
 
     if (campaign.status === "scheduled" && campaign.scheduled_at && new Date(campaign.scheduled_at).getTime() > Date.now()) {
       return jsonError("Campagne staat gepland voor later", 400);
+    }
+
+    // Kill-switch: globale WhatsApp-pauze blokkeert de hele campagne (geen bulk-blast).
+    if (await isOutboundPaused(serviceClient, orgId, "whatsapp")) {
+      await serviceClient.from("bulk_campaigns").update({ status: "paused" }).eq("id", campaign_id);
+      return jsonOk({ paused: true, message: "WhatsApp staat op pauze (kill-switch). Campagne niet verwerkt." });
     }
 
     // Set status to running with timestamp
