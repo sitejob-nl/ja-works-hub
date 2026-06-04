@@ -35,6 +35,7 @@ export type MatchCandidate = {
   availability_notes?: string | null;
   ai_function_group?: string | null;
   ai_target_functions?: string[] | null;
+  ai_classification?: string | null; // 'specialist' | 'productie' (uit CV-analyse)
   ai_reliability_score?: number | null;
   address_lat?: number | null;
   address_lng?: number | null;
@@ -277,7 +278,8 @@ export function scoreMatch(candidate: MatchCandidate, vacancy: MatchVacancy, dis
   const components: Array<{ key: string; weight: number; fraction: number }> = [];
   if (reqSkillCount > 0) components.push({ key: "skills", weight: FIT_WEIGHTS.skills, fraction: skillMatches.length / reqSkillCount });
   if (reqCertCount > 0) components.push({ key: "certifications", weight: FIT_WEIGHTS.certifications, fraction: certMatches.length / reqCertCount });
-  components.push({ key: "functionGroup", weight: FIT_WEIGHTS.functionGroup, fraction: hasFunctionSignal(candidate, vacancy) ? 1 : 0 });
+  const functionMatched = hasFunctionSignal(candidate, vacancy);
+  components.push({ key: "functionGroup", weight: FIT_WEIGHTS.functionGroup, fraction: functionMatched ? 1 : 0 });
   if (distFrac != null) components.push({ key: "distance", weight: FIT_WEIGHTS.distance, fraction: distFrac });
   // Beschikbaarheid telt alleen mee als ze ingevuld is (anders niet-van-toepassing, geen straf).
   if (candidate.availability_notes) components.push({ key: "availability", weight: FIT_WEIGHTS.availability, fraction: 1 });
@@ -299,6 +301,20 @@ export function scoreMatch(candidate: MatchCandidate, vacancy: MatchVacancy, dis
   const hardMatched = skillMatches.length > 0 || certMatches.length > 0;
   let matchPercent = Math.round(Math.max(0, Math.min(100, fit + bonus)));
   if (hardBlocks.length > 0) matchPercent = Math.min(matchPercent, 30); // blokkers zakken altijd weg
+
+  // ── Functie-groep-guard ────────────────────────────────────────────────────
+  // Een als 'specialist' geclassificeerde kandidaat (bv. elektromechanisch monteur, lasser)
+  // zonder ENIGE vak-affiniteit met de vacature — geen gematchte skill én geen functie-titel-
+  // signaal — mag niet hoog scoren op een generieke/productierol (klacht Jeroen 03-06: specialist
+  // 81% op 'productiemedewerker'). We cappen onder de shortlist-drempel i.p.v. hard te blokkeren:
+  // de kandidaat blijft vindbaar via 'toon ook zwakke matches', maar komt niet vanzelf bovendrijven.
+  // Bewust ALLEEN voor specialisten: productie-kandidaten worden nooit geraakt (geen vals-negatief
+  // door fuzzy titel-tokenisatie), en een specialist mét skill-/functie-match blijft normaal scoren.
+  const specialistMismatch = candidate.ai_classification === "specialist" && skillMatches.length === 0 && !functionMatched;
+  if (specialistMismatch && hardBlocks.length === 0) {
+    matchPercent = Math.min(matchPercent, 40);
+    missing.push("Specialistprofiel zonder vak-match op deze (generieke) vacature");
+  }
 
   let label: MatchBreakdown["label"];
   if (hardBlocks.length > 0 || matchPercent < 45) label = "rood";
