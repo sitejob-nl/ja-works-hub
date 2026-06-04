@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
@@ -56,7 +57,11 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
   const [previewMatchId, setPreviewMatchId] = useState<string | null>(null);
   const [previewData, setPreviewData] = useState<{ to: string; contact_name: string; subject: string; html: string } | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
-  const [showWeakMatches, setShowWeakMatches] = useState(false);
+  const [scoreFilter, setScoreFilter] = useState<'strong' | '60' | '70' | '80' | 'all'>('strong');
+  const [selectedShortlist, setSelectedShortlist] = useState<Set<string>>(new Set());
+  const [detailCandidate, setDetailCandidate] = useState<any | null>(null);
+  const showWeakMatches = scoreFilter === 'all';
+  const minScore = scoreFilter === '60' ? 60 : scoreFilter === '70' ? 70 : scoreFilter === '80' ? 80 : 0;
   const [feedbackRequest, setFeedbackRequest] = useState<{ matchId: string; fromStatus: string; toStatus: string } | null>(null);
   const [feedbackReasonId, setFeedbackReasonId] = useState('');
   const [feedbackNotes, setFeedbackNotes] = useState('');
@@ -157,6 +162,41 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
       qc.invalidateQueries({ queryKey: ['vacancy-matches', vacancy.id] });
       qc.invalidateQueries({ queryKey: ['available-candidates-for-vacancy'] });
       toast.success('Nieuwe match aangemaakt (AI score wordt berekend)');
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  // Bulk: stel meerdere geselecteerde kandidaten in één keer voor.
+  const bulkProposeMutation = useMutation({
+    mutationFn: async (candidates: any[]) => {
+      for (const candidate of candidates) {
+        const score = candidate._vacancyScore;
+        const { data: match, error } = await (supabase as any).from('matches').insert({
+          organization_id: orgId,
+          vacancy_id: vacancy.id,
+          candidate_id: candidate.id,
+          proposed_by: user?.id ?? null,
+          status: 'nieuwe_match' as any,
+          source: 'eigen_match',
+          match_score: score?.matchPercent ?? null,
+          match_reasoning: score?.reasoning ?? null,
+          match_breakdown: (score ?? null) as any,
+          distance_km: score?.distance?.km ?? null,
+        }).select('id').single();
+        if (error) throw error;
+        try {
+          await supabase.functions.invoke('calculate-match', {
+            body: { match_id: match.id, candidate_id: candidate.id, vacancy_id: vacancy.id },
+          });
+        } catch { /* non-blocking */ }
+      }
+      return candidates.length;
+    },
+    onSuccess: (count) => {
+      qc.invalidateQueries({ queryKey: ['vacancy-matches', vacancy.id] });
+      qc.invalidateQueries({ queryKey: ['available-candidates-for-vacancy'] });
+      setSelectedShortlist(new Set());
+      toast.success(`${count} kandidaat${count === 1 ? '' : 'en'} voorgesteld (AI-scores worden berekend)`);
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -309,6 +349,21 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
     });
   };
 
+  // Shortlist na client-side drempelfilter (server levert de top-25 op score).
+  const filteredShortlist = (availableCandidates ?? []).filter(
+    (c: any) => (c._vacancyScore?.matchPercent ?? 0) >= minScore,
+  );
+  const selectedCandidates = filteredShortlist.filter((c: any) => selectedShortlist.has(c.id));
+  const allShortlistSelected = filteredShortlist.length > 0 && filteredShortlist.every((c: any) => selectedShortlist.has(c.id));
+  const toggleShortlist = (id: string) => setSelectedShortlist((s) => {
+    const next = new Set(s);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const toggleAllShortlist = () => setSelectedShortlist(
+    allShortlistSelected ? new Set() : new Set(filteredShortlist.map((c: any) => c.id)),
+  );
+
   return (
     <div className="mt-4 space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -433,65 +488,199 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input placeholder="Zoek kandidaat..." value={candidateSearch} onChange={(e) => setCandidateSearch(e.target.value)} className="pl-9" />
           </div>
-          <Button
-            type="button"
-            variant={showWeakMatches ? 'secondary' : 'outline'}
-            size="sm"
-            onClick={() => setShowWeakMatches((value) => !value)}
-          >
-            {showWeakMatches ? 'Alle kandidaten zichtbaar' : 'Toon ook zwakkere matches'}
-          </Button>
+          <Select value={scoreFilter} onValueChange={(v) => { setScoreFilter(v as any); setSelectedShortlist(new Set()); }}>
+            <SelectTrigger className="w-full sm:w-52"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="strong">Sterke matches</SelectItem>
+              <SelectItem value="60">Match ≥ 60%</SelectItem>
+              <SelectItem value="70">Match ≥ 70%</SelectItem>
+              <SelectItem value="80">Match ≥ 80%</SelectItem>
+              <SelectItem value="all">Alles (incl. zwak)</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
+
         {rankFetching && (
           <p className="text-xs text-muted-foreground flex items-center gap-1.5">
             <Sparkles className="h-3 w-3 animate-pulse" /> Kandidaten rangschikken uit de volledige database…
           </p>
         )}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+
+        {filteredShortlist.length > 0 && (
+          <div className="flex items-center justify-between gap-3 flex-wrap rounded-md border bg-muted/30 px-3 py-2">
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <Checkbox checked={allShortlistSelected} onCheckedChange={toggleAllShortlist} />
+              {selectedShortlist.size > 0 ? `${selectedShortlist.size} geselecteerd` : `Alles selecteren (${filteredShortlist.length})`}
+            </label>
+            {selectedShortlist.size > 0 && (
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="ghost" onClick={() => setSelectedShortlist(new Set())}>Wissen</Button>
+                <Button size="sm" onClick={() => bulkProposeMutation.mutate(selectedCandidates)} disabled={bulkProposeMutation.isPending} className="gap-1.5">
+                  <UserPlus className="h-3.5 w-3.5" /> {bulkProposeMutation.isPending ? 'Voorstellen…' : `Voorstellen (${selectedShortlist.size})`}
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="space-y-2">
           {rankFetching && !availableCandidates &&
             Array.from({ length: 6 }).map((_, i) => (
               <Card key={`rank-skeleton-${i}`} className="p-3 space-y-2">
-                <Skeleton className="h-4 w-32" />
-                <Skeleton className="h-3 w-20" />
+                <Skeleton className="h-4 w-48" />
                 <Skeleton className="h-3 w-full" />
               </Card>
             ))}
-          {(availableCandidates ?? []).map((c: any) => (
-            <Card key={c.id} className="p-3">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Link to={`/kandidaten/${c.id}`} className="font-medium text-sm hover:text-primary truncate block">{c.first_name} {c.last_name}</Link>
-                    <Badge className={cn('text-[10px] px-1.5 py-0 flex-shrink-0', scoreBadgeClass[c._vacancyScore.label as MatchBreakdown['label']])}>
+          {filteredShortlist.map((c: any) => {
+            const checked = selectedShortlist.has(c.id);
+            return (
+              <Card key={c.id} className={cn('p-3', checked && 'ring-1 ring-primary')}>
+                <div className="flex items-start gap-3">
+                  <Checkbox className="mt-1 flex-shrink-0" checked={checked} onCheckedChange={() => toggleShortlist(c.id)} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                      <Link to={`/kandidaten/${c.id}`} className="font-medium text-sm hover:text-primary truncate">{c.first_name} {c.last_name}</Link>
+                      <Badge className={cn('text-[10px] px-1.5 py-0 flex-shrink-0', scoreBadgeClass[c._vacancyScore.label as MatchBreakdown['label']])}>
                         {c._vacancyScore.matchPercent}% match
-                    </Badge>
-                    {typeof c._candidateQuality === 'number' && (
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 flex-shrink-0" title="Algemene AI-kwaliteitsscore (los van deze vacature)">
-                        ★ {c._candidateQuality}
                       </Badge>
+                      {typeof c._candidateQuality === 'number' && (
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 flex-shrink-0" title="Algemene AI-kwaliteitsscore (los van deze vacature)">★ {c._candidateQuality}</Badge>
+                      )}
+                    </div>
+                    <div className="flex gap-1 mt-1 flex-wrap">
+                      {c._vacancyScore.skillMatches.slice(0, 4).map((s: string) => <Badge key={`skill-${s}`} variant="outline" className="text-xs">{s}</Badge>)}
+                      {c._vacancyScore.certificationMatches.slice(0, 2).map((s: string) => <Badge key={`cert-${s}`} variant="outline" className="text-xs">{s}</Badge>)}
+                      {vacancy.requires_drivers_license && c.has_drivers_license && <Badge variant="outline" className="text-xs">Rijbewijs</Badge>}
+                      {c._vacancyScore.skillMatches.length === 0 && c._vacancyScore.certificationMatches.length === 0 && (c.skills ?? []).slice(0, 3).map((s: string) => <Badge key={s} variant="outline" className="text-xs">{s}</Badge>)}
+                    </div>
+                    {c._vacancyScore.missing.length > 0 && (
+                      <p className="text-[11px] text-amber-700 mt-1 line-clamp-1">{c._vacancyScore.missing[0]}</p>
                     )}
                   </div>
-                  <div className="flex gap-1 mt-1 flex-wrap">
-                    {c._vacancyScore.skillMatches.slice(0, 3).map((s: string) => <Badge key={`skill-${s}`} variant="outline" className="text-xs">{s}</Badge>)}
-                    {c._vacancyScore.certificationMatches.slice(0, 2).map((s: string) => <Badge key={`cert-${s}`} variant="outline" className="text-xs">{s}</Badge>)}
-                    {vacancy.requires_drivers_license && c.has_drivers_license && <Badge variant="outline" className="text-xs">Rijbewijs</Badge>}
-                    {c._vacancyScore.skillMatches.length === 0 && c._vacancyScore.certificationMatches.length === 0 && (c.skills ?? []).slice(0, 3).map((s: string) => <Badge key={s} variant="outline" className="text-xs">{s}</Badge>)}
+                  <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                    <Button size="sm" variant="outline" onClick={() => proposeMutation.mutate(c)} disabled={proposeMutation.isPending}>
+                      <UserPlus className="h-3 w-3 mr-1" /> Nieuwe match
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground" onClick={() => setDetailCandidate(c)}>
+                      Waarom?
+                    </Button>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-2 line-clamp-2">{c._vacancyScore.reasoning}</p>
-                  {c._vacancyScore.missing.length > 0 && (
-                    <p className="text-[11px] text-amber-700 mt-1 line-clamp-2">{c._vacancyScore.missing[0]}</p>
-                  )}
                 </div>
-                <Button size="sm" variant="outline" onClick={() => proposeMutation.mutate(c)} disabled={proposeMutation.isPending} className="flex-shrink-0">
-                  <UserPlus className="h-3 w-3 mr-1" /> Nieuwe match
-                </Button>
-              </div>
-            </Card>
-          ))}
+              </Card>
+            );
+          })}
           {rankError && <p className="text-sm text-red-600">Kandidaten konden niet worden geladen. Probeer het opnieuw.</p>}
-          {!rankError && !rankFetching && (availableCandidates ?? []).length === 0 && <p className="text-sm text-muted-foreground">Geen beschikbare kandidaten met deze vacature-eisen gevonden</p>}
+          {!rankError && !rankFetching && filteredShortlist.length === 0 && (
+            <p className="text-sm text-muted-foreground">{minScore > 0 ? `Geen kandidaten met match ≥ ${minScore}%.` : 'Geen beschikbare kandidaten met deze vacature-eisen gevonden'}</p>
+          )}
         </div>
       </div>
+
+      <Dialog open={!!detailCandidate} onOpenChange={(open) => { if (!open) setDetailCandidate(null); }}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              Waarom deze match?
+              {detailCandidate?._vacancyScore && (
+                <Badge className={cn('text-xs', scoreBadgeClass[detailCandidate._vacancyScore.label as MatchBreakdown['label']])}>
+                  {detailCandidate._vacancyScore.matchPercent}%
+                </Badge>
+              )}
+            </DialogTitle>
+            <DialogDescription>
+              {detailCandidate?.first_name} {detailCandidate?.last_name} — opbouw van de matchscore.
+            </DialogDescription>
+          </DialogHeader>
+          {detailCandidate?._vacancyScore && (() => {
+            const bd = detailCandidate._vacancyScore;
+            const components = Object.entries(bd.componentScores ?? {}) as [string, any][];
+            const labelNl: Record<string, string> = {
+              skills: 'Vaardigheden', certifications: 'Certificaten', functionGroup: 'Functiegroep',
+              distance: 'Afstand', availability: 'Beschikbaarheid',
+            };
+            return (
+              <div className="space-y-4 text-sm">
+                {bd.reasoning && <p className="text-muted-foreground">{bd.reasoning}</p>}
+
+                {components.length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-medium text-muted-foreground uppercase">Score-opbouw</p>
+                    {components.map(([key, val]) => {
+                      const pct = typeof val === 'number' ? Math.round(val * 100) : null;
+                      return (
+                        <div key={key} className="flex items-center justify-between gap-2">
+                          <span>{labelNl[key] ?? key}</span>
+                          {pct != null
+                            ? <span className="text-muted-foreground tabular-nums">{pct}%</span>
+                            : <span className="text-muted-foreground">{String(val)}</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {(bd.hardBlocks ?? []).length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-red-600 uppercase mb-1">Harde blokkades</p>
+                    <ul className="list-disc list-inside space-y-0.5 text-red-600">
+                      {bd.hardBlocks.map((x: string, i: number) => <li key={i}>{x}</li>)}
+                    </ul>
+                  </div>
+                )}
+
+                {(bd.positives ?? []).length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-emerald-700 uppercase mb-1">Pluspunten</p>
+                    <ul className="list-disc list-inside space-y-0.5 text-emerald-700">
+                      {bd.positives.map((x: string, i: number) => <li key={i}>{x}</li>)}
+                    </ul>
+                  </div>
+                )}
+
+                {(bd.bonuses ?? []).length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {bd.bonuses.map((x: string, i: number) => <Badge key={i} variant="secondary" className="text-[10px]">{x}</Badge>)}
+                  </div>
+                )}
+
+                {(bd.missing ?? []).length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-amber-700 uppercase mb-1">Ontbreekt / aandachtspunten</p>
+                    <ul className="list-disc list-inside space-y-0.5 text-amber-700">
+                      {bd.missing.map((x: string, i: number) => <li key={i}>{x}</li>)}
+                    </ul>
+                  </div>
+                )}
+
+                {((bd.skillMatches ?? []).length > 0 || (bd.certificationMatches ?? []).length > 0) && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase mb-1">Matchende skills & certificaten</p>
+                    <div className="flex flex-wrap gap-1">
+                      {(bd.skillMatches ?? []).map((s: string) => <Badge key={`s-${s}`} variant="outline" className="text-xs">{s}</Badge>)}
+                      {(bd.certificationMatches ?? []).map((s: string) => <Badge key={`c-${s}`} variant="outline" className="text-xs">{s}</Badge>)}
+                    </div>
+                  </div>
+                )}
+
+                {bd.distance?.km != null && (
+                  <p className="text-xs text-muted-foreground">Afstand: {Math.round(bd.distance.km)} km{bd.distance.status ? ` (${bd.distance.status})` : ''}</p>
+                )}
+                {typeof detailCandidate._candidateQuality === 'number' && (
+                  <p className="text-xs text-muted-foreground">Algemene AI-kwaliteitsscore: ★ {detailCandidate._candidateQuality}/100</p>
+                )}
+              </div>
+            );
+          })()}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDetailCandidate(null)}>Sluiten</Button>
+            {detailCandidate && (
+              <Button onClick={() => { proposeMutation.mutate(detailCandidate); setDetailCandidate(null); }} disabled={proposeMutation.isPending}>
+                <UserPlus className="h-3 w-3 mr-1" /> Voorstellen
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <PlacementSheet match={placementMatch} vacancy={vacancy} onClose={() => setPlacementMatch(null)} />
 
