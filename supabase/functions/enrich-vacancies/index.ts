@@ -156,6 +156,18 @@ function scheduleSelfTrigger(orgId: string, model: string): Promise<void> | void
   return trigger;
 }
 
+// Bouwt de verwerkingscontext (Gemini-key, org-skill-catalogus, model, pricing) voor één org.
+async function buildCtx(admin: Admin, orgId: string, body: any, userId: string | null, dryRun: boolean): Promise<{ ctx: Ctx } | { error: string; status: number }> {
+  const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+  if (!GEMINI_API_KEY) return { error: "GEMINI_API_KEY ontbreekt", status: 500 };
+  const { data: orgSkills } = await admin.from("skills").select("name").eq("organization_id", orgId).eq("is_active", true).order("name");
+  const catalogue = (orgSkills ?? []).map((s: { name: string }) => s.name).filter(Boolean);
+  if (catalogue.length === 0) return { error: "Geen skills-catalogus voor deze organisatie", status: 400 };
+  const model = (typeof body.model === "string" && body.model) || Deno.env.get("GEMINI_MODEL") || GEMINI_DEFAULT_MODEL;
+  const gp = geminiPricingForModel(model);
+  return { ctx: { apiKey: GEMINI_API_KEY, model, catalogue, pricingIn: gp.inputCentsPerMtok, pricingOut: gp.outputCentsPerMtok, userId, dryRun } };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -165,6 +177,34 @@ Deno.serve(async (req) => {
     const dryRun = body.dry_run === true;
     const maxVacancies = Math.max(0, Number(body.max_vacancies) || 0);
     const batchSize = Math.min(Math.max(1, Number(body.batch_size) || DEFAULT_BATCH_SIZE), MAX_BATCH_SIZE);
+
+    // ── Enkele vacature (bij opslaan / handmatige knop) ──────────────────────
+    // Verrijkt precies één vacature, ongeacht de skills_enriched_at-marker. Auth via RLS:
+    // een ingelogde user mag alleen vacatures van de eigen org lezen → impliciete autorisatie
+    // (elke rol, niet alleen admin — intercedenten maken ook vacatures aan).
+    const singleVacancyId = typeof body.vacancy_id === "string" ? body.vacancy_id : null;
+    if (singleVacancyId) {
+      let vac: VacRow | null = null;
+      let uid: string | null = null;
+      if (isServiceRoleRequest(req)) {
+        const { data } = await admin.from("vacancies").select("id, organization_id, title, description").eq("id", singleVacancyId).maybeSingle();
+        vac = data as VacRow | null;
+      } else {
+        const authHeader = req.headers.get("Authorization");
+        if (!authHeader?.startsWith("Bearer ")) return json({ error: "Niet geautoriseerd" }, 401);
+        const userClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: authHeader } } });
+        const { data: { user }, error: authErr } = await userClient.auth.getUser();
+        if (authErr || !user) return json({ error: "Ongeldige sessie" }, 401);
+        uid = user.id;
+        const { data } = await userClient.from("vacancies").select("id, organization_id, title, description").eq("id", singleVacancyId).maybeSingle();
+        vac = data as VacRow | null;
+      }
+      if (!vac) return json({ error: "Vacature niet gevonden of geen toegang" }, 404);
+      const built = await buildCtx(admin, vac.organization_id, body, uid, dryRun);
+      if ("error" in built) return json({ error: built.error }, built.status);
+      const result = await processVacancy(admin, vac, built.ctx);
+      return json({ success: true, single: true, result });
+    }
 
     // --- Auth ---
     let orgId: string | null = body.organization_id || null;
@@ -189,16 +229,10 @@ Deno.serve(async (req) => {
     }
     if (!orgId) return json({ error: "organization_id onbekend" }, 400);
 
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    if (!GEMINI_API_KEY) return json({ error: "GEMINI_API_KEY ontbreekt" }, 500);
-
-    const { data: orgSkills } = await admin.from("skills").select("name").eq("organization_id", orgId).eq("is_active", true).order("name");
-    const catalogue = (orgSkills ?? []).map((s: { name: string }) => s.name).filter(Boolean);
-    if (catalogue.length === 0) return json({ error: "Geen skills-catalogus voor deze organisatie" }, 400);
-
-    const model = (typeof body.model === "string" && body.model) || Deno.env.get("GEMINI_MODEL") || GEMINI_DEFAULT_MODEL;
-    const gp = geminiPricingForModel(model);
-    const ctx: Ctx = { apiKey: GEMINI_API_KEY, model, catalogue, pricingIn: gp.inputCentsPerMtok, pricingOut: gp.outputCentsPerMtok, userId, dryRun };
+    const built = await buildCtx(admin, orgId, body, userId, dryRun);
+    if ("error" in built) return json({ error: built.error }, built.status);
+    const ctx = built.ctx;
+    const model = ctx.model;
 
     const started = Date.now();
     let done = 0, skipped = 0, failed = 0, costTotal = 0, stopped = false;

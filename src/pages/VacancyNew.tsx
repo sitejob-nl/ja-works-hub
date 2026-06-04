@@ -175,6 +175,14 @@ const VacancyNew = () => {
       qc.invalidateQueries({ queryKey: ['vacancies'] });
       qc.invalidateQueries({ queryKey: ['company-functions'] });
       toast.success('Vacature aangemaakt');
+      // Magere vacature zonder handmatige skills → AI vult required_skills aan uit de
+      // titel/omschrijving (Fase 1.5b). Non-blocking; detailpagina ververst zodra klaar.
+      if (form.required_skills.length === 0) {
+        toast.info('AI vult de vaardigheden aan op basis van de vacaturetekst…');
+        supabase.functions.invoke('enrich-vacancies', { body: { vacancy_id: data.id } })
+          .then(() => qc.invalidateQueries({ queryKey: ['vacancy', data.id] }))
+          .catch(() => { /* niet-blokkerend */ });
+      }
       navigate(`/vacatures/${data.id}`);
     },
     onError: (e: any) => toast.error(e.message),

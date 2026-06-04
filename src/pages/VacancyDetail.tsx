@@ -1,7 +1,7 @@
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { ChevronRight, Edit, UserSearch } from 'lucide-react';
+import { ChevronRight, Edit, UserSearch, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -70,6 +70,22 @@ const VacancyDetail = () => {
     onError: (e: any) => toast.error(e.message),
   });
 
+  // AI-skills aanvullen uit de vacaturetekst (Fase 1.5b). Overschrijft required_skills.
+  const enrichMutation = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke('enrich-vacancies', { body: { vacancy_id: id } });
+      if (error) throw error;
+      if (data?.result?.status === 'failed') throw new Error(data.result.reason ?? 'AI-verrijking mislukt');
+      return data?.result;
+    },
+    onSuccess: (result: any) => {
+      qc.invalidateQueries({ queryKey: ['vacancy', id] });
+      const skills = result?.required_skills ?? [];
+      toast.success(skills.length ? `AI stelde ${skills.length} vaardigheid${skills.length === 1 ? '' : 'heden'} voor` : 'Geen extra vaardigheden gevonden');
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
   if (isLoading || !vacancy) return <div className="p-8 text-muted-foreground">Laden...</div>;
 
   const company = vacancy.companies as any;
@@ -117,6 +133,9 @@ const VacancyDetail = () => {
             }}
           >
             <UserSearch className="h-4 w-4" /> <span className="hidden sm:inline">Zoek kandidaten</span><span className="sm:hidden">Zoeken</span>
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => enrichMutation.mutate()} disabled={enrichMutation.isPending} className="gap-1" title="Vaardigheden uit de vacaturetekst halen met AI">
+            <Sparkles className="h-4 w-4" /> <span className="hidden sm:inline">{enrichMutation.isPending ? 'AI bezig…' : 'AI-skills'}</span>
           </Button>
           <Button variant="outline" size="sm" onClick={() => navigate(`/vacatures/${id}/bewerken`)} className="gap-1">
             <Edit className="h-4 w-4" /> <span className="hidden sm:inline">Bewerken</span>
