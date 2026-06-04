@@ -19,13 +19,24 @@ interface Props {
   totaleJaren?: number;
 }
 
-/** Parse "2019 - 2021" or "jan 2020 - mrt 2022" into approximate start/end years */
+const CURRENT_YEAR = new Date().getFullYear();
+
+/**
+ * Parse "2019 - 2021" or "jan 2020 - mrt 2022" into approximate start/end years.
+ * Harde grens op het huidige jaar: een CV-typo ("2027") of een mis-geparste
+ * "tot heden" mag de tijdlijn nooit naar de toekomst laten doorlopen. "Heden"/
+ * "present" (zonder eindjaar) mapt naar het huidige jaar i.p.v. start + 1.
+ */
 function parseYearRange(periode: string): { start: number; end: number } {
   const nums = periode.match(/\d{4}/g);
-  if (!nums || nums.length === 0) return { start: 2020, end: 2024 };
-  const start = parseInt(nums[0]);
-  const end = nums.length > 1 ? parseInt(nums[nums.length - 1]) : start + 1;
-  return { start, end: Math.max(end, start + 1) };
+  const ongoing = /heden|present|current|\bnu\b|now/i.test(periode);
+  if (!nums || nums.length === 0) return { start: CURRENT_YEAR - 1, end: CURRENT_YEAR };
+  const start = Math.min(parseInt(nums[0]), CURRENT_YEAR);
+  let end = nums.length > 1
+    ? Math.min(parseInt(nums[nums.length - 1]), CURRENT_YEAR)
+    : (ongoing ? CURRENT_YEAR : Math.min(start + 1, CURRENT_YEAR));
+  if (end < start) end = start;
+  return { start, end };
 }
 
 const WorkHistoryTimeline = ({ werkgevers = [], gaten = [], totaleJaren }: Props) => {

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Users, Plus, Search, Upload, CheckCircle2, XCircle, FolderHeart, SlidersHorizontal, UserPlus, Check, X, KeyRound, ArrowUpDown } from 'lucide-react';
@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -189,6 +190,7 @@ const Candidates = () => {
       return { candidates: data ?? [], total: count ?? 0 };
     },
     enabled: activeTab === 'alle',
+    placeholderData: keepPreviousData,
   });
 
   // Query for "In dienst" tab
@@ -250,6 +252,7 @@ const Candidates = () => {
       return { employees: filtered.slice(start, start + PAGE_SIZE), total: filtered.length };
     },
     enabled: activeTab === 'in-dienst',
+    placeholderData: keepPreviousData,
   });
 
   const candidates = data?.candidates ?? [];
@@ -443,7 +446,11 @@ const Candidates = () => {
       {/* ===== ALLE KANDIDATEN TAB ===== */}
       {activeTab === 'alle' && (
         <>
-          {!isLoading && candidates.length === 0 ? (
+          {isLoading ? (
+            <div className="bg-card rounded-lg border p-4 space-y-3">
+              {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
+            </div>
+          ) : candidates.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <Users className="h-12 w-12 text-muted-foreground/40 mb-4" />
               <p className="text-lg font-medium text-muted-foreground">Nog geen kandidaten</p>
@@ -576,7 +583,11 @@ const Candidates = () => {
       {/* ===== IN DIENST TAB ===== */}
       {activeTab === 'in-dienst' && (
         <>
-          {!employeesLoading && employees.length === 0 ? (
+          {employeesLoading ? (
+            <div className="bg-card rounded-lg border p-4 space-y-3">
+              {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
+            </div>
+          ) : employees.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <Users className="h-12 w-12 text-muted-foreground/40 mb-4" />
               <p className="text-lg font-medium text-muted-foreground">Nog geen kandidaten in dienst</p>

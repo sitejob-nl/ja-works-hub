@@ -185,7 +185,7 @@ const CandidateProfileTab = ({ candidate }: { candidate: any }) => {
         <div>
           <p className="text-xs text-muted-foreground">Rijbewijs</p>
           <p className="text-sm mt-0.5">
-            {candidate.has_drivers_license ? 'Ja' : 'Nee'}
+            {candidate.has_drivers_license == null ? 'Onbekend' : candidate.has_drivers_license ? 'Ja' : 'Nee'}
             {candidate.has_drivers_license && candidate.drivers_license_expiry && ` — verloopt ${formatDate(candidate.drivers_license_expiry)}`}
           </p>
         </div>
