@@ -9,6 +9,7 @@ import {
   getAuthenticatedOrg,
   META_API_BASE,
 } from "../_shared/whatsapp-utils.ts";
+import { isOutboundPaused, logConceptCommunication } from "../_shared/outbound-pause.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -171,6 +172,23 @@ Deno.serve(async (req) => {
     // Add reply-to context if provided
     if (context?.message_id) {
       metaPayload.context = { message_id: context.message_id };
+    }
+
+    // Kill-switch: bij gepauzeerde WhatsApp niets versturen, wel als concept loggen.
+    if (await isOutboundPaused(serviceClient, orgId, "whatsapp")) {
+      await logConceptCommunication(serviceClient, {
+        orgId,
+        channel: "whatsapp",
+        subject: `WhatsApp naar ${normalizedTo}`,
+        body: messageBody,
+        candidateId: candidate_id ?? null,
+        sentBy: userId,
+      });
+      return jsonOk({
+        success: false,
+        paused: true,
+        message: "WhatsApp staat op pauze (kill-switch). Bericht is als concept opgeslagen.",
+      });
     }
 
     // Send to Meta Cloud API
