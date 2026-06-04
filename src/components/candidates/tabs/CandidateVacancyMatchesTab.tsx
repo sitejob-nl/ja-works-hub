@@ -181,11 +181,11 @@ const CandidateVacancyMatchesTab = ({ candidateId }: { candidateId: string }) =>
                 {bd.reasoning && <p className="text-muted-foreground">{bd.reasoning}</p>}
                 {components.length > 0 && (
                   <div className="space-y-1.5">
-                    <p className="text-xs font-medium text-muted-foreground uppercase">Score-opbouw</p>
+                    <p className="text-xs font-medium text-muted-foreground uppercase">Score-opbouw (punten per onderdeel)</p>
                     {components.map(([key, val]) => (
                       <div key={key} className="flex items-center justify-between gap-2">
                         <span>{labelNl[key] ?? key}</span>
-                        <span className="text-muted-foreground tabular-nums">{typeof val === 'number' ? `${Math.round(val * 100)}%` : String(val)}</span>
+                        <span className="text-muted-foreground tabular-nums">{typeof val === 'number' ? `${val} pt` : String(val)}</span>
                       </div>
                     ))}
                   </div>
