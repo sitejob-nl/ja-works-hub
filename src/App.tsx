@@ -27,6 +27,7 @@ import CompanyNew from "@/pages/CompanyNew";
 import CompanyDetail from "@/pages/CompanyDetail";
 import CompanyEdit from "@/pages/CompanyEdit";
 import Candidates from "@/pages/Candidates";
+import DuplicateCandidates from "@/pages/DuplicateCandidates";
 import CandidateNew from "@/pages/CandidateNew";
 import CandidateDetail from "@/pages/CandidateDetail";
 import CandidateEdit from "@/pages/CandidateEdit";
@@ -154,6 +155,7 @@ const App = () => (
               <Route path="/opdrachtgevers/:id/bewerken" element={<CompanyEdit />} />
               <Route path="/kandidaten" element={<Candidates />} />
               <Route path="/kandidaten/new" element={<CandidateNew />} />
+              <Route path="/kandidaten/duplicaten" element={<DuplicateCandidates />} />
               <Route path="/kandidaten/:id" element={<CandidateDetail />} />
               <Route path="/kandidaten/:id/bewerken" element={<CandidateEdit />} />
               <Route path="/medewerkers" element={<Navigate to="/kandidaten?tab=in-dienst" replace />} />
