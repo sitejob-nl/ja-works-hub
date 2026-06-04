@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { useAuth } from '@/contexts/AuthContext';
 import { Link } from 'react-router-dom';
-import { Search, UserPlus, Sparkles, Mail, Star, X } from 'lucide-react';
+import { Search, UserPlus, Sparkles, Mail, Star, X, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -17,7 +17,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
 import PlacementSheet from '@/components/vacancies/PlacementSheet';
 import { type MatchBreakdown } from '@/lib/matching';
 
@@ -30,6 +29,12 @@ const COLUMNS = [
   { key: 'geaccepteerd', label: 'Geaccepteerd', color: 'bg-emerald-500' },
   { key: 'afgewezen', label: 'Afgewezen', color: 'bg-red-500' },
 ] as const;
+
+const STATUS_LABEL: Record<string, string> = Object.fromEntries(COLUMNS.map((c) => [c.key, c.label]));
+STATUS_LABEL.geplaatst = 'Geplaatst';
+const STATUS_COLOR: Record<string, string> = Object.fromEntries(COLUMNS.map((c) => [c.key, c.color]));
+STATUS_COLOR.geplaatst = 'bg-emerald-600';
+const TERMINAL_STATUSES = ['afgewezen', 'geaccepteerd', 'geplaatst'];
 
 const sourceLabel: Record<string, string> = {
   sollicitatie: 'Sollicitatie',
@@ -59,12 +64,21 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [scoreFilter, setScoreFilter] = useState<'strong' | '60' | '70' | '80' | 'all'>('strong');
   const [selectedShortlist, setSelectedShortlist] = useState<Set<string>>(new Set());
-  const [detailCandidate, setDetailCandidate] = useState<any | null>(null);
+  // Detail-dialoog: werkt zowel voor een shortlist-kandidaat (met candidate → "Voorstellen")
+  // als voor een bestaande match (alleen lezen, breakdown uit match_breakdown).
+  const [detail, setDetail] = useState<{ name: string; breakdown: any; quality?: number | null; candidate?: any } | null>(null);
   const showWeakMatches = scoreFilter === 'all';
   const minScore = scoreFilter === '60' ? 60 : scoreFilter === '70' ? 70 : scoreFilter === '80' ? 80 : 0;
-  const [feedbackRequest, setFeedbackRequest] = useState<{ matchId: string; fromStatus: string; toStatus: string } | null>(null);
+  // Feedback bij statuswijziging — matchIds zodat we het ook voor bulk kunnen gebruiken.
+  const [feedbackRequest, setFeedbackRequest] = useState<{ matchIds: string[]; toStatus: string } | null>(null);
   const [feedbackReasonId, setFeedbackReasonId] = useState('');
   const [feedbackNotes, setFeedbackNotes] = useState('');
+  // Match-pipeline lijst: statusfilter + selectie + bulk-bericht.
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [selectedMatches, setSelectedMatches] = useState<Set<string>>(new Set());
+  const [bulkMessageOpen, setBulkMessageOpen] = useState(false);
+  const [bulkMessageText, setBulkMessageText] = useState('');
+  const [bulkSending, setBulkSending] = useState(false);
 
   const { data: matches } = useQuery({
     queryKey: ['vacancy-matches', vacancy.id],
@@ -133,31 +147,30 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
     enabled: !!matches,
   });
 
-  const proposeMutation = useMutation({
-    mutationFn: async (candidate: any) => {
-      const score = candidate._vacancyScore;
-      const { data: match, error } = await (supabase as any).from('matches').insert({
-        organization_id: orgId,
-        vacancy_id: vacancy.id,
-        candidate_id: candidate.id,
-        proposed_by: user?.id ?? null,
-        status: 'nieuwe_match' as any,
-        source: 'eigen_match',
-        match_score: score?.matchPercent ?? null,
-        match_reasoning: score?.reasoning ?? null,
-        match_breakdown: (score ?? null) as any,
-        distance_km: score?.distance?.km ?? null,
-        // duration_min wordt door calculate-match (Mapbox) gezet; shortlist heeft 'm niet.
-      }).select('id').single();
-      if (error) throw error;
+  const insertMatch = async (candidate: any) => {
+    const score = candidate._vacancyScore;
+    const { data: match, error } = await (supabase as any).from('matches').insert({
+      organization_id: orgId,
+      vacancy_id: vacancy.id,
+      candidate_id: candidate.id,
+      proposed_by: user?.id ?? null,
+      status: 'nieuwe_match' as any,
+      source: 'eigen_match',
+      match_score: score?.matchPercent ?? null,
+      match_reasoning: score?.reasoning ?? null,
+      match_breakdown: (score ?? null) as any,
+      distance_km: score?.distance?.km ?? null,
+    }).select('id').single();
+    if (error) throw error;
+    try {
+      await supabase.functions.invoke('calculate-match', {
+        body: { match_id: match.id, candidate_id: candidate.id, vacancy_id: vacancy.id },
+      });
+    } catch { /* non-blocking */ }
+  };
 
-      // Trigger AI match scoring
-      try {
-        await supabase.functions.invoke('calculate-match', {
-          body: { match_id: match.id, candidate_id: candidate.id, vacancy_id: vacancy.id },
-        });
-      } catch { /* non-blocking */ }
-    },
+  const proposeMutation = useMutation({
+    mutationFn: insertMatch,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['vacancy-matches', vacancy.id] });
       qc.invalidateQueries({ queryKey: ['available-candidates-for-vacancy'] });
@@ -169,27 +182,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
   // Bulk: stel meerdere geselecteerde kandidaten in één keer voor.
   const bulkProposeMutation = useMutation({
     mutationFn: async (candidates: any[]) => {
-      for (const candidate of candidates) {
-        const score = candidate._vacancyScore;
-        const { data: match, error } = await (supabase as any).from('matches').insert({
-          organization_id: orgId,
-          vacancy_id: vacancy.id,
-          candidate_id: candidate.id,
-          proposed_by: user?.id ?? null,
-          status: 'nieuwe_match' as any,
-          source: 'eigen_match',
-          match_score: score?.matchPercent ?? null,
-          match_reasoning: score?.reasoning ?? null,
-          match_breakdown: (score ?? null) as any,
-          distance_km: score?.distance?.km ?? null,
-        }).select('id').single();
-        if (error) throw error;
-        try {
-          await supabase.functions.invoke('calculate-match', {
-            body: { match_id: match.id, candidate_id: candidate.id, vacancy_id: vacancy.id },
-          });
-        } catch { /* non-blocking */ }
-      }
+      for (const candidate of candidates) await insertMatch(candidate);
       return candidates.length;
     },
     onSuccess: (count) => {
@@ -225,7 +218,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
       const { error } = await supabase.from('matches').update({ status, status_changed_at: new Date().toISOString() } as any).eq('id', matchId);
       if (error) throw error;
 
-      if (reasonId || notes || ['afgewezen', 'geaccepteerd', 'geplaatst'].includes(status)) {
+      if (reasonId || notes || TERMINAL_STATUSES.includes(status)) {
         const { error: feedbackError } = await (supabase as any).from('match_feedback_events').insert({
           organization_id: orgId,
           match_id: matchId,
@@ -252,7 +245,6 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
       if (ctx?.previous) qc.setQueryData(['vacancy-matches', vacancy.id], ctx.previous);
       toast.error(e.message);
     },
-    onSuccess: () => toast.success('Match status bijgewerkt'),
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ['vacancy-matches', vacancy.id] });
       qc.invalidateQueries({ queryKey: ['match-pipeline'] });
@@ -286,10 +278,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
       const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-match-proposal`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session?.access_token}`,
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
         body: JSON.stringify({ match_id: matchId }),
       });
       const json = await res.json();
@@ -305,48 +294,92 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
     onError: (e: any) => toast.error(e.message),
   });
 
-  const grouped: Record<string, any[]> = {};
-  for (const col of COLUMNS) grouped[col.key] = [];
-  for (const m of (matches ?? [])) {
-    if (grouped[m.status]) grouped[m.status].push(m);
-  }
+  // Counts per status (voor de filterchips).
+  const counts: Record<string, number> = { all: (matches ?? []).length };
+  for (const col of COLUMNS) counts[col.key] = 0;
+  for (const m of (matches ?? [])) counts[(m as any).status] = (counts[(m as any).status] ?? 0) + 1;
 
-  const onDragEnd = (result: DropResult) => {
-    const { draggableId, destination, source } = result;
-    if (!destination || destination.droppableId === source.droppableId) return;
-    if (['afgewezen', 'geaccepteerd', 'geplaatst'].includes(destination.droppableId)) {
-      setFeedbackRequest({ matchId: draggableId, fromStatus: source.droppableId, toStatus: destination.droppableId });
+  const visibleMatches = (matches ?? []).filter((m: any) => statusFilter === 'all' || m.status === statusFilter);
+  const selectedMatchRows = visibleMatches.filter((m: any) => selectedMatches.has(m.id));
+  const allMatchesSelected = visibleMatches.length > 0 && visibleMatches.every((m: any) => selectedMatches.has(m.id));
+  const toggleMatch = (id: string) => setSelectedMatches((s) => {
+    const next = new Set(s);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const toggleAllMatches = () => setSelectedMatches(allMatchesSelected ? new Set() : new Set(visibleMatches.map((m: any) => m.id)));
+
+  // Statuswijziging (1 of meer matches). Terminale statussen vragen eerst een feedbackreden.
+  const changeStatus = (matchIds: string[], toStatus: string) => {
+    if (!matchIds.length) return;
+    if (TERMINAL_STATUSES.includes(toStatus)) {
+      setFeedbackRequest({ matchIds, toStatus });
       setFeedbackReasonId('');
       setFeedbackNotes('');
       return;
     }
-    statusMutation.mutate({ matchId: draggableId, status: destination.droppableId });
-  };
-
-  const requestStatusChange = (matchId: string, fromStatus: string, toStatus: string) => {
-    if (['afgewezen', 'geaccepteerd', 'geplaatst'].includes(toStatus)) {
-      setFeedbackRequest({ matchId, fromStatus, toStatus });
-      setFeedbackReasonId('');
-      setFeedbackNotes('');
-      return;
-    }
-    statusMutation.mutate({ matchId, status: toStatus });
+    Promise.all(matchIds.map((id) => statusMutation.mutateAsync({ matchId: id, status: toStatus })))
+      .then(() => { if (matchIds.length > 1) toast.success(`${matchIds.length} matches → ${STATUS_LABEL[toStatus]}`); else toast.success('Status bijgewerkt'); setSelectedMatches(new Set()); })
+      .catch(() => { /* per-mutation toast */ });
   };
 
   const submitFeedbackStatusChange = () => {
     if (!feedbackRequest) return;
-    statusMutation.mutate({
-      matchId: feedbackRequest.matchId,
-      status: feedbackRequest.toStatus,
-      reasonId: feedbackReasonId || null,
-      notes: feedbackNotes,
-    }, {
-      onSuccess: () => {
-        setFeedbackRequest(null);
-        setFeedbackReasonId('');
-        setFeedbackNotes('');
-      },
-    });
+    const { matchIds, toStatus } = feedbackRequest;
+    Promise.all(matchIds.map((id) => statusMutation.mutateAsync({ matchId: id, status: toStatus, reasonId: feedbackReasonId || null, notes: feedbackNotes })))
+      .then(() => {
+        toast.success(matchIds.length > 1 ? `${matchIds.length} matches → ${STATUS_LABEL[toStatus]}` : 'Status bijgewerkt');
+        setFeedbackRequest(null); setFeedbackReasonId(''); setFeedbackNotes(''); setSelectedMatches(new Set());
+      })
+      .catch(() => { /* per-mutation toast */ });
+  };
+
+  // Bulk interesse-bericht: stuur per geselecteerde kandidaat een WhatsApp met ja/nee-knoppen.
+  // De button-reply-id codeert de match (match_ja:<id> / match_nee:<id>) zodat de webhook later
+  // automatisch de fase kan bijwerken. Sturen kan alleen als WhatsApp is gekoppeld.
+  const openBulkMessage = () => {
+    setBulkMessageText(`Hoi {voornaam}, we hebben een passende functie voor je: ${vacancy.title}. Heb je interesse?`);
+    setBulkMessageOpen(true);
+  };
+
+  const sendBulkMessage = async () => {
+    const rows = selectedMatchRows.filter((m: any) => m.candidates?.phone);
+    const noPhone = selectedMatchRows.length - rows.length;
+    if (!rows.length) { toast.error('Geen geselecteerde kandidaten met een telefoonnummer'); return; }
+    setBulkSending(true);
+    let sent = 0; const failed: string[] = [];
+    for (const m of rows) {
+      const c = m.candidates;
+      const text = bulkMessageText.replaceAll('{voornaam}', c.first_name ?? '').replaceAll('{vacature}', vacancy.title ?? '');
+      try {
+        const { error } = await supabase.functions.invoke('whatsapp-send', {
+          body: {
+            to: c.phone,
+            type: 'interactive',
+            candidate_id: c.id,
+            interactive: {
+              type: 'button',
+              body: { text },
+              action: {
+                buttons: [
+                  { type: 'reply', reply: { id: `match_ja:${m.id}`, title: 'Ja, interesse' } },
+                  { type: 'reply', reply: { id: `match_nee:${m.id}`, title: 'Nee, bedankt' } },
+                ],
+              },
+            },
+          },
+        });
+        if (error) throw new Error(error.message);
+        sent++;
+      } catch (e: any) {
+        failed.push(`${c.first_name}: ${String(e.message).slice(0, 80)}`);
+      }
+    }
+    setBulkSending(false);
+    setBulkMessageOpen(false);
+    setSelectedMatches(new Set());
+    if (sent) toast.success(`${sent} interesse-bericht${sent === 1 ? '' : 'en'} verstuurd${noPhone ? ` (${noPhone} zonder telefoon overgeslagen)` : ''}`);
+    if (failed.length) toast.error(`${failed.length} mislukt: ${failed[0]}`);
   };
 
   // Shortlist na client-side drempelfilter (server levert de top-25 op score).
@@ -364,113 +397,139 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
     allShortlistSelected ? new Set() : new Set(filteredShortlist.map((c: any) => c.id)),
   );
 
+  // Volgende logische fase (voor de snelle "→"-knop per rij).
+  const nextStatus: Record<string, string> = {
+    nieuwe_match: 'gescreend', gescreend: 'voorgesteld', voorgesteld: 'voorgesteld_bij_klant',
+    voorgesteld_bij_klant: 'in_gesprek', in_gesprek: 'geaccepteerd',
+  };
+
   return (
     <div className="mt-4 space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <h3 className="font-semibold">Match pipeline — sleep kaarten tussen kolommen om status te wijzigen</h3>
+        <h3 className="font-semibold">Match-pipeline</h3>
         <Button variant="outline" size="sm" onClick={() => rescoreMutation.mutate()} disabled={rescoreMutation.isPending || !(matches?.length)}>
           <Sparkles className="h-3 w-3 mr-1" /> {rescoreMutation.isPending ? 'Berekenen...' : 'Herbereken scores'}
         </Button>
       </div>
 
-      <DragDropContext onDragEnd={onDragEnd}>
-        <div className="flex gap-3 overflow-x-auto pb-4">
-          {COLUMNS.map((col) => (
-            <Droppable key={col.key} droppableId={col.key}>
-              {(provided, snapshot) => (
-                <div
-                  ref={provided.innerRef}
-                  {...provided.droppableProps}
-                  className={cn(
-                    'flex-shrink-0 w-64 rounded-lg p-2 transition-colors bg-muted/40',
-                    snapshot.isDraggingOver && 'bg-accent/60'
-                  )}
-                >
-                  <div className="flex items-center gap-2 mb-3 px-1">
-                    <div className={cn('w-2 h-2 rounded-full', col.color)} />
-                    <span className="text-sm font-medium">{col.label}</span>
-                    <Badge variant="outline" className="text-xs ml-auto">{grouped[col.key].length}</Badge>
-                  </div>
-                  <div className="space-y-2 min-h-[120px]">
-                    {grouped[col.key].map((m: any, index: number) => {
-                      const c = m.candidates as any;
-                      return (
-                        <Draggable key={m.id} draggableId={m.id} index={index}>
-                          {(dragProvided, dragSnapshot) => (
-                            <div
-                              ref={dragProvided.innerRef}
-                              {...dragProvided.draggableProps}
-                              {...dragProvided.dragHandleProps}
-                              className={cn(dragSnapshot.isDragging && 'opacity-90')}
-                            >
-                              <Card className="hover:shadow-md transition-shadow cursor-grab active:cursor-grabbing">
-                                <CardContent className="p-3 space-y-2">
-                                  <div className="flex items-start justify-between gap-1">
-                                    <Link
-                                      to={`/kandidaten/${c.id}`}
-                                      className="text-sm font-medium hover:text-primary truncate"
-                                      onClick={(e) => e.stopPropagation()}
-                                    >
-                                      {c.first_name} {c.last_name}
-                                    </Link>
-                                    {m.match_score != null && (
-                                      <div className="flex items-center gap-0.5 text-xs text-amber-600 flex-shrink-0">
-                                        <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
-                                        {Math.round(m.match_score)}%
-                                      </div>
-                                    )}
-                                  </div>
-                                  {m.source && (
-                                    <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                                      {sourceLabel[m.source] ?? m.source}
-                                    </Badge>
-                                  )}
-                                  {m.match_reasoning && (
-                                    <p className="text-[11px] text-muted-foreground line-clamp-2">{m.match_reasoning}</p>
-                                  )}
-                                  {(m.duration_min || m.distance_km) && (
-                                    <p className="text-[11px] text-muted-foreground">
-                                      Reistijd: {m.duration_min ? `${Math.round(m.duration_min)} min` : 'onbekend'}{m.distance_km ? `, ${Math.round(m.distance_km)} km` : ''}
-                                    </p>
-                                  )}
-                                  {m.match_breakdown?.positives?.length > 0 && (
-                                    <p className="text-[11px] text-emerald-700 line-clamp-1">{m.match_breakdown.positives[0]}</p>
-                                  )}
-                                  {m.match_breakdown?.missing?.length > 0 && (
-                                    <p className="text-[11px] text-amber-700 line-clamp-1">{m.match_breakdown.missing[0]}</p>
-                                  )}
-                                  <div className="flex gap-1 pt-1">
-                                    {col.key === 'voorgesteld' && (
-                                      <Button size="sm" variant="outline" className="h-7 text-xs flex-1" onClick={() => openPreview(m.id)} disabled={previewLoading && previewMatchId === m.id}>
-                                        <Mail className="h-3 w-3 mr-1" /> {previewLoading && previewMatchId === m.id ? '...' : 'Mail versturen'}
-                                      </Button>
-                                    )}
-                                    {col.key === 'geaccepteerd' && (
-                                      <Button size="sm" className="h-7 text-xs flex-1" onClick={() => setPlacementMatch(m)}>
-                                        Plaatsen
-                                      </Button>
-                                    )}
-                                    {col.key !== 'afgewezen' && col.key !== 'geaccepteerd' && (
-                                      <Button size="sm" variant="ghost" className="h-7 text-xs text-red-600" onClick={() => requestStatusChange(m.id, col.key, 'afgewezen')}>
-                                        <X className="h-3 w-3" />
-                                      </Button>
-                                    )}
-                                  </div>
-                                </CardContent>
-                              </Card>
-                            </div>
-                          )}
-                        </Draggable>
-                      );
-                    })}
-                    {provided.placeholder}
-                  </div>
-                </div>
-              )}
-            </Droppable>
-          ))}
+      {/* Statusfilter-chips met telling */}
+      <div className="flex gap-1.5 flex-wrap">
+        <button
+          onClick={() => { setStatusFilter('all'); setSelectedMatches(new Set()); }}
+          className={cn('text-xs rounded-full border px-2.5 py-1 transition-colors', statusFilter === 'all' ? 'bg-primary text-primary-foreground border-primary' : 'hover:bg-muted')}
+        >
+          Alle <span className="tabular-nums">({counts.all})</span>
+        </button>
+        {COLUMNS.map((col) => (
+          <button
+            key={col.key}
+            onClick={() => { setStatusFilter(col.key); setSelectedMatches(new Set()); }}
+            className={cn('text-xs rounded-full border px-2.5 py-1 transition-colors flex items-center gap-1.5', statusFilter === col.key ? 'bg-primary text-primary-foreground border-primary' : 'hover:bg-muted')}
+          >
+            <span className={cn('w-1.5 h-1.5 rounded-full', col.color)} /> {col.label} <span className="tabular-nums">({counts[col.key] ?? 0})</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Bulk-actiebalk */}
+      {visibleMatches.length > 0 && (
+        <div className="flex items-center justify-between gap-3 flex-wrap rounded-md border bg-muted/30 px-3 py-2">
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <Checkbox checked={allMatchesSelected} onCheckedChange={toggleAllMatches} />
+            {selectedMatches.size > 0 ? `${selectedMatches.size} geselecteerd` : `Alles selecteren (${visibleMatches.length})`}
+          </label>
+          {selectedMatches.size > 0 && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button size="sm" variant="ghost" onClick={() => setSelectedMatches(new Set())}>Wissen</Button>
+              <Select value="" onValueChange={(v) => changeStatus([...selectedMatches], v)}>
+                <SelectTrigger className="h-8 w-auto gap-1 text-xs"><SelectValue placeholder="Status wijzigen…" /></SelectTrigger>
+                <SelectContent>
+                  {COLUMNS.map((col) => <SelectItem key={col.key} value={col.key}>{col.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Button size="sm" onClick={openBulkMessage} className="gap-1.5">
+                <MessageSquare className="h-3.5 w-3.5" /> Interesse-bericht ({selectedMatches.size})
+              </Button>
+            </div>
+          )}
         </div>
-      </DragDropContext>
+      )}
+
+      {/* Matchlijst (rijen onder elkaar i.p.v. kaarten) */}
+      <div className="space-y-2">
+        {visibleMatches.map((m: any) => {
+          const c = m.candidates ?? {};
+          const checked = selectedMatches.has(m.id);
+          const bd = m.match_breakdown;
+          return (
+            <Card key={m.id} className={cn('p-3', checked && 'ring-1 ring-primary')}>
+              <div className="flex items-start gap-3">
+                <Checkbox className="mt-1 flex-shrink-0" checked={checked} onCheckedChange={() => toggleMatch(m.id)} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                    <Link to={`/kandidaten/${c.id}`} className="font-medium text-sm hover:text-primary truncate">{c.first_name} {c.last_name}</Link>
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 flex items-center gap-1 flex-shrink-0">
+                      <span className={cn('w-1.5 h-1.5 rounded-full', STATUS_COLOR[m.status] ?? 'bg-slate-400')} /> {STATUS_LABEL[m.status] ?? m.status}
+                    </Badge>
+                    {m.match_score != null && (
+                      <span className="flex items-center gap-0.5 text-xs text-amber-600 flex-shrink-0">
+                        <Star className="h-3 w-3 fill-amber-400 text-amber-400" /> {Math.round(m.match_score)}%
+                      </span>
+                    )}
+                    {m.source && <Badge variant="outline" className="text-[10px] px-1.5 py-0 flex-shrink-0">{sourceLabel[m.source] ?? m.source}</Badge>}
+                  </div>
+                  <div className="flex gap-1 mt-1 flex-wrap">
+                    {(bd?.skillMatches ?? []).slice(0, 4).map((s: string) => <Badge key={`skill-${s}`} variant="outline" className="text-xs">{s}</Badge>)}
+                    {(bd?.certificationMatches ?? []).slice(0, 2).map((s: string) => <Badge key={`cert-${s}`} variant="outline" className="text-xs">{s}</Badge>)}
+                  </div>
+                  {(m.duration_min || m.distance_km) && (
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      Reistijd: {m.duration_min ? `${Math.round(m.duration_min)} min` : 'onbekend'}{m.distance_km ? `, ${Math.round(m.distance_km)} km` : ''}
+                    </p>
+                  )}
+                  {bd?.missing?.length > 0 && <p className="text-[11px] text-amber-700 mt-1 line-clamp-1">{bd.missing[0]}</p>}
+                </div>
+                <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                  <div className="flex items-center gap-1">
+                    {m.status === 'voorgesteld' && (
+                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => openPreview(m.id)} disabled={previewLoading && previewMatchId === m.id}>
+                        <Mail className="h-3 w-3 mr-1" /> {previewLoading && previewMatchId === m.id ? '...' : 'Mail'}
+                      </Button>
+                    )}
+                    {m.status === 'geaccepteerd' && (
+                      <Button size="sm" className="h-7 text-xs" onClick={() => setPlacementMatch(m)}>Plaatsen</Button>
+                    )}
+                    {nextStatus[m.status] && (
+                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => changeStatus([m.id], nextStatus[m.status])} title={`Naar ${STATUS_LABEL[nextStatus[m.status]]}`}>
+                        → {STATUS_LABEL[nextStatus[m.status]]}
+                      </Button>
+                    )}
+                    {!TERMINAL_STATUSES.includes(m.status) && (
+                      <Button size="sm" variant="ghost" className="h-7 text-xs text-red-600" onClick={() => changeStatus([m.id], 'afgewezen')} title="Afwijzen">
+                        <X className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 text-xs text-muted-foreground"
+                    disabled={!bd}
+                    onClick={() => setDetail({ name: `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim(), breakdown: bd, quality: m.match_score })}
+                  >
+                    Waarom?
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          );
+        })}
+        {visibleMatches.length === 0 && (
+          <p className="text-sm text-muted-foreground py-6 text-center">
+            {statusFilter === 'all' ? 'Nog geen matches. Stel hieronder kandidaten voor uit de database.' : `Geen matches in "${STATUS_LABEL[statusFilter]}".`}
+          </p>
+        )}
+      </div>
 
       <div className="border-t pt-6 space-y-4">
         <div>
@@ -561,7 +620,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
                     <Button size="sm" variant="outline" onClick={() => proposeMutation.mutate(c)} disabled={proposeMutation.isPending}>
                       <UserPlus className="h-3 w-3 mr-1" /> Nieuwe match
                     </Button>
-                    <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground" onClick={() => setDetailCandidate(c)}>
+                    <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground" onClick={() => setDetail({ name: `${c.first_name} ${c.last_name}`, breakdown: c._vacancyScore, quality: c._candidateQuality, candidate: c })}>
                       Waarom?
                     </Button>
                   </div>
@@ -576,27 +635,28 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
         </div>
       </div>
 
-      <Dialog open={!!detailCandidate} onOpenChange={(open) => { if (!open) setDetailCandidate(null); }}>
+      {/* Waarom-detail (shortlist-kandidaat of bestaande match) */}
+      <Dialog open={!!detail} onOpenChange={(open) => { if (!open) setDetail(null); }}>
         <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               Waarom deze match?
-              {detailCandidate?._vacancyScore && (
-                <Badge className={cn('text-xs', scoreBadgeClass[detailCandidate._vacancyScore.label as MatchBreakdown['label']])}>
-                  {detailCandidate._vacancyScore.matchPercent}%
+              {detail?.breakdown && (
+                <Badge className={cn('text-xs', scoreBadgeClass[detail.breakdown.label as MatchBreakdown['label']])}>
+                  {detail.breakdown.matchPercent}%
                 </Badge>
               )}
             </DialogTitle>
-            <DialogDescription>
-              {detailCandidate?.first_name} {detailCandidate?.last_name} — opbouw van de matchscore.
-            </DialogDescription>
+            <DialogDescription>{detail?.name} — opbouw van de matchscore.</DialogDescription>
           </DialogHeader>
-          {detailCandidate?._vacancyScore && (() => {
-            const bd = detailCandidate._vacancyScore;
+          {!detail?.breakdown && <p className="text-sm text-muted-foreground">Geen score-opbouw beschikbaar voor deze match.</p>}
+          {detail?.breakdown && (() => {
+            const bd = detail.breakdown;
             const components = Object.entries(bd.componentScores ?? {}) as [string, any][];
             const labelNl: Record<string, string> = {
               skills: 'Vaardigheden', certifications: 'Certificaten', functionGroup: 'Functiegroep',
-              distance: 'Afstand', availability: 'Beschikbaarheid',
+              distance: 'Afstand', availability: 'Beschikbaarheid', reliability: 'Betrouwbaarheid',
+              language: 'Taal', experience: 'Ervaring',
             };
             return (
               <div className="space-y-4 text-sm">
@@ -660,16 +720,16 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
                 {bd.distance?.km != null && (
                   <p className="text-xs text-muted-foreground">Afstand: {Math.round(bd.distance.km)} km{bd.distance.status ? ` (${bd.distance.status})` : ''}</p>
                 )}
-                {typeof detailCandidate._candidateQuality === 'number' && (
-                  <p className="text-xs text-muted-foreground">Algemene AI-kwaliteitsscore: ★ {detailCandidate._candidateQuality}/100</p>
+                {typeof detail.quality === 'number' && detail.candidate && (
+                  <p className="text-xs text-muted-foreground">Algemene AI-kwaliteitsscore: ★ {detail.quality}/100</p>
                 )}
               </div>
             );
           })()}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDetailCandidate(null)}>Sluiten</Button>
-            {detailCandidate && (
-              <Button onClick={() => { proposeMutation.mutate(detailCandidate); setDetailCandidate(null); }} disabled={proposeMutation.isPending}>
+            <Button variant="outline" onClick={() => setDetail(null)}>Sluiten</Button>
+            {detail?.candidate && (
+              <Button onClick={() => { proposeMutation.mutate(detail.candidate); setDetail(null); }} disabled={proposeMutation.isPending}>
                 <UserPlus className="h-3 w-3 mr-1" /> Voorstellen
               </Button>
             )}
@@ -692,13 +752,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
                 <div><span className="text-muted-foreground">Onderwerp:</span> <span className="font-medium">{previewData.subject}</span></div>
               </div>
               <div className="flex-1 overflow-auto border rounded">
-                <iframe
-                  title="email-preview"
-                  srcDoc={previewData.html}
-                  sandbox=""
-                  className="w-full"
-                  style={{ height: '500px' }}
-                />
+                <iframe title="email-preview" srcDoc={previewData.html} sandbox="" className="w-full" style={{ height: '500px' }} />
               </div>
             </>
           ) : (
@@ -706,37 +760,58 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => { setPreviewMatchId(null); setPreviewData(null); }}>Annuleren</Button>
-            <Button
-              onClick={() => previewMatchId && sendProposalMutation.mutate(previewMatchId)}
-              disabled={!previewData || sendProposalMutation.isPending}
-            >
+            <Button onClick={() => previewMatchId && sendProposalMutation.mutate(previewMatchId)} disabled={!previewData || sendProposalMutation.isPending}>
               {sendProposalMutation.isPending ? 'Versturen...' : 'Versturen naar opdrachtgever'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
+      {/* Bulk interesse-bericht (WhatsApp ja/nee) */}
+      <Dialog open={bulkMessageOpen} onOpenChange={(open) => { if (!open && !bulkSending) setBulkMessageOpen(false); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Interesse-bericht sturen</DialogTitle>
+            <DialogDescription>
+              Stuurt elke geselecteerde kandidaat een WhatsApp met ja/nee-knoppen. {`{voornaam}`} en {`{vacature}`} worden ingevuld.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Textarea value={bulkMessageText} onChange={(e) => setBulkMessageText(e.target.value)} rows={4} />
+            <p className="text-xs text-muted-foreground">
+              {selectedMatchRows.length} geselecteerd
+              {selectedMatchRows.filter((m: any) => !m.candidates?.phone).length > 0 &&
+                ` — ${selectedMatchRows.filter((m: any) => !m.candidates?.phone).length} zonder telefoonnummer worden overgeslagen`}.
+              Een "Ja"-antwoord kan de match later automatisch naar de volgende fase verplaatsen (vereist gekoppelde WhatsApp).
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkMessageOpen(false)} disabled={bulkSending}>Annuleren</Button>
+            <Button onClick={sendBulkMessage} disabled={bulkSending || !bulkMessageText.trim()}>
+              <MessageSquare className="h-3.5 w-3.5 mr-1" /> {bulkSending ? 'Versturen…' : 'Versturen'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Feedback bij statuswijziging (1 of meer matches) */}
       <Dialog open={!!feedbackRequest} onOpenChange={(open) => { if (!open) setFeedbackRequest(null); }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Feedback vastleggen</DialogTitle>
             <DialogDescription>
-              Leg vast waarom deze match naar {feedbackRequest?.toStatus?.replaceAll('_', ' ')} gaat.
+              Leg vast waarom {feedbackRequest && feedbackRequest.matchIds.length > 1 ? `${feedbackRequest.matchIds.length} matches` : 'deze match'} naar {feedbackRequest?.toStatus?.replaceAll('_', ' ')} gaat.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>Reden{feedbackRequest?.toStatus === 'afgewezen' ? ' *' : ''}</Label>
               <Select value={feedbackReasonId} onValueChange={setFeedbackReasonId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Kies een reden" />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Kies een reden" /></SelectTrigger>
                 <SelectContent>
                   {feedbackReasons
                     .filter((reason: any) => reason.applies_to === feedbackRequest?.toStatus)
-                    .map((reason: any) => (
-                      <SelectItem key={reason.id} value={reason.id}>{reason.reason}</SelectItem>
-                    ))}
+                    .map((reason: any) => <SelectItem key={reason.id} value={reason.id}>{reason.reason}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -747,10 +822,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setFeedbackRequest(null)}>Annuleren</Button>
-            <Button
-              onClick={submitFeedbackStatusChange}
-              disabled={statusMutation.isPending || (feedbackRequest?.toStatus === 'afgewezen' && !feedbackReasonId)}
-            >
+            <Button onClick={submitFeedbackStatusChange} disabled={statusMutation.isPending || (feedbackRequest?.toStatus === 'afgewezen' && !feedbackReasonId)}>
               Status bijwerken
             </Button>
           </DialogFooter>
