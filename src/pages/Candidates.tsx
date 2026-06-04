@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Users, Plus, Search, Upload, CheckCircle2, XCircle, FolderHeart, SlidersHorizontal, UserPlus, Check, X, KeyRound, ArrowUpDown } from 'lucide-react';
+import { Users, Plus, Search, Upload, CheckCircle2, XCircle, FolderHeart, SlidersHorizontal, UserPlus, Check, X, KeyRound, ArrowUpDown, Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -327,6 +327,9 @@ const Candidates = () => {
               </Button>
               <Button variant="outline" size="sm" onClick={() => { setImportPreset('buddy'); setImportOpen(true); }} className="gap-1.5 hidden md:flex">
                 <Upload className="h-4 w-4" /> Buddy import
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => navigate('/kandidaten/duplicaten')} className="gap-1.5 hidden md:flex">
+                <Copy className="h-4 w-4" /> Duplicaten
               </Button>
               <Button size="sm" onClick={() => navigate('/kandidaten/new')} className="gap-1.5">
                 <Plus className="h-4 w-4" /> <span className="hidden sm:inline">Nieuwe kandidaat</span><span className="sm:hidden">Nieuw</span>
