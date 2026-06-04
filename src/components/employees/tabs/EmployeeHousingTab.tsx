@@ -21,7 +21,7 @@ const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
     queryKey: ['housing-assignments', candidateId],
     queryFn: async () => {
       const { data, error } = await supabase.from('housing_assignments')
-        .select('*, units!housing_assignments_unit_id_fkey(id, name, properties!units_property_id_fkey(id, name))')
+        .select('*, units!housing_assignments_unit_id_fkey(id, name, properties!units_property_id_fkey(id, name, address_street, address_city))')
         .eq('candidate_id', candidateId)
         .order('check_in_date', { ascending: false });
       if (error) throw error;
@@ -123,7 +123,7 @@ const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
         </div>
         {active && (
           <div className="grid grid-cols-2 gap-4">
-            <div><p className="text-xs text-muted-foreground">Pand</p><p className="text-sm"><EntityLink type="property" id={(active as any).units?.properties?.id}>{(active as any).units?.properties?.name ?? '—'}</EntityLink></p></div>
+            <div><p className="text-xs text-muted-foreground">Pand</p><p className="text-sm"><EntityLink type="property" id={(active as any).units?.properties?.id}>{propertyLabel((active as any).units?.properties)}</EntityLink></p></div>
             <div><p className="text-xs text-muted-foreground">Kamer</p><p className="text-sm">{(active as any).units?.name ?? '—'}</p></div>
             <div><p className="text-xs text-muted-foreground">Check-in</p><p className="text-sm">{formatDate(active.check_in_date)}</p></div>
             <div><p className="text-xs text-muted-foreground">Maandelijkse inhouding</p><p className="text-sm">{formatEUR(active.monthly_deduction)}</p></div>
@@ -138,7 +138,7 @@ const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
               <span className="text-xs text-muted-foreground">vanaf {formatDate(reserved.check_in_date)}</span>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div><p className="text-xs text-muted-foreground">Pand</p><p className="text-sm"><EntityLink type="property" id={reserved.units?.properties?.id}>{reserved.units?.properties?.name ?? '—'}</EntityLink></p></div>
+              <div><p className="text-xs text-muted-foreground">Pand</p><p className="text-sm"><EntityLink type="property" id={reserved.units?.properties?.id}>{propertyLabel(reserved.units?.properties)}</EntityLink></p></div>
               <div><p className="text-xs text-muted-foreground">Kamer</p><p className="text-sm">{reserved.units?.name ?? '—'}</p></div>
               <div><p className="text-xs text-muted-foreground">Maandelijkse inhouding</p><p className="text-sm">{formatEUR(reserved.monthly_deduction)}</p></div>
             </div>
