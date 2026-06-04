@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -103,7 +104,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
 
   // Shortlist via de server-side rank-candidates edge function: rangschikt de VOLLEDIGE pool
   // (geen limit-150-op-voornaam meer) met de gedeelde matching-core, inclusief afstand.
-  const { data: availableCandidates, isError: rankError } = useQuery({
+  const { data: availableCandidates, isError: rankError, isFetching: rankFetching } = useQuery({
     queryKey: ['available-candidates-for-vacancy', vacancy.id, candidateSearch, showWeakMatches, (matches ?? []).length],
     queryFn: async () => {
       const matchedIds = (matches ?? []).map((m: any) => m.candidate_id);
@@ -441,7 +442,20 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
             {showWeakMatches ? 'Alle kandidaten zichtbaar' : 'Toon ook zwakkere matches'}
           </Button>
         </div>
+        {rankFetching && (
+          <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+            <Sparkles className="h-3 w-3 animate-pulse" /> Kandidaten rangschikken uit de volledige database…
+          </p>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+          {rankFetching && !availableCandidates &&
+            Array.from({ length: 6 }).map((_, i) => (
+              <Card key={`rank-skeleton-${i}`} className="p-3 space-y-2">
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-3 w-20" />
+                <Skeleton className="h-3 w-full" />
+              </Card>
+            ))}
           {(availableCandidates ?? []).map((c: any) => (
             <Card key={c.id} className="p-3">
               <div className="flex items-start justify-between gap-2">
@@ -475,7 +489,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
             </Card>
           ))}
           {rankError && <p className="text-sm text-red-600">Kandidaten konden niet worden geladen. Probeer het opnieuw.</p>}
-          {!rankError && (availableCandidates ?? []).length === 0 && <p className="text-sm text-muted-foreground">Geen beschikbare kandidaten met deze vacature-eisen gevonden</p>}
+          {!rankError && !rankFetching && (availableCandidates ?? []).length === 0 && <p className="text-sm text-muted-foreground">Geen beschikbare kandidaten met deze vacature-eisen gevonden</p>}
         </div>
       </div>
 
