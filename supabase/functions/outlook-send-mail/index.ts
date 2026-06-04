@@ -1,6 +1,7 @@
 import { createAdminClient, requireInternalProfile } from "../_shared/auth.ts";
 import { auditOutlookAction, graphJson, json, loadProviderForAccount, mailboxBasePath } from "../_shared/outlook-accounts.ts";
 import { appendAccountSignatureIfMissing, sanitizeEmailHtml } from "../_shared/outlook-signature.ts";
+import { isOutboundPaused, logConceptCommunication } from "../_shared/outbound-pause.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -70,6 +71,25 @@ Deno.serve(async (req) => {
   }
 
   const admin = createAdminClient();
+
+  // Kill-switch: dit is de interactieve hoofd-mailroute (EmailCompose e.d.). Respecteer de
+  // org-pauze hier óók, anders lekt handmatige mail er langs. Geblokkeerd → als concept loggen.
+  if (await isOutboundPaused(admin, auth.organizationId, "email")) {
+    await logConceptCommunication(admin, {
+      orgId: auth.organizationId,
+      channel: "email",
+      subject,
+      body: html,
+      emailTo: toRecipients.map((r) => r.emailAddress.address),
+      emailCc: ccRecipients.map((r) => r.emailAddress.address),
+      candidateId: body.candidate_id ?? null,
+      companyId: body.company_id ?? null,
+      companyContactId: body.company_contact_id ?? null,
+      sentBy: auth.userId,
+    });
+    return json({ paused: true, message: "Uitgaande e-mail staat op pauze — bericht is als concept opgeslagen, niet verzonden." }, 200, corsHeaders);
+  }
+
   try {
     const provider = await loadProviderForAccount(admin, auth.organizationId, {
       accountId: body.account_id,

@@ -56,6 +56,16 @@ interface ConceptRow {
  * hard (best-effort), zodat de kill-switch zelf nooit een flow laat crashen.
  */
 export async function logConceptCommunication(admin: Admin, row: ConceptRow): Promise<void> {
+  // communications heeft CHECK (candidate_id IS NOT NULL OR company_id IS NOT NULL).
+  // Een bericht zonder dossier (bv. damage-report naar een garage) kunnen we niet als
+  // concept koppelen — sla 'm dan over met een duidelijke waarschuwing i.p.v. de insert
+  // stil op de constraint te laten klappen.
+  if (!row.candidateId && !row.companyId) {
+    console.warn(
+      `[outbound-pause] ${row.channel}-bericht geblokkeerd maar zonder candidate/company-id → niet als concept gelogd (naar: ${(row.emailTo ?? []).join(", ") || "?"})`,
+    );
+    return;
+  }
   try {
     await admin.from("communications").insert({
       organization_id: row.orgId,
