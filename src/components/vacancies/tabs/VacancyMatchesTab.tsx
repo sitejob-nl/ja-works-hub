@@ -604,18 +604,13 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
 
                 {components.length > 0 && (
                   <div className="space-y-1.5">
-                    <p className="text-xs font-medium text-muted-foreground uppercase">Score-opbouw</p>
-                    {components.map(([key, val]) => {
-                      const pct = typeof val === 'number' ? Math.round(val * 100) : null;
-                      return (
-                        <div key={key} className="flex items-center justify-between gap-2">
-                          <span>{labelNl[key] ?? key}</span>
-                          {pct != null
-                            ? <span className="text-muted-foreground tabular-nums">{pct}%</span>
-                            : <span className="text-muted-foreground">{String(val)}</span>}
-                        </div>
-                      );
-                    })}
+                    <p className="text-xs font-medium text-muted-foreground uppercase">Score-opbouw (punten per onderdeel)</p>
+                    {components.map(([key, val]) => (
+                      <div key={key} className="flex items-center justify-between gap-2">
+                        <span>{labelNl[key] ?? key}</span>
+                        <span className="text-muted-foreground tabular-nums">{typeof val === 'number' ? `${val} pt` : String(val)}</span>
+                      </div>
+                    ))}
                   </div>
                 )}
 
