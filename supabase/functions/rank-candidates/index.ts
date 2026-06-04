@@ -20,7 +20,7 @@ const json = (body: unknown, status = 200) =>
 
 const ACTIVE_STATUSES = ["nieuw", "in_behandeling", "beschikbaar", "werkzoekend"];
 const CANDIDATE_FIELDS =
-  "id, first_name, last_name, status, skills, certifications, languages, has_drivers_license, has_dutch_address, compliance_status, address_city, address_lat, address_lng, availability_notes, ai_function_group, ai_target_functions, ai_reliability_score";
+  "id, first_name, last_name, status, skills, certifications, languages, has_drivers_license, has_dutch_address, compliance_status, address_city, address_lat, address_lng, availability_notes, ai_function_group, ai_target_functions, ai_classification, ai_reliability_score";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });

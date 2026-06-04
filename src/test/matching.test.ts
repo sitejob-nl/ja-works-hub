@@ -161,6 +161,42 @@ describe('matching-v3 core', () => {
     expect(met.matchPercent).toBeGreaterThan(zonder.matchPercent);
   });
 
+  it('functie-groep-guard: specialist zonder vak-match op een generieke rol wordt gecapt', () => {
+    // Generieke productievacature zonder skill-eisen; kandidaat woont dichtbij (zou anders hoog scoren).
+    const vacancy = { title: 'Productiemedewerker verwerking', required_skills: [] as string[] };
+    const dichtbij = { km: 5, status: 'estimated' as const };
+    const specialist = scoreMatch(
+      { ai_classification: 'specialist', skills: ['Naval Shipyards', 'elektromechanica'], availability_notes: 'direct', has_dutch_address: true },
+      vacancy,
+      dichtbij,
+    );
+    expect(specialist.matchPercent).toBeLessThanOrEqual(40); // gecapt ondanks dichtbij
+    expect(specialist.missing.some((m) => m.toLowerCase().includes('specialist'))).toBe(true);
+    expect(passesShortlist(specialist)).toBe(false);
+  });
+
+  it('functie-groep-guard raakt GEEN productie-kandidaat (geen vals-negatief, blijft hoog)', () => {
+    const vacancy = { title: 'Productiemedewerker verwerking', required_skills: [] as string[] };
+    const dichtbij = { km: 5, status: 'estimated' as const };
+    const productie = scoreMatch(
+      { ai_classification: 'productie', skills: ['inpakken'], availability_notes: 'direct', has_dutch_address: true },
+      vacancy,
+      dichtbij,
+    );
+    expect(productie.missing.some((m) => m.toLowerCase().includes('specialist'))).toBe(false);
+    expect(productie.matchPercent).toBeGreaterThan(40); // niet gecapt → blijft normaal scoren
+  });
+
+  it('functie-groep-guard raakt GEEN specialist mét skill-match', () => {
+    const vacancy = { title: 'TIG Lasser', required_skills: ['lassen'] };
+    const specialist = scoreMatch(
+      { ai_classification: 'specialist', skills: ['lassen'], availability_notes: 'direct' },
+      vacancy,
+    );
+    expect(specialist.missing.some((m) => m.toLowerCase().includes('specialist'))).toBe(false);
+    expect(specialist.matchPercent).toBeGreaterThan(40);
+  });
+
   it('haversineKm berekent een plausibele afstand en is null bij ontbrekende coords', () => {
     const eindhovenToTilburg = haversineKm(51.44, 5.47, 51.56, 5.09);
     expect(eindhovenToTilburg).toBeGreaterThan(20);
