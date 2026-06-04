@@ -145,6 +145,37 @@ Deno.serve(async (req) => {
   }
 });
 
+// Interesse-respons op een bulk match-bericht (VacancyMatchesTab "Interesse-bericht").
+// De ja/nee-knoppen dragen een reply-id match_ja:<matchId> / match_nee:<matchId>; hiermee
+// verschuift de match automatisch naar de juiste fase (Carerix-stijl "ja/nee → fase").
+async function handleMatchInterest(supabase: any, orgId: string, replyId: string) {
+  const isYes = replyId.startsWith("match_ja:");
+  const matchId = replyId.slice(replyId.indexOf(":") + 1);
+  if (!matchId) return;
+  const { data: match } = await supabase
+    .from("matches")
+    .select("id, status")
+    .eq("id", matchId)
+    .eq("organization_id", orgId)
+    .maybeSingle();
+  // Niet terugzetten als de match al verder of terminaal is.
+  if (!match || ["geaccepteerd", "geplaatst", "afgewezen"].includes(match.status)) return;
+  const newStatus = isYes ? "in_gesprek" : "afgewezen";
+  await supabase
+    .from("matches")
+    .update({ status: newStatus, status_changed_at: new Date().toISOString() })
+    .eq("id", matchId);
+  await supabase.from("match_feedback_events").insert({
+    organization_id: orgId,
+    match_id: matchId,
+    from_status: match.status,
+    to_status: newStatus,
+    notes: isYes
+      ? "Kandidaat reageerde 'Ja, interesse' via WhatsApp"
+      : "Kandidaat reageerde 'Nee, bedankt' via WhatsApp",
+  });
+}
+
 async function processInboundMessage(
   supabase: any,
   orgId: string,
@@ -162,6 +193,7 @@ async function processInboundMessage(
   // Extract message body and media_id based on type
   let body = "";
   let mediaId: string | null = null;
+  let interactiveReplyId: string | null = null;
 
   switch (messageType) {
     case "text":
@@ -203,6 +235,7 @@ async function processInboundMessage(
       const ir = msg.interactive;
       body =
         ir?.button_reply?.title ?? ir?.list_reply?.title ?? "[Interactief antwoord]";
+      interactiveReplyId = ir?.button_reply?.id ?? ir?.list_reply?.id ?? null;
       break;
     }
     case "button":
@@ -227,6 +260,11 @@ async function processInboundMessage(
 
   const candidateId = candidate?.id ?? null;
   const contactName = contacts?.[0]?.profile?.name ?? from;
+
+  // Ja/nee-respons op een bulk match-interesse-bericht → match automatisch naar de juiste fase.
+  if (interactiveReplyId && (interactiveReplyId.startsWith("match_ja:") || interactiveReplyId.startsWith("match_nee:"))) {
+    await handleMatchInterest(supabase, orgId, interactiveReplyId);
+  }
 
   // Opt-out detection: text messages only, check start of message
   if (messageType === "text" && body) {
