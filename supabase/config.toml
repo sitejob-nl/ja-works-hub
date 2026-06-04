@@ -82,6 +82,9 @@ verify_jwt = false
 [functions.rank-candidates]
 verify_jwt = false
 
+[functions.rank-vacancies]
+verify_jwt = false
+
 [functions.geocode-backfill]
 verify_jwt = false
 

@@ -14,6 +14,7 @@ import CandidateProfileTab from '@/components/candidates/tabs/CandidateProfileTa
 import CandidateDocumentsTab from '@/components/candidates/tabs/CandidateDocumentsTab';
 import CandidateCommunicationTab from '@/components/candidates/tabs/CandidateCommunicationTab';
 import CandidateMatchesTab from '@/components/candidates/tabs/CandidateMatchesTab';
+import CandidateVacancyMatchesTab from '@/components/candidates/tabs/CandidateVacancyMatchesTab';
 import CandidatePlacementsTab from '@/components/candidates/tabs/CandidatePlacementsTab';
 import CandidateScreeningTab from '@/components/candidates/tabs/CandidateScreeningTab';
 import CandidateTalentpoolsTab from '@/components/candidates/tabs/CandidateTalentpoolsTab';
@@ -290,6 +291,7 @@ const CandidateDetail = () => {
             <TabsTrigger value="documenten">Documenten</TabsTrigger>
             <TabsTrigger value="communicatie">Communicatie</TabsTrigger>
             <TabsTrigger value="matches">Matches</TabsTrigger>
+            <TabsTrigger value="vacatures">Vacatures</TabsTrigger>
             <TabsTrigger value="plaatsingen">Plaatsingen</TabsTrigger>
             <TabsTrigger value="taken">Taken</TabsTrigger>
             <TabsTrigger value="talentpools">Pools</TabsTrigger>
@@ -313,6 +315,7 @@ const CandidateDetail = () => {
         <TabsContent value="documenten"><CandidateDocumentsTab candidateId={id!} /></TabsContent>
         <TabsContent value="communicatie"><CandidateCommunicationTab candidateId={id!} /></TabsContent>
         <TabsContent value="matches"><CandidateMatchesTab candidateId={id!} /></TabsContent>
+        <TabsContent value="vacatures"><CandidateVacancyMatchesTab candidateId={id!} /></TabsContent>
         <TabsContent value="plaatsingen"><CandidatePlacementsTab candidateId={id!} /></TabsContent>
         <TabsContent value="screening"><CandidateScreeningTab key={(candidate as any)?.screened_at ?? 'unsaved'} candidate={candidate} onUpdate={() => qc.invalidateQueries({ queryKey: ['candidate', id] })} /></TabsContent>
         <TabsContent value="notities"><NotesSection entityId={id!} entityType="kandidaat" /></TabsContent>
