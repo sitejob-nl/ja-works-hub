@@ -201,6 +201,8 @@ Canonical in [src/integrations/supabase/types.ts](src/integrations/supabase/type
 | `check_rate_limit` | p_org_id, p_channel, p_window_type | boolean | Check campaign rate limits |
 | `record_rate_limit` | p_org_id, p_channel | void | Log rate limit usage |
 | `next_invoice_number` | org_id | string | Auto-increment invoice number |
+| `find_duplicate_candidates` | (none) | duplicate groups | Read-only, tenant-scoped (`auth.uid()`) dedup-scan op e-mail / telefoon(laatste 8) / DOB+naam. **anon REVOKED**. Voedt `/kandidaten/duplicaten`. |
+| `merge_candidate_records` | p_survivor, p_loser, p_actor | void | Merge twee kandidaten (repoint gerelateerde rijen, dan delete loser). SECURITY DEFINER; blokkeert cross-org + dubbel payroll/loyalty. **anon REVOKED** (migratie 20260604130000). |
 | `sa_get_organizations` | (none) | org list | Superadmin: list all orgs |
 | `sa_get_profiles` | (none) | profile list | Superadmin: list all users |
 | `sa_get_audit_log` | p_limit, p_offset | audit entries | Superadmin: view audit log |
@@ -286,10 +288,17 @@ Canonical in [src/integrations/supabase/types.ts](src/integrations/supabase/type
 | `linkedin-job-search` | LinkedIn job search |
 | `exa-people-search` | Search people using Exa AI |
 
+**Matching (regel-gebaseerd, gedeelde `_shared/matching-core.ts`)**
+| Function | Purpose |
+|----------|---------|
+| `calculate-match` | Score één match (kandidaat × vacature) via `scoreMatch()`; schrijft `match_score` + `match_breakdown` op de `matches`-rij |
+| `rank-candidates` | Rangschikt de hele kandidatenpool voor één vacature (shortlist "Beste kandidaten") |
+| `rank-vacancies` | **Reverse matching**: rangschikt alle open vacatures voor één kandidaat (tab "Vacatures" op het dossier) |
+| `enrich-vacancies` | **AI-skillverrijking** (Gemini): kent `required_skills` toe uit de volledige vacaturetekst, uitsluitend uit de actieve org-skillcatalogus. Batch (admin/superadmin/service) óf single (`vacancy_id`, RLS eigen-org elke rol). Idempotent via `skills_enriched_at`-cursor |
+
 **AI**
 | Function | Purpose |
 |----------|---------|
-| `calculate-match` | AI candidate-vacancy matching score |
 | `cv-rewrite` | AI-powered CV improvement |
 | `analyze-cv` | Submit kandidaatdossier for LLM analysis via VPS or Cloud. Builds dossier from CV/document text, profile and internal context; pseudonimiseert naam/email/tel/BSN/IBAN vóór verzending |
 | `analyze-cv-callback` | Receive async CV analysis results from LLM VPS |
@@ -398,6 +407,30 @@ Used for mail/calendar integration. OAuth handshake + proxied API calls. Fronten
 **Edge functions:** `voys-api`, `voys-sync-calls`
 
 Pulls call logs (and potentially transcripts) from Voys PBX. Linked to candidate records via phone number. Supports the "AI call support" requirement from 03-20 meeting (less manual note-taking, post-call observations).
+
+### Matching engine & flow (regel-gebaseerd, géén LLM)
+
+De matching-kern is **deterministisch** in `supabase/functions/_shared/matching-core.ts → scoreMatch()`, gedeeld door `calculate-match`, `rank-candidates` en `rank-vacancies` (+ unit-tests in `src/test/matching.test.ts`).
+
+- **Gewichten (genormaliseerd):** skills 50 / certifications 13 / functionGroup 12 / distance 20 (telt alléén mee als afstand bekend — anders geen straf) / availability 5. **Bonussen** (additief): taal +6, accommodatie +4, rijbewijs +5. Label: `rood` bij hardBlock of <45%, `groen` bij fit ≥72 + minstens één harde match, anders `oranje`.
+- **Functie-groep-guard** (Alam-fix): een als `specialist` geclassificeerde kandidaat (`candidates.ai_classification`) zónder skill-match én zónder functie-titel-signaal wordt gecapt op ≤40 (valt uit de shortlist). Productie-kandidaten worden nooit geraakt; een specialist mét match scoort normaal.
+- **Frontend `VacancyMatchesTab.tsx`:** de match-pipeline is een **lijst** (statusfilter-chips per fase, géén drag-kanban). Klik "Waarom?" → volledige `match_breakdown` (punten per onderdeel). Shortlist "Beste kandidaten" met %-drempelfilter + multi-select + bulk "Voorstellen". **Bulk-acties op matches:** Status wijzigen + **Interesse-bericht (ja/nee)** → WhatsApp-knoppen met reply-id `match_ja:<id>` / `match_nee:<id>`; `whatsapp-webhook → handleMatchInterest()` verschuift de match automatisch (ja → `in_gesprek`, nee → `afgewezen`). Reverse matching op het kandidaatdossier via `CandidateVacancyMatchesTab.tsx`.
+
+### Kill-switch uitgaande communicatie (`_shared/outbound-pause.ts`)
+
+Globale org-pauze in `organizations.settings.outbound_paused` (`true` of `{ email, whatsapp }`). Geblokkeerde berichten worden als **concept** in `communications` gelogd (`message_type='concept'`), niet stil weggegooid. Toggle in **Instellingen → Algemeen** (`OutboundPauseSettings.tsx`).
+- **E-mail-guards:** `isOutboundPaused()` in `_shared/outlook-send.ts` (`sendViaOutlookAccount`, alle template-mailers) én in `outlook-send-mail` (interactieve hoofdmail).
+- **WhatsApp-guards:** `whatsapp-send`, `bulk-campaign-processor`, `automated-messages`, `check-document-expiry`, `send-placement-confirmation`.
+- `logConceptCommunication` slaat over (met `console.warn`) wanneer er geen candidate/company-id is (CHECK `chk_comm_target`).
+
+### Candidate dedup
+
+- **Scherm:** `/kandidaten/duplicaten` (`src/pages/DuplicateCandidates.tsx`), knop op `Candidates.tsx`. Route staat in `App.tsx` **vóór** `/kandidaten/:id`.
+- **RPC's:** `find_duplicate_candidates` (read-only detectie) + `merge_candidate_records` (merge/delete) — beide **anon-revoked**. Payroll-dubbel blokkeert auto-merge in de RPC én de UI. `info@jawerkt.nl` is catch-all → e-mail is géén unieke sleutel.
+
+### Vacancy skill enrichment
+
+`enrich-vacancies` (Gemini) vult `required_skills` uit de volledige vacaturetekst, **uitsluitend** uit de actieve org-skillcatalogus (`skills.is_active`). Auto-getriggerd bij `VacancyNew` (alleen als er geen handmatige skills zijn) + handmatige knop **"AI-skills"** op `VacancyDetail`. Cap via `skills_enriched_at`. Curatie van de actieve catalogus → `SkillCatalogSettings.tsx`.
 
 ### Match Proposal (voorstelmail met preview)
 
