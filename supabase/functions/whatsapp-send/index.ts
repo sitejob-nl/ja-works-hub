@@ -35,13 +35,13 @@ Deno.serve(async (req) => {
     }
 
     const normalizedTo = normalizePhone(to);
+    const serviceClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
 
     // Handle read receipts separately — just mark as read, no logging needed
     if (type === "read_receipt") {
-      const serviceClient = createClient(
-        Deno.env.get("SUPABASE_URL")!,
-        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-      );
       const creds = await getWhatsAppCredentials(serviceClient, orgId);
       if (!creds) return jsonError("WhatsApp niet geconfigureerd", 400);
 
@@ -75,12 +75,6 @@ Deno.serve(async (req) => {
         return jsonError("Kandidaat heeft zich afgemeld voor WhatsApp", 403);
       }
     }
-
-    // Service client for rate limit checks, credential decryption, and logging (bypasses RLS)
-    const serviceClient = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
 
     // Check rate limit (per minute)
     const { data: withinLimit } = await serviceClient.rpc("check_rate_limit", {

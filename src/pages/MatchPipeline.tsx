@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
-import { useAuth } from '@/contexts/AuthContext';
 import { Link } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -50,6 +49,18 @@ const MATCH_PIPELINE_PAGE_SIZE = 1000;
 const MATCH_PIPELINE_SELECT =
   '*, candidates!matches_candidate_id_fkey(id, first_name, last_name, phone, email, compliance_status, portal_enabled), vacancies!inner(id, title, status, companies!vacancies_company_id_fkey(id, name))';
 
+async function readFunctionError(error: any, fallback: string) {
+  const response = error?.context;
+  if (!response || typeof response.clone !== 'function') return error?.message || fallback;
+
+  try {
+    const data = await response.clone().json();
+    return data?.error || data?.message || fallback;
+  } catch {
+    return error?.message || fallback;
+  }
+}
+
 async function fetchMatchPipelinePage(orgId: string | null | undefined, pipelineScope: PipelineScope, from: number, to: number) {
   let query = supabase
     .from('matches')
@@ -87,7 +98,6 @@ async function fetchAllMatchPipelineRows(orgId: string | null | undefined, pipel
 
 const MatchPipeline = () => {
   const orgId = useOrganizationId();
-  const { user } = useAuth();
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [vacancyFilter, setVacancyFilter] = useState('all');
@@ -131,80 +141,26 @@ const MatchPipeline = () => {
 
   const bulkNotifyMutation = useMutation({
     mutationFn: async (matchIds: string[]) => {
-      const selectedMatches = (matches as any[]).filter((match) => matchIds.includes(match.id));
-      if (selectedMatches.length === 0) throw new Error('Selecteer eerst matches');
-
-      const now = new Date().toISOString();
-      const notificationRows = selectedMatches.map((match) => {
-        const candidate = match.candidates;
-        const vacancy = match.vacancies;
-        const company = vacancy?.companies as any;
-        return {
-          organization_id: orgId,
-          candidate_id: candidate?.id ?? null,
-          type: 'overig',
-          severity: 'info',
-          title: `Nieuwe vacature: ${vacancy?.title ?? 'vacature'}`,
-          message: `${company?.name ? `${company.name} zoekt versterking. ` : ''}Je recruiter heeft je gematcht op deze vacature en neemt contact met je op.`,
-          reference_table: 'matches',
-          reference_id: match.id,
-          created_at: now,
-        };
+      if (matchIds.length === 0) throw new Error('Selecteer eerst matches');
+      const { data, error } = await supabase.functions.invoke('match-bulk-notify', {
+        body: { match_ids: matchIds },
       });
-
-      const emailRows = selectedMatches
-        .filter((match) => Boolean(match.candidates?.email))
-        .map((match) => {
-          const candidate = match.candidates;
-          const vacancy = match.vacancies;
-          const company = vacancy?.companies as any;
-          const subject = `Nieuwe vacature: ${vacancy?.title ?? 'mogelijk passende functie'}`;
-          const body = [
-            `Hoi ${candidate?.first_name ?? ''},`,
-            '',
-            `We hebben een mogelijke match voor je gevonden: ${vacancy?.title ?? 'een passende vacature'}${company?.name ? ` bij ${company.name}` : ''}.`,
-            'Je recruiter neemt contact met je op om de details en je interesse te bespreken.',
-            '',
-            'Met vriendelijke groet,',
-            'JA Werkt',
-          ].join('\n');
-
-          return {
-            organization_id: orgId,
-            candidate_id: candidate.id,
-            channel: 'email',
-            direction: 'outbound',
-            subject,
-            body,
-            email_to: [candidate.email],
-            sent_at: now,
-            sent_by: user?.id ?? null,
-            message_type: 'bulk_match_notification',
-          };
-        });
-
-      const { error: notificationError } = await supabase
-        .from('employee_notifications')
-        .insert(notificationRows as any[]);
-      if (notificationError) throw notificationError;
-
-      if (emailRows.length > 0) {
-        const { error: communicationError } = await supabase
-          .from('communications')
-          .insert(emailRows as any[]);
-        if (communicationError) throw communicationError;
-      }
-
-      return {
-        notifications: notificationRows.length,
-        emails: emailRows.length,
+      if (error) throw new Error(await readFunctionError(error, 'Bulknotificaties mislukt'));
+      if ((data as any)?.error) throw new Error((data as any).error);
+      return data as {
+        app_notifications: number;
+        email_records: number;
+        whatsapp_records: number;
+        skipped?: Record<string, number>;
       };
     },
     onSuccess: (result) => {
       setSelectedMatchIds(new Set());
       qc.invalidateQueries({ queryKey: ['notifications'] });
       qc.invalidateQueries({ queryKey: ['communications'] });
-      toast.success(`${result.notifications} appmeldingen en ${result.emails} e-mailrecords aangemaakt`);
+      const skipped = Object.values(result.skipped ?? {}).reduce((sum, value) => sum + Number(value ?? 0), 0);
+      toast.success(`${result.app_notifications} appmeldingen, ${result.email_records} e-mailrecords en ${result.whatsapp_records} WhatsApp-concepten aangemaakt`);
+      if (skipped > 0) toast.info(`${skipped} kanaalacties overgeslagen door voorkeuren, ontbrekende gegevens of duplicaten`);
     },
     onError: (error: any) => toast.error(error.message ?? 'Bulknotificaties mislukt'),
   });

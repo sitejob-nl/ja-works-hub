@@ -240,7 +240,11 @@ Deno.serve(async (req) => {
     });
 
     if (!sendResult.success) {
-      return json({ error: sendResult.error ?? "Versturen mislukt", method: sendResult.method }, 500);
+      return json({
+        error: sendResult.error ?? "Versturen mislukt",
+        method: sendResult.method,
+        communication_paused: sendResult.communicationPaused === true,
+      }, sendResult.communicationPaused ? 403 : 500);
     }
 
     return json({ success: true, method: sendResult.method, candidate_id: candidate.id });

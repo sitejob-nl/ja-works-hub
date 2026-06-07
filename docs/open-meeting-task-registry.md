@@ -5,6 +5,7 @@ Implementation registry for the remaining JA Werkt / VDS Automotive meeting gaps
 Detailed 2026-05-14 open-point analysis: `docs/meeting-open-points-2026-05-14.md`.
 Phased fix plan: `docs/meeting-fix-plan-2026-05-14.md`.
 Detailed 2026-05-27 open-point analysis: `docs/meeting-open-points-2026-05-27.md`.
+Latest 2026-06-03 gap scan: general recruitment/AI workflow meeting plus Carerix/Westerhorn benchmark audio. Benchmark-only items are not automatic JA Werkt scope.
 
 | ID | Scope | Owner | Status | Verification |
 |---|---|---|---|---|
@@ -18,9 +19,9 @@ Detailed 2026-05-27 open-point analysis: `docs/meeting-open-points-2026-05-27.md
 | 0514-VACANCY-TEMPLATE | Vacancy creation inherits function description, salary, skills, location defaults, tariff decision | Codex code agent | Implemented, pending validation | UI flow test: company function -> vacancy defaults -> editable override |
 | 0514-SKILL-MATCH | Vacancy match tab filters/scores internal candidates by function/vacancy skills | Codex code agent | Implemented, pending validation | Browser/API test with matching and non-matching candidate skill sets |
 | 0514-URGENCY | Central team dashboard/workbench signal for urgent open vacancies | Codex code agent | Implemented, pending validation | Dashboard/workbench test showing high-urgency vacancies without manual assignment |
-| 0514-INTAKE | Public recruitment intake funnel with mandatory CV, lead state, AI triage, recruiter notification | Codex code agent | Implemented, deployed, smoke-validated | Production UI smoke created lead `f86d612a-3909-432c-808f-e92ceee05570` with CV, task and notification; lead promotion acceptance remains |
+| 0514-INTAKE | Public recruitment intake funnel with mandatory CV, lead state, AI triage, recruiter notification | Codex code agent | Implemented, pending validation | Production UI smoke created lead `f86d612a-3909-432c-808f-e92ceee05570` with CV, task and notification; lead promotion now updates the existing lead, stores a decision note and closes intake follow-up tasks |
 | 0514-PARTNER | External recruiter/agency portal with RBAC and own-candidate status visibility | TBD | Open | Tenant/agency isolation test plus candidate submission/status flow |
-| 0514-BULK-NOTIFY | Bulk email/app/WhatsApp notification from vacancy match pipeline | Codex code agent | Implemented, pending validation | Match selection test with portal notifications and outbound communication records |
+| 0514-BULK-NOTIFY | Bulk email/app/WhatsApp notification from vacancy match pipeline | Codex code agent | Implemented, pending validation | `match-bulk-notify` selection test with portal notifications, e-mail records, WhatsApp drafts, opt-out handling, duplicate guard and communication-pause 403 |
 | 0514-PROPOSAL | Candidate proposal mail uses JA Werkt/org branding and validated AI report content | Codex code agent | Implemented, pending validation | Preview/send test with logo/branding, AI summary and response token |
 | 0514-SCREENING | Screening checklist for missing candidate data and AI interview questions | Codex code agent | Implemented, pending validation | Recruiter flow test showing missing fields/questions and follow-up task creation |
 | 0514-NAVSTATE | Preserve detail tab/view state when navigating away and back | Codex code agent | Implemented, pending validation | Browser regression for vacancy, company, candidate, vehicle and property tabs |
@@ -35,6 +36,12 @@ Detailed 2026-05-27 open-point analysis: `docs/meeting-open-points-2026-05-27.md
 | 0527-TASK-DELEGATION | Candidate tasks can be delegated to colleagues and appear in personal funnel | Codex code agent | In progress | Create candidate task for another profile and verify Workbench visibility |
 | 0527-DOC-FORMATS | CV/AI upload supports PDF, DOC, DOCX, JPG/JPEG, PNG and ODT | Codex code agent | In progress | Upload/extract smoke per file type, graceful fallback for OCR/ODT failures |
 | 0527-DATA-COMPLIANCE | ICE/EU/NL phone fields, incomplete criteria, BSN/nationality/language migration and AVG decisions | Product/client + Codex code agent | Decision needed | Written compliance decisions plus migration/field acceptance tests |
+| 0603-AI-FACTS | AI output separates facts, assumptions and unknowns; CEFR language evidence; driver-license unknown handling | Codex code agent | Implemented, pending validation | Deno check for CV functions; sample candidates: no CV, internal red flag, unknown license, language without proof, conflicting sources |
+| 0603-AI-BACKFILL-DRYRUN | Controlled AI enrichment runbook before ~1,900-candidate backfill | Product + Codex code agent | In progress | Dry-run/staged-run plan with sample size, max_candidates cap, cost guardrails, QA checklist and rollback/failure handling |
+| 0603-MATCHING-CONTROLS | Full vacancy-context matching, hard/soft criteria explanation, threshold controls and candidate reverse matching | Product + Codex code agent | Open | Acceptance case for Alam versus Green's Plastic once source vacancy/candidate text is available |
+| 0603-COMMS-KILLSWITCH | Global pause for automated email, WhatsApp and workflow communication during tests/feature freeze | Codex code agent | Implemented, pending validation | `organizations.settings.communication_pause` blocks campaign processors, proposal/placement/portal/timesheet mailflows and generic Outlook/WhatsApp sends with visible 403 error state |
+| 0603-VOIP-SCOPE | VoIP/KPN/notetaker/transcription and dossier-linking scope decision | Product/client | Decision needed | Written AVG/legal basis, consent text, retention, provider, mobile constraints and MVP boundary |
+| 0603-INTEGRATION-SCOPE | RMA/HireData, JobDigger and external housing-system integrations from Carerix/Westerhorn benchmark | Product/client | Decision needed | Scope note per integration: build/park/benchmark-only, data owner, costs and privacy impact |
 
 Quality gates before completion:
 

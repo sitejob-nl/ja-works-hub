@@ -1,4 +1,5 @@
 import { createAdminClient, requireInternalProfile } from "../_shared/auth.ts";
+import { isOutboundPaused } from "../_shared/outbound-pause.ts";
 import { sendViaOutlookAccount } from "../_shared/outlook-send.ts";
 
 const corsHeaders = {
@@ -83,6 +84,26 @@ Deno.serve(async (req) => {
         JSON.stringify({ error: "Campaign already processed or running" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    if (await isOutboundPaused(serviceClient, organization_id, "email")) {
+      if (campaign.status === "scheduled") {
+        await serviceClient
+          .from("bulk_campaigns")
+          .update({ status: "paused" })
+          .eq("id", campaign_id)
+          .eq("organization_id", organization_id);
+      }
+
+      return new Response(JSON.stringify({
+        paused: true,
+        campaign_id,
+        campaign_status: campaign.status === "scheduled" ? "paused" : campaign.status,
+        message: "E-mailcampagnes staan op pauze (kill-switch).",
+      }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     // Get email template

@@ -14,7 +14,21 @@ interface AiAnalysis {
     hard_skills?: string[];
     soft_skills?: string[];
     certificaten?: Array<string | { naam: string; relevant?: boolean; toelichting?: string }>;
-    talen?: Array<{ taal: string; niveau: string }>;
+    talen?: Array<{
+      taal: string;
+      niveau: string;
+      bewijsstatus?: string;
+      bron?: string;
+      toelichting?: string;
+    }>;
+  };
+  mobiliteit?: {
+    rijbewijs_status?: string;
+    rijbewijs_types?: string[];
+    rijbewijs_bron?: string;
+    eigen_auto_status?: string;
+    auto_mee_naar_nederland_status?: string;
+    toelichting?: string;
   };
   opleidingen?: Array<{ naam: string; instelling: string; periode: string; niveau: string }>;
   eigenschappen?: {
@@ -52,6 +66,11 @@ interface AiAnalysis {
     betrouwbaarheid?: number;
     toelichting?: string;
   };
+  datakwaliteit?: {
+    feiten?: Array<{ veld: string; waarde: string; bron: string; toelichting?: string }>;
+    aannames?: Array<{ veld: string; aanname: string; bron?: string; toelichting?: string }>;
+    onbekend?: Array<{ veld: string; reden: string; vervolgvraag: string }>;
+  };
 }
 
 const ScoreBadge = ({ score }: { score: number }) => {
@@ -81,6 +100,10 @@ const Section = ({ icon: Icon, title, children }: { icon: any; title: string; ch
 
 const AiAnalysisCard = ({ analysis }: { analysis: AiAnalysis }) => {
   if (!analysis) return null;
+  const hasDataQuality =
+    (analysis.datakwaliteit?.feiten?.length ?? 0) > 0 ||
+    (analysis.datakwaliteit?.aannames?.length ?? 0) > 0 ||
+    (analysis.datakwaliteit?.onbekend?.length ?? 0) > 0;
 
   return (
     <div className="space-y-4">
@@ -152,6 +175,54 @@ const AiAnalysisCard = ({ analysis }: { analysis: AiAnalysis }) => {
           {analysis.dossier?.toelichting && (
             <p className="text-sm text-muted-foreground mt-2">{analysis.dossier.toelichting}</p>
           )}
+        </Card>
+      )}
+
+      {hasDataQuality && (
+        <Card className="p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <FileText className="h-4 w-4 text-muted-foreground" />
+            <h3 className="font-medium text-sm">Feiten, aannames en onbekend</h3>
+          </div>
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-stat-green">Feiten</p>
+              {(analysis.datakwaliteit?.feiten ?? []).slice(0, 5).map((item, i) => (
+                <div key={`${item.veld}-${i}`} className="rounded-md bg-stat-green/5 p-2 text-xs">
+                  <p className="font-medium">{item.veld}: {item.waarde}</p>
+                  <p className="text-muted-foreground">{item.bron}{item.toelichting ? ` - ${item.toelichting}` : ''}</p>
+                </div>
+              ))}
+              {(analysis.datakwaliteit?.feiten?.length ?? 0) === 0 && (
+                <p className="text-xs text-muted-foreground">Geen harde feiten gemarkeerd.</p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-orange-600">Aannames</p>
+              {(analysis.datakwaliteit?.aannames ?? []).slice(0, 5).map((item, i) => (
+                <div key={`${item.veld}-${i}`} className="rounded-md bg-orange-50 p-2 text-xs">
+                  <p className="font-medium">{item.veld}: {item.aanname}</p>
+                  <p className="text-muted-foreground">{item.bron || 'bron onbekend'}{item.toelichting ? ` - ${item.toelichting}` : ''}</p>
+                </div>
+              ))}
+              {(analysis.datakwaliteit?.aannames?.length ?? 0) === 0 && (
+                <p className="text-xs text-muted-foreground">Geen aannames gemarkeerd.</p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-red-600">Onbekend / navragen</p>
+              {(analysis.datakwaliteit?.onbekend ?? []).slice(0, 5).map((item, i) => (
+                <div key={`${item.veld}-${i}`} className="rounded-md bg-red-50 p-2 text-xs">
+                  <p className="font-medium">{item.veld}</p>
+                  <p className="text-muted-foreground">{item.reden}</p>
+                  <p className="mt-1">{item.vervolgvraag}</p>
+                </div>
+              ))}
+              {(analysis.datakwaliteit?.onbekend?.length ?? 0) === 0 && (
+                <p className="text-xs text-muted-foreground">Geen onbekende kernvelden gemarkeerd.</p>
+              )}
+            </div>
+          </div>
         </Card>
       )}
 
@@ -252,15 +323,51 @@ const AiAnalysisCard = ({ analysis }: { analysis: AiAnalysis }) => {
             {analysis.competenties.talen && analysis.competenties.talen.length > 0 && (
               <div>
                 <p className="text-xs text-muted-foreground mb-1">Talen</p>
-                <div className="flex flex-wrap gap-1">
+                <div className="space-y-1">
                   {analysis.competenties.talen.map((t, i) => (
-                    <Badge key={i} variant="outline" className="text-xs">
-                      {t.taal}{t.niveau ? ` - ${t.niveau}` : ''}
-                    </Badge>
+                    <div key={i} className="flex flex-wrap items-center gap-1 text-xs">
+                      <Badge variant="outline" className="text-xs">
+                        {t.taal}{t.niveau && t.niveau !== 'onbekend' ? ` - ${t.niveau}` : ' - niveau onbekend'}
+                      </Badge>
+                      {t.bewijsstatus && (
+                        <Badge variant="secondary" className="text-xs">
+                          {t.bewijsstatus.replace(/_/g, ' ')}
+                        </Badge>
+                      )}
+                      {t.bron && <span className="text-muted-foreground">bron: {t.bron}</span>}
+                      {t.toelichting && <span className="text-muted-foreground">{t.toelichting}</span>}
+                    </div>
                   ))}
                 </div>
               </div>
             )}
+          </Section>
+        )}
+
+        {analysis.mobiliteit && (
+          <Section icon={Briefcase} title="Mobiliteit">
+            <div className="space-y-2 text-sm">
+              <div className="flex flex-wrap gap-2">
+                <Badge variant={analysis.mobiliteit.rijbewijs_status === 'ja' ? 'secondary' : 'outline'}>
+                  Rijbewijs: {analysis.mobiliteit.rijbewijs_status || 'onbekend'}
+                </Badge>
+                {analysis.mobiliteit.rijbewijs_types?.map((type, i) => (
+                  <Badge key={i} variant="outline">{type}</Badge>
+                ))}
+                <Badge variant="outline">
+                  Eigen auto: {analysis.mobiliteit.eigen_auto_status || 'onbekend'}
+                </Badge>
+                <Badge variant="outline">
+                  Auto NL: {analysis.mobiliteit.auto_mee_naar_nederland_status || 'onbekend'}
+                </Badge>
+              </div>
+              {analysis.mobiliteit.rijbewijs_bron && (
+                <p className="text-xs text-muted-foreground">Bron rijbewijs: {analysis.mobiliteit.rijbewijs_bron}</p>
+              )}
+              {analysis.mobiliteit.toelichting && (
+                <p className="text-sm text-muted-foreground">{analysis.mobiliteit.toelichting}</p>
+              )}
+            </div>
           </Section>
         )}
 

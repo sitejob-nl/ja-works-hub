@@ -321,6 +321,7 @@ Canonical in [src/integrations/supabase/types.ts](src/integrations/supabase/type
 | `housing-reminder-cron` | Wekelijkse reminders voor huisvesting-acties (cron 02:30) |
 | `check-vehicle-apk` | APK-vervaldatum scan + alerts (cron 02:45) |
 | `data-export` | Full-data export per organisatie (CSV/Excel bundel) |
+| `geocode-backfill` | Backfill NL-adrescoördinaten voor kandidaten + bedrijven via PDOK; verwerkt rommelige adresvelden alleen wanneer een NL-postcode herkenbaar is |
 
 ### No config entry (default: JWT required)
 

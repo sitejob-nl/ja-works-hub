@@ -67,7 +67,7 @@ const WhatsAppAutomationSettings = () => {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['whatsapp-automation-settings', orgId] });
-      toast.success('WhatsApp automatiseringen opgeslagen');
+      toast.success('Communicatie-instellingen opgeslagen');
     },
     onError: (e: Error) => toast.error(e.message),
   });

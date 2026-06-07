@@ -24,6 +24,18 @@ const NL_POSTCODE = /(\d{4})\s?([A-Za-z]{2})\b/;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+function hasNlPostcode(...parts: Array<string | null | undefined>): boolean {
+  return NL_POSTCODE.test(parts.filter(Boolean).join(" "));
+}
+
+function cleanQuery(parts: Array<string | null | undefined>): string {
+  return parts
+    .filter(Boolean)
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function parsePoint(point?: string | null): { lat: number; lng: number } | null {
   const m = point?.match(/POINT\(([-\d.]+)\s+([-\d.]+)\)/);
   return m ? { lng: Number(m[1]), lat: Number(m[2]) } : null;
@@ -108,13 +120,23 @@ Deno.serve(async (req) => {
     // --- Bedrijven eerst (klein, en vacatures hangen eraan) ---
     const { data: comps } = await admin.from("companies")
       .select("id, address_street, address_postal, address_city, visit_address_street, visit_address_postal, visit_address_city")
-      .eq("organization_id", orgId).is("visit_address_lat", null).is("address_lat", null);
+      .eq("organization_id", orgId)
+      .or("address_lat.is.null,visit_address_lat.is.null");
     for (const c of (comps ?? []) as any[]) {
-      const q = [c.visit_address_street || c.address_street, c.visit_address_postal || c.address_postal, c.visit_address_city || c.address_city].filter(Boolean).join(" ").trim();
+      const visitQ = cleanQuery([c.visit_address_street, c.visit_address_postal, c.visit_address_city]);
+      const mainQ = cleanQuery([c.address_street, c.address_postal, c.address_city]);
+      const useVisit = hasNlPostcode(c.visit_address_street, c.visit_address_postal, c.visit_address_city);
+      const useMain = hasNlPostcode(c.address_street, c.address_postal, c.address_city);
+      const q = useVisit ? visitQ : useMain ? mainQ : cleanQuery([visitQ, mainQ]);
       const coords = await geocodeNL(q);
       await sleep(THROTTLE_MS);
       if (!coords) { compSkipped++; continue; }
-      if (!dryRun) await admin.from("companies").update({ address_lat: coords.lat, address_lng: coords.lng }).eq("id", c.id).eq("organization_id", orgId);
+      if (!dryRun) {
+        const payload = useVisit
+          ? { visit_address_lat: coords.lat, visit_address_lng: coords.lng, address_lat: coords.lat, address_lng: coords.lng }
+          : { address_lat: coords.lat, address_lng: coords.lng };
+        await admin.from("companies").update(payload).eq("id", c.id).eq("organization_id", orgId);
+      }
       compDone++; if (sample.length < 15) sample.push({ type: "company", id: c.id, ...coords, q });
       if (Date.now() - started > SOFT_DEADLINE_MS) break;
     }
@@ -125,12 +147,11 @@ Deno.serve(async (req) => {
       .eq("organization_id", orgId)
       .in("status", ["nieuw", "in_behandeling", "beschikbaar", "werkzoekend"])
       .is("address_lat", null)
-      .not("address_postal", "is", null)
       .limit(2000);
     for (const c of (cands ?? []) as any[]) {
       if (max && processed >= max) break;
       if (Date.now() - started > SOFT_DEADLINE_MS) { await selfTrigger(orgId); return json({ success: true, continued: true, candDone, candSkipped, compDone, compSkipped, sample }); }
-      const q = [c.address_street, c.address_postal, c.address_city].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+      const q = cleanQuery([c.address_street, c.address_postal, c.address_city]);
       processed++;
       const coords = await geocodeNL(q);
       await sleep(THROTTLE_MS);

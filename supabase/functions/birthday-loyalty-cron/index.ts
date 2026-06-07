@@ -291,7 +291,7 @@ Deno.serve(async (req) => {
               senderName: null,
             });
 
-            if (!sendResult.success) {
+            if (!sendResult.success && !sendResult.communicationPaused) {
               await admin.from("communications").insert({
                 organization_id: orgId,
                 candidate_id: candidate.id,

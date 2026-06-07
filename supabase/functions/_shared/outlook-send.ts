@@ -25,12 +25,13 @@ interface SendViaOutlookAccountParams {
   require?: OutlookCapability;
 }
 
-interface SendResult {
+export interface SendResult {
   success: boolean;
   method: "outlook" | "none";
   error?: string;
   accountId?: string;
   from?: string | null;
+  communicationPaused?: boolean;
 }
 
 function recipientList(value: string | string[]) {
@@ -85,6 +86,7 @@ export async function sendViaOutlookAccount(params: SendViaOutlookAccountParams)
       success: false,
       method: "none",
       error: "Uitgaande e-mail staat op pauze (kill-switch actief). Bericht is als concept opgeslagen.",
+      communicationPaused: true,
     };
   }
 

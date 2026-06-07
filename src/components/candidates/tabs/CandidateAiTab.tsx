@@ -633,7 +633,9 @@ const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => 
                 const analysis = candidate.ai_analysis;
                 const hardSkills: string[] = analysis?.competenties?.hard_skills || [];
                 const softSkills: string[] = analysis?.competenties?.soft_skills || [];
-                const certs: string[] = analysis?.competenties?.certificaten || [];
+                const certs: string[] = (analysis?.competenties?.certificaten || [])
+                  .map((cert: any) => typeof cert === 'string' ? cert : cert?.naam)
+                  .filter(Boolean);
                 const allSkills = [...new Set([...hardSkills, ...softSkills])].filter(Boolean);
 
                 const updates: Record<string, any> = {};

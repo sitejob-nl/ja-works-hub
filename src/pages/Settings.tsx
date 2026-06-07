@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 import { Brain, BriefcaseBusiness, Database, FileText, Globe2, Link2, Settings as SettingsIcon, Upload, Palette, Building2, User, LogOut, Trash2, FileSpreadsheet, RotateCcw } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import WhatsAppSettings from '@/components/settings/WhatsAppSettings';
+import WhatsAppAutomationSettings from '@/components/settings/WhatsAppAutomationSettings';
 import ExactOnlineSettings from '@/components/settings/ExactOnlineSettings';
 import DataExport from '@/components/settings/DataExport';
 import ComplianceRulesSettings from '@/components/settings/ComplianceRulesSettings';
@@ -513,6 +514,7 @@ const Settings = () => {
 
             <TabsContent value="koppelingen" className="mt-0 space-y-5">
               <WhatsAppSettings />
+              <WhatsAppAutomationSettings />
               <OutlookSettings />
               <ExactOnlineSettings />
               <VoysSettings />
