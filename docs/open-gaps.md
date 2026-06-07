@@ -1,6 +1,6 @@
 # Open gaps & roadmap
 
-Project-management state from client meetings — moved out of CLAUDE.md because it decays fast and isn't codebase guidance. Last updated from meetings through 2026-05-27. Fix plan for 05-14: `docs/meeting-fix-plan-2026-05-14.md`. Open-point analysis for 05-27: `docs/meeting-open-points-2026-05-27.md`.
+Project-management state from client meetings — moved out of CLAUDE.md because it decays fast and isn't codebase guidance. Last updated from meetings through 2026-06-03. Fix plan for 05-14: `docs/meeting-fix-plan-2026-05-14.md`. Open-point analysis for 05-27: `docs/meeting-open-points-2026-05-27.md`. Latest gap scan: 06-03 recruitment/AI workflow + Carerix/Westerhorn benchmark notes.
 
 ## Closed na sprints 1/2/3/5/D3
 
@@ -17,6 +17,11 @@ Project-management state from client meetings — moved out of CLAUDE.md because
 
 ## Nog open
 
+- **06-03 AI betrouwbaarheid / screening** — AI-output moet feiten, aannames en onbekende velden expliciet scheiden; taal naar CEFR A1-C2 met bewijsstatus; rijbewijs ontbrekend is "onbekend" en nooit automatisch "nee"; bronverwijzingen moeten zichtbaar blijven in de screening.
+- **06-03 AI-backfill acceptatie** — bestaande batchfunctie moet eerst via een gecontroleerde dry-run/staged-run: sample, kostenlimiet, runtime, foutstatussen, dossierbronnen en QA-steekproef voordat circa 1.900 kandidaten volledig worden verrijkt.
+- **06-03 matching / reverse matching** — matching moet volledige vacaturecontext meenemen, hard/soft criteria uitleggen, onbekende data niet diskwalificeren, threshold/criteria-controls bieden en vanuit kandidaat naar passende vacatures kunnen zoeken.
+- **06-03 communicatie kill-switch / feature freeze** — basis is gebouwd via een centrale `communication_pause` instelling voor e-mail, WhatsApp-campagnes en workflowberichten; browser-/acceptatievalidatie met echte campagne- en matchflows blijft open.
+- **06-03 integratiebesluiten** — VoIP/KPN/notetaker, RMA/HireData, JobDigger, websitekoppeling en extern huisvestingssysteem zijn aparte scope-/AVG-besluiten. Carerix/Westerhorn-meeting geldt als benchmark tenzij hetzelfde punt expliciet JA Werkt-scope is.
 - **05-27 instroomfunnel** — eerste lead-/kwalificatiekanban staat in Kandidaten met verplichte notitie bij toelaten/afwijzen; definitieve terminologie en re-entry/duplicaatbeleid blijven productvalidatie.
 - **05-27 kandidaatprofiel als centrale werkplek** — profieltabs compacter: notities direct naast profiel, communicatievoorkeur op profiel, AI onder Screening, huisvesting/vervoer/taken vanuit kandidaat. Eerste UI-richting is ingezet; toewijsacties voor huisvesting/auto blijven open.
 - **05-27 AI-verrijking bestaande database** — circa 1.900 kandidaten analyseren op CV én interne notities, met uitlegbare kandidaatkwaliteitsscore, functiegroep/taxonomie en fallback voor ontbrekende CV's.
@@ -27,8 +32,8 @@ Project-management state from client meetings — moved out of CLAUDE.md because
 - **05-14 vacature-template verdieping** — vacature-aanmaak/-bewerken erft beschrijving, locatie, tarief en skills; UI-flow en tariefacceptatie nog valideren.
 - **05-14 skill-based matching vanuit vacature** — matchtab filtert/scored nu op vacature-eisen vóór handmatige match; browser/API-regressie nog toevoegen.
 - **05-14 urgentie-dashboard** — workbench toont nu open urgentie-3 vacatures met opdrachtgever, startdatum, ouderdom en open plaatsen; browservalidatie blijft open.
-- **05-14 recruitment intake funnel** — publieke `/solliciteren/:slug` route + `candidate-signup` edge function zijn gedeployed en production-smoke gevalideerd met verplichte CV, leadstatus, bronlabel, recruiter-taak en notificatie; lead-promotie naar kandidaat blijft acceptatiepunt.
-- **05-14 bulk kandidaat-notificaties** — matchpipeline heeft nu selectie + bulkactie voor portal/appmeldingen en outbound e-mailrecords; echte Outlook/WhatsApp-verzending blijft bewust een apart kanaalbesluit.
+- **05-14 recruitment intake funnel** — publieke `/solliciteren/:slug` route + `candidate-signup` edge function zijn gedeployed en production-smoke gevalideerd met verplichte CV, leadstatus, bronlabel, recruiter-taak en notificatie; lead-promotie werkt op het bestaande record met besluitnotitie, maar browseracceptatie blijft open.
+- **05-14 bulk kandidaat-notificaties** — matchpipeline heeft selectie + bulkactie via `match-bulk-notify` voor portal/appmeldingen, outbound e-mailrecords en WhatsApp-concepten met voorkeuren/duplicaatguard; echte Outlook/WhatsApp-verzending blijft bewust een apart kanaalbesluit.
 - **05-14 kandidaatvoorstel branding/AI-rapport** — voorstelmail gebruikt nu org-naam/logo/contact en compacte AI-rapportsectie; preview/send-validatie blijft open.
 - **05-14 screening-call ondersteuning** — screeningtab toont nu ontbrekende kernvelden, callvragen en kan een opvolgtaak maken; browservalidatie blijft open.
 - **05-14 navigatiestate** — kandidaat-, vacature-, opdrachtgever-, voertuig- en panddetailtabs bewaren nu `?tab=` in de URL; browserregressie blijft open.

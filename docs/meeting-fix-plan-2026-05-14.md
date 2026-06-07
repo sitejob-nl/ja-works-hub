@@ -103,7 +103,7 @@ Acceptatie:
 
 ## Fase 4 - Inbound En Communicatie
 
-Status 2026-05-19: code gedeployed en intake production-smoke gevalideerd. Publieke `/solliciteren/:slug` intake valideert `candidate_signup_links`, vereist CV-upload en zet kandidaten als `lead` klaar met recruiter-taak/notificatie; matchpipeline heeft bulkselectie voor portal/appmeldingen en outbound e-mailrecords; Outlook inbox toont triage voor CV/klantvraag/partner/ruis en maakt taken/communicatie-records op bevestiging. Echte kanaalverzending en lead-promotie acceptatie blijven open.
+Status 2026-06-05: code gedeployed en intake production-smoke gevalideerd. Publieke `/solliciteren/:slug` intake valideert `candidate_signup_links`, vereist CV-upload en zet kandidaten als `lead` klaar met recruiter-taak/notificatie; leadpromotie werkt op het bestaande kandidaatrecord met besluitnotitie en sluit intake-opvolgtaken. Matchpipeline gebruikt `match-bulk-notify` voor portal/appmeldingen, e-mailrecords en WhatsApp-concepten met voorkeuren, duplicaatguard en communicatiepauze. Outlook inbox toont triage voor CV/klantvraag/partner/ruis en maakt taken/communicatie-records op bevestiging. Echte kanaalverzending blijft een apart kanaalbesluit.
 
 Deliverables:
 

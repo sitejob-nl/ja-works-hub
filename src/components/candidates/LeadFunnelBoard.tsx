@@ -125,9 +125,19 @@ const LeadFunnelBoard = () => {
   const statusMutation = useMutation({
     mutationFn: async ({ candidateId, toStatus, note }: { candidateId: string; toStatus: string; note?: string }) => {
       if (!user?.id) throw new Error('Geen gebruiker gevonden');
+      const now = new Date().toISOString();
+      const { data: currentCandidate, error: currentError } = await supabase
+        .from('candidates')
+        .select('id, status')
+        .eq('id', candidateId)
+        .eq('organization_id', orgId)
+        .maybeSingle();
+      if (currentError) throw currentError;
+      if (!currentCandidate) throw new Error('Lead niet gevonden');
+
       const { error: candidateError } = await supabase
         .from('candidates')
-        .update({ status: toStatus as any, updated_at: new Date().toISOString() } as any)
+        .update({ status: toStatus as any, updated_at: now } as any)
         .eq('id', candidateId)
         .eq('organization_id', orgId);
       if (candidateError) throw candidateError;
@@ -135,7 +145,12 @@ const LeadFunnelBoard = () => {
       if (note?.trim()) {
         const title = decisionTitle[toStatus] ?? 'Instroomstatus bijgewerkt';
         const { error: noteError } = await supabase.from('notes').insert({
-          body: `${title}: ${note.trim()}`,
+          body: [
+            `${title}: ${note.trim()}`,
+            '',
+            `Instroombesluit: ${currentCandidate.status ?? 'onbekend'} -> ${toStatus}.`,
+            'Geen nieuw kandidaatrecord aangemaakt; de bestaande lead is bijgewerkt.',
+          ].join('\n'),
           is_internal: true,
           related_entity_id: candidateId,
           related_entity_type: 'kandidaat',
@@ -144,12 +159,35 @@ const LeadFunnelBoard = () => {
         });
         if (noteError) throw noteError;
       }
+
+      if (toStatus === 'werkzoekend' || toStatus === 'afgewezen') {
+        const { error: taskError } = await supabase
+          .from('recruiter_tasks' as any)
+          .update({ status: 'completed', completed_at: now, updated_at: now })
+          .eq('organization_id', orgId)
+          .eq('related_entity_type', 'kandidaat')
+          .eq('related_entity_id', candidateId)
+          .eq('status', 'open')
+          .in('category', ['lead intake', 'vacature sollicitatie', 'cv intake']);
+        if (taskError) throw taskError;
+
+        const { error: notificationError } = await supabase
+          .from('employee_notifications')
+          .update({ is_read: true, is_dismissed: true, read_at: now, read_by: user.id })
+          .eq('organization_id', orgId)
+          .eq('candidate_id', candidateId)
+          .in('reference_table', ['candidates', 'matches']);
+        if (notificationError) throw notificationError;
+      }
     },
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ['lead-funnel', orgId] });
       qc.invalidateQueries({ queryKey: ['candidates'] });
       qc.invalidateQueries({ queryKey: ['notes'] });
-      toast.success('Instroomstatus bijgewerkt');
+      qc.invalidateQueries({ queryKey: ['recruiter-tasks'] });
+      qc.invalidateQueries({ queryKey: ['tasks-overview'] });
+      qc.invalidateQueries({ queryKey: ['notifications'] });
+      toast.success(vars.toStatus === 'werkzoekend' ? 'Lead toegelaten als kandidaat' : 'Instroomstatus bijgewerkt');
       setPendingDecision(null);
       setDecisionNote('');
     },
@@ -263,7 +301,7 @@ const LeadFunnelBoard = () => {
           <DialogHeader>
             <DialogTitle>{pendingDecision ? decisionTitle[pendingDecision.toStatus] : 'Besluit vastleggen'}</DialogTitle>
             <DialogDescription>
-              Leg kort vast waarom {pendingDecision?.candidateName} deze stap krijgt. De notitie wordt intern opgeslagen.
+              Leg kort vast waarom {pendingDecision?.candidateName} deze stap krijgt. De bestaande lead wordt bijgewerkt; er wordt geen nieuw kandidaatrecord aangemaakt.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">

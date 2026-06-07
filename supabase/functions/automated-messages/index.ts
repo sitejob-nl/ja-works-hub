@@ -72,6 +72,15 @@ async function runOnboardingReminders(service: SupabaseClient) {
   const results: Record<string, { sent: number; skipped: number; errors: string[] }> = {};
 
   for (const org of (orgs ?? []) as any[]) {
+    if (await isOutboundPaused(service, org.id, "whatsapp")) {
+      results[`${org.id}:paused`] = {
+        sent: 0,
+        skipped: 0,
+        errors: ["Uitgaande WhatsApp staat op pauze"],
+      };
+      continue;
+    }
+
     const settings = await getWhatsAppAutomationSettings(service, org.id);
     if (!settings.onboarding_reminders_enabled) continue;
 
@@ -177,9 +186,11 @@ async function runScheduledCampaigns(service: SupabaseClient, automatedKey: stri
 
   for (const campaign of campaigns ?? []) {
     try {
-      const authHeaders = automatedKey
+      const authHeaders: Record<string, string> = automatedKey
         ? { "X-Automated-Key": automatedKey }
-        : { "X-Cron-Secret": cronSecret ?? "" };
+        : cronSecret
+          ? { "X-Cron-Secret": cronSecret }
+          : {};
       const res = await fetch(`${supabaseUrl}/functions/v1/bulk-campaign-processor`, {
         method: "POST",
         headers: {

@@ -486,7 +486,7 @@ function buildProfileSection(candidate: CandidateForDossier): string {
       line("Bron", candidate.source),
       line("Woonplaats", candidate.address_city),
       line("Land", candidate.address_country),
-      line("Rijbewijs", candidate.has_drivers_license == null ? null : (candidate.has_drivers_license ? "ja" : "nee")),
+      line("Rijbewijs", candidate.has_drivers_license == null ? "onbekend" : (candidate.has_drivers_license ? "ja" : "nee")),
       line("Bekende skills", candidate.skills),
       line("Bekende certificaten", candidate.certifications),
       line("Bekende talen", candidate.languages),

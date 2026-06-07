@@ -7,6 +7,21 @@ import type { CvAnalysisResult } from "./cv-prompt.ts";
 // deno-lint-ignore no-explicit-any
 type SupabaseAdmin = any;
 
+function formatLanguageLabel(lang: {
+  taal?: string;
+  niveau?: string;
+  bewijsstatus?: string;
+}): string | null {
+  const taal = lang?.taal?.trim();
+  if (!taal) return null;
+  const parts = [taal];
+  if (lang.niveau && lang.niveau !== "onbekend") parts.push(lang.niveau);
+  if (lang.bewijsstatus && lang.bewijsstatus !== "bewezen") {
+    parts.push(lang.bewijsstatus.replace(/_/g, " "));
+  }
+  return parts.join(" - ");
+}
+
 export async function writeCvAnalysisToCandidate(
   admin: SupabaseAdmin,
   candidateId: string,
@@ -19,7 +34,7 @@ export async function writeCvAnalysisToCandidate(
     .map((cert) => typeof cert === "string" ? cert : cert?.naam)
     .filter(Boolean);
   const languages = (analysis?.competenties?.talen ?? [])
-    .map((lang) => [lang?.taal, lang?.niveau].filter(Boolean).join(" - "))
+    .map(formatLanguageLabel)
     .filter(Boolean);
   const allSkills = [...new Set([...hardSkills, ...softSkills])].filter(Boolean);
   const targetFunctions = analysis?.doelgroep?.functies ?? [];
@@ -36,9 +51,15 @@ export async function writeCvAnalysisToCandidate(
     .filter((item) => item?.type === "risico" || item?.type === "contra_indicatie")
     .map((item) => `${item.bron}: ${item.signaal}`)
     .filter(Boolean);
+  const reliabilityWarnings = typeof analysis?.dossier?.betrouwbaarheid === "number" && analysis.dossier.betrouwbaarheid <= 4
+    ? [`Lage dossierbetrouwbaarheid (${analysis.dossier.betrouwbaarheid}/10): ${analysis.dossier.toelichting ?? "handmatige controle nodig"}`]
+    : [];
   const manualReview = analysis?.plaatsingsadvies?.manual_review_required
     ? ["Handmatige review vereist volgens AI-analyse"]
     : [];
+  const unknownFieldQuestions = (analysis?.datakwaliteit?.onbekend ?? [])
+    .map((item) => item?.vervolgvraag)
+    .filter(Boolean);
   const redFlags = [
     ...(analysis?.werkhistorie?.gaten ?? [])
       .filter((gap) => (gap.duur_maanden ?? 0) >= 3)
@@ -46,7 +67,12 @@ export async function writeCvAnalysisToCandidate(
     ...(analysis?.plaatsingsadvies?.risicos ?? []),
     ...contraIndications,
     ...sourceRisks,
+    ...reliabilityWarnings,
     ...manualReview,
+  ];
+  const interviewQuestions = [
+    ...(analysis?.plaatsingsadvies?.interviewvragen ?? []),
+    ...unknownFieldQuestions,
   ];
 
   const update: Record<string, unknown> = {
@@ -57,7 +83,7 @@ export async function writeCvAnalysisToCandidate(
     ai_function_group: analysis?.doelgroep?.functies?.[0] ?? null,
     ai_classification:
       analysis?.eigenschappen?.specialisatie === "specialist" ? "specialist" : "productie",
-    ai_interview_questions: analysis?.plaatsingsadvies?.interviewvragen ?? [],
+    ai_interview_questions: [...new Set(interviewQuestions)].slice(0, 16),
     ai_risk_factors: analysis?.plaatsingsadvies?.risicos ?? [],
     ai_summary: analysis?.samenvatting?.profiel ?? null,
     ai_target_functions: targetFunctions,

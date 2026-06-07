@@ -241,7 +241,11 @@ Deno.serve(async (req) => {
     });
 
     if (!result.success) {
-      return json({ error: result.error ?? "Verzenden mislukt", method: result.method }, 502);
+      return json({
+        error: result.error ?? "Verzenden mislukt",
+        method: result.method,
+        communication_paused: result.communicationPaused === true,
+      }, result.communicationPaused ? 403 : 502);
     }
 
     // Log to communications (no candidate_id since recipient is garage)
