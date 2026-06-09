@@ -28,6 +28,9 @@ type MatchCardProps = {
     email?: string | null;
     phone?: string | null;
     compliance_status?: string | null;
+    available_from?: string | null;
+    available_until?: string | null;
+    arrival_date?: string | null;
     availability_notes?: string | null;
     ai_analysis?: unknown;
     ai_summary?: string | null;

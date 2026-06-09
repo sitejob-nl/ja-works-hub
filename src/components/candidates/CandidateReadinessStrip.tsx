@@ -1,6 +1,7 @@
 import { AlertTriangle, Briefcase, CalendarClock, Car, CheckCircle2, ClipboardCheck, Languages, Mail, MapPin, Phone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { formatDate } from '@/lib/format';
 
 type ReadinessState = 'ready' | 'warning' | 'missing';
 
@@ -31,6 +32,9 @@ const getScreeningStatus = (candidate: any): ReadinessState => {
   return 'missing';
 };
 
+const asObject = (value: unknown): Record<string, any> =>
+  value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, any> : {};
+
 const CandidateReadinessStrip = ({
   candidate,
   onTabChange,
@@ -41,7 +45,11 @@ const CandidateReadinessStrip = ({
   const hasContact = Boolean(candidate.phone || candidate.phone_nl || candidate.email);
   const hasSkills = Array.isArray(candidate.skills) && candidate.skills.length > 0;
   const hasLanguages = Array.isArray(candidate.languages) && candidate.languages.length > 0;
-  const hasAvailability = Boolean(candidate.availability_notes);
+  const screeningAvailability = asObject(asObject(candidate.screening_data).availability);
+  const availableFrom = candidate.available_from ?? screeningAvailability.available_from ?? null;
+  const availableUntil = candidate.available_until ?? screeningAvailability.available_until ?? null;
+  const arrivalDate = candidate.arrival_date ?? screeningAvailability.arrival_date ?? null;
+  const hasAvailability = Boolean(availableFrom || availableUntil || arrivalDate || candidate.availability_notes);
   const hasLocation = Boolean(candidate.address_city || candidate.address_postal || candidate.address_street);
   const hasLicense = candidate.has_drivers_license === true;
 
@@ -73,7 +81,7 @@ const CandidateReadinessStrip = ({
     {
       key: 'availability',
       label: 'Beschikbaarheid',
-      detail: hasAvailability ? 'Ingevuld' : 'Nog controleren',
+      detail: availableFrom ? `Vanaf ${formatDate(availableFrom)}` : hasAvailability ? 'Ingevuld' : 'Nog controleren',
       state: statusFrom(hasAvailability, true),
       tab: 'screening',
       icon: CalendarClock,

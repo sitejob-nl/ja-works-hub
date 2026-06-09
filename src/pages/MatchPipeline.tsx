@@ -43,7 +43,7 @@ const PIPELINE_SCOPES: { key: PipelineScope; label: string }[] = [
 
 const MATCH_PIPELINE_PAGE_SIZE = 1000;
 const MATCH_PIPELINE_SELECT =
-  '*, candidates!matches_candidate_id_fkey(id, first_name, last_name, phone, email, compliance_status, portal_enabled, availability_notes, ai_analysis, ai_summary, ai_classification, ai_reliability_score, screening_data, screened_at, skills, certifications, languages, has_drivers_license, has_dutch_address, address_city), vacancies!inner(id, title, status, companies!vacancies_company_id_fkey(id, name))';
+  '*, candidates!matches_candidate_id_fkey(id, first_name, last_name, phone, email, compliance_status, portal_enabled, available_from, available_until, arrival_date, availability_notes, ai_analysis, ai_summary, ai_classification, ai_reliability_score, screening_data, screened_at, skills, certifications, languages, has_drivers_license, has_dutch_address, address_city), vacancies!inner(id, title, status, companies!vacancies_company_id_fkey(id, name))';
 
 async function readFunctionError(error: any, fallback: string) {
   const response = error?.context;

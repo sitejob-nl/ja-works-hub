@@ -56,6 +56,11 @@ const normalizeEmail = (value: FormDataEntryValue | null) =>
 const cleanString = (value: FormDataEntryValue | null) =>
   typeof value === "string" ? value.trim() : "";
 
+const cleanIsoDate = (value: FormDataEntryValue | null) => {
+  const text = cleanString(value);
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : null;
+};
+
 const cleanList = (value: FormDataEntryValue | null): string[] => {
   if (typeof value !== "string") return [];
   const trimmed = value.trim();
@@ -183,6 +188,9 @@ Deno.serve(async (req) => {
     const email = normalizeEmail(form.get("email"));
     const phone = cleanString(form.get("phone")) || null;
     const nationality = cleanString(form.get("nationality")) || null;
+    const availableFrom = cleanIsoDate(form.get("available_from"));
+    const availableUntil = cleanIsoDate(form.get("available_until"));
+    const arrivalDate = cleanIsoDate(form.get("arrival_date"));
     const availabilityNotes = cleanString(form.get("availability_notes")) || null;
     const cvText = cleanString(form.get("cv_text"));
     const hasDriversLicense = cleanString(form.get("has_drivers_license")) === "true";
@@ -207,6 +215,9 @@ Deno.serve(async (req) => {
       email,
       phone,
       nationality,
+      available_from: availableFrom,
+      available_until: availableUntil,
+      arrival_date: arrivalDate,
       availability_notes: availabilityNotes,
       has_drivers_license: hasDriversLicense,
       languages: languages.length ? languages : null,
@@ -246,6 +257,9 @@ Deno.serve(async (req) => {
           last_name: lastName,
           phone,
           nationality,
+          available_from: availableFrom,
+          available_until: availableUntil,
+          arrival_date: arrivalDate,
           availability_notes: availabilityNotes,
           has_drivers_license: hasDriversLicense,
           languages: languages.length ? languages : null,
@@ -350,7 +364,10 @@ Deno.serve(async (req) => {
       phone ? `Telefoon: ${phone}` : null,
       skills.length ? `Skills: ${skills.join(", ")}` : null,
       certifications.length ? `Certificaten: ${certifications.join(", ")}` : null,
-      availabilityNotes ? `Beschikbaarheid: ${availabilityNotes}` : null,
+      availableFrom ? `Beschikbaar vanaf: ${availableFrom}` : null,
+      availableUntil ? `Beschikbaar tot: ${availableUntil}` : null,
+      arrivalDate ? `Aankomst/check-in: ${arrivalDate}` : null,
+      availabilityNotes ? `Beschikbaarheidsnotities: ${availabilityNotes}` : null,
       "CV is verplicht ontvangen en staat klaar voor review.",
     ].filter(Boolean).join("\n");
 

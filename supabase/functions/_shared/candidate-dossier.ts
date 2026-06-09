@@ -52,6 +52,9 @@ export interface CandidateForDossier {
   cv_file_url?: string | null;
   cv_raw_text?: string | null;
   notes?: string | null;
+  available_from?: string | null;
+  available_until?: string | null;
+  arrival_date?: string | null;
   availability_notes?: string | null;
   skills?: string[] | null;
   certifications?: string[] | null;
@@ -392,6 +395,14 @@ async function loadNotes(admin: SupabaseAdmin, candidate: CandidateForDossier): 
 
   if (cleanText(candidate.notes)) {
     entries.push(`[Kandidaatprofiel notitie]\n${cleanText(candidate.notes)}`);
+  }
+  const availabilityDates = [
+    line("Beschikbaar vanaf", candidate.available_from),
+    line("Beschikbaar tot", candidate.available_until),
+    line("Aankomst/check-in", candidate.arrival_date),
+  ].filter(Boolean).join("\n");
+  if (availabilityDates) {
+    entries.push(`[Beschikbaarheid datums]\n${availabilityDates}`);
   }
   if (cleanText(candidate.availability_notes)) {
     entries.push(`[Beschikbaarheid notitie]\n${cleanText(candidate.availability_notes)}`);

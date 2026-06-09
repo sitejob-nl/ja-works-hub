@@ -448,10 +448,11 @@ const CandidateProfileTab = ({ candidate }: { candidate: any }) => {
   const { data: sensitive, isLoading: sensitiveLoading } = useDecryptedCandidate(candidate.id);
   const address = [candidate.address_street, candidate.address_postal, candidate.address_city].filter(Boolean).join(', ') || null;
   const screeningData = asObject(candidate.screening_data);
+  const screeningAvailability = asObject(screeningData.availability);
   const availability = {
-    available_from: String(asObject(screeningData.availability).available_from ?? ''),
-    available_until: String(asObject(screeningData.availability).available_until ?? ''),
-    arrival_date: String(asObject(screeningData.availability).arrival_date ?? ''),
+    available_from: String(candidate.available_from ?? screeningAvailability.available_from ?? ''),
+    available_until: String(candidate.available_until ?? screeningAvailability.available_until ?? ''),
+    arrival_date: String(candidate.arrival_date ?? screeningAvailability.arrival_date ?? ''),
   };
   const availabilityNotes = stripGeneratedAvailabilityNotes(candidate.availability_notes);
   const hasDirtyEditor = Object.values(dirtyEditors).some(Boolean);
@@ -487,6 +488,7 @@ const CandidateProfileTab = ({ candidate }: { candidate: any }) => {
   const saveAvailabilityField = (field: keyof typeof availability, value: string | null) => {
     const nextAvailability = { ...availability, [field]: value ?? '' };
     return saveField('Beschikbaarheid', {
+      [field]: value || null,
       screening_data: {
         ...screeningData,
         availability: nextAvailability,

@@ -32,6 +32,9 @@ export type MatchCandidate = {
   languages?: string[] | null;
   has_drivers_license?: boolean | null;
   has_dutch_address?: boolean | null;
+  available_from?: string | null;
+  available_until?: string | null;
+  arrival_date?: string | null;
   availability_notes?: string | null;
   ai_function_group?: string | null;
   ai_target_functions?: string[] | null;
@@ -50,6 +53,8 @@ export type MatchVacancy = {
   required_certifications?: string[] | null;
   requires_drivers_license?: boolean | null;
   prefers_dutch_speaker?: boolean | null; // default true
+  start_date?: string | null;
+  start_date_text?: string | null;
 };
 
 export type MatchBreakdown = {
@@ -216,6 +221,99 @@ function distanceText(distance?: DistanceInfo): string {
   return "Afstand onbekend";
 }
 
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+function parseDateOnly(value?: string | null): number | null {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value.slice(0, 10))) return null;
+  const [year, month, day] = value.slice(0, 10).split("-").map(Number);
+  const timestamp = Date.UTC(year, month - 1, day);
+  const date = new Date(timestamp);
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null;
+  return timestamp;
+}
+
+function daysBetween(from: number, to: number): number {
+  return Math.round((from - to) / MS_PER_DAY);
+}
+
+function dateLabel(value?: string | null): string {
+  return value?.slice(0, 10) ?? "";
+}
+
+function availabilityAssessment(candidate: MatchCandidate, vacancy: MatchVacancy): {
+  fraction: number;
+  positive?: string;
+  missing?: string;
+  hardBlock?: string;
+} | null {
+  const availableFrom = parseDateOnly(candidate.available_from);
+  const availableUntil = parseDateOnly(candidate.available_until);
+  const arrivalDate = parseDateOnly(candidate.arrival_date);
+  const vacancyStart = parseDateOnly(vacancy.start_date);
+  const hasNotes = Boolean(candidate.availability_notes?.trim());
+  const hasStructuredDate = availableFrom != null || availableUntil != null || arrivalDate != null;
+
+  if (!hasStructuredDate && !hasNotes) return null;
+
+  if (vacancyStart == null) {
+    if (availableFrom != null) {
+      return { fraction: 1, positive: `Beschikbaar vanaf ${dateLabel(candidate.available_from)}` };
+    }
+    if (arrivalDate != null) {
+      return { fraction: 0.8, positive: `Aankomst/check-in ${dateLabel(candidate.arrival_date)}` };
+    }
+    return { fraction: 1, positive: "Beschikbaarheid ingevuld" };
+  }
+
+  if (availableUntil != null && availableUntil < vacancyStart) {
+    return {
+      fraction: 0,
+      hardBlock: "Beschikbaarheidsperiode eindigt voor startdatum",
+      missing: `Beschikbaar tot ${dateLabel(candidate.available_until)}, start ${dateLabel(vacancy.start_date)}`,
+    };
+  }
+
+  if (availableFrom != null) {
+    const daysAfterStart = daysBetween(availableFrom, vacancyStart);
+    if (daysAfterStart <= 0) {
+      return { fraction: 1, positive: `Beschikbaar vanaf ${dateLabel(candidate.available_from)}` };
+    }
+    if (daysAfterStart <= 14) {
+      return {
+        fraction: 0.5,
+        missing: `Beschikbaar vanaf ${dateLabel(candidate.available_from)}, na startdatum`,
+      };
+    }
+    return {
+      fraction: 0.2,
+      missing: `Beschikbaar vanaf ${dateLabel(candidate.available_from)}, ruim na startdatum`,
+    };
+  }
+
+  if (arrivalDate != null) {
+    const daysAfterStart = daysBetween(arrivalDate, vacancyStart);
+    if (daysAfterStart <= 0) {
+      return { fraction: 0.8, positive: `Aankomst/check-in ${dateLabel(candidate.arrival_date)}` };
+    }
+    if (daysAfterStart <= 14) {
+      return {
+        fraction: 0.4,
+        missing: `Aankomst/check-in ${dateLabel(candidate.arrival_date)}, na startdatum`,
+      };
+    }
+    return {
+      fraction: 0.2,
+      missing: `Aankomst/check-in ${dateLabel(candidate.arrival_date)}, ruim na startdatum`,
+    };
+  }
+
+  if (availableUntil != null) {
+    return { fraction: 0.7, positive: `Beschikbaar tot ${dateLabel(candidate.available_until)}` };
+  }
+
+  return { fraction: 1, positive: "Beschikbaarheid ingevuld" };
+}
+
 function speaksDutch(candidate: MatchCandidate, norm: (s: string) => string): boolean {
   // Talen worden vaak als "Nederlands - B1" / "Nederlands - basis" opgeslagen, niet kaal
   // "Nederlands". Daarom token-gewijs checken i.p.v. exacte match.
@@ -310,6 +408,8 @@ export function scoreMatch(
   // Rijbewijs is GEEN harde blokker: de kandidaat-rijbewijsdata is onbetrouwbaar/leeg (zelden
   // uit CV's overgenomen), dus erop blokkeren verbergt goede kandidaten onterecht. Het telt
   // als pluspunt mee (zie hieronder); een gevraagd-maar-ontbrekend rijbewijs is een aandachtspunt.
+  const availability = availabilityAssessment(candidate, vacancy);
+  if (availability?.hardBlock) hardBlocks.push(availability.hardBlock);
 
   // ── Genormaliseerde fit ──────────────────────────────────────────────────
   const distFrac = distanceFraction(distance);
@@ -320,7 +420,7 @@ export function scoreMatch(
   components.push({ key: "functionGroup", weight: weights.functionGroup, fraction: functionMatched ? 1 : 0 });
   if (distFrac != null) components.push({ key: "distance", weight: weights.distance, fraction: distFrac });
   // Beschikbaarheid telt alleen mee als ze ingevuld is (anders niet-van-toepassing, geen straf).
-  if (candidate.availability_notes) components.push({ key: "availability", weight: weights.availability, fraction: 1 });
+  if (availability) components.push({ key: "availability", weight: weights.availability, fraction: availability.fraction });
 
   const totalWeight = components.reduce((s, c) => s + c.weight, 0);
   const fit = totalWeight > 0 ? components.reduce((s, c) => s + c.fraction * c.weight, 0) / totalWeight * 100 : 0;
@@ -364,13 +464,14 @@ export function scoreMatch(
   else if (reqSkillCount === 0) positives.push("Geen specifieke skill-eisen op de vacature");
   if (certMatches.length > 0) positives.push(`Certificaten: ${certMatches.join(", ")}`);
   if (distFrac != null) positives.push(distanceText(distance));
-  if (candidate.availability_notes) positives.push("Beschikbaarheid ingevuld");
+  if (availability?.positive) positives.push(availability.positive);
 
   if (missingSkills.length > 0) missing.push(`Ontbrekende vaardigheden: ${missingSkills.join(", ")}`);
   if (missingCerts.length > 0) missing.push(`Ontbrekende certificaten: ${missingCerts.join(", ")}`);
   if (vacancy.requires_drivers_license && !candidate.has_drivers_license) missing.push("Rijbewijs gevraagd (niet geregistreerd bij kandidaat)");
   if (distFrac == null && (vacancy.location || vacancy.title)) missing.push("Afstand nog controleren (geen coördinaten)");
-  if (!candidate.availability_notes) missing.push("Beschikbaarheid nog controleren");
+  if (availability?.missing) missing.push(availability.missing);
+  if (!availability) missing.push("Beschikbaarheid nog controleren");
 
   const reasoning = [
     `${matchPercent}% match`,

@@ -91,6 +91,9 @@ Deno.serve(async (req) => {
           certifications: c?.certifications,
           has_drivers_license: c?.has_drivers_license,
           drivers_license_expiry: c?.drivers_license_expiry,
+          available_from: c?.available_from,
+          available_until: c?.available_until,
+          arrival_date: c?.arrival_date,
           availability_notes: c?.availability_notes,
           cv_file_url: c?.cv_file_url,
         },
@@ -135,7 +138,7 @@ Deno.serve(async (req) => {
           "email", "date_of_birth", "nationality", "languages",
           "skills", "certifications", "has_dutch_address", "address_street", "address_postal",
           "address_city", "address_country", "address_lat", "address_lng", "has_drivers_license",
-          "drivers_license_expiry", "availability_notes",
+          "drivers_license_expiry", "available_from", "available_until", "arrival_date", "availability_notes",
           "cv_file_url", "profile_photo_url",
         ];
 

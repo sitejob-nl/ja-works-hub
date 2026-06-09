@@ -133,7 +133,7 @@ function candidateSelect() {
   return [
     "id", "organization_id", "ai_status", "first_name", "last_name", "status",
     "employee_status", "source", "cv_file_url", "cv_raw_text", "notes",
-    "availability_notes", "skills", "certifications", "languages",
+    "available_from", "available_until", "arrival_date", "availability_notes", "skills", "certifications", "languages",
     "address_city", "address_country", "has_drivers_license",
   ].join(", ");
 }
