@@ -30,21 +30,17 @@ test.describe("Screening callflow", () => {
     await expect(firstAnswer).toHaveValue(marker);
   });
 
-  test("blokkeert verlaten van de kandidaat-bewerkpagina met onopgeslagen formulierveld", async ({ page }) => {
+  test("vervangt de kandidaat-bewerkpagina door inline profielbewerking", async ({ page }) => {
     await page.goto("/kandidaten", { waitUntil: "domcontentloaded" });
     const firstCandidate = page.locator('a[href^="/kandidaten/"]').first();
     await expect(firstCandidate, "minimaal een kandidaatdetail-link").toBeVisible({ timeout: 30_000 });
     await firstCandidate.click();
+    await expect(page.getByRole("tab", { name: /^Profiel$/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Bewerken$/i })).toHaveCount(0);
 
-    await page.getByRole("button", { name: /Bewerken/i }).click();
-    await expect(page).toHaveURL(/\/kandidaten\/.+\/bewerken/);
-
-    const firstInput = page.locator("input").first();
-    await firstInput.fill(`QA niet opgeslagen ${Date.now()}`);
-    await page.getByRole("link", { name: /^Kandidaten$/ }).click();
-
-    await expect(page.getByRole("alertdialog")).toContainText("Hé, je hebt het nog niet opgeslagen.");
-    await page.getByRole("button", { name: /Blijf hier/i }).click();
-    await expect(page).toHaveURL(/\/kandidaten\/.+\/bewerken/);
+    const detailUrl = page.url();
+    await page.goto(`${detailUrl.replace(/[?#].*$/, "")}/bewerken`, { waitUntil: "domcontentloaded" });
+    await expect(page).toHaveURL(/\/kandidaten\/[^/]+\?tab=profiel$/);
+    await expect(page.getByRole("tab", { name: /^Profiel$/i })).toHaveAttribute("data-state", "active");
   });
 });

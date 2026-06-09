@@ -1,7 +1,7 @@
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { RecentItemsProvider } from "@/contexts/RecentItemsContext";
 import { SuperAdminProvider } from "@/contexts/SuperAdminContext";
@@ -30,7 +30,6 @@ import Candidates from "@/pages/Candidates";
 import DuplicateCandidates from "@/pages/DuplicateCandidates";
 import CandidateNew from "@/pages/CandidateNew";
 import CandidateDetail from "@/pages/CandidateDetail";
-import CandidateEdit from "@/pages/CandidateEdit";
 import Employees from "@/pages/Employees";
 import EmployeeNew from "@/pages/EmployeeNew";
 import EmployeeDetail from "@/pages/EmployeeDetail";
@@ -108,6 +107,11 @@ import { TranslationProvider } from "@/contexts/TranslationContext";
 
 const queryClient = new QueryClient();
 
+const CandidateEditRedirect = () => {
+  const { id } = useParams();
+  return <Navigate to={id ? `/kandidaten/${id}?tab=profiel` : "/kandidaten"} replace />;
+};
+
 const App = () => (
   <ErrorBoundary>
     <QueryClientProvider client={queryClient}>
@@ -157,7 +161,7 @@ const App = () => (
               <Route path="/kandidaten/new" element={<CandidateNew />} />
               <Route path="/kandidaten/duplicaten" element={<DuplicateCandidates />} />
               <Route path="/kandidaten/:id" element={<CandidateDetail />} />
-              <Route path="/kandidaten/:id/bewerken" element={<CandidateEdit />} />
+              <Route path="/kandidaten/:id/bewerken" element={<CandidateEditRedirect />} />
               <Route path="/medewerkers" element={<Navigate to="/kandidaten?tab=in-dienst" replace />} />
               <Route path="/medewerkers/new" element={<EmployeeNew />} />
               <Route path="/medewerkers/:id" element={<EmployeeDetail />} />
