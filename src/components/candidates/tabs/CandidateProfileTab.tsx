@@ -1,4 +1,4 @@
-import { useEffect, useState, type ChangeEvent, type KeyboardEvent } from 'react';
+import { useEffect, useState, type ChangeEvent, type HTMLInputTypeAttribute, type KeyboardEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
@@ -7,19 +7,27 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { formatDate } from '@/lib/format';
-import { Copy, Check, MessageCircle, Mail, Link2, RefreshCw, Pencil, Loader2 } from 'lucide-react';
+import { Copy, Check, MessageCircle, Mail, Link2, RefreshCw, Pencil, Loader2, Save, X, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { useDecryptedCandidate } from '@/hooks/useDecryptedCandidate';
 import { usePublicUrl } from '@/hooks/usePublicUrl';
 import { useOutlookAccounts, useOutlookInvoke } from '@/hooks/useOutlookAccounts';
 import { logAudit } from '@/lib/audit';
-import SensitiveField from '@/components/ui/sensitive-field';
 import TagInput from '@/components/ui/tag-input';
 import CustomFieldsSection from '@/components/shared/CustomFieldsSection';
 import UnsavedChangesGuard from '@/components/shared/UnsavedChangesGuard';
 import { CandidatePreferencesTab } from '@/components/candidates/tabs/CandidatePreferencesTab';
 
 const emptyToNull = (value: string) => value.trim() || null;
+const fieldShellClass = 'rounded-md border border-border/70 bg-background px-3 py-2 transition-colors hover:border-primary/40 hover:bg-muted/30';
+const emptyValue = '—';
+
+const maskSensitive = (value: string | null | undefined) => {
+  if (!value) return emptyValue;
+  const trimmed = value.trim();
+  if (trimmed.length <= 4) return '••••';
+  return `${'•'.repeat(Math.min(trimmed.length - 4, 8))}${trimmed.slice(-4)}`;
+};
 
 const InlineTextField = ({
   id,
@@ -27,6 +35,8 @@ const InlineTextField = ({
   value,
   displayValue,
   type = 'text',
+  placeholder,
+  inputMode,
   multiline = false,
   onSave,
   onDirtyChange,
@@ -35,7 +45,9 @@ const InlineTextField = ({
   label: string;
   value: string | null | undefined;
   displayValue?: string | null;
-  type?: string;
+  type?: HTMLInputTypeAttribute;
+  placeholder?: string;
+  inputMode?: 'none' | 'text' | 'tel' | 'url' | 'email' | 'numeric' | 'decimal' | 'search';
   multiline?: boolean;
   onSave: (value: string | null) => Promise<void>;
   onDirtyChange: (id: string, dirty: boolean) => void;
@@ -87,7 +99,7 @@ const InlineTextField = ({
     const commonProps = {
       value: draft,
       autoFocus: true,
-      onBlur: commit,
+      onBlur: () => void commit(),
       onChange: (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => updateDraft(event.target.value),
       onKeyDown: (event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         if (event.key === 'Escape') {
@@ -103,18 +115,46 @@ const InlineTextField = ({
           commit();
         }
       },
-      className: 'mt-1',
+      className: 'mt-2',
     };
 
     return (
-      <div>
-        <p className="text-xs text-muted-foreground">{label}</p>
+      <div className={fieldShellClass}>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs font-medium text-muted-foreground">{label}</p>
+          {saving && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+        </div>
         {multiline ? (
-          <Textarea {...commonProps} rows={3} />
+          <Textarea {...commonProps} placeholder={placeholder} rows={3} />
         ) : (
-          <Input {...commonProps} type={type} />
+          <Input {...commonProps} type={type} inputMode={inputMode} placeholder={placeholder} />
         )}
-        {saving && <p className="text-xs text-muted-foreground mt-1">Opslaan...</p>}
+        <div className="mt-2 flex items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            className="h-8 gap-1.5"
+            disabled={saving}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => void commit()}
+          >
+            <Save className="h-3.5 w-3.5" />
+            Opslaan
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 gap-1.5"
+            disabled={saving}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={cancel}
+          >
+            <X className="h-3.5 w-3.5" />
+            Annuleren
+          </Button>
+          <span className="text-xs text-muted-foreground">Enter slaat ook op</span>
+        </div>
       </div>
     );
   }
@@ -123,14 +163,167 @@ const InlineTextField = ({
     <button
       type="button"
       onClick={() => setEditing(true)}
-      className="group w-full rounded-md text-left -mx-2 px-2 py-1 transition-colors hover:bg-muted/60"
+      className={`group w-full text-left ${fieldShellClass}`}
     >
-      <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        {label}
-        <Pencil className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100" />
+      <span className="flex items-center justify-between gap-2 text-xs font-medium text-muted-foreground">
+        <span>{label}</span>
+        <Pencil className="h-3.5 w-3.5 opacity-70 transition-opacity group-hover:opacity-100" />
       </span>
-      <span className="block text-sm mt-0.5 whitespace-pre-wrap">{displayValue || value || '—'}</span>
+      <span className="block min-h-5 text-sm mt-1 whitespace-pre-wrap">{displayValue || value || emptyValue}</span>
     </button>
+  );
+};
+
+const InlineSensitiveField = ({
+  id,
+  label,
+  value,
+  loading,
+  placeholder,
+  inputMode = 'text',
+  onSave,
+  onDirtyChange,
+}: {
+  id: string;
+  label: string;
+  value: string | null | undefined;
+  loading: boolean;
+  placeholder?: string;
+  inputMode?: 'none' | 'text' | 'tel' | 'url' | 'email' | 'numeric' | 'decimal' | 'search';
+  onSave: (value: string | null) => Promise<void>;
+  onDirtyChange: (id: string, dirty: boolean) => void;
+}) => {
+  const [editing, setEditing] = useState(false);
+  const [visible, setVisible] = useState(false);
+  const [draft, setDraft] = useState(value ?? '');
+  const [saved, setSaved] = useState(value ?? '');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (editing) return;
+    setDraft(value ?? '');
+    setSaved(value ?? '');
+  }, [editing, value]);
+
+  const dirty = draft !== saved;
+  const updateDraft = (next: string) => {
+    setDraft(next);
+    onDirtyChange(id, next !== saved);
+  };
+
+  const commit = async () => {
+    if (!editing) return;
+    if (!dirty) {
+      setEditing(false);
+      onDirtyChange(id, false);
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSave(emptyToNull(draft));
+      setSaved(draft);
+      setEditing(false);
+      onDirtyChange(id, false);
+    } catch {
+      onDirtyChange(id, true);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const cancel = () => {
+    setDraft(saved);
+    setEditing(false);
+    onDirtyChange(id, false);
+  };
+
+  if (loading) {
+    return (
+      <div className={fieldShellClass}>
+        <p className="text-xs font-medium text-muted-foreground">{label}</p>
+        <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          Laden...
+        </div>
+      </div>
+    );
+  }
+
+  if (editing) {
+    return (
+      <div className={fieldShellClass}>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs font-medium text-muted-foreground">{label}</p>
+          {saving && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+        </div>
+        <Input
+          value={draft}
+          autoFocus
+          className="mt-2 font-mono"
+          placeholder={placeholder}
+          inputMode={inputMode}
+          onBlur={() => void commit()}
+          onChange={(event) => updateDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              cancel();
+            }
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              void commit();
+            }
+          }}
+        />
+        <div className="mt-2 flex items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            className="h-8 gap-1.5"
+            disabled={saving}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => void commit()}
+          >
+            <Save className="h-3.5 w-3.5" />
+            Opslaan
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 gap-1.5"
+            disabled={saving}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={cancel}
+          >
+            <X className="h-3.5 w-3.5" />
+            Annuleren
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  const hasValue = Boolean(value);
+  return (
+    <div className={fieldShellClass}>
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <p className="text-xs font-medium text-muted-foreground">{label}</p>
+          <p className="mt-1 min-h-5 font-mono text-sm">{hasValue && visible ? value : maskSensitive(value)}</p>
+        </div>
+        <div className="flex items-center gap-1">
+          {hasValue && (
+            <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => setVisible((current) => !current)}>
+              {visible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+            </Button>
+          )}
+          <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditing(true)}>
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 };
 
@@ -154,10 +347,10 @@ const InlineBooleanField = ({
   };
 
   return (
-    <label className="flex items-center justify-between gap-3 rounded-md -mx-2 px-2 py-1 hover:bg-muted/60 cursor-pointer">
+    <label className={`flex items-center justify-between gap-3 cursor-pointer ${fieldShellClass}`}>
       <span>
-        <span className="block text-xs text-muted-foreground">{label}</span>
-        <span className="block text-sm mt-0.5">{value == null ? 'Onbekend' : value ? 'Ja' : 'Nee'}</span>
+        <span className="block text-xs font-medium text-muted-foreground">{label}</span>
+        <span className="block text-sm mt-1">{value == null ? 'Onbekend' : value ? 'Ja' : 'Nee'}</span>
       </span>
       <span className="flex items-center gap-2">
         {saving && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
@@ -204,10 +397,10 @@ const InlineTagsField = ({
   };
 
   return (
-    <div className="rounded-md -mx-2 px-2 py-1 hover:bg-muted/60">
-      <button type="button" onClick={() => setEditing(true)} className="group flex items-center gap-1.5 text-xs text-muted-foreground">
-        {label}
-        <Pencil className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100" />
+    <div className={fieldShellClass}>
+      <button type="button" onClick={() => setEditing(true)} className="group flex w-full items-center justify-between gap-2 text-left text-xs font-medium text-muted-foreground">
+        <span>{label}</span>
+        <Pencil className="h-3.5 w-3.5 opacity-70 transition-opacity group-hover:opacity-100" />
       </button>
       {editing ? (
         <div className="mt-1">
@@ -247,6 +440,9 @@ const CandidateProfileTab = ({ candidate }: { candidate: any }) => {
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ['candidate', candidate.id] });
       qc.invalidateQueries({ queryKey: ['candidates'] });
+      if ('bsn' in variables.patch || 'iban' in variables.patch) {
+        qc.invalidateQueries({ queryKey: ['candidate-decrypted', candidate.id] });
+      }
       logAudit({
         action: 'update',
         tableName: 'candidates',
@@ -366,8 +562,25 @@ const CandidateProfileTab = ({ candidate }: { candidate: any }) => {
         <InlineTextField id="last_name" label="Achternaam" value={candidate.last_name} onSave={(value) => saveField('Achternaam', { last_name: value || '' })} onDirtyChange={setEditorDirty} />
         <InlineTextField id="date_of_birth" label="Geboortedatum" value={candidate.date_of_birth} displayValue={formatDate(candidate.date_of_birth)} type="date" onSave={(value) => saveField('Geboortedatum', { date_of_birth: value })} onDirtyChange={setEditorDirty} />
         <InlineTextField id="nationality" label="Nationaliteit" value={candidate.nationality} onSave={(value) => saveField('Nationaliteit', { nationality: value })} onDirtyChange={setEditorDirty} />
-        <SensitiveField label="BSN" value={sensitive?.decrypted_bsn} loading={sensitiveLoading} />
-        <SensitiveField label="IBAN" value={sensitive?.decrypted_iban} loading={sensitiveLoading} />
+        <InlineSensitiveField
+          id="bsn"
+          label="BSN"
+          value={sensitive?.decrypted_bsn}
+          loading={sensitiveLoading}
+          placeholder="123456789"
+          inputMode="numeric"
+          onSave={(value) => saveField('BSN', { bsn: value })}
+          onDirtyChange={setEditorDirty}
+        />
+        <InlineSensitiveField
+          id="iban"
+          label="IBAN"
+          value={sensitive?.decrypted_iban}
+          loading={sensitiveLoading}
+          placeholder="NL00 BANK 0000 0000 00"
+          onSave={(value) => saveField('IBAN', { iban: value })}
+          onDirtyChange={setEditorDirty}
+        />
       </div>
 
       <div className="bg-card rounded-lg border p-6 space-y-4">
