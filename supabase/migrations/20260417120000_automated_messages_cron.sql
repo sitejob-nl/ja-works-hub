@@ -1,9 +1,8 @@
 -- Enable pg_cron + pg_net en schedule automated jobs.
 --
 -- Jobs draaien onder de postgres rol via pg_cron's worker. Elke job
--- post via net.http_post naar een edge function. De AUTOMATED_KEY
--- voor automated-messages staat ingemetseld; bij rotatie zowel de
--- edge function secret als deze schedule bijwerken.
+-- post via net.http_post naar een edge function. De cron-secret wordt
+-- gelezen uit app.cron_secret zodat er geen gedeelde sleutel in git staat.
 
 CREATE EXTENSION IF NOT EXISTS pg_cron WITH SCHEMA extensions;
 CREATE EXTENSION IF NOT EXISTS pg_net WITH SCHEMA extensions;
@@ -19,7 +18,7 @@ SELECT cron.schedule(
     url := 'https://noaupcteygfvlyymqtew.supabase.co/functions/v1/automated-messages?job=onboarding-reminders',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
-      'X-Automated-Key', 'VwEQ-VFVx-Gx3wYtN50pP4hpV_Sr-O4QGOebM1KTgNo'
+      'X-Cron-Secret', current_setting('app.cron_secret', true)
     ),
     body := '{}'::jsonb
   );

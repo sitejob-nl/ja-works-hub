@@ -6,7 +6,7 @@
 //     onboarding-token op dag 1, 3 en 7 na aanmaak. Slaat tokens over die
 //     al gebruikt, verlopen of opted-out zijn.
 //
-// Authenticatie: header X-Automated-Key moet overeenkomen met AUTOMATED_KEY env var.
+// Authenticatie: header X-Cron-Secret moet overeenkomen met CRON_SECRET env var.
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getWhatsAppCredentials, normalizePhone, META_API_BASE } from "../_shared/whatsapp-utils.ts";
 import { getWhatsAppAutomationSettings, mergeTemplate } from "../_shared/whatsapp-automation-settings.ts";
@@ -14,7 +14,7 @@ import { isOutboundPaused } from "../_shared/outbound-pause.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-automated-key, x-cron-secret",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
 };
 
 const json = (body: unknown, status = 200) =>
@@ -171,7 +171,7 @@ async function runOnboardingReminders(service: SupabaseClient) {
   return results;
 }
 
-async function runScheduledCampaigns(service: SupabaseClient, automatedKey: string | null, cronSecret: string | null) {
+async function runScheduledCampaigns(service: SupabaseClient, cronSecret: string | null) {
   const { data: campaigns } = await service
     .from("bulk_campaigns")
     .select("id")
@@ -186,11 +186,9 @@ async function runScheduledCampaigns(service: SupabaseClient, automatedKey: stri
 
   for (const campaign of campaigns ?? []) {
     try {
-      const authHeaders: Record<string, string> = automatedKey
-        ? { "X-Automated-Key": automatedKey }
-        : cronSecret
-          ? { "X-Cron-Secret": cronSecret }
-          : {};
+      const authHeaders: Record<string, string> = cronSecret
+        ? { "X-Cron-Secret": cronSecret }
+        : {};
       const res = await fetch(`${supabaseUrl}/functions/v1/bulk-campaign-processor`, {
         method: "POST",
         headers: {
@@ -217,13 +215,10 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
 
   try {
-    const providedKey = req.headers.get("X-Automated-Key");
     const providedCronSecret = req.headers.get("X-Cron-Secret");
-    const expectedKey = Deno.env.get("AUTOMATED_KEY");
     const expectedCronSecret = Deno.env.get("CRON_SECRET");
-    const hasAutomatedKey = !!expectedKey && providedKey === expectedKey;
     const hasCronSecret = !!expectedCronSecret && providedCronSecret === expectedCronSecret;
-    if (!hasAutomatedKey && !hasCronSecret) {
+    if (!hasCronSecret) {
       return json({ error: "Unauthorized" }, 401);
     }
 
@@ -250,7 +245,7 @@ Deno.serve(async (req) => {
         return json({ job, result });
       }
       case "scheduled-campaigns": {
-        const result = await runScheduledCampaigns(service, expectedKey ?? null, expectedCronSecret ?? null);
+        const result = await runScheduledCampaigns(service, expectedCronSecret ?? null);
         return json({ job, result });
       }
       default:
