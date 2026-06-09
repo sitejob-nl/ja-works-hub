@@ -17,6 +17,8 @@ interface Props {
   werkgevers?: WorkEntry[];
   gaten?: Gap[];
   totaleJaren?: number;
+  compact?: boolean;
+  className?: string;
 }
 
 const CURRENT_YEAR = new Date().getFullYear();
@@ -39,7 +41,7 @@ function parseYearRange(periode: string): { start: number; end: number } {
   return { start, end };
 }
 
-const WorkHistoryTimeline = ({ werkgevers = [], gaten = [], totaleJaren }: Props) => {
+const WorkHistoryTimeline = ({ werkgevers = [], gaten = [], totaleJaren, compact = false, className = '' }: Props) => {
   if (werkgevers.length === 0) return null;
 
   // Calculate timeline bounds
@@ -59,7 +61,7 @@ const WorkHistoryTimeline = ({ werkgevers = [], gaten = [], totaleJaren }: Props
   for (let y = minYear; y <= maxYear; y++) years.push(y);
 
   return (
-    <div className="space-y-3">
+    <div className={`${compact ? 'space-y-2' : 'space-y-3'} ${className}`}>
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-muted-foreground">Tijdlijn werkgeschiedenis</span>
         {totaleJaren && <Badge variant="secondary" className="text-xs">{totaleJaren} jaar ervaring</Badge>}
@@ -75,7 +77,7 @@ const WorkHistoryTimeline = ({ werkgevers = [], gaten = [], totaleJaren }: Props
         </div>
 
         {/* Track */}
-        <div className="relative h-7 bg-muted/40 rounded-md overflow-hidden">
+        <div className={`relative ${compact ? 'h-5' : 'h-7'} bg-muted/40 rounded-md overflow-hidden`}>
           {/* Gaps (red) */}
           {gaten.map((g, i) => {
             const range = parseYearRange(g.periode);
@@ -99,7 +101,7 @@ const WorkHistoryTimeline = ({ werkgevers = [], gaten = [], totaleJaren }: Props
             return (
               <div
                 key={i}
-                className={`absolute top-0.5 h-6 rounded ${COLORS[i % COLORS.length]} opacity-90`}
+                className={`absolute ${compact ? 'top-0.5 h-4' : 'top-0.5 h-6'} rounded ${COLORS[i % COLORS.length]} opacity-90`}
                 style={{ left: `${left}%`, width: `${width}%` }}
                 title={`${w.functie} @ ${w.bedrijf} (${w.periode}, ${w.duur_maanden} mnd)`}
               />
@@ -110,13 +112,16 @@ const WorkHistoryTimeline = ({ werkgevers = [], gaten = [], totaleJaren }: Props
 
       {/* Legend */}
       <div className="flex flex-wrap gap-x-4 gap-y-1">
-        {werkgevers.map((w, i) => (
+        {werkgevers.slice(0, compact ? 3 : werkgevers.length).map((w, i) => (
           <div key={i} className="flex items-center gap-1.5 text-xs">
             <span className={`h-2.5 w-2.5 rounded-sm ${COLORS[i % COLORS.length]}`} />
             <span className="text-muted-foreground">{w.bedrijf}</span>
-            <span className="font-medium">({w.duur_maanden} mnd)</span>
+            {!compact && <span className="font-medium">({w.duur_maanden} mnd)</span>}
           </div>
         ))}
+        {compact && werkgevers.length > 3 && (
+          <div className="text-xs text-muted-foreground">+{werkgevers.length - 3} meer</div>
+        )}
         {gaten.length > 0 && (
           <div className="flex items-center gap-1.5 text-xs">
             <span className="h-2.5 w-2.5 rounded-sm bg-orange-200 border border-orange-300" />

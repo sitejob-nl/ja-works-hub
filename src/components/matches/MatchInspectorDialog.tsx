@@ -9,6 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import CandidateMatchContext from '@/components/matches/CandidateMatchContext';
 import type { MatchBreakdown } from '@/lib/matching';
 import { cn } from '@/lib/utils';
 import { componentLabel, scoreBadgeClass } from '@/lib/match-presenters';
@@ -20,6 +21,7 @@ type MatchInspectorDialogProps = {
   description?: string;
   breakdown?: MatchBreakdown | null;
   candidateQuality?: number | null;
+  candidate?: any | null;
   vacancyContext?: Array<{ label: string; value?: string | number | null }>;
   action?: ReactNode;
 };
@@ -43,6 +45,7 @@ const MatchInspectorDialog = ({
   description,
   breakdown,
   candidateQuality,
+  candidate,
   vacancyContext = [],
   action,
 }: MatchInspectorDialogProps) => {
@@ -84,6 +87,8 @@ const MatchInspectorDialog = ({
                 </div>
               </div>
             )}
+
+            <CandidateMatchContext candidate={candidate} />
 
             {breakdown.reasoning && <p className="text-sm text-muted-foreground">{breakdown.reasoning}</p>}
 

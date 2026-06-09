@@ -21,6 +21,7 @@ import PlacementSheet from '@/components/vacancies/PlacementSheet';
 import MatchFeedbackDialog from '@/components/matches/MatchFeedbackDialog';
 import MatchInspectorDialog from '@/components/matches/MatchInspectorDialog';
 import MatchOutboundDialog from '@/components/matches/MatchOutboundDialog';
+import CandidateMatchContext from '@/components/matches/CandidateMatchContext';
 import { type MatchBreakdown } from '@/lib/matching';
 import { MATCH_STATUS_STEPS, getNextMatchStatus, isTerminalMatchStatus, matchStatusNeedsFeedbackDialog } from '@/lib/match-status';
 import { scoreBadgeClass } from '@/lib/match-presenters';
@@ -42,6 +43,8 @@ const sourceLabel: Record<string, string> = {
   linkedin: 'LinkedIn',
   overig: 'Overig',
 };
+
+const CANDIDATE_MATCH_CONTEXT_FIELDS = 'id, ai_analysis, ai_summary, ai_classification, ai_reliability_score, screening_data, screened_at, availability_notes, skills, certifications, languages, has_drivers_license, has_dutch_address, address_city';
 
 const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
   const orgId = useOrganizationId();
@@ -74,9 +77,9 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
   const { data: matches } = useQuery({
     queryKey: ['vacancy-matches', vacancy.id],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('matches')
-        .select(`*, candidates!matches_candidate_id_fkey(id, first_name, last_name, email, phone, compliance_status)`)
+        .select(`*, candidates!matches_candidate_id_fkey(id, first_name, last_name, email, phone, compliance_status, availability_notes, ai_analysis, ai_summary, ai_classification, ai_reliability_score, screening_data, screened_at, skills, certifications, languages, has_drivers_license, has_dutch_address, address_city)`)
         .eq('vacancy_id', vacancy.id)
         .order('created_at', { ascending: false });
       if (error) throw error;
@@ -141,6 +144,25 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
     },
     enabled: !!matches,
   });
+
+  const shortlistCandidateIds = (availableCandidates ?? []).map((candidate: any) => candidate.id).filter(Boolean).join(',');
+  const { data: shortlistCandidateContext = [] } = useQuery({
+    queryKey: ['shortlist-candidate-context', orgId, shortlistCandidateIds],
+    queryFn: async () => {
+      const ids = shortlistCandidateIds.split(',').filter(Boolean);
+      if (ids.length === 0) return [];
+      const { data, error } = await supabase
+        .from('candidates')
+        .select(CANDIDATE_MATCH_CONTEXT_FIELDS)
+        .eq('organization_id', orgId)
+        .in('id', ids);
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!orgId && shortlistCandidateIds.length > 0,
+  });
+
+  const shortlistContextById = new Map((shortlistCandidateContext as any[]).map((row) => [row.id, row]));
 
   const insertMatch = async (candidate: any) => {
     const score = candidate._vacancyScore;
@@ -478,6 +500,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
                     </p>
                   )}
                   {bd?.missing?.length > 0 && <p className="text-[11px] text-amber-700 mt-1 line-clamp-1">{bd.missing[0]}</p>}
+                  <CandidateMatchContext candidate={c} compact className="mt-2" />
                 </div>
                 <div className="flex flex-col items-end gap-1 flex-shrink-0">
                   <div className="flex items-center gap-1">
@@ -505,7 +528,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
                     variant="ghost"
                     className="h-7 text-xs text-muted-foreground"
                     disabled={!bd}
-                    onClick={() => setDetail({ name: `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim(), breakdown: bd, quality: bd?.candidateQuality ?? null })}
+                    onClick={() => setDetail({ name: `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim(), breakdown: bd, quality: bd?.candidateQuality ?? null, candidate: c })}
                   >
                     Waarom?
                   </Button>
@@ -582,6 +605,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
             ))}
           {filteredShortlist.map((c: any) => {
             const checked = selectedShortlist.has(c.id);
+            const candidateWithContext = { ...c, ...(shortlistContextById.get(c.id) ?? {}) };
             return (
               <Card key={c.id} className={cn('p-3', checked && 'ring-1 ring-primary')}>
                 <div className="flex items-start gap-3">
@@ -605,12 +629,13 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
                     {c._vacancyScore.missing.length > 0 && (
                       <p className="text-[11px] text-amber-700 mt-1 line-clamp-1">{c._vacancyScore.missing[0]}</p>
                     )}
+                    <CandidateMatchContext candidate={candidateWithContext} compact className="mt-2" />
                   </div>
                   <div className="flex flex-col items-end gap-1 flex-shrink-0">
                     <Button size="sm" variant="outline" onClick={() => proposeMutation.mutate(c)} disabled={proposeMutation.isPending}>
                       <UserPlus className="h-3 w-3 mr-1" /> Nieuwe match
                     </Button>
-                    <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground" onClick={() => setDetail({ name: `${c.first_name} ${c.last_name}`, breakdown: c._vacancyScore, quality: c._candidateQuality, candidate: c })}>
+                    <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground" onClick={() => setDetail({ name: `${c.first_name} ${c.last_name}`, breakdown: c._vacancyScore, quality: c._candidateQuality, candidate: candidateWithContext })}>
                       Waarom?
                     </Button>
                   </div>
@@ -632,6 +657,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
         description={detail ? `${detail.name} — opbouw van de matchscore.` : undefined}
         breakdown={detail?.breakdown ?? null}
         candidateQuality={detail?.quality ?? detail?.breakdown?.candidateQuality ?? null}
+        candidate={detail?.candidate ?? null}
         vacancyContext={[
           { label: 'Vacature', value: vacancy.title },
           { label: 'Locatie', value: vacancy.location },
