@@ -16,9 +16,9 @@ test.describe("Screening callflow", () => {
     await expect(page.getByTestId("screening-start-call")).toBeVisible();
     await expect(page.getByTestId("screening-save-draft")).toBeDisabled();
     await expect(page.getByRole("heading", { name: "Voorbereiding" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Contact & identiteit" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Mobiliteit" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Werkprofiel" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /2\s+Contact & identiteit/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /3\s+Mobiliteit/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /4\s+Werkprofiel/i })).toBeVisible();
 
     const marker = `QA screening ${Date.now()}`;
     const firstAnswer = page.getByTestId("screening-answer-prep_cv_check");

@@ -5,6 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -74,6 +75,8 @@ const CandidateDetail = () => {
   const [copied, setCopied] = useState(false);
   const [activeTab, setActiveTab] = useTabSearchParam('profiel');
   const [screeningDirty, setScreeningDirty] = useState(false);
+  const [pendingTab, setPendingTab] = useState<string | null>(null);
+  const [tabGuardOpen, setTabGuardOpen] = useState(false);
   const { buildUrl } = usePublicUrl();
   const callOutlook = useOutlookInvoke();
   const { hasUsableAccounts } = useOutlookAccounts('mail_send');
@@ -201,9 +204,46 @@ const CandidateDetail = () => {
   if (isLoading) return <div className="p-8 text-muted-foreground">Laden...</div>;
   if (!candidate) return <div className="p-8 text-muted-foreground">Niet gevonden</div>;
 
+  const requestTabChange = (nextTab: string) => {
+    if (nextTab === activeTab) return;
+    if (activeTab === 'screening' && screeningDirty) {
+      setPendingTab(nextTab);
+      setTabGuardOpen(true);
+      return;
+    }
+    setActiveTab(nextTab);
+  };
+
+  const stayOnCurrentTab = () => {
+    setPendingTab(null);
+    setTabGuardOpen(false);
+  };
+
+  const leaveCurrentTab = () => {
+    const nextTab = pendingTab;
+    setPendingTab(null);
+    setTabGuardOpen(false);
+    setScreeningDirty(false);
+    if (nextTab) setActiveTab(nextTab);
+  };
+
   return (
     <div className="space-y-4 sm:space-y-6 min-w-0">
       <UnsavedChangesGuard when={screeningDirty} />
+      <AlertDialog open={tabGuardOpen} onOpenChange={(open) => { if (!open) stayOnCurrentTab(); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Hé, je hebt het nog niet opgeslagen.</AlertDialogTitle>
+            <AlertDialogDescription>
+              Sla je wijzigingen op voordat je deze pagina verlaat, anders raak je ze kwijt.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={stayOnCurrentTab}>Blijf hier</AlertDialogCancel>
+            <AlertDialogAction onClick={leaveCurrentTab}>Toch weggaan</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <div className="flex items-center gap-1 text-sm text-muted-foreground">
         <Link to="/kandidaten" className="hover:text-foreground transition-colors">Kandidaten</Link>
         <ChevronRight className="h-3 w-3" />
@@ -282,9 +322,9 @@ const CandidateDetail = () => {
         </DialogContent>
       </Dialog>
 
-      <CandidateReadinessStrip candidate={candidate} onTabChange={setActiveTab} />
+      <CandidateReadinessStrip candidate={candidate} onTabChange={requestTabChange} />
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
+      <Tabs value={activeTab} onValueChange={requestTabChange}>
         <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">
           <TabsList className="w-max sm:w-auto">
             <TabsTrigger value="profiel">Profiel</TabsTrigger>
