@@ -2,27 +2,23 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
-import { Link } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Card, CardContent } from '@/components/ui/card';
-import { Bell, GitCompareArrows, Mail, Search, User, Building2, Briefcase, Star } from 'lucide-react';
+import { Bell, GitCompareArrows, Mail, Search } from 'lucide-react';
+import MatchCard from '@/components/matches/MatchCard';
+import MatchFeedbackDialog from '@/components/matches/MatchFeedbackDialog';
+import MatchInspectorDialog from '@/components/matches/MatchInspectorDialog';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
+import { MATCH_STATUS_STEPS, isTerminalMatchStatus, matchStatusNeedsFeedbackDialog } from '@/lib/match-status';
+import type { MatchBreakdown } from '@/lib/matching';
 
-const COLUMNS = [
-  { key: 'nieuwe_match', label: 'Nieuwe match', color: 'bg-amber-500' },
-  { key: 'gescreend', label: 'Gescreend', color: 'bg-cyan-500' },
-  { key: 'voorgesteld', label: 'Voorgesteld', color: 'bg-slate-400' },
-  { key: 'voorgesteld_bij_klant', label: 'Bij klant', color: 'bg-indigo-500' },
-  { key: 'in_gesprek', label: 'In gesprek', color: 'bg-blue-500' },
-  { key: 'geaccepteerd', label: 'Geaccepteerd', color: 'bg-emerald-500' },
-  { key: 'afgewezen', label: 'Afgewezen', color: 'bg-red-500' },
-] as const;
+const COLUMNS = MATCH_STATUS_STEPS;
 
 const sourceLabel: Record<string, string> = {
   sollicitatie: 'Sollicitatie',
@@ -98,11 +94,16 @@ async function fetchAllMatchPipelineRows(orgId: string | null | undefined, pipel
 
 const MatchPipeline = () => {
   const orgId = useOrganizationId();
+  const { user } = useAuth();
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [vacancyFilter, setVacancyFilter] = useState('all');
   const [pipelineScope, setPipelineScope] = useState<PipelineScope>('active');
   const [selectedMatchIds, setSelectedMatchIds] = useState<Set<string>>(new Set());
+  const [feedbackRequest, setFeedbackRequest] = useState<{ matchIds: string[]; toStatus: string } | null>(null);
+  const [feedbackReasonId, setFeedbackReasonId] = useState('');
+  const [feedbackNotes, setFeedbackNotes] = useState('');
+  const [detail, setDetail] = useState<{ name: string; match: any; breakdown?: MatchBreakdown | null } | null>(null);
 
   const { data: matches = [], isLoading } = useQuery({
     queryKey: ['match-pipeline', orgId, pipelineScope],
@@ -110,15 +111,59 @@ const MatchPipeline = () => {
     enabled: !!orgId,
   });
 
-  const statusMutation = useMutation({
-    mutationFn: async ({ matchId, status }: { matchId: string; status: string }) => {
-      const { error } = await supabase
-        .from('matches')
-        .update({ status: status as any, status_changed_at: new Date().toISOString() })
+  const { data: feedbackReasons = [] } = useQuery({
+    queryKey: ['match-feedback-reasons', orgId],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('match_feedback_reasons')
+        .select('*')
         .eq('organization_id', orgId)
-        .eq('id', matchId);
+        .eq('is_active', true)
+        .order('sort_order');
       if (error) throw error;
+      return data ?? [];
     },
+    enabled: !!orgId,
+  });
+
+  const persistMatchStatus = async ({
+    matchId,
+    status,
+    reasonId,
+    notes,
+  }: {
+    matchId: string;
+    status: string;
+    reasonId?: string | null;
+    notes?: string | null;
+  }) => {
+    if (status === 'afgewezen' && !reasonId) throw new Error('Kies een feedbackreden voor afwijzen');
+    const current = (matches as any[]).find((match) => match.id === matchId);
+    const { error } = await supabase
+      .from('matches')
+      .update({ status: status as any, status_changed_at: new Date().toISOString() })
+      .eq('organization_id', orgId)
+      .eq('id', matchId);
+    if (error) throw error;
+
+    if (reasonId || notes || isTerminalMatchStatus(status)) {
+      const { error: feedbackError } = await (supabase as any).from('match_feedback_events').insert({
+        organization_id: orgId,
+        match_id: matchId,
+        from_status: current?.status ?? null,
+        to_status: status,
+        reason_id: reasonId ?? null,
+        notes: notes?.trim() || null,
+        created_by: user?.id ?? null,
+        match_score_snapshot: current?.match_score ?? null,
+        match_breakdown_snapshot: current?.match_breakdown ?? null,
+      });
+      if (feedbackError) throw feedbackError;
+    }
+  };
+
+  const statusMutation = useMutation({
+    mutationFn: persistMatchStatus,
     onMutate: async ({ matchId, status }) => {
       await qc.cancelQueries({ queryKey: ['match-pipeline', orgId, pipelineScope] });
       const previous = qc.getQueryData<any[]>(['match-pipeline', orgId, pipelineScope]);
@@ -167,14 +212,21 @@ const MatchPipeline = () => {
   });
 
   const bulkStatusMutation = useMutation({
-    mutationFn: async ({ matchIds, status }: { matchIds: string[]; status: string }) => {
+    mutationFn: async ({
+      matchIds,
+      status,
+      reasonId,
+      notes,
+    }: {
+      matchIds: string[];
+      status: string;
+      reasonId?: string | null;
+      notes?: string | null;
+    }) => {
       if (matchIds.length === 0) throw new Error('Selecteer eerst matches');
-      const { error } = await supabase
-        .from('matches')
-        .update({ status: status as any, status_changed_at: new Date().toISOString() })
-        .eq('organization_id', orgId)
-        .in('id', matchIds);
-      if (error) throw error;
+      for (const matchId of matchIds) {
+        await persistMatchStatus({ matchId, status, reasonId, notes });
+      }
       return { count: matchIds.length, status };
     },
     onSuccess: ({ count, status }) => {
@@ -189,7 +241,7 @@ const MatchPipeline = () => {
   const onDragEnd = (result: DropResult) => {
     const { draggableId, destination, source } = result;
     if (!destination || destination.droppableId === source.droppableId) return;
-    statusMutation.mutate({ matchId: draggableId, status: destination.droppableId });
+    changeStatus([draggableId], destination.droppableId);
   };
 
   const setScope = (scope: PipelineScope) => {
@@ -242,6 +294,37 @@ const MatchPipeline = () => {
         filtered.forEach((match) => next.add(match.id));
       }
       return next;
+    });
+  };
+
+  const changeStatus = (matchIds: string[], status: string) => {
+    if (matchIds.length === 0) return;
+    if (matchStatusNeedsFeedbackDialog(status)) {
+      setFeedbackRequest({ matchIds, toStatus: status });
+      setFeedbackReasonId('');
+      setFeedbackNotes('');
+      return;
+    }
+    if (matchIds.length === 1) {
+      statusMutation.mutate({ matchId: matchIds[0], status });
+    } else {
+      bulkStatusMutation.mutate({ matchIds, status });
+    }
+  };
+
+  const submitFeedbackStatusChange = () => {
+    if (!feedbackRequest) return;
+    bulkStatusMutation.mutate({
+      matchIds: feedbackRequest.matchIds,
+      status: feedbackRequest.toStatus,
+      reasonId: feedbackReasonId || null,
+      notes: feedbackNotes || null,
+    }, {
+      onSuccess: () => {
+        setFeedbackRequest(null);
+        setFeedbackReasonId('');
+        setFeedbackNotes('');
+      },
     });
   };
 
@@ -307,10 +390,7 @@ const MatchPipeline = () => {
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <span className="text-sm text-muted-foreground">{selectedCount} geselecteerd</span>
           <Select
-            onValueChange={(status) => bulkStatusMutation.mutate({
-              matchIds: selectedVisibleMatches.map((match) => match.id),
-              status,
-            })}
+            onValueChange={(status) => changeStatus(selectedVisibleMatches.map((match) => match.id), status)}
             disabled={selectedCount === 0 || bulkStatusMutation.isPending}
           >
             <SelectTrigger className="h-9 w-full sm:w-44"><SelectValue placeholder="Verplaats naar..." /></SelectTrigger>
@@ -353,7 +433,7 @@ const MatchPipeline = () => {
                     ref={provided.innerRef}
                     {...provided.droppableProps}
                     className={cn(
-                      'flex-shrink-0 w-64 rounded-lg p-2 transition-colors',
+                      'flex-shrink-0 w-80 rounded-lg p-2 transition-colors',
                       snapshot.isDraggingOver && 'bg-accent/50'
                     )}
                   >
@@ -373,9 +453,30 @@ const MatchPipeline = () => {
                               className={cn(snapshot.isDragging && 'opacity-90')}
                             >
                               <MatchCard
-                                match={m}
+                                id={m.id}
+                                status={m.status}
+                                candidate={m.candidates}
+                                vacancy={{
+                                  id: m.vacancies?.id,
+                                  title: m.vacancies?.title,
+                                  company_id: (m.vacancies?.companies as any)?.id,
+                                  company_name: (m.vacancies?.companies as any)?.name,
+                                }}
+                                sourceLabel={sourceLabel[m.source] ?? m.source}
+                                score={m.match_score}
+                                breakdown={m.match_breakdown}
+                                candidateQuality={m.match_breakdown?.candidateQuality ?? null}
+                                statusChangedAt={m.status_changed_at}
+                                createdAt={m.created_at}
                                 selected={selectedMatchIds.has(m.id)}
-                                onToggle={() => toggleMatch(m.id)}
+                                onSelectChange={() => toggleMatch(m.id)}
+                                onStatusChange={(status) => changeStatus([m.id], status)}
+                                statusDisabled={statusMutation.isPending || bulkStatusMutation.isPending}
+                                onInspect={() => setDetail({
+                                  name: `${m.candidates?.first_name ?? ''} ${m.candidates?.last_name ?? ''}`.trim() || 'Kandidaat',
+                                  match: m,
+                                  breakdown: m.match_breakdown,
+                                })}
                               />
                             </div>
                           )}
@@ -390,56 +491,36 @@ const MatchPipeline = () => {
           </div>
         </DragDropContext>
       )}
+
+      <MatchInspectorDialog
+        open={!!detail}
+        onOpenChange={(open) => { if (!open) setDetail(null); }}
+        title="Waarom deze match?"
+        description={detail ? `${detail.name} — pipelinebesluit en score-opbouw.` : undefined}
+        breakdown={detail?.breakdown ?? null}
+        candidateQuality={detail?.breakdown?.candidateQuality ?? null}
+        vacancyContext={detail ? [
+          { label: 'Vacature', value: detail.match?.vacancies?.title },
+          { label: 'Opdrachtgever', value: detail.match?.vacancies?.companies?.name },
+          { label: 'Status', value: detail.match?.status?.replaceAll('_', ' ') },
+        ] : []}
+      />
+
+      <MatchFeedbackDialog
+        open={!!feedbackRequest}
+        toStatus={feedbackRequest?.toStatus}
+        count={feedbackRequest?.matchIds.length ?? 1}
+        reasons={feedbackReasons as any[]}
+        reasonId={feedbackReasonId}
+        notes={feedbackNotes}
+        pending={bulkStatusMutation.isPending}
+        onReasonChange={setFeedbackReasonId}
+        onNotesChange={setFeedbackNotes}
+        onCancel={() => setFeedbackRequest(null)}
+        onSubmit={submitFeedbackStatusChange}
+      />
     </div>
   );
 };
-
-function MatchCard({ match, selected, onToggle }: { match: any; selected: boolean; onToggle: () => void }) {
-  const candidate = match.candidates;
-  const vacancy = match.vacancies;
-  const company = vacancy?.companies as any;
-
-  return (
-    <Card className="hover:shadow-md transition-shadow cursor-grab active:cursor-grabbing">
-      <CardContent className="p-3 space-y-2">
-        <Link to={`/vacatures/${vacancy?.id}`} className="block" onClick={e => e.stopPropagation()}>
-          <div className="flex items-start justify-between gap-1">
-            <div className="flex items-center gap-1.5 text-sm font-medium truncate">
-              <span onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
-                <Checkbox
-                  checked={selected}
-                  onCheckedChange={onToggle}
-                  aria-label={`Selecteer match ${candidate?.first_name ?? ''} ${candidate?.last_name ?? ''}`}
-                  className="mr-0.5"
-                />
-              </span>
-              <User className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-              <span className="truncate">{candidate?.first_name} {candidate?.last_name}</span>
-            </div>
-            {match.match_score != null && (
-              <div className="flex items-center gap-0.5 text-xs text-amber-600 flex-shrink-0">
-                <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
-                {Math.round(match.match_score)}%
-              </div>
-            )}
-          </div>
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-1">
-            <Briefcase className="h-3 w-3 flex-shrink-0" />
-            <span className="truncate">{vacancy?.title ?? '—'}</span>
-          </div>
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Building2 className="h-3 w-3 flex-shrink-0" />
-            <span className="truncate">{company?.name ?? '—'}</span>
-          </div>
-        </Link>
-        {match.source && (
-          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-            {sourceLabel[match.source] ?? match.source}
-          </Badge>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
 
 export default MatchPipeline;
