@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import EntityLink from '@/components/ui/entity-link';
+import CandidateMatchContext from '@/components/matches/CandidateMatchContext';
 import MatchStatusSelect from '@/components/matches/MatchStatusSelect';
 import type { MatchBreakdown } from '@/lib/matching';
 import { cn } from '@/lib/utils';
@@ -27,6 +28,13 @@ type MatchCardProps = {
     email?: string | null;
     phone?: string | null;
     compliance_status?: string | null;
+    availability_notes?: string | null;
+    ai_analysis?: unknown;
+    ai_summary?: string | null;
+    ai_classification?: string | null;
+    ai_reliability_score?: number | null;
+    screening_data?: unknown;
+    screened_at?: string | null;
   } | null;
   vacancy?: {
     id?: string | null;
@@ -179,6 +187,8 @@ const MatchCard = ({
                   </Badge>
                 ))}
               </div>
+
+              <CandidateMatchContext candidate={candidate} compact />
             </div>
 
             <div className="flex flex-wrap items-center gap-2 lg:justify-end">

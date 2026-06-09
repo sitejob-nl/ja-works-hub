@@ -22,6 +22,26 @@ const emptyToNull = (value: string) => value.trim() || null;
 const fieldShellClass = 'rounded-md border border-border/70 bg-background px-3 py-2 transition-colors hover:border-primary/40 hover:bg-muted/30';
 const emptyValue = '—';
 
+const asObject = (value: unknown): Record<string, any> =>
+  value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, any> : {};
+
+const stripGeneratedAvailabilityNotes = (notes?: string | null) =>
+  String(notes ?? '')
+    .split('\n')
+    .filter((line) => !/^\s*(Beschikbaar vanaf|Beschikbaar tot|Aankomst\/check-in):/i.test(line))
+    .join('\n')
+    .trim();
+
+const buildAvailabilityNotes = (
+  availability: { available_from?: string | null; available_until?: string | null; arrival_date?: string | null },
+  notes?: string | null,
+) => [
+  availability.available_from ? `Beschikbaar vanaf: ${availability.available_from}` : null,
+  availability.available_until ? `Beschikbaar tot: ${availability.available_until}` : null,
+  availability.arrival_date ? `Aankomst/check-in: ${availability.arrival_date}` : null,
+  stripGeneratedAvailabilityNotes(notes),
+].filter(Boolean).join('\n').trim();
+
 const maskSensitive = (value: string | null | undefined) => {
   if (!value) return emptyValue;
   const trimmed = value.trim();
@@ -427,6 +447,13 @@ const CandidateProfileTab = ({ candidate }: { candidate: any }) => {
   const { hasUsableAccounts } = useOutlookAccounts('mail_send');
   const { data: sensitive, isLoading: sensitiveLoading } = useDecryptedCandidate(candidate.id);
   const address = [candidate.address_street, candidate.address_postal, candidate.address_city].filter(Boolean).join(', ') || null;
+  const screeningData = asObject(candidate.screening_data);
+  const availability = {
+    available_from: String(asObject(screeningData.availability).available_from ?? ''),
+    available_until: String(asObject(screeningData.availability).available_until ?? ''),
+    arrival_date: String(asObject(screeningData.availability).arrival_date ?? ''),
+  };
+  const availabilityNotes = stripGeneratedAvailabilityNotes(candidate.availability_notes);
   const hasDirtyEditor = Object.values(dirtyEditors).some(Boolean);
   const setEditorDirty = (id: string, dirty: boolean) => {
     setDirtyEditors((current) => ({ ...current, [id]: dirty }));
@@ -456,6 +483,23 @@ const CandidateProfileTab = ({ candidate }: { candidate: any }) => {
 
   const saveField = (label: string, patch: Record<string, any>) =>
     updateCandidate.mutateAsync({ label, patch });
+
+  const saveAvailabilityField = (field: keyof typeof availability, value: string | null) => {
+    const nextAvailability = { ...availability, [field]: value ?? '' };
+    return saveField('Beschikbaarheid', {
+      screening_data: {
+        ...screeningData,
+        availability: nextAvailability,
+        updated_at: new Date().toISOString(),
+      },
+      availability_notes: buildAvailabilityNotes(nextAvailability, availabilityNotes) || null,
+    });
+  };
+
+  const saveAvailabilityNotes = (value: string | null) =>
+    saveField('Beschikbaarheid', {
+      availability_notes: buildAvailabilityNotes(availability, value) || null,
+    });
 
   // Fetch active profile token
   const { data: activeToken, isLoading: tokenLoading } = useQuery({
@@ -613,7 +657,36 @@ const CandidateProfileTab = ({ candidate }: { candidate: any }) => {
 
       <div className="bg-card rounded-lg border p-6 space-y-4">
         <h3 className="font-medium">Beschikbaarheid</h3>
-        <InlineTextField id="availability_notes" label="Beschikbaarheid notities" value={candidate.availability_notes} multiline onSave={(value) => saveField('Beschikbaarheid', { availability_notes: value })} onDirtyChange={setEditorDirty} />
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <InlineTextField
+            id="availability_available_from"
+            label="Beschikbaar vanaf"
+            value={availability.available_from}
+            displayValue={formatDate(availability.available_from)}
+            type="date"
+            onSave={(value) => saveAvailabilityField('available_from', value)}
+            onDirtyChange={setEditorDirty}
+          />
+          <InlineTextField
+            id="availability_available_until"
+            label="Beschikbaar tot"
+            value={availability.available_until}
+            displayValue={availability.available_until ? formatDate(availability.available_until) : 'Open'}
+            type="date"
+            onSave={(value) => saveAvailabilityField('available_until', value)}
+            onDirtyChange={setEditorDirty}
+          />
+          <InlineTextField
+            id="availability_arrival_date"
+            label="Aankomst/check-in"
+            value={availability.arrival_date}
+            displayValue={formatDate(availability.arrival_date)}
+            type="date"
+            onSave={(value) => saveAvailabilityField('arrival_date', value)}
+            onDirtyChange={setEditorDirty}
+          />
+        </div>
+        <InlineTextField id="availability_notes" label="Beschikbaarheidsnotities" value={availabilityNotes} multiline onSave={saveAvailabilityNotes} onDirtyChange={setEditorDirty} />
         <InlineBooleanField label="Rijbewijs" value={candidate.has_drivers_license} onSave={(value) => saveField('Rijbewijs', { has_drivers_license: value })} />
         {candidate.has_drivers_license && (
           <InlineTextField id="drivers_license_expiry" label="Verloopdatum rijbewijs" value={candidate.drivers_license_expiry} displayValue={formatDate(candidate.drivers_license_expiry)} type="date" onSave={(value) => saveField('Verloopdatum rijbewijs', { drivers_license_expiry: value })} onDirtyChange={setEditorDirty} />

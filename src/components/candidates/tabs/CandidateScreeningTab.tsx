@@ -25,7 +25,6 @@ import {
   PhoneCall,
   Save,
   ShieldQuestion,
-  Star,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useModuleEnabled } from '@/hooks/useModuleEnabled';
@@ -51,6 +50,11 @@ interface ScreeningData {
     risk_level: string;
     checklist: Record<string, { asked: boolean; notes: string }>;
     notes: string;
+  };
+  availability: {
+    available_from: string;
+    available_until: string;
+    arrival_date: string;
   };
   result: string;
   summary: string;
@@ -126,7 +130,7 @@ const QUESTION_BANK: Record<string, Array<{ key: string; label: string; placehol
     { key: 'countries_worked', label: 'Landen en werken in het buitenland', placeholder: 'Waar gewerkt, ervaring met uitzending/migratie...' },
   ],
   voorwaarden: [
-    { key: 'availability_date', label: 'Beschikbaar vanaf', placeholder: 'Startdatum, opzegtermijn, check-in datum...' },
+    { key: 'availability_date', label: 'Beschikbaarheid bevestigd', placeholder: 'Bevestigd dat de datumvelden kloppen, inclusief opzegtermijn of onzekerheden...' },
     { key: 'salary_wish', label: 'Salarisindicatie en akkoord', placeholder: 'Gewenst loon, minimum, akkoord met aanbod...' },
     { key: 'overtime_shifts', label: 'Overwerk en ploegendiensten', placeholder: 'Bereidheid voor OT, 2/3/5 ploegen, weekend...' },
     { key: 'desired_stay', label: 'Gewenste verblijfsduur', placeholder: 'Seizoen, tijdelijk, lang verblijf...' },
@@ -179,6 +183,23 @@ const createDefaultPersonalChecklist = () => ({
   motivatie: { asked: false, notes: '' },
 });
 
+const stripGeneratedAvailabilityNotes = (notes?: string | null) =>
+  String(notes ?? '')
+    .split('\n')
+    .filter((line) => !/^\s*(Beschikbaar vanaf|Beschikbaar tot|Aankomst\/check-in):/i.test(line))
+    .join('\n')
+    .trim();
+
+const buildAvailabilityNotes = (
+  availability: ScreeningData['availability'],
+  notes?: string | null,
+) => [
+  availability.available_from ? `Beschikbaar vanaf: ${availability.available_from}` : null,
+  availability.available_until ? `Beschikbaar tot: ${availability.available_until}` : null,
+  availability.arrival_date ? `Aankomst/check-in: ${availability.arrival_date}` : null,
+  stripGeneratedAvailabilityNotes(notes),
+].filter(Boolean).join('\n').trim();
+
 const getProfileDraft = (candidate: any): ProfileDraft => ({
   phone: candidate.phone ?? '',
   phone_nl: candidate.phone_nl ?? '',
@@ -192,7 +213,7 @@ const getProfileDraft = (candidate: any): ProfileDraft => ({
   skills: candidate.skills ?? [],
   languages: candidate.languages ?? [],
   certifications: candidate.certifications ?? [],
-  availability_notes: candidate.availability_notes ?? '',
+  availability_notes: stripGeneratedAvailabilityNotes(candidate.availability_notes),
 });
 
 const getInitialData = (candidate: any): ScreeningData => {
@@ -225,6 +246,11 @@ const getInitialData = (candidate: any): ScreeningData => {
       checklist: { ...createDefaultPersonalChecklist(), ...(legacyPersonal.checklist ?? {}) },
       notes: legacyPersonal.notes ?? '',
     },
+    availability: {
+      available_from: existing?.availability?.available_from ?? '',
+      available_until: existing?.availability?.available_until ?? '',
+      arrival_date: existing?.availability?.arrival_date ?? '',
+    },
     result: existing?.result ?? 'niet_gescreend',
     summary: existing?.summary ?? '',
     updated_at: existing?.updated_at ?? null,
@@ -236,13 +262,14 @@ const getInitialData = (candidate: any): ScreeningData => {
 const getMissingProfileFields = (candidate: any) =>
   CORE_PROFILE_FIELDS.filter((field) => field.isMissing(candidate));
 
-const importantMissingFields = (draft: ProfileDraft) => {
+const importantMissingFields = (draft: ProfileDraft, availability?: ScreeningData['availability']) => {
   const missing: string[] = [];
   if (!draft.phone && !draft.phone_nl) missing.push('telefoonnummer');
   if (!draft.email) missing.push('e-mailadres');
   if (!draft.date_of_birth) missing.push('geboortedatum');
   if (!draft.nationality) missing.push('nationaliteit');
   if (draft.skills.length === 0) missing.push('vaardigheden');
+  if (!availability?.available_from) missing.push('beschikbaar vanaf');
   return missing;
 };
 
@@ -250,34 +277,6 @@ const askedCount = (data: ScreeningData) =>
   Object.values(data.answers).filter((answer) => answer.asked || answer.notes.trim()).length;
 
 const buildSnapshot = (data: ScreeningData, profile: ProfileDraft) => JSON.stringify({ data, profile });
-
-const StarRating = ({
-  value,
-  onChange,
-}: {
-  value: number;
-  onChange: (v: number) => void;
-}) => (
-  <div className="flex gap-0.5">
-    {[1, 2, 3, 4, 5].map((star) => (
-      <button
-        key={star}
-        type="button"
-        onClick={() => onChange(star === value ? 0 : star)}
-        className="p-0.5 hover:scale-110 transition-transform"
-        aria-label={`${star} sterren`}
-      >
-        <Star
-          className={`h-4 w-4 ${
-            star <= value
-              ? 'fill-yellow-400 text-yellow-400'
-              : 'text-muted-foreground/30'
-          }`}
-        />
-      </button>
-    ))}
-  </div>
-);
 
 const CandidateScreeningTab = ({
   candidate,
@@ -325,7 +324,7 @@ const CandidateScreeningTab = ({
     return () => window.removeEventListener('beforeunload', handler);
   }, [dirty]);
 
-  const profilePayload = useCallback((draft: ProfileDraft) => ({
+  const profilePayload = useCallback((draft: ProfileDraft, availability: ScreeningData['availability']) => ({
     phone: draft.phone.trim() || null,
     phone_nl: draft.phone_nl.trim() || null,
     email: draft.email.trim() || null,
@@ -338,7 +337,7 @@ const CandidateScreeningTab = ({
     skills: draft.skills,
     languages: draft.languages,
     certifications: draft.certifications,
-    availability_notes: draft.availability_notes.trim() || null,
+    availability_notes: buildAvailabilityNotes(availability, draft.availability_notes) || null,
   }), []);
 
   const persistDraft = useCallback(async ({
@@ -371,7 +370,7 @@ const CandidateScreeningTab = ({
       completed_by: complete ? user?.id ?? null : dataToSave.completed_by ?? null,
     };
     const updates: any = {
-      ...profilePayload(profileToSave),
+      ...profilePayload(profileToSave, screeningData.availability),
       screening_data: screeningData as any,
     };
 
@@ -438,12 +437,6 @@ const CandidateScreeningTab = ({
   const setPersonal = (patch: Partial<ScreeningData['personal']>) =>
     setData((current) => ({ ...current, personal: { ...current.personal, ...patch } }));
 
-  const setSkillRating = (skill: string, rating: number) => {
-    setProfessional({
-      skill_ratings: { ...data.professional.skill_ratings, [skill]: rating },
-    });
-  };
-
   const startCall = () => {
     setData((current) => ({
       ...current,
@@ -460,6 +453,7 @@ const CandidateScreeningTab = ({
   const openItems = useMemo(() => {
     const items: string[] = [];
     missingProfileFields.forEach((field) => items.push(`Profiel: ${field.label}`));
+    if (!data.availability.available_from) items.push('Beschikbaarheid: beschikbaar vanaf');
     SCREENING_STEPS.forEach((step) => {
       (QUESTION_BANK[step.id] ?? []).forEach((question) => {
         const answer = data.answers[question.key];
@@ -467,7 +461,7 @@ const CandidateScreeningTab = ({
       });
     });
     return items;
-  }, [data.answers, missingProfileFields]);
+  }, [data.answers, data.availability.available_from, missingProfileFields]);
 
   const handleCreateFollowupTask = async () => {
     setCreatingTask(true);
@@ -496,7 +490,7 @@ const CandidateScreeningTab = ({
   };
 
   const handleComplete = async () => {
-    const missing = importantMissingFields(profileDraft);
+    const missing = importantMissingFields(profileDraft, data.availability);
     if (data.result === 'niet_gescreend') {
       toast.error('Kies eerst goedgekeurd of afgekeurd');
       return;
@@ -552,7 +546,52 @@ const CandidateScreeningTab = ({
 
     if (currentStep.id === 'voorwaarden') {
       return (
-        <div><Label>Beschikbaarheid kandidaatveld</Label><Textarea value={profileDraft.availability_notes} onChange={(e) => setProfileDraft((p) => ({ ...p, availability_notes: e.target.value }))} rows={3} /></div>
+        <div className="space-y-3">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div>
+              <Label>Beschikbaar vanaf</Label>
+              <Input
+                type="date"
+                value={data.availability.available_from}
+                onChange={(e) => setData((current) => ({
+                  ...current,
+                  availability: { ...current.availability, available_from: e.target.value },
+                }))}
+              />
+            </div>
+            <div>
+              <Label>Beschikbaar tot</Label>
+              <Input
+                type="date"
+                value={data.availability.available_until}
+                onChange={(e) => setData((current) => ({
+                  ...current,
+                  availability: { ...current.availability, available_until: e.target.value },
+                }))}
+              />
+            </div>
+            <div>
+              <Label>Aankomst/check-in</Label>
+              <Input
+                type="date"
+                value={data.availability.arrival_date}
+                onChange={(e) => setData((current) => ({
+                  ...current,
+                  availability: { ...current.availability, arrival_date: e.target.value },
+                }))}
+              />
+            </div>
+          </div>
+          <div>
+            <Label>Beschikbaarheidsnotities</Label>
+            <Textarea
+              value={profileDraft.availability_notes}
+              onChange={(e) => setProfileDraft((p) => ({ ...p, availability_notes: e.target.value }))}
+              placeholder="Opzegtermijn, onzekerheden, ploegendiensten, gewenste uren..."
+              rows={3}
+            />
+          </div>
+        </div>
       );
     }
 
@@ -721,20 +760,6 @@ const CandidateScreeningTab = ({
               </div>
             )}
 
-            {currentStep.id === 'werkprofiel' && profileDraft.skills.length > 0 && (
-              <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground uppercase tracking-wide">Vaardigheden beoordeling</Label>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {profileDraft.skills.map((skill) => (
-                    <div key={skill} className="flex items-center justify-between p-2 rounded-md border bg-background">
-                      <span className="text-sm font-medium">{skill}</span>
-                      <StarRating value={data.professional.skill_ratings[skill] ?? 0} onChange={(v) => setSkillRating(skill, v)} />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {currentStep.id === 'werkprofiel' && (
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
@@ -786,9 +811,9 @@ const CandidateScreeningTab = ({
                     data-testid="screening-summary"
                   />
                 </div>
-                {importantMissingFields(profileDraft).length > 0 && (
+                {importantMissingFields(profileDraft, data.availability).length > 0 && (
                   <p className="text-xs text-amber-700">
-                    Kritieke velden ontbreken nog: {importantMissingFields(profileDraft).join(', ')}. Leg bij “Kritieke onbekenden” vast waarom dit akkoord is.
+                    Kritieke velden ontbreken nog: {importantMissingFields(profileDraft, data.availability).join(', ')}. Leg bij “Kritieke onbekenden” vast waarom dit akkoord is.
                   </p>
                 )}
                 <Button onClick={handleComplete} disabled={manualSaving} className="gap-2" data-testid="screening-complete">

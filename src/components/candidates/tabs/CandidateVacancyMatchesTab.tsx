@@ -12,6 +12,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Slider } from '@/components/ui/slider';
 import MatchInspectorDialog from '@/components/matches/MatchInspectorDialog';
+import CandidateMatchContext from '@/components/matches/CandidateMatchContext';
 import { cn } from '@/lib/utils';
 import { formatDate, formatEUR } from '@/lib/format';
 import { toast } from 'sonner';
@@ -24,7 +25,7 @@ const scoreBadgeClass: Record<MatchBreakdown['label'], string> = {
 };
 
 // Reverse matching: passende OPEN vacatures voor deze kandidaat (via rank-vacancies edge fn).
-const CandidateVacancyMatchesTab = ({ candidateId }: { candidateId: string }) => {
+const CandidateVacancyMatchesTab = ({ candidateId, candidate }: { candidateId: string; candidate?: any }) => {
   const orgId = useOrganizationId();
   const { user } = useAuth();
   const qc = useQueryClient();
@@ -153,6 +154,8 @@ const CandidateVacancyMatchesTab = ({ candidateId }: { candidateId: string }) =>
         </label>
       </div>
 
+      <CandidateMatchContext candidate={candidate} compact />
+
       {isFetching && (
         <p className="text-xs text-muted-foreground flex items-center gap-1.5">
           <Sparkles className="h-3 w-3 animate-pulse" /> Open vacatures rangschikken…
@@ -226,6 +229,7 @@ const CandidateVacancyMatchesTab = ({ candidateId }: { candidateId: string }) =>
         description={detail ? `${detail.vacancy?.title ?? 'Vacature'} — opbouw van de matchscore.` : undefined}
         breakdown={detail?.breakdown ?? null}
         candidateQuality={detail?.breakdown?.candidateQuality ?? null}
+        candidate={candidate ?? null}
         vacancyContext={detail ? (() => {
           const meta = vacancyMeta(detail.vacancy ?? {});
           return [

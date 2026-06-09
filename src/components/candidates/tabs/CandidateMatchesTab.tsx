@@ -26,7 +26,7 @@ const CandidateMatchesTab = ({ candidateId, candidate }: { candidateId: string; 
   const [previewMatchId, setPreviewMatchId] = useState<string | null>(null);
   const [previewData, setPreviewData] = useState<{ to: string; contact_name: string; subject: string; html: string } | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
-  const [detail, setDetail] = useState<{ title: string; description: string; breakdown?: MatchBreakdown | null; quality?: number | null } | null>(null);
+  const [detail, setDetail] = useState<{ title: string; description: string; breakdown?: MatchBreakdown | null; quality?: number | null; candidate?: any | null } | null>(null);
   const { data: outboundPaused } = useOutboundPause(orgId);
 
   const { data: matches = [] } = useQuery({
@@ -179,6 +179,13 @@ const CandidateMatchesTab = ({ candidateId, candidate }: { candidateId: string; 
                 email: candidate.email,
                 phone: candidate.phone,
                 compliance_status: candidate.compliance_status,
+                availability_notes: candidate.availability_notes,
+                ai_analysis: candidate.ai_analysis,
+                ai_summary: candidate.ai_summary,
+                ai_classification: candidate.ai_classification,
+                ai_reliability_score: candidate.ai_reliability_score,
+                screening_data: candidate.screening_data,
+                screened_at: candidate.screened_at,
               } : { id: candidateId, first_name: 'Deze', last_name: 'kandidaat' }}
               vacancy={{
                 id: m.vacancy_id,
@@ -198,6 +205,7 @@ const CandidateMatchesTab = ({ candidateId, candidate }: { candidateId: string; 
                 description: `${vacancy?.title ?? 'Vacature'} — score-opbouw voor deze kandidaat.`,
                 breakdown,
                 quality: breakdown?.candidateQuality ?? null,
+                candidate,
               })}
               primaryAction={m.status === 'voorgesteld' ? (
                 <Button size="sm" variant="outline" className="h-10 gap-1.5" onClick={() => openPreview(m.id)} disabled={previewLoading && previewMatchId === m.id}>
@@ -221,6 +229,7 @@ const CandidateMatchesTab = ({ candidateId, candidate }: { candidateId: string; 
         description={detail?.description}
         breakdown={detail?.breakdown ?? null}
         candidateQuality={detail?.quality ?? null}
+        candidate={detail?.candidate ?? null}
       />
 
       <Dialog open={!!previewMatchId} onOpenChange={(open) => { if (!open) { setPreviewMatchId(null); setPreviewData(null); } }}>
