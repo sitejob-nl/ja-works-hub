@@ -12,6 +12,7 @@ import VacancyDetailsTab from '@/components/vacancies/tabs/VacancyDetailsTab';
 import VacancyMatchesTab from '@/components/vacancies/tabs/VacancyMatchesTab';
 import VacancyPlacementsTab from '@/components/vacancies/tabs/VacancyPlacementsTab';
 import VacancySignupLinkButton from '@/components/vacancies/VacancySignupLinkButton';
+import VacancyReadinessStrip from '@/components/vacancies/VacancyReadinessStrip';
 import { useTrackPageVisit } from '@/hooks/useTrackPageVisit';
 import { useTabSearchParam } from '@/hooks/useTabSearchParam';
 import NotesSection from '@/components/shared/NotesSection';
@@ -46,6 +47,19 @@ const VacancyDetail = () => {
         .single();
       if (error) throw error;
       return data;
+    },
+    enabled: !!id,
+  });
+
+  const { data: matchCount = 0 } = useQuery({
+    queryKey: ['vacancy-match-count', id],
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from('matches')
+        .select('id', { count: 'exact', head: true })
+        .eq('vacancy_id', id!);
+      if (error) throw error;
+      return count ?? 0;
     },
     enabled: !!id,
   });
@@ -90,6 +104,20 @@ const VacancyDetail = () => {
 
   const company = vacancy.companies as any;
   const pct = vacancy.required_count > 0 ? Math.round((vacancy.filled_count / vacancy.required_count) * 100) : 0;
+  const hasRequirements = (vacancy.required_skills ?? []).length > 0 || (vacancy.required_certifications ?? []).length > 0;
+  const openSpots = Math.max(0, Number(vacancy.required_count ?? 0) - Number(vacancy.filled_count ?? 0));
+  const primaryActionLabel = !hasRequirements
+    ? 'Maak matchbaar'
+    : openSpots <= 0
+      ? 'Bekijk plaatsingen'
+      : matchCount > 0
+        ? 'Volg shortlist'
+        : 'Zoek kandidaten';
+  const handlePrimaryAction = () => {
+    if (!hasRequirements) enrichMutation.mutate();
+    else if (openSpots <= 0) setActiveTab('plaatsingen');
+    else setActiveTab('matches');
+  };
 
   return (
     <div className="space-y-4 sm:space-y-6 min-w-0">
@@ -119,6 +147,10 @@ const VacancyDetail = () => {
           </div>
         </div>
         <div className="flex gap-2 flex-wrap">
+          <Button size="sm" onClick={handlePrimaryAction} disabled={!hasRequirements && enrichMutation.isPending} className="gap-1">
+            <UserSearch className="h-4 w-4" />
+            <span>{!hasRequirements && enrichMutation.isPending ? 'AI bezig...' : primaryActionLabel}</span>
+          </Button>
           <VacancySignupLinkButton vacancy={vacancy} />
           <Button
             size="sm"
@@ -152,6 +184,14 @@ const VacancyDetail = () => {
           </DropdownMenu>
         </div>
       </div>
+
+      <VacancyReadinessStrip
+        vacancy={vacancy}
+        matchCount={matchCount}
+        onDetails={() => setActiveTab('details')}
+        onMatches={() => setActiveTab('matches')}
+        onEnrich={() => enrichMutation.mutate()}
+      />
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">

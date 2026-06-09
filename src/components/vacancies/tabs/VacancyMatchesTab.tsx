@@ -2,9 +2,11 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
+import { useOutboundPause } from '@/hooks/useOutboundPause';
 import { useAuth } from '@/contexts/AuthContext';
 import { Link } from 'react-router-dom';
-import { Search, UserPlus, Sparkles, Mail, Star, X, MessageSquare } from 'lucide-react';
+import { AlertTriangle, Search, UserPlus, Sparkles, Mail, Star, X, MessageSquare } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -12,29 +14,23 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import PlacementSheet from '@/components/vacancies/PlacementSheet';
+import MatchFeedbackDialog from '@/components/matches/MatchFeedbackDialog';
+import MatchInspectorDialog from '@/components/matches/MatchInspectorDialog';
+import MatchOutboundDialog from '@/components/matches/MatchOutboundDialog';
 import { type MatchBreakdown } from '@/lib/matching';
+import { MATCH_STATUS_STEPS, getNextMatchStatus, isTerminalMatchStatus, matchStatusNeedsFeedbackDialog } from '@/lib/match-status';
+import { scoreBadgeClass } from '@/lib/match-presenters';
 
-const COLUMNS = [
-  { key: 'nieuwe_match', label: 'Nieuwe match', color: 'bg-amber-500' },
-  { key: 'gescreend', label: 'Gescreend', color: 'bg-cyan-500' },
-  { key: 'voorgesteld', label: 'Voorgesteld', color: 'bg-slate-400' },
-  { key: 'voorgesteld_bij_klant', label: 'Bij klant', color: 'bg-indigo-500' },
-  { key: 'in_gesprek', label: 'In gesprek', color: 'bg-blue-500' },
-  { key: 'geaccepteerd', label: 'Geaccepteerd', color: 'bg-emerald-500' },
-  { key: 'afgewezen', label: 'Afgewezen', color: 'bg-red-500' },
-] as const;
+const COLUMNS = MATCH_STATUS_STEPS;
 
 const STATUS_LABEL: Record<string, string> = Object.fromEntries(COLUMNS.map((c) => [c.key, c.label]));
 STATUS_LABEL.geplaatst = 'Geplaatst';
 const STATUS_COLOR: Record<string, string> = Object.fromEntries(COLUMNS.map((c) => [c.key, c.color]));
 STATUS_COLOR.geplaatst = 'bg-emerald-600';
-const TERMINAL_STATUSES = ['afgewezen', 'geaccepteerd', 'geplaatst'];
 
 const sourceLabel: Record<string, string> = {
   sollicitatie: 'Sollicitatie',
@@ -45,12 +41,6 @@ const sourceLabel: Record<string, string> = {
   jobmarket: 'Jobmarket',
   linkedin: 'LinkedIn',
   overig: 'Overig',
-};
-
-const scoreBadgeClass: Record<MatchBreakdown['label'], string> = {
-  groen: 'bg-stat-green/10 text-stat-green border-0',
-  oranje: 'bg-yellow-100 text-yellow-700 border-0',
-  rood: 'bg-red-100 text-red-600 border-0',
 };
 
 const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
@@ -79,6 +69,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
   const [bulkMessageOpen, setBulkMessageOpen] = useState(false);
   const [bulkMessageText, setBulkMessageText] = useState('');
   const [bulkSending, setBulkSending] = useState(false);
+  const { data: outboundPaused } = useOutboundPause(orgId);
 
   const { data: matches } = useQuery({
     queryKey: ['vacancy-matches', vacancy.id],
@@ -222,7 +213,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
       const { error } = await supabase.from('matches').update({ status, status_changed_at: new Date().toISOString() } as any).eq('id', matchId);
       if (error) throw error;
 
-      if (reasonId || notes || TERMINAL_STATUSES.includes(status)) {
+      if (reasonId || notes || isTerminalMatchStatus(status)) {
         const { error: feedbackError } = await (supabase as any).from('match_feedback_events').insert({
           organization_id: orgId,
           match_id: matchId,
@@ -316,7 +307,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
   // Statuswijziging (1 of meer matches). Terminale statussen vragen eerst een feedbackreden.
   const changeStatus = (matchIds: string[], toStatus: string) => {
     if (!matchIds.length) return;
-    if (TERMINAL_STATUSES.includes(toStatus)) {
+    if (matchStatusNeedsFeedbackDialog(toStatus)) {
       setFeedbackRequest({ matchIds, toStatus });
       setFeedbackReasonId('');
       setFeedbackNotes('');
@@ -402,11 +393,6 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
   );
 
   // Volgende logische fase (voor de snelle "→"-knop per rij).
-  const nextStatus: Record<string, string> = {
-    nieuwe_match: 'gescreend', gescreend: 'voorgesteld', voorgesteld: 'voorgesteld_bij_klant',
-    voorgesteld_bij_klant: 'in_gesprek', in_gesprek: 'geaccepteerd',
-  };
-
   return (
     <div className="mt-4 space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -503,13 +489,13 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
                     {m.status === 'geaccepteerd' && (
                       <Button size="sm" className="h-7 text-xs" onClick={() => setPlacementMatch(m)}>Plaatsen</Button>
                     )}
-                    {nextStatus[m.status] && (
-                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => changeStatus([m.id], nextStatus[m.status])} title={`Naar ${STATUS_LABEL[nextStatus[m.status]]}`}>
-                        → {STATUS_LABEL[nextStatus[m.status]]}
+                    {getNextMatchStatus(m.status) && (
+                      <Button size="sm" variant="outline" className="h-9 text-xs" onClick={() => changeStatus([m.id], getNextMatchStatus(m.status)!)} title={`Naar ${STATUS_LABEL[getNextMatchStatus(m.status)!]}`}>
+                        → {STATUS_LABEL[getNextMatchStatus(m.status)!]}
                       </Button>
                     )}
-                    {!TERMINAL_STATUSES.includes(m.status) && (
-                      <Button size="sm" variant="ghost" className="h-7 text-xs text-red-600" onClick={() => changeStatus([m.id], 'afgewezen')} title="Afwijzen">
+                    {!isTerminalMatchStatus(m.status) && (
+                      <Button size="sm" variant="ghost" className="h-9 text-xs text-red-600" onClick={() => changeStatus([m.id], 'afgewezen')} aria-label={`Match afwijzen voor ${c.first_name ?? ''} ${c.last_name ?? ''}`.trim()}>
                         <X className="h-3 w-3" />
                       </Button>
                     )}
@@ -519,7 +505,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
                     variant="ghost"
                     className="h-7 text-xs text-muted-foreground"
                     disabled={!bd}
-                    onClick={() => setDetail({ name: `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim(), breakdown: bd, quality: m.match_score })}
+                    onClick={() => setDetail({ name: `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim(), breakdown: bd, quality: bd?.candidateQuality ?? null })}
                   >
                     Waarom?
                   </Button>
@@ -639,107 +625,26 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
         </div>
       </div>
 
-      {/* Waarom-detail (shortlist-kandidaat of bestaande match) */}
-      <Dialog open={!!detail} onOpenChange={(open) => { if (!open) setDetail(null); }}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              Waarom deze match?
-              {detail?.breakdown && (
-                <Badge className={cn('text-xs', scoreBadgeClass[detail.breakdown.label as MatchBreakdown['label']])}>
-                  {detail.breakdown.matchPercent}%
-                </Badge>
-              )}
-            </DialogTitle>
-            <DialogDescription>{detail?.name} — opbouw van de matchscore.</DialogDescription>
-          </DialogHeader>
-          {!detail?.breakdown && <p className="text-sm text-muted-foreground">Geen score-opbouw beschikbaar voor deze match.</p>}
-          {detail?.breakdown && (() => {
-            const bd = detail.breakdown;
-            const components = Object.entries(bd.componentScores ?? {}) as [string, any][];
-            const labelNl: Record<string, string> = {
-              skills: 'Vaardigheden', certifications: 'Certificaten', functionGroup: 'Functiegroep',
-              distance: 'Afstand', availability: 'Beschikbaarheid', reliability: 'Betrouwbaarheid',
-              language: 'Taal', experience: 'Ervaring',
-            };
-            return (
-              <div className="space-y-4 text-sm">
-                {bd.reasoning && <p className="text-muted-foreground">{bd.reasoning}</p>}
-
-                {components.length > 0 && (
-                  <div className="space-y-1.5">
-                    <p className="text-xs font-medium text-muted-foreground uppercase">Score-opbouw (punten per onderdeel)</p>
-                    {components.map(([key, val]) => (
-                      <div key={key} className="flex items-center justify-between gap-2">
-                        <span>{labelNl[key] ?? key}</span>
-                        <span className="text-muted-foreground tabular-nums">{typeof val === 'number' ? `${val} pt` : String(val)}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {(bd.hardBlocks ?? []).length > 0 && (
-                  <div>
-                    <p className="text-xs font-medium text-red-600 uppercase mb-1">Harde blokkades</p>
-                    <ul className="list-disc list-inside space-y-0.5 text-red-600">
-                      {bd.hardBlocks.map((x: string, i: number) => <li key={i}>{x}</li>)}
-                    </ul>
-                  </div>
-                )}
-
-                {(bd.positives ?? []).length > 0 && (
-                  <div>
-                    <p className="text-xs font-medium text-emerald-700 uppercase mb-1">Pluspunten</p>
-                    <ul className="list-disc list-inside space-y-0.5 text-emerald-700">
-                      {bd.positives.map((x: string, i: number) => <li key={i}>{x}</li>)}
-                    </ul>
-                  </div>
-                )}
-
-                {(bd.bonuses ?? []).length > 0 && (
-                  <div className="flex flex-wrap gap-1">
-                    {bd.bonuses.map((x: string, i: number) => <Badge key={i} variant="secondary" className="text-[10px]">{x}</Badge>)}
-                  </div>
-                )}
-
-                {(bd.missing ?? []).length > 0 && (
-                  <div>
-                    <p className="text-xs font-medium text-amber-700 uppercase mb-1">Ontbreekt / aandachtspunten</p>
-                    <ul className="list-disc list-inside space-y-0.5 text-amber-700">
-                      {bd.missing.map((x: string, i: number) => <li key={i}>{x}</li>)}
-                    </ul>
-                  </div>
-                )}
-
-                {((bd.skillMatches ?? []).length > 0 || (bd.certificationMatches ?? []).length > 0) && (
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground uppercase mb-1">Matchende skills & certificaten</p>
-                    <div className="flex flex-wrap gap-1">
-                      {(bd.skillMatches ?? []).map((s: string) => <Badge key={`s-${s}`} variant="outline" className="text-xs">{s}</Badge>)}
-                      {(bd.certificationMatches ?? []).map((s: string) => <Badge key={`c-${s}`} variant="outline" className="text-xs">{s}</Badge>)}
-                    </div>
-                  </div>
-                )}
-
-                {bd.distance?.km != null && (
-                  <p className="text-xs text-muted-foreground">Afstand: {Math.round(bd.distance.km)} km{bd.distance.status ? ` (${bd.distance.status})` : ''}</p>
-                )}
-                {typeof detail.quality === 'number' && detail.candidate && (
-                  <p className="text-xs text-muted-foreground">Algemene AI-kwaliteitsscore: ★ {detail.quality}/100</p>
-                )}
-              </div>
-            );
-          })()}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDetail(null)}>Sluiten</Button>
-            {detail?.candidate && (
-              <Button onClick={() => { proposeMutation.mutate(detail.candidate); setDetail(null); }} disabled={proposeMutation.isPending}>
-                <UserPlus className="h-3 w-3 mr-1" /> Voorstellen
-              </Button>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <MatchInspectorDialog
+        open={!!detail}
+        onOpenChange={(open) => { if (!open) setDetail(null); }}
+        title="Waarom deze match?"
+        description={detail ? `${detail.name} — opbouw van de matchscore.` : undefined}
+        breakdown={detail?.breakdown ?? null}
+        candidateQuality={detail?.quality ?? detail?.breakdown?.candidateQuality ?? null}
+        vacancyContext={[
+          { label: 'Vacature', value: vacancy.title },
+          { label: 'Locatie', value: vacancy.location },
+          { label: 'Start', value: vacancy.start_date_text ?? vacancy.start_date },
+          { label: 'Bezetting', value: `${vacancy.filled_count ?? 0}/${vacancy.required_count ?? 0}` },
+          { label: 'Urgentie', value: vacancy.urgency },
+        ]}
+        action={detail?.candidate ? (
+          <Button onClick={() => { proposeMutation.mutate(detail.candidate); setDetail(null); }} disabled={proposeMutation.isPending}>
+            <UserPlus className="h-3 w-3 mr-1" /> Voorstellen
+          </Button>
+        ) : null}
+      />
 
       <PlacementSheet match={placementMatch} vacancy={vacancy} onClose={() => setPlacementMatch(null)} />
 
@@ -749,6 +654,13 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
             <DialogTitle>Voorstel-mail preview</DialogTitle>
             <DialogDescription>Controleer de inhoud voordat je verstuurt.</DialogDescription>
           </DialogHeader>
+          {outboundPaused?.email === true && (
+            <Alert variant="destructive">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>E-mail staat op pauze</AlertTitle>
+              <AlertDescription>Je kunt de preview controleren, maar versturen is geblokkeerd door de outbound kill-switch.</AlertDescription>
+            </Alert>
+          )}
           {previewData ? (
             <>
               <div className="space-y-1 text-sm border-b pb-3">
@@ -764,74 +676,42 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => { setPreviewMatchId(null); setPreviewData(null); }}>Annuleren</Button>
-            <Button onClick={() => previewMatchId && sendProposalMutation.mutate(previewMatchId)} disabled={!previewData || sendProposalMutation.isPending}>
-              {sendProposalMutation.isPending ? 'Versturen...' : 'Versturen naar opdrachtgever'}
+            <Button onClick={() => previewMatchId && sendProposalMutation.mutate(previewMatchId)} disabled={!previewData || sendProposalMutation.isPending || outboundPaused?.email === true}>
+              {outboundPaused?.email === true ? 'E-mail gepauzeerd' : sendProposalMutation.isPending ? 'Versturen...' : 'Versturen naar opdrachtgever'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Bulk interesse-bericht (WhatsApp ja/nee) */}
-      <Dialog open={bulkMessageOpen} onOpenChange={(open) => { if (!open && !bulkSending) setBulkMessageOpen(false); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Interesse-bericht sturen</DialogTitle>
-            <DialogDescription>
-              Stuurt elke geselecteerde kandidaat een WhatsApp met ja/nee-knoppen. {`{voornaam}`} en {`{vacature}`} worden ingevuld.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <Textarea value={bulkMessageText} onChange={(e) => setBulkMessageText(e.target.value)} rows={4} />
-            <p className="text-xs text-muted-foreground">
-              {selectedMatchRows.length} geselecteerd
-              {selectedMatchRows.filter((m: any) => !m.candidates?.phone).length > 0 &&
-                ` — ${selectedMatchRows.filter((m: any) => !m.candidates?.phone).length} zonder telefoonnummer worden overgeslagen`}.
-              Een "Ja"-antwoord kan de match later automatisch naar de volgende fase verplaatsen (vereist gekoppelde WhatsApp).
-            </p>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setBulkMessageOpen(false)} disabled={bulkSending}>Annuleren</Button>
-            <Button onClick={sendBulkMessage} disabled={bulkSending || !bulkMessageText.trim()}>
-              <MessageSquare className="h-3.5 w-3.5 mr-1" /> {bulkSending ? 'Versturen…' : 'Versturen'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <MatchOutboundDialog
+        open={bulkMessageOpen}
+        title="Interesse-bericht sturen"
+        description={`Stuurt geselecteerde kandidaten een WhatsApp met ja/nee-knoppen. {voornaam} en {vacature} worden ingevuld.`}
+        channelLabel="WhatsApp"
+        selectedCount={selectedMatchRows.length}
+        missingContactCount={selectedMatchRows.filter((m: any) => !m.candidates?.phone).length}
+        paused={outboundPaused?.whatsapp === true}
+        pausedLabel="Uitgaande WhatsApp staat op pauze voor deze organisatie."
+        message={bulkMessageText}
+        pending={bulkSending}
+        onMessageChange={setBulkMessageText}
+        onCancel={() => setBulkMessageOpen(false)}
+        onConfirm={sendBulkMessage}
+      />
 
-      {/* Feedback bij statuswijziging (1 of meer matches) */}
-      <Dialog open={!!feedbackRequest} onOpenChange={(open) => { if (!open) setFeedbackRequest(null); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Feedback vastleggen</DialogTitle>
-            <DialogDescription>
-              Leg vast waarom {feedbackRequest && feedbackRequest.matchIds.length > 1 ? `${feedbackRequest.matchIds.length} matches` : 'deze match'} naar {feedbackRequest?.toStatus?.replaceAll('_', ' ')} gaat.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Reden{feedbackRequest?.toStatus === 'afgewezen' ? ' *' : ''}</Label>
-              <Select value={feedbackReasonId} onValueChange={setFeedbackReasonId}>
-                <SelectTrigger><SelectValue placeholder="Kies een reden" /></SelectTrigger>
-                <SelectContent>
-                  {feedbackReasons
-                    .filter((reason: any) => reason.applies_to === feedbackRequest?.toStatus)
-                    .map((reason: any) => <SelectItem key={reason.id} value={reason.id}>{reason.reason}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Notitie</Label>
-              <Textarea value={feedbackNotes} onChange={(event) => setFeedbackNotes(event.target.value)} placeholder="Optionele toelichting" />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setFeedbackRequest(null)}>Annuleren</Button>
-            <Button onClick={submitFeedbackStatusChange} disabled={statusMutation.isPending || (feedbackRequest?.toStatus === 'afgewezen' && !feedbackReasonId)}>
-              Status bijwerken
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <MatchFeedbackDialog
+        open={!!feedbackRequest}
+        toStatus={feedbackRequest?.toStatus}
+        count={feedbackRequest?.matchIds.length ?? 1}
+        reasons={feedbackReasons as any[]}
+        reasonId={feedbackReasonId}
+        notes={feedbackNotes}
+        pending={statusMutation.isPending}
+        onReasonChange={setFeedbackReasonId}
+        onNotesChange={setFeedbackNotes}
+        onCancel={() => setFeedbackRequest(null)}
+        onSubmit={submitFeedbackStatusChange}
+      />
     </div>
   );
 };

@@ -10,8 +10,8 @@ import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Slider } from '@/components/ui/slider';
+import MatchInspectorDialog from '@/components/matches/MatchInspectorDialog';
 import { cn } from '@/lib/utils';
 import { formatDate, formatEUR } from '@/lib/format';
 import { toast } from 'sonner';
@@ -219,81 +219,30 @@ const CandidateVacancyMatchesTab = ({ candidateId }: { candidateId: string }) =>
         )}
       </div>
 
-      <Dialog open={!!detail} onOpenChange={(open) => { if (!open) setDetail(null); }}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              Waarom deze match?
-              {detail && (
-                <Badge className={cn('text-xs', scoreBadgeClass[detail.label as MatchBreakdown['label']])}>{detail.score}%</Badge>
-              )}
-            </DialogTitle>
-            <DialogDescription>{detail?.vacancy?.title} — opbouw van de matchscore.</DialogDescription>
-          </DialogHeader>
-          {detail?.breakdown && (() => {
-            const bd = detail.breakdown;
-            const labelNl: Record<string, string> = { skills: 'Vaardigheden', certifications: 'Certificaten', functionGroup: 'Functiegroep', distance: 'Afstand', availability: 'Beschikbaarheid' };
-            const components = Object.entries(bd.componentScores ?? {}) as [string, any][];
-            const meta = vacancyMeta(detail.vacancy ?? {});
-            return (
-              <div className="space-y-4 text-sm">
-                <div className="rounded-md border bg-muted/30 p-3 text-xs">
-                  <p className="font-medium text-sm mb-2">Vacaturecontext</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div><span className="text-muted-foreground">Opdrachtgever:</span> {detail.vacancy?.company_name ?? '—'}</div>
-                    <div><span className="text-muted-foreground">Locatie:</span> {detail.vacancy?.location ?? '—'}</div>
-                    <div><span className="text-muted-foreground">Tarief/salaris:</span> {meta.salary ?? '—'}</div>
-                    <div><span className="text-muted-foreground">Start:</span> {meta.start ?? '—'}</div>
-                    <div><span className="text-muted-foreground">Bezetting:</span> {meta.spots ?? '—'}</div>
-                    <div><span className="text-muted-foreground">Urgentie:</span> {detail.vacancy?.urgency ?? '—'}</div>
-                  </div>
-                  {detail.vacancy?.description && (
-                    <p className="mt-2 line-clamp-3 text-muted-foreground">{detail.vacancy.description}</p>
-                  )}
-                </div>
-                {bd.reasoning && <p className="text-muted-foreground">{bd.reasoning}</p>}
-                {components.length > 0 && (
-                  <div className="space-y-1.5">
-                    <p className="text-xs font-medium text-muted-foreground uppercase">Score-opbouw (punten per onderdeel)</p>
-                    {components.map(([key, val]) => (
-                      <div key={key} className="flex items-center justify-between gap-2">
-                        <span>{labelNl[key] ?? key}</span>
-                        <span className="text-muted-foreground tabular-nums">{typeof val === 'number' ? `${val} pt` : String(val)}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {(bd.hardBlocks ?? []).length > 0 && (
-                  <div>
-                    <p className="text-xs font-medium text-red-600 uppercase mb-1">Harde blokkades</p>
-                    <ul className="list-disc list-inside space-y-0.5 text-red-600">{bd.hardBlocks.map((x: string, i: number) => <li key={i}>{x}</li>)}</ul>
-                  </div>
-                )}
-                {(bd.positives ?? []).length > 0 && (
-                  <div>
-                    <p className="text-xs font-medium text-emerald-700 uppercase mb-1">Pluspunten</p>
-                    <ul className="list-disc list-inside space-y-0.5 text-emerald-700">{bd.positives.map((x: string, i: number) => <li key={i}>{x}</li>)}</ul>
-                  </div>
-                )}
-                {(bd.missing ?? []).length > 0 && (
-                  <div>
-                    <p className="text-xs font-medium text-amber-700 uppercase mb-1">Ontbreekt / aandachtspunten</p>
-                    <ul className="list-disc list-inside space-y-0.5 text-amber-700">{bd.missing.map((x: string, i: number) => <li key={i}>{x}</li>)}</ul>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDetail(null)}>Sluiten</Button>
-            {detail && (
-              <Button onClick={() => { proposeMutation.mutate(detail); setDetail(null); }} disabled={proposeMutation.isPending}>
-                <UserPlus className="h-3 w-3 mr-1" /> Voorstellen
-              </Button>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <MatchInspectorDialog
+        open={!!detail}
+        onOpenChange={(open) => { if (!open) setDetail(null); }}
+        title="Waarom deze match?"
+        description={detail ? `${detail.vacancy?.title ?? 'Vacature'} — opbouw van de matchscore.` : undefined}
+        breakdown={detail?.breakdown ?? null}
+        candidateQuality={detail?.breakdown?.candidateQuality ?? null}
+        vacancyContext={detail ? (() => {
+          const meta = vacancyMeta(detail.vacancy ?? {});
+          return [
+            { label: 'Opdrachtgever', value: detail.vacancy?.company_name },
+            { label: 'Locatie', value: detail.vacancy?.location },
+            { label: 'Tarief/salaris', value: meta.salary },
+            { label: 'Start', value: meta.start },
+            { label: 'Bezetting', value: meta.spots },
+            { label: 'Urgentie', value: detail.vacancy?.urgency },
+          ];
+        })() : []}
+        action={detail ? (
+          <Button onClick={() => { proposeMutation.mutate(detail); setDetail(null); }} disabled={proposeMutation.isPending}>
+            <UserPlus className="h-3 w-3 mr-1" /> Voorstellen
+          </Button>
+        ) : null}
+      />
     </div>
   );
 };

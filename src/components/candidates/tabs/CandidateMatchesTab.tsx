@@ -3,36 +3,20 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
+import { useOutboundPause } from '@/hooks/useOutboundPause';
 import { useAuth } from '@/contexts/AuthContext';
-import { Mail, UserPlus } from 'lucide-react';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Progress } from '@/components/ui/progress';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { AlertTriangle, Mail, UserPlus } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { EntityLink } from '@/components/ui/entity-link';
-import { formatDate } from '@/lib/format';
+import MatchCard from '@/components/matches/MatchCard';
+import MatchFeedbackDialog from '@/components/matches/MatchFeedbackDialog';
+import MatchInspectorDialog from '@/components/matches/MatchInspectorDialog';
+import { matchStatusNeedsFeedbackDialog } from '@/lib/match-status';
 import { toast } from 'sonner';
+import type { MatchBreakdown } from '@/lib/matching';
 
-const STATUS_OPTIONS = [
-  { value: 'nieuwe_match', label: 'Nieuwe match' },
-  { value: 'gescreend', label: 'Gescreend' },
-  { value: 'voorgesteld', label: 'Voorgesteld' },
-  { value: 'voorgesteld_bij_klant', label: 'Voorgesteld bij klant' },
-  { value: 'in_gesprek', label: 'In gesprek' },
-  { value: 'geaccepteerd', label: 'Geaccepteerd' },
-  { value: 'afgewezen', label: 'Afgewezen' },
-  { value: 'geplaatst', label: 'Geplaatst' },
-];
-
-const toScorePercent = (score: unknown) => {
-  if (typeof score !== 'number') return null;
-  return Math.max(0, Math.min(100, score <= 1 ? score * 100 : score));
-};
-
-const CandidateMatchesTab = ({ candidateId }: { candidateId: string }) => {
+const CandidateMatchesTab = ({ candidateId, candidate }: { candidateId: string; candidate?: any }) => {
   const orgId = useOrganizationId();
   const { user } = useAuth();
   const qc = useQueryClient();
@@ -42,6 +26,8 @@ const CandidateMatchesTab = ({ candidateId }: { candidateId: string }) => {
   const [previewMatchId, setPreviewMatchId] = useState<string | null>(null);
   const [previewData, setPreviewData] = useState<{ to: string; contact_name: string; subject: string; html: string } | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [detail, setDetail] = useState<{ title: string; description: string; breakdown?: MatchBreakdown | null; quality?: number | null } | null>(null);
+  const { data: outboundPaused } = useOutboundPause(orgId);
 
   const { data: matches = [] } = useQuery({
     queryKey: ['candidate-matches', orgId, candidateId],
@@ -110,7 +96,7 @@ const CandidateMatchesTab = ({ candidateId }: { candidateId: string }) => {
 
   const handleStatusChange = (match: any, toStatus: string) => {
     if (toStatus === match.status) return;
-    if (toStatus === 'afgewezen') {
+    if (matchStatusNeedsFeedbackDialog(toStatus)) {
       setFeedbackReasonId('');
       setFeedbackNotes('');
       setFeedbackRequest({ match, toStatus });
@@ -166,77 +152,89 @@ const CandidateMatchesTab = ({ candidateId }: { candidateId: string }) => {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="font-medium">Matches</h3>
+        <div>
+          <h3 className="font-medium">Matches</h3>
+          <p className="text-xs text-muted-foreground">Bestaande matches met dezelfde score-uitleg en statusregels als de vacaturekant.</p>
+        </div>
         <Button asChild size="sm" variant="outline" className="gap-1.5">
           <Link to={`/kandidaten/${candidateId}?tab=vacatures`}>
             <UserPlus className="h-3.5 w-3.5" /> Nieuwe match
           </Link>
         </Button>
       </div>
-      <div className="bg-card rounded-lg border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Vacature</TableHead>
-              <TableHead>Bedrijf</TableHead>
-              <TableHead>Score</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Voorgesteld</TableHead>
-              <TableHead className="text-right">Acties</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {(matches as any[]).map((m) => {
-              const scorePercent = toScorePercent(m.match_score);
-              return (
-                <TableRow key={m.id}>
-                  <TableCell className="font-medium">
-                    <EntityLink type="vacancy" id={m.vacancy_id}>{m.vacancies?.title ?? '—'}</EntityLink>
-                  </TableCell>
-                  <TableCell>
-                    <EntityLink type="company" id={m.vacancies?.companies?.id}>{m.vacancies?.companies?.name ?? '—'}</EntityLink>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Progress value={scorePercent ?? 0} className="h-2 w-16" />
-                      <span className="text-xs text-muted-foreground">{scorePercent != null ? `${Math.round(scorePercent)}%` : '—'}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Select value={m.status} onValueChange={(v) => handleStatusChange(m, v)} disabled={statusMutation.isPending}>
-                      <SelectTrigger className="h-8 w-44 text-xs"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {STATUS_OPTIONS.map((s) => (
-                          <SelectItem key={s.value} value={s.value} className="text-xs">{s.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell>{formatDate(m.proposed_at)}</TableCell>
-                  <TableCell className="text-right">
-                    {m.status === 'voorgesteld' ? (
-                      <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => openPreview(m.id)} disabled={previewLoading && previewMatchId === m.id}>
-                        <Mail className="mr-1 h-3.5 w-3.5" /> {previewLoading && previewMatchId === m.id ? '...' : 'Mail'}
-                      </Button>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">—</span>
-                    )}
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-            {(matches as any[]).length === 0 && (
-              <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">Nog geen matches voor deze kandidaat</TableCell></TableRow>
-            )}
-          </TableBody>
-        </Table>
+      <div className="space-y-2">
+        {(matches as any[]).map((m) => {
+          const breakdown = m.match_breakdown as MatchBreakdown | null;
+          const vacancy = m.vacancies as any;
+          const company = vacancy?.companies as any;
+          return (
+            <MatchCard
+              key={m.id}
+              id={m.id}
+              status={m.status}
+              candidate={candidate ? {
+                id: candidate.id,
+                first_name: candidate.first_name,
+                last_name: candidate.last_name,
+                email: candidate.email,
+                phone: candidate.phone,
+                compliance_status: candidate.compliance_status,
+              } : { id: candidateId, first_name: 'Deze', last_name: 'kandidaat' }}
+              vacancy={{
+                id: m.vacancy_id,
+                title: vacancy?.title,
+                company_id: company?.id,
+                company_name: company?.name,
+              }}
+              statusChangedAt={m.status_changed_at}
+              createdAt={m.created_at}
+              score={m.match_score}
+              breakdown={breakdown}
+              candidateQuality={breakdown?.candidateQuality ?? null}
+              statusDisabled={statusMutation.isPending}
+              onStatusChange={(value) => handleStatusChange(m, value)}
+              onInspect={() => setDetail({
+                title: 'Waarom deze match?',
+                description: `${vacancy?.title ?? 'Vacature'} — score-opbouw voor deze kandidaat.`,
+                breakdown,
+                quality: breakdown?.candidateQuality ?? null,
+              })}
+              primaryAction={m.status === 'voorgesteld' ? (
+                <Button size="sm" variant="outline" className="h-10 gap-1.5" onClick={() => openPreview(m.id)} disabled={previewLoading && previewMatchId === m.id}>
+                  <Mail className="h-3.5 w-3.5" /> {previewLoading && previewMatchId === m.id ? 'Laden...' : 'Mail preview'}
+                </Button>
+              ) : null}
+            />
+          );
+        })}
+        {(matches as any[]).length === 0 && (
+          <div className="rounded-lg border bg-card py-10 text-center text-sm text-muted-foreground">
+            Nog geen matches voor deze kandidaat. Open "Passende vacatures" om een eerste match te maken.
+          </div>
+        )}
       </div>
+
+      <MatchInspectorDialog
+        open={!!detail}
+        onOpenChange={(open) => { if (!open) setDetail(null); }}
+        title={detail?.title ?? 'Waarom deze match?'}
+        description={detail?.description}
+        breakdown={detail?.breakdown ?? null}
+        candidateQuality={detail?.quality ?? null}
+      />
 
       <Dialog open={!!previewMatchId} onOpenChange={(open) => { if (!open) { setPreviewMatchId(null); setPreviewData(null); } }}>
         <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Voorstel-mail preview</DialogTitle>
           </DialogHeader>
+          {outboundPaused?.email === true && (
+            <Alert variant="destructive">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>E-mail staat op pauze</AlertTitle>
+              <AlertDescription>Je kunt de preview controleren, maar versturen is geblokkeerd door de outbound kill-switch.</AlertDescription>
+            </Alert>
+          )}
           {previewData ? (
             <>
               <div className="space-y-1 text-sm border-b pb-3">
@@ -252,48 +250,30 @@ const CandidateMatchesTab = ({ candidateId }: { candidateId: string }) => {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => { setPreviewMatchId(null); setPreviewData(null); }}>Annuleren</Button>
-            <Button onClick={() => previewMatchId && sendProposalMutation.mutate(previewMatchId)} disabled={!previewData || sendProposalMutation.isPending}>
-              {sendProposalMutation.isPending ? 'Versturen...' : 'Versturen naar opdrachtgever'}
+            <Button onClick={() => previewMatchId && sendProposalMutation.mutate(previewMatchId)} disabled={!previewData || sendProposalMutation.isPending || outboundPaused?.email === true}>
+              {outboundPaused?.email === true ? 'E-mail gepauzeerd' : sendProposalMutation.isPending ? 'Versturen...' : 'Versturen naar opdrachtgever'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Afwijzen — feedbackreden verplicht */}
-      <Dialog open={!!feedbackRequest} onOpenChange={(o) => { if (!o) setFeedbackRequest(null); }}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Match afwijzen</DialogTitle></DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>Reden *</Label>
-              <Select value={feedbackReasonId} onValueChange={setFeedbackReasonId}>
-                <SelectTrigger><SelectValue placeholder="Kies een feedbackreden" /></SelectTrigger>
-                <SelectContent>
-                  {(feedbackReasons as any[]).length === 0 && (
-                    <div className="px-2 py-1.5 text-sm text-muted-foreground">Geen redenen geconfigureerd</div>
-                  )}
-                  {(feedbackReasons as any[]).map((r) => (
-                    <SelectItem key={r.id} value={r.id}>{r.label ?? r.name ?? r.reason ?? r.id}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Toelichting (optioneel)</Label>
-              <Textarea value={feedbackNotes} onChange={(e) => setFeedbackNotes(e.target.value)} rows={3} placeholder="Korte toelichting..." />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setFeedbackRequest(null)}>Annuleren</Button>
-            <Button
-              onClick={() => feedbackRequest && statusMutation.mutate({ matchId: feedbackRequest.match.id, status: feedbackRequest.toStatus, reasonId: feedbackReasonId || null, notes: feedbackNotes || null })}
-              disabled={!feedbackReasonId || statusMutation.isPending}
-            >
-              {statusMutation.isPending ? 'Opslaan...' : 'Afwijzen'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <MatchFeedbackDialog
+        open={!!feedbackRequest}
+        toStatus={feedbackRequest?.toStatus}
+        reasons={feedbackReasons as any[]}
+        reasonId={feedbackReasonId}
+        notes={feedbackNotes}
+        pending={statusMutation.isPending}
+        onReasonChange={setFeedbackReasonId}
+        onNotesChange={setFeedbackNotes}
+        onCancel={() => setFeedbackRequest(null)}
+        onSubmit={() => feedbackRequest && statusMutation.mutate({
+          matchId: feedbackRequest.match.id,
+          status: feedbackRequest.toStatus,
+          reasonId: feedbackReasonId || null,
+          notes: feedbackNotes || null,
+        })}
+      />
     </div>
   );
 };

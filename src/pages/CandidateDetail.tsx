@@ -18,6 +18,7 @@ import CandidateVacancyMatchesTab from '@/components/candidates/tabs/CandidateVa
 import CandidatePlacementsTab from '@/components/candidates/tabs/CandidatePlacementsTab';
 import CandidateScreeningTab from '@/components/candidates/tabs/CandidateScreeningTab';
 import CandidateTalentpoolsTab from '@/components/candidates/tabs/CandidateTalentpoolsTab';
+import CandidateReadinessStrip from '@/components/candidates/CandidateReadinessStrip';
 import NotesSection from '@/components/shared/NotesSection';
 import TasksSection from '@/components/shared/TasksSection';
 import EmployeeEmploymentTab from '@/components/employees/tabs/EmployeeEmploymentTab';
@@ -281,6 +282,8 @@ const CandidateDetail = () => {
         </DialogContent>
       </Dialog>
 
+      <CandidateReadinessStrip candidate={candidate} onTabChange={setActiveTab} />
+
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">
           <TabsList className="w-max sm:w-auto">
@@ -315,7 +318,7 @@ const CandidateDetail = () => {
         <TabsContent value="profiel"><CandidateProfileTab candidate={candidate} /></TabsContent>
         <TabsContent value="documenten"><CandidateDocumentsTab candidateId={id!} /></TabsContent>
         <TabsContent value="communicatie"><CandidateCommunicationTab candidateId={id!} /></TabsContent>
-        <TabsContent value="matches"><CandidateMatchesTab candidateId={id!} /></TabsContent>
+        <TabsContent value="matches"><CandidateMatchesTab candidateId={id!} candidate={candidate} /></TabsContent>
         <TabsContent value="vacatures"><CandidateVacancyMatchesTab candidateId={id!} /></TabsContent>
         <TabsContent value="plaatsingen"><CandidatePlacementsTab candidateId={id!} /></TabsContent>
         <TabsContent value="screening" forceMount>
