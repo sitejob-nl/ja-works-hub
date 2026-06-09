@@ -33,17 +33,12 @@ Deno.serve(async (req) => {
       { global: { headers: { Authorization: req.headers.get("Authorization")! } } }
     );
 
-    const automatedKey = req.headers.get("X-Automated-Key");
     const cronSecret = req.headers.get("X-Cron-Secret");
-    const expectedAutomatedKey = Deno.env.get("AUTOMATED_KEY");
     const expectedCronSecret = Deno.env.get("CRON_SECRET");
     let orgId: string;
     let userId: string | null;
 
-    if (
-      (expectedAutomatedKey && automatedKey === expectedAutomatedKey) ||
-      (expectedCronSecret && cronSecret === expectedCronSecret)
-    ) {
+    if (expectedCronSecret && cronSecret === expectedCronSecret) {
       const { data: camp } = await serviceClient
         .from("bulk_campaigns")
         .select("organization_id, created_by")

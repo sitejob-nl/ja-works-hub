@@ -5,7 +5,14 @@ import { test, expect } from "@playwright/test";
 
 const SUPABASE_URL = "https://noaupcteygfvlyymqtew.supabase.co";
 const SUPABASE_ANON =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5vYXVwY3RleWdmdmx5eW1xdGV3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI5NzAxNTEsImV4cCI6MjA4ODU0NjE1MX0.YmwNWZSt7IPTBnSNtKwMLlqPXiOaZdWeOQCbFrtWeT4";
+  process.env.E2E_SUPABASE_PUBLISHABLE_KEY ??
+  process.env.VITE_SUPABASE_PUBLISHABLE_KEY ??
+  process.env.VITE_SUPABASE_ANON_KEY ??
+  process.env.SUPABASE_ANON_KEY;
+
+if (!SUPABASE_ANON) {
+  throw new Error("E2E_SUPABASE_PUBLISHABLE_KEY, VITE_SUPABASE_PUBLISHABLE_KEY or SUPABASE_ANON_KEY is required");
+}
 
 const EDGE_FUNCTIONS = [
   "process-sick-report",
@@ -52,7 +59,7 @@ test.describe("Edge function auth gates", () => {
     });
   }
 
-  test("automated-messages — rejects without X-Automated-Key", async ({ request }) => {
+  test("automated-messages — rejects without X-Cron-Secret", async ({ request }) => {
     const res = await request.post(
       `${SUPABASE_URL}/functions/v1/automated-messages?job=onboarding-reminders`,
       {
@@ -64,13 +71,31 @@ test.describe("Edge function auth gates", () => {
     expect(res.status()).toBe(401);
   });
 
+  test("automated-messages — rejects invalid X-Cron-Secret", async ({ request }) => {
+    const res = await request.post(
+      `${SUPABASE_URL}/functions/v1/automated-messages?job=onboarding-reminders`,
+      {
+        headers: {
+          "X-Cron-Secret": "invalid-cron-secret",
+          apikey: SUPABASE_ANON,
+          "Content-Type": "application/json",
+        },
+        data: {},
+        failOnStatusCode: false,
+      }
+    );
+    expect(res.status()).toBe(401);
+  });
+
   test("automated-messages — rejects unknown job", async ({ request }) => {
-    const key = process.env.AUTOMATED_KEY ?? "VwEQ-VFVx-Gx3wYtN50pP4hpV_Sr-O4QGOebM1KTgNo";
+    const cronSecret = process.env.E2E_CRON_SECRET ?? process.env.CRON_SECRET;
+    test.skip(!cronSecret, "CRON_SECRET ontbreekt; unknown-job auth-path smoke overgeslagen");
+
     const res = await request.post(
       `${SUPABASE_URL}/functions/v1/automated-messages?job=nonexistent-job`,
       {
         headers: {
-          "X-Automated-Key": key,
+          "X-Cron-Secret": cronSecret,
           apikey: SUPABASE_ANON,
           "Content-Type": "application/json",
         },

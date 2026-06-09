@@ -2,7 +2,14 @@ import { expect, Page, test } from "@playwright/test";
 
 export const SUPABASE_URL = "https://noaupcteygfvlyymqtew.supabase.co";
 export const SUPABASE_ANON =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5vYXVwY3RleWdmdmx5eW1xdGV3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI5NzAxNTEsImV4cCI6MjA4ODU0NjE1MX0.YmwNWZSt7IPTBnSNtKwMLlqPXiOaZdWeOQCbFrtWeT4";
+  process.env.E2E_SUPABASE_PUBLISHABLE_KEY ??
+  process.env.VITE_SUPABASE_PUBLISHABLE_KEY ??
+  process.env.VITE_SUPABASE_ANON_KEY ??
+  process.env.SUPABASE_ANON_KEY;
+
+if (!SUPABASE_ANON) {
+  throw new Error("E2E_SUPABASE_PUBLISHABLE_KEY, VITE_SUPABASE_PUBLISHABLE_KEY or SUPABASE_ANON_KEY is required");
+}
 
 const PROJECT_REF = "noaupcteygfvlyymqtew";
 const AUTH_KEY = `sb-${PROJECT_REF}-auth-token`;

@@ -230,7 +230,7 @@ jobid | schedule       | jobname                            | target edge functi
 4     | 45 2 * * *     | check-vehicle-apk-daily            | check-vehicle-apk
 ```
 
-Authenticatie via `current_setting('app.cron_secret')` → wordt gestuurd als `x-cron-secret` header. Edge function valideert die match. **`automated-messages` job heeft een hardcoded `X-Automated-Key`** — historisch, niet weghalen zonder de edge function ook bij te werken.
+Authenticatie via `current_setting('app.cron_secret')` → wordt gestuurd als `x-cron-secret`/`X-Cron-Secret` header. Edge functions valideren die match; cron jobs mogen geen hardcoded gedeelde sleutels bevatten.
 
 **Niet-actief** (opt-in voorzien maar niet aangezet):
 - Talentpool-refresh cron — definitie zit in migration `20260425170000_d3_dynamic_talentpools_cron.sql` (alleen lokaal aangewezen). Activeer pas als de UI-zijde stabiel is.
