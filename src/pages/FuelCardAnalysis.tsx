@@ -24,8 +24,8 @@ import { isLikelyVehiclePlateReference, normalizeVehicleRef } from '@/lib/fuel-a
 import { Upload, AlertTriangle, CheckCircle2, StickyNote, Car, UserRound, CreditCard, Trash2, Settings2, Save, Info, CalendarDays } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import Papa from 'papaparse';
-import * as XLSX from 'xlsx';
 import { addDays, endOfMonth, endOfWeek, format, startOfMonth, startOfWeek, subWeeks } from 'date-fns';
+import { readExcelObjects } from '@/lib/spreadsheet';
 
 /* ─── helpers ────────────────────────────────────────────── */
 
@@ -977,18 +977,19 @@ const ImportSheet = ({ open, onOpenChange, orgId, conditions, onDone }: {
       setExisting(null);
     }
 
-    const isExcel = /\.(xlsx|xls)$/i.test(file.name);
+    if (/\.xls$/i.test(file.name) && !/\.xlsx$/i.test(file.name)) {
+      toast.error('Oude .xls-bestanden worden niet ondersteund. Sla het bestand op als .xlsx of CSV.');
+      return;
+    }
+
+    const isExcel = /\.xlsx$/i.test(file.name);
     if (isExcel) {
       try {
-        const wb = XLSX.read(buffer, { type: 'array' });
-        const sheet = wb.Sheets[wb.SheetNames[0]];
-        const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '', raw: false });
-        if (json.length === 0) {
+        const { headers: headersList, rows: stringRows } = await readExcelObjects(buffer);
+        if (stringRows.length === 0) {
           toast.error('Excel-bestand bevat geen data');
           return;
         }
-        const headersList = Object.keys(json[0]);
-        const stringRows = json.map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, String(v ?? '')])));
         setHeaders(headersList);
         setRows(stringRows);
 
@@ -1436,7 +1437,7 @@ const ImportSheet = ({ open, onOpenChange, orgId, conditions, onDone }: {
         {step === 1 && (
           <div className="mt-6 space-y-4">
             <Label>Selecteer bestand</Label>
-            <Input type="file" accept=".csv,.txt,.xlsx,.xls" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+            <Input type="file" accept=".csv,.txt,.xlsx" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
             <p className="text-xs text-muted-foreground">Q8 Liberty wekelijkse export (.csv of .xlsx)</p>
           </div>
         )}

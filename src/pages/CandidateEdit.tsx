@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import { logAudit } from '@/lib/audit';
 import { useDecryptedCandidate } from '@/hooks/useDecryptedCandidate';
 import AddressAutocomplete from '@/components/shared/AddressAutocomplete';
+import UnsavedChangesGuard from '@/components/shared/UnsavedChangesGuard';
 import { resolveAddressCoordinates } from '@/lib/pdok';
 
 const sources = [
@@ -52,10 +53,11 @@ const CandidateEdit = () => {
     bsn: '', iban: '', has_drivers_license: false, drivers_license_expiry: '',
     skills: [] as string[], languages: [] as string[], source: '', notes: '',
   });
+  const [savedSnapshot, setSavedSnapshot] = useState('');
 
   useEffect(() => {
     if (candidate) {
-      setForm({
+      const nextForm = {
         first_name: candidate.first_name ?? '',
         last_name: candidate.last_name ?? '',
         date_of_birth: candidate.date_of_birth ?? '',
@@ -75,11 +77,14 @@ const CandidateEdit = () => {
         languages: candidate.languages ?? [],
         source: candidate.source ?? '',
         notes: candidate.notes ?? '',
-      });
+      };
+      setForm(nextForm);
+      setSavedSnapshot(JSON.stringify(nextForm));
     }
   }, [candidate, sensitiveData]);
 
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
+  const dirty = !!savedSnapshot && JSON.stringify(form) !== savedSnapshot;
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -115,11 +120,12 @@ const CandidateEdit = () => {
       if (error) throw error;
     },
     onSuccess: () => {
+      setSavedSnapshot(JSON.stringify(form));
       qc.invalidateQueries({ queryKey: ['candidate', id] });
       qc.invalidateQueries({ queryKey: ['candidates'] });
       logAudit({ action: 'update', tableName: 'candidates', recordId: id!, newValues: form });
       toast.success('Kandidaat bijgewerkt');
-      navigate(`/kandidaten/${id}`);
+      window.setTimeout(() => navigate(`/kandidaten/${id}`), 0);
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -129,6 +135,7 @@ const CandidateEdit = () => {
 
   return (
     <div className="space-y-6">
+      <UnsavedChangesGuard when={dirty && !mutation.isPending} />
       <div className="flex items-center gap-1 text-sm text-muted-foreground">
         <Link to="/kandidaten" className="hover:text-foreground transition-colors">Kandidaten</Link>
         <ChevronRight className="h-3 w-3" />

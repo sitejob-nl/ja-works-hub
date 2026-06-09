@@ -124,7 +124,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
   // Shortlist via de server-side rank-candidates edge function: rangschikt de VOLLEDIGE pool
   // (geen limit-150-op-voornaam meer) met de gedeelde matching-core, inclusief afstand.
   const { data: availableCandidates, isError: rankError, isFetching: rankFetching } = useQuery({
-    queryKey: ['available-candidates-for-vacancy', vacancy.id, candidateSearch, showWeakMatches, (matches ?? []).length],
+    queryKey: ['available-candidates-for-vacancy', vacancy.id, candidateSearch, scoreFilter, showWeakMatches, (matches ?? []).length],
     queryFn: async () => {
       const matchedIds = (matches ?? []).map((m: any) => m.candidate_id);
       const { data, error } = await supabase.functions.invoke('rank-candidates', {
@@ -133,6 +133,10 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
           include_weak: showWeakMatches || !!candidateSearch,
           search: candidateSearch || undefined,
           exclude_candidate_ids: matchedIds,
+          criteria_options: {
+            minScore: minScore || undefined,
+            requireSkillSignal: scoreFilter === 'strong',
+          },
           limit: 25,
         },
       });
@@ -282,7 +286,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
         body: JSON.stringify({ match_id: matchId }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? 'Fout bij versturen');
+      if (!res.ok || json.success === false) throw new Error(json.error ?? json.outlook_error ?? 'Fout bij versturen');
       return json;
     },
     onSuccess: () => {

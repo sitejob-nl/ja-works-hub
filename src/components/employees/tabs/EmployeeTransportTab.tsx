@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
+import { useHasRole } from '@/contexts/AuthContext';
 import { Plus } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -17,11 +18,16 @@ import { formatDate, formatEUR } from '@/lib/format';
 import { toast } from 'sonner';
 
 const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
+  const orgId = useOrganizationId();
+  const canAssignVehicle = useHasRole(['admin', 'intercedent', 'backoffice']);
+  const qc = useQueryClient();
+
   const { data: assignment } = useQuery({
-    queryKey: ['vehicle-assignment', candidateId],
+    queryKey: ['vehicle-assignment', orgId, candidateId],
     queryFn: async () => {
       const { data, error } = await supabase.from('vehicle_assignments')
         .select('*, vehicles!vehicle_assignments_vehicle_id_fkey(license_plate, brand, model)')
+        .eq('organization_id', orgId)
         .eq('candidate_id', candidateId)
         .is('returned_date', null)
         .maybeSingle();
@@ -30,8 +36,6 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
     },
   });
 
-  const orgId = useOrganizationId();
-  const qc = useQueryClient();
   const [assignOpen, setAssignOpen] = useState(false);
   const [vehicleId, setVehicleId] = useState('');
   const [assignedDate, setAssignedDate] = useState('');
@@ -43,6 +47,7 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
       // 'onderhoud'/'uit_dienst' vallen hard af; de rest beoordelen we op datum-bezetting.
       const { data, error } = await supabase.from('vehicles')
         .select('id, license_plate, brand, model, current_mileage, vehicle_assignments!vehicle_assignments_vehicle_id_fkey(id, assigned_date, returned_date)')
+        .eq('organization_id', orgId)
         .in('status', ['beschikbaar', 'toegewezen'] as any)
         .order('license_plate');
       if (error) throw error;
@@ -61,6 +66,7 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
     mutationFn: async () => {
       const { data: candidate, error: candErr } = await supabase.from('candidates')
         .select('id, employee_number, employee_status')
+        .eq('organization_id', orgId)
         .eq('id', candidateId)
         .single();
       if (candErr) throw candErr;
@@ -74,11 +80,14 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
         start_mileage: startMileage ? parseInt(startMileage) : null,
       });
       if (error) throw error;
-      const { error: vErr } = await supabase.from('vehicles').update({ status: 'toegewezen' as any }).eq('id', vehicleId);
+      const { error: vErr } = await supabase.from('vehicles')
+        .update({ status: 'toegewezen' as any })
+        .eq('organization_id', orgId)
+        .eq('id', vehicleId);
       if (vErr) throw vErr;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['vehicle-assignment', candidateId] });
+      qc.invalidateQueries({ queryKey: ['vehicle-assignment', orgId, candidateId] });
       qc.invalidateQueries({ queryKey: ['vehicles'] });
       toast.success('Voertuig toegewezen');
       setAssignOpen(false);
@@ -88,10 +97,11 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
   });
 
   const { data: mileage = [] } = useQuery({
-    queryKey: ['mileage', candidateId],
+    queryKey: ['mileage', orgId, candidateId],
     queryFn: async () => {
       const { data, error } = await supabase.from('mileage_entries')
         .select('*')
+        .eq('organization_id', orgId)
         .eq('candidate_id', candidateId)
         .order('entry_date', { ascending: false })
         .limit(10);
@@ -101,10 +111,11 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
   });
 
   const { data: fines = [] } = useQuery({
-    queryKey: ['vehicle-fines', candidateId],
+    queryKey: ['vehicle-fines', orgId, candidateId],
     queryFn: async () => {
       const { data, error } = await supabase.from('vehicle_fines')
         .select('*')
+        .eq('organization_id', orgId)
         .eq('candidate_id', candidateId)
         .order('fine_date', { ascending: false });
       if (error) throw error;
@@ -118,7 +129,7 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
       <div className="bg-card rounded-lg border p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-medium">Huidig voertuig</h3>
-          {!assignment && (
+          {canAssignVehicle && !assignment && (
             <Button size="sm" onClick={() => setAssignOpen(true)} className="gap-1"><Plus className="h-4 w-4" /> Voertuig toewijzen</Button>
           )}
         </div>

@@ -1,6 +1,7 @@
 import Papa from 'papaparse';
-import * as XLSX from 'xlsx';
 import { Download } from 'lucide-react';
+import { toast } from 'sonner';
+import { downloadExcelRecords } from '@/lib/spreadsheet';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -57,17 +58,12 @@ function downloadCsv(rows: Record<string, any>[], filename: string) {
   URL.revokeObjectURL(url);
 }
 
-function downloadExcel(rows: Record<string, any>[], filename: string) {
-  const ws = XLSX.utils.json_to_sheet(rows);
-  // Sensible column widths
-  ws['!cols'] = [
-    { wch: 20 }, { wch: 24 }, { wch: 10 }, { wch: 14 }, { wch: 22 }, { wch: 14 },
-    { wch: 11 }, { wch: 7 }, { wch: 6 }, { wch: 11 }, { wch: 16 }, { wch: 16 },
-    { wch: 24 }, { wch: 24 }, { wch: 12 }, { wch: 11 }, { wch: 7 },
-  ];
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Panden');
-  XLSX.writeFile(wb, filename);
+async function downloadExcel(rows: Record<string, any>[], filename: string) {
+  try {
+    await downloadExcelRecords(rows, filename, 'Panden');
+  } catch {
+    toast.error('Excel-export kon niet worden gemaakt');
+  }
 }
 
 export default function ExportPropertiesButton({ properties, filenameSuffix }: Props) {
@@ -88,7 +84,7 @@ export default function ExportPropertiesButton({ properties, filenameSuffix }: P
         <DropdownMenuItem onClick={() => downloadCsv(rows, `${base}.csv`)}>
           Exporteer CSV
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => downloadExcel(rows, `${base}.xlsx`)}>
+        <DropdownMenuItem onClick={() => void downloadExcel(rows, `${base}.xlsx`)}>
           Exporteer Excel
         </DropdownMenuItem>
       </DropdownMenuContent>

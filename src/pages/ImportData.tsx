@@ -2,9 +2,9 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import Papa from 'papaparse';
-import * as XLSX from 'xlsx';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
+import { readExcelRows } from '@/lib/spreadsheet';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -94,18 +94,17 @@ const ImportData = () => {
         },
         skipEmptyLines: true,
       });
+    } else if (ext === 'xlsx') {
+      readExcelRows(file)
+        .then((data) => {
+          if (data.length > 0) {
+            setHeaders(data[0].map(String));
+            setRows(data.slice(1).filter(r => r.some(c => c != null && String(c).trim())));
+          }
+        })
+        .catch(() => toast.error('Excel-bestand kon niet worden gelezen'));
     } else {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const wb = XLSX.read(e.target?.result, { type: 'binary' });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        const data = XLSX.utils.sheet_to_json(ws, { header: 1 }) as string[][];
-        if (data.length > 0) {
-          setHeaders(data[0].map(String));
-          setRows(data.slice(1).filter(r => r.some(c => c != null && String(c).trim())));
-        }
-      };
-      reader.readAsBinaryString(file);
+      toast.error('Gebruik een CSV- of .xlsx-bestand');
     }
   };
 
@@ -263,7 +262,7 @@ const ImportData = () => {
                   <Label>Selecteer bestand</Label>
                   <Input
                     type="file"
-                    accept=".csv,.xlsx,.xls"
+                    accept=".csv,.xlsx"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (file) handleFile(file);

@@ -197,6 +197,42 @@ describe('matching-v3 core', () => {
     expect(specialist.matchPercent).toBeGreaterThan(40);
   });
 
+  it('gebruikt de volledige vacaturetekst als extra functiematch-context', () => {
+    const metOmschrijving = scoreMatch(
+      { skills: ['lassen'] },
+      {
+        title: 'Metaalmedewerker',
+        description: 'Je gaat MIG/MAG lassen en constructies samenstellen.',
+        required_skills: [],
+      },
+    );
+    const zonderOmschrijving = scoreMatch(
+      { skills: ['lassen'] },
+      { title: 'Metaalmedewerker', required_skills: [] },
+    );
+    expect(metOmschrijving.matchPercent).toBeGreaterThan(zonderOmschrijving.matchPercent);
+    expect(metOmschrijving.label).not.toBe('groen');
+  });
+
+  it('past shortlistcriteria toe op minimumscore, skill-signaal en bekende afstand', () => {
+    const score = scoreMatch(
+      { skills: ['productie'] },
+      { title: 'Productiemedewerker', required_skills: ['productie'] },
+      { status: 'missing_coords' },
+    );
+    expect(passesShortlist(score, false, { minScore: 90 })).toBe(false);
+    expect(passesShortlist(score, false, { minScore: 40, requireSkillSignal: true })).toBe(true);
+    expect(passesShortlist(score, false, { minScore: 40, requireKnownDistance: true })).toBe(false);
+  });
+
+  it('laat criteria-options de weging van afstand aanpassen', () => {
+    const candidate = { skills: ['productie'] };
+    const vacancy = { title: 'Productiemedewerker', required_skills: ['productie'] };
+    const ver = scoreMatch(candidate, vacancy, { km: 95, status: 'estimated' });
+    const afstandUit = scoreMatch(candidate, vacancy, { km: 95, status: 'estimated' }, undefined, { weights: { distance: 0 } });
+    expect(afstandUit.matchPercent).toBeGreaterThan(ver.matchPercent);
+  });
+
   it('haversineKm berekent een plausibele afstand en is null bij ontbrekende coords', () => {
     const eindhovenToTilburg = haversineKm(51.44, 5.47, 51.56, 5.09);
     expect(eindhovenToTilburg).toBeGreaterThan(20);
