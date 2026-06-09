@@ -37,7 +37,7 @@ test.describe("Kritieke flow 1 — Kandidaat → Match → Plaatsing", () => {
     expect(count > 0 || hasEmptyState, "Lijst moet laden of empty state tonen").toBeTruthy();
   });
 
-  test("Vacature detail → Matches tab toont Kanban kolommen", async ({ page }) => {
+  test("Vacature detail → Matches tab toont recruiter matchworkspace", async ({ page }) => {
     await page.goto("/vacatures", { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(2000);
 
@@ -52,10 +52,11 @@ test.describe("Kritieke flow 1 — Kandidaat → Match → Plaatsing", () => {
     await page.getByRole("tab", { name: /^matches$/i }).click();
     await page.waitForTimeout(1500);
 
-    // Verwacht: Kanban pipeline header + minstens 5 kolommen
-    await expect(page.getByRole("heading", { name: /match pipeline/i })).toBeVisible();
-    const columnCount = await page.locator(".flex-shrink-0.w-64").count();
-    expect(columnCount, "Kanban moet >= 5 kolommen hebben").toBeGreaterThanOrEqual(5);
+    // Verwacht: de vacancy matchworkspace met statusfilters en shortlist.
+    await expect(page.getByRole("heading", { name: /match-pipeline/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Beste kandidaten uit eigen database/i })).toBeVisible();
+    const statusFilterCount = await page.locator("button").filter({ hasText: /Nieuwe match|Gescreend|Bij klant|In gesprek|Afgewezen/i }).count();
+    expect(statusFilterCount, "Matchworkspace moet meerdere statusfilters tonen").toBeGreaterThanOrEqual(5);
   });
 
   test("Match pipeline pagina laadt zonder edge function errors", async ({ page }) => {
