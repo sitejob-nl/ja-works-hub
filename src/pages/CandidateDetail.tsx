@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { ChevronRight, MoreHorizontal, Pencil, FileText, Link2, Copy, Check, MessageCircle, Mail, ClipboardCheck } from 'lucide-react';
+import { ChevronRight, MoreHorizontal, FileText, Link2, Copy, Check, MessageCircle, Mail, ClipboardCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import CandidateProfileTab from '@/components/candidates/tabs/CandidateProfileTab';
 import CandidateDocumentsTab from '@/components/candidates/tabs/CandidateDocumentsTab';
@@ -228,9 +228,6 @@ const CandidateDetail = () => {
           </Button>
           <Button variant="outline" size="sm" onClick={() => navigate(`/cv-tool/${id}`)} className="gap-1.5">
             <FileText className="h-3.5 w-3.5" /> <span className="hidden sm:inline">CV Genereren</span><span className="sm:hidden">CV</span>
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => navigate(`/kandidaten/${id}/bewerken`)} className="gap-1.5">
-            <Pencil className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Bewerken</span>
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
