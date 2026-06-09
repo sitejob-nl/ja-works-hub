@@ -172,19 +172,37 @@ const ImportWizard = ({ open, onOpenChange, target, preset }: Props) => {
       const missingReq = requiredFields.some(f => !mapped[f]);
       if (missingReq) { skipped++; errors.push(`Rij ${ri + 2}: verplichte velden ontbreken`); continue; }
 
-      // Duplicate check
+      // Duplicate check. BSN is encrypted and must not be queried directly from the UI.
       if (target === 'candidates') {
-        if (mapped.bsn) {
-          const { data: dup } = await supabase.from('candidates').select('id').eq('bsn', mapped.bsn).maybeSingle();
-          if (dup) { skipped++; errors.push(`Rij ${ri + 2}: BSN ${mapped.bsn} bestaat al`); continue; }
-        }
         if (mapped.email) {
-          const { data: dup } = await supabase.from('candidates').select('id').eq('email', mapped.email).maybeSingle();
-          if (dup) { skipped++; errors.push(`Rij ${ri + 2}: email ${mapped.email} bestaat al`); continue; }
+          const { data: dup } = await supabase.from('candidates')
+            .select('id')
+            .eq('organization_id', orgId)
+            .ilike('email', mapped.email)
+            .limit(1);
+          if (dup?.length) { skipped++; errors.push(`Rij ${ri + 2}: kandidaat met dit e-mailadres bestaat al`); continue; }
+        }
+        if (mapped.phone && mapped.phone.replace(/[\s\-()]/g, '').length >= 8) {
+          const phoneSuffix = mapped.phone.replace(/[\s\-()]/g, '').slice(-8);
+          const { data: dup } = await supabase.from('candidates')
+            .select('id')
+            .eq('organization_id', orgId)
+            .ilike('phone', `%${phoneSuffix}%`)
+            .limit(1);
+          if (dup?.length) { skipped++; errors.push(`Rij ${ri + 2}: mogelijke kandidaat-duplicaat op telefoon`); continue; }
+        }
+        if (mapped.date_of_birth && mapped.last_name) {
+          const { data: dup } = await supabase.from('candidates')
+            .select('id')
+            .eq('organization_id', orgId)
+            .eq('date_of_birth', mapped.date_of_birth)
+            .ilike('last_name', mapped.last_name)
+            .limit(1);
+          if (dup?.length) { skipped++; errors.push(`Rij ${ri + 2}: mogelijke kandidaat-duplicaat op geboortedatum en achternaam`); continue; }
         }
       } else {
         if (mapped.kvk_number) {
-          const { data: dup } = await supabase.from('companies').select('id').eq('kvk_number', mapped.kvk_number).maybeSingle();
+          const { data: dup } = await supabase.from('companies').select('id').eq('organization_id', orgId).eq('kvk_number', mapped.kvk_number).maybeSingle();
           if (dup) { skipped++; errors.push(`Rij ${ri + 2}: KvK ${mapped.kvk_number} bestaat al`); continue; }
         }
       }

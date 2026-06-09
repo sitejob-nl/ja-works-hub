@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
+import { useHasRole } from '@/contexts/AuthContext';
 import { Plus } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -17,11 +18,16 @@ import { formatDate, formatEUR } from '@/lib/format';
 import { toast } from 'sonner';
 
 const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
+  const orgId = useOrganizationId();
+  const canAssignHousing = useHasRole(['admin', 'intercedent', 'backoffice']);
+  const qc = useQueryClient();
+
   const { data: assignments = [] } = useQuery({
-    queryKey: ['housing-assignments', candidateId],
+    queryKey: ['housing-assignments', orgId, candidateId],
     queryFn: async () => {
       const { data, error } = await supabase.from('housing_assignments')
         .select('*, units!housing_assignments_unit_id_fkey(id, name, properties!units_property_id_fkey(id, name, address_street, address_city))')
+        .eq('organization_id', orgId)
         .eq('candidate_id', candidateId)
         .order('check_in_date', { ascending: false });
       if (error) throw error;
@@ -30,10 +36,11 @@ const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
   });
 
   const { data: keys = [] } = useQuery({
-    queryKey: ['key-registrations', candidateId],
+    queryKey: ['key-registrations', orgId, candidateId],
     queryFn: async () => {
       const { data, error } = await supabase.from('key_registrations')
         .select('*, units!key_registrations_unit_id_fkey(name)')
+        .eq('organization_id', orgId)
         .eq('candidate_id', candidateId)
         .order('issued_at', { ascending: false });
       if (error) throw error;
@@ -41,8 +48,6 @@ const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
     },
   });
 
-  const orgId = useOrganizationId();
-  const qc = useQueryClient();
   const [assignOpen, setAssignOpen] = useState(false);
   const [propertyId, setPropertyId] = useState('');
   const [unitId, setUnitId] = useState('');
@@ -56,6 +61,7 @@ const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
       // 'onderhoud'/'geblokkeerd' panden vallen hard af; de rest beoordelen we op datum-bezetting.
       const { data, error } = await supabase.from('units')
         .select('id, name, capacity, status, weekly_cost, properties!units_property_id_fkey(id, name, address_street, address_city), housing_assignments!housing_assignments_unit_id_fkey(id, status, check_in_date, check_out_date)')
+        .eq('organization_id', orgId)
         .in('status', ['beschikbaar', 'gereserveerd', 'bezet'] as any)
         .order('name');
       if (error) throw error;
@@ -81,6 +87,7 @@ const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
     mutationFn: async () => {
       const { data: candidate, error: candErr } = await supabase.from('candidates')
         .select('id, employee_number, employee_status')
+        .eq('organization_id', orgId)
         .eq('id', candidateId)
         .single();
       if (candErr) throw candErr;
@@ -100,7 +107,7 @@ const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
       if (error) throw error;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['housing-assignments', candidateId] });
+      qc.invalidateQueries({ queryKey: ['housing-assignments', orgId, candidateId] });
       toast.success('Kamer toegewezen');
       setAssignOpen(false);
       setPropertyId(''); setUnitId(''); setCheckInDate(''); setDeductionAmount('');
@@ -117,7 +124,7 @@ const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
       <div className="bg-card rounded-lg border p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-medium">Huisvesting</h3>
-          {!hasActiveHousing && (
+          {canAssignHousing && !hasActiveHousing && (
             <Button size="sm" onClick={() => setAssignOpen(true)} className="gap-1"><Plus className="h-4 w-4" /> Wijs kamer toe</Button>
           )}
         </div>

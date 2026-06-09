@@ -1,34 +1,265 @@
-import { useState } from 'react';
+import { useEffect, useState, type ChangeEvent, type KeyboardEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import { formatDate } from '@/lib/format';
-import { Copy, Check, MessageCircle, Mail, Link2, RefreshCw } from 'lucide-react';
+import { Copy, Check, MessageCircle, Mail, Link2, RefreshCw, Pencil, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useDecryptedCandidate } from '@/hooks/useDecryptedCandidate';
 import { usePublicUrl } from '@/hooks/usePublicUrl';
 import { useOutlookAccounts, useOutlookInvoke } from '@/hooks/useOutlookAccounts';
+import { logAudit } from '@/lib/audit';
 import SensitiveField from '@/components/ui/sensitive-field';
+import TagInput from '@/components/ui/tag-input';
 import CustomFieldsSection from '@/components/shared/CustomFieldsSection';
+import UnsavedChangesGuard from '@/components/shared/UnsavedChangesGuard';
 import { CandidatePreferencesTab } from '@/components/candidates/tabs/CandidatePreferencesTab';
 
-const Field = ({ label, value }: { label: string; value: string | null | undefined }) => (
-  <div>
-    <p className="text-xs text-muted-foreground">{label}</p>
-    <p className="text-sm mt-0.5">{value || '—'}</p>
-  </div>
-);
+const emptyToNull = (value: string) => value.trim() || null;
+
+const InlineTextField = ({
+  id,
+  label,
+  value,
+  displayValue,
+  type = 'text',
+  multiline = false,
+  onSave,
+  onDirtyChange,
+}: {
+  id: string;
+  label: string;
+  value: string | null | undefined;
+  displayValue?: string | null;
+  type?: string;
+  multiline?: boolean;
+  onSave: (value: string | null) => Promise<void>;
+  onDirtyChange: (id: string, dirty: boolean) => void;
+}) => {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value ?? '');
+  const [saved, setSaved] = useState(value ?? '');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (editing) return;
+    setDraft(value ?? '');
+    setSaved(value ?? '');
+  }, [editing, value]);
+
+  const dirty = draft !== saved;
+  const updateDraft = (next: string) => {
+    setDraft(next);
+    onDirtyChange(id, next !== saved);
+  };
+
+  const commit = async () => {
+    if (!editing) return;
+    if (!dirty) {
+      setEditing(false);
+      onDirtyChange(id, false);
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSave(emptyToNull(draft));
+      setSaved(draft);
+      setEditing(false);
+      onDirtyChange(id, false);
+    } catch {
+      onDirtyChange(id, true);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const cancel = () => {
+    setDraft(saved);
+    setEditing(false);
+    onDirtyChange(id, false);
+  };
+
+  if (editing) {
+    const commonProps = {
+      value: draft,
+      autoFocus: true,
+      onBlur: commit,
+      onChange: (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => updateDraft(event.target.value),
+      onKeyDown: (event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          cancel();
+        }
+        if (!multiline && event.key === 'Enter') {
+          event.preventDefault();
+          commit();
+        }
+        if (multiline && event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+          event.preventDefault();
+          commit();
+        }
+      },
+      className: 'mt-1',
+    };
+
+    return (
+      <div>
+        <p className="text-xs text-muted-foreground">{label}</p>
+        {multiline ? (
+          <Textarea {...commonProps} rows={3} />
+        ) : (
+          <Input {...commonProps} type={type} />
+        )}
+        {saving && <p className="text-xs text-muted-foreground mt-1">Opslaan...</p>}
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => setEditing(true)}
+      className="group w-full rounded-md text-left -mx-2 px-2 py-1 transition-colors hover:bg-muted/60"
+    >
+      <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        {label}
+        <Pencil className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100" />
+      </span>
+      <span className="block text-sm mt-0.5 whitespace-pre-wrap">{displayValue || value || '—'}</span>
+    </button>
+  );
+};
+
+const InlineBooleanField = ({
+  label,
+  value,
+  onSave,
+}: {
+  label: string;
+  value: boolean | null | undefined;
+  onSave: (value: boolean) => Promise<void>;
+}) => {
+  const [saving, setSaving] = useState(false);
+  const save = async (next: boolean) => {
+    setSaving(true);
+    try {
+      await onSave(next);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <label className="flex items-center justify-between gap-3 rounded-md -mx-2 px-2 py-1 hover:bg-muted/60 cursor-pointer">
+      <span>
+        <span className="block text-xs text-muted-foreground">{label}</span>
+        <span className="block text-sm mt-0.5">{value == null ? 'Onbekend' : value ? 'Ja' : 'Nee'}</span>
+      </span>
+      <span className="flex items-center gap-2">
+        {saving && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+        <Checkbox checked={value === true} onCheckedChange={(checked) => save(checked === true)} />
+      </span>
+    </label>
+  );
+};
+
+const InlineTagsField = ({
+  id,
+  label,
+  value,
+  onSave,
+  onDirtyChange,
+}: {
+  id: string;
+  label: string;
+  value: string[];
+  onSave: (value: string[]) => Promise<void>;
+  onDirtyChange: (id: string, dirty: boolean) => void;
+}) => {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<string[]>(value ?? []);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (editing) return;
+    setDraft(value ?? []);
+  }, [editing, value]);
+
+  const save = async (next: string[]) => {
+    setDraft(next);
+    onDirtyChange(id, true);
+    setSaving(true);
+    try {
+      await onSave(next);
+      onDirtyChange(id, false);
+    } catch {
+      onDirtyChange(id, true);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="rounded-md -mx-2 px-2 py-1 hover:bg-muted/60">
+      <button type="button" onClick={() => setEditing(true)} className="group flex items-center gap-1.5 text-xs text-muted-foreground">
+        {label}
+        <Pencil className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100" />
+      </button>
+      {editing ? (
+        <div className="mt-1">
+          <TagInput value={draft} onChange={save} placeholder="Typ + Enter om op te slaan" />
+          {saving && <p className="text-xs text-muted-foreground mt-1">Opslaan...</p>}
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-1 mt-1">
+          {value.length > 0
+            ? value.map((tag) => <Badge key={tag} variant="outline" className="text-xs">{tag}</Badge>)
+            : <span className="text-sm text-muted-foreground">—</span>}
+        </div>
+      )}
+    </div>
+  );
+};
 
 const CandidateProfileTab = ({ candidate }: { candidate: any }) => {
   const qc = useQueryClient();
   const [copied, setCopied] = useState(false);
+  const [dirtyEditors, setDirtyEditors] = useState<Record<string, boolean>>({});
   const { buildUrl } = usePublicUrl();
   const callOutlook = useOutlookInvoke();
   const { hasUsableAccounts } = useOutlookAccounts('mail_send');
   const { data: sensitive, isLoading: sensitiveLoading } = useDecryptedCandidate(candidate.id);
   const address = [candidate.address_street, candidate.address_postal, candidate.address_city].filter(Boolean).join(', ') || null;
+  const hasDirtyEditor = Object.values(dirtyEditors).some(Boolean);
+  const setEditorDirty = (id: string, dirty: boolean) => {
+    setDirtyEditors((current) => ({ ...current, [id]: dirty }));
+  };
+
+  const updateCandidate = useMutation({
+    mutationFn: async ({ patch }: { patch: Record<string, any>; label: string }) => {
+      const { error } = await supabase.from('candidates').update(patch as any).eq('id', candidate.id);
+      if (error) throw error;
+    },
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ['candidate', candidate.id] });
+      qc.invalidateQueries({ queryKey: ['candidates'] });
+      logAudit({
+        action: 'update',
+        tableName: 'candidates',
+        recordId: candidate.id,
+        newValues: variables.patch,
+      });
+      toast.success(`${variables.label} opgeslagen`);
+    },
+    onError: (error: any) => toast.error(error.message || 'Opslaan mislukt'),
+  });
+
+  const saveField = (label: string, patch: Record<string, any>) =>
+    updateCandidate.mutateAsync({ label, patch });
 
   // Fetch active profile token
   const { data: activeToken, isLoading: tokenLoading } = useQuery({
@@ -128,72 +359,60 @@ const CandidateProfileTab = ({ candidate }: { candidate: any }) => {
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <UnsavedChangesGuard when={hasDirtyEditor} />
       <div className="bg-card rounded-lg border p-6 space-y-4">
         <h3 className="font-medium">Persoonsgegevens</h3>
-        <Field label="Voornaam" value={candidate.first_name} />
-        <Field label="Achternaam" value={candidate.last_name} />
-        <Field label="Geboortedatum" value={formatDate(candidate.date_of_birth)} />
-        <Field label="Nationaliteit" value={candidate.nationality} />
+        <InlineTextField id="first_name" label="Voornaam" value={candidate.first_name} onSave={(value) => saveField('Voornaam', { first_name: value || '' })} onDirtyChange={setEditorDirty} />
+        <InlineTextField id="last_name" label="Achternaam" value={candidate.last_name} onSave={(value) => saveField('Achternaam', { last_name: value || '' })} onDirtyChange={setEditorDirty} />
+        <InlineTextField id="date_of_birth" label="Geboortedatum" value={candidate.date_of_birth} displayValue={formatDate(candidate.date_of_birth)} type="date" onSave={(value) => saveField('Geboortedatum', { date_of_birth: value })} onDirtyChange={setEditorDirty} />
+        <InlineTextField id="nationality" label="Nationaliteit" value={candidate.nationality} onSave={(value) => saveField('Nationaliteit', { nationality: value })} onDirtyChange={setEditorDirty} />
         <SensitiveField label="BSN" value={sensitive?.decrypted_bsn} loading={sensitiveLoading} />
         <SensitiveField label="IBAN" value={sensitive?.decrypted_iban} loading={sensitiveLoading} />
       </div>
 
       <div className="bg-card rounded-lg border p-6 space-y-4">
         <h3 className="font-medium">Contactgegevens</h3>
-        <Field label="E-mail" value={candidate.email} />
-        <Field label="Telefoon (EU / buitenland)" value={candidate.phone} />
-        <Field label="Telefoon (NL)" value={candidate.phone_nl} />
-        <Field
-          label="Noodcontact (ICE)"
-          value={[candidate.emergency_contact_name, candidate.emergency_contact_phone].filter(Boolean).join(' · ') || null}
-        />
-        <Field label="Adres" value={address} />
-        <Field label="Nederlands adres bekend" value={candidate.has_dutch_address ? 'Ja' : 'Nee'} />
+        <InlineTextField id="email" label="E-mail" value={candidate.email} type="email" onSave={(value) => saveField('E-mail', { email: value })} onDirtyChange={setEditorDirty} />
+        <InlineTextField id="phone" label="Telefoon (EU / buitenland)" value={candidate.phone} onSave={(value) => saveField('Telefoon', { phone: value })} onDirtyChange={setEditorDirty} />
+        <InlineTextField id="phone_nl" label="Telefoon (NL)" value={candidate.phone_nl} onSave={(value) => saveField('Telefoon NL', { phone_nl: value })} onDirtyChange={setEditorDirty} />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <InlineTextField id="emergency_contact_name" label="ICE naam" value={candidate.emergency_contact_name} onSave={(value) => saveField('Noodcontact naam', { emergency_contact_name: value })} onDirtyChange={setEditorDirty} />
+          <InlineTextField id="emergency_contact_phone" label="ICE telefoon" value={candidate.emergency_contact_phone} onSave={(value) => saveField('Noodcontact telefoon', { emergency_contact_phone: value })} onDirtyChange={setEditorDirty} />
+        </div>
+        <div>
+          <p className="text-xs text-muted-foreground mb-1">Adres</p>
+          <p className="text-sm mb-2">{address || '—'}</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <InlineTextField id="address_street" label="Straat" value={candidate.address_street} onSave={(value) => saveField('Straat', { address_street: value })} onDirtyChange={setEditorDirty} />
+            <InlineTextField id="address_postal" label="Postcode" value={candidate.address_postal} onSave={(value) => saveField('Postcode', { address_postal: value })} onDirtyChange={setEditorDirty} />
+            <InlineTextField id="address_city" label="Woonplaats" value={candidate.address_city} onSave={(value) => saveField('Woonplaats', { address_city: value })} onDirtyChange={setEditorDirty} />
+          </div>
+        </div>
+        <InlineBooleanField label="Nederlands adres bekend" value={candidate.has_dutch_address} onSave={(value) => saveField('Nederlands adres', { has_dutch_address: value })} />
       </div>
 
       <div className="bg-card rounded-lg border p-6 space-y-4">
         <h3 className="font-medium">Vaardigheden & certificaten</h3>
-        <div>
-          <p className="text-xs text-muted-foreground mb-1">Vaardigheden</p>
-          <div className="flex flex-wrap gap-1">
-            {(candidate.skills ?? []).length > 0
-              ? candidate.skills.map((s: string) => <Badge key={s} variant="outline" className="text-xs">{s}</Badge>)
-              : <span className="text-sm text-muted-foreground">—</span>}
-          </div>
-        </div>
-        <div>
-          <p className="text-xs text-muted-foreground mb-1">Certificaten</p>
-          <div className="flex flex-wrap gap-1">
-            {(candidate.certifications ?? []).length > 0
-              ? candidate.certifications.map((c: string) => <Badge key={c} variant="outline" className="text-xs">{c}</Badge>)
-              : <span className="text-sm text-muted-foreground">—</span>}
-          </div>
-        </div>
-        <div>
-          <p className="text-xs text-muted-foreground mb-1">Talen</p>
-          <div className="flex flex-wrap gap-1">
-            {(candidate.languages ?? []).length > 0
-              ? candidate.languages.map((l: string) => <Badge key={l} variant="outline" className="text-xs">{l}</Badge>)
-              : <span className="text-sm text-muted-foreground">—</span>}
-          </div>
-        </div>
+        <InlineTagsField id="skills" label="Vaardigheden" value={candidate.skills ?? []} onSave={(value) => saveField('Vaardigheden', { skills: value.length ? value : null })} onDirtyChange={setEditorDirty} />
+        <InlineTagsField id="certifications" label="Certificaten" value={candidate.certifications ?? []} onSave={(value) => saveField('Certificaten', { certifications: value.length ? value : null })} onDirtyChange={setEditorDirty} />
+        <InlineTagsField id="languages" label="Talen" value={candidate.languages ?? []} onSave={(value) => saveField('Talen', { languages: value.length ? value : null })} onDirtyChange={setEditorDirty} />
       </div>
 
       <div className="bg-card rounded-lg border p-6 space-y-4">
         <h3 className="font-medium">Beschikbaarheid</h3>
-        <Field label="Beschikbaarheid notities" value={candidate.availability_notes} />
-        <div>
-          <p className="text-xs text-muted-foreground">Rijbewijs</p>
-          <p className="text-sm mt-0.5">
-            {candidate.has_drivers_license == null ? 'Onbekend' : candidate.has_drivers_license ? 'Ja' : 'Nee'}
-            {candidate.has_drivers_license && candidate.drivers_license_expiry && ` — verloopt ${formatDate(candidate.drivers_license_expiry)}`}
-          </p>
+        <InlineTextField id="availability_notes" label="Beschikbaarheid notities" value={candidate.availability_notes} multiline onSave={(value) => saveField('Beschikbaarheid', { availability_notes: value })} onDirtyChange={setEditorDirty} />
+        <InlineBooleanField label="Rijbewijs" value={candidate.has_drivers_license} onSave={(value) => saveField('Rijbewijs', { has_drivers_license: value })} />
+        {candidate.has_drivers_license && (
+          <InlineTextField id="drivers_license_expiry" label="Verloopdatum rijbewijs" value={candidate.drivers_license_expiry} displayValue={formatDate(candidate.drivers_license_expiry)} type="date" onSave={(value) => saveField('Verloopdatum rijbewijs', { drivers_license_expiry: value })} onDirtyChange={setEditorDirty} />
+        )}
+        <InlineTextField id="source" label="Bron" value={candidate.source} onSave={(value) => saveField('Bron', { source: value })} onDirtyChange={setEditorDirty} />
+        <div className="pt-2 border-t">
+          <InlineTextField id="notes" label="Notities" value={candidate.notes} multiline onSave={(value) => saveField('Notities', { notes: value })} onDirtyChange={setEditorDirty} />
         </div>
-        <Field label="Bron" value={candidate.source} />
-        {candidate.notes && (
-          <div className="pt-2 border-t">
-            <p className="text-xs text-muted-foreground mb-1">Notities</p>
-            <p className="text-sm whitespace-pre-wrap">{candidate.notes}</p>
+        {updateCandidate.isPending && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Wijziging opslaan...
           </div>
         )}
       </div>

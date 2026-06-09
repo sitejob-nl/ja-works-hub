@@ -115,6 +115,7 @@ const MatchPipeline = () => {
       const { error } = await supabase
         .from('matches')
         .update({ status: status as any, status_changed_at: new Date().toISOString() })
+        .eq('organization_id', orgId)
         .eq('id', matchId);
       if (error) throw error;
     },
@@ -163,6 +164,26 @@ const MatchPipeline = () => {
       if (skipped > 0) toast.info(`${skipped} kanaalacties overgeslagen door voorkeuren, ontbrekende gegevens of duplicaten`);
     },
     onError: (error: any) => toast.error(error.message ?? 'Bulknotificaties mislukt'),
+  });
+
+  const bulkStatusMutation = useMutation({
+    mutationFn: async ({ matchIds, status }: { matchIds: string[]; status: string }) => {
+      if (matchIds.length === 0) throw new Error('Selecteer eerst matches');
+      const { error } = await supabase
+        .from('matches')
+        .update({ status: status as any, status_changed_at: new Date().toISOString() })
+        .eq('organization_id', orgId)
+        .in('id', matchIds);
+      if (error) throw error;
+      return { count: matchIds.length, status };
+    },
+    onSuccess: ({ count, status }) => {
+      setSelectedMatchIds(new Set());
+      qc.invalidateQueries({ queryKey: ['match-pipeline', orgId] });
+      qc.invalidateQueries({ queryKey: ['vacancy-matches'] });
+      toast.success(`${count} match${count === 1 ? '' : 'es'} verplaatst naar ${COLUMNS.find((c) => c.key === status)?.label ?? status}`);
+    },
+    onError: (error: any) => toast.error(error.message ?? 'Status wijzigen mislukt'),
   });
 
   const onDragEnd = (result: DropResult) => {
@@ -285,6 +306,20 @@ const MatchPipeline = () => {
         </label>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <span className="text-sm text-muted-foreground">{selectedCount} geselecteerd</span>
+          <Select
+            onValueChange={(status) => bulkStatusMutation.mutate({
+              matchIds: selectedVisibleMatches.map((match) => match.id),
+              status,
+            })}
+            disabled={selectedCount === 0 || bulkStatusMutation.isPending}
+          >
+            <SelectTrigger className="h-9 w-full sm:w-44"><SelectValue placeholder="Verplaats naar..." /></SelectTrigger>
+            <SelectContent>
+              {COLUMNS.map((column) => (
+                <SelectItem key={column.key} value={column.key}>{column.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button
             type="button"
             size="sm"

@@ -274,6 +274,17 @@ Deno.serve(async (req) => {
       companyId: company.id,
     });
 
+    if (!outlookResult.success) {
+      return json({
+        success: false,
+        sent_via: outlookResult.method,
+        outlook_error: outlookResult.error,
+        communication_paused: outlookResult.communicationPaused === true,
+        response_url: responseUrl,
+        status_advanced: false,
+      }, outlookResult.communicationPaused ? 409 : 502);
+    }
+
     await serviceClient
       .from("matches")
       .update({
@@ -285,8 +296,8 @@ Deno.serve(async (req) => {
 
     return json({
       success: true,
-      sent_via: outlookResult.success ? "outlook" : "draft",
-      outlook_error: outlookResult.success ? undefined : outlookResult.error,
+      sent_via: "outlook",
+      status_advanced: true,
       response_url: responseUrl,
     });
   } catch (err: any) {

@@ -8,7 +8,7 @@
 // config.toml; we valideren de Bearer-token zelf via auth.getUser().
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { haversineKm, scoreMatch, passesShortlist, type MatchBreakdown } from "../_shared/matching-core.ts";
+import { haversineKm, scoreMatch, passesShortlist, type MatchBreakdown, type MatchCriteriaOptions } from "../_shared/matching-core.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -17,6 +17,18 @@ const corsHeaders = {
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+const normalizeCriteriaOptions = (value: unknown): MatchCriteriaOptions => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const raw = value as Record<string, unknown>;
+  return {
+    minScore: typeof raw.minScore === "number" ? raw.minScore : null,
+    requireSkillSignal: raw.requireSkillSignal === true,
+    requireKnownDistance: raw.requireKnownDistance === true,
+    weights: raw.weights && typeof raw.weights === "object" && !Array.isArray(raw.weights) ? raw.weights as any : null,
+    bonusPoints: raw.bonusPoints && typeof raw.bonusPoints === "object" && !Array.isArray(raw.bonusPoints) ? raw.bonusPoints as any : null,
+  };
+};
 
 const ACTIVE_STATUSES = ["nieuw", "in_behandeling", "beschikbaar", "werkzoekend"];
 const CANDIDATE_FIELDS =
@@ -39,6 +51,7 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const vacancyId = body.vacancy_id as string | undefined;
     const includeWeak = body.include_weak === true;
+    const criteriaOptions = normalizeCriteriaOptions(body.criteria_options);
     // Strip PostgREST-significante tekens (, ( ) % * \) en cap lengte → geen filter-injectie in .or().
     const search = (typeof body.search === "string" ? body.search : "").replace(/[,()%*\\]/g, " ").trim().slice(0, 100);
     const limit = Math.min(Math.max(1, Number(body.limit) || 25), 100);
@@ -48,7 +61,7 @@ Deno.serve(async (req) => {
     // ── Vacature + bedrijfscoördinaten ──
     const { data: vacancy, error: vacErr } = await userClient
       .from("vacancies")
-      .select("id, organization_id, title, location, required_skills, required_certifications, requires_drivers_license, companies!vacancies_company_id_fkey(address_lat, address_lng, visit_address_lat, visit_address_lng)")
+      .select("id, organization_id, title, description, location, required_skills, required_certifications, requires_drivers_license, companies!vacancies_company_id_fkey(address_lat, address_lng, visit_address_lat, visit_address_lng)")
       .eq("id", vacancyId)
       .single();
     if (vacErr || !vacancy) return json({ error: vacErr?.message ?? "Vacancy not found" }, 404);
@@ -92,6 +105,7 @@ Deno.serve(async (req) => {
 
     const vacancyForScore = {
       title: vacancy.title,
+      description: vacancy.description,
       location: vacancy.location,
       required_skills: vacancy.required_skills,
       canonical_required_skills: canonicalRequiredSkills,
@@ -105,10 +119,10 @@ Deno.serve(async (req) => {
       .map((c) => {
         const km = haversineKm(c.address_lat, c.address_lng, destLat, destLng);
         const distance = km != null ? { km, status: "estimated" as const } : { status: "missing_coords" as const };
-        const breakdown: MatchBreakdown = scoreMatch(c, vacancyForScore, distance, orgAliases);
+        const breakdown: MatchBreakdown = scoreMatch(c, vacancyForScore, distance, orgAliases, criteriaOptions);
         return { candidate: c, breakdown };
       })
-      .filter((r) => passesShortlist(r.breakdown, includeWeak))
+      .filter((r) => passesShortlist(r.breakdown, includeWeak, criteriaOptions))
       .sort((a, b) => {
         const d = b.breakdown.matchPercent - a.breakdown.matchPercent;
         if (d !== 0) return d;

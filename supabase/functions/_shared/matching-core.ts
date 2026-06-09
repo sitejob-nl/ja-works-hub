@@ -43,6 +43,7 @@ export type MatchCandidate = {
 
 export type MatchVacancy = {
   title?: string | null;
+  description?: string | null;
   location?: string | null;
   required_skills?: string[] | null;
   canonical_required_skills?: string[] | null;
@@ -64,6 +65,14 @@ export type MatchBreakdown = {
   distance: DistanceInfo;
   componentScores: Record<string, number>;
   reasoning: string;
+};
+
+export type MatchCriteriaOptions = {
+  minScore?: number | null;
+  requireSkillSignal?: boolean | null;
+  requireKnownDistance?: boolean | null;
+  weights?: Partial<typeof FIT_WEIGHTS> | null;
+  bonusPoints?: Partial<typeof BONUS_POINTS> | null;
 };
 
 // Genormaliseerde basis-weging (fit). Som van toepasselijke gewichten wordt naar 100 geschaald.
@@ -93,6 +102,13 @@ const SKILL_ALIAS_ENTRIES: Array<[string, string]> = [
   ["migmag lassen", "mig mag lassen"], ["lassen mig mag", "mig mag lassen"],
   ["co2 lasser", "mig mag lassen"], ["co2 lassen", "mig mag lassen"],
   ["tig lasser", "tig lassen"], ["tig welding", "tig lassen"],
+  ["lasser samensteller", "constructie samenstellen"], ["samensteller", "constructie samenstellen"],
+  ["constructiebankwerker", "constructie samenstellen"], ["constructie samensteller", "constructie samenstellen"],
+  ["assembler", "assemblage"], ["assembly", "assemblage"], ["assemblage medewerker", "assemblage"],
+  ["montage medewerker", "assemblage"], ["monteur assemblage", "assemblage"],
+  ["cnc operator", "cnc"], ["machine operator", "operator"], ["machinebediener", "operator"],
+  ["logistiek medewerker", "logistiek"], ["magazijn medewerker", "magazijnwerk"],
+  ["magazijnmedewerker", "magazijnwerk"], ["warehouse worker", "magazijnwerk"],
   ["heftruck chauffeur", "heftruck"], ["heftruck rijden", "heftruck"], ["heftruck bestuurder", "heftruck"],
   ["heftruck certificaat", "heftruck"], ["heftruck certificatie", "heftruck"], ["heftruckchauffeur", "heftruck"],
   ["heftruckcertificaat", "heftruck"], ["heftruckcertificatie", "heftruck"],
@@ -221,9 +237,10 @@ function hasFunctionSignal(candidate: MatchCandidate, vacancy: MatchVacancy): bo
   // Fuzzy titel-signaal: RAUW normaliseren (zonder alias-mapping), anders ontstaat asymmetrie —
   // een losse skill 'productie' wordt door de alias 'productiewerk', terwijl het titel-token
   // 'productie' rauw blijft, waardoor ze niet matchen.
+  const vacancyText = normalizeAliasKey([vacancy.title, vacancy.description].filter(Boolean).join(" "));
+  if (!vacancyText) return false;
   const title = normalizeAliasKey(vacancy.title ?? "");
-  if (!title) return false;
-  const titleTokens = meaningfulTokens(title);
+  const titleTokens = meaningfulTokens(vacancyText);
   const signals = [
     candidate.ai_function_group,
     ...(candidate.ai_target_functions ?? []),
@@ -248,8 +265,29 @@ export function candidateQualityScore(candidate: MatchCandidate): number | null 
   return Math.max(0, Math.min(100, Math.round(r)));
 }
 
-export function scoreMatch(candidate: MatchCandidate, vacancy: MatchVacancy, distance?: DistanceInfo, orgAliases?: Record<string, string>): MatchBreakdown {
+function sanitizeWeights(options?: MatchCriteriaOptions) {
+  const weights = { ...FIT_WEIGHTS, ...(options?.weights ?? {}) };
+  const bonusPoints = { ...BONUS_POINTS, ...(options?.bonusPoints ?? {}) };
+  for (const key of Object.keys(weights) as Array<keyof typeof FIT_WEIGHTS>) {
+    const value = Number(weights[key]);
+    weights[key] = Number.isFinite(value) && value >= 0 ? value : FIT_WEIGHTS[key];
+  }
+  for (const key of Object.keys(bonusPoints) as Array<keyof typeof BONUS_POINTS>) {
+    const value = Number(bonusPoints[key]);
+    bonusPoints[key] = Number.isFinite(value) && value >= 0 ? value : BONUS_POINTS[key];
+  }
+  return { weights, bonusPoints };
+}
+
+export function scoreMatch(
+  candidate: MatchCandidate,
+  vacancy: MatchVacancy,
+  distance?: DistanceInfo,
+  orgAliases?: Record<string, string>,
+  options?: MatchCriteriaOptions,
+): MatchBreakdown {
   const norm = makeNormalizer(orgAliases);
+  const { weights, bonusPoints } = sanitizeWeights(options);
   const candidateSkills = asStrings(candidate.canonical_skills).length > 0 ? candidate.canonical_skills : candidate.skills;
   const requiredSkills = asStrings(vacancy.canonical_required_skills).length > 0 ? vacancy.canonical_required_skills : vacancy.required_skills;
   const requiredCerts = asStrings(vacancy.required_certifications);
@@ -276,13 +314,13 @@ export function scoreMatch(candidate: MatchCandidate, vacancy: MatchVacancy, dis
   // ── Genormaliseerde fit ──────────────────────────────────────────────────
   const distFrac = distanceFraction(distance);
   const components: Array<{ key: string; weight: number; fraction: number }> = [];
-  if (reqSkillCount > 0) components.push({ key: "skills", weight: FIT_WEIGHTS.skills, fraction: skillMatches.length / reqSkillCount });
-  if (reqCertCount > 0) components.push({ key: "certifications", weight: FIT_WEIGHTS.certifications, fraction: certMatches.length / reqCertCount });
+  if (reqSkillCount > 0) components.push({ key: "skills", weight: weights.skills, fraction: skillMatches.length / reqSkillCount });
+  if (reqCertCount > 0) components.push({ key: "certifications", weight: weights.certifications, fraction: certMatches.length / reqCertCount });
   const functionMatched = hasFunctionSignal(candidate, vacancy);
-  components.push({ key: "functionGroup", weight: FIT_WEIGHTS.functionGroup, fraction: functionMatched ? 1 : 0 });
-  if (distFrac != null) components.push({ key: "distance", weight: FIT_WEIGHTS.distance, fraction: distFrac });
+  components.push({ key: "functionGroup", weight: weights.functionGroup, fraction: functionMatched ? 1 : 0 });
+  if (distFrac != null) components.push({ key: "distance", weight: weights.distance, fraction: distFrac });
   // Beschikbaarheid telt alleen mee als ze ingevuld is (anders niet-van-toepassing, geen straf).
-  if (candidate.availability_notes) components.push({ key: "availability", weight: FIT_WEIGHTS.availability, fraction: 1 });
+  if (candidate.availability_notes) components.push({ key: "availability", weight: weights.availability, fraction: 1 });
 
   const totalWeight = components.reduce((s, c) => s + c.weight, 0);
   const fit = totalWeight > 0 ? components.reduce((s, c) => s + c.fraction * c.weight, 0) / totalWeight * 100 : 0;
@@ -290,9 +328,9 @@ export function scoreMatch(candidate: MatchCandidate, vacancy: MatchVacancy, dis
   // ── Pluspunten (additief, geen straf) ────────────────────────────────────
   const wantsDutch = vacancy.prefers_dutch_speaker !== false;
   let bonus = 0;
-  if (wantsDutch && speaksDutch(candidate, norm)) { bonus += BONUS_POINTS.language; bonuses.push("Spreekt Nederlands"); }
-  if (candidate.has_dutch_address) { bonus += BONUS_POINTS.accommodation; bonuses.push("Eigen accommodatie in NL"); }
-  if (vacancy.requires_drivers_license && candidate.has_drivers_license) { bonus += BONUS_POINTS.license; bonuses.push("Rijbewijs aanwezig"); }
+  if (wantsDutch && speaksDutch(candidate, norm)) { bonus += bonusPoints.language; bonuses.push("Spreekt Nederlands"); }
+  if (candidate.has_dutch_address) { bonus += bonusPoints.accommodation; bonuses.push("Eigen accommodatie in NL"); }
+  if (vacancy.requires_drivers_license && candidate.has_drivers_license) { bonus += bonusPoints.license; bonuses.push("Rijbewijs aanwezig"); }
 
   // ── Eindscore ─────────────────────────────────────────────────────────────
   // matchPercent (incl. bonus) is voor ranking/weergave. Het LABEL leiden we af van de fit
@@ -344,9 +382,9 @@ export function scoreMatch(candidate: MatchCandidate, vacancy: MatchVacancy, dis
 
   const componentScores: Record<string, number> = {};
   for (const c of components) componentScores[c.key] = Math.round(c.fraction * c.weight);
-  componentScores.languageBonus = wantsDutch && speaksDutch(candidate, norm) ? BONUS_POINTS.language : 0;
-  componentScores.accommodationBonus = candidate.has_dutch_address ? BONUS_POINTS.accommodation : 0;
-  componentScores.licenseBonus = vacancy.requires_drivers_license && candidate.has_drivers_license ? BONUS_POINTS.license : 0;
+  componentScores.languageBonus = wantsDutch && speaksDutch(candidate, norm) ? bonusPoints.language : 0;
+  componentScores.accommodationBonus = candidate.has_dutch_address ? bonusPoints.accommodation : 0;
+  componentScores.licenseBonus = vacancy.requires_drivers_license && candidate.has_drivers_license ? bonusPoints.license : 0;
 
   return {
     matchPercent,
@@ -370,7 +408,11 @@ export function scoreMatch(candidate: MatchCandidate, vacancy: MatchVacancy, dis
 }
 
 // Hoort deze kandidaat in de standaard-shortlist van de vacature?
-export function passesShortlist(breakdown: MatchBreakdown, includeWeak = false): boolean {
+export function passesShortlist(breakdown: MatchBreakdown, includeWeak = false, options?: MatchCriteriaOptions): boolean {
   if (includeWeak) return true;
-  return breakdown.hardBlocks.length === 0 && breakdown.matchPercent >= 45;
+  const minScore = typeof options?.minScore === "number" ? Math.max(0, Math.min(100, options.minScore)) : 45;
+  if (breakdown.hardBlocks.length > 0 || breakdown.matchPercent < minScore) return false;
+  if (options?.requireSkillSignal && breakdown.skillMatches.length === 0 && breakdown.certificationMatches.length === 0) return false;
+  if (options?.requireKnownDistance && breakdown.distance.km == null && breakdown.distance.durationMin == null) return false;
+  return true;
 }

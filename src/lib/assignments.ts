@@ -17,6 +17,7 @@ export async function resolveEmployeeId(
   const { data: existing, error: existingError } = await supabase
     .from('employees')
     .select('id')
+    .eq('organization_id', organizationId)
     .eq('candidate_id', candidate.id)
     .maybeSingle();
   if (existingError) throw existingError;

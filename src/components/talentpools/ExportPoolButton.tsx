@@ -1,6 +1,7 @@
 import Papa from 'papaparse';
-import * as XLSX from 'xlsx';
 import { Download } from 'lucide-react';
+import { toast } from 'sonner';
+import { downloadExcelRecords } from '@/lib/spreadsheet';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -51,11 +52,12 @@ function downloadCsv(rows: Record<string, string>[], filename: string) {
   URL.revokeObjectURL(url);
 }
 
-function downloadExcel(rows: Record<string, string>[], filename: string) {
-  const ws = XLSX.utils.json_to_sheet(rows);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Leden');
-  XLSX.writeFile(wb, filename);
+async function downloadExcel(rows: Record<string, string>[], filename: string) {
+  try {
+    await downloadExcelRecords(rows, filename, 'Leden');
+  } catch {
+    toast.error('Excel-export kon niet worden gemaakt');
+  }
 }
 
 export default function ExportPoolButton({ members, poolName }: ExportPoolButtonProps) {
@@ -73,7 +75,7 @@ export default function ExportPoolButton({ members, poolName }: ExportPoolButton
         <DropdownMenuItem onClick={() => downloadCsv(rows, `${safeName}.csv`)}>
           Exporteer CSV
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => downloadExcel(rows, `${safeName}.xlsx`)}>
+        <DropdownMenuItem onClick={() => void downloadExcel(rows, `${safeName}.xlsx`)}>
           Exporteer Excel
         </DropdownMenuItem>
       </DropdownMenuContent>

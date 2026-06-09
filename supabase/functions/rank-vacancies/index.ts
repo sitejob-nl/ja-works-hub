@@ -7,7 +7,7 @@
 // we valideren de Bearer-token zelf via auth.getUser().
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { haversineKm, scoreMatch, passesShortlist, type MatchBreakdown } from "../_shared/matching-core.ts";
+import { haversineKm, scoreMatch, passesShortlist, type MatchBreakdown, type MatchCriteriaOptions } from "../_shared/matching-core.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -16,6 +16,18 @@ const corsHeaders = {
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+const normalizeCriteriaOptions = (value: unknown): MatchCriteriaOptions => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const raw = value as Record<string, unknown>;
+  return {
+    minScore: typeof raw.minScore === "number" ? raw.minScore : null,
+    requireSkillSignal: raw.requireSkillSignal === true,
+    requireKnownDistance: raw.requireKnownDistance === true,
+    weights: raw.weights && typeof raw.weights === "object" && !Array.isArray(raw.weights) ? raw.weights as any : null,
+    bonusPoints: raw.bonusPoints && typeof raw.bonusPoints === "object" && !Array.isArray(raw.bonusPoints) ? raw.bonusPoints as any : null,
+  };
+};
 
 const CANDIDATE_FIELDS =
   "id, organization_id, first_name, last_name, skills, certifications, languages, has_drivers_license, has_dutch_address, address_lat, address_lng, availability_notes, ai_function_group, ai_target_functions, ai_classification, ai_reliability_score";
@@ -37,6 +49,7 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const candidateId = body.candidate_id as string | undefined;
     const includeWeak = body.include_weak === true;
+    const criteriaOptions = normalizeCriteriaOptions(body.criteria_options);
     const limit = Math.min(Math.max(1, Number(body.limit) || 25), 100);
     const excludeIds: string[] = Array.isArray(body.exclude_vacancy_ids) ? body.exclude_vacancy_ids : [];
     if (!candidateId) return json({ error: "candidate_id required" }, 400);
@@ -67,7 +80,7 @@ Deno.serve(async (req) => {
     for (let from = 0; ; from += PAGE) {
       const { data, error } = await userClient
         .from("vacancies")
-        .select("id, title, location, required_skills, required_certifications, requires_drivers_license, status, company_id, companies!vacancies_company_id_fkey(name, address_lat, address_lng, visit_address_lat, visit_address_lng)")
+        .select("id, title, description, location, required_skills, required_certifications, requires_drivers_license, status, company_id, hourly_rate, salary_display, salary_min, salary_max, start_date, start_date_text, end_date, required_count, filled_count, urgency, companies!vacancies_company_id_fkey(name, address_lat, address_lng, visit_address_lat, visit_address_lng)")
         .eq("organization_id", orgId)
         .eq("status", "open")
         .range(from, from + PAGE - 1);
@@ -102,16 +115,17 @@ Deno.serve(async (req) => {
         const distance = km != null ? { km, status: "estimated" as const } : { status: "missing_coords" as const };
         const vacancyForScore = {
           title: v.title,
+          description: v.description,
           location: v.location,
           required_skills: v.required_skills,
           canonical_required_skills: canonicalByVacancy[v.id] ?? [],
           required_certifications: v.required_certifications,
           requires_drivers_license: v.requires_drivers_license,
         };
-        const breakdown: MatchBreakdown = scoreMatch(candidate, vacancyForScore, distance, orgAliases);
+        const breakdown: MatchBreakdown = scoreMatch(candidate, vacancyForScore, distance, orgAliases, criteriaOptions);
         return { vacancy: v, company, breakdown };
       })
-      .filter((r) => passesShortlist(r.breakdown, includeWeak))
+      .filter((r) => passesShortlist(r.breakdown, includeWeak, criteriaOptions))
       .sort((a, b) => {
         const d = b.breakdown.matchPercent - a.breakdown.matchPercent;
         if (d !== 0) return d;
@@ -129,6 +143,20 @@ Deno.serve(async (req) => {
           location: r.vacancy.location,
           company_id: r.vacancy.company_id,
           company_name: r.company?.name ?? null,
+          description: r.vacancy.description ?? null,
+          hourly_rate: r.vacancy.hourly_rate ?? null,
+          salary_display: r.vacancy.salary_display ?? null,
+          salary_min: r.vacancy.salary_min ?? null,
+          salary_max: r.vacancy.salary_max ?? null,
+          start_date: r.vacancy.start_date ?? null,
+          start_date_text: r.vacancy.start_date_text ?? null,
+          end_date: r.vacancy.end_date ?? null,
+          required_count: r.vacancy.required_count ?? null,
+          filled_count: r.vacancy.filled_count ?? null,
+          urgency: r.vacancy.urgency ?? null,
+          required_skills: r.vacancy.required_skills ?? [],
+          canonical_required_skills: canonicalByVacancy[r.vacancy.id] ?? [],
+          required_certifications: r.vacancy.required_certifications ?? [],
           requires_drivers_license: r.vacancy.requires_drivers_license ?? false,
         },
         score: r.breakdown.matchPercent,

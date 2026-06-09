@@ -32,6 +32,7 @@ import EmployeeTransportTab from '@/components/employees/tabs/EmployeeTransportT
 import EmployeeSickTab from '@/components/employees/tabs/EmployeeSickTab';
 import EmployeeRegulationsTab from '@/components/employees/tabs/EmployeeRegulationsTab';
 import EmployeePortalTab from '@/components/employees/tabs/EmployeePortalTab';
+import UnsavedChangesGuard from '@/components/shared/UnsavedChangesGuard';
 import { useTrackPageVisit } from '@/hooks/useTrackPageVisit';
 import { useTabSearchParam } from '@/hooks/useTabSearchParam';
 import { usePublicUrl } from '@/hooks/usePublicUrl';
@@ -45,6 +46,7 @@ const statusBadge: Record<string, string> = {
   nieuw: 'bg-muted text-muted-foreground border-0',
   werkzoekend: 'bg-stat-green/10 text-stat-green border-0',
   in_screening: 'bg-yellow-100 text-yellow-700 border-0',
+  afgewezen: 'bg-red-100 text-red-700 border-0',
   geplaatst: 'bg-blue-100 text-blue-700 border-0',
   niet_beschikbaar: 'bg-orange-100 text-orange-600 border-0',
   uitgeschreven: 'bg-red-100 text-red-600 border-0',
@@ -58,10 +60,10 @@ const complianceBadge: Record<string, string> = {
 
 const statusLabel: Record<string, string> = {
   lead: 'Lead', nieuw: 'Nieuw', werkzoekend: 'Werkzoekend', in_screening: 'In screening',
-  geplaatst: 'Geplaatst', niet_beschikbaar: 'Niet beschikbaar', uitgeschreven: 'Uitgeschreven',
+  afgewezen: 'Afgewezen', geplaatst: 'Geplaatst', niet_beschikbaar: 'Niet beschikbaar', uitgeschreven: 'Uitgeschreven',
 };
 
-const allStatuses: CandidateStatus[] = ['lead', 'nieuw', 'werkzoekend', 'in_screening', 'geplaatst', 'niet_beschikbaar', 'uitgeschreven'];
+const allStatuses: CandidateStatus[] = ['lead', 'nieuw', 'werkzoekend', 'in_screening', 'afgewezen', 'geplaatst', 'niet_beschikbaar', 'uitgeschreven'];
 
 const CandidateDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -70,6 +72,7 @@ const CandidateDetail = () => {
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [activeTab, setActiveTab] = useTabSearchParam('profiel');
+  const [screeningDirty, setScreeningDirty] = useState(false);
   const { buildUrl } = usePublicUrl();
   const callOutlook = useOutlookInvoke();
   const { hasUsableAccounts } = useOutlookAccounts('mail_send');
@@ -199,6 +202,7 @@ const CandidateDetail = () => {
 
   return (
     <div className="space-y-4 sm:space-y-6 min-w-0">
+      <UnsavedChangesGuard when={screeningDirty} />
       <div className="flex items-center gap-1 text-sm text-muted-foreground">
         <Link to="/kandidaten" className="hover:text-foreground transition-colors">Kandidaten</Link>
         <ChevronRight className="h-3 w-3" />
@@ -317,7 +321,13 @@ const CandidateDetail = () => {
         <TabsContent value="matches"><CandidateMatchesTab candidateId={id!} /></TabsContent>
         <TabsContent value="vacatures"><CandidateVacancyMatchesTab candidateId={id!} /></TabsContent>
         <TabsContent value="plaatsingen"><CandidatePlacementsTab candidateId={id!} /></TabsContent>
-        <TabsContent value="screening"><CandidateScreeningTab key={(candidate as any)?.screened_at ?? 'unsaved'} candidate={candidate} onUpdate={() => qc.invalidateQueries({ queryKey: ['candidate', id] })} /></TabsContent>
+        <TabsContent value="screening" forceMount>
+          <CandidateScreeningTab
+            candidate={candidate}
+            onUpdate={() => qc.invalidateQueries({ queryKey: ['candidate', id] })}
+            onDirtyChange={setScreeningDirty}
+          />
+        </TabsContent>
         <TabsContent value="notities"><NotesSection entityId={id!} entityType="kandidaat" /></TabsContent>
         <TabsContent value="huisvesting"><EmployeeHousingTab candidateId={id!} /></TabsContent>
         <TabsContent value="transport"><EmployeeTransportTab candidateId={id!} /></TabsContent>

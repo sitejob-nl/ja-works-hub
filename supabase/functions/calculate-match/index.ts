@@ -5,7 +5,7 @@
 // de hele pool; hier, op één paar, halen we de echte reistijd op).
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { scoreMatch, type DistanceInfo } from "../_shared/matching-core.ts";
+import { scoreMatch, type DistanceInfo, type MatchCriteriaOptions } from "../_shared/matching-core.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -14,6 +14,18 @@ const corsHeaders = {
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+const normalizeCriteriaOptions = (value: unknown): MatchCriteriaOptions => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const raw = value as Record<string, unknown>;
+  return {
+    minScore: typeof raw.minScore === "number" ? raw.minScore : null,
+    requireSkillSignal: raw.requireSkillSignal === true,
+    requireKnownDistance: raw.requireKnownDistance === true,
+    weights: raw.weights && typeof raw.weights === "object" && !Array.isArray(raw.weights) ? raw.weights as any : null,
+    bonusPoints: raw.bonusPoints && typeof raw.bonusPoints === "object" && !Array.isArray(raw.bonusPoints) ? raw.bonusPoints as any : null,
+  };
+};
 
 async function getDistance(serviceClient: any, candidate: any, vacancy: any): Promise<DistanceInfo> {
   const existing = await serviceClient
@@ -107,7 +119,8 @@ Deno.serve(async (req) => {
     const { data: { user }, error: userError } = await userClient.auth.getUser();
     if (userError || !user) return json({ error: "Unauthorized" }, 401);
 
-    const { match_id, candidate_id, vacancy_id } = await req.json();
+    const { match_id, candidate_id, vacancy_id, criteria_options } = await req.json();
+    const criteriaOptions = normalizeCriteriaOptions(criteria_options);
     if (!candidate_id || !vacancy_id) return json({ error: "candidate_id and vacancy_id required" }, 400);
 
     const { data: candidate, error: candidateError } = await userClient
@@ -119,7 +132,7 @@ Deno.serve(async (req) => {
 
     const { data: vacancy, error: vacancyError } = await userClient
       .from("vacancies")
-      .select("id, organization_id, title, required_skills, required_certifications, requires_drivers_license, location, companies!vacancies_company_id_fkey(id, name, address_lat, address_lng, visit_address_lat, visit_address_lng)")
+      .select("id, organization_id, title, description, required_skills, required_certifications, requires_drivers_license, location, companies!vacancies_company_id_fkey(id, name, address_lat, address_lng, visit_address_lat, visit_address_lng)")
       .eq("id", vacancy_id)
       .single();
     if (vacancyError) throw vacancyError;
@@ -147,7 +160,7 @@ Deno.serve(async (req) => {
     };
 
     const distance = await getDistance(serviceClient, candidate, vacancy);
-    const breakdown = scoreMatch(enrichedCandidate, enrichedVacancy, distance, orgAliases);
+    const breakdown = scoreMatch(enrichedCandidate, enrichedVacancy, distance, orgAliases, criteriaOptions);
 
     if (match_id) {
       // Tenant-scope op organization_id: een vreemd/cross-tenant match_id wordt zo een no-op
