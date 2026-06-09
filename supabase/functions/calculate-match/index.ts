@@ -125,14 +125,14 @@ Deno.serve(async (req) => {
 
     const { data: candidate, error: candidateError } = await userClient
       .from("candidates")
-      .select("id, organization_id, first_name, last_name, skills, certifications, languages, has_drivers_license, has_dutch_address, address_city, address_lat, address_lng, availability_notes, ai_function_group, ai_target_functions, ai_classification, ai_reliability_score")
+      .select("id, organization_id, first_name, last_name, skills, certifications, languages, has_drivers_license, has_dutch_address, address_city, address_lat, address_lng, available_from, available_until, arrival_date, availability_notes, ai_function_group, ai_target_functions, ai_classification, ai_reliability_score")
       .eq("id", candidate_id)
       .single();
     if (candidateError) throw candidateError;
 
     const { data: vacancy, error: vacancyError } = await userClient
       .from("vacancies")
-      .select("id, organization_id, title, description, required_skills, required_certifications, requires_drivers_license, location, companies!vacancies_company_id_fkey(id, name, address_lat, address_lng, visit_address_lat, visit_address_lng)")
+      .select("id, organization_id, title, description, required_skills, required_certifications, requires_drivers_license, location, start_date, start_date_text, companies!vacancies_company_id_fkey(id, name, address_lat, address_lng, visit_address_lat, visit_address_lng)")
       .eq("id", vacancy_id)
       .single();
     if (vacancyError) throw vacancyError;

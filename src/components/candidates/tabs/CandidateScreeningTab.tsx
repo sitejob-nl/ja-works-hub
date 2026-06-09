@@ -218,6 +218,7 @@ const getProfileDraft = (candidate: any): ProfileDraft => ({
 
 const getInitialData = (candidate: any): ScreeningData => {
   const existing = candidate.screening_data as Partial<ScreeningData> | null;
+  const existingAvailability = (existing?.availability ?? {}) as Partial<ScreeningData['availability']>;
   const answers = { ...createDefaultAnswers(), ...(existing?.answers ?? {}) };
   const legacyProfessional = existing?.professional ?? {
     rating: 'niet_beoordeeld',
@@ -247,9 +248,9 @@ const getInitialData = (candidate: any): ScreeningData => {
       notes: legacyPersonal.notes ?? '',
     },
     availability: {
-      available_from: existing?.availability?.available_from ?? '',
-      available_until: existing?.availability?.available_until ?? '',
-      arrival_date: existing?.availability?.arrival_date ?? '',
+      available_from: candidate.available_from ?? existingAvailability.available_from ?? '',
+      available_until: candidate.available_until ?? existingAvailability.available_until ?? '',
+      arrival_date: candidate.arrival_date ?? existingAvailability.arrival_date ?? '',
     },
     result: existing?.result ?? 'niet_gescreend',
     summary: existing?.summary ?? '',
@@ -337,6 +338,9 @@ const CandidateScreeningTab = ({
     skills: draft.skills,
     languages: draft.languages,
     certifications: draft.certifications,
+    available_from: availability.available_from || null,
+    available_until: availability.available_until || null,
+    arrival_date: availability.arrival_date || null,
     availability_notes: buildAvailabilityNotes(availability, draft.availability_notes) || null,
   }), []);
 

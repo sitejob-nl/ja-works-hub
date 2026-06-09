@@ -76,6 +76,9 @@ const PublicCandidateSignup = () => {
     skills: [] as string[],
     certifications: [] as string[],
     has_drivers_license: false,
+    available_from: '',
+    available_until: '',
+    arrival_date: '',
     availability_notes: '',
   });
 
@@ -156,6 +159,9 @@ const PublicCandidateSignup = () => {
       body.append('skills', JSON.stringify(form.skills));
       body.append('certifications', JSON.stringify(form.certifications));
       body.append('has_drivers_license', String(form.has_drivers_license));
+      body.append('available_from', form.available_from);
+      body.append('available_until', form.available_until);
+      body.append('arrival_date', form.arrival_date);
       body.append('availability_notes', form.availability_notes.trim());
       body.append('cv', cvFile);
 
@@ -350,14 +356,43 @@ const PublicCandidateSignup = () => {
             </div>
 
             {config?.link.show_availability ? (
-              <div className="space-y-2">
-                <Label htmlFor="availability_notes">Beschikbaarheid</Label>
+              <div className="space-y-3">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="available_from">Beschikbaar vanaf</Label>
+                    <Input
+                      id="available_from"
+                      type="date"
+                      value={form.available_from}
+                      onChange={(event) => set('available_from', event.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="available_until">Beschikbaar tot</Label>
+                    <Input
+                      id="available_until"
+                      type="date"
+                      value={form.available_until}
+                      onChange={(event) => set('available_until', event.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="arrival_date">Aankomst/check-in</Label>
+                    <Input
+                      id="arrival_date"
+                      type="date"
+                      value={form.arrival_date}
+                      onChange={(event) => set('arrival_date', event.target.value)}
+                    />
+                  </div>
+                </div>
+                <Label htmlFor="availability_notes">Extra beschikbaarheidsnotities</Label>
                 <Textarea
                   id="availability_notes"
                   value={form.availability_notes}
                   onChange={(event) => set('availability_notes', event.target.value)}
                   rows={4}
-                  placeholder="Wanneer kun je starten en hoeveel uur wil je werken?"
+                  placeholder="Gewenste uren, ploegendienst, opzegtermijn of andere bijzonderheden"
                 />
               </div>
             ) : null}

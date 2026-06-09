@@ -140,6 +140,45 @@ describe('matching-v3 core', () => {
     expect(met.matchPercent).toBeGreaterThan(zonder.matchPercent);
   });
 
+  it('weegt beschikbaarheidsdatum positief als kandidaat voor de startdatum beschikbaar is', () => {
+    const score = scoreMatch(
+      { skills: ['productie'], available_from: '2026-06-01' },
+      { title: 'Productiemedewerker', required_skills: ['productie'], start_date: '2026-06-15' },
+    );
+    expect(score.componentScores.availability).toBeGreaterThan(0);
+    expect(score.positives.some((p) => p.includes('2026-06-01'))).toBe(true);
+    expect(score.missing.some((m) => m.toLowerCase().includes('beschikbaar'))).toBe(false);
+  });
+
+  it('markeert beschikbaarheid als twijfel wanneer de kandidaat kort na de startdatum kan beginnen', () => {
+    const score = scoreMatch(
+      { skills: ['productie'], available_from: '2026-06-20' },
+      { title: 'Productiemedewerker', required_skills: ['productie'], start_date: '2026-06-15' },
+    );
+    expect(score.componentScores.availability).toBeGreaterThan(0);
+    expect(score.componentScores.availability).toBeLessThan(5);
+    expect(score.missing.some((m) => m.includes('na startdatum'))).toBe(true);
+  });
+
+  it('blokkeert een match als de beschikbaarheidsperiode voor de startdatum eindigt', () => {
+    const score = scoreMatch(
+      { skills: ['productie'], available_from: '2026-05-01', available_until: '2026-06-01' },
+      { title: 'Productiemedewerker', required_skills: ['productie'], start_date: '2026-06-15' },
+    );
+    expect(score.hardBlocks).toContain('Beschikbaarheidsperiode eindigt voor startdatum');
+    expect(score.label).toBe('rood');
+    expect(passesShortlist(score)).toBe(false);
+  });
+
+  it('blijft oude beschikbaarheidsnotities als fallback accepteren', () => {
+    const score = scoreMatch(
+      { skills: ['productie'], availability_notes: 'Per direct beschikbaar' },
+      { title: 'Productiemedewerker', required_skills: ['productie'], start_date: '2026-06-15' },
+    );
+    expect(score.componentScores.availability).toBeGreaterThan(0);
+    expect(score.positives).toContain('Beschikbaarheid ingevuld');
+  });
+
   it('houdt kandidaatkwaliteit LOS van de matchscore', () => {
     const vacancy = { title: 'Productiemedewerker', required_skills: ['productie'] };
     const laag = scoreMatch({ skills: ['productie'], ai_reliability_score: 3 }, vacancy);

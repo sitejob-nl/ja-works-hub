@@ -44,7 +44,7 @@ const sourceLabel: Record<string, string> = {
   overig: 'Overig',
 };
 
-const CANDIDATE_MATCH_CONTEXT_FIELDS = 'id, ai_analysis, ai_summary, ai_classification, ai_reliability_score, screening_data, screened_at, availability_notes, skills, certifications, languages, has_drivers_license, has_dutch_address, address_city';
+const CANDIDATE_MATCH_CONTEXT_FIELDS = 'id, ai_analysis, ai_summary, ai_classification, ai_reliability_score, screening_data, screened_at, available_from, available_until, arrival_date, availability_notes, skills, certifications, languages, has_drivers_license, has_dutch_address, address_city';
 
 const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
   const orgId = useOrganizationId();
@@ -79,7 +79,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('matches')
-        .select(`*, candidates!matches_candidate_id_fkey(id, first_name, last_name, email, phone, compliance_status, availability_notes, ai_analysis, ai_summary, ai_classification, ai_reliability_score, screening_data, screened_at, skills, certifications, languages, has_drivers_license, has_dutch_address, address_city)`)
+        .select(`*, candidates!matches_candidate_id_fkey(id, first_name, last_name, email, phone, compliance_status, available_from, available_until, arrival_date, availability_notes, ai_analysis, ai_summary, ai_classification, ai_reliability_score, screening_data, screened_at, skills, certifications, languages, has_drivers_license, has_dutch_address, address_city)`)
         .eq('vacancy_id', vacancy.id)
         .order('created_at', { ascending: false });
       if (error) throw error;

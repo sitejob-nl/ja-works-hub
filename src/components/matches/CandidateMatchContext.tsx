@@ -104,9 +104,9 @@ const getAvailability = (candidate?: any | null) => {
   const screening = getScreening(candidate);
   const structured = asObject(screening.availability);
   return {
-    availableFrom: String(structured.available_from ?? '').trim(),
-    availableUntil: String(structured.available_until ?? '').trim(),
-    arrivalDate: String(structured.arrival_date ?? '').trim(),
+    availableFrom: String(candidate?.available_from ?? structured.available_from ?? '').trim(),
+    availableUntil: String(candidate?.available_until ?? structured.available_until ?? '').trim(),
+    arrivalDate: String(candidate?.arrival_date ?? structured.arrival_date ?? '').trim(),
     notes: String(candidate?.availability_notes ?? '').trim(),
   };
 };
@@ -133,6 +133,7 @@ const hasContext = (candidate?: any | null) => {
   if (!candidate) return false;
   if (getEmployers(candidate).length > 0) return true;
   if (Object.keys(getScreening(candidate)).length > 0 || candidate.screened_at) return true;
+  if (candidate.available_from || candidate.available_until || candidate.arrival_date) return true;
   if (candidate.ai_summary || candidate.availability_notes) return true;
   return false;
 };

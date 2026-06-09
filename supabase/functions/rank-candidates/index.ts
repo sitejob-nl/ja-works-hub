@@ -32,7 +32,7 @@ const normalizeCriteriaOptions = (value: unknown): MatchCriteriaOptions => {
 
 const ACTIVE_STATUSES = ["nieuw", "in_behandeling", "beschikbaar", "werkzoekend"];
 const CANDIDATE_FIELDS =
-  "id, first_name, last_name, status, skills, certifications, languages, has_drivers_license, has_dutch_address, compliance_status, address_city, address_lat, address_lng, availability_notes, ai_function_group, ai_target_functions, ai_classification, ai_reliability_score";
+  "id, first_name, last_name, status, skills, certifications, languages, has_drivers_license, has_dutch_address, compliance_status, address_city, address_lat, address_lng, available_from, available_until, arrival_date, availability_notes, ai_function_group, ai_target_functions, ai_classification, ai_reliability_score";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -61,7 +61,7 @@ Deno.serve(async (req) => {
     // ── Vacature + bedrijfscoördinaten ──
     const { data: vacancy, error: vacErr } = await userClient
       .from("vacancies")
-      .select("id, organization_id, title, description, location, required_skills, required_certifications, requires_drivers_license, companies!vacancies_company_id_fkey(address_lat, address_lng, visit_address_lat, visit_address_lng)")
+      .select("id, organization_id, title, description, location, start_date, start_date_text, required_skills, required_certifications, requires_drivers_license, companies!vacancies_company_id_fkey(address_lat, address_lng, visit_address_lat, visit_address_lng)")
       .eq("id", vacancyId)
       .single();
     if (vacErr || !vacancy) return json({ error: vacErr?.message ?? "Vacancy not found" }, 404);
@@ -107,6 +107,8 @@ Deno.serve(async (req) => {
       title: vacancy.title,
       description: vacancy.description,
       location: vacancy.location,
+      start_date: vacancy.start_date,
+      start_date_text: vacancy.start_date_text,
       required_skills: vacancy.required_skills,
       canonical_required_skills: canonicalRequiredSkills,
       required_certifications: vacancy.required_certifications,
@@ -143,6 +145,10 @@ Deno.serve(async (req) => {
           status: r.candidate.status,
           compliance_status: r.candidate.compliance_status,
           address_city: r.candidate.address_city,
+          available_from: r.candidate.available_from ?? null,
+          available_until: r.candidate.available_until ?? null,
+          arrival_date: r.candidate.arrival_date ?? null,
+          availability_notes: r.candidate.availability_notes ?? null,
           skills: r.candidate.skills ?? [],
           languages: r.candidate.languages ?? [],
           has_drivers_license: r.candidate.has_drivers_license ?? false,

@@ -48,6 +48,7 @@ const CandidateProfile = () => {
     address_lat: null as number | null, address_lng: null as number | null,
     skills: [] as string[], certifications: [] as string[],
     has_drivers_license: false, drivers_license_expiry: '',
+    available_from: '', available_until: '', arrival_date: '',
     availability_notes: '',
   });
 
@@ -127,6 +128,9 @@ const CandidateProfile = () => {
           certifications: c.certifications ?? [],
           has_drivers_license: c.has_drivers_license ?? false,
           drivers_license_expiry: c.drivers_license_expiry ?? '',
+          available_from: c.available_from ?? '',
+          available_until: c.available_until ?? '',
+          arrival_date: c.arrival_date ?? '',
           availability_notes: c.availability_notes ?? '',
         });
 
@@ -216,6 +220,9 @@ const CandidateProfile = () => {
               certifications: form.certifications.length ? form.certifications : undefined,
               has_drivers_license: form.has_drivers_license,
               drivers_license_expiry: form.has_drivers_license && form.drivers_license_expiry ? form.drivers_license_expiry : undefined,
+              available_from: form.available_from || undefined,
+              available_until: form.available_until || undefined,
+              arrival_date: form.arrival_date || undefined,
               availability_notes: form.availability_notes || undefined,
               cv_file_url: cv_file_url || undefined,
               profile_photo_url: photo_file_url || undefined,
@@ -467,12 +474,27 @@ const CandidateProfile = () => {
             )}
           </div>
 
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="space-y-1.5">
+              <Label>Beschikbaar vanaf</Label>
+              <Input type="date" value={form.available_from} onChange={(e) => set('available_from', e.target.value)} className="h-12 text-base" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Beschikbaar tot</Label>
+              <Input type="date" value={form.available_until} onChange={(e) => set('available_until', e.target.value)} className="h-12 text-base" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Aankomst/check-in</Label>
+              <Input type="date" value={form.arrival_date} onChange={(e) => set('arrival_date', e.target.value)} className="h-12 text-base" />
+            </div>
+          </div>
+
           <div className="space-y-1.5">
-            <Label>Beschikbaarheid</Label>
+            <Label>Extra beschikbaarheidsnotities</Label>
             <Textarea
               value={form.availability_notes}
               onChange={(e) => set('availability_notes', e.target.value)}
-              placeholder="Wanneer kun je beginnen? Hoeveel uur per week?"
+              placeholder="Opzegtermijn, gewenste uren, ploegendienst of andere bijzonderheden"
               rows={3}
               className="text-base"
             />
