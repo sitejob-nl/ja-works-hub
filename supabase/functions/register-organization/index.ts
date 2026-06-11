@@ -5,6 +5,20 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MAX_PER_IP_PER_HOUR = 5;
+const MAX_GLOBAL_PER_HOUR = 30;
+
+async function hashIp(ip: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(ip));
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function clientIp(req: Request): string {
+  const xff = req.headers.get("x-forwarded-for") || "";
+  return xff.split(",")[0].trim() || req.headers.get("x-real-ip") || "unknown";
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -20,10 +34,44 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Basis-inputvalidatie (publiek, ongeauthenticeerd endpoint).
+    if (
+      typeof email !== "string" || !EMAIL_RE.test(email.trim()) ||
+      typeof password !== "string" || password.length < 8 ||
+      typeof company_name !== "string" || company_name.trim().length < 2 || company_name.length > 100
+    ) {
+      return new Response(
+        JSON.stringify({ error: "Ongeldige invoer: controleer e-mail, wachtwoord (min. 8 tekens) en bedrijfsnaam." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     const supabaseAdmin = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
+
+    // Rate-limiting: stopt scriptmatige massa-registratie (DB-bloat + misbruik van
+    // het per-org geseedde AI-credit op de gedeelde provider-key). IP wordt gehasht.
+    const ipHash = await hashIp(clientIp(req));
+    const since = new Date(Date.now() - 3600_000).toISOString();
+    const [{ count: ipCount }, { count: globalCount }] = await Promise.all([
+      supabaseAdmin.from("registration_attempts").select("id", { count: "exact", head: true })
+        .eq("ip_hash", ipHash).gte("created_at", since),
+      supabaseAdmin.from("registration_attempts").select("id", { count: "exact", head: true })
+        .gte("created_at", since),
+    ]);
+    if ((ipCount ?? 0) >= MAX_PER_IP_PER_HOUR || (globalCount ?? 0) >= MAX_GLOBAL_PER_HOUR) {
+      return new Response(
+        JSON.stringify({ error: "Te veel registratiepogingen. Probeer het later opnieuw." }),
+        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+    const { data: attemptRow } = await supabaseAdmin
+      .from("registration_attempts")
+      .insert({ ip_hash: ipHash, email: String(email).slice(0, 200) })
+      .select("id")
+      .single();
 
     // Generate slug from company name
     const slug = company_name
@@ -113,6 +161,10 @@ Deno.serve(async (req) => {
         enabled: true,
       }))
     );
+
+    if (attemptRow?.id) {
+      await supabaseAdmin.from("registration_attempts").update({ succeeded: true }).eq("id", attemptRow.id);
+    }
 
     return new Response(
       JSON.stringify({ success: true, organization_id: org.id }),
