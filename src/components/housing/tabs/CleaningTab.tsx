@@ -109,7 +109,25 @@ export default function CleaningTab({ property }: { property: any }) {
     onError: (e: any) => toast.error(e.message ?? 'Aanmaken mislukt'),
   });
 
-  const getPhotoUrl = (path: string) => supabase.storage.from('documents').getPublicUrl(path).data.publicUrl;
+  // documents-bucket is privé → korte signed-URLs i.p.v. (kapotte) getPublicUrl.
+  const isStoredUrl = (path: string) => /^https?:\/\//i.test(path);
+  const photoPaths = Array.from(
+    new Set(tasks.flatMap((t: any) => ((t.completion_photos ?? []) as string[])).filter(Boolean)),
+  );
+  const { data: photoUrlMap = {} } = useQuery({
+    queryKey: ['cleaning-photo-urls', property.id, photoPaths],
+    queryFn: async () => {
+      const entries = await Promise.all(photoPaths.map(async (path) => {
+        if (isStoredUrl(path)) return [path, path] as const;
+        const { data, error } = await supabase.storage.from('documents').createSignedUrl(path, 60 * 10);
+        return [path, error ? null : data.signedUrl] as const;
+      }));
+      return Object.fromEntries(entries.filter(([, url]) => Boolean(url))) as Record<string, string>;
+    },
+    enabled: photoPaths.length > 0,
+    staleTime: 5 * 60 * 1000,
+  });
+  const getPhotoUrl = (path: string) => photoUrlMap[path] ?? (isStoredUrl(path) ? path : '');
 
   const updateStatus = useMutation({
     mutationFn: async ({ task, status }: { task: any; status: string }) => {

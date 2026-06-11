@@ -179,12 +179,34 @@ const InspectionsTab = ({ propertyId }: { propertyId: string }) => {
     return inspections.filter((i: any) => i.inspection_type === typeFilter);
   }, [inspections, typeFilter]);
 
-  // Photo URL helper
-  const getPhotoUrl = (path: string | null) => {
-    if (!path) return null;
-    const { data } = supabase.storage.from('documents').getPublicUrl(path);
-    return data?.publicUrl ?? null;
-  };
+  // De documents-bucket is privé; getPublicUrl gaf 403. Teken korte signed-URLs
+  // voor alle zichtbare foto-paden. isStoredUrl vangt legacy volledige URLs op.
+  const isStoredUrl = (path: string) => /^https?:\/\//i.test(path);
+  const photoPaths = useMemo(() => {
+    const set = new Set<string>();
+    for (const insp of filtered) {
+      for (const p of ((insp.photos ?? []) as string[])) if (p) set.add(p);
+      for (const f of PHOTO_FIELDS) if (insp[f.key]) set.add(insp[f.key]);
+    }
+    return Array.from(set);
+  }, [filtered]);
+
+  const { data: photoUrlMap = {} } = useQuery({
+    queryKey: ['inspection-photo-urls', propertyId, photoPaths],
+    queryFn: async () => {
+      const entries = await Promise.all(photoPaths.map(async (path) => {
+        if (isStoredUrl(path)) return [path, path] as const;
+        const { data, error } = await supabase.storage.from('documents').createSignedUrl(path, 60 * 10);
+        return [path, error ? null : data.signedUrl] as const;
+      }));
+      return Object.fromEntries(entries.filter(([, url]) => Boolean(url))) as Record<string, string>;
+    },
+    enabled: photoPaths.length > 0,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const getPhotoUrl = (path: string | null) =>
+    path ? (photoUrlMap[path] ?? (isStoredUrl(path) ? path : null)) : null;
 
   // Upload helper
   const uploadPhoto = async (file: File, type: string): Promise<string> => {

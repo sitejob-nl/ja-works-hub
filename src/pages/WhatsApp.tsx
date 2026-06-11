@@ -110,24 +110,29 @@ const WhatsAppPage = () => {
   const handleSendMedia = async (file: File, type: string) => {
     if (!selectedPhone) return;
     try {
-      // Upload to Supabase Storage first, then send link
+      // Upload to Supabase Storage first, then send link.
+      // Pad begint met de org-id (storage-RLS keyt op het eerste segment), en we sturen
+      // Meta een tijdelijke signed-URL (de documents-bucket is privé, getPublicUrl gaf 403).
       const ext = file.name.split('.').pop();
-      const path = `whatsapp/${orgId}/${Date.now()}.${ext}`;
+      const path = `${orgId}/whatsapp/${Date.now()}.${ext}`;
       const { error: uploadError } = await supabase.storage
         .from('documents')
         .upload(path, file, { upsert: false });
       if (uploadError) throw uploadError;
 
-      const { data: urlData } = supabase.storage.from('documents').getPublicUrl(path);
-      const publicUrl = urlData.publicUrl;
+      const { data: urlData, error: signError } = await supabase.storage
+        .from('documents')
+        .createSignedUrl(path, 60 * 60);
+      if (signError || !urlData?.signedUrl) throw signError ?? new Error('Kon media-link niet maken');
+      const mediaUrl = urlData.signedUrl;
 
       const mediaType = type as 'image' | 'video' | 'audio' | 'document';
       sendMutation.mutate({
         to: selectedPhone,
         type: mediaType,
         [mediaType]: mediaType === 'audio'
-          ? { link: publicUrl }
-          : { link: publicUrl, caption: file.name },
+          ? { link: mediaUrl }
+          : { link: mediaUrl, caption: file.name },
         candidate_id: selectedCandidateId ?? undefined,
       });
     } catch (err: any) {

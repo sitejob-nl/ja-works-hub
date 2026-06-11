@@ -70,25 +70,25 @@ const PortalHousing = () => {
       const unit = assignment.units as any;
       const property = unit?.properties;
 
+      // Sla het storage-PAD op (niet getPublicUrl op de privé bucket); de weergave tekent signed-URLs.
       const uploadOne = async (file: File): Promise<string> => {
         const ext = file.name.split('.').pop() || 'jpg';
         const path = `${orgId}/checkin/${assignment.id}/${crypto.randomUUID()}.${ext}`;
         const { error } = await supabase.storage.from('documents').upload(path, file, { upsert: false });
         if (error) throw error;
-        const { data: urlData } = supabase.storage.from('documents').getPublicUrl(path);
-        return urlData.publicUrl;
+        return path;
       };
 
-      const photoUrls: Record<string, string | null> = {};
-      const allUrls: string[] = [];
+      const photoPaths: Record<string, string | null> = {};
+      const allPaths: string[] = [];
       for (const [key, file] of Object.entries(checkInPhotos)) {
         if (!file) {
-          photoUrls[key] = null;
+          photoPaths[key] = null;
           continue;
         }
-        const url = await uploadOne(file);
-        photoUrls[key] = url;
-        allUrls.push(url);
+        const path = await uploadOne(file);
+        photoPaths[key] = path;
+        allPaths.push(path);
       }
 
       const { error } = await supabase.from('housing_inspections').insert({
@@ -103,8 +103,8 @@ const PortalHousing = () => {
         condition_notes: checkInNotes.trim() || null,
         confirmed_by_resident: true,
         confirmed_at: new Date().toISOString(),
-        photos: allUrls.length > 0 ? allUrls : null,
-        ...photoUrls,
+        photos: allPaths.length > 0 ? allPaths : null,
+        ...photoPaths,
       } as any);
       if (error) throw error;
     },
