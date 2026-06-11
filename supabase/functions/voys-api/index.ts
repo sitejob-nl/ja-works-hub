@@ -1,5 +1,5 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders, jsonResponse, jsonError, callVoysApi } from "../_shared/voys-helpers.ts";
+import { corsHeaders, jsonResponse, jsonError, callVoysApi, isSafeVoysEndpoint } from "../_shared/voys-helpers.ts";
+import { getAuthenticatedProfile, isInternalRole, createAdminClient } from "../_shared/auth.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -7,50 +7,35 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // Authenticate on EVERY path — the proxy forwards a Bearer credential and can
+    // reach external hosts, so it must never run anonymously. An internal role is
+    // required; medewerker/opdrachtgever portal users have no business calling Voys.
+    const auth = await getAuthenticatedProfile(req, corsHeaders);
+    if (auth instanceof Response) return auth;
+    if (!isInternalRole(auth.role)) {
+      return jsonError("Onvoldoende rechten", 403);
+    }
+
     const body = await req.json();
     const { endpoint, method = "GET", payload, api_token: directToken } = body;
 
     if (!endpoint) {
       return jsonError("endpoint is required", 400);
     }
+    if (!isSafeVoysEndpoint(endpoint)) {
+      return jsonError("Ongeldig endpoint", 400);
+    }
 
-    let apiToken = directToken;
+    // Token source: a freshly pasted token from the settings connect/test flow,
+    // otherwise the caller's OWN org token (decrypted server-side). directToken
+    // can no longer be used to skip authentication or to act on another org.
+    let apiToken: string | null =
+      typeof directToken === "string" && directToken.length > 0 ? directToken : null;
 
-    // If no direct token, get it from the database using the authenticated user
     if (!apiToken) {
-      const authHeader = req.headers.get("Authorization");
-      if (!authHeader?.startsWith("Bearer ")) {
-        return jsonError("Unauthorized", 401);
-      }
-
-      const supabase = createClient(
-        Deno.env.get("SUPABASE_URL")!,
-        Deno.env.get("SUPABASE_ANON_KEY")!,
-        { global: { headers: { Authorization: authHeader } } }
-      );
-
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError || !user) {
-        return jsonError("Unauthorized", 401);
-      }
-
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("organization_id")
-        .eq("id", user.id)
-        .single();
-      if (!profile) {
-        return jsonError("Profile not found", 404);
-      }
-
-      // Get decrypted token via service client
-      const serviceClient = createClient(
-        Deno.env.get("SUPABASE_URL")!,
-        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-      );
-
+      const serviceClient = createAdminClient();
       const { data: tokenData, error: rpcError } = await serviceClient.rpc("get_voys_token", {
-        p_org_id: profile.organization_id,
+        p_org_id: auth.organizationId,
       });
 
       if (rpcError || !tokenData || tokenData.length === 0) {

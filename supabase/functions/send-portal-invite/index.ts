@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireInternalProfile, createAdminClient } from "../_shared/auth.ts";
 import { sendViaOutlookAccount } from "../_shared/outlook-send.ts";
 import { buildOrganizationPublicUrl } from "../_shared/public-url.ts";
 
@@ -73,22 +73,12 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) return json({ error: "Unauthorized" }, 401);
+    // Only internal staff may dispatch portal invites. requireInternalProfile
+    // rejects anonymous, service-role and portal (medewerker/opdrachtgever) callers.
+    const auth = await requireInternalProfile(req, corsHeaders);
+    if (auth instanceof Response) return auth;
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
-
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return json({ error: "Unauthorized" }, 401);
-
-    const service = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
+    const service = createAdminClient();
 
     const body = await req.json();
     const { invite_id } = body as { invite_id: string };
@@ -104,7 +94,11 @@ Deno.serve(async (req) => {
       .eq("id", invite_id)
       .maybeSingle();
 
-    if (!invite) return json({ error: "Invite not found" }, 404);
+    // Same response for missing and cross-tenant so the endpoint can't be used to
+    // probe invite ids of other organisations.
+    if (!invite || invite.organization_id !== auth.organizationId) {
+      return json({ error: "Invite not found" }, 404);
+    }
     if (invite.used_at) return json({ error: "Invite al gebruikt" }, 400);
     if (new Date(invite.expires_at) < new Date()) return json({ error: "Invite verlopen" }, 400);
     if (!invite.email) return json({ error: "Geen e-mailadres op invite" }, 400);
@@ -128,7 +122,7 @@ Deno.serve(async (req) => {
       subject,
       htmlBody: html,
       candidateId: invite.candidate_id,
-      sentBy: user.id,
+      sentBy: auth.userId,
     });
 
     if (!sendResult.success) {
@@ -143,7 +137,7 @@ Deno.serve(async (req) => {
       subject,
       body: `Portal-uitnodiging naar ${invite.email}`,
       sent_at: new Date().toISOString(),
-      sent_by: user.id,
+      sent_by: auth.userId,
       email_to: [invite.email],
     });
 

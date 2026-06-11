@@ -140,7 +140,7 @@ export async function cascadeSickReport(
         organization_id: orgId,
         assigned_to: assignedTo,
         title: `Ziekmelding van ${candidateName}`,
-        description: report.notes ? `Klacht: ${report.notes}` : "Geen toelichting opgegeven.",
+        description: report.notes ? `Toelichting: ${report.notes}` : "Geen toelichting opgegeven.",
         priority: isAfterDeadline ? automation.sick_report_after_deadline_task_priority : "high",
         status: "open",
         category: "sick_report",
@@ -178,6 +178,8 @@ export async function cascadeSickReport(
 
     if (contact?.email) {
       const subject = `Ziekmelding — ${candidateName}`;
+      // AVG art. 9: de aard/toelichting van de ziekte wordt NIET met de inlener
+      // gedeeld. Alleen functionele info (wie, sinds wanneer, verwachte terugkeer).
       const html = buildClientEmailHtml({
         contactName: contact.full_name ?? "",
         candidateName,
@@ -185,7 +187,6 @@ export async function cascadeSickReport(
         companyName: company?.name ?? "",
         reportedAt: report.reported_at,
         expectedReturnDate: report.expected_return_date,
-        notes: report.notes,
       });
 
       const sendResult = await sendViaOutlookAccount({
@@ -212,7 +213,8 @@ export async function cascadeSickReport(
           channel: "email",
           direction: "outbound",
           subject,
-          body: `Ziekmelding voor ${candidateName}${report.notes ? ` — ${report.notes}` : ""}`,
+          // Geen ziekte-toelichting in de (klant)communicatie-log — AVG art. 9.
+          body: `Ziekmelding voor ${candidateName} doorgegeven aan opdrachtgever`,
           sent_at: new Date().toISOString(),
           sent_by: triggeredBy ?? null,
           email_to: [contact.email],
@@ -254,7 +256,6 @@ function buildClientEmailHtml(data: {
   companyName: string;
   reportedAt: string;
   expectedReturnDate: string | null;
-  notes: string | null;
 }): string {
   return `<!DOCTYPE html>
 <html lang="nl">
@@ -284,10 +285,6 @@ function buildClientEmailHtml(data: {
             ${data.expectedReturnDate ? `<tr><td style="padding:14px 20px;border-bottom:1px solid #fed7aa;">
               <span style="color:#9a3412;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;">Verwachte terugkeer</span><br>
               <strong style="color:#1e293b;font-size:14px;">${escapeHtml(formatDate(data.expectedReturnDate))}</strong>
-            </td></tr>` : ""}
-            ${data.notes ? `<tr><td style="padding:14px 20px;">
-              <span style="color:#9a3412;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;">Toelichting</span><br>
-              <span style="color:#334155;font-size:14px;white-space:pre-wrap;">${escapeHtml(data.notes)}</span>
             </td></tr>` : ""}
           </table>
 
