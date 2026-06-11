@@ -5,21 +5,14 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { ThumbsUp, ThumbsDown, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 
-type TokenData = {
-  id: string;
-  match_id: string;
-  response: string | null;
-  used_at: string | null;
-  expires_at: string;
-  matches: {
-    candidates: { first_name: string; last_name: string } | null;
-    vacancies: { title: string } | null;
-  } | null;
+type ProposalView = {
+  candidate: { first_name: string; last_name: string } | null;
+  vacancy: { title: string } | null;
 };
 
 const MatchResponse = () => {
   const { token } = useParams<{ token: string }>();
-  const [data, setData] = useState<TokenData | null>(null);
+  const [data, setData] = useState<ProposalView | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -27,43 +20,38 @@ const MatchResponse = () => {
 
   useEffect(() => {
     if (!token) return;
-    supabase
-      .from('match_proposal_tokens')
-      .select('*, matches!match_proposal_tokens_match_id_fkey(candidates!matches_candidate_id_fkey(first_name, last_name), vacancies!matches_vacancy_id_fkey(title))')
-      .eq('token', token)
-      .single()
-      .then(({ data, error }) => {
-        if (error || !data) {
-          setError('Deze link is ongeldig of verlopen.');
-        } else if (data.used_at) {
-          setDone(data.response as any);
-        } else if (new Date(data.expires_at) < new Date()) {
-          setError('Deze link is verlopen.');
-        } else {
-          setData(data as any);
-        }
-        setLoading(false);
+    (async () => {
+      const { data: res, error: invErr } = await supabase.functions.invoke('match-response', {
+        body: { token, action: 'get' },
       });
+      if (invErr || !res || res.error || res.status === 'invalid' || res.status === 'expired') {
+        setError('Deze link is ongeldig of verlopen.');
+      } else if (res.status === 'used') {
+        setDone((res.response as any) ?? 'interesse');
+      } else {
+        setData({ candidate: res.candidate ?? null, vacancy: res.vacancy ?? null });
+      }
+      setLoading(false);
+    })();
   }, [token]);
 
   const respond = async (response: 'interesse' | 'geen_interesse') => {
-    if (!data) return;
+    if (!token) return;
     setSubmitting(true);
     try {
-      // Update token
-      await supabase
-        .from('match_proposal_tokens')
-        .update({ response, used_at: new Date().toISOString() })
-        .eq('id', data.id);
-
-      // Update match status
-      const newStatus = response === 'interesse' ? 'geaccepteerd' : 'afgewezen';
-      await supabase
-        .from('matches')
-        .update({ status: newStatus as any, status_changed_at: new Date().toISOString() })
-        .eq('id', data.match_id);
-
-      setDone(response);
+      const { data: res, error: invErr } = await supabase.functions.invoke('match-response', {
+        body: { token, action: 'respond', response },
+      });
+      if (invErr || !res || res.error) {
+        setError('Er is een fout opgetreden. Probeer het opnieuw.');
+      } else if (res.status === 'expired') {
+        setError('Deze link is verlopen.');
+      } else if (res.status === 'used') {
+        // Al eerder beantwoord — toon de vastgelegde reactie.
+        setDone((res.response as any) ?? response);
+      } else {
+        setDone(response);
+      }
     } catch {
       setError('Er is een fout opgetreden. Probeer het opnieuw.');
     } finally {
@@ -110,8 +98,8 @@ const MatchResponse = () => {
     );
   }
 
-  const candidate = (data?.matches as any)?.candidates;
-  const vacancy = (data?.matches as any)?.vacancies;
+  const candidate = data?.candidate;
+  const vacancy = data?.vacancy;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
