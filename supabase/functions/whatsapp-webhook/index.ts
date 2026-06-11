@@ -322,7 +322,7 @@ async function processInboundMessage(
           supabase,
           orgId,
           from,
-          "Dank je, we hebben je herkend. Wat is de reden van je ziekmelding? Stuur kort je klacht of toelichting terug.",
+          "Dank je, we hebben je ziekmelding ontvangen. Wanneer verwacht je weer aan het werk te kunnen, of heb je nog een opmerking voor je intercedent? Vermeld géén medische details. Stuur kort terug, of typ 'geen'.",
         );
       } else {
         await createSickReportFromWhatsApp(supabase, orgId, candidateId, body, timestamp);

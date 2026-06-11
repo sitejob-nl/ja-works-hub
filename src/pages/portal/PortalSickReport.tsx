@@ -122,11 +122,11 @@ const PortalSickReport = () => {
           </div>
           <div className="space-y-3">
             <div className="space-y-1.5">
-              <Label>Reden / klachten</Label>
+              <Label>Opmerking (optioneel)</Label>
               <Textarea
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
-                placeholder="Beschrijf je klachten..."
+                placeholder="Bijv. wanneer je verwacht weer te kunnen werken. Vermeld géén medische details."
                 rows={3}
               />
             </div>
@@ -141,7 +141,7 @@ const PortalSickReport = () => {
           </div>
           <Button
             onClick={() => submitMutation.mutate()}
-            disabled={submitMutation.isPending || !reason.trim()}
+            disabled={submitMutation.isPending}
             className="w-full"
           >
             {submitMutation.isPending ? 'Indienen...' : 'Ziekmelding indienen'}
