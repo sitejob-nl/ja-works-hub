@@ -18,6 +18,7 @@ import CandidateMatchesTab from '@/components/candidates/tabs/CandidateMatchesTa
 import CandidateVacancyMatchesTab from '@/components/candidates/tabs/CandidateVacancyMatchesTab';
 import CandidatePlacementsTab from '@/components/candidates/tabs/CandidatePlacementsTab';
 import CandidateScreeningTab from '@/components/candidates/tabs/CandidateScreeningTab';
+import CandidateAiTab from '@/components/candidates/tabs/CandidateAiTab';
 import CandidateTalentpoolsTab from '@/components/candidates/tabs/CandidateTalentpoolsTab';
 import CandidateReadinessStrip from '@/components/candidates/CandidateReadinessStrip';
 import NotesSection from '@/components/shared/NotesSection';
@@ -362,11 +363,17 @@ const CandidateDetail = () => {
         <TabsContent value="vacatures"><CandidateVacancyMatchesTab candidateId={id!} candidate={candidate} /></TabsContent>
         <TabsContent value="plaatsingen"><CandidatePlacementsTab candidateId={id!} /></TabsContent>
         <TabsContent value="screening" forceMount>
-          <CandidateScreeningTab
-            candidate={candidate}
-            onUpdate={() => qc.invalidateQueries({ queryKey: ['candidate', id] })}
-            onDirtyChange={setScreeningDirty}
-          />
+          <div className="space-y-6">
+            {/* AI-analyse als sectie bovenaan Screening (meeting-besluit 05-27): CV-upload
+                (alle formaten) + volledige dossieranalyse met feiten/aannames/onbekend,
+                CEFR-taalniveau en bronverwijzingen. De losse AI-tab is vervallen. */}
+            <CandidateAiTab candidate={candidate} />
+            <CandidateScreeningTab
+              candidate={candidate}
+              onUpdate={() => qc.invalidateQueries({ queryKey: ['candidate', id] })}
+              onDirtyChange={setScreeningDirty}
+            />
+          </div>
         </TabsContent>
         <TabsContent value="notities"><NotesSection entityId={id!} entityType="kandidaat" /></TabsContent>
         <TabsContent value="huisvesting"><EmployeeHousingTab candidateId={id!} /></TabsContent>

@@ -92,7 +92,7 @@ const DuplicateCandidates = () => {
           <div>
             <h1 className="text-xl sm:text-2xl font-semibold">Duplicatenbeheer</h1>
             <p className="text-sm text-muted-foreground">
-              Mogelijke dubbele kandidaten op basis van telefoonnummer of geboortedatum + achternaam.
+              Mogelijke dubbele kandidaten op basis van e-mail, telefoonnummer of geboortedatum + achternaam.
               Kies per groep welk profiel je behoudt; de rest wordt erin samengevoegd.
             </p>
           </div>

@@ -41,6 +41,9 @@ const sourceLabel: Record<string, string> = {
   facebook: 'Facebook',
   jobmarket: 'Jobmarket',
   linkedin: 'LinkedIn',
+  carerix: 'Carerix',
+  handmatig: 'Handmatig',
+  eigen_database: 'Eigen database',
   overig: 'Overig',
 };
 

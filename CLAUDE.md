@@ -34,9 +34,11 @@ npm run test:e2e:flows   # Playwright e2e — full UI flows
 npx vitest run src/test/example.test.ts  # Run single test file
 ```
 
-Edge functions are Deno/TypeScript and live in `supabase/functions/` (configured in `supabase/config.toml`). Deploy via:
-- **Supabase MCP** (preferred for this project): `mcp__claude_ai_Supabase__deploy_edge_function` — see "Supabase MCP workflow" below
-- **Supabase CLI** (alternatief): `npx supabase functions deploy <name>`
+Edge functions are Deno/TypeScript and live in `supabase/functions/` (configured in `supabase/config.toml`). Type-check one with `deno check supabase/functions/<name>/index.ts` — the npm `typecheck` script does **not** cover Deno functions. Deploy via:
+- **Supabase CLI** (preferred for functions with a `_shared/` dependency tree): `supabase functions deploy <name> --project-ref noaupcteygfvlyymqtew` — auto-bundles `_shared/`. The CLI is authenticated only **outside** the Bash sandbox (it needs network + keychain), so run deploys with the sandbox disabled.
+- **Supabase MCP**: `mcp__claude_ai_Supabase__deploy_edge_function` — you must inline every file *including* `_shared/` deps, mirroring the `functions/<name>/index.ts` + `functions/_shared/*.ts` names returned by `get_edge_function`. Practical only for small bundles; prefer the CLI for large `_shared` trees.
+
+> ⚠️ **Deployed code can diverge from `main`.** `supabase functions deploy` ships whatever working tree you run it from, and functions are often deployed from feature branches/worktrees. Deploying from a checkout that lacks a merged fix silently re-ships the old code — confirm `main` == production, or deploy from the branch that has the fix. `verify_jwt` is driven by `config.toml` (the CLI honors it; the MCP tool defaults to `true`, so pass `verify_jwt: false` for the self-auth functions).
 
 ## Tech Stack
 
@@ -495,13 +497,16 @@ Project-id: `noaupcteygfvlyymqtew` (vermeld in CLAUDE.md "Team & Contact" hieron
 
 ### Auth / Roles
 
-5 roles: `admin`, `intercedent`, `backoffice`, `finance`, `medewerker`
+6 roles (enum `user_role`): `admin`, `intercedent`, `backoffice`, `finance`, `medewerker`, `opdrachtgever`
 
 - `admin` — full access
 - `intercedent` — recruiter/placement specialist
 - `backoffice` — administrative operations
 - `finance` — invoicing and financial features
-- `medewerker` — employee role, redirected to portal
+- `medewerker` — employee role, redirected to `/portaal`
+- `opdrachtgever` — client-portal contact, redirected to `/klantportaal`; sees only own placements + timesheets
+
+**`is_internal_user()`** (the central authorization helper in RLS policies and edge functions) = role IN (`admin`, `intercedent`, `backoffice`, `finance`). The two portal roles (`medewerker`, `opdrachtgever`) are deliberately excluded and get their own self-scoped policies. When you add a `{public}`/`{authenticated}` RLS policy on a tenant table, gate org-wide access with `AND is_internal_user()` and leave portal access to dedicated self-policies — otherwise a low-privilege portal role gains org-wide reach. See [docs/security-audit-2026-06-10.md](docs/security-audit-2026-06-10.md).
 
 ### Compliance
 

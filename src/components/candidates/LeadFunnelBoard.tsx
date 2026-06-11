@@ -163,7 +163,7 @@ const LeadFunnelBoard = () => {
       if (toStatus === 'werkzoekend' || toStatus === 'afgewezen') {
         const { error: taskError } = await supabase
           .from('recruiter_tasks' as any)
-          .update({ status: 'completed', completed_at: now, updated_at: now })
+          .update({ status: 'done', completed_at: now, updated_at: now })
           .eq('organization_id', orgId)
           .eq('related_entity_type', 'kandidaat')
           .eq('related_entity_id', candidateId)
