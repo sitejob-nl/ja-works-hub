@@ -71,9 +71,12 @@ const RecruiterWorkbench = () => {
         .eq('status', 'open' as any)
         .eq('urgency', 3)
         .order('start_date', { ascending: true, nullsFirst: false })
-        .limit(6);
+        .limit(20);
       if (error) throw error;
-      return data ?? [];
+      // Toon alleen vacatures met nog open plaatsen (vervulde urgentie-3 is geen werkbank-signaal).
+      return (data ?? [])
+        .filter((v: any) => (v.required_count ?? 0) > (v.filled_count ?? 0))
+        .slice(0, 6);
     },
     enabled: !!orgId,
   });

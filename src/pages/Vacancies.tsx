@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Link, useNavigate } from 'react-router-dom';
@@ -49,14 +49,21 @@ const Vacancies = () => {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useSearchParamState<string>('status', 'all');
   const [urgencyFilter, setUrgencyFilter] = useState('all');
   const [page, setPage] = useState(0);
 
+  // Debounce de zoekterm zodat we niet per toetsaanslag een query vuren.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
   const { data, isLoading } = useQuery({
-    queryKey: ['vacancies', search, statusFilter, urgencyFilter, page],
+    queryKey: ['vacancies', debouncedSearch, statusFilter, urgencyFilter, page],
     queryFn: async () => {
-      const searchTerm = search.trim();
+      const searchTerm = debouncedSearch.trim();
       let matchingCompanyIds: string[] = [];
       if (searchTerm) {
         const { data: companyMatches, error: companyErr } = await supabase

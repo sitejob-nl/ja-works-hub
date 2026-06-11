@@ -170,7 +170,7 @@ const Candidates = () => {
     queryFn: async () => {
       let query = supabase.from('candidates').select('*', { count: 'exact' });
       if (search) {
-        query = query.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,address_city.ilike.%${search}%,email.ilike.%${search}%`);
+        query = query.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,address_city.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`);
       }
       if (cvSearch.trim()) {
         query = query.textSearch('cv_raw_text', cvSearch.trim(), { config: 'dutch' });
@@ -359,7 +359,7 @@ const Candidates = () => {
         <div className="flex items-center gap-3 flex-wrap">
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Zoek op naam, stad of email..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} className="pl-9" />
+            <Input placeholder="Zoek op naam, stad, e-mail of telefoon..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} className="pl-9" />
           </div>
           <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(0); }}>
             <SelectTrigger className="w-40"><SelectValue placeholder="Status" /></SelectTrigger>

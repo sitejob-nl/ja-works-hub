@@ -18,7 +18,7 @@ const VacancyDetailsTab = ({ vacancy }: { vacancy: any }) => {
             <div className="flex justify-between"><span className="text-muted-foreground">Locatie</span><span>{vacancy.location ?? '—'}</span></div>
             <div className="flex justify-between"><span className="text-muted-foreground">Aantal nodig</span><span>{vacancy.required_count}</span></div>
             <div className="flex justify-between"><span className="text-muted-foreground">Urgentie</span><span>{vacancy.urgency}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">Startdatum</span><span>{formatDate(vacancy.start_date)}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Startdatum</span><span>{vacancy.start_date_text || formatDate(vacancy.start_date)}</span></div>
             <div className="flex justify-between"><span className="text-muted-foreground">Einddatum</span><span>{formatDate(vacancy.end_date)}</span></div>
             <div className="flex justify-between"><span className="text-muted-foreground">Uurtarief</span><span>{vacancy.hourly_rate ? formatEUR(vacancy.hourly_rate) : '—'}</span></div>
           </CardContent>
