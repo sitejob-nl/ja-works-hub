@@ -45,17 +45,21 @@ const RecruiterWorkbench = () => {
   const orgId = useOrganizationId();
   const qc = useQueryClient();
   const [filter, setFilter] = useState<string>('all');
+  const [scope, setScope] = useState<'mij' | 'team'>('mij');
   const [sheetOpen, setSheetOpen] = useState(false);
   const [form, setForm] = useState<TaskForm>(emptyForm);
   const [isGenerating, setIsGenerating] = useState(false);
 
   const { data: tasks = [], isLoading } = useQuery({
-    queryKey: ['recruiter-tasks', user?.id],
+    queryKey: ['recruiter-tasks', user?.id, scope],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let q = supabase
         .from('recruiter_tasks' as any)
         .select('*')
         .order('created_at', { ascending: false });
+      // 'mij' = persoonlijke funnel (alleen aan mij toegewezen); 'team' = hele org.
+      if (scope === 'mij' && user?.id) q = q.eq('assigned_to', user.id);
+      const { data, error } = await q;
       if (error) throw error;
       return (data as any[]) || [];
     },
@@ -174,6 +178,10 @@ const RecruiterWorkbench = () => {
           </p>
         </div>
         <div className="flex gap-2">
+          <div className="inline-flex rounded-md border p-0.5">
+            <Button variant={scope === 'mij' ? 'secondary' : 'ghost'} size="sm" className="h-7 px-2.5" onClick={() => setScope('mij')}>Mij</Button>
+            <Button variant={scope === 'team' ? 'secondary' : 'ghost'} size="sm" className="h-7 px-2.5" onClick={() => setScope('team')}>Team</Button>
+          </div>
           <Button variant="outline" size="sm" onClick={() => { setForm(emptyForm); setSheetOpen(true); }} className="gap-1.5">
             <Plus className="h-4 w-4" /> <span className="hidden sm:inline">Taak toevoegen</span><span className="sm:hidden">Taak</span>
           </Button>
