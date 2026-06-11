@@ -164,7 +164,7 @@ const VacancyDetail = () => {
               navigate(`/kandidaten-zoeken?query=${encodeURIComponent(q)}`);
             }}
           >
-            <UserSearch className="h-4 w-4" /> <span className="hidden sm:inline">Zoek kandidaten</span><span className="sm:hidden">Zoeken</span>
+            <UserSearch className="h-4 w-4" /> <span className="hidden sm:inline">Breed zoeken</span><span className="sm:hidden">Breed</span>
           </Button>
           <Button variant="outline" size="sm" onClick={() => enrichMutation.mutate()} disabled={enrichMutation.isPending} className="gap-1" title="Vaardigheden uit de vacaturetekst halen met AI">
             <Sparkles className="h-4 w-4" /> <span className="hidden sm:inline">{enrichMutation.isPending ? 'AI bezig…' : 'AI-skills'}</span>
