@@ -17,7 +17,6 @@ import type {
   CRJob,
   CRMatch,
   CRNote,
-  CRTodo,
   CXCandidate,
   CXCompany,
   CXContact,
@@ -35,18 +34,15 @@ import {
   crNotesQuery,
   type CRNoteBodyField,
   crPlacementJobsQuery,
-  crTodosQuery,
   watermarkQualifier,
 } from './queries.ts';
 import {
-  classifyCRTodo,
   mapCRAttachmentToDocument,
   mapCREmployee,
   mapCRJobToVacancy,
   mapCRJobToPlacement,
   mapCRMatch,
   mapCRNoteToNote,
-  mapCRTodoToTask,
   mapCandidate,
   mapCompany,
   mapContact,
@@ -778,50 +774,6 @@ function resolveNoteParent(
   return null;
 }
 
-async function processCRTodoForNotes(
-  ctx: RunnerContext,
-  todo: CRTodo,
-  stats: PageStats,
-): Promise<void> {
-  const parent = resolveNoteParent(ctx, todo);
-  if (!parent) {
-    stats.skipped++;
-    return;
-  }
-
-  const carerixTodoId = String(todo._id);
-  // Older runs mapped all CRTodos to `note`. Check both keys to keep the live
-  // sync idempotent when a tenant has already imported this record.
-  if (ctx.idMapper.get('note', carerixTodoId) || ctx.idMapper.get('task', carerixTodoId)) {
-    stats.skipped++;
-    return;
-  }
-
-  const todoKind = classifyCRTodo(todo);
-  if (todoKind === 'task') {
-    const payload = mapCRTodoToTask(
-      todo,
-      parent.relatedEntityId,
-      parent.relatedEntityType,
-      ctx.createdByUserId,
-      ctx.organizationId,
-    );
-    if (!payload) {
-      stats.skipped++;
-      return;
-    }
-    await insertIfNew(ctx, 'recruiter_tasks', 'task', carerixTodoId, payload, stats, {
-      subject: todo.subject,
-      statusDisplay: todo.statusDisplay,
-    }, { carerix_entity: 'CRTodo', crtodo_kind: todoKind });
-    return;
-  }
-
-  // CRTodo also contains reminders, e-mails and meeting/activity entries. Those
-  // are not candidate notes in Carerix and should not pollute the Notities tab.
-  stats.skipped++;
-}
-
 async function processCRNoteForNotes(
   ctx: RunnerContext,
   note: CRNote,
@@ -961,24 +913,20 @@ export async function runNotesPage(
     };
   }
   const watermark = watermarkQualifier(ctx.modifiedSince);
-  const todoResult = await tryQuery<{ crToDoPage: PageResponse<CRTodo> }>(
-    ctx,
-    crTodosQuery(page, size, watermark),
-  );
+  // CRTodo's worden bewust NIET meer opgehaald — zie processCREmployeeProfileNotes.
+  // Notities komen uit CRNote + de vrije-tekst notes op CREmployee.
   const noteResult = await tryCRNotesPage(ctx, page, size, watermark);
   const employeeResult = await tryQuery<{ crEmployeePage: PageResponse<CREmployee> }>(
     ctx,
     crEmployeesQuery(page, size, watermark),
   );
 
-  const todoPageData = todoResult.data?.crToDoPage ?? null;
   const notePageData = noteResult.pageData;
   const employeePageData = employeeResult.data?.crEmployeePage ?? null;
-  if (!todoPageData && !notePageData && !employeePageData) {
+  if (!notePageData && !employeePageData) {
     return {
       ...emptyStats(0),
       skipReason: combineReasons([
-        todoResult.reason ?? 'crToDoPage onverwachts leeg',
         noteResult.reason ?? 'crNotePage onverwachts leeg',
         employeeResult.reason ?? 'crEmployeePage onverwachts leeg',
       ]),
@@ -986,16 +934,9 @@ export async function runNotesPage(
   }
 
   const stats = emptyStats(
-    (todoPageData?.totalElements ?? 0) +
-      (notePageData?.totalElements ?? 0) +
+    (notePageData?.totalElements ?? 0) +
       (employeePageData?.totalElements ?? 0),
   );
-
-  if (todoPageData) {
-    for (const todo of todoPageData.items) {
-      await processCRTodoForNotes(ctx, todo, stats);
-    }
-  }
 
   if (notePageData) {
     for (const note of notePageData.items) {
@@ -1010,7 +951,6 @@ export async function runNotesPage(
   }
 
   stats.done =
-    (todoPageData ? isLastPage(todoPageData) : true) &&
     (notePageData ? isLastPage(notePageData) : true) &&
     (employeePageData ? isLastPage(employeePageData) : true);
   return stats;
