@@ -116,7 +116,7 @@ const CandidateCommunicationTab = ({ candidateId }: { candidateId: string }) => 
                   <div className="mt-2">
                     <button
                       onClick={() => setExpandedTranscription(expandedTranscription === c.id ? null : c.id)}
-                      className="text-xs text-primary hover:underline flex items-center gap-1"
+                      className="text-xs hover:underline flex items-center gap-1"
                     >
                       {expandedTranscription === c.id ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                       {expandedTranscription === c.id ? 'Transcriptie verbergen' : 'Transcriptie tonen'}

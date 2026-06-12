@@ -209,7 +209,7 @@ const Tasks = () => {
                       <span className="text-[10px] text-muted-foreground">→ {task.profiles.full_name}</span>
                     )}
                     {linkFn && task.related_entity_type && (
-                      <Link to={linkFn(task.related_entity_id)} className="text-[10px] text-primary hover:underline">
+                      <Link to={linkFn(task.related_entity_id)} className="text-[10px] hover:underline">
                         {entityTypeLabels[task.related_entity_type] ?? task.related_entity_type}
                       </Link>
                     )}

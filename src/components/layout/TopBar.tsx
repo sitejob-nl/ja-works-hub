@@ -120,7 +120,7 @@ const TopBar = ({ onMenuClick }: TopBarProps) => {
         <NotificationBell />
 
         <div className="flex items-center gap-2 cursor-pointer" onClick={signOut}>
-          <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium text-primary">
+          <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium text-stat-blue">
             {firstName.charAt(0).toUpperCase()}
           </div>
           <div className="hidden sm:block">

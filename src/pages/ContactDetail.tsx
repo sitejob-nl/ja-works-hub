@@ -134,7 +134,7 @@ const ContactDetail = () => {
           )}
           {contact.companies && (
             <p className="text-sm mt-1">
-              <Link to={`/opdrachtgevers/${contact.companies.id}`} className="text-primary hover:underline">
+              <Link to={`/opdrachtgevers/${contact.companies.id}`} className="hover:underline">
                 {contact.companies.name}
               </Link>
             </p>
@@ -223,7 +223,7 @@ const ContactDetail = () => {
                   <dt className="text-xs text-muted-foreground">LinkedIn</dt>
                   <dd className="mt-0.5 text-sm">
                     {contact.linkedin_url ? (
-                      <a href={contact.linkedin_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">
+                      <a href={contact.linkedin_url} target="_blank" rel="noopener noreferrer" className="hover:underline inline-flex items-center gap-1">
                         Profiel <ExternalLink className="h-3 w-3" />
                       </a>
                     ) : '—'}
@@ -233,7 +233,7 @@ const ContactDetail = () => {
                   <dt className="text-xs text-muted-foreground">Bedrijf</dt>
                   <dd className="mt-0.5 text-sm">
                     {contact.companies ? (
-                      <Link to={`/opdrachtgevers/${contact.companies.id}`} className="text-primary hover:underline">
+                      <Link to={`/opdrachtgevers/${contact.companies.id}`} className="hover:underline">
                         {contact.companies.name}
                       </Link>
                     ) : '—'}

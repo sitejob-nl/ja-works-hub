@@ -337,7 +337,7 @@ function CandidateCard({ candidate }: { candidate: any }) {
       <CardContent className="space-y-3 p-3">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <Link to={`/kandidaten/${candidate.id}`} className="block truncate text-sm font-medium hover:text-primary">
+            <Link to={`/kandidaten/${candidate.id}`} className="block truncate text-sm font-medium hover:text-stat-blue">
               {candidateDisplayName(candidate)}
             </Link>
             <div className="mt-1 flex flex-wrap gap-1">

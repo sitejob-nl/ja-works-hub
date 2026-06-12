@@ -68,7 +68,7 @@ const PortalNotifications = () => {
         id: `notification-${n.id}`,
         created_at: n.created_at,
         text: n.message ? `${n.title} — ${n.message}` : n.title,
-        className: n.severity === 'urgent' ? 'text-destructive' : n.type === 'verjaardag' ? 'text-primary' : 'text-foreground',
+        className: n.severity === 'urgent' ? 'text-destructive' : n.type === 'verjaardag' ? 'text-stat-blue' : 'text-foreground',
       }));
 
       return [...approvalItems, ...portalItems]

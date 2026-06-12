@@ -206,7 +206,7 @@ const CalendarView = ({ selectedAccount }: { selectedAccount?: string }) => {
             <div key={dayKey}>
               <h3 className={cn(
                 'text-sm font-semibold mb-2 sticky top-0 bg-background py-1',
-                isToday(parseISO(dayKey)) && 'text-primary'
+                isToday(parseISO(dayKey)) && 'text-stat-blue'
               )}>
                 {isToday(parseISO(dayKey)) ? 'Vandaag' : format(parseISO(dayKey), 'EEEE d MMMM', { locale: nl })}
               </h3>
@@ -252,7 +252,7 @@ const CalendarView = ({ selectedAccount }: { selectedAccount?: string }) => {
               <p className="text-xs text-muted-foreground">{format(day, 'EEE', { locale: nl })}</p>
               <p className={cn(
                 'text-lg font-semibold',
-                isToday(day) && 'text-primary'
+                isToday(day) && 'text-stat-blue'
               )}>
                 {format(day, 'd')}
               </p>
@@ -319,7 +319,7 @@ const CalendarView = ({ selectedAccount }: { selectedAccount?: string }) => {
                 >
                   <p className={cn(
                     'text-xs font-medium mb-0.5',
-                    isToday(day) ? 'text-primary font-bold' : 'text-muted-foreground'
+                    isToday(day) ? 'text-stat-blue font-bold' : 'text-muted-foreground'
                   )}>
                     {format(day, 'd')}
                   </p>

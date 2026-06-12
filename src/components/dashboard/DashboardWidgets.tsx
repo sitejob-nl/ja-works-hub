@@ -111,7 +111,7 @@ export const ContractRenewalsCard = () => {
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="text-sm flex items-center gap-2">
-          <RefreshCw className="h-4 w-4 text-primary" />
+          <RefreshCw className="h-4 w-4 text-stat-blue" />
           Contractverlengingen
         </CardTitle>
       </CardHeader>
@@ -259,7 +259,7 @@ export const ContractStatusChart = () => {
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="text-sm flex items-center gap-2">
-          <FileCheck className="h-4 w-4 text-primary" />
+          <FileCheck className="h-4 w-4 text-stat-blue" />
           Contracten status
         </CardTitle>
       </CardHeader>

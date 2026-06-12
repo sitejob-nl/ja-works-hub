@@ -216,7 +216,7 @@ const RecruiterWorkbench = () => {
         <Card>
           <CardContent className="pt-4 pb-3 px-4">
             <div className="flex items-center gap-2">
-              <RefreshCw className="h-4 w-4 text-primary" />
+              <RefreshCw className="h-4 w-4 text-stat-blue" />
               <span className="text-2xl font-bold">{inProgressCount}</span>
             </div>
             <p className="text-xs text-muted-foreground">In uitvoering</p>
@@ -260,7 +260,7 @@ const RecruiterWorkbench = () => {
                 <div key={vacancy.id} className="rounded-md border bg-background p-3 flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <Link to={`/vacatures/${vacancy.id}`} className="font-medium text-sm hover:text-primary truncate">
+                      <Link to={`/vacatures/${vacancy.id}`} className="font-medium text-sm hover:text-stat-blue truncate">
                         {vacancy.title}
                       </Link>
                       <Badge variant="outline" className="text-[10px] px-1.5 py-0">
@@ -353,12 +353,12 @@ const RecruiterWorkbench = () => {
                       <CatIcon className="h-2.5 w-2.5" />{cat.label}
                     </Badge>
                     {task.ai_generated && (
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 gap-1 border-primary/30 text-primary">
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 gap-1 border-primary/30 text-stat-blue">
                         <Sparkles className="h-2.5 w-2.5" />AI
                       </Badge>
                     )}
                     {task.status === 'in_progress' && (
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-primary text-primary">Bezig</Badge>
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-primary text-stat-blue">Bezig</Badge>
                     )}
                   </div>
                   {task.description && (
@@ -372,7 +372,7 @@ const RecruiterWorkbench = () => {
                       <span className="text-[10px] text-muted-foreground">Deadline: {formatDate(task.due_date)}</span>
                     )}
                     {link && (
-                      <Link to={link} className="text-[10px] text-primary hover:underline flex items-center gap-0.5">
+                      <Link to={link} className="text-[10px] hover:underline flex items-center gap-0.5">
                         <ExternalLink className="h-2.5 w-2.5" /> Bekijken
                       </Link>
                     )}

@@ -460,7 +460,7 @@ const Onboarding = () => {
         <Card className="max-w-md w-full">
           <CardContent className="flex flex-col items-center py-12">
             <div className="h-16 w-16 bg-primary/10 rounded-full flex items-center justify-center mb-4">
-              <Check className="h-8 w-8 text-primary" />
+              <Check className="h-8 w-8 text-stat-blue" />
             </div>
             <h2 className="text-lg font-semibold mb-2">Bedankt!</h2>
             <p className="text-sm text-muted-foreground text-center">Je gegevens zijn succesvol ingediend. Je kunt dit venster sluiten.</p>
@@ -476,7 +476,7 @@ const Onboarding = () => {
       <div className="min-h-screen bg-background py-8 px-4">
         <div className="max-w-lg mx-auto space-y-6">
           <div className="text-center">
-            <FileCheck className="h-10 w-10 text-primary mx-auto mb-3" />
+            <FileCheck className="h-10 w-10 text-stat-blue mx-auto mb-3" />
             <h1 className="text-2xl font-bold">Onboarding</h1>
             <p className="text-sm text-muted-foreground mt-1">Vul je persoonlijke gegevens in om je onboarding af te ronden</p>
           </div>
@@ -565,7 +565,7 @@ const Onboarding = () => {
     <div className="min-h-screen bg-background py-8 px-4">
       <div className="max-w-lg mx-auto space-y-6">
         <div className="text-center">
-          <FileCheck className="h-10 w-10 text-primary mx-auto mb-3" />
+          <FileCheck className="h-10 w-10 text-stat-blue mx-auto mb-3" />
           <h1 className="text-2xl font-bold">Onboarding</h1>
           <p className="text-sm text-muted-foreground mt-1">Vul je gegevens in om je onboarding af te ronden</p>
         </div>

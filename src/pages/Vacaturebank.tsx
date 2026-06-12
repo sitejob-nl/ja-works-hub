@@ -1371,7 +1371,7 @@ const Vacaturebank = () => {
 
             {unmatchedJobs.length === 0 && (
               <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
-                <p className="text-sm text-primary">✓ Alle vacatures worden automatisch aan de juiste opdrachtgever gekoppeld.</p>
+                <p className="text-sm text-stat-blue">✓ Alle vacatures worden automatisch aan de juiste opdrachtgever gekoppeld.</p>
               </div>
             )}
 
@@ -1558,7 +1558,7 @@ const Vacaturebank = () => {
                       {detailJob.ai_hiring_manager_email && (
                         <div className="flex justify-between gap-4">
                           <span className="text-muted-foreground">Email</span>
-                          <a href={`mailto:${detailJob.ai_hiring_manager_email}`} className="text-primary hover:underline flex items-center gap-1">
+                          <a href={`mailto:${detailJob.ai_hiring_manager_email}`} className="hover:underline flex items-center gap-1">
                             <Mail className="h-3 w-3" /> {detailJob.ai_hiring_manager_email}
                           </a>
                         </div>
@@ -1584,7 +1584,7 @@ const Vacaturebank = () => {
                     )}
                     <DetailField label="Website" value={
                       detailJob.organization_url ? (
-                        <a href={detailJob.organization_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline truncate max-w-[200px]">
+                        <a href={detailJob.organization_url} target="_blank" rel="noopener noreferrer" className="hover:underline truncate max-w-[200px]">
                           {detailJob.organization_url}
                         </a>
                       ) : null
@@ -1606,7 +1606,7 @@ const Vacaturebank = () => {
                     {detailJob.linkedin_org_url && (
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">LinkedIn</span>
-                        <a href={detailJob.linkedin_org_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline text-xs">
+                        <a href={detailJob.linkedin_org_url} target="_blank" rel="noopener noreferrer" className="hover:underline text-xs">
                           Profiel openen <ExternalLink className="h-3 w-3 inline" />
                         </a>
                       </div>
@@ -1655,7 +1655,7 @@ const Vacaturebank = () => {
                     {detailJob.url && (
                       <div className="flex justify-between items-center">
                         <span className="text-muted-foreground">Originele URL</span>
-                        <a href={detailJob.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline flex items-center gap-1 text-xs">
+                        <a href={detailJob.url} target="_blank" rel="noopener noreferrer" className="hover:underline flex items-center gap-1 text-xs">
                           Openen <ExternalLink className="h-3 w-3" />
                         </a>
                       </div>

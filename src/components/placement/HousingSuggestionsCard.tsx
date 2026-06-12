@@ -72,7 +72,7 @@ const HousingSuggestionsCard = ({ suggestions, candidateId, startDate, onAssigne
               <div className="font-medium">{s.unitName} — {s.propertyName}</div>
               <div className="text-xs text-muted-foreground flex items-center gap-2 mt-0.5 flex-wrap">
                 {s.distanceKm != null && (
-                  <span className="flex items-center gap-0.5 text-primary font-medium">
+                  <span className="flex items-center gap-0.5 text-stat-blue font-medium">
                     <Navigation className="h-3 w-3" /> {s.distanceKm} km{s.durationMin != null && ` · ${s.durationMin} min`}
                   </span>
                 )}

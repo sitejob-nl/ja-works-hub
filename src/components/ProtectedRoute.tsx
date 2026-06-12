@@ -29,7 +29,7 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
           </p>
           <button
             onClick={signOut}
-            className="text-sm text-primary hover:underline"
+            className="text-sm hover:underline"
           >
             Uitloggen
           </button>

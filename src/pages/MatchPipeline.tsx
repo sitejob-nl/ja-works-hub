@@ -337,7 +337,7 @@ const MatchPipeline = () => {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <GitCompareArrows className="h-6 w-6 text-primary" />
+          <GitCompareArrows className="h-6 w-6 text-stat-blue" />
           <h1 className="text-2xl font-bold">Match Pipeline</h1>
           <Badge variant="secondary" className="ml-2">{filtered.length} matches</Badge>
         </div>

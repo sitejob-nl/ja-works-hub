@@ -63,7 +63,7 @@ class ErrorBoundary extends Component<Props, State> {
             <p className="text-xs text-destructive font-mono mb-4">{this.state.error?.message}</p>
             <button
               onClick={() => window.location.reload()}
-              className="text-sm text-primary hover:underline"
+              className="text-sm hover:underline"
             >
               Pagina vernieuwen
             </button>

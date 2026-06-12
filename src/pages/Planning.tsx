@@ -193,7 +193,7 @@ const Planning = () => {
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: 'Ingepland deze week', value: stats.scheduled, icon: Users, color: 'text-primary' },
+          { label: 'Ingepland deze week', value: stats.scheduled, icon: Users, color: 'text-stat-blue' },
           { label: 'Niet ingepland', value: stats.unscheduled, icon: Users, color: 'text-orange-500' },
           { label: 'Openstaande vacatures', value: stats.openVac, icon: Briefcase, color: 'text-blue-500' },
           { label: 'Gem. uurtarief', value: formatEUR(stats.avgRate), icon: DollarSign, color: 'text-emerald-500' },
@@ -277,7 +277,7 @@ const Planning = () => {
                     return (
                       <TableRow key={employee?.id}>
                         <TableCell className="font-medium sticky left-0 bg-card z-10">
-                          <button className="text-left hover:text-primary transition-colors" onClick={() => navigate(`/kandidaten/${empPlacements[0]?.candidate_id ?? employee?.id}`)}>
+                          <button className="text-left hover:text-stat-blue transition-colors" onClick={() => navigate(`/kandidaten/${empPlacements[0]?.candidate_id ?? employee?.id}`)}>
                             {empName}
                           </button>
                         </TableCell>
@@ -333,12 +333,12 @@ const Planning = () => {
                       return (
                         <TableRow key={p.id}>
                           <TableCell>
-                            <button className="font-medium hover:text-primary transition-colors" onClick={() => navigate(`/kandidaten/${p.candidate_id}`)}>
+                            <button className="font-medium hover:text-stat-blue transition-colors" onClick={() => navigate(`/kandidaten/${p.candidate_id}`)}>
                               {cand?.first_name} {cand?.last_name}
                             </button>
                           </TableCell>
                           <TableCell>
-                            <button className="hover:text-primary transition-colors" onClick={() => navigate(`/opdrachtgevers/${p.company_id}`)}>
+                            <button className="hover:text-stat-blue transition-colors" onClick={() => navigate(`/opdrachtgevers/${p.company_id}`)}>
                               {p.companies?.name}
                             </button>
                           </TableCell>
@@ -565,7 +565,7 @@ const NewPlacementSheet = ({ open, onClose, orgId, userId }: { open: boolean; on
             <>
               <div className="p-3 bg-muted rounded-md text-sm flex items-center justify-between">
                 <span><strong>{selectedEmployee.candidates?.first_name} {selectedEmployee.candidates?.last_name}</strong></span>
-                <button className="text-primary text-xs hover:underline" onClick={() => setStep(1)}>Wijzig</button>
+                <button className="text-stat-blue text-xs hover:underline" onClick={() => setStep(1)}>Wijzig</button>
               </div>
               <div>
                 <Label>Opdrachtgever *</Label>

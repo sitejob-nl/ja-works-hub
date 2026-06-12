@@ -136,7 +136,7 @@ export default function FilterPreviewSheet({
                 {alreadyInPool > 0 && ` (${alreadyInPool} al in pool)`}
               </span>
               {newCandidates.length > 0 && (
-                <button onClick={selectAll} className="text-primary hover:underline text-xs">
+                <button onClick={selectAll} className="hover:underline text-xs">
                   {selected.size === newCandidates.length ? 'Deselecteer alles' : 'Selecteer alles'}
                 </button>
               )}

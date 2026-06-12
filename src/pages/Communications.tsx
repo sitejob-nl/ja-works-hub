@@ -331,7 +331,7 @@ const Communications = () => {
                         {link ? (
                           <a
                             href={link}
-                            className="text-primary hover:underline"
+                            className="hover:underline"
                             onClick={(e) => e.stopPropagation()}
                           >
                             {getRecipientName(item)}

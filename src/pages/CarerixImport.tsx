@@ -176,7 +176,7 @@ export default function CarerixImport() {
           <p className="text-muted-foreground">
             Als die scope ontbreekt, werkt de basisverbinding nog wel, maar blijven de rijke runners overslaan.
             Gebruik dan tijdelijk de CSV-wizard via{' '}
-            <a href="/importeren" className="text-primary underline underline-offset-2">
+            <a href="/importeren" className="text-stat-blue underline underline-offset-2">
               Importeren
             </a>
             .

@@ -112,7 +112,7 @@ const AiAnalysisCard = ({ analysis }: { analysis: AiAnalysis }) => {
         <Card className="p-5 space-y-3 border-l-4 border-l-primary">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Star className="h-4 w-4 text-primary" />
+              <Star className="h-4 w-4 text-stat-blue" />
               <h3 className="font-medium">AI Samenvatting</h3>
             </div>
             {analysis.samenvatting.plaatsbaarheid_score != null && (

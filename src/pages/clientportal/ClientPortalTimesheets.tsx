@@ -234,7 +234,7 @@ const ClientPortalTimesheets = () => {
         <div className="text-center">
           <p className="text-sm font-medium">{weekLabel}</p>
           {weekOffset !== 0 && (
-            <button onClick={() => setWeekOffset(0)} className="text-xs text-primary hover:underline">Deze week</button>
+            <button onClick={() => setWeekOffset(0)} className="text-xs hover:underline">Deze week</button>
           )}
         </div>
         <Button variant="ghost" size="icon" onClick={() => setWeekOffset(w => w + 1)}>

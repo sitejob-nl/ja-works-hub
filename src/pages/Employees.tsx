@@ -130,7 +130,7 @@ const Employees = () => {
                   return (
                     <TableRow key={c.id} className={i % 2 === 1 ? 'bg-background' : ''}>
                       <TableCell>
-                        <Link to={`/kandidaten/${c.id}`} className="font-medium text-foreground hover:text-primary transition-colors">
+                        <Link to={`/kandidaten/${c.id}`} className="font-medium text-foreground hover:text-stat-blue transition-colors">
                           {c.first_name} {c.last_name}
                         </Link>
                       </TableCell>

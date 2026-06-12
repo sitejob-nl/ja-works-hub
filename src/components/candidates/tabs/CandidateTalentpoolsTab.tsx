@@ -116,7 +116,7 @@ const CandidateTalentpoolsTab = ({ candidateId }: CandidateTalentpoolsTabProps) 
                     <span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: pool.color }} />
                   )}
                   <div className="min-w-0">
-                    <Link to={`/talentpools/${pool.id}`} className="text-sm font-medium hover:text-primary transition-colors">
+                    <Link to={`/talentpools/${pool.id}`} className="text-sm font-medium hover:text-stat-blue transition-colors">
                       {pool.name}
                     </Link>
                     {pool.description && (

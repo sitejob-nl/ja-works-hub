@@ -21,7 +21,6 @@ import PlacementSheet from '@/components/vacancies/PlacementSheet';
 import MatchFeedbackDialog from '@/components/matches/MatchFeedbackDialog';
 import MatchInspectorDialog from '@/components/matches/MatchInspectorDialog';
 import MatchOutboundDialog from '@/components/matches/MatchOutboundDialog';
-import CandidateMatchContext from '@/components/matches/CandidateMatchContext';
 import { type MatchBreakdown } from '@/lib/matching';
 import { MATCH_STATUS_STEPS, getNextMatchStatus, isTerminalMatchStatus, matchStatusNeedsFeedbackDialog } from '@/lib/match-status';
 import { scoreBadgeClass } from '@/lib/match-presenters';
@@ -487,7 +486,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
                   onClick={() => setDetail({ name: `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim(), breakdown: bd, quality: bd?.candidateQuality ?? null, candidate: c })}
                 >
                   <div className="flex items-center gap-2 min-w-0 flex-wrap">
-                    <Link to={`/kandidaten/${c.id}`} onClick={(e) => e.stopPropagation()} className="font-medium text-sm hover:text-primary truncate">{c.first_name} {c.last_name}</Link>
+                    <Link to={`/kandidaten/${c.id}`} onClick={(e) => e.stopPropagation()} className="font-medium text-sm hover:text-stat-blue truncate">{c.first_name} {c.last_name}</Link>
                     <Badge variant="outline" className="text-[10px] px-1.5 py-0 flex items-center gap-1 flex-shrink-0">
                       <span className={cn('w-1.5 h-1.5 rounded-full', STATUS_COLOR[m.status] ?? 'bg-slate-400')} /> {STATUS_LABEL[m.status] ?? m.status}
                     </Badge>
@@ -508,7 +507,6 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
                     </p>
                   )}
                   {bd?.missing?.length > 0 && <p className="text-[11px] text-amber-700 mt-1 line-clamp-1">{bd.missing[0]}</p>}
-                  <CandidateMatchContext candidate={c} compact className="mt-2" />
                 </div>
                 <div className="flex flex-col items-end gap-1 flex-shrink-0">
                   <div className="flex items-center gap-1">
@@ -620,7 +618,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
                   <Checkbox className="mt-1 flex-shrink-0" checked={checked} onCheckedChange={() => toggleShortlist(c.id)} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 min-w-0 flex-wrap">
-                      <Link to={`/kandidaten/${c.id}`} className="font-medium text-sm hover:text-primary truncate">{c.first_name} {c.last_name}</Link>
+                      <Link to={`/kandidaten/${c.id}`} className="font-medium text-sm hover:text-stat-blue truncate">{c.first_name} {c.last_name}</Link>
                       <Badge className={cn('text-[10px] px-1.5 py-0 flex-shrink-0', scoreBadgeClass[c._vacancyScore.label as MatchBreakdown['label']])}>
                         {c._vacancyScore.matchPercent}% match
                       </Badge>
@@ -637,7 +635,6 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
                     {c._vacancyScore.missing.length > 0 && (
                       <p className="text-[11px] text-amber-700 mt-1 line-clamp-1">{c._vacancyScore.missing[0]}</p>
                     )}
-                    <CandidateMatchContext candidate={candidateWithContext} compact className="mt-2" />
                   </div>
                   <div className="flex flex-col items-end gap-1 flex-shrink-0">
                     <Button size="sm" variant="outline" onClick={() => proposeMutation.mutate(c)} disabled={proposeMutation.isPending}>

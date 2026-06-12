@@ -109,7 +109,7 @@ const UitstroomRepeatersTable = ({ terminatedPlacements, allPlacements }: Uitstr
                     if (r.candidateId) navigate(`/kandidaten/${r.candidateId}`);
                   }}
                 >
-                  <td className="py-2 font-medium text-primary">{r.name}</td>
+                  <td className="py-2 font-medium text-stat-blue">{r.name}</td>
                   <td className="py-2 text-right text-muted-foreground">{r.totalPlacements}</td>
                   <td className="py-2 text-right font-medium text-destructive">{r.terminatedCount}</td>
                   <td className="py-2">

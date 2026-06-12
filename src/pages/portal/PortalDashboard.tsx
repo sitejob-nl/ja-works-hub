@@ -209,7 +209,7 @@ const PortalDashboard = () => {
       {placements.length > 0 && (
         <div className="bg-card rounded-xl border p-5">
           <div className="flex items-center gap-2 mb-2">
-            <MapPin className="h-5 w-5 text-primary" />
+            <MapPin className="h-5 w-5 text-stat-blue" />
             <h2 className="font-medium">Mijn plaatsing</h2>
           </div>
           <div className="text-sm space-y-1">
@@ -229,7 +229,7 @@ const PortalDashboard = () => {
       {recentNotifications.length > 0 && (
         <div className="bg-card rounded-xl border p-5">
           <div className="flex items-center gap-2 mb-2">
-            <Bell className="h-5 w-5 text-primary" />
+            <Bell className="h-5 w-5 text-stat-blue" />
             <h2 className="font-medium">Recente meldingen</h2>
           </div>
           <ul className="space-y-2">
@@ -250,7 +250,7 @@ const PortalDashboard = () => {
       <div className="bg-card rounded-xl border p-5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Clock className="h-5 w-5 text-primary" />
+            <Clock className="h-5 w-5 text-stat-blue" />
             <h2 className="font-medium">Mijn uren deze week</h2>
           </div>
           <span className="text-2xl font-bold">{totalHours}u</span>
@@ -332,7 +332,7 @@ const PortalDashboard = () => {
       {housing && (
         <div className="bg-card rounded-xl border p-5">
           <div className="flex items-center gap-2 mb-2">
-            <Building className="h-5 w-5 text-primary" />
+            <Building className="h-5 w-5 text-stat-blue" />
             <h2 className="font-medium">Mijn huisvesting</h2>
           </div>
           <div className="text-sm space-y-1">
@@ -351,7 +351,7 @@ const PortalDashboard = () => {
       {vehicle && (
         <div className="bg-card rounded-xl border p-5">
           <div className="flex items-center gap-2 mb-2">
-            <Car className="h-5 w-5 text-primary" />
+            <Car className="h-5 w-5 text-stat-blue" />
             <h2 className="font-medium">Mijn auto</h2>
           </div>
           <div className="text-sm">

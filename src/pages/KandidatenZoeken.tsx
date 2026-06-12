@@ -521,7 +521,7 @@ const KandidatenZoeken = () => {
                     href={result.url as string}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                    className="inline-flex items-center gap-1 text-xs hover:underline"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <ExternalLink className="h-3 w-3" />
@@ -590,7 +590,7 @@ const KandidatenZoeken = () => {
                     href={detailResult.url as string}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline break-all"
+                    className="inline-flex items-center gap-1.5 text-sm hover:underline break-all"
                   >
                     <Link className="h-3.5 w-3.5 shrink-0" />
                     {detailResult.url as string}

@@ -363,7 +363,7 @@ const OnboardingFormSettings = () => {
                               <GripVertical className="h-3 w-3 text-muted-foreground" />
                               <span className="text-sm flex-1">{field.label}</span>
                               <Badge variant="outline" className="text-[10px]">{field.field_type}</Badge>
-                              {field.is_required && <Badge className="text-[10px] bg-primary/10 text-primary border-0">Verplicht</Badge>}
+                              {field.is_required && <Badge className="text-[10px] bg-primary/10 text-stat-blue border-0">Verplicht</Badge>}
                               {field.maps_to_column && (
                                 <Badge variant="secondary" className="text-[10px]">→ {field.maps_to_column}</Badge>
                               )}

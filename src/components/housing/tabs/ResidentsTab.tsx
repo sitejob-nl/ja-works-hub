@@ -607,7 +607,7 @@ const ResidentsTab = ({ property }: { property: any }) => {
                 return (
                   <TableRow key={a.id}>
                     <TableCell>
-                      <Link to={`/medewerkers/${a.candidates?.id}`} className="font-medium text-foreground hover:text-primary transition-colors">
+                      <Link to={`/medewerkers/${a.candidates?.id}`} className="font-medium text-foreground hover:text-stat-blue transition-colors">
                         {a.candidates?.first_name} {a.candidates?.last_name}
                       </Link>
                     </TableCell>

@@ -109,7 +109,7 @@ const MatchCard = ({
           <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0 space-y-1">
               <div className="flex flex-wrap items-center gap-2">
-                <EntityLink type="candidate" id={candidate?.id} className="font-medium text-foreground hover:text-primary">
+                <EntityLink type="candidate" id={candidate?.id} className="font-medium text-foreground hover:text-stat-blue">
                   <User className="mr-1 inline h-3.5 w-3.5" />
                   {fullName(candidate)}
                 </EntityLink>
@@ -130,12 +130,12 @@ const MatchCard = ({
               </div>
 
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                <EntityLink type="vacancy" id={vacancy?.id} className="inline-flex items-center gap-1 text-muted-foreground hover:text-primary">
+                <EntityLink type="vacancy" id={vacancy?.id} className="inline-flex items-center gap-1 text-muted-foreground hover:text-stat-blue">
                   <Briefcase className="h-3.5 w-3.5" />
                   {vacancy?.title ?? 'Vacature onbekend'}
                 </EntityLink>
                 {vacancy?.company_id || vacancy?.company_name ? (
-                  <EntityLink type="company" id={vacancy?.company_id} className="text-muted-foreground hover:text-primary">
+                  <EntityLink type="company" id={vacancy?.company_id} className="text-muted-foreground hover:text-stat-blue">
                     {vacancy?.company_name ?? 'Opdrachtgever onbekend'}
                   </EntityLink>
                 ) : null}

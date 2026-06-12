@@ -64,7 +64,7 @@ export function MailButton({ email, subject, asText, label, className, stopPropa
         <button
           type="button"
           onClick={openCompose}
-          className={cn('text-primary hover:underline underline-offset-2', className)}
+          className={cn('hover:underline underline-offset-2', className)}
         >
           {label ?? email}
         </button>

@@ -77,7 +77,7 @@ const Login = () => {
 
         <p className="text-center text-sm text-muted-foreground mt-6">
           Nog geen account?{' '}
-          <a href="/registreren" className="text-primary hover:underline font-medium">
+          <a href="/registreren" className="hover:underline font-medium">
             Registreer je bedrijf
           </a>
         </p>

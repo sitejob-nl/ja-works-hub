@@ -76,7 +76,7 @@ const DUMMY_DATA: Record<string, string> = {
 function replaceVariables(html: string): string {
   let result = html;
   Object.entries(DUMMY_DATA).forEach(([key, val]) => {
-    result = result.replace(new RegExp(key.replace(/[{}]/g, '\\$&'), 'g'), `<span class="text-primary font-medium">${val}</span>`);
+    result = result.replace(new RegExp(key.replace(/[{}]/g, '\\$&'), 'g'), `<span class="text-stat-blue font-medium">${val}</span>`);
   });
   return result;
 }

@@ -367,7 +367,7 @@ const EmailTemplateFlowOverview = () => {
         <Card>
           <CardContent className="p-4 flex items-center gap-3">
             <div className="h-9 w-9 rounded-md bg-primary/10 flex items-center justify-center">
-              <Send className="h-4 w-4 text-primary" />
+              <Send className="h-4 w-4 text-stat-blue" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Verzendkanaal</p>

@@ -315,7 +315,7 @@ const TerminationReasonsSettings = () => {
                                 type="button"
                                 onClick={() => saveEditing(r)}
                                 disabled={!editReason.trim() || updateReasonMutation.isPending}
-                                className="p-1 text-muted-foreground hover:text-primary disabled:opacity-50"
+                                className="p-1 text-muted-foreground hover:text-stat-blue disabled:opacity-50"
                                 title="Opslaan"
                               >
                                 <Check className="h-3.5 w-3.5" />
@@ -340,7 +340,7 @@ const TerminationReasonsSettings = () => {
                               <button
                                 type="button"
                                 onClick={() => startEditing(r)}
-                                className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-muted-foreground hover:text-primary"
+                                className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-muted-foreground hover:text-stat-blue"
                                 title="Bewerken"
                               >
                                 <Pencil className="h-3.5 w-3.5" />

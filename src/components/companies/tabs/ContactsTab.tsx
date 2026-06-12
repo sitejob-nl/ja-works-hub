@@ -203,7 +203,7 @@ const ContactsTab = ({ companyId }: { companyId: string }) => {
           </div>
         </div>
         {!showExtra && (
-          <button className="text-xs text-primary mt-1 ml-2 hover:underline" onClick={() => setShowExtra(true)}>+ LinkedIn &amp; notities</button>
+          <button className="text-xs text-stat-blue mt-1 ml-2 hover:underline" onClick={() => setShowExtra(true)}>+ LinkedIn &amp; notities</button>
         )}
       </TableCell>
     </TableRow>
@@ -245,12 +245,12 @@ const ContactsTab = ({ companyId }: { companyId: string }) => {
               ) : (
                 <TableRow key={c.id} className="cursor-pointer" onClick={() => startEdit(c)}>
                   <TableCell className="font-medium">
-                    <Link to={`/contacten/${c.id}`} className="text-foreground hover:text-primary transition-colors" onClick={(e) => e.stopPropagation()}>
+                    <Link to={`/contacten/${c.id}`} className="text-foreground hover:text-stat-blue transition-colors" onClick={(e) => e.stopPropagation()}>
                       {c.first_name || c.full_name?.split(' ')[0] || '—'}
                     </Link>
                   </TableCell>
                   <TableCell>
-                    <Link to={`/contacten/${c.id}`} className="text-foreground hover:text-primary transition-colors" onClick={(e) => e.stopPropagation()}>
+                    <Link to={`/contacten/${c.id}`} className="text-foreground hover:text-stat-blue transition-colors" onClick={(e) => e.stopPropagation()}>
                       {c.last_name || '—'}
                     </Link>
                   </TableCell>
