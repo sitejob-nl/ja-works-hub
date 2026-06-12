@@ -176,9 +176,14 @@ const CandidateVacancyMatchesTab = ({ candidateId, candidate }: { candidateId: s
           return (
           <Card key={r.vacancy.id} className="p-3">
             <div className="flex items-start gap-3">
-              <div className="min-w-0 flex-1">
+              <div
+                className="min-w-0 flex-1 cursor-pointer"
+                role="button"
+                tabIndex={0}
+                onClick={() => setDetail(r)}
+              >
                 <div className="flex items-center gap-2 min-w-0 flex-wrap">
-                  <Link to={`/vacatures/${r.vacancy.id}`} className="font-medium text-sm hover:text-primary truncate">{r.vacancy.title}</Link>
+                  <Link to={`/vacatures/${r.vacancy.id}`} onClick={(e) => e.stopPropagation()} className="font-medium text-sm hover:text-primary truncate">{r.vacancy.title}</Link>
                   <Badge className={cn('text-[10px] px-1.5 py-0 flex-shrink-0', scoreBadgeClass[r.label as MatchBreakdown['label']])}>
                     {r.score}% match
                   </Badge>

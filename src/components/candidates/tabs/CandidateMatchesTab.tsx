@@ -9,7 +9,7 @@ import { AlertTriangle, Mail, UserPlus } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import MatchCard from '@/components/matches/MatchCard';
+import MatchRow from '@/components/matches/MatchRow';
 import MatchFeedbackDialog from '@/components/matches/MatchFeedbackDialog';
 import MatchInspectorDialog from '@/components/matches/MatchInspectorDialog';
 import { matchStatusNeedsFeedbackDialog } from '@/lib/match-status';
@@ -168,7 +168,7 @@ const CandidateMatchesTab = ({ candidateId, candidate }: { candidateId: string; 
           const vacancy = m.vacancies as any;
           const company = vacancy?.companies as any;
           return (
-            <MatchCard
+            <MatchRow
               key={m.id}
               id={m.id}
               status={m.status}
