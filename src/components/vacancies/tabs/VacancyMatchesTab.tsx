@@ -480,9 +480,14 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
             <Card key={m.id} className={cn('p-3', checked && 'ring-1 ring-primary')}>
               <div className="flex items-start gap-3">
                 <Checkbox className="mt-1 flex-shrink-0" checked={checked} onCheckedChange={() => toggleMatch(m.id)} />
-                <div className="min-w-0 flex-1">
+                <div
+                  className="min-w-0 flex-1 cursor-pointer"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setDetail({ name: `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim(), breakdown: bd, quality: bd?.candidateQuality ?? null, candidate: c })}
+                >
                   <div className="flex items-center gap-2 min-w-0 flex-wrap">
-                    <Link to={`/kandidaten/${c.id}`} className="font-medium text-sm hover:text-primary truncate">{c.first_name} {c.last_name}</Link>
+                    <Link to={`/kandidaten/${c.id}`} onClick={(e) => e.stopPropagation()} className="font-medium text-sm hover:text-primary truncate">{c.first_name} {c.last_name}</Link>
                     <Badge variant="outline" className="text-[10px] px-1.5 py-0 flex items-center gap-1 flex-shrink-0">
                       <span className={cn('w-1.5 h-1.5 rounded-full', STATUS_COLOR[m.status] ?? 'bg-slate-400')} /> {STATUS_LABEL[m.status] ?? m.status}
                     </Badge>
