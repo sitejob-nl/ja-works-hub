@@ -50,6 +50,7 @@ import {
   mapCandidate,
   mapCompany,
   mapContact,
+  phoneKey,
   splitCREmployeeProfileNotes,
 } from './mappers.ts';
 
@@ -130,14 +131,27 @@ const ENRICH_FIELDS = [
   'employee_number',
   'email',
   'phone',
+  'phone_nl',
   'date_of_birth',
   'nationality',
   'languages',
   'address_street',
   'address_city',
   'address_postal',
+  'address_country',
+  'birth_country',
   'notes',
 ];
+
+// Velden die naast NULL óók bij hun kolom-default als "leeg" gelden: de
+// migratie-default 'NL' is geen echte data en mag door Carerix overschreven
+// worden. 'Dossier' is vervuiling van de oude label-fallback-bug (zie
+// mappers.ts dataNodeValue). Geldt alleen voor Carerix-gemapte kandidaten.
+const ENRICH_DEFAULT_AS_BLANK: Record<string, unknown[]> = {
+  address_country: ['NL'],
+  birth_country: ['NL'],
+  nationality: ['Dossier'],
+};
 
 function isBlankValue(value: unknown): boolean {
   if (value === null || value === undefined) return true;
@@ -146,13 +160,24 @@ function isBlankValue(value: unknown): boolean {
   return false;
 }
 
+function isEnrichableValue(field: string, value: unknown): boolean {
+  if (isBlankValue(value)) return true;
+  const defaults = ENRICH_DEFAULT_AS_BLANK[field];
+  return Boolean(defaults?.includes(value));
+}
+
 async function maybeEnrichSensitiveCandidate(
   ctx: RunnerContext,
   candidateId: string,
   payload: Record<string, unknown>,
+  currentBsn: unknown,
 ): Promise<{ updated: boolean; error: string | null }> {
   const bsn = payload.bsn;
   if (typeof bsn !== 'string' || bsn.trim() === '') {
+    return { updated: false, error: null };
+  }
+  // Nooit een bestaand (handmatig ingevoerd) BSN overschrijven.
+  if (!isBlankValue(currentBsn)) {
     return { updated: false, error: null };
   }
 
@@ -178,7 +203,7 @@ async function bulkEnrichCandidates(
   const ids = items.map((i) => i.candidateId);
   const { data: existing, error: selErr } = await ctx.admin
     .from('candidates')
-    .select(`id,${ENRICH_FIELDS.join(',')}`)
+    .select(`id,bsn,has_dutch_address,${ENRICH_FIELDS.join(',')}`)
     .in('id', ids);
 
   if (selErr || !existing) {
@@ -200,10 +225,37 @@ async function bulkEnrichCandidates(
     for (const field of ENRICH_FIELDS) {
       const c = current[field];
       const i = item.payload[field];
-      if (isBlankValue(c) && !isBlankValue(i)) fieldUpdates[field] = i;
+      if (isEnrichableValue(field, c) && !isBlankValue(i)) fieldUpdates[field] = i;
     }
 
-    const sensitiveUpdate = maybeEnrichSensitiveCandidate(ctx, item.candidateId, item.payload);
+    // Telefoonpaar-correctie: heeft Carerix een NL+buitenlands paar en staat
+    // het huidige `phone` op één van beide nummers, dan beide kolommen
+    // gelijktrekken (phone = buitenlands, phone_nl = NL). Eerdere imports
+    // bewaarden maar één van de twee nummers. Handmatig gewijzigde nummers
+    // (geen match met het paar) blijven onaangeraakt.
+    const payloadPhone = item.payload.phone;
+    const payloadPhoneNl = item.payload.phone_nl;
+    if (typeof payloadPhone === 'string' && typeof payloadPhoneNl === 'string') {
+      const currentPhone = typeof current.phone === 'string' ? current.phone : '';
+      const pairKeys = [phoneKey(payloadPhone), phoneKey(payloadPhoneNl)];
+      if (currentPhone && pairKeys.includes(phoneKey(currentPhone))) {
+        if (phoneKey(currentPhone) !== phoneKey(payloadPhone)) fieldUpdates.phone = payloadPhone;
+        if (isBlankValue(current.phone_nl)) fieldUpdates.phone_nl = payloadPhoneNl;
+      }
+    }
+
+    // Eigen huisvesting (NL-accommodatie, voedt matching-bonus): alleen
+    // false → true zetten; een handmatige `true` nooit terugdraaien.
+    if (item.payload.has_dutch_address === true && current.has_dutch_address !== true) {
+      fieldUpdates.has_dutch_address = true;
+    }
+
+    const sensitiveUpdate = maybeEnrichSensitiveCandidate(
+      ctx,
+      item.candidateId,
+      item.payload,
+      current.bsn,
+    );
 
     if (Object.keys(fieldUpdates).length === 0) {
       updatePromises.push(

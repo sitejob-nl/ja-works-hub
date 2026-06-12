@@ -75,6 +75,10 @@ export function richSchemaConnectionTestQuery(): string {
 export function crEmployeesQuery(page: number, size: number, qualifier?: string): string {
   // Uitgebreid met home*-adresvelden, mobileNumber/businessEmail. Carerix slaat
   // adres/telefoon op de TOP-level CREmployee, niet in subobjects.
+  // mobileNumberBusiness: bij arbeidsmigranten staat hier vaak het tweede
+  // (NL- of buitenlandse) nummer. toNationalityNode/toHomeCountryNode/
+  // toBirthCountryNode/toStatusNode: introspectie 2026-06-12 bevestigt dat deze
+  // in de JA Werkt-tenant bestaan en gevuld zijn (nationality als scalar bestaat NIET).
   return `query {
     crEmployeePage(${pageable(page, size)}${NORESTRICT}${qualifierClause(qualifier)}) {
       totalElements last
@@ -82,12 +86,14 @@ export function crEmployeesQuery(page: number, size: number, qualifier?: string)
         _id
         firstName
         lastName
+        lastNamePrefix
         fullFirstNames
         emailAddress
         emailAddressBusiness
         phoneNumber
         mobileNumber
         phoneNumberBusiness
+        mobileNumberBusiness
         notes
         additionalInfo
         birthDate
@@ -96,7 +102,11 @@ export function crEmployeesQuery(page: number, size: number, qualifier?: string)
         adminSofiNumber
         systemLanguage
         toLanguageNode { _id value label tag }
+        toNationalityNode { _id value label tag }
+        toHomeCountryNode { _id value label tag }
+        toBirthCountryNode { _id value label tag }
         toIdentificationCountryNode { _id value label tag }
+        toStatusNode { _id value }
         homeStreet
         homeNumber
         homeNumberSuffix

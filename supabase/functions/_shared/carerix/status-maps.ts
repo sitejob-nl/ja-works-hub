@@ -7,14 +7,18 @@ const candidateStatusMap = new Map<string, string>([
   ['in progress', 'in_behandeling'],
   ['beschikbaar', 'beschikbaar'],
   ['available', 'beschikbaar'],
+  // JA Werkt Carerix-tenant statussen (toStatusNode.value, scan 2026-06-12):
+  // "Nieuw" 1423× / "Werkzoekend" 475× / "Geplaatst" 86× / "Niet bemiddelbaar" 11×
+  ['werkzoekend', 'werkzoekend'],
+  ['niet bemiddelbaar', 'niet_beschikbaar'],
   ['geplaatst', 'geplaatst'],
   ['placed', 'geplaatst'],
   ['inactief', 'inactief'],
   ['inactive', 'inactief'],
-  ['niet beschikbaar', 'inactief'],
+  ['niet beschikbaar', 'niet_beschikbaar'],
   ['afgewezen', 'afgewezen'],
   ['rejected', 'afgewezen'],
-  ['uitgeschreven', 'inactief'],
+  ['uitgeschreven', 'uitgeschreven'],
   ['archived', 'inactief'],
 ]);
 

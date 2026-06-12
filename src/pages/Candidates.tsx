@@ -170,7 +170,7 @@ const Candidates = () => {
     queryFn: async () => {
       let query = supabase.from('candidates').select('*', { count: 'exact' });
       if (search) {
-        query = query.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,address_city.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`);
+        query = query.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,address_city.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%,phone_nl.ilike.%${search}%`);
       }
       if (cvSearch.trim()) {
         query = query.textSearch('cv_raw_text', cvSearch.trim(), { config: 'dutch' });

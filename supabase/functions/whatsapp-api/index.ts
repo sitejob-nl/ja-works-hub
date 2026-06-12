@@ -224,6 +224,46 @@ Deno.serve(async (req) => {
         break;
       }
 
+      case "download_media": {
+        // Twee stappen: media-URL ophalen, daarna de bytes zelf downloaden.
+        // De lookaside-URL van Meta vereist het access token, dus de browser
+        // kan dit niet rechtstreeks — we proxien de binary als base64.
+        if (!params.media_id) return jsonError("Veld 'media_id' is verplicht voor download_media", 400);
+
+        const metaRes = await fetch(`${META_API_BASE}/${params.media_id}`, { headers: authHeader });
+        const metaInfo = await metaRes.json();
+        if (!metaRes.ok || !metaInfo?.url) {
+          console.error("download_media: media-info ophalen mislukt:", metaInfo);
+          return jsonError(metaInfo?.error?.message ?? "Media-info ophalen mislukt", 502);
+        }
+
+        const MAX_MEDIA_BYTES = 15 * 1024 * 1024;
+        if (typeof metaInfo.file_size === "number" && metaInfo.file_size > MAX_MEDIA_BYTES) {
+          return jsonError("Bestand is te groot om te downloaden (max 15 MB)", 413);
+        }
+
+        const fileRes = await fetch(metaInfo.url, { headers: authHeader });
+        if (!fileRes.ok) {
+          return jsonError(`Media-download mislukt (${fileRes.status})`, 502);
+        }
+        const buffer = await fileRes.arrayBuffer();
+        if (buffer.byteLength > MAX_MEDIA_BYTES) {
+          return jsonError("Bestand is te groot om te downloaden (max 15 MB)", 413);
+        }
+
+        const bytesArr = new Uint8Array(buffer);
+        let binary = "";
+        const chunkSize = 0x8000;
+        for (let i = 0; i < bytesArr.length; i += chunkSize) {
+          binary += String.fromCharCode(...bytesArr.subarray(i, i + chunkSize));
+        }
+        return jsonOk({
+          base64: btoa(binary),
+          mime_type: metaInfo.mime_type ?? "application/octet-stream",
+          file_size: buffer.byteLength,
+        });
+      }
+
       case "delete_media": {
         if (!params.media_id) return jsonError("Veld 'media_id' is verplicht voor delete_media", 400);
         url = `${META_API_BASE}/${params.media_id}`;
