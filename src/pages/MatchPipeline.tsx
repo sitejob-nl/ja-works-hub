@@ -9,12 +9,11 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Bell, GitCompareArrows, Mail, Search } from 'lucide-react';
-import MatchCard from '@/components/matches/MatchCard';
+import MatchRow from '@/components/matches/MatchRow';
 import MatchFeedbackDialog from '@/components/matches/MatchFeedbackDialog';
 import MatchInspectorDialog from '@/components/matches/MatchInspectorDialog';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
 import { MATCH_STATUS_STEPS, isTerminalMatchStatus, matchStatusNeedsFeedbackDialog } from '@/lib/match-status';
 import type { MatchBreakdown } from '@/lib/matching';
 
@@ -99,6 +98,7 @@ const MatchPipeline = () => {
   const [search, setSearch] = useState('');
   const [vacancyFilter, setVacancyFilter] = useState('all');
   const [pipelineScope, setPipelineScope] = useState<PipelineScope>('active');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedMatchIds, setSelectedMatchIds] = useState<Set<string>>(new Set());
   const [feedbackRequest, setFeedbackRequest] = useState<{ matchIds: string[]; toStatus: string } | null>(null);
   const [feedbackReasonId, setFeedbackReasonId] = useState('');
@@ -238,15 +238,10 @@ const MatchPipeline = () => {
     onError: (error: any) => toast.error(error.message ?? 'Status wijzigen mislukt'),
   });
 
-  const onDragEnd = (result: DropResult) => {
-    const { draggableId, destination, source } = result;
-    if (!destination || destination.droppableId === source.droppableId) return;
-    changeStatus([draggableId], destination.droppableId);
-  };
-
   const setScope = (scope: PipelineScope) => {
     setPipelineScope(scope);
     setVacancyFilter('all');
+    setStatusFilter('all');
     setSelectedMatchIds(new Set());
   };
 
@@ -271,10 +266,13 @@ const MatchPipeline = () => {
     return true;
   });
 
-  const selectedVisibleMatches = filtered.filter((match) => selectedMatchIds.has(match.id));
+  // Statusfilter-chips bepalen wat zichtbaar is (i.p.v. kanban-kolommen).
+  const visible = statusFilter === 'all' ? filtered : filtered.filter((m: any) => m.status === statusFilter);
+
+  const selectedVisibleMatches = visible.filter((match) => selectedMatchIds.has(match.id));
   const selectedCount = selectedVisibleMatches.length;
-  const canToggleVisible = filtered.length > 0;
-  const allVisibleSelected = canToggleVisible && filtered.every((match) => selectedMatchIds.has(match.id));
+  const canToggleVisible = visible.length > 0;
+  const allVisibleSelected = canToggleVisible && visible.every((match) => selectedMatchIds.has(match.id));
 
   const toggleMatch = (matchId: string) => {
     setSelectedMatchIds((current) => {
@@ -289,9 +287,9 @@ const MatchPipeline = () => {
     setSelectedMatchIds((current) => {
       const next = new Set(current);
       if (allVisibleSelected) {
-        filtered.forEach((match) => next.delete(match.id));
+        visible.forEach((match) => next.delete(match.id));
       } else {
-        filtered.forEach((match) => next.add(match.id));
+        visible.forEach((match) => next.add(match.id));
       }
       return next;
     });
@@ -424,72 +422,70 @@ const MatchPipeline = () => {
       {isLoading ? (
         <div className="text-muted-foreground text-center py-12">Laden...</div>
       ) : (
-        <DragDropContext onDragEnd={onDragEnd}>
-          <div className="flex gap-3 overflow-x-auto pb-4">
-            {COLUMNS.map(col => (
-              <Droppable key={col.key} droppableId={col.key}>
-                {(provided, snapshot) => (
-                  <div
-                    ref={provided.innerRef}
-                    {...provided.droppableProps}
-                    className={cn(
-                      'flex-shrink-0 w-80 rounded-lg p-2 transition-colors',
-                      snapshot.isDraggingOver && 'bg-accent/50'
-                    )}
-                  >
-                    <div className="flex items-center gap-2 mb-3 px-1">
-                      <div className={cn('w-2 h-2 rounded-full', col.color)} />
-                      <span className="text-sm font-medium">{col.label}</span>
-                      <Badge variant="outline" className="text-xs ml-auto">{grouped[col.key].length}</Badge>
-                    </div>
-                    <div className="space-y-2 min-h-[200px]">
-                      {grouped[col.key].map((m: any, index: number) => (
-                        <Draggable key={m.id} draggableId={m.id} index={index}>
-                          {(provided, snapshot) => (
-                            <div
-                              ref={provided.innerRef}
-                              {...provided.draggableProps}
-                              {...provided.dragHandleProps}
-                              className={cn(snapshot.isDragging && 'opacity-90')}
-                            >
-                              <MatchCard
-                                id={m.id}
-                                status={m.status}
-                                candidate={m.candidates}
-                                vacancy={{
-                                  id: m.vacancies?.id,
-                                  title: m.vacancies?.title,
-                                  company_id: (m.vacancies?.companies as any)?.id,
-                                  company_name: (m.vacancies?.companies as any)?.name,
-                                }}
-                                sourceLabel={sourceLabel[m.source] ?? m.source}
-                                score={m.match_score}
-                                breakdown={m.match_breakdown}
-                                candidateQuality={m.match_breakdown?.candidateQuality ?? null}
-                                statusChangedAt={m.status_changed_at}
-                                createdAt={m.created_at}
-                                selected={selectedMatchIds.has(m.id)}
-                                onSelectChange={() => toggleMatch(m.id)}
-                                onStatusChange={(status) => changeStatus([m.id], status)}
-                                statusDisabled={statusMutation.isPending || bulkStatusMutation.isPending}
-                                onInspect={() => setDetail({
-                                  name: `${m.candidates?.first_name ?? ''} ${m.candidates?.last_name ?? ''}`.trim() || 'Kandidaat',
-                                  match: m,
-                                  breakdown: m.match_breakdown,
-                                })}
-                              />
-                            </div>
-                          )}
-                        </Draggable>
-                      ))}
-                      {provided.placeholder}
-                    </div>
-                  </div>
-                )}
-              </Droppable>
+        <>
+          {/* Statusfilter-chips per fase (i.p.v. kanban-kolommen) */}
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setStatusFilter('all')}
+              className={cn('rounded-full border px-3 py-1 text-sm transition-colors',
+                statusFilter === 'all' ? 'border-primary bg-primary/10 font-medium' : 'hover:bg-muted')}
+            >
+              Alle ({filtered.length})
+            </button>
+            {COLUMNS.map((col) => (
+              <button
+                key={col.key}
+                type="button"
+                onClick={() => setStatusFilter(col.key)}
+                className={cn('inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm transition-colors',
+                  statusFilter === col.key ? 'border-primary bg-primary/10 font-medium' : 'hover:bg-muted')}
+              >
+                <span className={cn('h-2 w-2 rounded-full', col.color)} />
+                {col.label} ({grouped[col.key].length})
+              </button>
             ))}
           </div>
-        </DragDropContext>
+
+          <div className="space-y-2">
+            {visible.map((m: any) => (
+              <MatchRow
+                key={m.id}
+                id={m.id}
+                status={m.status}
+                candidate={m.candidates}
+                vacancy={{
+                  id: m.vacancies?.id,
+                  title: m.vacancies?.title,
+                  company_id: (m.vacancies?.companies as any)?.id,
+                  company_name: (m.vacancies?.companies as any)?.name,
+                }}
+                sourceLabel={sourceLabel[m.source] ?? m.source}
+                score={m.match_score}
+                breakdown={m.match_breakdown}
+                candidateQuality={m.match_breakdown?.candidateQuality ?? null}
+                distanceKm={m.distance_km}
+                durationMin={m.duration_min}
+                statusChangedAt={m.status_changed_at}
+                createdAt={m.created_at}
+                selected={selectedMatchIds.has(m.id)}
+                onSelectChange={() => toggleMatch(m.id)}
+                onStatusChange={(status) => changeStatus([m.id], status)}
+                statusDisabled={statusMutation.isPending || bulkStatusMutation.isPending}
+                onInspect={() => setDetail({
+                  name: `${m.candidates?.first_name ?? ''} ${m.candidates?.last_name ?? ''}`.trim() || 'Kandidaat',
+                  match: m,
+                  breakdown: m.match_breakdown,
+                })}
+              />
+            ))}
+            {visible.length === 0 && (
+              <div className="rounded-lg border bg-card py-10 text-center text-sm text-muted-foreground">
+                {statusFilter === 'all' ? 'Geen matches in deze weergave.' : `Geen matches in "${COLUMNS.find(c => c.key === statusFilter)?.label ?? statusFilter}".`}
+              </div>
+            )}
+          </div>
+        </>
       )}
 
       <MatchInspectorDialog
