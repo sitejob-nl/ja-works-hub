@@ -9,7 +9,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { ChevronRight, MoreHorizontal, FileText, Link2, Copy, Check, MessageCircle, Mail, ClipboardCheck } from 'lucide-react';
+import { ChevronRight, MoreHorizontal, FileText, Link2, Copy, Check, MessageCircle, Mail, ClipboardCheck, Briefcase } from 'lucide-react';
 import { toast } from 'sonner';
 import CandidateProfileTab from '@/components/candidates/tabs/CandidateProfileTab';
 import CandidateDocumentsTab from '@/components/candidates/tabs/CandidateDocumentsTab';
@@ -67,6 +67,22 @@ const statusLabel: Record<string, string> = {
 };
 
 const allStatuses: CandidateStatus[] = ['lead', 'nieuw', 'werkzoekend', 'in_screening', 'afgewezen', 'geplaatst', 'niet_beschikbaar', 'uitgeschreven'];
+
+// HR/dienstverband-tabs worden onder één "Dienstverband"-tab met sub-navigatie gegroepeerd,
+// zodat het kandidaatdetail niet 22 losse tabs toont. De eerste sub-tab heet 'dienstverband',
+// zodat de hoofdtab-trigger (value 'dienstverband') ook de groep opent en ?tab=<subtab> blijft werken.
+const HR_TABS: { value: string; label: string }[] = [
+  { value: 'dienstverband', label: 'Dienstverband' },
+  { value: 'onboarding', label: 'Onboarding' },
+  { value: 'contracten', label: 'Contracten' },
+  { value: 'uren', label: 'Uren' },
+  { value: 'inhoudingen', label: 'Inhoudingen' },
+  { value: 'reserveringen', label: 'Reserveringen' },
+  { value: 'subsidies', label: 'Subsidies' },
+  { value: 'ziekte', label: 'Ziekte' },
+  { value: 'reglementen', label: 'Reglementen' },
+  { value: 'portaal', label: 'Portaal' },
+];
 
 const CandidateDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -201,6 +217,9 @@ const CandidateDetail = () => {
   const employments = ((candidate as any)?.candidate_employment ?? [])
     .sort((a: any, b: any) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime());
   const currentEmployment = employments.find((e: any) => e.is_current) ?? employments[0];
+  // Wanneer een HR-subtab actief is, toont de hoofd-tablist de 'Dienstverband'-groep als actief.
+  const isHrTab = isEmployee && HR_TABS.some((t) => t.value === activeTab);
+  const outerTab = isHrTab ? 'dienstverband' : activeTab;
 
   if (isLoading) return <div className="p-8 text-muted-foreground">Laden...</div>;
   if (!candidate) return <div className="p-8 text-muted-foreground">Niet gevonden</div>;
@@ -325,7 +344,7 @@ const CandidateDetail = () => {
 
       <CandidateReadinessStrip candidate={candidate} onTabChange={requestTabChange} />
 
-      <Tabs value={activeTab} onValueChange={requestTabChange}>
+      <Tabs value={outerTab} onValueChange={requestTabChange}>
         <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">
           <TabsList className="w-max sm:w-auto">
             <TabsTrigger value="profiel">Profiel</TabsTrigger>
@@ -340,20 +359,7 @@ const CandidateDetail = () => {
             <TabsTrigger value="plaatsingen">Plaatsingen</TabsTrigger>
             <TabsTrigger value="taken">Taken</TabsTrigger>
             <TabsTrigger value="talentpools">Pools</TabsTrigger>
-            {isEmployee && (
-              <>
-                <TabsTrigger value="dienstverband">Dienst</TabsTrigger>
-                <TabsTrigger value="onboarding">Onboarding</TabsTrigger>
-                <TabsTrigger value="inhoudingen">Inhoud.</TabsTrigger>
-                <TabsTrigger value="reserveringen">Reserv.</TabsTrigger>
-                <TabsTrigger value="subsidies">Subsidies</TabsTrigger>
-                <TabsTrigger value="contracten">Contract</TabsTrigger>
-                <TabsTrigger value="uren">Uren</TabsTrigger>
-                <TabsTrigger value="ziekte">Ziekte</TabsTrigger>
-                <TabsTrigger value="reglementen">Regl.</TabsTrigger>
-                <TabsTrigger value="portaal">Portaal</TabsTrigger>
-              </>
-            )}
+            {isEmployee && <TabsTrigger value="dienstverband" className="gap-1.5"><Briefcase className="h-3.5 w-3.5" />Dienstverband</TabsTrigger>}
           </TabsList>
         </div>
         <TabsContent value="profiel"><CandidateProfileTab candidate={candidate} /></TabsContent>
@@ -362,7 +368,7 @@ const CandidateDetail = () => {
         <TabsContent value="matches"><CandidateMatchesTab candidateId={id!} candidate={candidate} /></TabsContent>
         <TabsContent value="vacatures"><CandidateVacancyMatchesTab candidateId={id!} candidate={candidate} /></TabsContent>
         <TabsContent value="plaatsingen"><CandidatePlacementsTab candidateId={id!} /></TabsContent>
-        <TabsContent value="screening" forceMount>
+        <TabsContent value="screening" forceMount className="data-[state=inactive]:hidden">
           <div className="space-y-6">
             {/* AI-analyse als sectie bovenaan Screening (meeting-besluit 05-27): CV-upload
                 (alle formaten) + volledige dossieranalyse met feiten/aannames/onbekend,
@@ -381,18 +387,39 @@ const CandidateDetail = () => {
         <TabsContent value="taken"><TasksSection entityId={id!} entityType="kandidaat" /></TabsContent>
         <TabsContent value="talentpools"><CandidateTalentpoolsTab candidateId={id!} /></TabsContent>
         {isEmployee && (
-          <>
-            <TabsContent value="dienstverband"><EmployeeEmploymentTab candidateId={id!} candidate={candidate} employment={currentEmployment} /></TabsContent>
-            <TabsContent value="onboarding"><EmployeeOnboardingTab candidateId={id!} candidate={candidate} /></TabsContent>
-            <TabsContent value="inhoudingen"><EmployeeDeductionsTab candidateId={id!} /></TabsContent>
-            <TabsContent value="reserveringen"><EmployeeReservationsTab candidateId={id!} /></TabsContent>
-            <TabsContent value="subsidies"><EmployeeSubsidiesTab candidateId={id!} /></TabsContent>
-            <TabsContent value="contracten"><EmployeeContractsTab candidateId={id!} candidate={candidate} employment={currentEmployment} /></TabsContent>
-            <TabsContent value="uren"><EmployeeTimesheetsTab candidateId={id!} /></TabsContent>
-            <TabsContent value="ziekte"><EmployeeSickTab candidateId={id!} candidate={candidate} /></TabsContent>
-            <TabsContent value="reglementen"><EmployeeRegulationsTab candidateId={id!} /></TabsContent>
-            <TabsContent value="portaal"><EmployeePortalTab candidateId={id!} candidate={candidate} /></TabsContent>
-          </>
+          <TabsContent value="dienstverband">
+            <div className="space-y-4">
+              {/* Sub-navigatie binnen de Dienstverband-groep */}
+              <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">
+                <div className="inline-flex w-max gap-1 rounded-lg bg-muted p-1">
+                  {HR_TABS.map((t) => (
+                    <button
+                      key={t.value}
+                      type="button"
+                      onClick={() => requestTabChange(t.value)}
+                      className={`whitespace-nowrap rounded-md px-3 py-1.5 text-sm transition-colors ${
+                        activeTab === t.value
+                          ? 'bg-background font-medium shadow-sm'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {activeTab === 'onboarding' ? <EmployeeOnboardingTab candidateId={id!} candidate={candidate} />
+                : activeTab === 'inhoudingen' ? <EmployeeDeductionsTab candidateId={id!} />
+                : activeTab === 'reserveringen' ? <EmployeeReservationsTab candidateId={id!} />
+                : activeTab === 'subsidies' ? <EmployeeSubsidiesTab candidateId={id!} />
+                : activeTab === 'contracten' ? <EmployeeContractsTab candidateId={id!} candidate={candidate} employment={currentEmployment} />
+                : activeTab === 'uren' ? <EmployeeTimesheetsTab candidateId={id!} />
+                : activeTab === 'ziekte' ? <EmployeeSickTab candidateId={id!} candidate={candidate} />
+                : activeTab === 'reglementen' ? <EmployeeRegulationsTab candidateId={id!} />
+                : activeTab === 'portaal' ? <EmployeePortalTab candidateId={id!} candidate={candidate} />
+                : <EmployeeEmploymentTab candidateId={id!} candidate={candidate} employment={currentEmployment} />}
+            </div>
+          </TabsContent>
         )}
       </Tabs>
     </div>
