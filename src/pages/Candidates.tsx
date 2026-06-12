@@ -17,6 +17,7 @@ import ImportWizard from '@/components/import/ImportWizard';
 import AddToPoolSheet from '@/components/talentpools/AddToPoolSheet';
 import PortalActivateSheet from '@/components/employees/PortalActivateSheet';
 import LeadFunnelBoard from '@/components/candidates/LeadFunnelBoard';
+import SkillMultiSelect from '@/components/shared/SkillMultiSelect';
 import { PhoneLink } from '@/components/ui/contact-links';
 import { MailButton } from '@/components/ui/mail-button';
 import { formatDate } from '@/lib/format';
@@ -142,6 +143,59 @@ const Candidates = () => {
   const [portalCandidate, setPortalCandidate] = useState<any | null>(null);
   const [cvSearch, setCvSearch] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [housingFilter, setHousingFilter] = useState('all');     // eigen huisvesting (NL) ja/nee
+  const [screeningFilter, setScreeningFilter] = useState('all'); // afgerond / bezig / niet gestart
+  const [licenseFilter, setLicenseFilter] = useState('all');     // rijbewijs ja/nee
+  const [nationalityFilter, setNationalityFilter] = useState('all');
+  const [languageFilter, setLanguageFilter] = useState('all');
+  const [skillsFilter, setSkillsFilter] = useState<string[]>([]);
+
+  const advancedFilterCount =
+    (housingFilter !== 'all' ? 1 : 0) +
+    (screeningFilter !== 'all' ? 1 : 0) +
+    (licenseFilter !== 'all' ? 1 : 0) +
+    (nationalityFilter !== 'all' ? 1 : 0) +
+    (languageFilter !== 'all' ? 1 : 0) +
+    (skillsFilter.length > 0 ? 1 : 0) +
+    (cvSearch.trim() ? 1 : 0);
+
+  const clearAdvancedFilters = () => {
+    setHousingFilter('all');
+    setScreeningFilter('all');
+    setLicenseFilter('all');
+    setNationalityFilter('all');
+    setLanguageFilter('all');
+    setSkillsFilter([]);
+    setCvSearch('');
+    setPage(0);
+  };
+
+  // Distinct nationaliteiten + talen voor de filter-dropdowns (client-side
+  // afgeleid; PostgREST kan niet unnesten). Eén lichte query, 5 min cache.
+  const { data: filterOptions } = useQuery({
+    queryKey: ['candidate-filter-options'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('candidates')
+        .select('nationality, languages')
+        .limit(5000);
+      if (error) throw error;
+      const nationalities = new Set<string>();
+      const languages = new Set<string>();
+      for (const row of data ?? []) {
+        if (row.nationality?.trim()) nationalities.add(row.nationality.trim());
+        for (const lang of row.languages ?? []) {
+          if (lang?.trim()) languages.add(lang.trim());
+        }
+      }
+      const sortNl = (a: string, b: string) => a.localeCompare(b, 'nl');
+      return {
+        nationalities: [...nationalities].sort(sortNl),
+        languages: [...languages].sort(sortNl),
+      };
+    },
+    staleTime: 5 * 60 * 1000,
+  });
 
   const handleTabChange = (tab: string) => {
     setActiveTab(tab as CandidateTab);
@@ -166,7 +220,7 @@ const Candidates = () => {
 
   // Query for "Alle" tab
   const { data, isLoading } = useQuery({
-    queryKey: ['candidates', search, statusFilter, complianceFilter, cvSearch, nameSort, page],
+    queryKey: ['candidates', search, statusFilter, complianceFilter, cvSearch, nameSort, page, housingFilter, screeningFilter, licenseFilter, nationalityFilter, languageFilter, skillsFilter],
     queryFn: async () => {
       let query = supabase.from('candidates').select('*', { count: 'exact' });
       if (search) {
@@ -177,6 +231,19 @@ const Candidates = () => {
       }
       if (statusFilter !== 'all') query = query.eq('status', statusFilter as any);
       if (complianceFilter !== 'all') query = query.eq('compliance_status', complianceFilter as any);
+      if (housingFilter === 'ja') query = query.eq('has_dutch_address', true);
+      if (housingFilter === 'nee') query = query.eq('has_dutch_address', false);
+      // Screening: afgerond = screened_at gezet; bezig = wel antwoorden, nog
+      // niet afgerond; niet gestart = beide leeg.
+      if (screeningFilter === 'afgerond') query = query.not('screened_at', 'is', null);
+      if (screeningFilter === 'bezig') query = query.is('screened_at', null).not('screening_data', 'is', null);
+      if (screeningFilter === 'niet_gestart') query = query.is('screened_at', null).is('screening_data', null);
+      if (licenseFilter === 'ja') query = query.eq('has_drivers_license', true);
+      // has_drivers_license is nullable — "nee" omvat ook onbekend/NULL.
+      if (licenseFilter === 'nee') query = query.or('has_drivers_license.is.null,has_drivers_license.eq.false');
+      if (nationalityFilter !== 'all') query = query.eq('nationality', nationalityFilter);
+      if (languageFilter !== 'all') query = query.contains('languages', [languageFilter]);
+      if (skillsFilter.length > 0) query = query.overlaps('skills', skillsFilter);
       if (nameSort === 'none') {
         query = query.order('created_at', { ascending: false });
       } else {
@@ -378,12 +445,15 @@ const Candidates = () => {
             </SelectContent>
           </Select>
           <Button
-            variant={showAdvanced ? 'secondary' : 'outline'}
+            variant={showAdvanced || advancedFilterCount > 0 ? 'secondary' : 'outline'}
             size="sm"
             onClick={() => setShowAdvanced(!showAdvanced)}
             className="gap-1.5"
           >
-            <SlidersHorizontal className="h-4 w-4" /> CV zoeken
+            <SlidersHorizontal className="h-4 w-4" /> Meer filters
+            {advancedFilterCount > 0 && (
+              <Badge className="ml-1 h-5 min-w-5 justify-center px-1 bg-primary text-primary-foreground border-0">{advancedFilterCount}</Badge>
+            )}
           </Button>
           <span className="text-sm text-muted-foreground">{total} kandidaten</span>
         </div>
@@ -406,11 +476,93 @@ const Candidates = () => {
         </div>
       )}
 
-      {/* Advanced: CV full-text search */}
+      {/* Uitgebreide filters: huisvesting, screening, rijbewijs, nationaliteit, taal, skills + CV-tekst */}
       {activeTab === 'alle' && showAdvanced && (
-        <div className="bg-card rounded-lg border p-4">
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">Zoek in CV-tekst</label>
+        <div className="bg-card rounded-lg border p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-medium">Filteren op</h3>
+            {advancedFilterCount > 0 && (
+              <Button variant="ghost" size="sm" onClick={clearAdvancedFilters} className="h-7 gap-1 text-xs">
+                <X className="h-3.5 w-3.5" /> Alle filters wissen
+              </Button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Eigen huisvesting (NL)</label>
+              <Select value={housingFilter} onValueChange={(v) => { setHousingFilter(v); setPage(0); }}>
+                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Alle</SelectItem>
+                  <SelectItem value="ja">Heeft eigen huisvesting</SelectItem>
+                  <SelectItem value="nee">Geen eigen huisvesting</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Screening</label>
+              <Select value={screeningFilter} onValueChange={(v) => { setScreeningFilter(v); setPage(0); }}>
+                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Alle</SelectItem>
+                  <SelectItem value="afgerond">Screening afgerond</SelectItem>
+                  <SelectItem value="bezig">Screening bezig</SelectItem>
+                  <SelectItem value="niet_gestart">Niet gestart</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Rijbewijs</label>
+              <Select value={licenseFilter} onValueChange={(v) => { setLicenseFilter(v); setPage(0); }}>
+                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Alle</SelectItem>
+                  <SelectItem value="ja">Heeft rijbewijs</SelectItem>
+                  <SelectItem value="nee">Geen rijbewijs</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Nationaliteit</label>
+              <Select value={nationalityFilter} onValueChange={(v) => { setNationalityFilter(v); setPage(0); }}>
+                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Alle nationaliteiten</SelectItem>
+                  {(filterOptions?.nationalities ?? []).map((n) => <SelectItem key={n} value={n}>{n}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Taal</label>
+              <Select value={languageFilter} onValueChange={(v) => { setLanguageFilter(v); setPage(0); }}>
+                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Alle talen</SelectItem>
+                  {(filterOptions?.languages ?? []).map((l) => <SelectItem key={l} value={l}>{l}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Vaardigheden</label>
+              <SkillMultiSelect
+                value={skillsFilter}
+                onChange={(v) => { setSkillsFilter(v); setPage(0); }}
+                placeholder="Alle vaardigheden"
+              />
+              {skillsFilter.length > 0 && (
+                <p className="text-[11px] text-muted-foreground">Toont kandidaten met minstens één van de gekozen vaardigheden</p>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-1.5 border-t pt-3">
+            <label className="text-xs font-medium text-muted-foreground">Zoek in CV-tekst</label>
             <div className="flex gap-2">
               <Input
                 placeholder="bijv. lassen MIG TIG ervaring"
@@ -424,7 +576,7 @@ const Candidates = () => {
                 </Button>
               )}
             </div>
-            <p className="text-xs text-muted-foreground">Zoekt met Nederlandse taalondersteuning in de volledige CV-tekst</p>
+            <p className="text-[11px] text-muted-foreground">Zoekt met Nederlandse taalondersteuning in de volledige CV-tekst</p>
           </div>
         </div>
       )}
