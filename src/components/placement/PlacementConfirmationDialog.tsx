@@ -244,7 +244,7 @@ const PlacementConfirmationDialog = ({
                     <div className="font-medium">{selectedSuggestion.unitName} — {selectedSuggestion.propertyName}</div>
                     <div className="text-xs text-muted-foreground flex items-center gap-2 mt-1 flex-wrap">
                       {selectedSuggestion.distanceKm != null && (
-                        <span className="flex items-center gap-0.5 text-primary font-medium">
+                        <span className="flex items-center gap-0.5 text-stat-blue font-medium">
                           <Navigation className="h-3 w-3" /> {selectedSuggestion.distanceKm} km
                           {selectedSuggestion.durationMin != null && ` \u00b7 ${selectedSuggestion.durationMin} min`}
                         </span>

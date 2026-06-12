@@ -120,7 +120,7 @@ const ContractSign = () => {
         {/* Header */}
         <div className="bg-card border rounded-xl p-6 flex items-center gap-4">
           <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-            <FileText className="h-6 w-6 text-primary" />
+            <FileText className="h-6 w-6 text-stat-blue" />
           </div>
           <div>
             <h1 className="text-xl font-semibold">{contract.title}</h1>

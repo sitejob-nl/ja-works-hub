@@ -63,7 +63,7 @@ const Installeren = () => {
         <Card className="max-w-md w-full">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
-              <Download className="h-5 w-5 text-primary" /> Direct installeren
+              <Download className="h-5 w-5 text-stat-blue" /> Direct installeren
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -78,7 +78,7 @@ const Installeren = () => {
         <Card className="max-w-md w-full">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
-              <Smartphone className="h-5 w-5 text-primary" /> iPhone / iPad
+              <Smartphone className="h-5 w-5 text-stat-blue" /> iPhone / iPad
             </CardTitle>
             <CardDescription>Volg deze stappen in Safari:</CardDescription>
           </CardHeader>
@@ -116,7 +116,7 @@ const Installeren = () => {
         <Card className="max-w-md w-full">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
-              <Monitor className="h-5 w-5 text-primary" /> Android / Desktop
+              <Monitor className="h-5 w-5 text-stat-blue" /> Android / Desktop
             </CardTitle>
             <CardDescription>Volg deze stappen in Chrome:</CardDescription>
           </CardHeader>

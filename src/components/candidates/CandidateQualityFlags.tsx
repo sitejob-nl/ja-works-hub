@@ -120,7 +120,7 @@ export default function CandidateQualityFlags({ candidateId, limit = 50, showRef
                   {!candidateId && (
                     <TableCell>
                       {candidate ? (
-                        <Link to={`/kandidaten/${candidate.id}`} className="font-medium text-primary hover:underline">
+                        <Link to={`/kandidaten/${candidate.id}`} className="font-medium hover:underline">
                           {candidate.first_name} {candidate.last_name}
                         </Link>
                       ) : '—'}

@@ -50,7 +50,7 @@ const CandidatePlacementsTab = ({ candidateId }: { candidateId: string }) => {
                 <TableRow key={p.id}>
                   <TableCell className="font-medium">
                     {companyId ? (
-                      <Link to={`/opdrachtgevers/${companyId}`} className="hover:text-primary transition-colors">
+                      <Link to={`/opdrachtgevers/${companyId}`} className="hover:text-stat-blue transition-colors">
                         {companyName}
                       </Link>
                     ) : (
@@ -59,13 +59,13 @@ const CandidatePlacementsTab = ({ candidateId }: { candidateId: string }) => {
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
-                      <Link to={`/plaatsingen/${p.id}`} className="hover:text-primary transition-colors">
+                      <Link to={`/plaatsingen/${p.id}`} className="hover:text-stat-blue transition-colors">
                         {p.function_name || 'Plaatsing'}
                       </Link>
                       {p.vacancy_id && (
                         <Link
                           to={`/vacatures/${p.vacancy_id}`}
-                          className="text-muted-foreground hover:text-primary transition-colors"
+                          className="text-muted-foreground hover:text-stat-blue transition-colors"
                           aria-label="Open vacature"
                           title="Open vacature"
                         >

@@ -132,7 +132,7 @@ const AddressAutocomplete = ({
           />
           {(loading || address.lat != null) && (
             <div className="pointer-events-none absolute right-3 top-9 text-muted-foreground">
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <MapPin className="h-4 w-4 text-primary" />}
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <MapPin className="h-4 w-4 text-stat-blue" />}
             </div>
           )}
           {open && suggestions.length > 0 && (

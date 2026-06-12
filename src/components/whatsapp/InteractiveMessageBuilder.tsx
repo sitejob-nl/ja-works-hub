@@ -336,7 +336,7 @@ function ButtonPreview({ body, footer, buttons }: {
             {buttons.map((btn) => (
               <div
                 key={btn.id}
-                className="rounded border bg-background px-2 py-1 text-center text-xs font-medium text-primary"
+                className="rounded border bg-background px-2 py-1 text-center text-xs font-medium text-stat-blue"
               >
                 {btn.title || <span className="text-muted-foreground italic">Knoptekst...</span>}
               </div>
@@ -363,7 +363,7 @@ function ListPreview({ body, footer, buttonText, sections }: {
       )}
       {footer && <p className="text-xs text-muted-foreground">{footer}</p>}
       <Separator />
-      <div className="rounded border bg-background px-2 py-1 text-center text-xs font-medium text-primary flex items-center justify-center gap-1">
+      <div className="rounded border bg-background px-2 py-1 text-center text-xs font-medium text-stat-blue flex items-center justify-center gap-1">
         <span>&#9776;</span>
         <span>{buttonText || <span className="text-muted-foreground italic">Lijsttekst...</span>}</span>
       </div>

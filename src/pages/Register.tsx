@@ -112,7 +112,7 @@ const Register = () => {
 
         <p className="text-center text-sm text-muted-foreground mt-6">
           Al een account?{' '}
-          <a href="/login" className="text-primary hover:underline font-medium">Inloggen</a>
+          <a href="/login" className="hover:underline font-medium">Inloggen</a>
         </p>
       </div>
     </div>

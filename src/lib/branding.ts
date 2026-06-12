@@ -22,6 +22,30 @@ export const BRANDING_DEFAULTS: Required<BrandingSettings> = {
   border_radius: '0.5rem',
 };
 
+/** Parse "H S% L%" naar componenten; null bij onbruikbare input. */
+function parseHsl(value: string): { h: number; s: number; l: number } | null {
+  const parts = value.trim().split(/\s+/);
+  if (parts.length < 3) return null;
+  const h = parseInt(parts[0], 10);
+  const s = parseInt(parts[1], 10);
+  const l = parseInt(parts[2], 10);
+  if ([h, s, l].some(Number.isNaN)) return null;
+  return { h, s, l };
+}
+
+/**
+ * Tekstvariant van de accentkleur: zelfde tint, maar lightness geclamped zodat
+ * tekst op witte/lichte achtergronden leesbaar blijft (~4.5:1). Voorkomt dat
+ * een licht gekozen accent (bv. "197 54% 95%") e-mails, entity-links en
+ * match-percentages onleesbaar maakt — `--stat-blue` wordt app-breed als
+ * tékstkleur gebruikt.
+ */
+export function textSafeAccent(accent: string): string {
+  const hsl = parseHsl(accent);
+  if (!hsl) return '197 100% 35%';
+  return `${hsl.h} ${hsl.s}% ${Math.min(hsl.l, 38)}%`;
+}
+
 /** Derive sidebar hover & border from sidebar_bg */
 function deriveSidebarColors(bg: string) {
   // Parse "H S% L%"
@@ -58,7 +82,9 @@ export function applyBranding(s: Partial<BrandingSettings>) {
   root.setProperty('--primary', accent);
   root.setProperty('--ring', accent);
   root.setProperty('--accent-blue', accent);
-  root.setProperty('--stat-blue', accent);
+  // --stat-blue is een TEKST-token (links, e-mails, scores) — altijd de
+  // leesbare donkere afgeleide van het accent, nooit het rauwe accent.
+  root.setProperty('--stat-blue', textSafeAccent(accent));
 
   root.setProperty('--sidebar-bg', sidebarBg);
   root.setProperty('--sidebar-hover', derived.hover);

@@ -196,7 +196,7 @@ const VehicleDamageTab = ({ vehicle }: { vehicle: any }) => {
                   <Badge variant="secondary" className={typeBadgeClass[r.damage_type] ?? typeBadgeClass.overig}>{typeLabel}</Badge>
                   {r.urgency === 'urgent' && <Badge variant="secondary" className="bg-destructive/10 text-destructive border-0">Urgent</Badge>}
                   <Badge variant="outline">{DAMAGE_ROUTE_STATUS_LABELS[r.route_status] ?? r.route_status ?? 'Interne regie'}</Badge>
-                  <Badge variant="secondary" className={r.resolved ? 'bg-primary/10 text-primary border-0' : 'bg-destructive/10 text-destructive border-0'}>
+                  <Badge variant="secondary" className={r.resolved ? 'bg-primary/10 text-stat-blue border-0' : 'bg-destructive/10 text-destructive border-0'}>
                     {r.resolved ? 'Opgelost' : 'Open'}
                   </Badge>
                 </div>
@@ -243,7 +243,7 @@ const VehicleDamageTab = ({ vehicle }: { vehicle: any }) => {
 
                 {/* Internal routing */}
                 {r.garage_notified || r.route_status === 'internal_notified' ? (
-                  <p className="text-xs text-primary">✓ Interne regie geïnformeerd op {formatDate(r.garage_notified_at)}</p>
+                  <p className="text-xs text-stat-blue">✓ Interne regie geïnformeerd op {formatDate(r.garage_notified_at)}</p>
                 ) : (
                   !r.resolved && (
                     <Button size="sm" variant="outline" onClick={() => notifyGarageMutation.mutate(r.id)}>

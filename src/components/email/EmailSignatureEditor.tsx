@@ -44,7 +44,7 @@ function parseContent(html: string, json?: string | null) {
 function replacePreviewVariables(html: string) {
   let result = html;
   for (const [key, value] of Object.entries(PREVIEW_VALUES)) {
-    result = result.replace(new RegExp(key.replace(/[{}]/g, '\\$&'), 'g'), `<span class="text-primary font-medium">${value}</span>`);
+    result = result.replace(new RegExp(key.replace(/[{}]/g, '\\$&'), 'g'), `<span class="text-stat-blue font-medium">${value}</span>`);
   }
   return result;
 }

@@ -177,7 +177,7 @@ const Vacancies = () => {
                   return (
                     <TableRow key={v.id} className={i % 2 === 1 ? 'bg-background' : ''}>
                       <TableCell>
-                        <Link to={`/vacatures/${v.id}`} className="font-medium text-foreground hover:text-primary transition-colors">
+                        <Link to={`/vacatures/${v.id}`} className="font-medium text-foreground hover:text-stat-blue transition-colors">
                           {v.title}
                         </Link>
                       </TableCell>

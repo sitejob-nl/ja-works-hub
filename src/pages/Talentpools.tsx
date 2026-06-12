@@ -230,7 +230,7 @@ const Talentpools = () => {
                           )}
                           <Link
                             to={`/talentpools/${p.id}`}
-                            className="font-medium text-foreground hover:text-primary transition-colors"
+                            className="font-medium text-foreground hover:text-stat-blue transition-colors"
                             onClick={(e) => e.stopPropagation()}
                           >
                             {p.name}

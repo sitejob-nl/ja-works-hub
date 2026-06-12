@@ -196,7 +196,7 @@ const PortalHousing = () => {
       {/* Housing info card */}
       <div className="bg-card rounded-xl border p-4 space-y-3">
         <div className="flex items-center gap-2">
-          <Home className="h-4 w-4 text-primary" />
+          <Home className="h-4 w-4 text-stat-blue" />
           <p className="font-semibold">{property?.name}</p>
         </div>
         <p className="text-sm text-muted-foreground">
@@ -255,7 +255,7 @@ const PortalHousing = () => {
           <SheetTrigger asChild>
             <button className="w-full text-left bg-primary/5 border border-primary/20 rounded-xl p-4 flex items-center gap-3 hover:bg-primary/10 transition">
               <div className="rounded-full bg-primary/10 p-2">
-                <Camera className="h-4 w-4 text-primary" />
+                <Camera className="h-4 w-4 text-stat-blue" />
               </div>
               <div className="flex-1">
                 <p className="font-medium text-sm">Doe je check-in</p>

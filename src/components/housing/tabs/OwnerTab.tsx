@@ -77,7 +77,7 @@ const OwnerTab = ({ property }: { property: any }) => {
             {owner.phone && (
               <div>
                 <p className="text-xs text-muted-foreground">Telefoon</p>
-                <a href={`tel:${owner.phone}`} className="text-sm font-medium text-primary hover:underline flex items-center gap-1">
+                <a href={`tel:${owner.phone}`} className="text-sm font-medium hover:underline flex items-center gap-1">
                   <Phone className="h-3.5 w-3.5" /> {owner.phone}
                 </a>
               </div>
@@ -85,7 +85,7 @@ const OwnerTab = ({ property }: { property: any }) => {
             {owner.email && (
               <div>
                 <p className="text-xs text-muted-foreground">E-mail</p>
-                <a href={`mailto:${owner.email}`} className="text-sm font-medium text-primary hover:underline flex items-center gap-1">
+                <a href={`mailto:${owner.email}`} className="text-sm font-medium hover:underline flex items-center gap-1">
                   <Mail className="h-3.5 w-3.5" /> {owner.email}
                 </a>
               </div>
@@ -120,7 +120,7 @@ const OwnerTab = ({ property }: { property: any }) => {
               {property.rental_contract_url && (
                 <div className="mt-3">
                   <p className="text-xs text-muted-foreground">Externe contractlink (legacy)</p>
-                  <a href={property.rental_contract_url} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline flex items-center gap-1 mt-1">
+                  <a href={property.rental_contract_url} target="_blank" rel="noopener noreferrer" className="text-sm hover:underline flex items-center gap-1 mt-1">
                     <ExternalLink className="h-3.5 w-3.5" /> Bekijk contract
                   </a>
                 </div>

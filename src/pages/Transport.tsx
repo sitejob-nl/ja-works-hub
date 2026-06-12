@@ -193,7 +193,7 @@ const Transport = () => {
                       return (
                         <TableRow key={v.id} className={i % 2 === 1 ? 'bg-background' : ''}>
                           <TableCell>
-                            <Link to={`/transport/${v.id}`} className="font-medium text-foreground hover:text-primary transition-colors">{v.license_plate}</Link>
+                            <Link to={`/transport/${v.id}`} className="font-medium text-foreground hover:text-stat-blue transition-colors">{v.license_plate}</Link>
                           </TableCell>
                           <TableCell>{[v.brand, v.model].filter(Boolean).join(' ') || '—'}</TableCell>
                           <TableCell>{v.year ?? '—'}</TableCell>

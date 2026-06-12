@@ -249,7 +249,7 @@ const PublicCandidateSignup = () => {
 
         {vacancyLabel ? (
           <div className="flex items-start gap-3 rounded-lg border bg-card px-4 py-3 text-sm shadow-sm">
-            <Briefcase className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary" />
+            <Briefcase className="mt-0.5 h-4 w-4 flex-shrink-0 text-stat-blue" />
             <div>
               <div className="font-medium text-foreground">Sollicitatie op vacature</div>
               <div className="text-muted-foreground">{vacancyLabel}</div>

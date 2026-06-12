@@ -96,7 +96,7 @@ const Contacts = () => {
                     <TableCell>
                       <Link
                         to={`/contacten/${c.id}`}
-                        className="font-medium text-foreground hover:text-primary transition-colors"
+                        className="font-medium text-foreground hover:text-stat-blue transition-colors"
                         onClick={(e) => e.stopPropagation()}
                       >
                         {c.full_name}
@@ -107,7 +107,7 @@ const Contacts = () => {
                       {c.companies ? (
                         <Link
                           to={`/opdrachtgevers/${c.companies.id}`}
-                          className="text-foreground hover:text-primary transition-colors"
+                          className="text-foreground hover:text-stat-blue transition-colors"
                           onClick={(e) => e.stopPropagation()}
                         >
                           {c.companies.name}

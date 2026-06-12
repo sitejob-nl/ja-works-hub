@@ -140,7 +140,7 @@ const VehicleInfoTab = ({ vehicle, activeAssignment }: { vehicle: any; activeAss
             <>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Medewerker</span>
-                <Link to={`/medewerkers/${activeAssignment.employees?.id}`} className="text-primary hover:underline">
+                <Link to={`/medewerkers/${activeAssignment.employees?.id}`} className="hover:underline">
                   {assignee?.first_name} {assignee?.last_name}
                 </Link>
               </div>

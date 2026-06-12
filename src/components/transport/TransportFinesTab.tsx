@@ -333,7 +333,7 @@ const TransportFinesTab = () => {
                   </TableCell>
                   <TableCell>
                     {vehicle ? (
-                      <Link to={`/transport/${vehicle.id}`} className="font-medium text-primary hover:underline">
+                      <Link to={`/transport/${vehicle.id}`} className="font-medium hover:underline">
                         {vehicle.license_plate}
                         <span className="block text-xs text-muted-foreground font-normal">{[vehicle.brand, vehicle.model].filter(Boolean).join(' ')}</span>
                       </Link>
@@ -341,7 +341,7 @@ const TransportFinesTab = () => {
                   </TableCell>
                   <TableCell>
                     {person ? (
-                      <Link to={`/medewerkers/${person.id}`} className="text-primary hover:underline">
+                      <Link to={`/medewerkers/${person.id}`} className="hover:underline">
                         {person.first_name} {person.last_name}
                       </Link>
                     ) : <span className="text-muted-foreground">Niet gekoppeld</span>}

@@ -62,7 +62,7 @@ const ClientPortalDashboard = () => {
               <p className="text-3xl font-bold mt-2">{stats?.activePlacements ?? '-'}</p>
             </div>
             <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-              <MapPin className="h-5 w-5 text-primary" />
+              <MapPin className="h-5 w-5 text-stat-blue" />
             </div>
           </div>
           <Button variant="link" asChild className="px-0 mt-3">

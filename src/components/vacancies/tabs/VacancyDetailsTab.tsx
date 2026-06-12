@@ -66,7 +66,7 @@ const VacancyDetailsTab = ({ vacancy }: { vacancy: any }) => {
           <CardContent className="space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Bedrijf</span>
-              <Link to={`/opdrachtgevers/${company.id}`} className="text-primary hover:underline">{company.name}</Link>
+              <Link to={`/opdrachtgevers/${company.id}`} className="hover:underline">{company.name}</Link>
             </div>
             {primaryContact && (
               <>

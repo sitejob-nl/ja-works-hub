@@ -33,7 +33,7 @@ const CvTemplate = ({ candidate, sections, anonymous, language, orgLogo, orgName
     if (!visibleSections[key] || !sections[key]) return null;
     return (
       <div key={key} className="mb-6">
-        <h2 className="text-base font-semibold text-primary border-b border-primary/20 pb-1 mb-2 uppercase tracking-wide">{label}</h2>
+        <h2 className="text-base font-semibold text-stat-blue border-b border-primary/20 pb-1 mb-2 uppercase tracking-wide">{label}</h2>
         <div className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">{sections[key]}</div>
       </div>
     );
@@ -60,7 +60,7 @@ const CvTemplate = ({ candidate, sections, anonymous, language, orgLogo, orgName
           {orgLogo ? (
             <img src={orgLogo} alt={orgName} className="h-10 object-contain" />
           ) : (
-            <span className="text-sm font-semibold text-primary">{orgName}</span>
+            <span className="text-sm font-semibold text-stat-blue">{orgName}</span>
           )}
         </div>
       </div>

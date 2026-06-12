@@ -271,7 +271,7 @@ export default function VacancyMatchSheet({ open, onOpenChange, members }: Vacan
                         <TableCell>
                           <Link
                             to={`/kandidaten/${r.candidateId}`}
-                            className="font-medium text-foreground hover:text-primary transition-colors text-sm"
+                            className="font-medium text-foreground hover:text-stat-blue transition-colors text-sm"
                           >
                             {r.candidateName}
                           </Link>

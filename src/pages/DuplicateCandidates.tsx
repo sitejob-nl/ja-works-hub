@@ -152,12 +152,12 @@ const DuplicateCandidates = () => {
                           <div className="flex items-center gap-2 flex-wrap">
                             <Link
                               to={`/kandidaten/${r.candidate_id}`}
-                              className="font-medium text-foreground hover:text-primary"
+                              className="font-medium text-foreground hover:text-stat-blue"
                               onClick={(e) => e.stopPropagation()}
                             >
                               {fullName(r)}
                             </Link>
-                            {isSurvivor && <Badge className="bg-primary/10 text-primary border-0 text-[10px]">Behouden</Badge>}
+                            {isSurvivor && <Badge className="bg-primary/10 text-stat-blue border-0 text-[10px]">Behouden</Badge>}
                             {r.has_employee && <Badge variant="outline" className="text-[10px]">Dienstverband</Badge>}
                             {r.status && <Badge variant="outline" className="text-[10px]">{r.status}</Badge>}
                           </div>

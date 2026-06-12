@@ -36,7 +36,7 @@ export function ConversationItem({ conversation, isSelected, onClick }: Conversa
           <span className={cn('text-sm truncate', hasUnread && 'font-semibold')}>
             {displayName}
           </span>
-          <span className={cn('text-[10px] flex-shrink-0', hasUnread ? 'text-primary font-semibold' : 'text-muted-foreground')}>
+          <span className={cn('text-[10px] flex-shrink-0', hasUnread ? 'text-stat-blue font-semibold' : 'text-muted-foreground')}>
             {timeLabel}
           </span>
         </div>

@@ -340,7 +340,7 @@ const UnitsTab = ({ property }: { property: any }) => {
                       <div className="mt-2 space-y-1">
                         {occupants.map((a: any) => (
                           <p key={a.id} className="text-xs">
-                            <EntityLink type="candidate" id={a.candidates?.id} className="font-medium text-foreground hover:text-primary">{a.candidates?.first_name} {a.candidates?.last_name}</EntityLink>
+                            <EntityLink type="candidate" id={a.candidates?.id} className="font-medium text-foreground hover:text-stat-blue">{a.candidates?.first_name} {a.candidates?.last_name}</EntityLink>
                           </p>
                         ))}
                       </div>
@@ -357,7 +357,7 @@ const UnitsTab = ({ property }: { property: any }) => {
                     ) : (
                       assignments.map((a: any) => (
                         <div key={a.id} className="text-xs flex items-center justify-between">
-                          <span><EntityLink type="candidate" id={a.candidates?.id} className="font-medium text-foreground hover:text-primary">{a.candidates?.first_name} {a.candidates?.last_name}</EntityLink></span>
+                          <span><EntityLink type="candidate" id={a.candidates?.id} className="font-medium text-foreground hover:text-stat-blue">{a.candidates?.first_name} {a.candidates?.last_name}</EntityLink></span>
                           <span className="text-muted-foreground">
                             {formatDate(a.check_in_date)} — {a.check_out_date ? formatDate(a.check_out_date) : 'heden'}
                             {' '}
@@ -441,7 +441,7 @@ const UnitsTab = ({ property }: { property: any }) => {
                           : occupants.map((a: any, i: number) => (
                               <Fragment key={a.id}>
                                 {i > 0 && ', '}
-                                <EntityLink type="candidate" id={a.candidates?.id} className="font-medium text-foreground hover:text-primary">{`${a.candidates?.first_name ?? ''} ${a.candidates?.last_name ?? ''}`.trim()}</EntityLink>
+                                <EntityLink type="candidate" id={a.candidates?.id} className="font-medium text-foreground hover:text-stat-blue">{`${a.candidates?.first_name ?? ''} ${a.candidates?.last_name ?? ''}`.trim()}</EntityLink>
                               </Fragment>
                             ))}
                       </TableCell>
@@ -478,7 +478,7 @@ const UnitsTab = ({ property }: { property: any }) => {
                             <div className="space-y-1">
                               {assignments.map((a: any) => (
                                 <div key={a.id} className="text-xs flex items-center justify-between">
-                                  <span><EntityLink type="candidate" id={a.candidates?.id} className="font-medium text-foreground hover:text-primary">{a.candidates?.first_name} {a.candidates?.last_name}</EntityLink></span>
+                                  <span><EntityLink type="candidate" id={a.candidates?.id} className="font-medium text-foreground hover:text-stat-blue">{a.candidates?.first_name} {a.candidates?.last_name}</EntityLink></span>
                                   <span className="text-muted-foreground">
                                     {formatDate(a.check_in_date)} — {a.check_out_date ? formatDate(a.check_out_date) : 'heden'}
                                     {' '}

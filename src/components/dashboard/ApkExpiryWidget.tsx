@@ -33,7 +33,7 @@ export const ApkExpiryWidget = () => {
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="text-sm flex items-center gap-2">
-          <Wrench className="h-4 w-4 text-primary" />
+          <Wrench className="h-4 w-4 text-stat-blue" />
           APK loopt af
         </CardTitle>
       </CardHeader>

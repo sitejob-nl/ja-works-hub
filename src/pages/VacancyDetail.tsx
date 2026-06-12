@@ -131,7 +131,7 @@ const VacancyDetail = () => {
         <div className="min-w-0">
           <h1 className="text-xl sm:text-2xl font-semibold truncate">{vacancy.title}</h1>
           {company && (
-            <Link to={`/opdrachtgevers/${company.id}`} className="text-sm text-muted-foreground hover:text-primary">
+            <Link to={`/opdrachtgevers/${company.id}`} className="text-sm text-muted-foreground hover:text-stat-blue">
               {company.name}
             </Link>
           )}

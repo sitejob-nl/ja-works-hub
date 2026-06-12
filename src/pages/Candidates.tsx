@@ -508,7 +508,7 @@ const Candidates = () => {
                               ) : (
                                 <span className="h-2 w-2 rounded-full bg-muted-foreground/20 flex-shrink-0" />
                               )}
-                              <Link to={`/kandidaten/${c.id}`} className="font-medium text-foreground hover:text-primary transition-colors">
+                              <Link to={`/kandidaten/${c.id}`} className="font-medium text-foreground hover:text-stat-blue transition-colors">
                                 {c.first_name} {c.last_name}
                               </Link>
                             </div>
@@ -630,7 +630,7 @@ const Candidates = () => {
                       return (
                         <TableRow key={c.id} className={i % 2 === 1 ? 'bg-background' : ''}>
                           <TableCell>
-                            <Link to={`/kandidaten/${c.id}`} className="font-medium text-foreground hover:text-primary transition-colors">
+                            <Link to={`/kandidaten/${c.id}`} className="font-medium text-foreground hover:text-stat-blue transition-colors">
                               {c.first_name} {c.last_name}
                             </Link>
                           </TableCell>
@@ -657,7 +657,7 @@ const Candidates = () => {
                           <TableCell>
                             {activePlacement ? (
                               <div className="flex items-center gap-1.5">
-                                <Link to={`/plaatsingen/${activePlacement.id}`} className="font-medium text-foreground hover:text-primary transition-colors">
+                                <Link to={`/plaatsingen/${activePlacement.id}`} className="font-medium text-foreground hover:text-stat-blue transition-colors">
                                   {companyName ?? activePlacement.function_name ?? 'Plaatsing'}
                                 </Link>
                                 {extraPlacements > 0 && <Badge variant="outline" className="text-xs">+{extraPlacements}</Badge>}

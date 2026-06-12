@@ -200,7 +200,7 @@ const VehicleAssignmentsTab = ({ vehicle }: { vehicle: any }) => {
               return (
                 <TableRow key={a.id}>
                   <TableCell>
-                    <Link to={`/medewerkers/${a.employees?.id}`} className="font-medium hover:text-primary">{c?.first_name} {c?.last_name}</Link>
+                    <Link to={`/medewerkers/${a.employees?.id}`} className="font-medium hover:text-stat-blue">{c?.first_name} {c?.last_name}</Link>
                   </TableCell>
                   <TableCell>{formatDate(a.assigned_date)}</TableCell>
                   <TableCell>{a.returned_date ? formatDate(a.returned_date) : <Badge variant="secondary" className="bg-stat-green/10 text-stat-green border-0">Huidig</Badge>}</TableCell>

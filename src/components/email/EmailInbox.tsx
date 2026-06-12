@@ -396,7 +396,7 @@ const EmailInbox = ({ selectedAccount }: { selectedAccount?: string }) => {
               onClick={() => { setActiveFolder(f.key); setSelectedId(null); setPage(0); }}
               className={cn(
                 'flex items-center gap-2 w-full px-3 py-1.5 rounded-md text-sm transition-colors',
-                activeFolder === f.key ? 'bg-primary/10 text-primary font-medium' : 'text-muted-foreground hover:bg-muted'
+                activeFolder === f.key ? 'bg-primary/10 text-stat-blue font-medium' : 'text-muted-foreground hover:bg-muted'
               )}
             >
               <f.icon className="h-4 w-4" />
@@ -573,7 +573,7 @@ const EmailInbox = ({ selectedAccount }: { selectedAccount?: string }) => {
               <h2 className="text-lg font-semibold">{selectedMessage.subject || '(Geen onderwerp)'}</h2>
               <div className="flex items-start gap-3">
                 <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                  <span className="text-sm font-medium text-primary">
+                  <span className="text-sm font-medium text-stat-blue">
                     {(selectedMessage.from?.name || '?').charAt(0).toUpperCase()}
                   </span>
                 </div>
@@ -615,7 +615,7 @@ const EmailInbox = ({ selectedAccount }: { selectedAccount?: string }) => {
               {triage && (
                 <div className="mt-3 flex flex-col gap-3 rounded-md border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-start gap-3">
-                    <Brain className="mt-0.5 h-4 w-4 text-primary" />
+                    <Brain className="mt-0.5 h-4 w-4 text-stat-blue" />
                     <div className="space-y-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-sm font-medium">AI triage</span>

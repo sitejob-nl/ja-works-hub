@@ -44,7 +44,7 @@ export function EntityLink({
       onClick={(e) => {
         if (stopPropagation) e.stopPropagation();
       }}
-      className={cn('text-primary hover:underline underline-offset-2', className)}
+      className={cn('hover:underline underline-offset-2', className)}
     >
       {children}
     </Link>

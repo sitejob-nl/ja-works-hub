@@ -35,7 +35,7 @@ const ClientPortalLayout = () => {
 
         <div className="flex items-center gap-2">
           <div className="sm:hidden flex items-center gap-2">
-            <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium text-primary">
+            <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium text-stat-blue">
               {contactName.charAt(0).toUpperCase()}
             </div>
           </div>
@@ -57,7 +57,7 @@ const ClientPortalLayout = () => {
               cn(
                 'flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors',
                 isActive
-                  ? 'border-primary text-primary'
+                  ? 'border-primary text-stat-blue'
                   : 'border-transparent text-muted-foreground hover:text-foreground'
               )
             }
@@ -83,7 +83,7 @@ const ClientPortalLayout = () => {
             className={({ isActive }) =>
               cn(
                 'flex flex-col items-center gap-0.5 py-1.5 px-3 text-[10px] font-medium transition-colors min-w-0',
-                isActive ? 'text-primary' : 'text-muted-foreground'
+                isActive ? 'text-stat-blue' : 'text-muted-foreground'
               )
             }
           >

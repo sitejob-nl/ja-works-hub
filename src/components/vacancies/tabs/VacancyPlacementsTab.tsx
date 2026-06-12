@@ -66,10 +66,10 @@ const VacancyPlacementsTab = ({ vacancyId }: { vacancyId: string }) => {
             return (
               <TableRow key={p.id}>
                 <TableCell>
-                  {candidateId ? <Link to={`/kandidaten/${candidateId}`} className="font-medium hover:text-primary transition-colors">{name}</Link> : name}
+                  {candidateId ? <Link to={`/kandidaten/${candidateId}`} className="font-medium hover:text-stat-blue transition-colors">{name}</Link> : name}
                 </TableCell>
                 <TableCell>
-                  <Link to={`/plaatsingen/${p.id}`} className="hover:text-primary transition-colors">
+                  <Link to={`/plaatsingen/${p.id}`} className="hover:text-stat-blue transition-colors">
                     {p.function_name || 'Plaatsing'}
                   </Link>
                 </TableCell>

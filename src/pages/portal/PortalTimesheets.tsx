@@ -231,7 +231,7 @@ const PortalTimesheets = () => {
                   <p className="text-[10px] uppercase text-muted-foreground font-medium">
                     {format(day, 'EEE', { locale: nl })}
                   </p>
-                  <p className={`text-sm font-semibold ${isToday ? 'text-primary' : ''}`}>
+                  <p className={`text-sm font-semibold ${isToday ? 'text-stat-blue' : ''}`}>
                     {format(day, 'd')}
                   </p>
                 </div>

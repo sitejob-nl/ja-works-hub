@@ -247,7 +247,7 @@ const Housing = () => {
         <Card>
           <CardContent className="pt-5">
             <div className="flex items-center gap-2 mb-3">
-              <CheckCircle2 className="h-4 w-4 text-primary" />
+              <CheckCircle2 className="h-4 w-4 text-stat-blue" />
               <h2 className="text-sm font-semibold">Open schoonmaaktaken</h2>
             </div>
             <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
@@ -359,7 +359,7 @@ const Housing = () => {
               {properties.map((p: any) => (
                 <TableRow key={p.id}>
                   <TableCell>
-                    <Link to={`/huisvesting/${p.id}`} className="font-medium text-foreground hover:text-primary transition-colors">{p.name || [p.address_street, p.address_city].filter(Boolean).join(', ')}</Link>
+                    <Link to={`/huisvesting/${p.id}`} className="font-medium text-foreground hover:text-stat-blue transition-colors">{p.name || [p.address_street, p.address_city].filter(Boolean).join(', ')}</Link>
                   </TableCell>
                   <TableCell className="text-sm">{p.address_street || '—'}</TableCell>
                   <TableCell className="text-sm">{p.address_postal || '—'}</TableCell>

@@ -135,7 +135,7 @@ const PortalVehicle = () => {
       {/* Vehicle info */}
       <div className="bg-card rounded-xl border p-4 space-y-3">
         <div className="flex items-center gap-2">
-          <Car className="h-4 w-4 text-primary" />
+          <Car className="h-4 w-4 text-stat-blue" />
           <p className="font-semibold">{vehicle.license_plate}</p>
         </div>
         <div className="grid grid-cols-2 gap-2 text-sm">

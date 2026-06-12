@@ -239,7 +239,7 @@ const ImportData = () => {
               <div key={s} className="flex items-center gap-2">
                 <div className={`h-8 w-8 rounded-full flex items-center justify-center text-sm font-medium ${
                   s === step ? 'bg-primary text-primary-foreground' :
-                  s < step ? 'bg-primary/20 text-primary' : 'bg-muted text-muted-foreground'
+                  s < step ? 'bg-primary/20 text-stat-blue' : 'bg-muted text-muted-foreground'
                 }`}>
                   {s < step ? '✓' : s}
                 </div>
@@ -274,7 +274,7 @@ const ImportData = () => {
                 {headers.length > 0 && (
                   <>
                     <div className="flex items-center gap-2">
-                      <FileSpreadsheet className="h-4 w-4 text-primary" />
+                      <FileSpreadsheet className="h-4 w-4 text-stat-blue" />
                       <span className="text-sm font-medium">{rows.length} rijen gevonden</span>
                     </div>
 
@@ -462,13 +462,13 @@ const ImportData = () => {
                 {importDone && (
                   <div className="space-y-4">
                     <div className="bg-primary/10 border border-primary/20 rounded-lg p-4 flex items-center gap-3">
-                      <CheckCircle2 className="h-5 w-5 text-primary" />
+                      <CheckCircle2 className="h-5 w-5 text-stat-blue" />
                       <span className="font-medium">Import voltooid</span>
                     </div>
 
                     <div className="grid grid-cols-3 gap-4">
                       <div className="text-center p-3 rounded-lg bg-muted">
-                        <div className="text-2xl font-bold text-primary">{progress.imported}</div>
+                        <div className="text-2xl font-bold text-stat-blue">{progress.imported}</div>
                         <div className="text-xs text-muted-foreground">Geïmporteerd</div>
                       </div>
                       <div className="text-center p-3 rounded-lg bg-muted">

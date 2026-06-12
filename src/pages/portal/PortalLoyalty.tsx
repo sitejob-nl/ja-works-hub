@@ -11,7 +11,7 @@ import { formatDate } from '@/lib/format';
 const redemptionStatusClass: Record<string, string> = {
   aangevraagd: 'bg-blue-100 text-blue-700 border-0',
   goedgekeurd: 'bg-green-100 text-green-700 border-0',
-  uitgegeven: 'bg-primary/10 text-primary border-0',
+  uitgegeven: 'bg-primary/10 text-stat-blue border-0',
   geannuleerd: 'bg-muted text-muted-foreground border-0',
 };
 
@@ -105,7 +105,7 @@ const PortalLoyalty = () => {
         <CardContent className="p-5 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="h-11 w-11 rounded-lg bg-primary/10 flex items-center justify-center">
-              <Star className="h-5 w-5 text-primary" />
+              <Star className="h-5 w-5 text-stat-blue" />
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Beschikbaar saldo</p>
@@ -118,7 +118,7 @@ const PortalLoyalty = () => {
 
       <section className="space-y-2">
         <div className="flex items-center gap-2">
-          <ShoppingBag className="h-4 w-4 text-primary" />
+          <ShoppingBag className="h-4 w-4 text-stat-blue" />
           <h2 className="font-medium">Rewards</h2>
         </div>
         <div className="grid gap-3">

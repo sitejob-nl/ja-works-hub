@@ -530,7 +530,7 @@ const FlagCard = ({ t, onReview, onSaveNote }: { t: any; onReview: () => void; o
           <span className="font-medium">{formatDate(t.transaction_date)}</span>
 
           {t.vehicles ? (
-            <Link to={`/transport/${t.vehicles.id}`} className="text-foreground hover:text-primary hover:underline font-mono font-semibold inline-flex items-center gap-1.5">
+            <Link to={`/transport/${t.vehicles.id}`} className="text-foreground hover:hover:underline font-mono font-semibold inline-flex items-center gap-1.5">
               <Car className="h-3.5 w-3.5" />
               {plate}
             </Link>
@@ -548,7 +548,7 @@ const FlagCard = ({ t, onReview, onSaveNote }: { t: any; onReview: () => void; o
           )}
 
           {empName && t.employees?.id ? (
-            <Link to={`/medewerkers/${t.employees.id}`} className="text-primary hover:underline inline-flex items-center gap-1.5">
+            <Link to={`/medewerkers/${t.employees.id}`} className="hover:underline inline-flex items-center gap-1.5">
               <UserRound className="h-3.5 w-3.5" />
               {empName}
             </Link>
@@ -631,7 +631,7 @@ const WeeklyOverview = ({ weekStart, weekEnd, onWeekStartChange, transactions, a
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div className="flex items-start gap-3">
               <div className="h-9 w-9 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
-                <CalendarDays className="h-4 w-4 text-primary" />
+                <CalendarDays className="h-4 w-4 text-stat-blue" />
               </div>
               <div>
                 <h2 className="text-base font-semibold">Wekelijks Q8-overzicht</h2>
@@ -721,7 +721,7 @@ const AllTransactionsTable = ({ data }: { data: any[] }) => (
               <TableCell>{formatDate(t.transaction_date)}</TableCell>
               <TableCell className="font-mono font-semibold text-foreground">
                 {t.vehicles ? (
-                  <Link to={`/transport/${t.vehicles.id}`} className="text-foreground hover:text-primary hover:underline">{plate}</Link>
+                  <Link to={`/transport/${t.vehicles.id}`} className="text-foreground hover:hover:underline">{plate}</Link>
                 ) : plate ? (
                   <span>{plate}</span>
                 ) : (
@@ -730,7 +730,7 @@ const AllTransactionsTable = ({ data }: { data: any[] }) => (
               </TableCell>
               <TableCell>
                 {empName && t.employees?.id ? (
-                  <Link to={`/medewerkers/${t.employees.id}`} className="text-foreground hover:text-primary hover:underline font-medium">{empName}</Link>
+                  <Link to={`/medewerkers/${t.employees.id}`} className="text-foreground hover:hover:underline font-medium">{empName}</Link>
                 ) : (
                   <span className="text-muted-foreground">—</span>
                 )}
@@ -784,7 +784,7 @@ const ConditionsTab = ({ conditions, onSave, saving }: {
       <CardContent className="pt-5 space-y-5">
         <div className="flex items-start gap-3">
           <div className="h-9 w-9 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
-            <Settings2 className="h-4 w-4 text-primary" />
+            <Settings2 className="h-4 w-4 text-stat-blue" />
           </div>
           <div>
             <h2 className="text-base font-semibold">Analysevoorwaarden</h2>
@@ -1528,7 +1528,7 @@ const ImportSheet = ({ open, onOpenChange, orgId, conditions, onDone }: {
 
         {step === 3 && result && (
           <div className="mt-6 space-y-4 text-center py-8">
-            <CheckCircle2 className="h-12 w-12 text-primary mx-auto" />
+            <CheckCircle2 className="h-12 w-12 text-stat-blue mx-auto" />
             <p className="text-lg font-semibold">{result.imported} transacties geïmporteerd</p>
             {result.flags > 0 ? (
               <Badge variant="destructive" className="text-sm">{result.flags} afwijkingen gedetecteerd</Badge>

@@ -240,7 +240,7 @@ const Companies = () => {
                   return (
                     <TableRow key={c.id} className={i % 2 === 1 ? 'bg-background' : ''}>
                       <TableCell>
-                        <Link to={`/opdrachtgevers/${c.id}`} className="font-medium text-foreground hover:text-primary transition-colors">
+                        <Link to={`/opdrachtgevers/${c.id}`} className="font-medium text-foreground hover:text-stat-blue transition-colors">
                           {c.name}
                         </Link>
                       </TableCell>

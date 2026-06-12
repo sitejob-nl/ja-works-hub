@@ -19,7 +19,7 @@ const STEPS = [
     subtitle: 'Alles wat je nodig hebt om je uitzendbureau te runnen — op één plek.',
     description: 'We laten je in een paar stappen zien wat je allemaal kunt doen. Klaar?',
     icon: Rocket,
-    color: 'text-primary',
+    color: 'text-stat-blue',
     bgColor: 'bg-primary/10',
     features: [],
   },
