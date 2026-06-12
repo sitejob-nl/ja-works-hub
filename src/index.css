@@ -73,11 +73,14 @@
 
     --radius: 0.5rem;
 
-    /* Stat colors */
-    --stat-blue: 197 100% 60%;
-    --stat-orange: 25 95% 53%;
-    --stat-green: 142 71% 45%;
-    --stat-purple: 262 83% 58%;
+    /* Stat colors — worden óók als tekstkleur gebruikt (badges, KPI's,
+       status-labels), dus donker genoeg voor ≥4.4:1 contrast op wit.
+       De oude lichte varianten (60%/53%/45%/58% lightness) waren als tekst
+       vrijwel onleesbaar (~2:1) — klantmelding oplevering fase 1. */
+    --stat-blue: 197 100% 35%;
+    --stat-orange: 25 90% 40%;
+    --stat-green: 142 72% 30%;
+    --stat-purple: 262 60% 48%;
 
     /* Heading */
     --heading: 224 60% 8%;

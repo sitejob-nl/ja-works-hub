@@ -1,8 +1,10 @@
 // src/components/whatsapp/MediaMessage.tsx
 import { useState } from 'react';
-import { FileText, Play, Download, MapPin, User } from 'lucide-react';
+import { FileText, Play, Download, Loader2, MapPin, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 interface MediaMessageProps {
   type: string;
@@ -12,6 +14,35 @@ interface MediaMessageProps {
 
 export function MediaMessage({ type, body, mediaId }: MediaMessageProps) {
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+
+  const downloadDocument = async () => {
+    if (!mediaId || downloading) return;
+    setDownloading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('whatsapp-api', {
+        body: { action: 'download_media', media_id: mediaId },
+      });
+      if (error) throw new Error(error.message ?? 'Download mislukt');
+      if (data?.error) throw new Error(data.error);
+      if (!data?.base64) throw new Error('Geen bestandsinhoud ontvangen');
+
+      const binary = atob(data.base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      const blob = new Blob([bytes], { type: data.mime_type ?? 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = body && body !== '[Document]' ? body : 'whatsapp-document';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Document downloaden mislukt');
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   switch (type) {
     case 'image':
@@ -72,8 +103,15 @@ export function MediaMessage({ type, body, mediaId }: MediaMessageProps) {
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium truncate">{body}</p>
           </div>
-          <Button variant="ghost" size="icon" className="flex-shrink-0">
-            <Download className="h-4 w-4" />
+          <Button
+            variant="ghost"
+            size="icon"
+            className="flex-shrink-0"
+            onClick={downloadDocument}
+            disabled={!mediaId || downloading}
+            title="Document downloaden"
+          >
+            {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
           </Button>
         </div>
       );
