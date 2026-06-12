@@ -20,8 +20,8 @@ const FUNNEL_COLUMNS = [
   {
     key: 'lead',
     label: 'Nieuwe instroom',
-    description: 'Nog niet opgepakt',
-    statuses: ['lead', 'nieuw'],
+    description: 'Nieuw via de website — nog niet opgepakt',
+    statuses: ['lead'],
     color: 'bg-sky-500',
   },
   {
@@ -57,7 +57,9 @@ const FUNNEL_COLUMNS = [
   },
 ] as const;
 
-const VISIBLE_STATUSES = ['lead', 'nieuw', 'in_behandeling', 'in_screening', 'afgewezen'] as const;
+// Instroomfunnel = nieuwe website-instroom (candidate-signup zet status 'lead').
+// Carerix-imports staan op 'nieuw' en horen NIET in instroom maar in de kandidatenlijst.
+const VISIBLE_STATUSES = ['lead', 'in_behandeling', 'in_screening', 'afgewezen'] as const;
 
 const statusLabel: Record<string, string> = {
   lead: 'Lead',
