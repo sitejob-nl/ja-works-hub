@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { useAuth } from '@/contexts/AuthContext';
+import { useOrgQuery } from '@/lib/org-scope';
+import { unwrapList } from '@/lib/db';
+import { qk } from '@/lib/query-keys';
 import { Link } from 'react-router-dom';
 import { FolderHeart, Plus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -17,7 +19,6 @@ interface CandidateTalentpoolsTabProps {
 }
 
 const CandidateTalentpoolsTab = ({ candidateId }: CandidateTalentpoolsTabProps) => {
-  const orgId = useOrganizationId();
   const { profile } = useAuth();
   const qc = useQueryClient();
   const [addOpen, setAddOpen] = useState(false);
@@ -36,19 +37,17 @@ const CandidateTalentpoolsTab = ({ candidateId }: CandidateTalentpoolsTabProps) 
     enabled: !!candidateId,
   });
 
-  const { data: allPools = [] } = useQuery({
-    queryKey: ['talentpools-for-candidate-add', orgId],
-    queryFn: async () => {
-      const { data, error } = await supabase
+  const { data: allPools = [] } = useOrgQuery(
+    (orgId) => qk.talentpools.forCandidateAdd(orgId),
+    (orgId) => unwrapList(
+      supabase
         .from('talentpools' as any)
         .select('id, name, color')
         .eq('organization_id', orgId)
-        .order('name');
-      if (error) throw error;
-      return data ?? [];
-    },
-    enabled: addOpen,
-  });
+        .order('name'),
+    ),
+    { enabled: addOpen },
+  );
 
   const existingPoolIds = memberships.map((m: any) => m.talentpool_id);
   const availablePools = allPools.filter((p: any) => !existingPoolIds.includes(p.id));
