@@ -1,10 +1,7 @@
 import { createAdminClient, jsonResponse, requireInternalProfile } from "../_shared/auth.ts";
 import { isOutboundPaused } from "../_shared/outbound-pause.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
 
 const MAX_MATCHES = 200;
 

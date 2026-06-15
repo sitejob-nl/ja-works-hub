@@ -1,9 +1,6 @@
 import { createAdminClient, jsonResponse, requireInternalProfile } from "../_shared/auth.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
 
 type DomainType = "exact" | "wildcard";
 type DomainStatus = "pending" | "verified" | "misconfigured" | "error" | "removed";

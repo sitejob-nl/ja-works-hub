@@ -15,10 +15,7 @@ import {
 } from "../_shared/outlook-accounts.ts";
 import { sanitizeEmailHtml } from "../_shared/outlook-signature.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
 
 type GrantInput = {
   user_id?: string;

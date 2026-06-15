@@ -3,10 +3,7 @@ import { auditOutlookAction, graphJson, json, loadProviderForAccount, mailboxBas
 import { appendAccountSignatureIfMissing, sanitizeEmailHtml } from "../_shared/outlook-signature.ts";
 import { isOutboundPaused, logConceptCommunication } from "../_shared/outbound-pause.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
 
 const MAX_ATTACHMENT_BYTES = 3 * 1024 * 1024 - 1024;
 const MAX_TOTAL_ATTACHMENT_BYTES = 10 * 1024 * 1024;
