@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
+import { assertPasswordAcceptable } from "../_shared/password-policy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -61,6 +62,15 @@ Deno.serve(async (req) => {
     if (!password) {
       return new Response(
         JSON.stringify({ error: "Wachtwoord is verplicht" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // admin.createUser bypasses the GoTrue password policy, so enforce it here.
+    const pwError = await assertPasswordAcceptable(password, language === "en" ? "en" : "nl");
+    if (pwError) {
+      return new Response(
+        JSON.stringify({ error: pwError }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }

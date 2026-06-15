@@ -8,6 +8,8 @@ import { CheckCircle2, AlertTriangle, Loader2, Eye, EyeOff } from 'lucide-react'
 import { toast } from 'sonner';
 import { LanguageToggle } from '@/components/translation/LanguageToggle';
 import { useTranslation } from '@/hooks/useTranslation';
+import { isPasswordValid } from '@/lib/password-policy';
+import { PasswordChecklist } from '@/components/auth/PasswordChecklist';
 
 const copy = {
   nl: {
@@ -24,8 +26,12 @@ const copy = {
     portalName: 'Opdrachtgeverportaal',
     email: 'E-mailadres',
     password: 'Wachtwoord',
-    passwordPlaceholder: 'Minimaal 6 tekens',
-    passwordRequired: 'Minimaal 6 tekens vereist',
+    passwordPlaceholder: 'Minimaal 8 tekens',
+    pwLength: 'Minimaal 8 tekens',
+    pwLower: 'Een kleine letter',
+    pwUpper: 'Een hoofdletter',
+    pwDigit: 'Een cijfer',
+    pwSymbol: 'Een symbool (bijv. !?@#)',
     confirmPassword: 'Wachtwoord bevestigen',
     confirmPlaceholder: 'Herhaal wachtwoord',
     passwordsMismatch: 'Wachtwoorden komen niet overeen',
@@ -46,8 +52,12 @@ const copy = {
     portalName: 'Client portal',
     email: 'Email address',
     password: 'Password',
-    passwordPlaceholder: 'At least 6 characters',
-    passwordRequired: 'At least 6 characters required',
+    passwordPlaceholder: 'At least 8 characters',
+    pwLength: 'At least 8 characters',
+    pwLower: 'A lowercase letter',
+    pwUpper: 'An uppercase letter',
+    pwDigit: 'A digit',
+    pwSymbol: 'A symbol (e.g. !?@#)',
     confirmPassword: 'Confirm password',
     confirmPlaceholder: 'Repeat password',
     passwordsMismatch: 'Passwords do not match',
@@ -93,7 +103,7 @@ const ClientPortalActivate = () => {
     retry: false,
   });
 
-  const isValid = password.length >= 6 && password === confirmPassword;
+  const isValid = isPasswordValid(password) && password === confirmPassword;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -201,7 +211,7 @@ const ClientPortalActivate = () => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder={t.passwordPlaceholder}
-                minLength={6}
+                minLength={8}
                 required
               />
               <button type="button" onClick={() => setShowPassword(!showPassword)}
@@ -209,8 +219,11 @@ const ClientPortalActivate = () => {
                 {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
-            {password.length > 0 && password.length < 6 && (
-              <p className="text-xs text-destructive">{t.passwordRequired}</p>
+            {password.length > 0 && (
+              <PasswordChecklist
+                password={password}
+                labels={{ length: t.pwLength, lower: t.pwLower, upper: t.pwUpper, digit: t.pwDigit, symbol: t.pwSymbol }}
+              />
             )}
           </div>
 
