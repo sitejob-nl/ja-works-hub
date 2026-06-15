@@ -32,8 +32,10 @@ Deno.serve(async (req) => {
   }
 
   const admin = createAdminClient();
-  const { data, error } = await admin
-    .from(entity)
+  // `entity` is a union of every export table name and EXPORTS[entity] a union of long
+  // select strings; together they overflow the typed query-builder's depth (TS2589). Cast
+  // this one dynamic builder to a loose type — runtime is unchanged, rows are exported as-is.
+  const { data, error } = await (admin.from(entity) as any)
     .select(EXPORTS[entity])
     .eq('organization_id', auth.organizationId)
     .order('created_at', { ascending: false })
