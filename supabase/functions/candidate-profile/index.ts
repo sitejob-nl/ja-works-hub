@@ -215,7 +215,9 @@ Deno.serve(async (req) => {
       // Persist uploaded file paths + register the CV as a document.
       const fileUpdate: Record<string, unknown> = {};
       if (cvPath) fileUpdate.cv_file_url = cvPath;
-      if (photoPath) fileUpdate.profile_photo_url = photoPath;
+      // There is no photo-URL column on candidates; flag that a photo exists
+      // (the file itself is stored under the candidate's documents-bucket folder).
+      if (photoPath) fileUpdate.cv_has_photo = true;
       if (Object.keys(fileUpdate).length > 0) {
         await supabase.from("candidates").update(fileUpdate).eq("id", candidateId);
       }

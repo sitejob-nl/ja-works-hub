@@ -52,7 +52,7 @@ BEGIN
     address_street = NULL, address_postal = NULL, address_city = NULL,
     address_lat = NULL, address_lng = NULL,
     emergency_contact_name = NULL, emergency_contact_phone = NULL,
-    cv_raw_text = NULL, cv_file_url = NULL, profile_photo_url = NULL,
+    cv_raw_text = NULL, cv_file_url = NULL, cv_has_photo = false,
     notes = NULL, ai_analysis = NULL,
     anonymized_at = now(),
     anonymization_reason = p_reason
