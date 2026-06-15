@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendViaOutlookAccount } from "../_shared/outlook-send.ts";
 import { buildOrganizationPublicUrl } from "../_shared/public-url.ts";
+import { requireInternalProfile } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -73,17 +74,14 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) return json({ error: "Unauthorized" }, 401);
-
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
-
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return json({ error: "Unauthorized" }, 401);
+    // B4/H1: require an authenticated INTERNAL-role user, then scope every lookup
+    // to that user's organization. Without this, any logged-in user (any org/role)
+    // could exchange a known invite_id for another tenant's portal activation token
+    // (= account takeover with access to BSN/IBAN/loonstroken/documenten).
+    const auth = await requireInternalProfile(req, corsHeaders);
+    if (auth instanceof Response) return auth;
+    const orgId = auth.organizationId;
+    const userId = auth.userId;
 
     const service = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -102,6 +100,7 @@ Deno.serve(async (req) => {
         organization:organization_id(name, settings)
       `)
       .eq("id", invite_id)
+      .eq("organization_id", orgId)
       .maybeSingle();
 
     if (!invite) return json({ error: "Invite not found" }, 404);
@@ -128,7 +127,7 @@ Deno.serve(async (req) => {
       subject,
       htmlBody: html,
       candidateId: invite.candidate_id,
-      sentBy: user.id,
+      sentBy: userId,
     });
 
     if (!sendResult.success) {
@@ -143,13 +142,13 @@ Deno.serve(async (req) => {
       subject,
       body: `Portal-uitnodiging naar ${invite.email}`,
       sent_at: new Date().toISOString(),
-      sent_by: user.id,
+      sent_by: userId,
       email_to: [invite.email],
     });
 
     return json({ sent: true, to: invite.email, activation_url: activationUrl });
   } catch (err: any) {
     console.error("send-portal-invite error:", err);
-    return json({ error: err.message ?? "Unknown error" }, 500);
+    return json({ error: "Versturen van de uitnodiging is mislukt." }, 500);
   }
 });
