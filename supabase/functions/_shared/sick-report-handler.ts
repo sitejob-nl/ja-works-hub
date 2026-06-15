@@ -178,6 +178,9 @@ export async function cascadeSickReport(
 
     if (contact?.email) {
       const subject = `Ziekmelding — ${candidateName}`;
+      // B1/AVG art.9: NEVER share the nature/aard of the illness (report.notes)
+      // with the inlener. The client only receives who, function, reported date
+      // and expected return — not the medical reason.
       const html = buildClientEmailHtml({
         contactName: contact.full_name ?? "",
         candidateName,
@@ -185,7 +188,6 @@ export async function cascadeSickReport(
         companyName: company?.name ?? "",
         reportedAt: report.reported_at,
         expectedReturnDate: report.expected_return_date,
-        notes: report.notes,
       });
 
       const sendResult = await sendViaOutlookAccount({
@@ -212,7 +214,8 @@ export async function cascadeSickReport(
           channel: "email",
           direction: "outbound",
           subject,
-          body: `Ziekmelding voor ${candidateName}${report.notes ? ` — ${report.notes}` : ""}`,
+          // B1/AVG: do not copy the medical reason into the outbound comms log.
+          body: `Ziekmelding voor ${candidateName}`,
           sent_at: new Date().toISOString(),
           sent_by: triggeredBy ?? null,
           email_to: [contact.email],
@@ -254,7 +257,6 @@ function buildClientEmailHtml(data: {
   companyName: string;
   reportedAt: string;
   expectedReturnDate: string | null;
-  notes: string | null;
 }): string {
   return `<!DOCTYPE html>
 <html lang="nl">
@@ -284,10 +286,6 @@ function buildClientEmailHtml(data: {
             ${data.expectedReturnDate ? `<tr><td style="padding:14px 20px;border-bottom:1px solid #fed7aa;">
               <span style="color:#9a3412;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;">Verwachte terugkeer</span><br>
               <strong style="color:#1e293b;font-size:14px;">${escapeHtml(formatDate(data.expectedReturnDate))}</strong>
-            </td></tr>` : ""}
-            ${data.notes ? `<tr><td style="padding:14px 20px;">
-              <span style="color:#9a3412;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;">Toelichting</span><br>
-              <span style="color:#334155;font-size:14px;white-space:pre-wrap;">${escapeHtml(data.notes)}</span>
             </td></tr>` : ""}
           </table>
 
