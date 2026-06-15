@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { getErrorMessage } from '@/lib/error-message';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -157,24 +158,22 @@ const CandidateProfile = () => {
     setSubmitting(true);
 
     try {
-      let cv_file_url: string | null = null;
-
-      // Upload CV
-      if (cvFile) {
-        const ext = cvFile.name.split('.').pop() ?? 'pdf';
-        const path = `${organizationId}/candidates/${candidateId}/cv_${crypto.randomUUID()}.${ext}`;
-        const { error } = await supabase.storage.from('documents').upload(path, cvFile);
-        if (!error) cv_file_url = path;
-      }
-
-      // Upload photo
-      let photo_file_url: string | null = null;
-      if (photoFile) {
-        const ext = photoFile.name.split('.').pop() ?? 'jpg';
-        const path = `${organizationId}/candidates/${candidateId}/photo_${crypto.randomUUID()}.${ext}`;
-        const { error } = await supabase.storage.from('documents').upload(path, photoFile);
-        if (!error) photo_file_url = path;
-      }
+      // B-upload: send files to the service-role edge function. The public page is
+      // anonymous and the documents bucket is authenticated-only, so a direct upload
+      // here silently fails — the candidate's CV/photo would be lost without warning.
+      const fileToPayload = (file: File | null) =>
+        new Promise<{ name: string; data: string } | null>((resolve) => {
+          if (!file) return resolve(null);
+          const reader = new FileReader();
+          reader.onload = () => {
+            const r = String(reader.result);
+            resolve({ name: file.name, data: r.includes(',') ? r.split(',')[1] : r });
+          };
+          reader.onerror = () => resolve(null);
+          reader.readAsDataURL(file);
+        });
+      const cv_file = await fileToPayload(cvFile);
+      const photo_file = await fileToPayload(photoFile);
 
       const nationality = form.nationality === 'overig' ? form.nationality_other : form.nationality;
       const extraLangs = form.language_other.split(',').map((l) => l.trim()).filter(Boolean);
@@ -224,12 +223,9 @@ const CandidateProfile = () => {
               available_until: form.available_until || undefined,
               arrival_date: form.arrival_date || undefined,
               availability_notes: form.availability_notes || undefined,
-              cv_file_url: cv_file_url || undefined,
-              profile_photo_url: photo_file_url || undefined,
             },
-            documents: [
-              ...(cv_file_url ? [{ type: 'cv' as const, file_path: cv_file_url, name: 'CV (zelf geüpload)' }] : []),
-            ],
+            cv_file,
+            photo_file,
           }),
         }
       );
@@ -241,7 +237,7 @@ const CandidateProfile = () => {
         throw new Error(result.error ?? 'Onbekende fout');
       }
     } catch (err: any) {
-      alert(err.message ?? 'Er is een fout opgetreden. Probeer het opnieuw.');
+      alert(getErrorMessage(err, 'Er is een fout opgetreden. Probeer het opnieuw.'));
     } finally {
       setSubmitting(false);
     }

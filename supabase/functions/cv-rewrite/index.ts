@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createAdminClient, requireInternalProfile } from "../_shared/auth.ts";
+import { pseudonymizeCv } from "../_shared/cv-pseudonymize.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -29,7 +30,7 @@ serve(async (req) => {
     const admin = createAdminClient();
     const { data: candidate, error: candidateError } = await admin
       .from("candidates")
-      .select("id, first_name, last_name, email, phone, address_city, date_of_birth, nationality, skills, languages, certifications, ai_summary, ai_target_functions, ai_function_group")
+      .select("id, first_name, last_name, skills, languages, certifications, ai_summary, ai_target_functions, ai_function_group")
       .eq("id", candidateId)
       .eq("organization_id", auth.organizationId)
       .single();
@@ -64,31 +65,39 @@ serve(async (req) => {
     };
     const targetLang = langMap[language] || "Nederlands";
 
-    const candidateInfo = anonymous
-      ? {
-          ...candidate,
-          first_name: "Kandidaat",
-          last_name: candidate.id?.substring(0, 6)?.toUpperCase() || "REF",
-          email: undefined,
-          phone: undefined,
-          address_street: undefined,
-          address_postal: undefined,
-          address_city: undefined,
-        }
-      : candidate;
+    // B2/AVG: never send direct identifiers (name, email, phone, DOB, nationality,
+    // address) to the third-party AI gateway. The real name/contact are re-attached
+    // client-side after generation, so the prompt only needs the professional profile.
+    void anonymous; // output styling only; the data sent is always identifier-free now
+    const candidateProfile = {
+      reference: candidate.id?.substring(0, 6)?.toUpperCase() || "REF",
+      skills: candidate.skills,
+      languages: candidate.languages,
+      certifications: candidate.certifications,
+      summary: candidate.ai_summary,
+      target_functions: candidate.ai_target_functions,
+      function_group: candidate.ai_function_group,
+    };
 
     const systemPrompt = `Je bent een professionele CV-schrijver voor een uitzendbureau. Schrijf een professioneel CV in het ${targetLang}.
-Gebruik de verstrekte kandidaatgegevens en plaatsingshistorie om een professioneel profiel te genereren.
+Gebruik het verstrekte kandidaatprofiel en de plaatsingshistorie om een professioneel profiel te genereren.
 Schrijf in de derde persoon, professioneel en beknopt. Focus op relevante werkervaring en vaardigheden.
-${anonymous ? "Dit is een anoniem CV - gebruik GEEN echte naam, contactgegevens of identificeerbare informatie." : ""}`;
+Gebruik GEEN namen of contactgegevens; verwijs neutraal naar de kandidaat.`;
 
-    const userPrompt = `Kandidaatgegevens:
-${JSON.stringify(candidateInfo, null, 2)}
+    const rawUserPrompt = `Kandidaatprofiel:
+${JSON.stringify(candidateProfile, null, 2)}
 
 Plaatsingshistorie:
 ${JSON.stringify(placements || [], null, 2)}
 
 Genereer een professioneel CV met de volgende secties.`;
+
+    // Belt-and-suspenders: scrub any name/email/phone/BSN/IBAN that may have leaked
+    // into free-text fields (ai_summary, company names, function titles) before sending.
+    const { text: userPrompt } = pseudonymizeCv(rawUserPrompt, {
+      first_name: candidate.first_name,
+      last_name: candidate.last_name,
+    });
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -161,7 +170,7 @@ Genereer een professioneel CV met de volgende secties.`;
     });
   } catch (e) {
     console.error("cv-rewrite error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
+    return new Response(JSON.stringify({ error: "Genereren van het CV is mislukt. Probeer het later opnieuw." }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }

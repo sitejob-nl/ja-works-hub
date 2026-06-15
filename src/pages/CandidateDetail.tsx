@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Input } from '@/components/ui/input';
 import { ChevronRight, MoreHorizontal, FileText, Link2, Copy, Check, MessageCircle, Mail, ClipboardCheck, Briefcase } from 'lucide-react';
 import { toast } from 'sonner';
+import { getErrorMessage } from '@/lib/error-message';
 import CandidateProfileTab from '@/components/candidates/tabs/CandidateProfileTab';
 import CandidateDocumentsTab from '@/components/candidates/tabs/CandidateDocumentsTab';
 import CandidateCommunicationTab from '@/components/candidates/tabs/CandidateCommunicationTab';
@@ -142,6 +143,25 @@ const CandidateDetail = () => {
       qc.invalidateQueries({ queryKey: ['candidates'] });
       toast.success('Status bijgewerkt');
     },
+  });
+
+  // H4 / AVG art.17: admin-gated anonimisering (RPC enforces admin + org server-side).
+  const [anonOpen, setAnonOpen] = useState(false);
+  const [anonReason, setAnonReason] = useState('');
+  const anonymize = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.rpc('anonymize_candidate' as any, {
+        p_candidate_id: id!, p_reason: anonReason || null,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['candidate', id] });
+      qc.invalidateQueries({ queryKey: ['candidates'] });
+      setAnonOpen(false);
+      toast.success('Kandidaat geanonimiseerd (AVG art. 17).');
+    },
+    onError: (e) => toast.error(getErrorMessage(e)),
   });
 
   const handleGenerateLink = async () => {
@@ -305,8 +325,42 @@ const CandidateDetail = () => {
                   ))}
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                onClick={() => setAnonOpen(true)}
+              >
+                Anonimiseren (AVG art. 17)
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+
+          <AlertDialog open={anonOpen} onOpenChange={setAnonOpen}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Kandidaat anonimiseren?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Dit verwijdert onomkeerbaar de persoonsgegevens (naam, contact, BSN/IBAN,
+                  adres, CV, documenten, notities). Fiscaal verplichte gegevens (loonstroken,
+                  dienstverband) blijven bewaard. Alleen beheerders kunnen dit uitvoeren.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <Input
+                placeholder="Reden (optioneel, voor het auditlog)"
+                value={anonReason}
+                onChange={(e) => setAnonReason(e.target.value)}
+              />
+              <AlertDialogFooter>
+                <AlertDialogCancel>Annuleren</AlertDialogCancel>
+                <AlertDialogAction
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  onClick={(e) => { e.preventDefault(); anonymize.mutate(); }}
+                  disabled={anonymize.isPending}
+                >
+                  {anonymize.isPending ? 'Bezig...' : 'Anonimiseren'}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </div>
 
