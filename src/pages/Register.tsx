@@ -6,6 +6,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
+import { isPasswordValid } from '@/lib/password-policy';
+import { PasswordChecklist } from '@/components/auth/PasswordChecklist';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
@@ -28,8 +30,8 @@ const Register = () => {
       toast.error('Vul alle verplichte velden in');
       return;
     }
-    if (form.password.length < 6) {
-      toast.error('Wachtwoord moet minimaal 6 tekens bevatten');
+    if (!isPasswordValid(form.password)) {
+      toast.error('Wachtwoord moet minimaal 8 tekens bevatten, met een hoofd- en kleine letter, een cijfer en een symbool');
       return;
     }
 
@@ -102,7 +104,13 @@ const Register = () => {
           </div>
           <div className="space-y-2">
             <Label htmlFor="regPassword">Wachtwoord *</Label>
-            <Input id="regPassword" type="password" value={form.password} onChange={e => set('password', e.target.value)} placeholder="Minimaal 6 tekens" required autoComplete="new-password" />
+            <Input id="regPassword" type="password" value={form.password} onChange={e => set('password', e.target.value)} placeholder="Minimaal 8 tekens" required autoComplete="new-password" minLength={8} />
+            {form.password.length > 0 && (
+              <PasswordChecklist
+                password={form.password}
+                labels={{ length: 'Minimaal 8 tekens', lower: 'Een kleine letter', upper: 'Een hoofdletter', digit: 'Een cijfer', symbol: 'Een symbool (bijv. !?@#)' }}
+              />
+            )}
           </div>
 
           <Button type="submit" className="w-full" disabled={loading}>

@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
+import { assertPasswordAcceptable } from "../_shared/password-policy.ts";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_PER_IP_PER_HOUR = 5;
@@ -39,6 +40,15 @@ Deno.serve(async (req) => {
     ) {
       return new Response(
         JSON.stringify({ error: "Ongeldige invoer: controleer e-mail, wachtwoord (min. 8 tekens) en bedrijfsnaam." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    // admin.createUser bypasses the GoTrue password policy -> enforce complexity + leaked here.
+    const pwError = await assertPasswordAcceptable(password, "nl");
+    if (pwError) {
+      return new Response(
+        JSON.stringify({ error: pwError }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
