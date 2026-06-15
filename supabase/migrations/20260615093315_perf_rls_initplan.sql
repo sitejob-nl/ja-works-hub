@@ -1,6 +1,6 @@
 -- Performance: fix auth_rls_initplan on 57 RLS policies (architecture audit Pri 4)
 --
--- STATUS: PROPOSED — NOT yet applied to production. Apply via
+-- STATUS: APPLIED to production on 2026-06-15 via apply_migration (version 20260615093315). Behavior-preserving; advisor re-run confirmed auth_rls_initplan 57 -> 0.
 --   mcp__claude_ai_Supabase__apply_migration after review, then regenerate
 --   src/integrations/supabase/types.ts (no type change expected) and run get_advisors.
 --
