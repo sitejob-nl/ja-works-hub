@@ -1,23 +1,14 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { serveEdge, CORS_HEADERS } from '../_shared/http.ts';
+import { createAdminClient } from '../_shared/auth.ts';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
-
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
-
-  try {
+Deno.serve(serveEdge(async (req) => {
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) throw new Error('No auth header');
 
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    );
+    // Service-role client for the work; the user's identity is resolved separately
+    // (below) via the anon client + Authorization header — self-auth unchanged.
+    const supabase = createAdminClient();
 
     // Get user's org
     const { data: { user } } = await createClient(
@@ -209,12 +200,6 @@ Deno.serve(async (req) => {
     }
 
     return new Response(JSON.stringify({ created }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
     });
-  } catch (error: any) {
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-  }
-});
+}));
