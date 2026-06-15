@@ -1,6 +1,6 @@
 -- Performance: org-scoping + hot-FK indexes (architecture audit Pri 4)
 --
--- STATUS: PROPOSED — NOT yet applied to production. Apply via
+-- STATUS: APPLIED to production on 2026-06-15 via apply_migration (version 20260615093327). Additive indexes; advisor re-run confirmed unindexed_foreign_keys 133 -> 121.
 --   mcp__claude_ai_Supabase__apply_migration after review.
 --
 -- Source: Supabase performance advisor (2026-06-15) + a pg_class/pg_index catalog

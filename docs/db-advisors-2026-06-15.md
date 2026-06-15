@@ -2,7 +2,9 @@
 
 **Date:** 2026-06-15
 **Project:** `noaupcteygfvlyymqtew`
-**How:** `get_advisors` (security + performance) + a `pg_class`/`pg_index` catalog scan of `organization_id` coverage. Read-only. **Nothing was applied to production** — this is a proposal. The one concrete artifact is the proposed, un-applied migration [`supabase/migrations/20260615120000_perf_org_indexes.sql`](../supabase/migrations/20260615120000_perf_org_indexes.sql).
+**How:** `get_advisors` (security + performance) + a `pg_class`/`pg_index` catalog scan of `organization_id` coverage, all read-only.
+
+**Status:** the index migration [`supabase/migrations/20260615093327_perf_org_indexes.sql`](../supabase/migrations/20260615093327_perf_org_indexes.sql) and the companion RLS-`initplan` migration (PR #55) were **applied to production on 2026-06-15** after review. The advisor re-run confirmed `auth_rls_initplan` 57→0 and `unindexed_foreign_keys` 133→121. The remaining items below — `multiple_permissive_policies`, the security toggles, and the `SECURITY DEFINER` `REVOKE` audit — stay proposals.
 
 ---
 
