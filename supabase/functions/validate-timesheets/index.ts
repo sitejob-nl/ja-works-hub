@@ -52,9 +52,25 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "No timesheets found" }), { status: 404, headers: corsHeaders });
     }
 
+    // NEVER touch already-finalised timesheets. AI-validation may only run on
+    // not-yet-approved entries; re-validating an approved batch must not silently
+    // revert a "goedgekeurd"/"afgekeurd" status (payroll integrity).
+    const LOCKED_STATUSES = new Set(["goedgekeurd", "afgekeurd"]);
+    const validatable = timesheets.filter((ts: any) => !LOCKED_STATUSES.has(ts.status));
+    if (!validatable.length) {
+      return new Response(
+        JSON.stringify({
+          results: [],
+          skipped: timesheets.length,
+          message: "Geen te valideren uren: de geselecteerde uren zijn al goedgekeurd of afgekeurd.",
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     // Group by candidate for weekly analysis
     const byCandidate = new Map<string, any[]>();
-    for (const ts of timesheets) {
+    for (const ts of validatable) {
       const key = ts.candidate_id;
       if (!byCandidate.has(key)) byCandidate.set(key, []);
       byCandidate.get(key)!.push(ts);
@@ -149,6 +165,8 @@ Controleer op:
 
       // Map back to timesheets and update
       for (const ts of entries) {
+        // Defence-in-depth: never overwrite a finalised status.
+        if (LOCKED_STATUSES.has(ts.status)) continue;
         const validation = validatedEntries.find((v: any) => v.work_date === ts.work_date) ?? { status: "groen", issues: [] };
         results.push({ id: ts.id, status: validation.status, issues: validation.issues });
 
@@ -169,7 +187,8 @@ Controleer op:
     });
   } catch (err) {
     console.error("validate-timesheets error:", err);
-    return new Response(JSON.stringify({ error: (err as Error).message }), {
+    // Do not leak raw technical/Postgres detail to the client.
+    return new Response(JSON.stringify({ error: "Validatie van de uren is mislukt. Probeer het later opnieuw." }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
