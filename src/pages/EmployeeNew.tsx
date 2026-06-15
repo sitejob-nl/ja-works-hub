@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ChevronRight, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { logAudit } from '@/lib/audit';
+import { getErrorMessage } from '@/lib/error-message';
 
 const complianceBadge: Record<string, string> = {
   compleet: 'bg-stat-green/10 text-stat-green border-0',
@@ -64,9 +65,22 @@ const EmployeeNew = () => {
       }).select('id').single();
       if (error) throw error;
 
+      // B19: also set employee_status so the worker appears in the Medewerkers
+      // list (which filters on employee_status IN ('onboarding','actief','ziek')),
+      // and record the employment so contract data is available downstream.
       await supabase.from('candidates')
-        .update({ status: 'geplaatst' as const })
+        .update({ status: 'geplaatst' as const, employee_status: 'onboarding' as const })
         .eq('id', selectedCandidate.id);
+
+      await supabase.from('candidate_employment').insert({
+        organization_id: orgId,
+        candidate_id: selectedCandidate.id,
+        employee_number: form.employee_number || null,
+        start_date: form.start_date,
+        contract_type: form.contract_type || null,
+        contract_hours: form.contract_hours ? Number(form.contract_hours) : null,
+        is_current: true,
+      } as any);
 
       const { data: tokenData } = await supabase.from('onboarding_tokens').insert({
         employee_id: emp.id,
@@ -97,7 +111,7 @@ const EmployeeNew = () => {
       }
       navigate(`/kandidaten/${selectedCandidate.id}`);
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => toast.error(getErrorMessage(e)),
   });
 
   return (

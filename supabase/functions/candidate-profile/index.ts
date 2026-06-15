@@ -107,7 +107,7 @@ Deno.serve(async (req) => {
     // ─── POST: save profile data ───
     if (req.method === "POST") {
       const body = await req.json();
-      const { token, candidate_data, documents } = body;
+      const { token, candidate_data, documents, cv_file, photo_file } = body;
 
       if (!token) return json({ error: "Token ontbreekt" }, 400);
 
@@ -130,6 +130,38 @@ Deno.serve(async (req) => {
 
       const candidateId = tokenRow.candidate_id;
       const organizationId = tokenRow.organization_id;
+
+      // B-upload: upload CV/photo here with the service-role client. The public
+      // page is anonymous, and the documents bucket INSERT policy is TO authenticated,
+      // so a direct client upload silently fails and the file is lost. We accept the
+      // file as base64 and write it server-side (with a size + extension guard).
+      const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // 10 MB
+      const ALLOWED_EXT = /\.(pdf|docx?|odt|rtf|txt|png|jpe?g|webp|heic)$/i;
+      async function uploadProfileFile(
+        file: { name?: string; data?: string } | null | undefined,
+        prefix: string,
+      ): Promise<string | null> {
+        if (!file?.data || !file?.name || !ALLOWED_EXT.test(file.name)) return null;
+        let bytes: Uint8Array;
+        try {
+          const bin = atob(file.data);
+          bytes = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        } catch {
+          return null;
+        }
+        if (bytes.byteLength === 0 || bytes.byteLength > MAX_UPLOAD_BYTES) return null;
+        const ext = file.name.split(".").pop() ?? "bin";
+        const path = `${organizationId}/candidates/${candidateId}/${prefix}_${crypto.randomUUID()}.${ext}`;
+        const { error } = await supabase.storage.from("documents").upload(path, bytes, { upsert: false });
+        if (error) {
+          console.error(`${prefix} upload failed:`, error.message);
+          return null;
+        }
+        return path;
+      }
+      const cvPath = await uploadProfileFile(cv_file, "cv");
+      const photoPath = await uploadProfileFile(photo_file, "photo");
 
       // Build update payload — COALESCE logic: only update non-empty values
       if (candidate_data && typeof candidate_data === "object") {
@@ -178,6 +210,24 @@ Deno.serve(async (req) => {
             return json({ error: updateErr.message }, 500);
           }
         }
+      }
+
+      // Persist uploaded file paths + register the CV as a document.
+      const fileUpdate: Record<string, unknown> = {};
+      if (cvPath) fileUpdate.cv_file_url = cvPath;
+      if (photoPath) fileUpdate.profile_photo_url = photoPath;
+      if (Object.keys(fileUpdate).length > 0) {
+        await supabase.from("candidates").update(fileUpdate).eq("id", candidateId);
+      }
+      if (cvPath) {
+        await supabase.from("documents").insert({
+          candidate_id: candidateId,
+          organization_id: organizationId,
+          type: "cv",
+          name: "CV (zelf geüpload)",
+          file_path: cvPath,
+          status: "geldig" as const,
+        });
       }
 
       // Insert documents if provided

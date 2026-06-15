@@ -60,7 +60,11 @@ class ErrorBoundary extends Component<Props, State> {
             <p className="text-muted-foreground text-sm mb-4">
               Er is een onverwachte fout opgetreden. Probeer de pagina te vernieuwen.
             </p>
-            <p className="text-xs text-destructive font-mono mb-4">{this.state.error?.message}</p>
+            {/* B22: never surface the raw technical message to end users in production;
+                it is already persisted to client_errors for diagnostics. */}
+            {import.meta.env.DEV && (
+              <p className="text-xs text-destructive font-mono mb-4">{this.state.error?.message}</p>
+            )}
             <button
               onClick={() => window.location.reload()}
               className="text-sm hover:underline"
