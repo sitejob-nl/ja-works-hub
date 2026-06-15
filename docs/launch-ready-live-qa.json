@@ -1,0 +1,56 @@
+{
+  "method": "Live headed Playwright (Chromium) against local dev server (127.0.0.1:8081) on the live Supabase backend, demo org 'JA Werkt Demo Fase 1' (admin) + employee portal (Milan Kowalski). Date 2026-06-15. Plus the repo's own Playwright API-contract + public-page suite.",
+  "authZonesTested": ["main app (admin)", "employee portal (medewerker)", "public token pages", "edge function auth gates (HTTP)"],
+  "positive": [
+    "Login + all 11 core modules (dashboard, kandidaten list+detail, vacatures, match-pipeline, uren, huisvesting, plaatsingen, facturatie, transport, whatsapp, instellingen) render with ZERO console errors; every Supabase REST call returned 200.",
+    "Error UX is plain Dutch: wrong login -> 'Ongeldige inloggegevens. Probeer het opnieuw.'; bogus public match token -> 'Deze link is ongeldig of verlopen.'; invalid onboarding token -> 'Link ongeldig'.",
+    "get_candidate_decrypted RPC works (BSN/IBAN decrypt path) - candidate detail 200.",
+    "Employee portal (PII zone: plaatsing/uren/huisvesting/auto/documenten) renders, 0 console errors, all REST 200/204.",
+    "Edge-function auth gates: API-contract suite 45/46 pass - every protected function rejects missing/invalid bearer with 401; CORS preflight 200 for public endpoints.",
+    "Console hygiene: 0 errors app-wide; only benign warnings."
+  ],
+  "issues": [
+    {"id": "QA1", "severity": "low", "title": "Dashboard request waterfall (~37 separate REST round-trips on load)", "evidence": "Network capture on '/' load: ~37 sequential PostgREST GET/HEAD calls (requests 447-484). Performance risk on higher latency / larger tenants.", "tags": ["performance", "console-network"]},
+    {"id": "QA2", "severity": "low", "title": "Demo/production org polluted with E2E test records", "evidence": "Many 'E2E Recruit 17797...' and 'E2E Kandidaat ...' candidates, 'E2E Funnel Woning' housing, in the live demo org. Matches open-gaps 'test-vacatures opschonen / data cleanup'. Confuses real users and demos.", "tags": ["data-integrity", "ops"]},
+    {"id": "QA3", "severity": "low", "title": "A11y: DialogContent missing aria-describedby", "evidence": "Console warning 'Missing Description or aria-describedby={undefined} for {DialogContent}' on the welcome dialog. Likely repeated across Radix dialogs.", "tags": ["a11y", "ux"]},
+    {"id": "QA4", "severity": "low", "title": "PWA meta deprecation", "evidence": "Console warning: '<meta name=apple-mobile-web-app-capable> is deprecated. Please include <meta name=mobile-web-app-capable>'. index.html PWA meta.", "tags": ["pwa", "console-network"]},
+    {"id": "QA5", "severity": "info", "title": "React Router v7 future-flag warnings", "evidence": "Two v6->v7 future flag warnings (startTransition, relativeSplatPath) on every page. Dev-only noise; opt-in flags recommended before a v7 upgrade.", "tags": ["console-network"]},
+    {"id": "QA6", "severity": "info", "title": "Employee portal writes to candidates on every load", "evidence": "Portal dashboard load issues 2x PATCH /candidates (204) (requests 451, 460) - likely last-seen/activity tracking. Verify it cannot be abused to write unintended fields and is RLS-self-scoped.", "tags": ["data-integrity", "auth"]},
+    {"id": "QA7", "severity": "info", "title": "Stale API-contract test assertion", "evidence": "e2e-api-contracts 'automated-messages rejects unknown job' expects 400 but gets 401 (auth checked before job validation). Correct security behavior; update the test.", "tags": ["testing"]},
+    {"id": "QA8", "severity": "medium", "title": "Real captured production bug: CarerixImport React Query 'enabled' not boolean", "evidence": "Superadmin -> Foutmeldingen (client_errors): 'Expected enabled to be a boolean or a callback that returns a boolean' at /carerix-import, recurring (29-4 and 22-4) on production ja-works-hub.vercel.app. Real defect in CarerixImport useQuery enabled option.", "tags": ["bug", "data-integrity"]},
+    {"id": "QA9", "severity": "medium", "title": "Real captured production bug: Radix Select.Item empty-string value crashes Housing detail", "evidence": "client_errors: 'A <Select.Item /> must have a value prop that is not an empty string' at /huisvesting/:id (22-4) on production. Radix Select crash on a housing detail Select.", "tags": ["bug", "ux"]},
+    {"id": "QA10", "severity": "low", "title": "Captured 'signal is aborted without reason' + opaque 'Script error.'", "evidence": "client_errors: AbortController cancellation at /huisvesting (25-5) and cross-origin 'Script error.' on production (7-5). Mostly noise but the abort suggests unguarded fetch cancellation on unmount.", "tags": ["console-network"]},
+    {"id": "QA11", "severity": "low", "title": "Superadmin org list + demo org polluted with test orgs/records", "evidence": "6 orgs incl. 'E2E Full QA ...', 'QA Go Live ...', 'Test test'; demo org full of E2E candidates/housing. Cleanup before onboarding real external tenants.", "tags": ["ops", "data-integrity"]}
+  ],
+  "positiveSuperadmin": "Centralized client-error capture works (client_errors table + /superadmin/errors dashboard, 33 errors); superadmin zone gated by superadmins table + sa_* SECURITY DEFINER RPCs (200). 4th auth zone isolated and functional.",
+  "perfNotes": "Dashboard ~37 REST round-trips on load; employee portal ~17; superadmin uses sa_* RPCs (2 calls). No single slow call observed but waterfall depth is the main perf risk.",
+  "endToEndWorkflowsWalked": {
+    "recruiter_full_chain": {
+      "result": "PASS",
+      "steps": "Created candidate 'QALaunch ReadyLasser' (e9e7df62): dedup pre-check fired (GET by DOB+name/email/phone before POST), POST candidates 201 + audit_log 201, post-create 'Links versturen' step. Qualified via 7-step screening call-flow (Voorbereiding..Besluit) -> Goedgekeurd; Besluit step ENFORCES a justification note for missing critical fields ('beschikbaar vanaf') before completion; status changed Nieuw -> Werkzoekend (PATCH 204). Reverse-matching 'Vacatures' tab ranked open vacancies at 63% with threshold slider + hard-block/skill/distance filters; 'Waarom?' dialog shows full transparent score breakdown in plain Dutch and does NOT disqualify on unknown availability; 'Voorstellen' created a matches row (POST 201) + audit + async AI score, Dutch toast 'Voorgesteld op vacature (AI-score wordt berekend)'.",
+      "notes": "Screening completion fires ~5 sequential PATCH /candidates (non-atomic multi-field save). E2E test-vacancies have no required_skills so 63% is distance-driven, not skill-driven (data-quality artifact, not engine bug)."
+    },
+    "candidate_intake": {
+      "result": "PASS",
+      "steps": "Opened the public profiel token link (no login) -> candidate-profile edge function GET 200, pre-filled + localized (labor-migrant language list), filled availability/rijbewijs/taal, submitted -> POST candidate-profile 200, Dutch success 'Bedankt QALaunch! Je profiel is aangevuld.'"
+    },
+    "employee_portal": {
+      "result": "PASS (with critical AVG finding)",
+      "steps": "Logged into /portaal as Milan. Hours: entered 8u Monday -> POST timesheets 201 (Concept), submitted week -> PATCH 204, toast 'Uren ingediend', status Ingediend. Documenten renders. ",
+      "H3_confirmed_live": "CRITICAL: /portaal/ziekmelding REQUIRES a free-text 'Reden / klachten' (Beschrijf je klachten...) field - 'Ziekmelding indienen' stays disabled until filled. Per audit H3 this nature-of-illness text is auto-forwarded to the inlener (client) = AVG art.9 violation. Confirmed by form inspection (NOT submitted, to avoid firing the real client-notification cascade)."
+    }
+  },
+  "a11yRecurring": "DialogContent missing aria-describedby warning recurs on multiple dialogs (welcome dialog, portal hours dialog, plaatsing dialog) - confirms QA3 is systemic across Radix dialogs.",
+  "extraPersonas": {
+    "opdrachtgever_clientportal": {
+      "result": "PASS",
+      "steps": "Logged into /klantportaal as Sanne (Demo Metaalbedrijf Eindhoven). Contact-level isolation: only own company + Milan's placement visible. 'Uren doorgeven' created a timesheet (POST 201, source=klantportaal, client_approved=true, employee_confirmed=false) -> toast 'Uren doorgegeven aan medewerker', row 'Wacht op bevestiging'. Timesheet model is dual-confirmation (client gives <-> employee confirms).",
+      "note": "CLAUDE.md says client portal 'approves timesheets'; live model is actually client-gives -> employee-confirms (and employee-enters -> internal admin approves). Documentation vs behavior mismatch worth aligning."
+    },
+    "placement_compliance_gate": {
+      "result": "PASS - strong control",
+      "steps": "Advanced the QALaunch match through the full vacancy pipeline (Nieuwe match -> Gescreend -> Voorgesteld -> Bij klant -> In gesprek -> Geaccepteerd), each transition requiring a mandatory 'Feedback vastleggen' reason. 'Plaatsen' -> 'Plaatsing aanmaken' dialog (pre-filled). On confirm, the ComplianceWarningDialog 'Dossier niet compleet' BLOCKED the placement, listing 5 missing items in plain Dutch (Geen geldig ID bewijs, Contract niet getekend, Reglement niet afgetekend, BSN niet ingevuld, IBAN niet ingevuld) with an audited override 'Toch plaatsen (override) - Dit wordt gelogd als compliance override.' Did NOT override (would fire send-placement-confirmation email).",
+      "verdict": "Compliance gating works exactly as required: blocks non-compliant placement, names every missing item in Dutch, override is explicit + audit-logged."
+    }
+  }
+}
