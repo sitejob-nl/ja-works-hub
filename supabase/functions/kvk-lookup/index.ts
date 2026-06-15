@@ -1,9 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
 
 // Zoeken API zit op v2, Basisprofiel API op v1 — bewust gescheiden URLs.
 const KVK_ZOEKEN_URL = "https://api.kvk.nl/api/v2/zoeken";
