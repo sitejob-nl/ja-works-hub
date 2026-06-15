@@ -15,6 +15,8 @@ import { Switch } from '@/components/ui/switch';
 import { ScrollText, Plus, Eye, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDate } from '@/lib/format';
+import { unwrap } from '@/lib/db';
+import { qk } from '@/lib/query-keys';
 
 const RegulationsSettings = () => {
   const orgId = useOrganizationId();
@@ -26,16 +28,14 @@ const RegulationsSettings = () => {
   const [viewContent, setViewContent] = useState<string | null>(null);
 
   const { data: regulations = [] } = useQuery({
-    queryKey: ['regulations', orgId],
-    queryFn: async () => {
-      const { data, error } = await supabase
+    queryKey: qk.regulations.list(orgId),
+    queryFn: () => unwrap(
+      supabase
         .from('regulations')
         .select('*, regulation_acknowledgements(count)')
         .eq('organization_id', orgId)
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return data;
-    },
+        .order('created_at', { ascending: false }),
+    ),
   });
 
   const save = useMutation({

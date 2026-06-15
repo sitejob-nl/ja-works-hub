@@ -11,6 +11,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { formatEUR } from '@/lib/format';
+import { unwrapList } from '@/lib/db';
+import { qk } from '@/lib/query-keys';
 import { toast } from 'sonner';
 
 interface Props {
@@ -39,52 +41,42 @@ const TimesheetEntrySheet = ({ open, onOpenChange }: Props) => {
   }, [open]);
 
   const { data: employees } = useQuery({
-    queryKey: ['candidates-active-for-timesheet'],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('candidates').select('id, first_name, last_name').not('employee_status', 'is', null).order('first_name');
-      if (error) throw error;
-      return data ?? [];
-    },
+    queryKey: qk.candidates.activeForTimesheet(),
+    queryFn: () => unwrapList(
+      supabase.from('candidates').select('id, first_name, last_name').not('employee_status', 'is', null).order('first_name'),
+    ),
     enabled: open,
   });
 
   const { data: placements } = useQuery({
-    queryKey: ['placements-for-employee', employeeId],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('placements').select('id, function_name, hourly_rate, companies!placements_company_id_fkey(name)').eq('candidate_id', employeeId).eq('status', 'actief' as any);
-      if (error) throw error;
-      return data ?? [];
-    },
+    queryKey: qk.placements.forEmployee(employeeId),
+    queryFn: () => unwrapList(
+      supabase.from('placements').select('id, function_name, hourly_rate, companies!placements_company_id_fkey(name)').eq('candidate_id', employeeId).eq('status', 'actief' as any),
+    ),
     enabled: !!employeeId,
   });
 
   const { data: hourTypes = [] } = useQuery({
-    queryKey: ['placement-hour-types', placementId],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('placement_hour_types').select('*').eq('placement_id', placementId).order('sort_order');
-      if (error) throw error;
-      return data ?? [];
-    },
+    queryKey: qk.placements.hourTypes(placementId),
+    queryFn: () => unwrapList(
+      supabase.from('placement_hour_types').select('*').eq('placement_id', placementId).order('sort_order'),
+    ),
     enabled: !!placementId,
   });
 
   const { data: travelTypes = [] } = useQuery({
-    queryKey: ['placement-travel-types', placementId],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('placement_travel_types').select('*').eq('placement_id', placementId).order('sort_order');
-      if (error) throw error;
-      return data ?? [];
-    },
+    queryKey: qk.placements.travelTypes(placementId),
+    queryFn: () => unwrapList(
+      supabase.from('placement_travel_types').select('*').eq('placement_id', placementId).order('sort_order'),
+    ),
     enabled: !!placementId,
   });
 
   const { data: allowances = [] } = useQuery({
-    queryKey: ['placement-allowances', placementId],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('placement_allowances').select('*').eq('placement_id', placementId).order('sort_order');
-      if (error) throw error;
-      return data ?? [];
-    },
+    queryKey: qk.placements.allowances(placementId),
+    queryFn: () => unwrapList(
+      supabase.from('placement_allowances').select('*').eq('placement_id', placementId).order('sort_order'),
+    ),
     enabled: !!placementId,
   });
 
