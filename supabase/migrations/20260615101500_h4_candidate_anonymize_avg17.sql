@@ -61,7 +61,8 @@ BEGIN
   -- Remove free-text / document PII children. Financially-required rows
   -- (payslips, annual_statements, employment) are intentionally NOT removed.
   DELETE FROM public.documents WHERE candidate_id = p_candidate_id;
-  DELETE FROM public.notes WHERE candidate_id = p_candidate_id;
+  -- notes is polymorphic (related_entity_type/related_entity_id), not candidate_id
+  DELETE FROM public.notes WHERE related_entity_type = 'kandidaat' AND related_entity_id = p_candidate_id;
   DELETE FROM public.candidate_profile_tokens WHERE candidate_id = p_candidate_id;
   UPDATE public.communications SET body = '[geanonimiseerd]', subject = '[geanonimiseerd]'
     WHERE candidate_id = p_candidate_id;
