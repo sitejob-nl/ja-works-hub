@@ -57,4 +57,28 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // Split large, rarely-changing vendor libs into their own chunks so they
+        // cache independently and stay off the critical path. Combined with the
+        // route-level lazy() imports in App.tsx, this keeps the initial bundle small.
+        // Function form (matches resolved module ids by substring) is used instead of
+        // the object form so packages that only expose subpath exports — e.g.
+        // read-excel-file — don't trigger root-entry resolution failures.
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return;
+          if (id.includes("pdfjs-dist") || id.includes("tesseract.js")) return "pdf-ocr";
+          if (
+            id.includes("papaparse") ||
+            id.includes("read-excel-file") ||
+            id.includes("write-excel-file")
+          ) return "spreadsheet";
+          if (id.includes("recharts")) return "charts";
+          if (id.includes("@tiptap") || id.includes("prosemirror")) return "editor";
+          if (id.includes("html2pdf")) return "pdf-export";
+        },
+      },
+    },
+  },
 }));
