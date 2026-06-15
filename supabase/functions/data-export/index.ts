@@ -1,9 +1,5 @@
 import { createAdminClient, jsonResponse, requireInternalProfile } from '../_shared/auth.ts';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+import { CORS_HEADERS as corsHeaders } from '../_shared/http.ts';
 
 const EXPORTS = {
   candidates: 'id, first_name, last_name, email, phone, status, employee_status, date_of_birth, nationality, address_city, address_country, source, created_at, updated_at',

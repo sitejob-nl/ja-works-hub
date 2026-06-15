@@ -2,10 +2,7 @@ import { createAdminClient, requireInternalProfile } from "../_shared/auth.ts";
 import { isOutboundPaused } from "../_shared/outbound-pause.ts";
 import { sendViaOutlookAccount } from "../_shared/outlook-send.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 

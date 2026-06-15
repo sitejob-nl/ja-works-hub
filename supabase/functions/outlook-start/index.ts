@@ -2,10 +2,7 @@ import { createAdminClient, requireInternalProfile } from "../_shared/auth.ts";
 import { OUTLOOK_ADMIN_CONSENT_SCOPES, OUTLOOK_SCOPES, json } from "../_shared/outlook-accounts.ts";
 import { getOrganizationPublicBaseUrl } from "../_shared/public-url.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
 
 const AUTH_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize";
 const ADMIN_CONSENT_URL = "https://login.microsoftonline.com/organizations/v2.0/adminconsent";

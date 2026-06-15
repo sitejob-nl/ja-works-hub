@@ -5,10 +5,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // zodat RLS niet hoeft te worden opengezet voor anon (SEC-4 dropte die policy).
 // Geeft alleen de minimale data terug die de responspagina toont.
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {

@@ -8,10 +8,7 @@ import {
   type OutlookCapability,
 } from "../_shared/outlook-accounts.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
 
 type MailAction = "folders" | "list" | "detail" | "attachment" | "delete" | "mark_read" | "move";
 
