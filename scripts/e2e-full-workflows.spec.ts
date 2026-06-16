@@ -439,7 +439,6 @@ test("Medewerkerportaal activeert account en doorloopt uren, huisvesting, voertu
   await expect(page.getByText(/Schademelding ingediend/i).first()).toBeVisible({ timeout: 20_000 });
 
   await page.goto("/portaal/ziekmelding", { waitUntil: "domcontentloaded" });
-  await page.locator("textarea").first().fill(`E2E ziekmelding ${runId}`);
   await page.locator('input[type="date"]').first().fill(new Date(Date.now() + 86400000).toISOString().slice(0, 10));
   await page.getByRole("button", { name: /Ziekmelding indienen/i }).click();
   await expect(page.getByText(/Ziekmelding ingediend/i).first()).toBeVisible({ timeout: 20_000 });

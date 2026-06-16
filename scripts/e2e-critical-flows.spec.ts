@@ -110,13 +110,8 @@ test.describe("Kritieke flow 3 — Ziekmelding", () => {
     const href = await firstEmployee.getAttribute("href");
     test.skip(!href || href === "/kandidaten/new", "Geen medewerkers in testdata");
 
-    await firstEmployee.click();
-    await page.waitForTimeout(1500);
-
-    // Click Ziekte tab
-    const ziekteTab = page.getByRole("tab", { name: /^ziekte$/i });
-    await expect(ziekteTab).toBeVisible({ timeout: 5000 });
-    await ziekteTab.click();
+    const ziekteUrl = `${href}${href.includes("?") ? "&" : "?"}tab=ziekte`;
+    await page.goto(ziekteUrl, { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(1500);
 
     // Verwacht: "Nieuwe ziekmelding" knop

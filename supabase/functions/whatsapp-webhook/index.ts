@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getWhatsAppCredentials, META_API_BASE, normalizePhone } from "../_shared/whatsapp-utils.ts";
 import { cascadeSickReport } from "../_shared/sick-report-handler.ts";
 import { getWhatsAppAutomationSettings } from "../_shared/whatsapp-automation-settings.ts";
+import { isOutboundPaused, logConceptCommunication } from "../_shared/outbound-pause.ts";
 
 const OPT_OUT_KEYWORDS = ["stop", "afmelden", "uitschrijven", "stoppen", "unsubscribe"];
 // Substring match — any of these anywhere in the message triggers sick flow.
@@ -322,10 +323,11 @@ async function processInboundMessage(
           supabase,
           orgId,
           from,
-          "Dank je, we hebben je ziekmelding ontvangen. Wanneer verwacht je weer aan het werk te kunnen, of heb je nog een opmerking voor je intercedent? Vermeld géén medische details. Stuur kort terug, of typ 'geen'.",
+          "Dank je, we hebben je ziekmelding ontvangen. Wanneer verwacht je weer te kunnen werken? Stuur alleen een datum of korte planninginfo, geen medische details. Typ 'geen' als je dit nog niet weet.",
+          candidateId,
         );
       } else {
-        await createSickReportFromWhatsApp(supabase, orgId, candidateId, body, timestamp);
+        await createSickReportFromWhatsApp(supabase, orgId, candidateId, "geen", timestamp);
       }
     }
   }
@@ -355,7 +357,17 @@ async function processInboundMessage(
   }
 }
 
-async function sendWhatsAppDirect(supabase: any, orgId: string, to: string, text: string) {
+async function sendWhatsAppDirect(supabase: any, orgId: string, to: string, text: string, candidateId?: string | null) {
+  if (await isOutboundPaused(supabase, orgId, "whatsapp")) {
+    await logConceptCommunication(supabase, {
+      orgId,
+      channel: "whatsapp",
+      body: text,
+      candidateId: candidateId ?? null,
+    });
+    return { ok: false, error: "Uitgaande WhatsApp staat op pauze" };
+  }
+
   const creds = await getWhatsAppCredentials(supabase, orgId);
   if (!creds) return { ok: false, error: "WhatsApp niet geconfigureerd" };
 
@@ -410,12 +422,21 @@ async function createSickReportFromWhatsApp(
 
   const reportedTime = amsterdamHHMM(timestamp);
   const deadlineLabel = reportedTime <= automation.sick_report_deadline_time ? "voor deadline" : "na deadline";
+  const { data: employee } = await supabase
+    .from("employees")
+    .select("id")
+    .eq("candidate_id", candidateId)
+    .maybeSingle();
+
   const { data: inserted } = await supabase
     .from("sick_reports")
     .insert({
       organization_id: orgId,
       candidate_id: candidateId,
-      notes: `Automatisch uit WhatsApp (${deadlineLabel}, deadline ${automation.sick_report_deadline_time}): "${reason.slice(0, 500)}"`,
+      employee_id: employee?.id ?? null,
+      notes: reason.trim().toLowerCase() === "geen"
+        ? `Automatisch uit WhatsApp (${deadlineLabel}, deadline ${automation.sick_report_deadline_time}).`
+        : `Automatisch uit WhatsApp (${deadlineLabel}, deadline ${automation.sick_report_deadline_time}). Aanvullende planninginformatie ontvangen.`,
       reported_at: timestamp,
     })
     .select("id")
@@ -451,12 +472,11 @@ async function processPendingConversationState(
 
   if (!state || state.step !== "awaiting_reason") return false;
 
-  const reason = `${state.context?.initial_message ? `${state.context.initial_message}\n` : ""}Reden: ${body}`;
   const reportId = await createSickReportFromWhatsApp(
     supabase,
     orgId,
     candidateId,
-    reason,
+    body,
     state.context?.reported_at ?? timestamp,
   );
 
@@ -471,6 +491,7 @@ async function processPendingConversationState(
       orgId,
       phone,
       "Je ziekmelding lijkt al geregistreerd. Je intercedent neemt contact met je op.",
+      candidateId,
     );
   }
 

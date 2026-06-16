@@ -429,7 +429,6 @@ test("Recruiterfunnel: kandidaat komt binnen, CV analyse, match, plaatsing, port
   await expect(page.getByText(/Schademelding ingediend/i).first()).toBeVisible({ timeout: 30_000 });
 
   await page.goto("/portaal/ziekmelding", { waitUntil: "domcontentloaded" });
-  await page.locator("textarea").first().fill(`E2E ziekmelding volledige funnel ${suffix}`);
   await page.locator('input[type="date"]').first().fill(tomorrow);
   await page.getByRole("button", { name: /Ziekmelding indienen/i }).click();
   await expect(page.getByText(/Ziekmelding ingediend/i).first()).toBeVisible({ timeout: 30_000 });

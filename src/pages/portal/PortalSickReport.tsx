@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -29,7 +28,6 @@ const PortalSickReport = () => {
   const employeeId = employee?.id;
   const orgId = employee?.organization_id;
 
-  const [reason, setReason] = useState('');
   const [expectedReturn, setExpectedReturn] = useState('');
   const [submitted, setSubmitted] = useState(false);
 
@@ -65,7 +63,6 @@ const PortalSickReport = () => {
   const submitMutation = useMutation({
     mutationFn: async () => {
       if (!employeeId || !orgId) throw new Error('Geen sessie');
-      if (!reason.trim()) throw new Error('Vul een reden in');
       const employeeRecordId = placement?.employee_id ?? await resolveEmployeeRecordId(employeeId);
 
       const { data: inserted, error } = await supabase
@@ -75,7 +72,7 @@ const PortalSickReport = () => {
           employee_id: employeeRecordId,
           organization_id: orgId,
           placement_id: placement?.id ?? null,
-          notes: reason.trim(),
+          notes: null,
           expected_return_date: expectedReturn || null,
           reported_at: new Date().toISOString(),
         })
@@ -92,7 +89,6 @@ const PortalSickReport = () => {
     onSuccess: (cascade: any) => {
       qc.invalidateQueries({ queryKey: ['portal-sick-reports'] });
       setSubmitted(true);
-      setReason('');
       setExpectedReturn('');
       if (cascade?.email_sent) toast.success('Opdrachtgever is geïnformeerd');
     },
@@ -108,7 +104,7 @@ const PortalSickReport = () => {
           <CheckCircle2 className="h-10 w-10 text-stat-green mx-auto" />
           <p className="font-semibold">Ziekmelding ingediend</p>
           <p className="text-sm text-muted-foreground">
-            Je werkgever en opdrachtgever worden automatisch geïnformeerd.
+            We hebben je melding ontvangen. Je intercedent pakt dit verder op.
           </p>
           <Button variant="outline" onClick={() => setSubmitted(false)}>
             Nieuwe melding
@@ -122,21 +118,15 @@ const PortalSickReport = () => {
           </div>
           <div className="space-y-3">
             <div className="space-y-1.5">
-              <Label>Opmerking (optioneel)</Label>
-              <Textarea
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                placeholder="Bijv. wanneer je verwacht weer te kunnen werken. Vermeld géén medische details."
-                rows={3}
-              />
-            </div>
-            <div className="space-y-1.5">
               <Label>Verwachte terugkeerdatum (optioneel)</Label>
               <Input
                 type="date"
                 value={expectedReturn}
                 onChange={(e) => setExpectedReturn(e.target.value)}
               />
+              <p className="text-xs text-muted-foreground">
+                Je hoeft geen reden of medische details door te geven.
+              </p>
             </div>
           </div>
           <Button
@@ -170,7 +160,6 @@ const PortalSickReport = () => {
                     </Badge>
                   )}
                 </div>
-                {r.notes && <p className="text-sm text-muted-foreground">{r.notes}</p>}
                 <div className="flex gap-4 text-xs text-muted-foreground">
                   {r.expected_return_date && (
                     <span>Verwacht: {format(new Date(r.expected_return_date), 'd MMM', { locale: nl })}</span>

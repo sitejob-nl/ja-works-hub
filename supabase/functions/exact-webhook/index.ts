@@ -10,6 +10,12 @@ const STATUS_ORDER: Record<string, number> = {
   gecrediteerd: 4,
 };
 
+type LocalInvoice = {
+  id: string;
+  status: string | null;
+  exact_invoice_id: string | null;
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -29,7 +35,7 @@ Deno.serve(async (req) => {
       key: body.Key,
     });
 
-    const serviceClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const serviceClient = createClient<any>(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
     // Get all active exact configs and decrypt to find match
     const { data: configs } = await serviceClient
@@ -96,19 +102,20 @@ Deno.serve(async (req) => {
  * Maps Exact StatusCode to JA Werkt invoice status (forward-only).
  */
 async function handleSalesInvoiceEvent(
-  serviceClient: ReturnType<typeof createClient>,
+  serviceClient: any,
   config: { organization_id: string; tenant_id: string },
   webhookSecret: string,
   webhook: { Key: string; EventAction: string },
 ) {
   try {
     // Find local invoice by exact_invoice_id
-    const { data: invoice } = await serviceClient
+    const { data: invoiceRaw } = await serviceClient
       .from("invoices")
       .select("id, status, exact_invoice_id")
       .eq("exact_invoice_id", webhook.Key)
       .eq("organization_id", config.organization_id)
       .single();
+    const invoice = invoiceRaw as LocalInvoice | null;
 
     if (!invoice) {
       console.log("No local invoice found for Exact Key:", webhook.Key);
@@ -160,18 +167,19 @@ async function handleSalesInvoiceEvent(
     if (!newStatus) return;
 
     // Forward-only: only update if new status is further in the lifecycle
-    const currentOrder = STATUS_ORDER[invoice.status] ?? -1;
+    const currentStatus = invoice.status ?? "concept";
+    const currentOrder = STATUS_ORDER[currentStatus] ?? -1;
     const newOrder = STATUS_ORDER[newStatus] ?? -1;
 
     if (newOrder <= currentOrder) {
-      console.log(`Skipping status update: ${invoice.status} (${currentOrder}) → ${newStatus} (${newOrder}) — not forward`);
+      console.log(`Skipping status update: ${currentStatus} (${currentOrder}) → ${newStatus} (${newOrder}) — not forward`);
       return;
     }
 
     updates.status = newStatus;
 
-    await serviceClient.from("invoices").update(updates).eq("id", invoice.id);
-    console.log(`Invoice ${invoice.id} status updated: ${invoice.status} → ${newStatus}`);
+    await serviceClient.from("invoices").update(updates as any).eq("id", invoice.id);
+    console.log(`Invoice ${invoice.id} status updated: ${currentStatus} → ${newStatus}`);
 
   } catch (err) {
     console.error("Error processing SalesInvoice webhook:", err);
