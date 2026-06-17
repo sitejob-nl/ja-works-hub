@@ -62,6 +62,10 @@ function errorPage(message: string) {
   });
 }
 
+function cleanStatusMessage(message: string) {
+  return message.replace(/[<>&"]/g, "").slice(0, 500);
+}
+
 function connectedRedirect(returnTo: string, scope: string) {
   const url = new URL(returnTo);
   url.searchParams.set("outlook_connected", "1");
@@ -169,16 +173,31 @@ Deno.serve(async (req) => {
     scope?: string;
     token_type?: string;
     error?: string;
+    error_description?: string;
   };
   if (!tokenRes.ok || !tokenData.access_token || !tokenData.refresh_token || !tokenData.expires_in) {
-    return errorPage(tokenData.error || "Token exchange mislukt.");
+    const message = tokenData.error_description || tokenData.error || "Token exchange mislukt.";
+    return statusRedirect(state.return_to || await fallbackReturnTo(admin, state.organization_id), {
+      outlook_error: isConsentError(message) ? "consent_required" : "token_exchange_failed",
+      outlook_error_description: isConsentError(message) ? consentRequiredMessage() : cleanStatusMessage(message),
+    });
   }
 
   const meRes = await fetch(GRAPH_ME_URL, { headers: { Authorization: `Bearer ${tokenData.access_token}` } });
   const me = await meRes.json().catch(() => ({})) as { id?: string; displayName?: string; mail?: string | null; userPrincipalName?: string | null };
-  if (!meRes.ok || !me.id) return errorPage("Microsoft profiel ophalen mislukt.");
+  if (!meRes.ok || !me.id) {
+    return statusRedirect(state.return_to || await fallbackReturnTo(admin, state.organization_id), {
+      outlook_error: "profile_read_failed",
+      outlook_error_description: "Microsoft profiel ophalen mislukt.",
+    });
+  }
   const email = (me.mail || me.userPrincipalName || "").toLowerCase();
-  if (!email) return errorPage("Microsoft account heeft geen e-mailadres.");
+  if (!email) {
+    return statusRedirect(state.return_to || await fallbackReturnTo(admin, state.organization_id), {
+      outlook_error: "profile_email_missing",
+      outlook_error_description: "Microsoft account heeft geen e-mailadres.",
+    });
+  }
 
   const now = new Date().toISOString();
   let accountId: string | undefined;
@@ -227,7 +246,12 @@ Deno.serve(async (req) => {
     const result = existing?.id
       ? await admin.from("mail_accounts").update(payload).eq("id", existing.id).select("id").single()
       : await admin.from("mail_accounts").insert(payload).select("id").single();
-    if (result.error) return errorPage(`Persoonlijke mailbox opslaan mislukt: ${result.error.message}`);
+    if (result.error) {
+      return statusRedirect(state.return_to || await fallbackReturnTo(admin, state.organization_id), {
+        outlook_error: "save_failed",
+        outlook_error_description: cleanStatusMessage(`Persoonlijke mailbox opslaan mislukt: ${result.error.message}`),
+      });
+    }
     accountId = result.data.id;
   } else {
     const { data: existing } = await admin
@@ -275,7 +299,12 @@ Deno.serve(async (req) => {
     const result = existing?.id
       ? await admin.from("mail_accounts").update(payload).eq("id", existing.id).select("id").single()
       : await admin.from("mail_accounts").insert(payload).select("id").single();
-    if (result.error) return errorPage(`Bedrijfsmail opslaan mislukt: ${result.error.message}`);
+    if (result.error) {
+      return statusRedirect(state.return_to || await fallbackReturnTo(admin, state.organization_id), {
+        outlook_error: "save_failed",
+        outlook_error_description: cleanStatusMessage(`Bedrijfsmail opslaan mislukt: ${result.error.message}`),
+      });
+    }
     accountId = result.data.id;
 
     await admin.from("mail_accounts").update({
@@ -288,16 +317,24 @@ Deno.serve(async (req) => {
     }).eq("organization_id", state.organization_id).eq("auth_account_id", accountId).is("deleted_at", null);
   }
 
-  await storeTokenSecret(admin, accountId!, {
-    access_token: tokenData.access_token,
-    refresh_token: tokenData.refresh_token,
-    expires_at: new Date(Date.now() + tokenData.expires_in * 1000).toISOString(),
-    scope: tokenData.scope || OUTLOOK_SCOPES,
-    token_type: tokenData.token_type || "Bearer",
-  }, {
-    microsoft_user_id: me.id,
-    microsoft_email: email,
-  });
+  try {
+    await storeTokenSecret(admin, accountId!, {
+      access_token: tokenData.access_token,
+      refresh_token: tokenData.refresh_token,
+      expires_at: new Date(Date.now() + tokenData.expires_in * 1000).toISOString(),
+      scope: tokenData.scope || OUTLOOK_SCOPES,
+      token_type: tokenData.token_type || "Bearer",
+    }, {
+      microsoft_user_id: me.id,
+      microsoft_email: email,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Outlook tokens opslaan mislukt.";
+    return statusRedirect(state.return_to || await fallbackReturnTo(admin, state.organization_id), {
+      outlook_error: "token_store_failed",
+      outlook_error_description: cleanStatusMessage(message),
+    });
+  }
 
   await admin.from("audit_log").insert({
     organization_id: state.organization_id,

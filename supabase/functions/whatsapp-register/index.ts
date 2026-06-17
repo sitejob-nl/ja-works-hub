@@ -4,6 +4,21 @@ import { corsHeaders, jsonOk, jsonError, getAuthenticatedOrg } from "../_shared/
 const CONNECT_REGISTER_URL = "https://xeshjkznwdrxjjhbpisn.supabase.co/functions/v1/whatsapp-register-tenant";
 const SETUP_BASE_URL = "https://connect.sitejob.nl/whatsapp-setup";
 
+async function readConnectError(response: Response): Promise<string> {
+  const text = await response.text().catch(() => "");
+  if (!text) return `HTTP ${response.status}`;
+
+  try {
+    const data = JSON.parse(text);
+    const message = data?.error ?? data?.message ?? data?.details?.error ?? data?.details?.message;
+    return typeof message === "string" && message.trim()
+      ? message.slice(0, 500)
+      : text.slice(0, 500);
+  } catch {
+    return text.slice(0, 500);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -56,6 +71,7 @@ Deno.serve(async (req) => {
       headers: {
         "Content-Type": "application/json",
         "X-API-Key": connectApiKey,
+        "Authorization": `Bearer ${connectApiKey}`,
       },
       body: JSON.stringify({
         name: org?.name ?? "JA Werkt",
@@ -64,12 +80,16 @@ Deno.serve(async (req) => {
     });
 
     if (!response.ok) {
-      const errText = await response.text();
-      console.error("Connect registration failed:", errText);
-      return jsonError("Registratie bij SiteJob Connect mislukt", 502);
+      const errText = await readConnectError(response);
+      console.error("Connect registration failed:", response.status, errText);
+      return jsonError(`Registratie bij SiteJob Connect mislukt: ${errText}`, 502);
     }
 
     const { tenant_id, webhook_secret } = await response.json();
+    if (!tenant_id || !webhook_secret) {
+      console.error("Connect registration returned incomplete payload");
+      return jsonError("Registratie bij SiteJob Connect gaf geen tenantgegevens terug", 502);
+    }
 
     // Encrypt webhook_secret before storing (no auto-trigger)
     const serviceClient = createClient(

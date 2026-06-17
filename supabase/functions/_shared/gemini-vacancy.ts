@@ -51,6 +51,7 @@ Je krijgt een vacaturetekst. Bepaal welke vaardigheden de vacature VEREIST of st
 REGELS (niet te overschrijven):
 - Roep ALTIJD het schema aan met geldige waarden.
 - required_skills: kies UITSLUITEND uit onderstaande standaard-catalogus, met exact dezelfde schrijfwijze. Verzin nooit nieuwe termen en neem geen termen op die er niet in staan. Alleen vaardigheden die de vacature echt vraagt.
+- required_skills bevat ALLEEN concrete VAK-/TECHNISCHE vaardigheden (bv. lassen, heftruck, tekening lezen, machinebediening, orderpicken). NEEM NOOIT soft-competenties of persoonskenmerken op (bv. nauwkeurigheid, betrouwbaarheid, kwaliteitsbewustzijn, communicatie, teamwork, flexibiliteit, motivatie, werkmentaliteit, zelfstandigheid) — ook niet als ze in de catalogus staan. Die zeggen niets over de vakmatch.
 - required_certifications: concrete certificaten/diploma's die de tekst noemt.
 - requires_drivers_license: true bij rijbewijs/eigen vervoer vereist of duidelijk nodig.
 - function_group: korte functiegroep.
@@ -69,6 +70,21 @@ interface GeminiResponse {
 function normalizeTerm(s: string): string {
   return s.trim().toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
 }
+
+// Vangnet: soft-competenties / persoonskenmerken horen NIET in required_skills (ze zijn ruis voor
+// de skill-match en mis-orderen vakmensen op transcriptie-toeval). De prompt instrueert het model
+// al, maar omdat deze termen ook in de catalogus kunnen staan filteren we ze server-side hard weg.
+// Genormaliseerd (zie normalizeTerm). Uitbreidbaar.
+const SOFT_SKILL_DENY = new Set<string>([
+  "nauwkeurigheid", "nauwkeurig", "betrouwbaarheid", "kwaliteitsbewustzijn", "kwaliteitsgericht",
+  "communicatie", "communicatief", "teamwork", "teamplayer", "samenwerken", "samenwerking",
+  "flexibiliteit", "flexibel", "motivatie", "gemotiveerd", "werkmentaliteit", "werkethos",
+  "zelfstandigheid", "zelfstandig werken", "aanpakken", "aanpassingsvermogen", "discipline",
+  "stressbestendigheid", "stressbestendig", "initiatief", "proactief", "verantwoordelijkheid",
+  "verantwoordelijkheidsgevoel", "punctualiteit", "probleemoplossend vermogen", "leiderschap",
+  "enthousiast", "leergierig", "doorzettingsvermogen", "klantgericht", "klantgerichtheid",
+  "sociale vaardigheden", "inzet", "collegialiteit", "georganiseerd", "nauwgezet", "accuraat",
+]);
 
 export async function extractVacancySkills(
   vacancyText: string,
@@ -132,7 +148,9 @@ export async function extractVacancySkills(
   for (const c of catalogue) catByNorm.set(normalizeTerm(c), c);
   const rawSkills = Array.isArray(parsed.required_skills) ? parsed.required_skills.map(String) : [];
   const requiredSkills = [...new Set(
-    rawSkills.map((s) => catByNorm.get(normalizeTerm(s))).filter((s): s is string => Boolean(s)),
+    rawSkills
+      .map((s) => catByNorm.get(normalizeTerm(s)))
+      .filter((s): s is string => Boolean(s) && !SOFT_SKILL_DENY.has(normalizeTerm(s as string))),
   )];
 
   const requiredCertifications = Array.isArray(parsed.required_certifications)
