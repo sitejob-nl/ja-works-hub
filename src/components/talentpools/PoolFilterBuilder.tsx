@@ -4,6 +4,8 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { X } from 'lucide-react';
+import SkillMultiSelect from '@/components/shared/SkillMultiSelect';
+import LanguageMultiSelect from '@/components/shared/LanguageMultiSelect';
 
 export interface FilterCriteria {
   status?: string[];
@@ -163,19 +165,15 @@ export default function PoolFilterBuilder({ value, onChange }: PoolFilterBuilder
         onChange={(compliance_status) => update({ compliance_status })}
       />
 
-      <TagInputField
-        label="Vaardigheden"
-        placeholder="bijv. Lassen, TIG"
-        values={value.skills ?? []}
-        onChange={(skills) => update({ skills })}
-      />
+      <div className="space-y-1.5">
+        <Label>Vaardigheden</Label>
+        <SkillMultiSelect value={value.skills ?? []} onChange={(skills) => update({ skills })} />
+      </div>
 
-      <TagInputField
-        label="Talen"
-        placeholder="bijv. NL, PL, DE"
-        values={value.languages ?? []}
-        onChange={(languages) => update({ languages })}
-      />
+      <div className="space-y-1.5">
+        <Label>Talen</Label>
+        <LanguageMultiSelect value={value.languages ?? []} onChange={(languages) => update({ languages })} />
+      </div>
 
       <div className="space-y-1.5">
         <Label>Stad</Label>

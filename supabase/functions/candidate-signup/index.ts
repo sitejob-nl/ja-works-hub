@@ -117,7 +117,7 @@ const getSignupLink = async (slug: string) => {
   return data as SignupLink | null;
 };
 
-const publicPayload = (link: SignupLink) => ({
+const publicPayload = (link: SignupLink, skills: string[] = []) => ({
   valid: true,
   link: {
     slug: link.slug,
@@ -130,6 +130,9 @@ const publicPayload = (link: SignupLink) => ({
     show_drivers_license: link.show_drivers_license !== false,
     show_availability: link.show_availability !== false,
   },
+  // Actieve org-skillcatalogus zodat de publieke pagina een dropdown kan tonen
+  // (skills is niet anon-leesbaar via RLS, daarom hier via service-role meegegeven).
+  skills,
   organization: {
     name: link.organizations?.name ?? "",
     logo_url: link.organizations?.logo_url ?? null,
@@ -166,7 +169,15 @@ Deno.serve(async (req) => {
         return json({ valid: false, reason: state }, state === "not_found" ? 404 : 400);
       }
 
-      return json(publicPayload(link));
+      const { data: skillRows } = await admin
+        .from("skills")
+        .select("name")
+        .eq("organization_id", link.organization_id)
+        .eq("is_active", true)
+        .order("name");
+      const skills = (skillRows ?? []).map((r) => r.name as string).filter(Boolean);
+
+      return json(publicPayload(link, skills));
     }
 
     if (req.method !== "POST") {

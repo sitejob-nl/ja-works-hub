@@ -13,7 +13,7 @@ import { useOutlookAccounts, useOutlookInvoke } from '@/hooks/useOutlookAccounts
 import { logAudit } from '@/lib/audit';
 import CustomFieldsSection from '@/components/shared/CustomFieldsSection';
 import UnsavedChangesGuard from '@/components/shared/UnsavedChangesGuard';
-import { InlineTextField, InlineSensitiveField, InlineBooleanField, InlineTagsField } from '@/components/shared/InlineFields';
+import { InlineTextField, InlineSensitiveField, InlineBooleanField, InlineTagsField, InlineSkillsField, InlineLanguagesField, InlineNationalityField } from '@/components/shared/InlineFields';
 import { CandidatePreferencesTab } from '@/components/candidates/tabs/CandidatePreferencesTab';
 
 const asObject = (value: unknown): Record<string, any> =>
@@ -205,7 +205,7 @@ const CandidateProfileTab = ({ candidate }: { candidate: any }) => {
         <InlineTextField id="first_name" label="Voornaam" value={candidate.first_name} onSave={(value) => saveField('Voornaam', { first_name: value || '' })} onDirtyChange={setEditorDirty} />
         <InlineTextField id="last_name" label="Achternaam" value={candidate.last_name} onSave={(value) => saveField('Achternaam', { last_name: value || '' })} onDirtyChange={setEditorDirty} />
         <InlineTextField id="date_of_birth" label="Geboortedatum" value={candidate.date_of_birth} displayValue={formatDate(candidate.date_of_birth)} type="date" onSave={(value) => saveField('Geboortedatum', { date_of_birth: value })} onDirtyChange={setEditorDirty} />
-        <InlineTextField id="nationality" label="Nationaliteit" value={candidate.nationality} onSave={(value) => saveField('Nationaliteit', { nationality: value })} onDirtyChange={setEditorDirty} />
+        <InlineNationalityField id="nationality" label="Nationaliteit" value={candidate.nationality} onSave={(value) => saveField('Nationaliteit', { nationality: value || null })} onDirtyChange={setEditorDirty} />
         <InlineSensitiveField
           id="bsn"
           label="BSN"
@@ -250,9 +250,9 @@ const CandidateProfileTab = ({ candidate }: { candidate: any }) => {
 
       <div className="bg-card rounded-lg border p-6 space-y-4">
         <h3 className="font-medium">Vaardigheden & certificaten</h3>
-        <InlineTagsField id="skills" label="Vaardigheden" value={candidate.skills ?? []} onSave={(value) => saveField('Vaardigheden', { skills: value.length ? value : null })} onDirtyChange={setEditorDirty} />
+        <InlineSkillsField id="skills" label="Vaardigheden" value={candidate.skills ?? []} onSave={(value) => saveField('Vaardigheden', { skills: value.length ? value : null })} onDirtyChange={setEditorDirty} />
         <InlineTagsField id="certifications" label="Certificaten" value={candidate.certifications ?? []} onSave={(value) => saveField('Certificaten', { certifications: value.length ? value : null })} onDirtyChange={setEditorDirty} />
-        <InlineTagsField id="languages" label="Talen" value={candidate.languages ?? []} onSave={(value) => saveField('Talen', { languages: value.length ? value : null })} onDirtyChange={setEditorDirty} />
+        <InlineLanguagesField id="languages" label="Talen" value={candidate.languages ?? []} onSave={(value) => saveField('Talen', { languages: value.length ? value : null })} onDirtyChange={setEditorDirty} />
       </div>
 
       <div className="bg-card rounded-lg border p-6 space-y-4">

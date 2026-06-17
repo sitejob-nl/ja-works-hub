@@ -12,17 +12,19 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { Badge } from '@/components/ui/badge';
-import TagInput from '@/components/ui/tag-input';
-import { ChevronRight, Copy, MessageCircle, Mail, Check, AlertTriangle, ChevronsUpDown, X, KeyRound, Upload, Loader2, FileText } from 'lucide-react';
+import { ChevronRight, Copy, MessageCircle, Mail, Check, AlertTriangle, KeyRound, Upload, Loader2, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { logAudit } from '@/lib/audit';
 import { useDeduplication } from '@/hooks/useDeduplication';
 import AddressAutocomplete from '@/components/shared/AddressAutocomplete';
 import { resolveAddressCoordinates } from '@/lib/pdok';
 import { CV_ACCEPT, extractCvTextFromFile } from '@/lib/cvText';
+import NationalitySelect from '@/components/shared/NationalitySelect';
+import LanguageMultiSelect from '@/components/shared/LanguageMultiSelect';
+import SkillMultiSelect from '@/components/shared/SkillMultiSelect';
+import HousingRoomPicker, { type HousingSelection } from '@/components/housing/HousingRoomPicker';
+import { COUNTRIES, NATIONALITIES, LANGUAGES, normalizeNationality, normalizeLanguages } from '@/lib/candidate-options';
+import { resolveEmployeeId } from '@/lib/assignments';
 
 // Leest de JSON-foutmelding uit een mislukte supabase.functions.invoke (bv. 402-saldo).
 // FunctionsHttpError verbergt de body achter context (een Response).
@@ -70,7 +72,17 @@ const CandidateNew = () => {
   const [portalInviteUrl, setPortalInviteUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [portalCopied, setPortalCopied] = useState(false);
-  const [skillsOpen, setSkillsOpen] = useState(false);
+
+  // Adres-modus (Nederlands / buitenlands) + huisvestingskeuze bij NL zonder eigen adres.
+  const [addressMode, setAddressMode] = useState<'nl' | 'foreign'>('nl');
+  const [nlHousing, setNlHousing] = useState<'own' | 'agency'>('own');
+  const [housing, setHousing] = useState<HousingSelection>({
+    unitId: null,
+    propertyId: null,
+    checkInDate: new Date().toISOString().slice(0, 10),
+    unitName: null,
+    propertyAddress: null,
+  });
 
   // CV-upload: bewaar het bestand + de geëxtraheerde tekst zodat we ze ná het aanmaken
   // kunnen opslaan en de AI-analyse kunnen starten.
@@ -82,7 +94,7 @@ const CandidateNew = () => {
   const [form, setForm] = useState({
     first_name: '', last_name: '', date_of_birth: '', nationality: '',
     email: '', phone: '', address_street: '', address_postal: '', address_city: '',
-    address_lat: null as number | null, address_lng: null as number | null,
+    address_country: '', address_lat: null as number | null, address_lng: null as number | null,
     bsn: '', iban: '', has_drivers_license: false, drivers_license_expiry: '',
     skills: [] as string[], languages: [] as string[], source: '', notes: '',
   });
@@ -103,7 +115,8 @@ const CandidateNew = () => {
 
     setIfEmpty('first_name', fields.first_name);
     setIfEmpty('last_name', fields.last_name);
-    setIfEmpty('nationality', fields.nationality);
+    // Nationaliteit naar canonieke dropdownwaarde mappen (bv. "Dutch" → "Nederlandse").
+    setIfEmpty('nationality', normalizeNationality(fields.nationality));
     setIfEmpty('email', fields.email);
     setIfEmpty('phone', fields.phone);
     setIfEmpty('address_street', fields.address_street);
@@ -133,9 +146,9 @@ const CandidateNew = () => {
       }
     }
 
-    // Talen: vrije tekst, alleen als nog leeg.
+    // Talen naar canonieke waarden mappen, alleen als nog leeg.
     if (Array.isArray(fields.languages) && fields.languages.length > 0 && form.languages.length === 0) {
-      const langs = [...new Set(fields.languages.map((l: unknown) => String(l).trim()).filter(Boolean))] as string[];
+      const langs = normalizeLanguages(fields.languages);
       if (langs.length > 0) {
         updates.languages = langs;
         count += 1;
@@ -169,7 +182,11 @@ const CandidateNew = () => {
       }
 
       const { data, error } = await supabase.functions.invoke('extract-cv-profile', {
-        body: { cv_text: cleaned },
+        body: {
+          cv_text: cleaned,
+          nationality_options: NATIONALITIES.map((n) => n.value),
+          language_options: LANGUAGES,
+        },
       });
 
       if (error) {
@@ -203,8 +220,10 @@ const CandidateNew = () => {
     }
   };
 
+  // Catalogus voor het filteren van uit-CV-geëxtraheerde skills. Deelt de cache-key
+  // met SkillMultiSelect zodat er niet dubbel wordt gefetcht.
   const { data: skillOptions = [] } = useQuery({
-    queryKey: ['candidate-skill-options', orgId],
+    queryKey: ['skill-options', orgId],
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('skills')
@@ -227,13 +246,33 @@ const CandidateNew = () => {
 
   const mutation = useMutation({
     mutationFn: async () => {
-      const address = await resolveAddressCoordinates({
-        street: form.address_street,
-        postal: form.address_postal,
-        city: form.address_city,
-        lat: form.address_lat,
-        lng: form.address_lng,
-      });
+      const isForeign = addressMode === 'foreign';
+      const isAgency = addressMode === 'nl' && nlHousing === 'agency';
+
+      // Bepaal adres + vlaggen op basis van de gekozen modus.
+      let addr: { street: string; postal: string; city: string; lat: number | null; lng: number | null };
+      let country: string | null;
+      if (isAgency) {
+        if (!housing.unitId || !housing.propertyAddress) {
+          throw new Error('Kies een woning en kamer, of kies een ander adrestype');
+        }
+        addr = { ...housing.propertyAddress };
+        country = 'Nederland';
+      } else if (isForeign) {
+        addr = { street: form.address_street, postal: form.address_postal, city: form.address_city, lat: null, lng: null };
+        country = form.address_country || null;
+      } else {
+        const resolved = await resolveAddressCoordinates({
+          street: form.address_street,
+          postal: form.address_postal,
+          city: form.address_city,
+          lat: form.address_lat,
+          lng: form.address_lng,
+        });
+        addr = { street: form.address_street, postal: form.address_postal, city: form.address_city, lat: resolved.lat, lng: resolved.lng };
+        country = 'Nederland';
+      }
+
       const payload = {
         ...form,
         organization_id: orgId,
@@ -246,13 +285,15 @@ const CandidateNew = () => {
         nationality: form.nationality || null,
         email: form.email || null,
         phone: form.phone || null,
-        address_street: form.address_street || null,
-        address_postal: form.address_postal || null,
-        address_city: form.address_city || null,
-        address_lat: address.lat,
-        address_lng: address.lng,
+        address_street: addr.street || null,
+        address_postal: addr.postal || null,
+        address_city: addr.city || null,
+        address_country: country,
+        address_lat: addr.lat,
+        address_lng: addr.lng,
+        has_dutch_address: !isForeign,
       };
-      const { data, error } = await supabase.from('candidates').insert(payload as any).select('id, first_name, phone, email').single();
+      const { data, error } = await supabase.from('candidates').insert(payload as any).select('id, first_name, phone, email, employee_status').single();
       if (error) throw error;
 
       // Generate profile token
@@ -289,12 +330,45 @@ const CandidateNew = () => {
         }
       }
 
-      return { ...data, token: tokenData.token, hadCv: !!cvFile };
+      // Huisvesting reserveren (NL-adres zonder eigen woning). Non-kritisch: een
+      // fout mag het aanmaken niet terugdraaien — we melden 'm in onSuccess.
+      let housingReserved = false;
+      let housingError: string | null = null;
+      if (isAgency && housing.unitId) {
+        try {
+          const employeeId = await resolveEmployeeId(
+            { id: data.id, employee_status: (data as any).employee_status ?? null },
+            orgId,
+            housing.checkInDate,
+          );
+          const { error: haError } = await supabase.from('housing_assignments').insert({
+            organization_id: orgId,
+            unit_id: housing.unitId,
+            employee_id: employeeId,
+            candidate_id: data.id,
+            check_in_date: housing.checkInDate,
+            status: 'gereserveerd',
+          } as any);
+          if (haError) throw haError;
+          housingReserved = true;
+        } catch (e) {
+          housingError = (e as Error).message;
+          console.warn('Huisvesting reserveren mislukt (non-kritisch):', e);
+        }
+      }
+
+      return { ...data, token: tokenData.token, hadCv: !!cvFile, housingReserved, housingError };
     },
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['candidates'] });
       logAudit({ action: 'create', tableName: 'candidates', recordId: data.id, newValues: form });
       toast.success('Kandidaat aangemaakt');
+
+      if (data.housingReserved) {
+        toast.success('Kamer gereserveerd — stel inhouding/borg in op de huisvesting-tab');
+      } else if (data.housingError) {
+        toast.error(`Kamer reserveren mislukt: ${data.housingError}`);
+      }
 
       // Start de dossieranalyse (org-default provider) als er een CV is geüpload.
       // Fire-and-forget: het resultaat verschijnt op het kandidaatdossier.
@@ -413,19 +487,6 @@ const CandidateNew = () => {
       toast.error(error.message);
     },
   });
-
-  const toggleSkill = (skillName: string) => {
-    setForm((current) => ({
-      ...current,
-      skills: current.skills.includes(skillName)
-        ? current.skills.filter((skill) => skill !== skillName)
-        : [...current.skills, skillName],
-    }));
-  };
-
-  const removeSkill = (skillName: string) => {
-    set('skills', form.skills.filter((skill) => skill !== skillName));
-  };
 
   if (step === 'link' && createdCandidate) {
     return (
@@ -550,25 +611,63 @@ const CandidateNew = () => {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5"><Label>Geboortedatum</Label><Input type="date" value={form.date_of_birth} onChange={(e) => set('date_of_birth', e.target.value)} /></div>
-            <div className="space-y-1.5"><Label>Nationaliteit</Label><Input value={form.nationality} onChange={(e) => set('nationality', e.target.value)} /></div>
+            <div className="space-y-1.5"><Label>Nationaliteit</Label><NationalitySelect value={form.nationality} onChange={(v) => set('nationality', v)} /></div>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5"><Label>E-mail</Label><Input value={form.email} onChange={(e) => set('email', e.target.value)} /></div>
             <div className="space-y-1.5"><Label>Telefoon</Label><Input value={form.phone} onChange={(e) => set('phone', e.target.value)} /></div>
           </div>
-          <AddressAutocomplete
-            value={{ street: form.address_street, postal: form.address_postal, city: form.address_city, lat: form.address_lat, lng: form.address_lng }}
-            onChange={(address) => setForm((f) => ({
-              ...f,
-              address_street: address.street,
-              address_postal: address.postal,
-              address_city: address.city,
-              address_lat: address.lat ?? null,
-              address_lng: address.lng ?? null,
-            }))}
-            gridClassName="grid-cols-1 sm:grid-cols-3 gap-4"
-            streetLabel="Straat"
-          />
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label>Adres</Label>
+              <div className="flex gap-2">
+                <Button type="button" size="sm" variant={addressMode === 'nl' ? 'default' : 'outline'} onClick={() => setAddressMode('nl')}>Nederlands adres</Button>
+                <Button type="button" size="sm" variant={addressMode === 'foreign' ? 'default' : 'outline'} onClick={() => setAddressMode('foreign')}>Buitenlands adres</Button>
+              </div>
+            </div>
+
+            {addressMode === 'foreign' ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5 sm:col-span-2"><Label>Straat + huisnr</Label><Input value={form.address_street} onChange={(e) => set('address_street', e.target.value)} /></div>
+                <div className="space-y-1.5"><Label>Postcode</Label><Input value={form.address_postal} onChange={(e) => set('address_postal', e.target.value)} /></div>
+                <div className="space-y-1.5"><Label>Plaats</Label><Input value={form.address_city} onChange={(e) => set('address_city', e.target.value)} /></div>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label>Land</Label>
+                  <Select value={form.address_country} onValueChange={(v) => set('address_country', v)}>
+                    <SelectTrigger><SelectValue placeholder="Kies land" /></SelectTrigger>
+                    <SelectContent>
+                      {COUNTRIES.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex gap-2">
+                  <Button type="button" size="sm" variant={nlHousing === 'own' ? 'secondary' : 'outline'} onClick={() => setNlHousing('own')}>Eigen adres</Button>
+                  <Button type="button" size="sm" variant={nlHousing === 'agency' ? 'secondary' : 'outline'} onClick={() => setNlHousing('agency')}>Nog geen huisvesting — kies woning</Button>
+                </div>
+
+                {nlHousing === 'own' ? (
+                  <AddressAutocomplete
+                    value={{ street: form.address_street, postal: form.address_postal, city: form.address_city, lat: form.address_lat, lng: form.address_lng }}
+                    onChange={(address) => setForm((f) => ({
+                      ...f,
+                      address_street: address.street,
+                      address_postal: address.postal,
+                      address_city: address.city,
+                      address_lat: address.lat ?? null,
+                      address_lng: address.lng ?? null,
+                    }))}
+                    gridClassName="grid-cols-1 sm:grid-cols-3 gap-4"
+                    streetLabel="Straat"
+                  />
+                ) : (
+                  <HousingRoomPicker value={housing} onChange={setHousing} />
+                )}
+              </div>
+            )}
+          </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5"><Label>BSN</Label><Input value={form.bsn} onChange={(e) => set('bsn', e.target.value)} /></div>
             <div className="space-y-1.5"><Label>IBAN</Label><Input value={form.iban} onChange={(e) => set('iban', e.target.value)} /></div>
@@ -584,49 +683,9 @@ const CandidateNew = () => {
           </div>
           <div className="space-y-1.5">
             <Label>Vaardigheden</Label>
-            <Popover open={skillsOpen} onOpenChange={setSkillsOpen}>
-              <PopoverTrigger asChild>
-                <Button type="button" variant="outline" role="combobox" className="w-full justify-between font-normal">
-                  <span className={form.skills.length > 0 ? 'text-foreground' : 'text-muted-foreground'}>
-                    {form.skills.length > 0 ? `${form.skills.length} vaardigheid${form.skills.length === 1 ? '' : 'en'} geselecteerd` : 'Kies vaardigheden'}
-                  </span>
-                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
-                <Command>
-                  <CommandInput placeholder="Zoek vaardigheid..." />
-                  <CommandList>
-                    <CommandEmpty>Geen vaardigheden gevonden.</CommandEmpty>
-                    <CommandGroup>
-                      {skillOptions.map((skill: SkillOption) => {
-                        const selected = form.skills.includes(skill.name);
-                        return (
-                          <CommandItem key={skill.id} value={skill.name} onSelect={() => toggleSkill(skill.name)}>
-                            <Check className={`mr-2 h-4 w-4 ${selected ? 'opacity-100' : 'opacity-0'}`} />
-                            {skill.name}
-                          </CommandItem>
-                        );
-                      })}
-                    </CommandGroup>
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
-            {form.skills.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 pt-1">
-                {form.skills.map((skill) => (
-                  <Badge key={skill} variant="secondary" className="gap-1 text-xs">
-                    {skill}
-                    <button type="button" className="rounded-sm hover:text-destructive" onClick={() => removeSkill(skill)} aria-label={`${skill} verwijderen`}>
-                      <X className="h-3 w-3" />
-                    </button>
-                  </Badge>
-                ))}
-              </div>
-            )}
+            <SkillMultiSelect value={form.skills} onChange={(v) => set('skills', v)} />
           </div>
-          <div className="space-y-1.5"><Label>Talen</Label><TagInput value={form.languages} onChange={(v) => set('languages', v)} placeholder="Typ taal + Enter" /></div>
+          <div className="space-y-1.5"><Label>Talen</Label><LanguageMultiSelect value={form.languages} onChange={(v) => set('languages', v)} /></div>
           <div className="space-y-1.5">
             <Label>Bron</Label>
             <Select value={form.source} onValueChange={(v) => set('source', v)}>

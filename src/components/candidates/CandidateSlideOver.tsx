@@ -14,6 +14,9 @@ import { toast } from 'sonner';
 import { logAudit } from '@/lib/audit';
 import AddressAutocomplete from '@/components/shared/AddressAutocomplete';
 import { resolveAddressCoordinates } from '@/lib/pdok';
+import NationalitySelect from '@/components/shared/NationalitySelect';
+import SkillMultiSelect from '@/components/shared/SkillMultiSelect';
+import LanguageMultiSelect from '@/components/shared/LanguageMultiSelect';
 
 interface Props {
   open: boolean;
@@ -144,7 +147,7 @@ const CandidateSlideOver = ({ open, onOpenChange, candidate }: Props) => {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div><Label>Geboortedatum</Label><Input type="date" value={form.date_of_birth} onChange={(e) => set('date_of_birth', e.target.value)} /></div>
-            <div><Label>Nationaliteit</Label><Input value={form.nationality} onChange={(e) => set('nationality', e.target.value)} /></div>
+            <div><Label>Nationaliteit</Label><NationalitySelect value={form.nationality} onChange={(v) => set('nationality', v)} /></div>
           </div>
           <div><Label>E-mail</Label><Input value={form.email} onChange={(e) => set('email', e.target.value)} /></div>
           <div className="grid grid-cols-2 gap-3">
@@ -181,8 +184,8 @@ const CandidateSlideOver = ({ open, onOpenChange, candidate }: Props) => {
               <div><Label>Verloopdatum rijbewijs</Label><Input type="date" value={form.drivers_license_expiry} onChange={(e) => set('drivers_license_expiry', e.target.value)} /></div>
             )}
           </div>
-          <div><Label>Vaardigheden</Label><TagInput value={form.skills} onChange={(v) => set('skills', v)} placeholder="Typ vaardigheid + Enter" /></div>
-          <div><Label>Talen</Label><TagInput value={form.languages} onChange={(v) => set('languages', v)} placeholder="Typ taal + Enter" /></div>
+          <div><Label>Vaardigheden</Label><SkillMultiSelect value={form.skills} onChange={(v) => set('skills', v)} /></div>
+          <div><Label>Talen</Label><LanguageMultiSelect value={form.languages} onChange={(v) => set('languages', v)} /></div>
           <div>
             <Label>Bron</Label>
             <Select value={form.source} onValueChange={(v) => set('source', v)}>

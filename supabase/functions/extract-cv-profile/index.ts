@@ -64,11 +64,22 @@ Deno.serve(async (req) => {
     const orgId = profile.organization_id as string;
 
     const body = await req.json();
-    const { cv_text } = body as { cv_text?: string };
+    const { cv_text, nationality_options, language_options } = body as {
+      cv_text?: string;
+      nationality_options?: string[];
+      language_options?: string[];
+    };
 
     if (!cv_text || cv_text.trim().length < 50) {
       return jsonResponse({ error: "CV-tekst is te kort om te analyseren (minimaal 50 tekens)" }, 400);
     }
+
+    const nationalityCatalog = Array.isArray(nationality_options)
+      ? nationality_options.filter((s) => typeof s === "string").slice(0, 300)
+      : [];
+    const languageCatalog = Array.isArray(language_options)
+      ? language_options.filter((s) => typeof s === "string").slice(0, 200)
+      : [];
 
     const apiKey = Deno.env.get("GEMINI_API_KEY");
     if (!apiKey) {
@@ -126,7 +137,7 @@ Deno.serve(async (req) => {
     // Gemini-call (synchroon)
     let result;
     try {
-      result = await extractCvProfile(cv_text, apiKey, { model, skillCatalog });
+      result = await extractCvProfile(cv_text, apiKey, { model, skillCatalog, nationalityCatalog, languageCatalog });
     } catch (e) {
       const msg = (e as Error).message;
       console.error("[extract-cv-profile] Gemini-call mislukt:", msg);
