@@ -3,425 +3,323 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import CustomFieldsSection from '@/components/shared/CustomFieldsSection';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Pencil, X, Check, Search, Building2 } from 'lucide-react';
+import { Pencil, X, Save, Loader2, Copy } from 'lucide-react';
 import { toast } from 'sonner';
-import TagInput from '@/components/ui/tag-input';
 import { logAudit } from '@/lib/audit';
 import AddressAutocomplete from '@/components/shared/AddressAutocomplete';
-import { resolveAddressCoordinates } from '@/lib/pdok';
-
-const Field = ({ label, value }: { label: string; value: string | null | undefined }) => (
-  <div>
-    <p className="text-xs text-muted-foreground">{label}</p>
-    <p className="text-sm mt-0.5">{value || '—'}</p>
-  </div>
-);
+import UnsavedChangesGuard from '@/components/shared/UnsavedChangesGuard';
+import { resolveAddressCoordinates, type AddressValue } from '@/lib/pdok';
+import {
+  InlineTextField,
+  InlineTagsField,
+  InlineSelectField,
+  fieldShellClass,
+} from '@/components/shared/InlineFields';
 
 const legalFormOptions = ['BV', 'NV', 'VOF', 'Eenmanszaak', 'Stichting', 'Coöperatie', 'Maatschap', 'CV', 'Overig'];
-const timesheetFlowLabel: Record<string, string> = {
-  medewerker: 'Medewerker voert uren in',
-  opdrachtgever: 'Opdrachtgever geeft uren door',
-  kloksysteem: 'Kloksysteem opdrachtgever',
-};
+const timesheetFlowOptions = [
+  { value: 'medewerker', label: 'Medewerker voert uren in' },
+  { value: 'opdrachtgever', label: 'Opdrachtgever geeft uren door' },
+  { value: 'kloksysteem', label: 'Kloksysteem opdrachtgever' },
+];
+const timesheetFlowLabel: Record<string, string> = Object.fromEntries(
+  timesheetFlowOptions.map((o) => [o.value, o.label]),
+);
 
-const CompanyInfoTab = ({ company }: { company: any }) => {
+const InlineAddressField = ({
+  id,
+  label,
+  address,
+  displayValue,
+  onSave,
+  onDirtyChange,
+  onPrefill,
+  prefillLabel,
+}: {
+  id: string;
+  label: string;
+  address: AddressValue;
+  displayValue: string | null;
+  onSave: (address: AddressValue) => Promise<void>;
+  onDirtyChange: (id: string, dirty: boolean) => void;
+  onPrefill?: () => AddressValue;
+  prefillLabel?: string;
+}) => {
   const [editing, setEditing] = useState(false);
-  const [form, setForm] = useState<any>(company);
-  const [sameAddress, setSameAddress] = useState(false);
-  const [kvkPreview, setKvkPreview] = useState<any>(null);
-  const qc = useQueryClient();
+  const [draft, setDraft] = useState<AddressValue>(address);
+  const [saving, setSaving] = useState(false);
 
-  const kvkLookup = useMutation({
-    mutationFn: async (kvkNumber: string) => {
-      const { data, error } = await supabase.functions.invoke('kvk-lookup', {
-        body: { kvk_number: kvkNumber },
-      });
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: (data) => {
-      setKvkPreview(data);
-      toast.success('KVK-gegevens opgehaald');
-    },
-    onError: (e: any) => {
-      setKvkPreview(null);
-      toast.error(e.message || 'KVK-lookup mislukt');
-    },
-  });
-
-  const applyKvkData = useMutation({
-    mutationFn: async () => {
-      if (!kvkPreview) return;
-      const payload: any = {};
-      if (kvkPreview.name) payload.name = kvkPreview.name;
-      if (kvkPreview.sbi_codes?.length) payload.sbi_codes = kvkPreview.sbi_codes;
-      if (kvkPreview.visit_address?.street) payload.visit_address_street = kvkPreview.visit_address.street;
-      if (kvkPreview.visit_address?.postal) payload.visit_address_postal = kvkPreview.visit_address.postal;
-      if (kvkPreview.visit_address?.city) payload.visit_address_city = kvkPreview.visit_address.city;
-      if (kvkPreview.visit_address?.country) payload.visit_address_country = kvkPreview.visit_address.country;
-      // Sync old address fields too
-      if (kvkPreview.visit_address?.street) payload.address_street = kvkPreview.visit_address.street;
-      if (kvkPreview.visit_address?.postal) payload.address_postal = kvkPreview.visit_address.postal;
-      if (kvkPreview.visit_address?.city) payload.address_city = kvkPreview.visit_address.city;
-      if (kvkPreview.visit_address?.country) payload.address_country = kvkPreview.visit_address.country;
-      if (kvkPreview.visit_address?.street || kvkPreview.visit_address?.postal || kvkPreview.visit_address?.city) {
-        const address = await resolveAddressCoordinates({
-          street: kvkPreview.visit_address?.street ?? '',
-          postal: kvkPreview.visit_address?.postal ?? '',
-          city: kvkPreview.visit_address?.city ?? '',
-        });
-        payload.visit_address_lat = address.lat;
-        payload.visit_address_lng = address.lng;
-        payload.address_lat = address.lat;
-        payload.address_lng = address.lng;
-      }
-      const { error } = await supabase.from('companies').update(payload).eq('id', company.id);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['company', company.id] });
-      logAudit({ action: 'update', tableName: 'companies', recordId: company.id, newValues: { source: 'kvk_enrichment', kvk_number: company.kvk_number } });
-      setKvkPreview(null);
-      toast.success('KVK-gegevens overgenomen');
-    },
-    onError: (e: any) => toast.error(e.message),
-  });
-
-  const save = useMutation({
-    mutationFn: async () => {
-      const visitAddress = await resolveAddressCoordinates({
-        street: form.visit_address_street ?? '',
-        postal: form.visit_address_postal ?? '',
-        city: form.visit_address_city ?? '',
-        lat: form.visit_address_lat ?? form.address_lat ?? null,
-        lng: form.visit_address_lng ?? form.address_lng ?? null,
-      });
-      const invoiceAddress = sameAddress
-        ? visitAddress
-        : await resolveAddressCoordinates({
-          street: form.invoice_address_street ?? '',
-          postal: form.invoice_address_postal ?? '',
-          city: form.invoice_address_city ?? '',
-          lat: form.invoice_address_lat ?? null,
-          lng: form.invoice_address_lng ?? null,
-        });
-      const payload: any = {
-        name: form.name, kvk_number: form.kvk_number, btw_number: form.btw_number,
-        language: form.language, legal_form: form.legal_form, sbi_codes: form.sbi_codes,
-        cao: form.cao,
-        visit_address_street: form.visit_address_street, visit_address_postal: form.visit_address_postal,
-        visit_address_city: form.visit_address_city, visit_address_country: form.visit_address_country,
-        visit_address_lat: visitAddress.lat, visit_address_lng: visitAddress.lng,
-        invoice_address_street: form.invoice_address_street, invoice_address_postal: form.invoice_address_postal,
-        invoice_address_city: form.invoice_address_city, invoice_address_country: form.invoice_address_country,
-        invoice_address_lat: invoiceAddress.lat, invoice_address_lng: invoiceAddress.lng,
-        iban: form.iban, bank_account_holder: form.bank_account_holder,
-        authorized_signatory: form.authorized_signatory, vat_rate: form.vat_rate ? parseFloat(form.vat_rate) : null,
-        invoice_email: form.invoice_email, invoice_cc: form.invoice_cc,
-        invoice_company_name: form.invoice_company_name,
-        timesheet_entry_flow: form.timesheet_entry_flow ?? 'medewerker',
-        phone: form.phone, email: form.email, website: form.website, notes: form.notes,
-        // Keep old address fields synced with visit address
-        address_street: form.visit_address_street, address_postal: form.visit_address_postal,
-        address_city: form.visit_address_city, address_country: form.visit_address_country,
-        address_lat: visitAddress.lat, address_lng: visitAddress.lng,
-      };
-      const { error } = await supabase.from('companies').update(payload).eq('id', company.id);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['company', company.id] });
-      setEditing(false);
-      toast.success('Gegevens bijgewerkt');
-    },
-    onError: (e: any) => toast.error(e.message),
-  });
-
-  const set = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
-
-  const handleSameAddress = (checked: boolean) => {
-    setSameAddress(checked);
-    if (checked) {
-      setForm((f: any) => ({
-        ...f,
-        invoice_address_street: f.visit_address_street,
-        invoice_address_postal: f.visit_address_postal,
-        invoice_address_city: f.visit_address_city,
-        invoice_address_country: f.visit_address_country,
-        invoice_address_lat: f.visit_address_lat ?? f.address_lat ?? null,
-        invoice_address_lng: f.visit_address_lng ?? f.address_lng ?? null,
-      }));
-    }
+  const open = () => {
+    setDraft(address);
+    setEditing(true);
+    onDirtyChange(id, true);
   };
 
-  const startEdit = () => {
-    setForm({ ...company, vat_rate: company.vat_rate?.toString() ?? '21' });
-    setSameAddress(false);
-    setEditing(true);
+  const cancel = () => {
+    setDraft(address);
+    setEditing(false);
+    onDirtyChange(id, false);
+  };
+
+  const commit = async () => {
+    setSaving(true);
+    try {
+      await onSave(draft);
+      setEditing(false);
+      onDirtyChange(id, false);
+    } catch {
+      onDirtyChange(id, true);
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (editing) {
     return (
-      <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <h3 className="font-medium">Bewerken</h3>
-          <div className="flex gap-2">
-            <Button size="sm" variant="ghost" onClick={() => setEditing(false)}><X className="h-4 w-4" /></Button>
-            <Button size="sm" onClick={() => save.mutate()} disabled={save.isPending}><Check className="h-4 w-4 mr-1" />Opslaan</Button>
-          </div>
+      <div className={fieldShellClass}>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs font-medium text-muted-foreground">{label}</p>
+          {saving && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
         </div>
-
-        <div className="bg-card rounded-lg border p-6 space-y-4">
-          <h4 className="text-sm font-medium text-muted-foreground">Bedrijfsgegevens</h4>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div><Label>Bedrijfsnaam *</Label><Input value={form.name} onChange={e => set('name', e.target.value)} /></div>
-            <div><Label>KVK-nummer</Label><Input value={form.kvk_number ?? ''} onChange={e => set('kvk_number', e.target.value)} /></div>
-            <div><Label>BTW-nummer</Label><Input value={form.btw_number ?? ''} onChange={e => set('btw_number', e.target.value)} /></div>
-            <div><Label>Taal</Label><Input value={form.language ?? ''} onChange={e => set('language', e.target.value)} /></div>
-            <div><Label>Rechtsvorm</Label>
-              <Select value={form.legal_form ?? ''} onValueChange={v => set('legal_form', v)}>
-                <SelectTrigger><SelectValue placeholder="Selecteer..." /></SelectTrigger>
-                <SelectContent>{legalFormOptions.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div><Label>CAO</Label><Input value={form.cao ?? ''} onChange={e => set('cao', e.target.value)} /></div>
-          </div>
-          <div>
-            <Label>SBI-codes</Label>
-            <TagInput value={form.sbi_codes ?? []} onChange={v => set('sbi_codes', v)} placeholder="Voeg SBI-code toe..." />
-          </div>
+        {onPrefill && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="mt-1 h-7 gap-1.5 px-2 text-xs"
+            onClick={() => setDraft(onPrefill())}
+          >
+            <Copy className="h-3 w-3" />
+            {prefillLabel ?? 'Overnemen'}
+          </Button>
+        )}
+        <div className="mt-2">
+          <AddressAutocomplete
+            value={draft}
+            onChange={(next) => setDraft({
+              street: next.street,
+              postal: next.postal,
+              city: next.city,
+              country: next.country ?? draft.country ?? '',
+              lat: next.lat ?? null,
+              lng: next.lng ?? null,
+            })}
+            gridClassName="grid-cols-2 gap-3"
+            streetClassName="col-span-2"
+            countryClassName="col-span-2"
+            showCountry
+          />
         </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-card rounded-lg border p-6 space-y-4">
-            <h4 className="text-sm font-medium text-muted-foreground">Bezoekadres</h4>
-            <AddressAutocomplete
-              value={{
-                street: form.visit_address_street ?? '',
-                postal: form.visit_address_postal ?? '',
-                city: form.visit_address_city ?? '',
-                country: form.visit_address_country ?? '',
-                lat: form.visit_address_lat ?? form.address_lat ?? null,
-                lng: form.visit_address_lng ?? form.address_lng ?? null,
-              }}
-              onChange={(address) => setForm((f: any) => ({
-                ...f,
-                visit_address_street: address.street,
-                visit_address_postal: address.postal,
-                visit_address_city: address.city,
-                visit_address_country: address.country ?? f.visit_address_country,
-                visit_address_lat: address.lat ?? null,
-                visit_address_lng: address.lng ?? null,
-                ...(sameAddress ? {
-                  invoice_address_street: address.street,
-                  invoice_address_postal: address.postal,
-                  invoice_address_city: address.city,
-                  invoice_address_country: address.country ?? f.invoice_address_country,
-                  invoice_address_lat: address.lat ?? null,
-                  invoice_address_lng: address.lng ?? null,
-                } : {}),
-              }))}
-              gridClassName="grid-cols-2 gap-3"
-              streetClassName="col-span-2"
-              countryClassName="col-span-2"
-              showCountry
-            />
-          </div>
-
-          <div className="bg-card rounded-lg border p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h4 className="text-sm font-medium text-muted-foreground">Factuuradres</h4>
-              <div className="flex items-center gap-2">
-                <Checkbox checked={sameAddress} onCheckedChange={handleSameAddress} id="same-addr" />
-                <label htmlFor="same-addr" className="text-xs text-muted-foreground cursor-pointer">Gelijk aan bezoekadres</label>
-              </div>
-            </div>
-            <div className={sameAddress ? 'pointer-events-none opacity-60' : undefined}>
-              <AddressAutocomplete
-                value={{
-                  street: form.invoice_address_street ?? '',
-                  postal: form.invoice_address_postal ?? '',
-                  city: form.invoice_address_city ?? '',
-                  country: form.invoice_address_country ?? '',
-                  lat: form.invoice_address_lat ?? null,
-                  lng: form.invoice_address_lng ?? null,
-                }}
-                onChange={(address) => setForm((f: any) => ({
-                  ...f,
-                  invoice_address_street: address.street,
-                  invoice_address_postal: address.postal,
-                  invoice_address_city: address.city,
-                  invoice_address_country: address.country ?? f.invoice_address_country,
-                  invoice_address_lat: address.lat ?? null,
-                  invoice_address_lng: address.lng ?? null,
-                }))}
-                gridClassName="grid-cols-2 gap-3"
-                streetClassName="col-span-2"
-                countryClassName="col-span-2"
-                showCountry
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-card rounded-lg border p-6 space-y-4">
-          <h4 className="text-sm font-medium text-muted-foreground">Financieel</h4>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div><Label>IBAN</Label><Input value={form.iban ?? ''} onChange={e => set('iban', e.target.value)} /></div>
-            <div><Label>Rekeninghouder</Label><Input value={form.bank_account_holder ?? ''} onChange={e => set('bank_account_holder', e.target.value)} /></div>
-            <div><Label>Tekenbevoegde</Label><Input value={form.authorized_signatory ?? ''} onChange={e => set('authorized_signatory', e.target.value)} /></div>
-            <div><Label>BTW-tarief (%)</Label><Input type="number" step="0.01" value={form.vat_rate ?? '21'} onChange={e => set('vat_rate', e.target.value)} /></div>
-            <div><Label>Factuur e-mail</Label><Input type="email" value={form.invoice_email ?? ''} onChange={e => set('invoice_email', e.target.value)} /></div>
-            <div><Label>Factuur CC</Label><Input type="email" value={form.invoice_cc ?? ''} onChange={e => set('invoice_cc', e.target.value)} /></div>
-            <div><Label>Factuurnaam (afwijkend)</Label><Input value={form.invoice_company_name ?? ''} onChange={e => set('invoice_company_name', e.target.value)} /></div>
-            <div>
-              <Label>Urenstroom</Label>
-              <Select value={form.timesheet_entry_flow ?? 'medewerker'} onValueChange={v => set('timesheet_entry_flow', v)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="medewerker">Medewerker voert uren in</SelectItem>
-                  <SelectItem value="opdrachtgever">Opdrachtgever geeft uren door</SelectItem>
-                  <SelectItem value="kloksysteem">Kloksysteem opdrachtgever</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-card rounded-lg border p-6 space-y-4">
-          <h4 className="text-sm font-medium text-muted-foreground">Contact</h4>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div><Label>Telefoon</Label><Input value={form.phone ?? ''} onChange={e => set('phone', e.target.value)} /></div>
-            <div><Label>E-mail</Label><Input type="email" value={form.email ?? ''} onChange={e => set('email', e.target.value)} /></div>
-            <div><Label>Website</Label><Input value={form.website ?? ''} onChange={e => set('website', e.target.value)} /></div>
-          </div>
-        </div>
-
-        <div className="bg-card rounded-lg border p-6 space-y-2">
-          <Label>Notities</Label>
-          <Textarea value={form.notes ?? ''} onChange={e => set('notes', e.target.value)} rows={3} />
+        <div className="mt-2 flex items-center gap-2">
+          <Button type="button" size="sm" className="h-8 gap-1.5" disabled={saving} onClick={() => void commit()}>
+            <Save className="h-3.5 w-3.5" />
+            Opslaan
+          </Button>
+          <Button type="button" variant="ghost" size="sm" className="h-8 gap-1.5" disabled={saving} onClick={cancel}>
+            <X className="h-3.5 w-3.5" />
+            Annuleren
+          </Button>
         </div>
       </div>
     );
   }
 
-  const visitAddr = [company.visit_address_street, company.visit_address_postal, company.visit_address_city, company.visit_address_country].filter(Boolean).join(', ') || null;
-  const invoiceAddr = [company.invoice_address_street, company.invoice_address_postal, company.invoice_address_city, company.invoice_address_country].filter(Boolean).join(', ') || null;
-  const legacyAddr = [company.address_street, company.address_postal, company.address_city].filter(Boolean).join(', ') || null;
+  return (
+    <button type="button" onClick={open} className={`group w-full text-left ${fieldShellClass}`}>
+      <span className="flex items-center justify-between gap-2 text-xs font-medium text-muted-foreground">
+        <span>{label}</span>
+        <Pencil className="h-3.5 w-3.5 opacity-70 transition-opacity group-hover:opacity-100" />
+      </span>
+      <span className="block min-h-5 text-sm mt-1 whitespace-pre-wrap">{displayValue || '—'}</span>
+    </button>
+  );
+};
+
+const CompanyInfoTab = ({ company }: { company: any }) => {
+  const qc = useQueryClient();
+  const [dirtyEditors, setDirtyEditors] = useState<Record<string, boolean>>({});
+  const hasDirtyEditor = Object.values(dirtyEditors).some(Boolean);
+  const setEditorDirty = (id: string, dirty: boolean) => {
+    setDirtyEditors((current) => ({ ...current, [id]: dirty }));
+  };
+
+  const updateCompany = useMutation({
+    mutationFn: async ({ patch }: { patch: Record<string, any>; label: string }) => {
+      const { error } = await supabase.from('companies').update(patch as any).eq('id', company.id);
+      if (error) throw error;
+    },
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ['company', company.id] });
+      qc.invalidateQueries({ queryKey: ['companies'] });
+      logAudit({
+        action: 'update',
+        tableName: 'companies',
+        recordId: company.id,
+        newValues: variables.patch,
+      });
+      toast.success(`${variables.label} opgeslagen`);
+    },
+    onError: (e: any) => toast.error(e.message || 'Opslaan mislukt'),
+  });
+
+  const saveField = (label: string, patch: Record<string, any>) =>
+    updateCompany.mutateAsync({ label, patch });
+
+  const visitAddress: AddressValue = {
+    street: company.visit_address_street ?? company.address_street ?? '',
+    postal: company.visit_address_postal ?? company.address_postal ?? '',
+    city: company.visit_address_city ?? company.address_city ?? '',
+    country: company.visit_address_country ?? company.address_country ?? '',
+    lat: company.visit_address_lat ?? company.address_lat ?? null,
+    lng: company.visit_address_lng ?? company.address_lng ?? null,
+  };
+  const invoiceAddress: AddressValue = {
+    street: company.invoice_address_street ?? '',
+    postal: company.invoice_address_postal ?? '',
+    city: company.invoice_address_city ?? '',
+    country: company.invoice_address_country ?? '',
+    lat: company.invoice_address_lat ?? null,
+    lng: company.invoice_address_lng ?? null,
+  };
+
+  const formatAddress = (address: AddressValue) =>
+    [address.street, address.postal, address.city, address.country].filter(Boolean).join(', ') || null;
+
+  const visitAddr = formatAddress(visitAddress);
+  const invoiceAddr = formatAddress(invoiceAddress);
+
+  const saveVisitAddress = async (draft: AddressValue) => {
+    const resolved = await resolveAddressCoordinates({
+      street: draft.street, postal: draft.postal, city: draft.city, lat: draft.lat, lng: draft.lng,
+    });
+    await saveField('Bezoekadres', {
+      visit_address_street: draft.street || null,
+      visit_address_postal: draft.postal || null,
+      visit_address_city: draft.city || null,
+      visit_address_country: draft.country || null,
+      visit_address_lat: resolved.lat,
+      visit_address_lng: resolved.lng,
+      // Keep legacy address fields synced with the visit address
+      address_street: draft.street || null,
+      address_postal: draft.postal || null,
+      address_city: draft.city || null,
+      address_country: draft.country || null,
+      address_lat: resolved.lat,
+      address_lng: resolved.lng,
+    });
+  };
+
+  const saveInvoiceAddress = async (draft: AddressValue) => {
+    const resolved = await resolveAddressCoordinates({
+      street: draft.street, postal: draft.postal, city: draft.city, lat: draft.lat, lng: draft.lng,
+    });
+    await saveField('Factuuradres', {
+      invoice_address_street: draft.street || null,
+      invoice_address_postal: draft.postal || null,
+      invoice_address_city: draft.city || null,
+      invoice_address_country: draft.country || null,
+      invoice_address_lat: resolved.lat,
+      invoice_address_lng: resolved.lng,
+    });
+  };
 
   return (
     <div className="space-y-6">
+      <UnsavedChangesGuard when={hasDirtyEditor} />
       <div className="flex justify-between items-start">
         <h3 className="font-medium">Bedrijfsgegevens</h3>
-        <div className="flex gap-2">
-          {company.kvk_number && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => kvkLookup.mutate(company.kvk_number)}
-              disabled={kvkLookup.isPending}
-            >
-              <Building2 className="h-3.5 w-3.5 mr-1" />
-              {kvkLookup.isPending ? 'Ophalen...' : 'KVK Verrijken'}
-            </Button>
+        <div className="flex items-center gap-2">
+          {updateCompany.isPending && (
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Opslaan...
+            </span>
           )}
-          <Button size="sm" variant="ghost" onClick={startEdit}><Pencil className="h-3.5 w-3.5" /></Button>
         </div>
       </div>
-
-      {kvkPreview && (
-        <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4 space-y-3">
-          <div className="flex justify-between items-start">
-            <h4 className="text-sm font-medium text-blue-700 dark:text-blue-300">KVK-gegevens gevonden</h4>
-            <div className="flex gap-2">
-              <Button size="sm" variant="ghost" onClick={() => setKvkPreview(null)}>
-                <X className="h-3.5 w-3.5" />
-              </Button>
-              <Button size="sm" onClick={() => applyKvkData.mutate()} disabled={applyKvkData.isPending}>
-                <Check className="h-3.5 w-3.5 mr-1" />
-                {applyKvkData.isPending ? 'Overnemen...' : 'Overnemen'}
-              </Button>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-2 text-sm">
-            {kvkPreview.name && <div><span className="text-muted-foreground">Naam:</span> {kvkPreview.name}</div>}
-            {kvkPreview.kvk_number && <div><span className="text-muted-foreground">KVK:</span> {kvkPreview.kvk_number}</div>}
-            {kvkPreview.visit_address?.street && (
-              <div><span className="text-muted-foreground">Adres:</span> {kvkPreview.visit_address.street}, {kvkPreview.visit_address.postal} {kvkPreview.visit_address.city}</div>
-            )}
-            {kvkPreview.sbi_codes?.length > 0 && (
-              <div><span className="text-muted-foreground">SBI:</span> {kvkPreview.sbi_codes.join(', ')}</div>
-            )}
-            {kvkPreview.total_employees != null && (
-              <div><span className="text-muted-foreground">Werkzame personen:</span> {kvkPreview.total_employees}</div>
-            )}
-          </div>
-        </div>
-      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="bg-card rounded-lg border p-6 space-y-4">
           <h4 className="text-sm font-medium text-muted-foreground">Algemeen</h4>
-          <Field label="Bedrijfsnaam" value={company.name} />
-          <Field label="KVK-nummer" value={company.kvk_number} />
-          <Field label="BTW-nummer" value={company.btw_number} />
-          <Field label="Rechtsvorm" value={company.legal_form} />
-          <Field label="CAO" value={company.cao} />
-          <Field label="Taal" value={company.language} />
-          {(company.sbi_codes?.length > 0) && (
-            <div>
-              <p className="text-xs text-muted-foreground mb-1">SBI-codes</p>
-              <div className="flex flex-wrap gap-1">
-                {company.sbi_codes.map((s: string) => (
-                  <span key={s} className="text-xs bg-muted px-2 py-0.5 rounded">{s}</span>
-                ))}
-              </div>
-            </div>
-          )}
+          <InlineTextField id="name" label="Bedrijfsnaam" value={company.name} onSave={(value) => saveField('Bedrijfsnaam', { name: value || '' })} onDirtyChange={setEditorDirty} />
+          <InlineTextField id="kvk_number" label="KVK-nummer" value={company.kvk_number} inputMode="numeric" onSave={(value) => saveField('KVK-nummer', { kvk_number: value })} onDirtyChange={setEditorDirty} />
+          <InlineTextField id="btw_number" label="BTW-nummer" value={company.btw_number} onSave={(value) => saveField('BTW-nummer', { btw_number: value })} onDirtyChange={setEditorDirty} />
+          <InlineSelectField
+            label="Rechtsvorm"
+            value={company.legal_form}
+            options={legalFormOptions.map((o) => ({ value: o, label: o }))}
+            onSave={(value) => saveField('Rechtsvorm', { legal_form: value })}
+          />
+          <InlineTextField id="cao" label="CAO" value={company.cao} onSave={(value) => saveField('CAO', { cao: value })} onDirtyChange={setEditorDirty} />
+          <InlineTextField id="language" label="Taal" value={company.language} onSave={(value) => saveField('Taal', { language: value })} onDirtyChange={setEditorDirty} />
+          <InlineTagsField id="sbi_codes" label="SBI-codes" value={company.sbi_codes ?? []} onSave={(value) => saveField('SBI-codes', { sbi_codes: value.length ? value : null })} onDirtyChange={setEditorDirty} />
         </div>
 
         <div className="space-y-6">
           <div className="bg-card rounded-lg border p-6 space-y-4">
             <h4 className="text-sm font-medium text-muted-foreground">Bezoekadres</h4>
-            <Field label="Adres" value={visitAddr || legacyAddr} />
+            <InlineAddressField
+              id="visit_address"
+              label="Adres"
+              address={visitAddress}
+              displayValue={visitAddr}
+              onSave={saveVisitAddress}
+              onDirtyChange={setEditorDirty}
+            />
           </div>
           <div className="bg-card rounded-lg border p-6 space-y-4">
             <h4 className="text-sm font-medium text-muted-foreground">Factuuradres</h4>
-            <Field label="Adres" value={invoiceAddr} />
+            <InlineAddressField
+              id="invoice_address"
+              label="Adres"
+              address={invoiceAddress}
+              displayValue={invoiceAddr}
+              onSave={saveInvoiceAddress}
+              onDirtyChange={setEditorDirty}
+              onPrefill={() => visitAddress}
+              prefillLabel="Gelijk aan bezoekadres"
+            />
           </div>
         </div>
 
         <div className="bg-card rounded-lg border p-6 space-y-4">
           <h4 className="text-sm font-medium text-muted-foreground">Financieel</h4>
-          <Field label="IBAN" value={company.iban} />
-          <Field label="Rekeninghouder" value={company.bank_account_holder} />
-          <Field label="Tekenbevoegde" value={company.authorized_signatory} />
-          <Field label="BTW-tarief" value={company.vat_rate != null ? `${company.vat_rate}%` : '21%'} />
-          <Field label="Factuur e-mail" value={company.invoice_email} />
-          <Field label="Factuur CC" value={company.invoice_cc} />
-          {company.invoice_company_name && <Field label="Factuurnaam" value={company.invoice_company_name} />}
-          <Field label="Urenstroom" value={timesheetFlowLabel[company.timesheet_entry_flow ?? 'medewerker'] ?? company.timesheet_entry_flow} />
+          <InlineTextField id="iban" label="IBAN" value={company.iban} onSave={(value) => saveField('IBAN', { iban: value })} onDirtyChange={setEditorDirty} />
+          <InlineTextField id="bank_account_holder" label="Rekeninghouder" value={company.bank_account_holder} onSave={(value) => saveField('Rekeninghouder', { bank_account_holder: value })} onDirtyChange={setEditorDirty} />
+          <InlineTextField id="authorized_signatory" label="Tekenbevoegde" value={company.authorized_signatory} onSave={(value) => saveField('Tekenbevoegde', { authorized_signatory: value })} onDirtyChange={setEditorDirty} />
+          <InlineTextField
+            id="vat_rate"
+            label="BTW-tarief (%)"
+            value={company.vat_rate != null ? String(company.vat_rate) : ''}
+            displayValue={company.vat_rate != null ? `${company.vat_rate}%` : '21%'}
+            type="number"
+            inputMode="decimal"
+            onSave={(value) => saveField('BTW-tarief', { vat_rate: value ? parseFloat(value) : null })}
+            onDirtyChange={setEditorDirty}
+          />
+          <InlineTextField id="invoice_email" label="Factuur e-mail" value={company.invoice_email} type="email" inputMode="email" onSave={(value) => saveField('Factuur e-mail', { invoice_email: value })} onDirtyChange={setEditorDirty} />
+          <InlineTextField id="invoice_cc" label="Factuur CC" value={company.invoice_cc} type="email" inputMode="email" onSave={(value) => saveField('Factuur CC', { invoice_cc: value })} onDirtyChange={setEditorDirty} />
+          <InlineTextField id="invoice_company_name" label="Factuurnaam (afwijkend)" value={company.invoice_company_name} onSave={(value) => saveField('Factuurnaam', { invoice_company_name: value })} onDirtyChange={setEditorDirty} />
+          <InlineSelectField
+            label="Urenstroom"
+            value={company.timesheet_entry_flow ?? 'medewerker'}
+            displayValue={timesheetFlowLabel[company.timesheet_entry_flow ?? 'medewerker']}
+            options={timesheetFlowOptions}
+            onSave={(value) => saveField('Urenstroom', { timesheet_entry_flow: value })}
+          />
         </div>
 
         <div className="bg-card rounded-lg border p-6 space-y-4">
           <h4 className="text-sm font-medium text-muted-foreground">Contact</h4>
-          <Field label="Telefoon" value={company.phone} />
-          <Field label="E-mail" value={company.email} />
-          <Field label="Website" value={company.website} />
+          <InlineTextField id="phone" label="Telefoon" value={company.phone} inputMode="tel" onSave={(value) => saveField('Telefoon', { phone: value })} onDirtyChange={setEditorDirty} />
+          <InlineTextField id="email" label="E-mail" value={company.email} type="email" inputMode="email" onSave={(value) => saveField('E-mail', { email: value })} onDirtyChange={setEditorDirty} />
+          <InlineTextField id="website" label="Website" value={company.website} inputMode="url" onSave={(value) => saveField('Website', { website: value })} onDirtyChange={setEditorDirty} />
         </div>
       </div>
 
-      {company.notes && (
-        <div className="bg-card rounded-lg border p-6">
-          <p className="text-xs text-muted-foreground mb-1">Notities</p>
-          <p className="text-sm whitespace-pre-wrap">{company.notes}</p>
-        </div>
-      )}
+      <div className="bg-card rounded-lg border p-6 space-y-2">
+        <InlineTextField id="notes" label="Notities" value={company.notes} multiline onSave={(value) => saveField('Notities', { notes: value })} onDirtyChange={setEditorDirty} />
+      </div>
 
       {/* Custom fields */}
       <CustomFieldsSection entityType="company" entityId={company.id} />
