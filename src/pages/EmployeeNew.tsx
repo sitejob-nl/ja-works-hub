@@ -75,7 +75,6 @@ const EmployeeNew = () => {
       await supabase.from('candidate_employment').insert({
         organization_id: orgId,
         candidate_id: selectedCandidate.id,
-        employee_number: form.employee_number || null,
         start_date: form.start_date,
         contract_type: form.contract_type || null,
         contract_hours: form.contract_hours ? Number(form.contract_hours) : null,
