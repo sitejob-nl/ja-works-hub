@@ -60,30 +60,6 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
-  const ensureEmployeeRecord = async (candidateId: string) => {
-    const { data: existing, error: existingError } = await supabase
-      .from('employees')
-      .select('id')
-      .eq('candidate_id', candidateId)
-      .maybeSingle();
-    if (existingError) throw existingError;
-    if (existing?.id) return existing.id;
-
-    const { data: created, error: createError } = await supabase
-      .from('employees')
-      .insert({
-        organization_id: orgId,
-        candidate_id: candidateId,
-        start_date: form.start_date,
-        contract_type: null,
-        status: 'actief' as any,
-      })
-      .select('id')
-      .single();
-    if (createError) throw createError;
-    return created.id;
-  };
-
   const executePlacement = async (isOverride: boolean) => {
     const candidateId = match.candidate_id;
     const companyId = vacancy.company_id;
@@ -97,55 +73,32 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
       return;
     }
 
-    const employeeId = await ensureEmployeeRecord(candidateId);
-
-    // 1. Update candidate status to geplaatst
-    const { error: candError } = await supabase
-      .from('candidates')
-      .update({ status: 'geplaatst' as any, employee_status: 'actief' as any })
-      .eq('id', candidateId);
-    if (candError) throw candError;
-
-    // 2. Create placement
-    const { data: placement, error: plError } = await supabase.from('placements').insert({
-      organization_id: orgId,
-      candidate_id: candidateId,
-      employee_id: employeeId,
-      company_id: companyId,
-      vacancy_id: vacancy.id,
-      match_id: match.id,
-      function_name: form.function_name,
-      start_date: form.start_date,
-      end_date: form.end_date || null,
-      hourly_rate: parseFloat(form.hourly_rate),
-      client_hourly_rate: form.client_hourly_rate ? parseFloat(form.client_hourly_rate) : null,
-      overtime_rate: form.overtime_rate ? parseFloat(form.overtime_rate) : null,
-      status: 'actief' as any,
-      created_by: user?.id ?? null,
-      compliance_check_passed: compliance.passed,
-      compliance_check_at: new Date().toISOString(),
-      compliance_override: isOverride,
-      compliance_override_by: isOverride ? user?.id ?? null : null,
-      compliance_override_reason: isOverride ? compliance.issues.join(', ') : null,
-    }).select('id').single();
-    if (plError) throw plError;
-
-    // 3. Update match status
-    const { error: matchError } = await supabase
-      .from('matches')
-      .update({ status: 'geplaatst' as any, status_changed_at: new Date().toISOString() })
-      .eq('id', match.id);
-    if (matchError) throw matchError;
-
-    // 4. Increment filled_count
-    const { error: vacError } = await supabase
-      .from('vacancies')
-      .update({
-        filled_count: (vacancy.filled_count ?? 0) + 1,
-        ...(((vacancy.filled_count ?? 0) + 1) >= vacancy.required_count ? { status: 'vervuld' as any } : {}),
+    const { data: placementResult, error: placementError } = await (supabase as any)
+      .rpc('create_placement_transaction', {
+        p_org_id: orgId,
+        p_candidate_id: candidateId,
+        p_company_id: companyId,
+        p_vacancy_id: vacancy.id,
+        p_match_id: match.id,
+        p_function_name: form.function_name,
+        p_start_date: form.start_date,
+        p_end_date: form.end_date || null,
+        p_hourly_rate: parseFloat(form.hourly_rate),
+        p_client_hourly_rate: form.client_hourly_rate ? parseFloat(form.client_hourly_rate) : null,
+        p_overtime_rate: form.overtime_rate ? parseFloat(form.overtime_rate) : null,
+        p_created_by: user?.id ?? null,
+        p_compliance_check_passed: compliance.passed,
+        p_compliance_override: isOverride,
+        p_compliance_override_reason: isOverride ? compliance.issues.join(', ') : null,
       })
-      .eq('id', vacancy.id);
-    if (vacError) throw vacError;
+      .single();
+    if (placementError) throw placementError;
+    if (!placementResult?.placement_id || !placementResult?.employee_id) {
+      throw new Error('Plaatsing kon niet atomair worden aangemaakt');
+    }
+
+    const placement = { id: placementResult.placement_id };
+    const employeeId = placementResult.employee_id;
 
     // Audit log
     logAudit({

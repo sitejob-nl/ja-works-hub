@@ -382,6 +382,7 @@ const MatchPipeline = () => {
             checked={allVisibleSelected}
             onCheckedChange={toggleVisibleMatches}
             disabled={!canToggleVisible}
+            aria-label={allVisibleSelected ? 'Deselecteer zichtbare matches' : 'Selecteer zichtbare matches'}
           />
           <span>{allVisibleSelected ? 'Zichtbare matches geselecteerd' : 'Selecteer zichtbare matches'}</span>
         </label>

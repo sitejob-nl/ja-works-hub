@@ -443,38 +443,45 @@ function CreateInvoiceSheet({ open, onOpenChange, orgId, onSuccess }: { open: bo
       if (!companyId) throw new Error('Selecteer een opdrachtgever');
       if (!periodStart || !periodEnd) throw new Error('Vul de periode in');
 
-      const { data: numData, error: numErr } = await supabase.rpc('next_invoice_number', { org_id: orgId });
-      if (numErr) throw numErr;
+      const linesPayload = activeLines.map((l: any, i: number) => ({
+        placement_id: l.placement_id || null,
+        employee_id: l.employee_id || null,
+        description: l.description,
+        hours: l.hours || 0,
+        overtime_hours: l.overtime_hours || 0,
+        hourly_rate: l.hourly_rate || 0,
+        overtime_rate: l.overtime_rate || 0,
+        travel_amount: l.travel_amount || 0,
+        allowances_amount: l.allowances_amount || 0,
+        surcharge_amount: l.surcharge_amount || 0,
+        line_total: l.line_total || 0,
+        sort_order: i,
+        timesheets: Array.isArray(l.timesheets) ? l.timesheets : [],
+      }));
 
-      const { data: inv, error: invErr } = await supabase.from('invoices').insert({
-        organization_id: orgId, company_id: companyId, invoice_number: numData,
-        period_start: periodStart, period_end: periodEnd, reference: reference || null,
-        subtotal, vat_rate: vatRate, vat_amount: vatAmount, total,
-        due_date: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
-      }).select().single();
-      if (invErr) throw invErr;
-
-      for (let i = 0; i < activeLines.length; i++) {
-        const l = activeLines[i];
-        const { data: lineData, error: lineErr } = await supabase.from('invoice_lines').insert({
-          organization_id: orgId, invoice_id: inv.id,
-          placement_id: l.placement_id || null, employee_id: l.employee_id || null,
-          description: l.description,
-          hours: l.hours || 0, overtime_hours: l.overtime_hours || 0,
-          hourly_rate: l.hourly_rate || 0, overtime_rate: l.overtime_rate || 0,
-          travel_amount: l.travel_amount || 0, allowances_amount: l.allowances_amount || 0,
-          surcharge_amount: l.surcharge_amount || 0,
-          line_total: l.line_total, sort_order: i,
-        }).select().single();
-        if (lineErr) throw lineErr;
-
-        // Link timesheets (only for uren mode)
-        if (l.timesheets?.length > 0) {
-          await supabase.from('timesheets').update({ invoice_line_id: lineData.id }).in('id', l.timesheets);
-        }
+      const dueDate = new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0];
+      const { data: invoiceResult, error: createErr } = await (supabase as any)
+        .rpc('create_invoice_transaction', {
+          p_org_id: orgId,
+          p_company_id: companyId,
+          p_period_start: periodStart,
+          p_period_end: periodEnd,
+          p_reference: reference || null,
+          p_subtotal: subtotal,
+          p_vat_rate: vatRate,
+          p_vat_amount: vatAmount,
+          p_total: total,
+          p_due_date: dueDate,
+          p_lines: linesPayload,
+        })
+        .single();
+      if (createErr) throw createErr;
+      if (!invoiceResult?.invoice_id || !invoiceResult?.invoice_number) {
+        throw new Error('Factuur kon niet atomair worden aangemaakt');
       }
 
-      logAudit({ action: 'create', tableName: 'invoices', recordId: inv.id, newValues: { invoice_number: numData, total } });
+      const inv = { id: invoiceResult.invoice_id, invoice_number: invoiceResult.invoice_number };
+      logAudit({ action: 'create', tableName: 'invoices', recordId: inv.id, newValues: { invoice_number: inv.invoice_number, total } });
       return inv;
     },
     onSuccess: () => { toast.success('Factuur aangemaakt'); onSuccess(); },
