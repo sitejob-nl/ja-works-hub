@@ -93,7 +93,28 @@ export const CV_ANALYSIS_SCHEMA = {
     competenties: {
       type: "object",
       properties: {
-        hard_skills: { type: "array", items: { type: "string" } },
+        hard_skills: {
+          type: "array",
+          description:
+            "Concrete, aantoonbare vakvaardigheden. Neem een vaardigheid ALLEEN op als je een letterlijk tekstfragment uit het dossier als bewijs kunt citeren. Verzin nooit een vaardigheid en kopieer geen term uit de organisatie-vaardighedenlijst zonder dossierbewijs.",
+          items: {
+            type: "object",
+            properties: {
+              vaardigheid: {
+                type: "string",
+                description:
+                  "De vaardigheid. Gebruik de exacte standaardterm uit de organisatie-vaardighedenlijst wanneer die op de kandidaat van toepassing is.",
+              },
+              bron: { type: "string", enum: ["cv", "interne_notitie", "communicatie", "werkcontext", "profiel"] },
+              bewijs: {
+                type: "string",
+                description:
+                  "Kort, LETTERLIJK tekstfragment uit het dossier (in de oorspronkelijke taal) dat deze vaardigheid aantoont. Verplicht en niet-leeg.",
+              },
+            },
+            required: ["vaardigheid", "bron", "bewijs"],
+          },
+        },
         soft_skills: { type: "array", items: { type: "string" } },
         certificaten: {
           type: "array",
@@ -301,7 +322,12 @@ FEITEN VS AANNAMES (hard vereist):
 TAALVAARDIGHEID:
 - Leid spreekvaardigheid NOOIT af uit de schrijfstijl of taal van het CV — een CV kan door een derde of door AI geschreven zijn.
 - Vul competenties.talen[].niveau alleen met een concreet niveau als de kandidaat dit expliciet claimt, zelf een niveau noemt, een recruiterbeoordeling heeft of een taalcertificaat heeft. Gebruik dan de CEFR-schaal: A1, A2, B1, B2, C1, C2 of "moedertaal".
-- Zonder expliciete claim/niveau/certificaat: zet niveau op "onbekend". Werkervaring in het buitenland of nette taal in documenten is hooguit bewijsstatus="ai_indicatief", nooit bewezen.`,
+- Zonder expliciete claim/niveau/certificaat: zet niveau op "onbekend". Werkervaring in het buitenland of nette taal in documenten is hooguit bewijsstatus="ai_indicatief", nooit bewezen.
+
+VAKVAARDIGHEDEN (competenties.hard_skills):
+- Neem een hard skill ALLEEN op met een kort, LETTERLIJK bewijsfragment (bewijs) uit het dossier, in de oorspronkelijke taal. Staat er geen bewijs in het dossier, laat de vaardigheid dan weg.
+- Kopieer een standaardterm uit de organisatie-vaardighedenlijst nooit zonder dossierbewijs dat de kandidaat die vaardigheid daadwerkelijk bezit.
+- soft_skills (eigenschappen/houding) blijven vrije tekst en hoeven geen bewijsfragment.`,
   );
 
   // 2. Optioneel addendum, duidelijk gescheiden zodat de LLM weet wat het is
@@ -366,7 +392,16 @@ export interface CvAnalysisResult {
   };
   opleidingen?: Array<{ naam: string; instelling: string; periode: string; niveau: string }>;
   competenties: {
-    hard_skills: string[];
+    // Het geverifieerde pad levert objecten met bewijs; legacy/VPS levert plain strings.
+    // cv-write normaliseert beide terug naar string[] vóór wegschrijven.
+    hard_skills: Array<
+      | string
+      | {
+        vaardigheid: string;
+        bron?: "cv" | "interne_notitie" | "communicatie" | "werkcontext" | "profiel";
+        bewijs?: string;
+      }
+    >;
     soft_skills: string[];
     certificaten: Array<string | { naam: string; relevant?: boolean; toelichting?: string }>;
     talen?: Array<{
