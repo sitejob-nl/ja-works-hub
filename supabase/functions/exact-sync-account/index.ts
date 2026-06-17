@@ -23,9 +23,13 @@ Deno.serve(async (req) => {
       return jsonError("Unauthorized", 401);
     }
 
-    const { data: profile } = await supabase.from("profiles").select("organization_id").eq("id", user.id).single();
+    const { data: profile } = await supabase.from("profiles").select("organization_id, role").eq("id", user.id).single();
     if (!profile) {
       return jsonError("Profile not found", 404);
+    }
+    // Financiële actie: alleen admin/backoffice/finance mogen relaties naar Exact pushen (consistent met exact-api).
+    if (!["admin", "backoffice", "finance"].includes(profile.role)) {
+      return jsonError("Geen toegang tot Exact-synchronisatie", 403);
     }
 
     const orgId = profile.organization_id;
