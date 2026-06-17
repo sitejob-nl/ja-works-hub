@@ -2,6 +2,7 @@ import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendViaOutlookAccount } from "./outlook-send.ts";
 import { getWhatsAppCredentials, normalizePhone, META_API_BASE } from "./whatsapp-utils.ts";
 import { getWhatsAppAutomationSettings, mergeTemplate } from "./whatsapp-automation-settings.ts";
+import { isOutboundPaused, logConceptCommunication } from "./outbound-pause.ts";
 
 export interface SickReportCascadeResult {
   task_created: boolean;
@@ -25,8 +26,19 @@ async function sendWhatsAppDirect(
   service: SupabaseClient,
   orgId: string,
   to: string,
-  text: string
+  text: string,
+  candidateId?: string | null,
 ): Promise<{ ok: boolean; error?: string }> {
+  if (await isOutboundPaused(service, orgId, "whatsapp")) {
+    await logConceptCommunication(service, {
+      orgId,
+      channel: "whatsapp",
+      body: text,
+      candidateId: candidateId ?? null,
+    });
+    return { ok: false, error: "Uitgaande WhatsApp staat op pauze (kill-switch actief)." };
+  }
+
   const creds = await getWhatsAppCredentials(service, orgId);
   if (!creds) return { ok: false, error: "WhatsApp niet geconfigureerd" };
 
@@ -140,7 +152,9 @@ export async function cascadeSickReport(
         organization_id: orgId,
         assigned_to: assignedTo,
         title: `Ziekmelding van ${candidateName}`,
-        description: report.notes ? `Toelichting: ${report.notes}` : "Geen toelichting opgegeven.",
+        description: report.notes
+          ? `Interne planningnotitie: ${report.notes}`
+          : "Controleer inzetbaarheid, verwachte terugkeer en eventuele vervanging.",
         priority: isAfterDeadline ? automation.sick_report_after_deadline_task_priority : "high",
         status: "open",
         category: "sick_report",
@@ -241,6 +255,7 @@ export async function cascadeSickReport(
       orgId,
       candidate.phone,
       confirmation,
+      candidate.id,
     );
     result.whatsapp_sent = wa.ok;
     if (!wa.ok) result.whatsapp_error = wa.error;

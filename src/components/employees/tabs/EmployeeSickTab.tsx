@@ -31,6 +31,8 @@ const EmployeeSickTab = ({ candidateId, candidate }: { candidateId: string; cand
   const qc = useQueryClient();
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({ expected_return_date: '', notes: '' });
+  const expectedReturnId = `sick-expected-return-${candidateId}`;
+  const planningNoteId = `sick-planning-note-${candidateId}`;
 
   const { data: reports = [] } = useQuery({
     queryKey: ['sick-reports', candidateId],
@@ -121,8 +123,28 @@ const EmployeeSickTab = ({ candidateId, candidate }: { candidateId: string; cand
 
       {adding && (
         <div className="bg-card rounded-lg border p-4 space-y-3">
-          <div><Label>Verwachte terugkeer</Label><Input type="date" value={form.expected_return_date} onChange={(e) => setForm(f => ({ ...f, expected_return_date: e.target.value }))} /></div>
-          <div><Label>Notities</Label><Textarea value={form.notes} onChange={(e) => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} /></div>
+          <div>
+            <Label htmlFor={expectedReturnId}>Verwachte terugkeer</Label>
+            <Input
+              id={expectedReturnId}
+              type="date"
+              value={form.expected_return_date}
+              onChange={(e) => setForm(f => ({ ...f, expected_return_date: e.target.value }))}
+            />
+          </div>
+          <div>
+            <Label htmlFor={planningNoteId}>Planningnotitie intern (optioneel)</Label>
+            <Textarea
+              id={planningNoteId}
+              value={form.notes}
+              onChange={(e) => setForm(f => ({ ...f, notes: e.target.value }))}
+              placeholder="Bijv. bereikbaarheid, vervanging of verwachte werkhervatting. Geen medische details."
+              rows={2}
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Leg geen diagnose, klachten of medische oorzaak vast.
+            </p>
+          </div>
           <div className="flex gap-2 justify-end">
             <Button variant="ghost" size="sm" onClick={() => setAdding(false)}>Annuleren</Button>
             <Button size="sm" onClick={() => createReport.mutate()} disabled={createReport.isPending}>
@@ -143,7 +165,7 @@ const EmployeeSickTab = ({ candidateId, candidate }: { candidateId: string; cand
                 <TableHead>Verwachte terugkeer</TableHead>
                 <TableHead>Werkelijke terugkeer</TableHead>
                 <TableHead>Klant geïnformeerd</TableHead>
-                <TableHead>Notities</TableHead>
+                <TableHead>Planningnotitie</TableHead>
                 <TableHead></TableHead>
               </TableRow>
             </TableHeader>

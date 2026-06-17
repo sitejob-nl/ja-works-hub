@@ -9,6 +9,8 @@ const json = (body: unknown, status = 200) =>
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 
+const INTERNAL_ROLES = new Set(["admin", "intercedent", "backoffice", "finance"]);
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
 
@@ -34,21 +36,50 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Verify the user has access to this sick_report (via org_id)
+    // Verify the user has access to this sick_report. Internal users may process
+    // org reports; portal employees may process only their own report.
     const { data: profile } = await service
       .from("profiles")
-      .select("organization_id")
+      .select("organization_id, role")
       .eq("id", user.id)
-      .single();
+      .maybeSingle();
 
     const { data: report } = await service
       .from("sick_reports")
-      .select("organization_id")
+      .select("organization_id, candidate_id, employee_id")
       .eq("id", sick_report_id)
       .maybeSingle();
 
-    if (!report || report.organization_id !== profile?.organization_id) {
+    if (!report) {
       return json({ error: "Sick report not found" }, 404);
+    }
+
+    const sameOrg = !!profile?.organization_id && report.organization_id === profile.organization_id;
+    const isInternal = sameOrg && INTERNAL_ROLES.has(String(profile?.role ?? ""));
+    let isOwnPortalReport = false;
+
+    if (sameOrg && profile?.role === "medewerker") {
+      const { data: candidate } = await service
+        .from("candidates")
+        .select("id")
+        .eq("id", report.candidate_id)
+        .eq("auth_user_id", user.id)
+        .maybeSingle();
+
+      if (candidate?.id && report.employee_id) {
+        const { data: employee } = await service
+          .from("employees")
+          .select("id")
+          .eq("id", report.employee_id)
+          .eq("candidate_id", candidate.id)
+          .eq("auth_user_id", user.id)
+          .maybeSingle();
+        isOwnPortalReport = !!employee?.id;
+      }
+    }
+
+    if (!isInternal && !isOwnPortalReport) {
+      return json({ error: "Forbidden" }, 403);
     }
 
     const result = await cascadeSickReport(service, sick_report_id, user.id);
