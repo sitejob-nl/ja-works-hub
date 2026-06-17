@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -16,12 +16,31 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Badge } from '@/components/ui/badge';
 import TagInput from '@/components/ui/tag-input';
-import { ChevronRight, Copy, MessageCircle, Mail, Check, AlertTriangle, ChevronsUpDown, X, KeyRound } from 'lucide-react';
+import { ChevronRight, Copy, MessageCircle, Mail, Check, AlertTriangle, ChevronsUpDown, X, KeyRound, Upload, Loader2, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { logAudit } from '@/lib/audit';
 import { useDeduplication } from '@/hooks/useDeduplication';
 import AddressAutocomplete from '@/components/shared/AddressAutocomplete';
 import { resolveAddressCoordinates } from '@/lib/pdok';
+import { CV_ACCEPT, extractCvTextFromFile } from '@/lib/cvText';
+
+// Leest de JSON-foutmelding uit een mislukte supabase.functions.invoke (bv. 402-saldo).
+// FunctionsHttpError verbergt de body achter context (een Response).
+const readFnErrorMessage = async (error: unknown, fallback: string): Promise<string> => {
+  const context = (error as { context?: unknown })?.context;
+  if (context instanceof Response) {
+    const text = await context.clone().text().catch(() => '');
+    if (text) {
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed?.error && typeof parsed.error === 'string') return parsed.error;
+      } catch {
+        /* niet-JSON body — val terug op fallback */
+      }
+    }
+  }
+  return error instanceof Error ? error.message : fallback;
+};
 
 type SkillOption = {
   id: string;
@@ -53,6 +72,13 @@ const CandidateNew = () => {
   const [portalCopied, setPortalCopied] = useState(false);
   const [skillsOpen, setSkillsOpen] = useState(false);
 
+  // CV-upload: bewaar het bestand + de geëxtraheerde tekst zodat we ze ná het aanmaken
+  // kunnen opslaan en de AI-analyse kunnen starten.
+  const cvInputRef = useRef<HTMLInputElement>(null);
+  const [cvFile, setCvFile] = useState<File | null>(null);
+  const [cvRawText, setCvRawText] = useState('');
+  const [cvExtracting, setCvExtracting] = useState(false);
+
   const [form, setForm] = useState({
     first_name: '', last_name: '', date_of_birth: '', nationality: '',
     email: '', phone: '', address_street: '', address_postal: '', address_city: '',
@@ -62,6 +88,120 @@ const CandidateNew = () => {
   });
 
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
+
+  // Vult lege formuliervelden met de uit het CV geëxtraheerde waarden. Overschrijft nooit
+  // wat de recruiter al heeft ingevuld. Geeft het aantal gevulde velden terug.
+  const applyExtractedFields = (fields: Record<string, any>): number => {
+    const updates: Record<string, any> = {};
+    let count = 0;
+    const setIfEmpty = (key: keyof typeof form, value: unknown) => {
+      if (typeof value === 'string' && value.trim() && !String(form[key] ?? '').trim()) {
+        updates[key] = value.trim();
+        count += 1;
+      }
+    };
+
+    setIfEmpty('first_name', fields.first_name);
+    setIfEmpty('last_name', fields.last_name);
+    setIfEmpty('nationality', fields.nationality);
+    setIfEmpty('email', fields.email);
+    setIfEmpty('phone', fields.phone);
+    setIfEmpty('address_street', fields.address_street);
+    setIfEmpty('address_postal', fields.address_postal);
+    setIfEmpty('address_city', fields.address_city);
+
+    // Geboortedatum alleen overnemen als het exact YYYY-MM-DD is (de date-input eist dat).
+    if (typeof fields.date_of_birth === 'string'
+      && /^\d{4}-\d{2}-\d{2}$/.test(fields.date_of_birth)
+      && !form.date_of_birth) {
+      updates.date_of_birth = fields.date_of_birth;
+      count += 1;
+    }
+
+    if (fields.has_drivers_license === true && !form.has_drivers_license) {
+      updates.has_drivers_license = true;
+      count += 1;
+    }
+
+    // Skills: alleen termen die in de org-catalogus voorkomen, en alleen als nog leeg.
+    if (Array.isArray(fields.skills) && fields.skills.length > 0 && form.skills.length === 0) {
+      const catalogNames = new Set(skillOptions.map((s: SkillOption) => s.name));
+      const matched = [...new Set(fields.skills.filter((s: unknown) => typeof s === 'string' && catalogNames.has(s)))] as string[];
+      if (matched.length > 0) {
+        updates.skills = matched;
+        count += 1;
+      }
+    }
+
+    // Talen: vrije tekst, alleen als nog leeg.
+    if (Array.isArray(fields.languages) && fields.languages.length > 0 && form.languages.length === 0) {
+      const langs = [...new Set(fields.languages.map((l: unknown) => String(l).trim()).filter(Boolean))] as string[];
+      if (langs.length > 0) {
+        updates.languages = langs;
+        count += 1;
+      }
+    }
+
+    if (count > 0) setForm((f) => ({ ...f, ...updates }));
+    return count;
+  };
+
+  const handleCvUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 15 * 1024 * 1024) {
+      toast.error('Bestand is te groot (maximaal 15 MB)');
+      if (cvInputRef.current) cvInputRef.current.value = '';
+      return;
+    }
+
+    setCvExtracting(true);
+    try {
+      const rawText = await extractCvTextFromFile(file);
+      const cleaned = (rawText || '').replace(/\n{3,}/g, '\n\n').trim();
+      setCvFile(file);
+      setCvRawText(cleaned);
+
+      if (cleaned.length < 100) {
+        toast.info('Het CV is bewaard, maar bevat te weinig herkenbare tekst om automatisch in te vullen. Vul de velden handmatig in.');
+        return;
+      }
+
+      const { data, error } = await supabase.functions.invoke('extract-cv-profile', {
+        body: { cv_text: cleaned },
+      });
+
+      if (error) {
+        const msg = await readFnErrorMessage(error, 'Automatisch invullen mislukt');
+        toast.info(`${msg}. Vul de velden handmatig in — het CV wordt wel bewaard en geanalyseerd.`);
+        return;
+      }
+      if ((data as any)?.error) {
+        toast.info(`${(data as any).error}. Vul de velden handmatig in — het CV wordt wel bewaard en geanalyseerd.`);
+        return;
+      }
+
+      const fields = (data as any)?.fields;
+      if (!fields) {
+        toast.info('Geen gegevens gevonden om automatisch in te vullen.');
+        return;
+      }
+
+      const filled = applyExtractedFields(fields);
+      toast.success(
+        filled > 0
+          ? `${filled} ${filled === 1 ? 'veld' : 'velden'} automatisch ingevuld — controleer ze`
+          : 'CV geüpload — geen nieuwe velden gevonden om in te vullen',
+      );
+    } catch (err: any) {
+      toast.error(err?.message || 'Fout bij het lezen van het bestand');
+      console.error(err);
+    } finally {
+      setCvExtracting(false);
+      if (cvInputRef.current) cvInputRef.current.value = '';
+    }
+  };
 
   const { data: skillOptions = [] } = useQuery({
     queryKey: ['candidate-skill-options', orgId],
@@ -123,12 +263,49 @@ const CandidateNew = () => {
         .single();
       if (tokenError) throw tokenError;
 
-      return { ...data, token: tokenData.token };
+      // Bewaar het geüploade CV + de geëxtraheerde tekst (non-kritisch: faalt stil,
+      // breekt het aanmaken nooit). cv_raw_text voedt straks de AI-analyse.
+      if (cvFile) {
+        try {
+          const ext = cvFile.name.split('.').pop()?.toLowerCase() || 'bin';
+          const filePath = `${orgId}/${data.id}/cv_${Date.now()}.${ext}`;
+          const { error: uploadError } = await supabase.storage
+            .from('documents')
+            .upload(filePath, cvFile, { upsert: true, contentType: cvFile.type || undefined });
+
+          const update: Record<string, any> = {};
+          if (!uploadError) {
+            const { data: urlData } = supabase.storage.from('documents').getPublicUrl(filePath);
+            update.cv_file_url = urlData.publicUrl;
+          } else {
+            console.warn('CV-upload mislukt (non-kritisch):', uploadError);
+          }
+          if (cvRawText) update.cv_raw_text = cvRawText;
+          if (Object.keys(update).length > 0) {
+            await supabase.from('candidates').update(update).eq('id', data.id);
+          }
+        } catch (e) {
+          console.warn('CV opslaan mislukt (non-kritisch):', e);
+        }
+      }
+
+      return { ...data, token: tokenData.token, hadCv: !!cvFile };
     },
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['candidates'] });
       logAudit({ action: 'create', tableName: 'candidates', recordId: data.id, newValues: form });
       toast.success('Kandidaat aangemaakt');
+
+      // Start de dossieranalyse (org-default provider) als er een CV is geüpload.
+      // Fire-and-forget: het resultaat verschijnt op het kandidaatdossier.
+      if (data.hadCv) {
+        supabase.functions
+          .invoke('analyze-cv', { body: { candidate_id: data.id, cv_text: cvRawText || undefined } })
+          .then(({ error }) => { if (error) console.warn('CV-analyse starten mislukt:', error); })
+          .catch((e) => console.warn('CV-analyse starten mislukt:', e));
+        toast.success('CV-analyse gestart — verschijnt op het kandidaatdossier');
+      }
+
       setCreatedCandidate({ id: data.id, first_name: data.first_name, phone: data.phone, email: data.email });
       setProfileToken(data.token);
       setStep('link');
@@ -327,6 +504,43 @@ const CandidateNew = () => {
       </div>
 
       <h1 className="text-2xl font-semibold">Nieuwe kandidaat</h1>
+
+      <div className="bg-card rounded-lg border p-5 max-w-3xl">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-start gap-2.5">
+            <FileText className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm font-medium">CV uploaden &amp; automatisch invullen</p>
+              <p className="text-xs text-muted-foreground">
+                Upload een CV (PDF, Word of afbeelding). Lege velden worden alvast ingevuld; controleer ze. De AI-analyse start automatisch na het aanmaken.
+              </p>
+            </div>
+          </div>
+          <input
+            ref={cvInputRef}
+            type="file"
+            accept={CV_ACCEPT}
+            className="hidden"
+            onChange={handleCvUpload}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => cvInputRef.current?.click()}
+            disabled={cvExtracting || mutation.isPending}
+            className="gap-1.5 shrink-0"
+          >
+            {cvExtracting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+            {cvExtracting ? 'Bezig...' : 'CV uploaden'}
+          </Button>
+        </div>
+        {cvFile && !cvExtracting && (
+          <p className="text-xs text-muted-foreground mt-3 flex items-center gap-1.5">
+            <Check className="h-3.5 w-3.5 text-stat-green shrink-0" />
+            {cvFile.name} — wordt bewaard en geanalyseerd na het aanmaken
+          </p>
+        )}
+      </div>
 
       <div className="bg-card rounded-lg border p-6 max-w-3xl">
         <div className="space-y-5">
