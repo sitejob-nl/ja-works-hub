@@ -142,6 +142,9 @@ verify_jwt = false
 [functions.analyze-cv]
 verify_jwt = false
 
+[functions.extract-cv-profile]
+verify_jwt = false
+
 [functions.analyze-cv-batch]
 verify_jwt = false
 
