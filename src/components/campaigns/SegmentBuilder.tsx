@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
@@ -24,11 +24,7 @@ export function SegmentBuilder({ filter, onChange }: SegmentBuilderProps) {
   const statuses = ["nieuw", "werkzoekend", "in_screening", "geplaatst", "niet_beschikbaar", "uitgeschreven"];
   const complianceStatuses = ["compleet", "incompleet", "verlopen"];
 
-  useEffect(() => {
-    updateFilter();
-  }, [selectedStatuses, selectedSkills, selectedCompliance, city]);
-
-  const updateFilter = async () => {
+  const updateFilter = useCallback(async () => {
     const newFilter: any = {};
     if (selectedStatuses.length > 0) newFilter.status = selectedStatuses;
     if (selectedSkills.length > 0) newFilter.skills = selectedSkills;
@@ -46,7 +42,11 @@ export function SegmentBuilder({ filter, onChange }: SegmentBuilderProps) {
       setCount(candidateCount);
       onChange(newFilter, candidateCount);
     }
-  };
+  }, [city, onChange, organizationId, selectedCompliance, selectedSkills, selectedStatuses]);
+
+  useEffect(() => {
+    updateFilter();
+  }, [updateFilter]);
 
   const addSkill = () => {
     if (skillInput && !selectedSkills.includes(skillInput)) {
@@ -86,10 +86,14 @@ export function SegmentBuilder({ filter, onChange }: SegmentBuilderProps) {
           {selectedStatuses.map((status) => (
             <Badge key={status} variant="secondary">
               {status}
-              <X
-                className="w-3 h-3 ml-1 cursor-pointer"
+              <button
+                type="button"
+                className="ml-1 inline-flex rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={() => setSelectedStatuses(selectedStatuses.filter((s) => s !== status))}
-              />
+                aria-label={`Status ${status} verwijderen`}
+              >
+                <X className="w-3 h-3" />
+              </button>
             </Badge>
           ))}
         </div>
@@ -101,12 +105,14 @@ export function SegmentBuilder({ filter, onChange }: SegmentBuilderProps) {
           <Input
             value={skillInput}
             onChange={(e) => setSkillInput(e.target.value)}
-            onKeyPress={(e) => e.key === "Enter" && addSkill()}
+            onKeyDown={(e) => e.key === "Enter" && addSkill()}
             placeholder="Voeg skill toe"
           />
           <button
+            type="button"
             onClick={addSkill}
             className="px-4 py-2 bg-primary text-primary-foreground rounded hover:bg-primary/90"
+            aria-label="Skill toevoegen"
           >
             +
           </button>
@@ -115,7 +121,14 @@ export function SegmentBuilder({ filter, onChange }: SegmentBuilderProps) {
           {selectedSkills.map((skill) => (
             <Badge key={skill} variant="secondary">
               {skill}
-              <X className="w-3 h-3 ml-1 cursor-pointer" onClick={() => removeSkill(skill)} />
+              <button
+                type="button"
+                className="ml-1 inline-flex rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={() => removeSkill(skill)}
+                aria-label={`Skill ${skill} verwijderen`}
+              >
+                <X className="w-3 h-3" />
+              </button>
             </Badge>
           ))}
         </div>
@@ -146,10 +159,14 @@ export function SegmentBuilder({ filter, onChange }: SegmentBuilderProps) {
           {selectedCompliance.map((status) => (
             <Badge key={status} variant="secondary">
               {status}
-              <X
-                className="w-3 h-3 ml-1 cursor-pointer"
+              <button
+                type="button"
+                className="ml-1 inline-flex rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={() => setSelectedCompliance(selectedCompliance.filter((s) => s !== status))}
-              />
+                aria-label={`Compliance status ${status} verwijderen`}
+              >
+                <X className="w-3 h-3" />
+              </button>
             </Badge>
           ))}
         </div>

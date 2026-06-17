@@ -44,22 +44,27 @@ function toDateOnly(isoStr: string) {
   return isoStr.slice(0, 10);
 }
 
+function getDefaultRange(defaultDate?: string) {
+  const now = new Date();
+  return {
+    defaultStart: defaultDate
+      ? `${defaultDate}T09:00`
+      : `${now.toISOString().slice(0, 10)}T${String(now.getHours() + 1).padStart(2, '0')}:00`,
+    defaultEnd: defaultDate
+      ? `${defaultDate}T10:00`
+      : `${now.toISOString().slice(0, 10)}T${String(now.getHours() + 2).padStart(2, '0')}:00`,
+  };
+}
+
 const CalendarEventForm = ({ open, onOpenChange, event, defaultDate, selectedAccount }: CalendarEventFormProps) => {
   const callOutlook = useOutlookInvoke();
   const queryClient = useQueryClient();
   const isEditing = !!event?.id;
 
-  const now = new Date();
-  const defaultStart = defaultDate
-    ? `${defaultDate}T09:00`
-    : `${now.toISOString().slice(0, 10)}T${String(now.getHours() + 1).padStart(2, '0')}:00`;
-  const defaultEnd = defaultDate
-    ? `${defaultDate}T10:00`
-    : `${now.toISOString().slice(0, 10)}T${String(now.getHours() + 2).padStart(2, '0')}:00`;
-
+  const initialRange = getDefaultRange(defaultDate);
   const [subject, setSubject] = useState('');
-  const [startDt, setStartDt] = useState(defaultStart);
-  const [endDt, setEndDt] = useState(defaultEnd);
+  const [startDt, setStartDt] = useState(initialRange.defaultStart);
+  const [endDt, setEndDt] = useState(initialRange.defaultEnd);
   const [location, setLocation] = useState('');
   const [description, setDescription] = useState('');
   const [attendees, setAttendees] = useState('');
@@ -67,14 +72,16 @@ const CalendarEventForm = ({ open, onOpenChange, event, defaultDate, selectedAcc
 
   useEffect(() => {
     if (event) {
+      const nextIsAllDay = event.isAllDay || false;
       setSubject(event.subject || '');
-      setStartDt(isAllDay ? toDateOnly(event.start?.dateTime) : toLocalDatetime(event.start?.dateTime));
-      setEndDt(isAllDay ? toDateOnly(event.end?.dateTime) : toLocalDatetime(event.end?.dateTime));
+      setStartDt(nextIsAllDay ? toDateOnly(event.start?.dateTime) : toLocalDatetime(event.start?.dateTime));
+      setEndDt(nextIsAllDay ? toDateOnly(event.end?.dateTime) : toLocalDatetime(event.end?.dateTime));
       setLocation(event.location?.displayName || '');
       setDescription(event.body?.content || '');
       setAttendees(event.attendees?.map(a => a.emailAddress.address).join(', ') || '');
-      setIsAllDay(event.isAllDay || false);
+      setIsAllDay(nextIsAllDay);
     } else {
+      const { defaultStart, defaultEnd } = getDefaultRange(defaultDate);
       setSubject('');
       setStartDt(defaultStart);
       setEndDt(defaultEnd);
@@ -83,7 +90,7 @@ const CalendarEventForm = ({ open, onOpenChange, event, defaultDate, selectedAcc
       setAttendees('');
       setIsAllDay(false);
     }
-  }, [event, open]);
+  }, [event, open, defaultDate]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {

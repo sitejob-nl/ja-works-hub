@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOutlookInvoke } from '@/hooks/useOutlookAccounts';
@@ -107,15 +107,18 @@ const EmailSendDialog = ({
     enabled: !!orgId,
   });
 
-  const candidateRecord = candidateData || candidate;
-  const variableMap = buildVariableMap(candidateRecord, org?.name || '', extraVariables);
+  const candidateRecord = useMemo(() => candidateData || candidate, [candidateData, candidate]);
+  const variableMap = useMemo(
+    () => buildVariableMap(candidateRecord, org?.name || '', extraVariables),
+    [candidateRecord, org?.name, extraVariables],
+  );
 
   // When candidate loads, set email
   useEffect(() => {
     if (candidateRecord?.email && !toEmail) {
       setToEmail(candidateRecord.email);
     }
-  }, [candidateRecord]);
+  }, [candidateRecord, toEmail]);
 
   // When template selected, fill subject + body
   useEffect(() => {
@@ -125,7 +128,7 @@ const EmailSendDialog = ({
       setSubject(replaceVars(tmpl.subject, variableMap));
       setBodyHtml(replaceVars(tmpl.body_html, variableMap));
     }
-  }, [selectedTemplateId, JSON.stringify(variableMap)]);
+  }, [selectedTemplateId, templates, variableMap]);
 
   const sendMutation = useMutation({
     mutationFn: async () => {
@@ -226,4 +229,3 @@ const EmailSendDialog = ({
 };
 
 export default EmailSendDialog;
-export { buildVariableMap, replaceVars };

@@ -350,4 +350,3 @@ const EmailTemplateEditor = ({
 };
 
 export default EmailTemplateEditor;
-export { TEMPLATE_VARIABLES, DUMMY_DATA, replaceVariables };

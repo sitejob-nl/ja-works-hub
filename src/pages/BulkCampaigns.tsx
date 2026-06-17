@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Plus, Send, Clock, CheckCircle, XCircle, AlertCircle, Pause, Play, Ban } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,7 +19,7 @@ export default function BulkCampaigns() {
   const [loading, setLoading] = useState(true);
   const [wizardOpen, setWizardOpen] = useState(false);
 
-  const loadCampaigns = async () => {
+  const loadCampaigns = useCallback(async () => {
     if (!organizationId) return;
 
     const { data, error } = await supabase
@@ -35,7 +35,7 @@ export default function BulkCampaigns() {
       setCampaigns(data || []);
     }
     setLoading(false);
-  };
+  }, [organizationId]);
 
   useEffect(() => {
     loadCampaigns();
@@ -62,7 +62,7 @@ export default function BulkCampaigns() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [organizationId]);
+  }, [loadCampaigns, organizationId]);
 
   const getStatusBadge = (status: string) => {
     switch (status) {

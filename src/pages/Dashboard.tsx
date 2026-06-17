@@ -136,7 +136,7 @@ const Dashboard = () => {
       } catch { /* non-blocking */ }
     };
     generateNotifications();
-  }, []);
+  }, [queryClient]);
 
   useEffect(() => {
     const fetchStats = async () => {

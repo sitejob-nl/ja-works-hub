@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { Check, Loader2, AlertTriangle, FileCheck, Upload, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -68,12 +68,7 @@ const Onboarding = () => {
     id_bewijs: null, rijbewijs: null, certificaat: null,
   });
 
-  useEffect(() => {
-    if (!token) { setStatus('error'); setErrorMsg('Geen token opgegeven'); return; }
-    loadForm();
-  }, [token]);
-
-  const loadForm = async () => {
+  const loadForm = useCallback(async () => {
     if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
       setStatus('error');
       setErrorMsg('Configuratiefout. Neem contact op met je intercedent.');
@@ -106,7 +101,12 @@ const Onboarding = () => {
       setStatus('error');
       setErrorMsg('Kon de link niet openen. Controleer je internetverbinding en probeer opnieuw.');
     }
-  };
+  }, [token]);
+
+  useEffect(() => {
+    if (!token) { setStatus('error'); setErrorMsg('Geen token opgegeven'); return; }
+    loadForm();
+  }, [loadForm, token]);
 
   const setValue = (fieldId: string, value: string) => {
     setValues(v => ({ ...v, [fieldId]: value }));

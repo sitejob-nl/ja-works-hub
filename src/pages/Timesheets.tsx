@@ -96,7 +96,7 @@ const Timesheets = () => {
     },
   });
 
-  const timesheets = data?.timesheets ?? [];
+  const timesheets = useMemo(() => data?.timesheets ?? [], [data?.timesheets]);
   const total = data?.total ?? 0;
   const totalPages = Math.ceil(total / PAGE_SIZE);
 

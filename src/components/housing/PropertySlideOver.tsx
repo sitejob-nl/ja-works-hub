@@ -25,32 +25,32 @@ interface Props {
 const num = (v: any) => (v != null ? String(v) : '');
 const toNum = (v: string) => (v ? Number(v) : null);
 
+const createDefaultPropertyForm = () => ({
+  name: '', address_street: '', address_postal: '', address_city: '',
+  address_lat: null as number | null, address_lng: null as number | null,
+  // owner
+  owner_id: null as string | null,
+  rental_contract_start_date: '', rental_contract_end_date: '', rental_contract_notes: '',
+  // permits
+  has_rental_permit: false, rental_permit_number: '', rental_permit_expiry: '',
+  has_snf_certificate: false, snf_certificate_number: '', snf_certificate_expiry: '',
+  max_persons_permit: '',
+  // costs
+  monthly_rent: '', cost_gas: '', cost_water: '', cost_electra: '',
+  cost_municipal_tax: '', cost_other: '',
+  // energy
+  energy_wizard_id: '', energy_wizard_linked: false,
+  // other
+  total_capacity: '', notes: '',
+});
+
 const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
   const orgId = useOrganizationId();
   const { user } = useAuth();
   const qc = useQueryClient();
   const isEdit = !!property;
 
-  const defaults = {
-    name: '', address_street: '', address_postal: '', address_city: '',
-    address_lat: null as number | null, address_lng: null as number | null,
-    // owner
-    owner_id: null as string | null,
-    rental_contract_start_date: '', rental_contract_end_date: '', rental_contract_notes: '',
-    // permits
-    has_rental_permit: false, rental_permit_number: '', rental_permit_expiry: '',
-    has_snf_certificate: false, snf_certificate_number: '', snf_certificate_expiry: '',
-    max_persons_permit: '',
-    // costs
-    monthly_rent: '', cost_gas: '', cost_water: '', cost_electra: '',
-    cost_municipal_tax: '', cost_other: '',
-    // energy
-    energy_wizard_id: '', energy_wizard_linked: false,
-    // other
-    total_capacity: '', notes: '',
-  };
-
-  const [form, setForm] = useState(defaults);
+  const [form, setForm] = useState(createDefaultPropertyForm);
   const [rentalContractFile, setRentalContractFile] = useState<File | null>(null);
 
   useEffect(() => {
@@ -81,7 +81,7 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
         notes: property.notes ?? '',
       });
     } else {
-      setForm(defaults);
+      setForm(createDefaultPropertyForm());
     }
     setRentalContractFile(null);
   }, [property, open]);

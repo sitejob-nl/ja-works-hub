@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -22,13 +22,13 @@ export function CandidatePreferencesTab({ candidateId }: CandidatePreferencesTab
     { id: "sms", label: "SMS", icon: Phone },
   ];
 
-  useEffect(() => {
-    loadPreferences();
-  }, [candidateId, organizationId]);
+  const loadPreferences = useCallback(async () => {
+    if (!organizationId || !candidateId) {
+      setLoading(false);
+      return;
+    }
 
-  const loadPreferences = async () => {
-    if (!organizationId || !candidateId) return;
-
+    setLoading(true);
     const { data, error } = await supabase
       .from("communication_preferences")
       .select("*")
@@ -45,7 +45,11 @@ export function CandidatePreferencesTab({ candidateId }: CandidatePreferencesTab
       setPreferences(prefs);
     }
     setLoading(false);
-  };
+  }, [candidateId, organizationId]);
+
+  useEffect(() => {
+    loadPreferences();
+  }, [loadPreferences]);
 
   const togglePreference = async (channel: string, optedOut: boolean) => {
     if (!organizationId || !candidateId) return;
