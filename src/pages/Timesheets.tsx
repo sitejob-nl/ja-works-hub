@@ -257,11 +257,21 @@ const Timesheets = () => {
       {/* Week selector + filters */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" onClick={() => { setWeekRef(subWeeks(weekRef, 1)); setPage(0); }}>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => { setWeekRef(subWeeks(weekRef, 1)); setPage(0); }}
+            aria-label="Vorige week"
+          >
             <ChevronLeft className="h-4 w-4" />
           </Button>
           <span className="text-sm font-medium min-w-[200px] text-center">{weekLabel}</span>
-          <Button variant="ghost" size="icon" onClick={() => { setWeekRef(addWeeks(weekRef, 1)); setPage(0); }}>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => { setWeekRef(addWeeks(weekRef, 1)); setPage(0); }}
+            aria-label="Volgende week"
+          >
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
@@ -329,7 +339,11 @@ const Timesheets = () => {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-10">
-                    <Checkbox checked={selected.size === timesheets.length && timesheets.length > 0} onCheckedChange={toggleAll} />
+                    <Checkbox
+                      checked={selected.size === timesheets.length && timesheets.length > 0}
+                      onCheckedChange={toggleAll}
+                      aria-label={selected.size === timesheets.length && timesheets.length > 0 ? 'Deselecteer alle urenregistraties' : 'Selecteer alle urenregistraties'}
+                    />
                   </TableHead>
                   <TableHead>Medewerker</TableHead>
                   <TableHead>Opdrachtgever</TableHead>
@@ -350,7 +364,13 @@ const Timesheets = () => {
                   const name = cand ? `${cand.first_name} ${cand.last_name}` : '—';
                   return (
                     <TableRow key={t.id} className={i % 2 === 1 ? 'bg-background' : ''}>
-                      <TableCell><Checkbox checked={selected.has(t.id)} onCheckedChange={() => toggleSelect(t.id)} /></TableCell>
+                      <TableCell>
+                        <Checkbox
+                          checked={selected.has(t.id)}
+                          onCheckedChange={() => toggleSelect(t.id)}
+                          aria-label={`Selecteer urenregistratie van ${name} op ${formatDate(t.work_date)}`}
+                        />
+                      </TableCell>
                       <TableCell className="font-medium">
                         <EntityLink type="candidate" id={cand?.id}>{name}</EntityLink>
                       </TableCell>

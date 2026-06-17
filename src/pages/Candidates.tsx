@@ -620,7 +620,11 @@ const Candidates = () => {
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-10">
-                        <Checkbox checked={allOnPageSelected} onCheckedChange={toggleAll} />
+                        <Checkbox
+                          checked={allOnPageSelected}
+                          onCheckedChange={toggleAll}
+                          aria-label={allOnPageSelected ? 'Deselecteer alle kandidaten op deze pagina' : 'Selecteer alle kandidaten op deze pagina'}
+                        />
                       </TableHead>
                       <TableHead>
                         <Button type="button" variant="ghost" size="sm" className="-ml-3 gap-1.5" onClick={toggleNameSort}>
@@ -642,10 +646,15 @@ const Candidates = () => {
                     {candidates.map((c: any, i: number) => {
                       const skills = c.skills ?? [];
                       const profileStatus = getProfileLinkStatus(c, tokensList);
+                      const candidateName = `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || 'onbekende kandidaat';
                       return (
                         <TableRow key={c.id} className={i % 2 === 1 ? 'bg-background' : ''}>
                           <TableCell onClick={(e) => e.stopPropagation()}>
-                            <Checkbox checked={selected.has(c.id)} onCheckedChange={() => toggleCandidate(c.id)} />
+                            <Checkbox
+                              checked={selected.has(c.id)}
+                              onCheckedChange={() => toggleCandidate(c.id)}
+                              aria-label={`Selecteer kandidaat ${candidateName}`}
+                            />
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-1.5">
