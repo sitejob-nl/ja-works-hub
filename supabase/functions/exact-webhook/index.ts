@@ -151,17 +151,17 @@ async function handleSalesInvoiceEvent(
     const exactInvoice = exactData?.d;
     if (!exactInvoice) return;
 
-    // Map Exact StatusCode to JA Werkt status
-    // Exact: 10=Concept, 20=Open, 50=Verwerkt
+    // Map Exact StatusCode to JA Werkt status (forward-only).
+    // Exact SalesInvoice StatusCode: 10=Concept, 20=Open (definitief/verzonden),
+    // 50=Verwerkt (geboekt in het grootboek) — dit betekent NIET betaald.
+    // Betaalstatus staat los van StatusCode in Exact (debiteur/openstaand saldo),
+    // dus we leiden "betaald" hier NIET af uit de StatusCode. Beide statussen
+    // markeren we als "verzonden"; betaling moet uit een echt betaalsignaal komen.
     let newStatus: string | null = null;
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
-    if (exactInvoice.StatusCode === 20) {
+    if (exactInvoice.StatusCode === 20 || exactInvoice.StatusCode === 50) {
       newStatus = "verzonden";
-    } else if (exactInvoice.StatusCode === 50) {
-      newStatus = "betaald";
-      updates.paid_amount = Number(exactInvoice.AmountDC) || null;
-      updates.paid_at = new Date().toISOString();
     }
 
     if (!newStatus) return;

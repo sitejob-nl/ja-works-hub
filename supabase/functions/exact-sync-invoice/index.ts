@@ -33,9 +33,13 @@ Deno.serve(async (req) => {
       return jsonError("Unauthorized", 401);
     }
 
-    const { data: profile } = await supabase.from("profiles").select("organization_id").eq("id", user.id).single();
+    const { data: profile } = await supabase.from("profiles").select("organization_id, role").eq("id", user.id).single();
     if (!profile) {
       return jsonError("Profile not found", 404);
+    }
+    // Financiële actie: alleen admin/backoffice/finance mogen naar Exact pushen (consistent met exact-api).
+    if (!["admin", "backoffice", "finance"].includes(profile.role)) {
+      return jsonError("Geen toegang tot Exact-synchronisatie", 403);
     }
 
     const orgId = profile.organization_id;
@@ -174,27 +178,73 @@ Deno.serve(async (req) => {
       return jsonError("Kon geen Exact account ID verkrijgen", 500);
     }
 
-    // Step 2: Build invoice lines with optional GLAccount
-    const exactLines = (lines || []).map((l: any) => {
-      const line: any = {
-        Description: l.description,
-        Quantity: Number(l.hours) || 1,
-        NetPrice: Number(l.hourly_rate) || Number(l.line_total) || 0,
-        AmountFC: Number(l.line_total),
-      };
+    // Step 2: Build SalesInvoice lines by splitting each invoice line into its
+    // billable components (basis-uren, overwerk, reis, toeslagen). Each component
+    // carries its own NetPrice + the matching grootboekrekening, so the Exact line
+    // total equals our line_total (incl. toeslagen) and omzet wordt op de juiste
+    // GL-rekening geboekt.
+    // NB: AmountFC is een BEREKEND (read-only) veld in Exact en mag NIET worden
+    // meegestuurd — Exact leidt het bedrag af uit Quantity × NetPrice. Het oude
+    // gedrag (Quantity=uren × NetPrice=uurtarief) liet overwerk/reis/toeslagen weg.
+    const glFor = (code: string): string | undefined => glMap.get(code) ?? glMap.get("normaal");
 
-      // Add GLAccount if mapping exists for this hour type
-      // Invoice lines may reference a placement_hour_type via description or a dedicated field
-      // Try to match on known hour type codes
-      if (l.hour_type_code && glMap.has(l.hour_type_code)) {
-        line.GLAccount = glMap.get(l.hour_type_code);
-      } else if (glMap.has("normaal")) {
-        // Fallback to default "normaal" mapping
-        line.GLAccount = glMap.get("normaal");
+    const exactLines: any[] = [];
+    for (const l of (lines || []) as any[]) {
+      const lineTotal = Number(l.line_total) || 0;
+      const desc = l.description || "Werkzaamheden";
+      const parts: Array<{ Description: string; Quantity: number; NetPrice: number; code: string }> = [];
+
+      const baseHours = Number(l.hours) || 0;
+      const baseRate = Number(l.hourly_rate) || 0;
+      if (baseHours !== 0 && baseRate !== 0) {
+        parts.push({ Description: desc, Quantity: baseHours, NetPrice: baseRate, code: "normaal" });
       }
 
-      return line;
-    });
+      const otHours = Number(l.overtime_hours) || 0;
+      const otRate = Number(l.overtime_rate) || 0;
+      if (otHours !== 0 && otRate !== 0) {
+        parts.push({ Description: `${desc} — overwerk`, Quantity: otHours, NetPrice: otRate, code: "overwerk" });
+      }
+
+      const travel = Number(l.travel_amount) || 0;
+      if (travel !== 0) {
+        parts.push({ Description: `${desc} — reiskosten`, Quantity: 1, NetPrice: travel, code: "reis" });
+      }
+
+      // allowances_amount/surcharge_amount dragen geen specifiek toeslag-type, dus
+      // vallen die terug op de 'normaal'-grootboekrekening.
+      const allowances = Number(l.allowances_amount) || 0;
+      if (allowances !== 0) {
+        parts.push({ Description: `${desc} — toeslagen`, Quantity: 1, NetPrice: allowances, code: "normaal" });
+      }
+
+      const surcharge = Number(l.surcharge_amount) || 0;
+      if (surcharge !== 0) {
+        parts.push({ Description: `${desc} — toeslag`, Quantity: 1, NetPrice: surcharge, code: "normaal" });
+      }
+
+      // Garandeer dat het Exact-regeltotaal exact gelijk is aan line_total: als er
+      // geen ontleedbare componenten zijn, stuur één regel voor het volledige bedrag;
+      // anders corrigeer een eventueel restant (afronding of niet-gemapte bedragen).
+      const partsSum = parts.reduce((s, p) => s + p.Quantity * p.NetPrice, 0);
+      const residual = Math.round((lineTotal - partsSum) * 100) / 100;
+      if (parts.length === 0) {
+        parts.push({ Description: desc, Quantity: 1, NetPrice: lineTotal, code: "normaal" });
+      } else if (Math.abs(residual) >= 0.01) {
+        // Mag in de praktijk niet voorkomen (line_total == som van componenten).
+        // Loggen zodat een toekomstige afwijking in de regelopbouw zichtbaar wordt
+        // i.p.v. stil te verdwijnen achter een 'overig'-regel.
+        console.warn(`Exact sync: regelrestant €${residual} (factuur ${invoice_id}, regel "${desc}") — line_total wijkt af van som componenten`);
+        parts.push({ Description: `${desc} — overig`, Quantity: 1, NetPrice: residual, code: "normaal" });
+      }
+
+      for (const p of parts) {
+        const exactLine: any = { Description: p.Description, Quantity: p.Quantity, NetPrice: p.NetPrice };
+        const gl = glFor(p.code);
+        if (gl) exactLine.GLAccount = gl;
+        exactLines.push(exactLine);
+      }
+    }
 
     // Step 3: Create SalesInvoice
     const exactInvoicePayload: any = {
