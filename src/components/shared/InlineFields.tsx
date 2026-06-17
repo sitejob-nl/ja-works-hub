@@ -7,6 +7,9 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Pencil, Loader2, Save, X, Eye, EyeOff } from 'lucide-react';
 import TagInput from '@/components/ui/tag-input';
+import SkillMultiSelect from '@/components/shared/SkillMultiSelect';
+import LanguageMultiSelect from '@/components/shared/LanguageMultiSelect';
+import NationalitySelect from '@/components/shared/NationalitySelect';
 
 export const emptyToNull = (value: string) => value.trim() || null;
 export const fieldShellClass = 'rounded-md border border-border/70 bg-background px-3 py-2 transition-colors hover:border-primary/40 hover:bg-muted/30';
@@ -477,6 +480,140 @@ export const InlineSelectField = ({
         <Pencil className="h-3.5 w-3.5 opacity-70 transition-opacity group-hover:opacity-100" />
       </span>
       <span className="block min-h-5 text-sm mt-1">{displayValue || value || emptyValue}</span>
+    </button>
+  );
+};
+
+type InlineMultiProps = {
+  id: string;
+  label: string;
+  value: string[];
+  onSave: (value: string[]) => Promise<void>;
+  onDirtyChange: (id: string, dirty: boolean) => void;
+};
+
+// Gedeelde click-to-edit shell voor multi-select inline-velden (skills, talen).
+const InlineMultiSelectShell = ({
+  id,
+  label,
+  value,
+  onSave,
+  onDirtyChange,
+  renderEditor,
+}: InlineMultiProps & { renderEditor: (draft: string[], onChange: (next: string[]) => void) => JSX.Element }) => {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<string[]>(value ?? []);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (editing) return;
+    setDraft(value ?? []);
+  }, [editing, value]);
+
+  const save = async (next: string[]) => {
+    setDraft(next);
+    onDirtyChange(id, true);
+    setSaving(true);
+    try {
+      await onSave(next);
+      onDirtyChange(id, false);
+    } catch {
+      onDirtyChange(id, true);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className={fieldShellClass}>
+      <button type="button" onClick={() => setEditing((e) => !e)} className="group flex w-full items-center justify-between gap-2 text-left text-xs font-medium text-muted-foreground">
+        <span>{label}</span>
+        <Pencil className="h-3.5 w-3.5 opacity-70 transition-opacity group-hover:opacity-100" />
+      </button>
+      {editing ? (
+        <div className="mt-1 space-y-2">
+          {renderEditor(draft, save)}
+          {saving && <p className="text-xs text-muted-foreground">Opslaan...</p>}
+          <Button type="button" variant="ghost" size="sm" className="h-8 gap-1.5" onClick={() => setEditing(false)}>
+            <X className="h-3.5 w-3.5" />
+            Sluiten
+          </Button>
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-1 mt-1">
+          {value.length > 0
+            ? value.map((tag) => <Badge key={tag} variant="outline" className="text-xs">{tag}</Badge>)
+            : <span className="text-sm text-muted-foreground">—</span>}
+        </div>
+      )}
+    </div>
+  );
+};
+
+export const InlineSkillsField = (props: InlineMultiProps) => (
+  <InlineMultiSelectShell {...props} renderEditor={(draft, onChange) => <SkillMultiSelect value={draft} onChange={onChange} />} />
+);
+
+export const InlineLanguagesField = (props: InlineMultiProps) => (
+  <InlineMultiSelectShell {...props} renderEditor={(draft, onChange) => <LanguageMultiSelect value={draft} onChange={onChange} />} />
+);
+
+export const InlineNationalityField = ({
+  id,
+  label,
+  value,
+  onSave,
+  onDirtyChange,
+}: {
+  id: string;
+  label: string;
+  value: string | null | undefined;
+  onSave: (value: string) => Promise<void>;
+  onDirtyChange: (id: string, dirty: boolean) => void;
+}) => {
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const save = async (next: string) => {
+    onDirtyChange(id, true);
+    setSaving(true);
+    try {
+      await onSave(next);
+      onDirtyChange(id, false);
+    } catch {
+      onDirtyChange(id, true);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <div className={fieldShellClass}>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs font-medium text-muted-foreground">{label}</p>
+          {saving && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+        </div>
+        <div className="mt-2">
+          <NationalitySelect value={value} onChange={(next) => void save(next)} />
+        </div>
+        <div className="mt-2">
+          <Button type="button" variant="ghost" size="sm" className="h-8 gap-1.5" disabled={saving} onClick={() => setEditing(false)}>
+            <X className="h-3.5 w-3.5" />
+            Sluiten
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <button type="button" onClick={() => setEditing(true)} className={`group w-full text-left ${fieldShellClass}`}>
+      <span className="flex items-center justify-between gap-2 text-xs font-medium text-muted-foreground">
+        <span>{label}</span>
+        <Pencil className="h-3.5 w-3.5 opacity-70 transition-opacity group-hover:opacity-100" />
+      </span>
+      <span className="block min-h-5 text-sm mt-1">{value || emptyValue}</span>
     </button>
   );
 };

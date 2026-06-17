@@ -10,6 +10,9 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import TagInput from '@/components/ui/tag-input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import NationalitySelect from '@/components/shared/NationalitySelect';
+import SkillMultiSelect from '@/components/shared/SkillMultiSelect';
+import LanguageMultiSelect from '@/components/shared/LanguageMultiSelect';
 import { cn } from '@/lib/utils';
 import {
   AlertTriangle,
@@ -519,7 +522,7 @@ const CandidateScreeningTab = ({
           <div><Label>Telefoon NL</Label><Input value={profileDraft.phone_nl} onChange={(e) => setProfileDraft((p) => ({ ...p, phone_nl: e.target.value }))} /></div>
           <div><Label>E-mail</Label><Input value={profileDraft.email} onChange={(e) => setProfileDraft((p) => ({ ...p, email: e.target.value }))} /></div>
           <div><Label>Geboortedatum</Label><Input type="date" value={profileDraft.date_of_birth} onChange={(e) => setProfileDraft((p) => ({ ...p, date_of_birth: e.target.value }))} /></div>
-          <div><Label>Nationaliteit</Label><Input value={profileDraft.nationality} onChange={(e) => setProfileDraft((p) => ({ ...p, nationality: e.target.value }))} /></div>
+          <div><Label>Nationaliteit</Label><NationalitySelect value={profileDraft.nationality} onChange={(nationality) => setProfileDraft((p) => ({ ...p, nationality }))} /></div>
           <div><Label>Woonplaats</Label><Input value={profileDraft.address_city} onChange={(e) => setProfileDraft((p) => ({ ...p, address_city: e.target.value }))} /></div>
           <div><Label>Straat</Label><Input value={profileDraft.address_street} onChange={(e) => setProfileDraft((p) => ({ ...p, address_street: e.target.value }))} /></div>
           <div><Label>Postcode</Label><Input value={profileDraft.address_postal} onChange={(e) => setProfileDraft((p) => ({ ...p, address_postal: e.target.value }))} /></div>
@@ -541,9 +544,9 @@ const CandidateScreeningTab = ({
     if (currentStep.id === 'werkprofiel') {
       return (
         <div className="grid gap-3">
-          <div><Label>Vaardigheden</Label><TagInput value={profileDraft.skills} onChange={(skills) => setProfileDraft((p) => ({ ...p, skills }))} placeholder="Typ vaardigheid + Enter" /></div>
+          <div><Label>Vaardigheden</Label><SkillMultiSelect value={profileDraft.skills} onChange={(skills) => setProfileDraft((p) => ({ ...p, skills }))} /></div>
           <div><Label>Certificaten</Label><TagInput value={profileDraft.certifications} onChange={(certifications) => setProfileDraft((p) => ({ ...p, certifications }))} placeholder="Typ certificaat + Enter" /></div>
-          <div><Label>Talen</Label><TagInput value={profileDraft.languages} onChange={(languages) => setProfileDraft((p) => ({ ...p, languages }))} placeholder="Typ taal/niveau + Enter" /></div>
+          <div><Label>Talen</Label><LanguageMultiSelect value={profileDraft.languages} onChange={(languages) => setProfileDraft((p) => ({ ...p, languages }))} /></div>
         </div>
       );
     }

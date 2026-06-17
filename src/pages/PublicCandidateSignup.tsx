@@ -3,6 +3,9 @@ import { useParams } from 'react-router-dom';
 import { AlertTriangle, Briefcase, CheckCircle2, FileUp, Loader2, Send } from 'lucide-react';
 import { toast } from 'sonner';
 import TagInput from '@/components/ui/tag-input';
+import NationalitySelect from '@/components/shared/NationalitySelect';
+import LanguageMultiSelect from '@/components/shared/LanguageMultiSelect';
+import SkillMultiSelect from '@/components/shared/SkillMultiSelect';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -34,6 +37,7 @@ type SignupConfig = {
     company_name: string | null;
     status: string | null;
   } | null;
+  skills?: string[];
 };
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -302,12 +306,8 @@ const PublicCandidateSignup = () => {
 
             {config?.link.show_nationality ? (
               <div className="space-y-2">
-                <Label htmlFor="nationality">Nationaliteit</Label>
-                <Input
-                  id="nationality"
-                  value={form.nationality}
-                  onChange={(event) => set('nationality', event.target.value)}
-                />
+                <Label>Nationaliteit</Label>
+                <NationalitySelect value={form.nationality} onChange={(v) => set('nationality', v)} />
               </div>
             ) : null}
 
@@ -329,21 +329,21 @@ const PublicCandidateSignup = () => {
             {config?.link.show_languages ? (
               <div className="space-y-2">
                 <Label>Talen</Label>
-                <TagInput
-                  value={form.languages}
-                  onChange={(tags) => set('languages', tags)}
-                  placeholder="Bijv. Nederlands, Engels, Pools"
-                />
+                <LanguageMultiSelect value={form.languages} onChange={(tags) => set('languages', tags)} />
               </div>
             ) : null}
 
             <div className="space-y-2">
               <Label>Skills</Label>
-              <TagInput
-                value={form.skills}
-                onChange={(tags) => set('skills', tags)}
-                placeholder="Bijv. heftruck, orderpicken, lassen"
-              />
+              {config && config.skills && config.skills.length > 0 ? (
+                <SkillMultiSelect value={form.skills} onChange={(tags) => set('skills', tags)} options={config.skills} />
+              ) : (
+                <TagInput
+                  value={form.skills}
+                  onChange={(tags) => set('skills', tags)}
+                  placeholder="Bijv. heftruck, orderpicken, lassen"
+                />
+              )}
             </div>
 
             <div className="space-y-2">

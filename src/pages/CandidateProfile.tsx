@@ -12,20 +12,9 @@ import TagInput from '@/components/ui/tag-input';
 import { CheckCircle2, AlertTriangle, Upload, Camera, Loader2, User } from 'lucide-react';
 import AddressAutocomplete from '@/components/shared/AddressAutocomplete';
 import { resolveAddressCoordinates } from '@/lib/pdok';
-
-const nationalities = [
-  { value: 'Nederlands', label: 'Nederlands' },
-  { value: 'Pools', label: 'Pools' },
-  { value: 'Roemeens', label: 'Roemeens' },
-  { value: 'Bulgaars', label: 'Bulgaars' },
-  { value: 'Hongaars', label: 'Hongaars' },
-  { value: 'overig', label: 'Overig' },
-];
-
-const languageOptions = [
-  'Nederlands', 'Engels', 'Duits', 'Frans', 'Pools', 'Roemeens', 'Bulgaars', 'Hongaars',
-  'Slowaaks', 'Tsjechisch', 'Oekraïens', 'Russisch', 'Spaans', 'Portugees', 'Italiaans',
-];
+import NationalitySelect from '@/components/shared/NationalitySelect';
+import LanguageMultiSelect from '@/components/shared/LanguageMultiSelect';
+import { normalizeNationality, normalizeLanguages } from '@/lib/candidate-options';
 
 type PageState = 'loading' | 'invalid' | 'expired' | 'used' | 'form' | 'success';
 
@@ -42,8 +31,8 @@ const CandidateProfile = () => {
   const [form, setForm] = useState({
     first_name: '', last_name: '', phone: '', phone_nl: '', email: '',
     emergency_contact_name: '', emergency_contact_phone: '',
-    date_of_birth: '', nationality: '', nationality_other: '',
-    languages: [] as string[], language_other: '',
+    date_of_birth: '', nationality: '',
+    languages: [] as string[],
     has_dutch_address: false,
     address_street: '', address_postal: '', address_city: '', address_country: 'Nederland',
     address_lat: null as number | null, address_lng: null as number | null,
@@ -61,15 +50,6 @@ const CandidateProfile = () => {
   const cvInputRef = useRef<HTMLInputElement>(null);
 
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
-
-  const toggleLanguage = (lang: string) => {
-    setForm((f) => ({
-      ...f,
-      languages: f.languages.includes(lang)
-        ? f.languages.filter((l) => l !== lang)
-        : [...f.languages, lang],
-    }));
-  };
 
   // Validate token on mount
   useEffect(() => {
@@ -101,9 +81,6 @@ const CandidateProfile = () => {
         setOrganizationId(data.organization_id ?? '');
 
         const c = data.candidate;
-        const allLangs: string[] = c.languages ?? [];
-        const knownLangs = allLangs.filter((l) => languageOptions.includes(l));
-        const otherLangs = allLangs.filter((l) => !languageOptions.includes(l));
         const hasNlAddress = c.has_dutch_address ?? (!!c.address_city && !!c.address_street);
         setForm({
           first_name: c.first_name ?? '',
@@ -114,10 +91,8 @@ const CandidateProfile = () => {
           emergency_contact_name: c.emergency_contact_name ?? '',
           emergency_contact_phone: c.emergency_contact_phone ?? '',
           date_of_birth: c.date_of_birth ?? '',
-          nationality: c.nationality && nationalities.some(n => n.value === c.nationality) ? c.nationality : (c.nationality ? 'overig' : ''),
-          nationality_other: c.nationality && !nationalities.some(n => n.value === c.nationality) ? c.nationality : '',
-          languages: knownLangs,
-          language_other: otherLangs.join(', '),
+          nationality: normalizeNationality(c.nationality),
+          languages: normalizeLanguages(c.languages ?? []),
           has_dutch_address: hasNlAddress,
           address_street: c.address_street ?? '',
           address_postal: c.address_postal ?? '',
@@ -175,9 +150,8 @@ const CandidateProfile = () => {
       const cv_file = await fileToPayload(cvFile);
       const photo_file = await fileToPayload(photoFile);
 
-      const nationality = form.nationality === 'overig' ? form.nationality_other : form.nationality;
-      const extraLangs = form.language_other.split(',').map((l) => l.trim()).filter(Boolean);
-      const languages = [...new Set([...form.languages, ...extraLangs])];
+      const nationality = form.nationality;
+      const languages = form.languages;
       const address = form.has_dutch_address
         ? await resolveAddressCoordinates({
             street: form.address_street,
@@ -357,45 +331,12 @@ const CandidateProfile = () => {
 
           <div className="space-y-1.5">
             <Label>Nationaliteit</Label>
-            <Select value={form.nationality} onValueChange={(v) => set('nationality', v)}>
-              <SelectTrigger className="h-12 text-base"><SelectValue placeholder="Selecteer nationaliteit" /></SelectTrigger>
-              <SelectContent>
-                {nationalities.map((n) => <SelectItem key={n.value} value={n.value}>{n.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            {form.nationality === 'overig' && (
-              <Input
-                value={form.nationality_other}
-                onChange={(e) => set('nationality_other', e.target.value)}
-                placeholder="Vul je nationaliteit in"
-                className="mt-2 h-12 text-base"
-              />
-            )}
+            <NationalitySelect value={form.nationality} onChange={(v) => set('nationality', v)} />
           </div>
 
           <div className="space-y-2">
             <Label>Talen</Label>
-            <div className="grid grid-cols-2 gap-2">
-              {languageOptions.map((lang) => (
-                <div key={lang} className="flex items-center gap-2">
-                  <Checkbox
-                    id={`lang-${lang}`}
-                    checked={form.languages.includes(lang)}
-                    onCheckedChange={() => toggleLanguage(lang)}
-                  />
-                  <Label htmlFor={`lang-${lang}`} className="text-sm cursor-pointer">{lang}</Label>
-                </div>
-              ))}
-            </div>
-            <div className="space-y-1.5 pt-1">
-              <Label className="text-sm">Anders, namelijk</Label>
-              <Input
-                value={form.language_other}
-                onChange={(e) => set('language_other', e.target.value)}
-                placeholder="Andere taal/talen (komma-gescheiden)"
-                className="h-12 text-base"
-              />
-            </div>
+            <LanguageMultiSelect value={form.languages} onChange={(v) => set('languages', v)} />
           </div>
         </div>
 
