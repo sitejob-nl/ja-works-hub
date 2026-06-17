@@ -1,20 +1,20 @@
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { ChevronRight, MoreHorizontal, Pencil } from 'lucide-react';
+import { ChevronRight, MoreHorizontal } from 'lucide-react';
 import { toast } from 'sonner';
 import CompanyInfoTab from '@/components/companies/tabs/CompanyInfoTab';
 import ContactsTab from '@/components/companies/tabs/ContactsTab';
 import CompanyFunctionsTab from '@/components/companies/tabs/CompanyFunctionsTab';
 import RateAgreementsTab from '@/components/companies/tabs/RateAgreementsTab';
-import SlaTab from '@/components/companies/tabs/SlaTab';
 import CommunicationTab from '@/components/companies/tabs/CommunicationTab';
 import NotesSection from '@/components/shared/NotesSection';
 import TasksSection from '@/components/shared/TasksSection';
+import CompanyVacanciesTab from '@/components/companies/tabs/CompanyVacanciesTab';
 import PlacementsTab from '@/components/companies/tabs/PlacementsTab';
 import { useTrackPageVisit } from '@/hooks/useTrackPageVisit';
 import { useTabSearchParam } from '@/hooks/useTabSearchParam';
@@ -22,7 +22,6 @@ import { useTabSearchParam } from '@/hooks/useTabSearchParam';
 const CompanyDetail = () => {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
-  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useTabSearchParam('gegevens');
 
   const { data: company, isLoading } = useQuery({
@@ -72,9 +71,6 @@ const CompanyDetail = () => {
           </Badge>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => navigate(`/opdrachtgevers/${id}/bewerken`)} className="gap-1.5">
-            <Pencil className="h-3.5 w-3.5" /> Bewerken
-          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
@@ -95,8 +91,8 @@ const CompanyDetail = () => {
             <TabsTrigger value="contacten">Contacten</TabsTrigger>
             <TabsTrigger value="functies">Functies</TabsTrigger>
             <TabsTrigger value="tarieven">Tarieven</TabsTrigger>
-            <TabsTrigger value="sla">SLA</TabsTrigger>
             <TabsTrigger value="communicatie">Comm.</TabsTrigger>
+            <TabsTrigger value="vacatures">Vacatures</TabsTrigger>
             <TabsTrigger value="plaatsingen">Plaatsingen</TabsTrigger>
             <TabsTrigger value="notities">Notities</TabsTrigger>
             <TabsTrigger value="taken">Taken</TabsTrigger>
@@ -106,9 +102,9 @@ const CompanyDetail = () => {
         <TabsContent value="contacten"><ContactsTab companyId={id!} /></TabsContent>
         <TabsContent value="functies"><CompanyFunctionsTab companyId={id!} /></TabsContent>
         <TabsContent value="tarieven"><RateAgreementsTab companyId={id!} /></TabsContent>
-        <TabsContent value="sla"><SlaTab companyId={id!} /></TabsContent>
         <TabsContent value="communicatie"><CommunicationTab companyId={id!} /></TabsContent>
-        <TabsContent value="plaatsingen"><PlacementsTab companyId={id!} /></TabsContent>
+        <TabsContent value="vacatures"><CompanyVacanciesTab companyId={id!} /></TabsContent>
+        <TabsContent value="plaatsingen"><PlacementsTab companyId={id!} companyName={company.name} /></TabsContent>
         <TabsContent value="notities"><NotesSection entityId={id!} entityType="opdrachtgever" /></TabsContent>
         <TabsContent value="taken"><TasksSection entityId={id!} entityType="opdrachtgever" /></TabsContent>
       </Tabs>

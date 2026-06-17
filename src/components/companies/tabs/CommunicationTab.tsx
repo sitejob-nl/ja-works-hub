@@ -39,14 +39,25 @@ const CommunicationTab = ({ companyId }: { companyId: string }) => {
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({ channel: 'notitie' as Channel, subject: '', body: '' });
 
-  const { data: comms = [] } = useQuery({
-    queryKey: ['communications', companyId],
+  // Contactpersonen van dit bedrijf — zodat e-mails/WhatsApp die aan een contact
+  // gekoppeld zijn ook op de bedrijfspagina verschijnen, niet alleen aan het bedrijf zelf.
+  const { data: contactIds = [] } = useQuery({
+    queryKey: ['company-contact-ids', companyId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('communications')
-        .select('*, profiles:sent_by(full_name)')
-        .eq('company_id', companyId)
-        .order('sent_at', { ascending: false });
+      const { data, error } = await supabase.from('company_contacts').select('id').eq('company_id', companyId);
+      if (error) throw error;
+      return (data ?? []).map((r) => r.id);
+    },
+  });
+
+  const { data: comms = [] } = useQuery({
+    queryKey: ['communications', companyId, contactIds],
+    queryFn: async () => {
+      let query = supabase.from('communications').select('*, profiles:sent_by(full_name)');
+      query = contactIds.length
+        ? query.or(`company_id.eq.${companyId},company_contact_id.in.(${contactIds.join(',')})`)
+        : query.eq('company_id', companyId);
+      const { data, error } = await query.order('sent_at', { ascending: false });
       if (error) throw error;
       return data;
     },
@@ -111,12 +122,20 @@ const CommunicationTab = ({ companyId }: { companyId: string }) => {
                 <Icon className="h-4 w-4 text-muted-foreground" />
               </div>
               <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <p className="text-sm font-medium">{c.subject || channelLabels[c.channel as Channel]}</p>
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">
+                    {c.direction === 'inbound' ? 'Inkomend · ' : c.direction === 'outbound' ? 'Uitgaand · ' : ''}
                     {c.sent_at ? format(parseISO(c.sent_at), 'dd-MM-yyyy HH:mm') : ''}
                   </span>
                 </div>
+                {c.channel === 'email' && (c.email_from || c.email_to?.length > 0) && (
+                  <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                    {c.email_from ? `Van: ${c.email_from}` : ''}
+                    {c.email_from && c.email_to?.length > 0 ? ' · ' : ''}
+                    {c.email_to?.length > 0 ? `Aan: ${c.email_to.join(', ')}` : ''}
+                  </p>
+                )}
                 {c.body && <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{c.body}</p>}
                 {c.profiles?.full_name && <p className="text-xs text-muted-foreground mt-1">Door: {c.profiles.full_name}</p>}
               </div>

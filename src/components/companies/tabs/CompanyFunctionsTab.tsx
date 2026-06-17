@@ -7,7 +7,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import TagInput from '@/components/ui/tag-input';
@@ -110,7 +109,6 @@ const CompanyFunctionsTab = ({ companyId }: { companyId: string }) => {
                 <TableHead>Naam</TableHead>
                 <TableHead>Salaris</TableHead>
                 <TableHead>Vaardigheden</TableHead>
-                <TableHead>Status</TableHead>
                 <TableHead className="w-10"></TableHead>
               </TableRow>
             </TableHeader>
@@ -135,11 +133,6 @@ const CompanyFunctionsTab = ({ companyId }: { companyId: string }) => {
                           {skills.length > 3 && <Badge variant="secondary" className="text-xs">+{skills.length - 3}</Badge>}
                         </div>
                       )}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary" className={f.is_active ? 'bg-stat-green/10 text-stat-green border-0' : 'bg-muted text-muted-foreground border-0'}>
-                        {f.is_active ? 'Actief' : 'Inactief'}
-                      </Badge>
                     </TableCell>
                     <TableCell><Button size="icon" variant="ghost" onClick={() => openEdit(f)}><Pencil className="h-3.5 w-3.5" /></Button></TableCell>
                   </TableRow>
@@ -175,10 +168,6 @@ const CompanyFunctionsTab = ({ companyId }: { companyId: string }) => {
               <Label>Standaard-vaardigheden</Label>
               <TagInput value={form.required_skills} onChange={(v) => set('required_skills', v)} placeholder="Typ vaardigheid + Enter" />
               <p className="text-xs text-muted-foreground mt-1">Worden overgenomen bij vacature en gebruikt voor talentpool-matching.</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Switch checked={form.is_active} onCheckedChange={v => set('is_active', v)} />
-              <Label>Actief</Label>
             </div>
             <div className="flex justify-end gap-3 pt-4">
               <Button variant="ghost" onClick={() => setOpen(false)}>Annuleren</Button>
