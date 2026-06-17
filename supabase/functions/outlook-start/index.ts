@@ -1,6 +1,6 @@
 import { createAdminClient, requireInternalProfile } from "../_shared/auth.ts";
 import { OUTLOOK_ADMIN_CONSENT_SCOPES, OUTLOOK_SCOPES, json } from "../_shared/outlook-accounts.ts";
-import { getOrganizationPublicBaseUrl } from "../_shared/public-url.ts";
+import { DEFAULT_PUBLIC_BASE_URL, defaultPublicBaseUrl, getOrganizationPublicBaseUrl } from "../_shared/public-url.ts";
 
 import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
 
@@ -37,14 +37,21 @@ function redirectUri() {
 }
 
 async function safeReturnTo(admin: ReturnType<typeof createAdminClient>, organizationId: string, input: unknown) {
-  const fallback = await getOrganizationPublicBaseUrl(admin, organizationId);
-  if (!input) return `${fallback}/instellingen`;
+  const fallback = await getOrganizationPublicBaseUrl(admin, organizationId).catch(() => defaultPublicBaseUrl());
+  const fallbackSettings = `${fallback}/instellingen`;
+  if (!input) return fallbackSettings;
+
   try {
     const url = new URL(String(input));
-    const allowed = [new URL(fallback).origin, "http://localhost:8080", "http://127.0.0.1:8080"];
-    return allowed.includes(url.origin) ? url.toString() : `${fallback}/instellingen`;
+    const allowed = [
+      new URL(fallback).origin,
+      new URL(DEFAULT_PUBLIC_BASE_URL).origin,
+      "http://localhost:8080",
+      "http://127.0.0.1:8080",
+    ];
+    return allowed.includes(url.origin) ? url.toString() : fallbackSettings;
   } catch {
-    return `${fallback}/instellingen`;
+    return fallbackSettings;
   }
 }
 
