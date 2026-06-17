@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { useDecryptedCandidate } from '@/hooks/useDecryptedCandidate';
+import { logAudit } from '@/lib/audit';
+import { InlineSensitiveField } from '@/components/shared/InlineFields';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -76,6 +80,7 @@ type ProfileDraft = {
   address_postal: string;
   address_city: string;
   has_drivers_license: boolean;
+  drivers_license_expiry: string;
   skills: string[];
   languages: string[];
   certifications: string[];
@@ -168,11 +173,53 @@ const STATUS_META: Record<ScreeningStatus, { label: string; className: string }>
   afgekeurd: { label: 'Afgekeurd', className: 'bg-red-100 text-red-600 border-0' },
 };
 
-const createDefaultAnswers = () => {
+// Bouwt de standaardantwoorden en vult — waar de kandidaatdata al bekend is —
+// het checkpunt vooraf in (aangevinkt + startnotitie "...bevestigen"), zodat de
+// recruiter tijdens het gesprek bevestigt i.p.v. overtypt. AI-belvragen komen als
+// startnotitie bij de voorbereiding te staan.
+const createDefaultAnswers = (candidate?: any) => {
   const answers: Record<string, ScreeningAnswer> = {};
   Object.values(QUESTION_BANK).flat().forEach((q) => {
     answers[q.key] = { asked: false, notes: '' };
   });
+  if (!candidate) return answers;
+
+  const prefill = (key: string, notes: string) => {
+    if (answers[key]) answers[key] = { asked: true, notes };
+  };
+
+  const phoneParts = [candidate.phone, candidate.phone_nl && `NL ${candidate.phone_nl}`].filter(Boolean);
+  if (phoneParts.length > 0) {
+    prefill('phone_reachable', `Bekend: ${phoneParts.join(' / ')} — bevestigen + voorkeurskanaal/beltijd vragen`);
+  }
+  if (candidate.nationality) {
+    prefill('identity_work_right', `Nationaliteit: ${candidate.nationality} — identiteits-/werkdocumenten bevestigen`);
+  }
+  if (candidate.has_drivers_license) {
+    const exp = candidate.drivers_license_expiry ? `, geldig tot ${candidate.drivers_license_expiry}` : '';
+    prefill('drivers_license_type', `Rijbewijs geregistreerd${exp} — type en bewijs bevestigen`);
+  }
+  const skills: string[] = Array.isArray(candidate.skills) ? candidate.skills : [];
+  if (skills.length > 0) {
+    prefill('experience_summary', `Bekend uit dossier: ${skills.join(', ')} — ervaring/jaren en machines toelichten`);
+  }
+  const certs: string[] = Array.isArray(candidate.certifications) ? candidate.certifications : [];
+  if (certs.length > 0) {
+    prefill('education_certificates', `Certificaten: ${certs.join(', ')} — geldigheid/originelen bevestigen`);
+  }
+  if (candidate.available_from) {
+    const until = candidate.available_until ? ` tot ${candidate.available_until}` : '';
+    prefill('availability_date', `Beschikbaar vanaf ${candidate.available_from}${until} — bevestigen`);
+  }
+
+  const aiQuestions: string[] = Array.isArray(candidate.ai_interview_questions) ? candidate.ai_interview_questions : [];
+  if (aiQuestions.length > 0 && answers['prep_cv_check']) {
+    answers['prep_cv_check'] = {
+      asked: false,
+      notes: `AI-belvragen om te stellen:\n${aiQuestions.slice(0, 8).map((q) => `- ${q}`).join('\n')}`,
+    };
+  }
+
   return answers;
 };
 
@@ -213,6 +260,7 @@ const getProfileDraft = (candidate: any): ProfileDraft => ({
   address_postal: candidate.address_postal ?? '',
   address_city: candidate.address_city ?? '',
   has_drivers_license: candidate.has_drivers_license ?? false,
+  drivers_license_expiry: candidate.drivers_license_expiry ?? '',
   skills: candidate.skills ?? [],
   languages: candidate.languages ?? [],
   certifications: candidate.certifications ?? [],
@@ -222,7 +270,7 @@ const getProfileDraft = (candidate: any): ProfileDraft => ({
 const getInitialData = (candidate: any): ScreeningData => {
   const existing = candidate.screening_data as Partial<ScreeningData> | null;
   const existingAvailability = (existing?.availability ?? {}) as Partial<ScreeningData['availability']>;
-  const answers = { ...createDefaultAnswers(), ...(existing?.answers ?? {}) };
+  const answers = { ...createDefaultAnswers(candidate), ...(existing?.answers ?? {}) };
   const legacyProfessional = existing?.professional ?? {
     rating: 'niet_beoordeeld',
     questions_asked: [],
@@ -282,6 +330,45 @@ const askedCount = (data: ScreeningData) =>
 
 const buildSnapshot = (data: ScreeningData, profile: ProfileDraft) => JSON.stringify({ data, profile });
 
+// Bouwt de tekst voor de "Screening voltooid"-notitie: resultaat + samenvatting,
+// gevolgd door alle vragen met hun antwoorden, plus de eindbeoordeling.
+const buildScreeningNoteContent = (data: ScreeningData): string => {
+  const resultLabel = RESULT_OPTIONS.find((r) => r.value === data.result)?.label ?? data.result;
+  const lines: string[] = [`Screening voltooid — ${resultLabel}`];
+
+  if (data.summary.trim()) {
+    lines.push('', 'Samenvatting:', data.summary.trim());
+  }
+
+  lines.push('', 'Vragen en antwoorden:');
+  SCREENING_STEPS.forEach((step) => {
+    const qs = QUESTION_BANK[step.id] ?? [];
+    if (qs.length === 0) return;
+    lines.push('', `${step.label}:`);
+    qs.forEach((q) => {
+      const answer = data.answers[q.key] ?? { asked: false, notes: '' };
+      const mark = answer.asked ? '[x]' : '[ ]';
+      const notes = answer.notes.trim() ? answer.notes.trim() : '—';
+      lines.push(`${mark} ${q.label}: ${notes}`);
+    });
+  });
+
+  const profRating = PROFESSIONAL_RATINGS.find((r) => r.value === data.professional.rating)?.label;
+  const riskLabel = RISK_LEVELS.find((r) => r.value === data.personal.risk_level)?.label;
+  const evaluation: string[] = [];
+  if (profRating && data.professional.rating !== 'niet_beoordeeld') {
+    evaluation.push(`Vakinhoudelijk: ${profRating}${data.professional.notes.trim() ? ` — ${data.professional.notes.trim()}` : ''}`);
+  }
+  if (riskLabel && data.personal.risk_level !== 'niet_beoordeeld') {
+    evaluation.push(`Risico: ${riskLabel}${data.personal.notes.trim() ? ` — ${data.personal.notes.trim()}` : ''}`);
+  }
+  if (evaluation.length > 0) {
+    lines.push('', 'Beoordeling:', ...evaluation);
+  }
+
+  return lines.join('\n').trim();
+};
+
 const CandidateScreeningTab = ({
   candidate,
   onUpdate,
@@ -292,6 +379,8 @@ const CandidateScreeningTab = ({
   onDirtyChange?: (dirty: boolean) => void;
 }) => {
   const { user } = useAuth();
+  const qc = useQueryClient();
+  const { data: sensitive, isLoading: sensitiveLoading } = useDecryptedCandidate(candidate.id);
   const [data, setData] = useState<ScreeningData>(() => getInitialData(candidate));
   const [profileDraft, setProfileDraft] = useState<ProfileDraft>(() => getProfileDraft(candidate));
   const [saving, setSaving] = useState(false);
@@ -338,6 +427,7 @@ const CandidateScreeningTab = ({
     address_postal: draft.address_postal.trim() || null,
     address_city: draft.address_city.trim() || null,
     has_drivers_license: draft.has_drivers_license,
+    drivers_license_expiry: draft.has_drivers_license && draft.drivers_license_expiry ? draft.drivers_license_expiry : null,
     skills: draft.skills,
     languages: draft.languages,
     certifications: draft.certifications,
@@ -410,6 +500,27 @@ const CandidateScreeningTab = ({
         setLastSavedAt(timestamp);
         setLastSavedSnapshot(buildSnapshot(screeningData, profileToSave));
       }
+
+      // Bij voltooiing: een notitie "Screening voltooid" met alle vragen + antwoorden
+      // vastleggen op het kandidaatdossier. Non-kritisch: faalt het, dan blijft de
+      // screening wel afgerond.
+      if (complete && user?.id) {
+        try {
+          const { error: noteError } = await supabase.from('notes').insert({
+            body: buildScreeningNoteContent(screeningData),
+            is_internal: true,
+            related_entity_id: candidate.id,
+            related_entity_type: 'kandidaat',
+            created_by: user.id,
+            organization_id: candidate.organization_id,
+          } as any);
+          if (noteError) throw noteError;
+          qc.invalidateQueries({ queryKey: ['notes', 'kandidaat', candidate.id] });
+        } catch (noteErr) {
+          console.warn('Screeningnotitie aanmaken mislukt (non-kritisch):', noteErr);
+        }
+      }
+
       if (manual) toast.success(complete ? 'Screening afgerond' : 'Concept opgeslagen');
       onUpdate();
     } catch (e: any) {
@@ -418,7 +529,7 @@ const CandidateScreeningTab = ({
       setSaving(false);
       if (manual) setManualSaving(false);
     }
-  }, [candidate.id, candidate.screened_at, candidate.status, data, onUpdate, profileDraft, profilePayload, user?.id]);
+  }, [candidate.id, candidate.organization_id, candidate.screened_at, candidate.status, data, onUpdate, profileDraft, profilePayload, qc, user?.id]);
 
   useEffect(() => {
     if (!dirty || data.status === 'niet_gestart') return;
@@ -437,6 +548,17 @@ const CandidateScreeningTab = ({
       },
     }));
   };
+
+  // BSN/IBAN zijn versleuteld: apart opslaan (trigger versleutelt op write) en de
+  // decrypt-cache invalideren, los van de screening-autosave.
+  const saveSensitive = useCallback(async (field: 'bsn' | 'iban', value: string | null) => {
+    const { error } = await supabase.from('candidates').update({ [field]: value } as any).eq('id', candidate.id);
+    if (error) throw error;
+    qc.invalidateQueries({ queryKey: ['candidate-decrypted', candidate.id] });
+    qc.invalidateQueries({ queryKey: ['candidate', candidate.id] });
+    logAudit({ action: 'update', tableName: 'candidates', recordId: candidate.id, newValues: { [field]: '***' } });
+    onUpdate();
+  }, [candidate.id, qc, onUpdate]);
 
   const setProfessional = (patch: Partial<ScreeningData['professional']>) =>
     setData((current) => ({ ...current, professional: { ...current.professional, ...patch } }));
@@ -526,6 +648,25 @@ const CandidateScreeningTab = ({
           <div><Label>Woonplaats</Label><Input value={profileDraft.address_city} onChange={(e) => setProfileDraft((p) => ({ ...p, address_city: e.target.value }))} /></div>
           <div><Label>Straat</Label><Input value={profileDraft.address_street} onChange={(e) => setProfileDraft((p) => ({ ...p, address_street: e.target.value }))} /></div>
           <div><Label>Postcode</Label><Input value={profileDraft.address_postal} onChange={(e) => setProfileDraft((p) => ({ ...p, address_postal: e.target.value }))} /></div>
+          <InlineSensitiveField
+            id="screening_bsn"
+            label="BSN"
+            value={sensitive?.decrypted_bsn}
+            loading={sensitiveLoading}
+            placeholder="123456789"
+            inputMode="numeric"
+            onSave={(value) => saveSensitive('bsn', value)}
+            onDirtyChange={() => {}}
+          />
+          <InlineSensitiveField
+            id="screening_iban"
+            label="IBAN"
+            value={sensitive?.decrypted_iban}
+            loading={sensitiveLoading}
+            placeholder="NL00 BANK 0000 0000 00"
+            onSave={(value) => saveSensitive('iban', value)}
+            onDirtyChange={() => {}}
+          />
         </div>
       );
     }
@@ -537,6 +678,12 @@ const CandidateScreeningTab = ({
             <Checkbox checked={profileDraft.has_drivers_license} onCheckedChange={(checked) => setProfileDraft((p) => ({ ...p, has_drivers_license: checked === true }))} />
             Rijbewijs geregistreerd
           </label>
+          {profileDraft.has_drivers_license && (
+            <div className="max-w-xs space-y-1.5">
+              <Label>Verloopdatum rijbewijs</Label>
+              <Input type="date" value={profileDraft.drivers_license_expiry} onChange={(e) => setProfileDraft((p) => ({ ...p, drivers_license_expiry: e.target.value }))} />
+            </div>
+          )}
         </div>
       );
     }
