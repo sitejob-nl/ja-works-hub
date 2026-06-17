@@ -4,6 +4,8 @@ This file provides guidance to Claude Code when working with the JA Werkt codeba
 
 > **Resuming active work:** read [HANDOVER_SESSION.md](HANDOVER_SESSION.md) first. This file is the stable codebase guide; the handover contains the current branch, dirty worktree and next actions.
 
+> **`git fetch origin main` vóór je een branch/analyse/fix start.** De lokale `main` loopt vaak ver achter op `origin/main` (security- en UX-PR's worden los gemerged). Werken vanaf een stale base dupliceert al-opgelost werk, geeft merge-conflicten, en kan bij deploy oudere edge-function-versies over nieuwere heen zetten. Branch altijd van `origin/main`.
+
 ## Project Overview
 
 **JA Werkt** is a multi-tenant staffing agency (uitzendbureau) SaaS platform built for JA Werkt, a temp agency specializing in labor migrants (arbeidsmigranten) in Brabant/Limburg, Netherlands. The platform consolidates multiple legacy systems (Carerix, Joboti, Umanga, OnTrack, Q8, Buddy) into a single system, while keeping Flexpedia as external payroll engine (loonmotor).
@@ -173,6 +175,9 @@ Database triggers encrypt sensitive fields (BSN, IBAN, webhook secrets, access t
 - **`units.monthly_cost` and `units.deposit_amount` are DROPPED** — borg lives on an org-level setting now. `units.weekly_cost` is the only cost on a unit.
 - **`talentpools.is_dynamic`** + `filter_criteria` (jsonb) + `refresh_frequency` (manual/daily/weekly) + `last_refresh_meta` (`{added, removed, total, matched}`) drive the dynamic-pool engine. **`talentpool_members.added_by_filter`** distinguishes auto-added (`true`, removed on refresh-mismatch) from manual (`false`, sticky).
 - **`employees`** table still exists but is legacy — `candidates` is source of truth.
+- **`notes` is polymorf**: koppelt via `related_entity_type` (waarde `'kandidaat'`, `'bedrijf'`, …) + `related_entity_id` — er is **géén `candidate_id`** op `notes`. `recruiter_tasks` gebruikt hetzelfde `related_entity_type`/`related_entity_id`-patroon.
+- **"In dienst nemen" (`EmployeeNew`)** moet `candidates.employee_status` zetten — de Medewerkers-lijst (`Employees.tsx`) filtert op `employee_status IN ('onboarding','actief','ziek')`, niet op `candidates.status`. Zet ook een `candidate_employment`-rij (`is_current=true`). **`candidate_employment` heeft géén `employee_number`** (dat staat op de legacy `employees`-tabel).
+- **`candidates.cv_has_photo`** (boolean) bestaat wél, maar er is **géén profielfoto-URL-kolom** — publieke profielfoto's worden in de `documents`-bucket-map van de kandidaat bewaard en alleen via `cv_has_photo` geflagd.
 
 ### Views
 
@@ -485,6 +490,10 @@ Voor DB- en edge-function-werk gebruiken we standaard de Supabase MCP-tools (ver
 Project-id: `noaupcteygfvlyymqtew` (vermeld in CLAUDE.md "Team & Contact" hieronder).
 
 **Patroon na schema-wijziging**: apply_migration → generate_typescript_types → schrijf naar `src/integrations/supabase/types.ts` → spiegel-migration aanmaken in `supabase/migrations/` voor lokale dev/CI consistency.
+
+**Edge functions met `_shared/`-imports → deploy via de CLI**: `npx supabase functions deploy <naam> --project-ref noaupcteygfvlyymqtew` bundelt de transitieve `_shared/*.ts`-deps automatisch én leest `verify_jwt` uit `config.toml` (de CLI is in deze omgeving al ingelogd). `mcp__claude_ai_Supabase__deploy_edge_function` vereist dat je álle `_shared`-bestanden handmatig in `files` opsomt (foutgevoelig → ontbrekende dep = runtime import-error) en default `verify_jwt=true` — voor de self-auth-functies moet je 'm expliciet op `false` zetten.
+
+**RLS-migraties**: verifieer eerst de échte policy-namen tegen de live DB (`select polname from pg_policies where tablename in (...)`) — een `DROP POLICY IF EXISTS` met een verkeerde naam is een **stille no-op** en laat het gat openstaan. Maak DDL idempotent (`DROP … IF EXISTS` + recreate, `CREATE OR REPLACE`, `ADD COLUMN IF NOT EXISTS`). NB: `apply_migration` registreert een eigen `schema_migrations`-versie (timestamp van nu, niet de bestandsnaam-prefix); geef de spiegel-bestandsnaam diezelfde versie zodat een latere `db push` niet opnieuw probeert te applyen. `CREATE FUNCTION` valideert plpgsql-kolomverwijzingen pas bij aanroep, niet bij apply — verifieer kolomnamen (incl. polymorfe tabellen zoals `notes`) vóór je een SECURITY DEFINER-RPC oplevert.
 
 ## Key Patterns & Conventions
 

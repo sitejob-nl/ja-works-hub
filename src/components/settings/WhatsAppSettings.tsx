@@ -37,6 +37,30 @@ const VERTICAL_OPTIONS = [
   { value: 'NOT_A_BIZ', label: 'Geen bedrijf' },
 ];
 
+function functionErrorMessage(data: any, fallback: string) {
+  const raw = data?.error ?? data?.message ?? fallback;
+  return typeof raw === 'string' ? raw : raw?.message || fallback;
+}
+
+async function readFunctionError(error: any, fallback: string) {
+  const response = error?.context;
+  if (!response || typeof response.clone !== 'function') return error?.message || fallback;
+
+  try {
+    const data = await response.clone().json();
+    return functionErrorMessage(data, fallback);
+  } catch {
+    return error?.message || fallback;
+  }
+}
+
+async function invokeWhatsAppFunction<T = any>(functionName: string, body?: Record<string, unknown>): Promise<T> {
+  const { data, error } = await supabase.functions.invoke(functionName, body ? { body } : undefined);
+  if (error) throw new Error(await readFunctionError(error, 'WhatsApp actie mislukt'));
+  if ((data as any)?.error) throw new Error(functionErrorMessage(data, 'WhatsApp actie mislukt'));
+  return data as T;
+}
+
 // ── Section 2: Account Status ──────────────────────────────────────────────
 
 function AccountStatusSection() {
@@ -317,7 +341,7 @@ const WhatsAppSettings = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('whatsapp_config' as any)
-        .select('*')
+        .select('id, tenant_id, is_active, phone_number_id, display_phone, waba_id, updated_at')
         .eq('organization_id', orgId)
         .maybeSingle();
       if (error) throw error;
@@ -328,10 +352,7 @@ const WhatsAppSettings = () => {
   const registerMutation = useMutation({
     mutationFn: async () => {
       setRegistering(true);
-      const { data, error } = await supabase.functions.invoke('whatsapp-register');
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
-      return data;
+      return invokeWhatsAppFunction('whatsapp-register');
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['whatsapp-config'] });
@@ -349,8 +370,7 @@ const WhatsAppSettings = () => {
 
   const disconnectMutation = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.functions.invoke('whatsapp-disconnect');
-      if (error) throw error;
+      await invokeWhatsAppFunction('whatsapp-disconnect');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['whatsapp-config'] });
@@ -363,10 +383,7 @@ const WhatsAppSettings = () => {
 
   const templateSyncMutation = useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke('whatsapp-templates-sync');
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
-      return data;
+      return invokeWhatsAppFunction('whatsapp-templates-sync');
     },
     onSuccess: (data) => {
       toast.success(

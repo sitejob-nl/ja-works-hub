@@ -8,6 +8,8 @@ type DomainRow = {
   status: string;
 };
 
+export const DEFAULT_PUBLIC_BASE_URL = "https://ja-works-hub.vercel.app";
+
 function sanitizeHostname(value: string | null | undefined): string {
   return String(value ?? "")
     .trim()
@@ -34,6 +36,10 @@ function envSiteUrl(): string | null {
   return value ? value.replace(/\/+$/, "") : null;
 }
 
+export function defaultPublicBaseUrl(): string {
+  return envSiteUrl() ?? DEFAULT_PUBLIC_BASE_URL;
+}
+
 export async function getOrganizationPublicBaseUrl(
   admin: SupabaseClient,
   organizationId: string,
@@ -57,7 +63,7 @@ export async function getOrganizationPublicBaseUrl(
   const fallback = envSiteUrl();
   if (fallback) return fallback;
 
-  throw new Error("SITE_URL ontbreekt en organisatie heeft geen geverifieerd primair domein");
+  return DEFAULT_PUBLIC_BASE_URL;
 }
 
 export async function buildOrganizationPublicUrl(
