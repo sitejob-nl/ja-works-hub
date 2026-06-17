@@ -110,13 +110,16 @@ const ImportData = () => {
 
   // Auto-map when entering step 2
   useEffect(() => {
-    if (step === 2 && headers.length > 0 && Object.keys(mapping).length === 0) {
+    if (step === 2 && headers.length > 0) {
       const auto: Record<number, string> = {};
       headers.forEach((h, i) => {
         const key = h.toLowerCase().trim();
         if (AUTO_MAP[key]) auto[i] = AUTO_MAP[key];
       });
-      setMapping(auto);
+      setMapping((current) => {
+        if (Object.keys(current).length > 0 || Object.keys(auto).length === 0) return current;
+        return auto;
+      });
     }
   }, [step, headers]);
 

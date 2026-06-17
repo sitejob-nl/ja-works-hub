@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Play, Pause, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -18,7 +18,7 @@ export default function BulkCampaignDetail() {
   const [recipients, setRecipients] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     if (!id) return;
 
     const { data: campaignData, error: campaignError } = await supabase
@@ -49,7 +49,7 @@ export default function BulkCampaignDetail() {
     setCampaign(campaignData);
     setRecipients(recipientsData || []);
     setLoading(false);
-  };
+  }, [id, navigate]);
 
   useEffect(() => {
     loadData();
@@ -84,7 +84,7 @@ export default function BulkCampaignDetail() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [id]);
+  }, [id, loadData]);
 
   const handlePause = async () => {
     const { error } = await supabase

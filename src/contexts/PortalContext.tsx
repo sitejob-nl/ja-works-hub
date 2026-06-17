@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
@@ -36,7 +36,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [candidate, setCandidate] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const loadPortalData = async (userId: string) => {
+  const loadPortalData = useCallback(async (userId: string) => {
     // Fetch profile
     const { data: prof } = await supabase
       .from('profiles')
@@ -74,13 +74,13 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     setLoading(false);
-  };
+  }, [navigate]);
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setSession(session);
       if (session?.user) {
-        setTimeout(() => loadPortalData(session.user.id), 0);
+        setTimeout(() => void loadPortalData(session.user.id), 0);
       } else {
         setProfile(null);
         setEmployee(null);
@@ -101,14 +101,14 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [loadPortalData, navigate]);
 
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     setProfile(null);
     setEmployee(null);
     setCandidate(null);
     await signOutAndRedirect('/portaal/login');
-  };
+  }, []);
 
   useSessionIdleTimeout(!!session, signOut);
 

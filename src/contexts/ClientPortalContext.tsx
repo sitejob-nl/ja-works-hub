@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
@@ -36,7 +36,7 @@ export const ClientPortalProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [company, setCompany] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const loadData = async (userId: string) => {
+  const loadData = useCallback(async (userId: string) => {
     const { data: prof } = await supabase
       .from('profiles')
       .select('*')
@@ -70,13 +70,13 @@ export const ClientPortalProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }
 
     setLoading(false);
-  };
+  }, [navigate]);
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setSession(session);
       if (session?.user) {
-        setTimeout(() => loadData(session.user.id), 0);
+        setTimeout(() => void loadData(session.user.id), 0);
       } else {
         setProfile(null);
         setContact(null);
@@ -97,14 +97,14 @@ export const ClientPortalProvider: React.FC<{ children: React.ReactNode }> = ({ 
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [loadData, navigate]);
 
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     setProfile(null);
     setContact(null);
     setCompany(null);
     await signOutAndRedirect('/klantportaal/login');
-  };
+  }, []);
 
   useSessionIdleTimeout(!!session, signOut);
 

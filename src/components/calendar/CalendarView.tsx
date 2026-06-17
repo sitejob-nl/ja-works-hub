@@ -95,7 +95,7 @@ const CalendarView = ({ selectedAccount }: { selectedAccount?: string }) => {
     refetchInterval: 60_000,
   });
 
-  const events: CalendarEvent[] = eventsData?.value || [];
+  const events: CalendarEvent[] = useMemo(() => eventsData?.value || [], [eventsData]);
 
   // Group events by day for list view — declared before any early return to keep hook order stable
   const groupedByDay = useMemo(() => {
@@ -157,10 +157,10 @@ const CalendarView = ({ selectedAccount }: { selectedAccount?: string }) => {
       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 justify-between">
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => navigate('today')}>Vandaag</Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate('prev')}>
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate('prev')} aria-label="Vorige periode">
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate('next')}>
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate('next')} aria-label="Volgende periode">
             <ChevronRight className="h-4 w-4" />
           </Button>
           <h2 className="text-lg font-semibold">
