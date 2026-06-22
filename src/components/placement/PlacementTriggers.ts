@@ -255,3 +255,74 @@ export async function sendPlacementConfirmation(
 
   return data as PlacementConfirmationResult;
 }
+
+// Voertuig toewijzen bij een plaatsing: schrijft vehicle_assignments + zet het voertuig op 'toegewezen'.
+export async function assignVehicleOnPlacement(input: {
+  organizationId: string;
+  vehicleId: string;
+  employeeId: string;
+  candidateId: string;
+  startDate: string;
+  startMileage?: number | null;
+}): Promise<void> {
+  const { error } = await supabase.from('vehicle_assignments').insert({
+    organization_id: input.organizationId,
+    vehicle_id: input.vehicleId,
+    employee_id: input.employeeId,
+    candidate_id: input.candidateId,
+    assigned_date: input.startDate,
+    start_mileage: input.startMileage ?? null,
+  } as any);
+  if (error) throw error;
+  await supabase.from('vehicles').update({ status: 'toegewezen' as any }).eq('id', input.vehicleId);
+}
+
+// Interne opvolg-taken bij een plaatsing (accountmanager, contract-eigenaar "Maria", administratie).
+// Contract-eigenaar: org-instelling settings.contract_owner_profile_id -> accountmanager -> backoffice -> admin.
+export async function notifyPlacementStakeholders(input: {
+  organizationId: string;
+  placementId: string;
+  candidateName: string;
+  companyName: string;
+  functionName: string;
+  startDate: string;
+  accountManagerId?: string | null;
+}): Promise<void> {
+  const { data: org } = await supabase.from('organizations').select('settings').eq('id', input.organizationId).maybeSingle();
+  const contractOwnerSetting = (org?.settings as any)?.contract_owner_profile_id ?? null;
+  const { data: profiles } = await supabase
+    .from('profiles').select('id, role').eq('organization_id', input.organizationId).eq('is_active', true);
+  const byRole = (role: string) => (profiles ?? []).find((p: any) => p.role === role)?.id ?? null;
+  const contractOwner = contractOwnerSetting || input.accountManagerId || byRole('backoffice') || byRole('admin');
+  const administratie = byRole('finance') || byRole('backoffice') || contractOwner;
+
+  const tasks: any[] = [];
+  if (input.accountManagerId) {
+    tasks.push({
+      organization_id: input.organizationId, assigned_to: input.accountManagerId,
+      title: `Plaatsing gestart: ${input.candidateName} bij ${input.companyName}`,
+      description: `${input.functionName} per ${input.startDate}.`,
+      priority: 'medium', status: 'open', category: 'plaatsing',
+      related_entity_type: 'plaatsing', related_entity_id: input.placementId,
+    });
+  }
+  if (contractOwner) {
+    tasks.push({
+      organization_id: input.organizationId, assigned_to: contractOwner,
+      title: `Contract aanmaken: ${input.candidateName} (${input.companyName})`,
+      description: `${input.functionName}, startdatum ${input.startDate}.`,
+      priority: 'high', status: 'open', category: 'contract',
+      related_entity_type: 'plaatsing', related_entity_id: input.placementId,
+    });
+  }
+  if (administratie && administratie !== contractOwner) {
+    tasks.push({
+      organization_id: input.organizationId, assigned_to: administratie,
+      title: `Administratie verwerken: ${input.candidateName}`,
+      description: `Plaatsing bij ${input.companyName} per ${input.startDate}.`,
+      priority: 'medium', status: 'open', category: 'administratie',
+      related_entity_type: 'plaatsing', related_entity_id: input.placementId,
+    });
+  }
+  if (tasks.length) await supabase.from('recruiter_tasks').insert(tasks as any);
+}

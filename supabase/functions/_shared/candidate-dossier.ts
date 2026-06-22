@@ -145,7 +145,7 @@ function stripXmlToText(xml: string): string {
     .trim();
 }
 
-function storagePathFromCvValue(value: string | null | undefined): string | null {
+export function storagePathFromCvValue(value: string | null | undefined): string | null {
   if (!value) return null;
   const trimmed = value.trim();
   if (!trimmed) return null;

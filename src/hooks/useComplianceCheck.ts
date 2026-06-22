@@ -61,7 +61,7 @@ export const checkCompliance = async (
   // 2. Get candidate + docs
   const [{ data: candidate }, { data: docs }, { data: sensitiveData }] = await Promise.all([
     supabase.from('candidates')
-      .select('first_name, last_name, date_of_birth, nationality, has_drivers_license, drivers_license_expiry, phone, email, address_street')
+      .select('first_name, last_name, date_of_birth, nationality, has_drivers_license, drivers_license_expiry, phone, email, address_street, has_dutch_address')
       .eq('id', candidateId)
       .single(),
     supabase.from('documents')
@@ -90,8 +90,9 @@ export const checkCompliance = async (
       (rule.required_fields || []).forEach((f: string) => requiredFields.add(f));
     }
 
-    // Check documents
+    // Check documents (contract wordt altijd onderaan gecheckt — hier overslaan om dubbel te voorkomen)
     for (const docType of requiredDocs) {
+      if (docType === 'contract') continue;
       if (docType === 'id_bewijs') {
         const hasValidId = (docs ?? []).some(d => d.type === 'id_bewijs' && d.status !== 'verlopen');
         if (!hasValidId) issues.push(`Geen geldig ${DOC_LABELS[docType] || docType}`);
@@ -107,24 +108,30 @@ export const checkCompliance = async (
       }
     }
   } else {
-    // Fallback to hardcoded checks
+    // Fallback to hardcoded checks (contract wordt altijd onderaan gecheckt)
     const hasValidId = (docs ?? []).some(d => d.type === 'id_bewijs' && d.status !== 'verlopen');
-    const hasContract = docTypes.includes('contract');
     const hasReglement = docTypes.includes('reglement');
 
     if (!hasValidId) issues.push('Geen geldig ID bewijs');
-    if (!hasContract) issues.push('Contract niet getekend');
     if (!hasReglement) issues.push('Reglement niet afgetekend');
     if (!hasSensitiveField('bsn')) issues.push('BSN niet ingevuld');
     if (!hasSensitiveField('iban')) issues.push('IBAN niet ingevuld');
     if (!candidate?.date_of_birth) issues.push('Geboortedatum ontbreekt');
   }
 
-  // Always check drivers license expiry
+  // Always: rijbewijs-vervaldatum
   if (candidate?.has_drivers_license && candidate?.drivers_license_expiry) {
     if (new Date(candidate.drivers_license_expiry) < new Date()) {
       issues.push('Rijbewijs is verlopen');
     }
+  }
+
+  // Always: Nederlands adres tijdens plaatsing (meeting 17-06) + contract aanwezig.
+  if (candidate && (candidate as any).has_dutch_address === false) {
+    issues.push('Geen Nederlands adres');
+  }
+  if (!docTypes.includes('contract')) {
+    issues.push('Contract ontbreekt');
   }
 
   return { passed: issues.length === 0, issues, rulesApplied };

@@ -161,7 +161,7 @@ async function handleMatchInterest(supabase: any, orgId: string, replyId: string
     .maybeSingle();
   // Niet terugzetten als de match al verder of terminaal is.
   if (!match || ["geaccepteerd", "geplaatst", "afgewezen"].includes(match.status)) return;
-  const newStatus = isYes ? "in_gesprek" : "afgewezen";
+  const newStatus = isYes ? "afspraak_op_kantoor" : "afgewezen";
   await supabase
     .from("matches")
     .update({ status: newStatus, status_changed_at: new Date().toISOString() })

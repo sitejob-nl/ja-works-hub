@@ -1,6 +1,12 @@
 import { sendViaOutlookAccount } from "../_shared/outlook-send.ts";
 import { createAdminClient, requireInternalProfile } from "../_shared/auth.ts";
 import { buildOrganizationPublicUrl } from "../_shared/public-url.ts";
+import { sanitizeEmailHtml } from "../_shared/outlook-signature.ts";
+import { storagePathFromCvValue } from "../_shared/candidate-dossier.ts";
+
+// 14 dagen — gelijk aan de DB-default op match_proposal_tokens.expires_at; expliciet
+// gezet zodat de TTL in code zichtbaar is.
+const TOKEN_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -60,14 +66,16 @@ function buildProposalEmailHtml(data: {
   interviewQuestions: string[] | null;
   matchReasoning: string | null;
   responseUrl: string;
+  hideReport?: boolean;
+  hideReliability?: boolean;
 }): string {
   const profileBadges = [
     data.functionGroup ? `<span style="display:inline-block;margin:8px 6px 0 0;padding:4px 8px;border-radius:999px;background:#eff6ff;color:#1d4ed8;font-size:12px;">${escapeHtml(data.functionGroup)}</span>` : "",
     data.classification ? `<span style="display:inline-block;margin:8px 6px 0 0;padding:4px 8px;border-radius:999px;background:#f8fafc;color:#334155;font-size:12px;">${escapeHtml(data.classification)}</span>` : "",
-    data.reliabilityScore != null ? `<span style="display:inline-block;margin:8px 6px 0 0;padding:4px 8px;border-radius:999px;background:#ecfdf5;color:#047857;font-size:12px;">Betrouwbaarheid ${Math.round(data.reliabilityScore)}%</span>` : "",
+    (!data.hideReliability && data.reliabilityScore != null) ? `<span style="display:inline-block;margin:8px 6px 0 0;padding:4px 8px;border-radius:999px;background:#ecfdf5;color:#047857;font-size:12px;">Betrouwbaarheid ${Math.round(data.reliabilityScore)}%</span>` : "",
   ].join("");
-  const reportRows = [
-    renderReportRow("AI samenvatting", data.summary ? `<span style="color:#1e3a5f;font-size:14px;line-height:1.5;">${renderText(data.summary)}</span>` : ""),
+  const reportRows = data.hideReport ? "" : [
+    renderReportRow("Samenvatting", data.summary ? `<span style="color:#1e3a5f;font-size:14px;line-height:1.5;">${renderText(data.summary)}</span>` : ""),
     renderReportRow("Profiel", profileBadges),
     renderReportRow("Sterke signalen", renderList(data.positiveSignals, "#064e3b")),
     renderReportRow("Aandachtspunten", renderList(data.riskFactors, "#92400e")),
@@ -117,7 +125,7 @@ function buildProposalEmailHtml(data: {
 
           ${hasReport ? `<table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:6px;border:1px solid #e2e8f0;margin-bottom:24px;">
             <tr><td style="padding:16px 20px;">
-              <strong style="color:#0f172a;font-size:15px;">AI-kandidaatrapport</strong>
+              <strong style="color:#0f172a;font-size:15px;">Kandidaatprofiel</strong>
             </td></tr>
             ${reportRows}
           </table>` : ""}
@@ -163,7 +171,20 @@ Deno.serve(async (req) => {
     const serviceClient = createAdminClient();
 
     const body = await req.json();
-    const { match_id, preview } = body;
+    const {
+      match_id,
+      preview,
+      account_id,
+      recipient_email,
+      company_contact_id,
+      cc,
+      bcc,
+      subject: subjectOverride,
+      html: htmlOverride,
+      hide_ai_report,
+      hide_reliability,
+      include_cv,
+    } = body;
 
     if (!match_id) {
       return json({ error: "match_id is required" }, 400);
@@ -173,7 +194,7 @@ Deno.serve(async (req) => {
       .from("matches")
       .select(`
         *,
-        candidates:candidate_id(id, first_name, last_name, email, phone, ai_summary, ai_function_group, ai_classification, ai_reliability_score, ai_positive_signals, ai_risk_factors, ai_target_functions, ai_interview_questions),
+        candidates:candidate_id(id, first_name, last_name, email, phone, cv_file_url, ai_summary, ai_function_group, ai_classification, ai_reliability_score, ai_positive_signals, ai_risk_factors, ai_target_functions, ai_interview_questions),
         vacancies:vacancy_id(id, title, companies:company_id(id, name, email))
       `)
       .eq("id", match_id)
@@ -192,10 +213,6 @@ Deno.serve(async (req) => {
       return json({ error: "Candidate not found" }, 404);
     }
 
-    if (!company?.email) {
-      return json({ error: "Opdrachtgever heeft geen e-mailadres" }, 400);
-    }
-
     const candidateName = `${candidate.first_name} ${candidate.last_name}`.trim();
 
     const { data: org } = await serviceClient
@@ -207,22 +224,40 @@ Deno.serve(async (req) => {
 
     const { data: contacts } = await serviceClient
       .from("company_contacts")
-      .select("*")
+      .select("id, full_name, email, is_primary")
       .eq("company_id", company.id)
       .eq("organization_id", orgId)
-      .order("is_primary", { ascending: false })
-      .limit(1);
+      .order("is_primary", { ascending: false });
 
-    const contactName = contacts?.[0]?.full_name ?? company.name;
-    const contactEmail = contacts?.[0]?.email ?? company.email;
-    const subject = `Kandidaatvoorstel: ${candidateName} voor ${vacancy.title}`;
+    const contactRows = (contacts ?? []).filter((c) => c.email);
+    const primaryContact = contactRows.find((c) => c.is_primary) ?? contactRows[0] ?? null;
+
+    // Ontvanger-opties voor de UI: algemene bedrijfsmail + alle contactpersonen (primaire met ster).
+    const recipientOptions = [
+      ...(company.email ? [{ email: company.email, name: `${company.name} (algemeen)`, is_primary: false, contact_id: null }] : []),
+      ...contactRows.map((c) => ({ email: c.email, name: c.full_name ?? c.email, is_primary: !!c.is_primary, contact_id: c.id })),
+    ];
+
+    const defaultEmail = primaryContact?.email ?? company.email;
+    const defaultName = primaryContact?.full_name ?? company.name;
+
+    if (!preview && !defaultEmail && !(typeof recipient_email === "string" && recipient_email.trim())) {
+      return json({ error: "Opdrachtgever heeft geen e-mailadres" }, 400);
+    }
+    const subject = (typeof subjectOverride === "string" && subjectOverride.trim())
+      ? subjectOverride.trim()
+      : `Kandidaatvoorstel: ${candidateName} voor ${vacancy.title}`;
+
+    // Standaard verbergen we de betrouwbaarheidsscore richting klant; het volledige rapport blijft tenzij uitgezet.
+    const hideReliability = hide_reliability !== false;
+    const hideReport = hide_ai_report === true;
 
     const emailData = {
       orgName,
       orgLogoUrl: org?.logo_url ?? null,
       orgEmail: org?.email ?? null,
       orgPhone: org?.phone ?? null,
-      contactName,
+      contactName: defaultName,
       candidateName,
       vacancyTitle: vacancy.title,
       companyName: company.name,
@@ -235,17 +270,50 @@ Deno.serve(async (req) => {
       targetFunctions: candidate.ai_target_functions ?? null,
       interviewQuestions: candidate.ai_interview_questions ?? null,
       matchReasoning: match.match_reasoning ?? null,
+      hideReport,
+      hideReliability,
     };
 
     if (preview) {
-      const html = buildProposalEmailHtml({ ...emailData, responseUrl: "#preview" });
+      // Placeholder ipv het echte token (bestaat nog niet); op verzenden vervangen.
+      const html = buildProposalEmailHtml({ ...emailData, responseUrl: "{{RESPONSE_URL}}" });
       return json({
         preview: true,
-        to: contactEmail,
-        contact_name: contactName,
+        to: defaultEmail,
+        contact_name: defaultName,
         subject,
         html,
+        recipients: recipientOptions,
+        has_cv: !!candidate.cv_file_url,
       });
+    }
+
+    // Definitieve ontvanger + bijbehorend contact bepalen.
+    const finalRecipient = (typeof recipient_email === "string" && recipient_email.trim())
+      ? recipient_email.trim()
+      : defaultEmail;
+    const matchedContact = contactRows.find((c) => c.email === finalRecipient) ?? null;
+    const finalContactId = company_contact_id ?? matchedContact?.id ?? primaryContact?.id ?? null;
+
+    // CV als bijlage (optioneel).
+    let cvAttachment: { name: string; content_type: string; content_base64: string } | undefined;
+    if (include_cv && candidate.cv_file_url) {
+      const cvPath = storagePathFromCvValue(candidate.cv_file_url);
+      if (cvPath) {
+        const { data: file, error: dlErr } = await serviceClient.storage.from("documents").download(cvPath);
+        if (!dlErr && file) {
+          const bytes = new Uint8Array(await file.arrayBuffer());
+          let binary = "";
+          const chunk = 0x8000;
+          for (let i = 0; i < bytes.length; i += chunk) {
+            binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+          }
+          const ext = cvPath.split(".").pop()?.toLowerCase() ?? "";
+          const contentType = ext === "pdf" ? "application/pdf"
+            : (ext === "doc" || ext === "docx") ? "application/msword" : "application/octet-stream";
+          cvAttachment = { name: `CV ${candidateName}.${ext || "pdf"}`, content_type: contentType, content_base64: btoa(binary) };
+        }
+      }
     }
 
     const { data: token, error: tokenErr } = await serviceClient
@@ -253,7 +321,8 @@ Deno.serve(async (req) => {
       .insert({
         match_id: match.id,
         organization_id: orgId,
-        contact_email: contactEmail,
+        contact_email: finalRecipient,
+        expires_at: new Date(Date.now() + TOKEN_TTL_MS).toISOString(),
       })
       .select("token")
       .single();
@@ -263,15 +332,22 @@ Deno.serve(async (req) => {
     }
 
     const responseUrl = await buildOrganizationPublicUrl(serviceClient, orgId, `/match-response/${token.token}`);
-    const html = buildProposalEmailHtml({ ...emailData, responseUrl });
+    const html = (typeof htmlOverride === "string" && htmlOverride.trim())
+      ? sanitizeEmailHtml(htmlOverride).replaceAll("{{RESPONSE_URL}}", responseUrl)
+      : buildProposalEmailHtml({ ...emailData, responseUrl });
 
     const outlookResult = await sendViaOutlookAccount({
       orgId,
-      to: contactEmail,
+      to: finalRecipient,
+      cc: Array.isArray(cc) ? cc : undefined,
+      bcc: Array.isArray(bcc) ? bcc : undefined,
       subject,
       htmlBody: html,
+      attachments: cvAttachment ? [cvAttachment] : undefined,
+      accountId: account_id ?? undefined,
       sentBy: userId,
       companyId: company.id,
+      companyContactId: finalContactId ?? undefined,
     });
 
     if (!outlookResult.success) {

@@ -5,16 +5,20 @@ import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { useOutboundPause } from '@/hooks/useOutboundPause';
 import { useAuth } from '@/contexts/AuthContext';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, Search, UserPlus, Sparkles, Mail, Star, X, MessageSquare } from 'lucide-react';
+import { AlertTriangle, Search, UserPlus, Sparkles, Mail, Star, X, MessageSquare, Trash2, FileText } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { useOutlookAccounts } from '@/hooks/useOutlookAccounts';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import PlacementSheet from '@/components/vacancies/PlacementSheet';
@@ -55,8 +59,23 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
   const [candidateSearch, setCandidateSearch] = useState('');
   const [placementMatch, setPlacementMatch] = useState<any>(null);
   const [previewMatchId, setPreviewMatchId] = useState<string | null>(null);
-  const [previewData, setPreviewData] = useState<{ to: string; contact_name: string; subject: string; html: string } | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  // V1 voorstel-editor (afzender/ontvanger/CC/BCC/toggles/CV + bewerkbare body)
+  const { usableAccounts, defaultAccountId } = useOutlookAccounts('mail_send');
+  const personalAccounts = usableAccounts.filter((a) => a.scope === 'personal');
+  const orgAccounts = usableAccounts.filter((a) => a.scope === 'organization');
+  const [mailAccountId, setMailAccountId] = useState<string | undefined>(undefined);
+  const [mailTo, setMailTo] = useState('');
+  const [mailCc, setMailCc] = useState('');
+  const [mailBcc, setMailBcc] = useState('');
+  const [mailSubject, setMailSubject] = useState('');
+  const [mailBody, setMailBody] = useState('');
+  const [mailRecipients, setMailRecipients] = useState<{ email: string; name: string; is_primary: boolean }[]>([]);
+  const [mailHasCv, setMailHasCv] = useState(false);
+  const [mailIncludeCv, setMailIncludeCv] = useState(false);
+  const [mailHideReport, setMailHideReport] = useState(false);
+  const [mailHideReliability, setMailHideReliability] = useState(true);
+  const [deleteMatchId, setDeleteMatchId] = useState<string | null>(null);
   const [scoreFilter, setScoreFilter] = useState<'strong' | '60' | '70' | '80' | 'all'>('strong');
   const [selectedShortlist, setSelectedShortlist] = useState<Set<string>>(new Set());
   // Detail-dialoog: werkt zowel voor een shortlist-kandidaat (met candidate → "Voorstellen")
@@ -193,22 +212,30 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['vacancy-matches', vacancy.id] });
       qc.invalidateQueries({ queryKey: ['available-candidates-for-vacancy'] });
-      toast.success('Nieuwe match aangemaakt (AI score wordt berekend)');
+      toast.success('Match gemaakt (AI score wordt berekend)');
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => {
+      if (e?.code === '23505') toast.info('Deze match bestaat al');
+      else toast.error(e.message);
+    },
   });
 
-  // Bulk: stel meerdere geselecteerde kandidaten in één keer voor.
+  // Bulk: maak voor meerdere geselecteerde kandidaten in één keer een match. Bestaande
+  // matches (unieke kandidaat-vacature, fout 23505) worden overgeslagen i.p.v. de batch te stoppen.
   const bulkProposeMutation = useMutation({
     mutationFn: async (candidates: any[]) => {
-      for (const candidate of candidates) await insertMatch(candidate);
-      return candidates.length;
+      let created = 0; let skipped = 0;
+      for (const candidate of candidates) {
+        try { await insertMatch(candidate); created++; }
+        catch (e: any) { if (e?.code === '23505') skipped++; else throw e; }
+      }
+      return { created, skipped };
     },
-    onSuccess: (count) => {
+    onSuccess: ({ created, skipped }) => {
       qc.invalidateQueries({ queryKey: ['vacancy-matches', vacancy.id] });
       qc.invalidateQueries({ queryKey: ['available-candidates-for-vacancy'] });
       setSelectedShortlist(new Set());
-      toast.success(`${count} kandidaat${count === 1 ? '' : 'en'} voorgesteld (AI-scores worden berekend)`);
+      toast.success(`${created} match${created === 1 ? '' : 'es'} gemaakt${skipped ? ` (${skipped} bestond al)` : ''}`);
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -270,20 +297,24 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
     },
   });
 
-  const openPreview = async (matchId: string) => {
+  // Haalt (of ververst) de server-side preview op met de huidige toggles.
+  const openPreview = async (matchId: string, opts: { hideReport: boolean; hideReliability: boolean; resetTo?: boolean }) => {
     setPreviewMatchId(matchId);
     setPreviewLoading(true);
-    setPreviewData(null);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-match-proposal`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
-        body: JSON.stringify({ match_id: matchId, preview: true }),
+        body: JSON.stringify({ match_id: matchId, preview: true, hide_ai_report: opts.hideReport, hide_reliability: opts.hideReliability }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Kon preview niet laden');
-      setPreviewData({ to: json.to, contact_name: json.contact_name, subject: json.subject, html: json.html });
+      setMailSubject(json.subject ?? '');
+      setMailBody(json.html ?? '');
+      setMailRecipients(json.recipients ?? []);
+      setMailHasCv(!!json.has_cv);
+      if (opts.resetTo) setMailTo(json.to ?? '');
     } catch (e: any) {
       toast.error(e.message);
       setPreviewMatchId(null);
@@ -292,13 +323,33 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
     }
   };
 
+  // Opent de editor met standaardwaarden (score verborgen, rapport zichtbaar).
+  const openProposalEditor = (matchId: string) => {
+    setMailHideReport(false);
+    setMailHideReliability(true);
+    setMailCc(''); setMailBcc(''); setMailIncludeCv(false);
+    setMailAccountId(defaultAccountId);
+    openPreview(matchId, { hideReport: false, hideReliability: true, resetTo: true });
+  };
+
+  const splitEmails = (value: string) => value.split(/[;,]/).map((s) => s.trim()).filter(Boolean);
+
   const sendProposalMutation = useMutation({
     mutationFn: async (matchId: string) => {
       const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-match-proposal`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
-        body: JSON.stringify({ match_id: matchId }),
+        body: JSON.stringify({
+          match_id: matchId,
+          account_id: mailAccountId ?? null,
+          recipient_email: mailTo || undefined,
+          cc: mailCc ? splitEmails(mailCc) : undefined,
+          bcc: mailBcc ? splitEmails(mailBcc) : undefined,
+          subject: mailSubject || undefined,
+          html: mailBody || undefined,
+          include_cv: mailIncludeCv,
+        }),
       });
       const json = await res.json();
       if (!res.ok || json.success === false) throw new Error(json.error ?? json.outlook_error ?? 'Fout bij versturen');
@@ -308,9 +359,22 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
       qc.invalidateQueries({ queryKey: ['vacancy-matches', vacancy.id] });
       toast.success('Voorstel verstuurd naar opdrachtgever');
       setPreviewMatchId(null);
-      setPreviewData(null);
     },
     onError: (e: any) => toast.error(e.message),
+  });
+
+  const deleteMatchMutation = useMutation({
+    mutationFn: async (matchId: string) => {
+      const { error } = await supabase.from('matches').delete().eq('id', matchId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['vacancy-matches', vacancy.id] });
+      qc.invalidateQueries({ queryKey: ['available-candidates-for-vacancy'] });
+      toast.success('Match verwijderd');
+      setDeleteMatchId(null);
+    },
+    onError: (e: any) => { toast.error(e.message); setDeleteMatchId(null); },
   });
 
   // Counts per status (voor de filterchips).
@@ -328,6 +392,13 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
   });
   const toggleAllMatches = () => setSelectedMatches(allMatchesSelected ? new Set() : new Set(visibleMatches.map((m: any) => m.id)));
 
+  // Na acceptatie meteen de plaatsing-popup openen (één match tegelijk).
+  const openPlacementForAccepted = (matchIds: string[], toStatus: string) => {
+    if (toStatus !== 'geaccepteerd' || matchIds.length !== 1) return;
+    const row = (matches ?? []).find((m: any) => m.id === matchIds[0]);
+    if (row) setPlacementMatch(row);
+  };
+
   // Statuswijziging (1 of meer matches). Terminale statussen vragen eerst een feedbackreden.
   const changeStatus = (matchIds: string[], toStatus: string) => {
     if (!matchIds.length) return;
@@ -338,7 +409,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
       return;
     }
     Promise.all(matchIds.map((id) => statusMutation.mutateAsync({ matchId: id, status: toStatus })))
-      .then(() => { if (matchIds.length > 1) toast.success(`${matchIds.length} matches → ${STATUS_LABEL[toStatus]}`); else toast.success('Status bijgewerkt'); setSelectedMatches(new Set()); })
+      .then(() => { if (matchIds.length > 1) toast.success(`${matchIds.length} matches → ${STATUS_LABEL[toStatus]}`); else toast.success('Status bijgewerkt'); setSelectedMatches(new Set()); openPlacementForAccepted(matchIds, toStatus); })
       .catch(() => { /* per-mutation toast */ });
   };
 
@@ -349,6 +420,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
       .then(() => {
         toast.success(matchIds.length > 1 ? `${matchIds.length} matches → ${STATUS_LABEL[toStatus]}` : 'Status bijgewerkt');
         setFeedbackRequest(null); setFeedbackReasonId(''); setFeedbackNotes(''); setSelectedMatches(new Set());
+        openPlacementForAccepted(matchIds, toStatus);
       })
       .catch(() => { /* per-mutation toast */ });
   };
@@ -511,7 +583,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
                 <div className="flex flex-col items-end gap-1 flex-shrink-0">
                   <div className="flex items-center gap-1">
                     {m.status === 'voorgesteld' && (
-                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => openPreview(m.id)} disabled={previewLoading && previewMatchId === m.id}>
+                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => openProposalEditor(m.id)} disabled={previewLoading && previewMatchId === m.id}>
                         <Mail className="h-3 w-3 mr-1" /> {previewLoading && previewMatchId === m.id ? '...' : 'Mail'}
                       </Button>
                     )}
@@ -526,6 +598,11 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
                     {!isTerminalMatchStatus(m.status) && (
                       <Button size="sm" variant="ghost" className="h-9 text-xs text-red-600" onClick={() => changeStatus([m.id], 'afgewezen')} aria-label={`Match afwijzen voor ${c.first_name ?? ''} ${c.last_name ?? ''}`.trim()}>
                         <X className="h-3 w-3" />
+                      </Button>
+                    )}
+                    {m.status !== 'geplaatst' && (
+                      <Button size="sm" variant="ghost" className="h-9 text-xs text-muted-foreground hover:text-red-600" onClick={() => setDeleteMatchId(m.id)} aria-label={`Match verwijderen voor ${c.first_name ?? ''} ${c.last_name ?? ''}`.trim()} title="Match verwijderen">
+                        <Trash2 className="h-3 w-3" />
                       </Button>
                     )}
                   </div>
@@ -594,7 +671,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
               <div className="flex items-center gap-2">
                 <Button size="sm" variant="ghost" onClick={() => setSelectedShortlist(new Set())}>Wissen</Button>
                 <Button size="sm" onClick={() => bulkProposeMutation.mutate(selectedCandidates)} disabled={bulkProposeMutation.isPending} className="gap-1.5">
-                  <UserPlus className="h-3.5 w-3.5" /> {bulkProposeMutation.isPending ? 'Voorstellen…' : `Voorstellen (${selectedShortlist.size})`}
+                  <UserPlus className="h-3.5 w-3.5" /> {bulkProposeMutation.isPending ? 'Match maken…' : `Match maken (${selectedShortlist.size})`}
                 </Button>
               </div>
             )}
@@ -672,47 +749,142 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
         ]}
         action={detail?.candidate ? (
           <Button onClick={() => { proposeMutation.mutate(detail.candidate); setDetail(null); }} disabled={proposeMutation.isPending}>
-            <UserPlus className="h-3 w-3 mr-1" /> Voorstellen
+            <UserPlus className="h-3 w-3 mr-1" /> Match maken
           </Button>
         ) : null}
       />
 
       <PlacementSheet match={placementMatch} vacancy={vacancy} onClose={() => setPlacementMatch(null)} />
 
-      <Dialog open={!!previewMatchId} onOpenChange={(open) => { if (!open) { setPreviewMatchId(null); setPreviewData(null); } }}>
-        <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col">
+      <Dialog open={!!previewMatchId} onOpenChange={(open) => { if (!open) setPreviewMatchId(null); }}>
+        <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Voorstel-mail preview</DialogTitle>
-            <DialogDescription>Controleer de inhoud voordat je verstuurt.</DialogDescription>
+            <DialogTitle>Voorstel versturen</DialogTitle>
+            <DialogDescription>Pas de mail aan en kies afzender, ontvanger en bijlagen.</DialogDescription>
           </DialogHeader>
           {outboundPaused?.email === true && (
             <Alert variant="destructive">
               <AlertTriangle className="h-4 w-4" />
               <AlertTitle>E-mail staat op pauze</AlertTitle>
-              <AlertDescription>Je kunt de preview controleren, maar versturen is geblokkeerd door de outbound kill-switch.</AlertDescription>
+              <AlertDescription>Je kunt de voorbereiding controleren, maar versturen is geblokkeerd door de outbound kill-switch.</AlertDescription>
             </Alert>
           )}
-          {previewData ? (
-            <>
-              <div className="space-y-1 text-sm border-b pb-3">
-                <div><span className="text-muted-foreground">Naar:</span> <span className="font-medium">{previewData.contact_name}</span> &lt;{previewData.to}&gt;</div>
-                <div><span className="text-muted-foreground">Onderwerp:</span> <span className="font-medium">{previewData.subject}</span></div>
+
+          <div className="space-y-3">
+            {usableAccounts.length > 1 && (
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Afzender</Label>
+                <Select value={mailAccountId} onValueChange={setMailAccountId}>
+                  <SelectTrigger><SelectValue placeholder="Kies afzender-mailbox" /></SelectTrigger>
+                  <SelectContent>
+                    {personalAccounts.length > 0 && (
+                      <SelectGroup>
+                        <SelectLabel>Persoonlijk</SelectLabel>
+                        {personalAccounts.map((a) => <SelectItem key={a.account_id} value={a.account_id}>{a.label || a.email || 'Persoonlijke mailbox'}</SelectItem>)}
+                      </SelectGroup>
+                    )}
+                    {orgAccounts.length > 0 && (
+                      <SelectGroup>
+                        <SelectLabel>Bedrijf</SelectLabel>
+                        {orgAccounts.map((a) => <SelectItem key={a.account_id} value={a.account_id}>{a.label || a.email || 'Bedrijfsmailbox'}</SelectItem>)}
+                      </SelectGroup>
+                    )}
+                  </SelectContent>
+                </Select>
               </div>
-              <div className="flex-1 overflow-auto border rounded">
-                <iframe title="email-preview" srcDoc={previewData.html} sandbox="" className="w-full" style={{ height: '500px' }} />
+            )}
+
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Aan</Label>
+              {mailRecipients.length > 0 ? (
+                <Select value={mailTo} onValueChange={setMailTo}>
+                  <SelectTrigger><SelectValue placeholder="Kies ontvanger" /></SelectTrigger>
+                  <SelectContent>
+                    {mailRecipients.map((r) => (
+                      <SelectItem key={r.email} value={r.email}>
+                        {r.is_primary ? '★ ' : ''}{r.name} &lt;{r.email}&gt;
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input value={mailTo} onChange={(e) => setMailTo(e.target.value)} placeholder="ontvanger@bedrijf.nl" />
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">CC</Label>
+                <Input value={mailCc} onChange={(e) => setMailCc(e.target.value)} placeholder="optioneel, komma-gescheiden" />
               </div>
-            </>
-          ) : (
-            <div className="py-10 text-center text-sm text-muted-foreground">Preview laden...</div>
-          )}
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">BCC</Label>
+                <Input value={mailBcc} onChange={(e) => setMailBcc(e.target.value)} placeholder="optioneel, komma-gescheiden" />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Onderwerp</Label>
+              <Input value={mailSubject} onChange={(e) => setMailSubject(e.target.value)} />
+            </div>
+
+            <div className="flex flex-wrap gap-4 pt-1">
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <Checkbox checked={mailHideReport} onCheckedChange={(v) => { setMailHideReport(!!v); openPreview(previewMatchId!, { hideReport: !!v, hideReliability: mailHideReliability }); }} />
+                Rapport verbergen
+              </label>
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <Checkbox checked={mailHideReliability} onCheckedChange={(v) => { setMailHideReliability(!!v); openPreview(previewMatchId!, { hideReport: mailHideReport, hideReliability: !!v }); }} />
+                Betrouwbaarheidsscore verbergen
+              </label>
+              {mailHasCv && (
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <Checkbox checked={mailIncludeCv} onCheckedChange={(v) => setMailIncludeCv(!!v)} />
+                  <FileText className="h-3.5 w-3.5" /> CV meesturen
+                </label>
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Bericht (HTML)</Label>
+              <Textarea value={mailBody} onChange={(e) => setMailBody(e.target.value)} className="font-mono text-xs h-28" />
+            </div>
+
+            <div>
+              <Label className="text-xs text-muted-foreground">Voorbeeld</Label>
+              <div className="border rounded mt-1">
+                {previewLoading
+                  ? <div className="py-10 text-center text-sm text-muted-foreground">Voorbeeld laden…</div>
+                  : <iframe title="email-preview" srcDoc={mailBody} sandbox="" className="w-full" style={{ height: '360px' }} />}
+              </div>
+            </div>
+          </div>
+
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setPreviewMatchId(null); setPreviewData(null); }}>Annuleren</Button>
-            <Button onClick={() => previewMatchId && sendProposalMutation.mutate(previewMatchId)} disabled={!previewData || sendProposalMutation.isPending || outboundPaused?.email === true}>
+            <Button variant="outline" onClick={() => setPreviewMatchId(null)}>Annuleren</Button>
+            <Button onClick={() => previewMatchId && sendProposalMutation.mutate(previewMatchId)} disabled={!mailBody || !mailTo || sendProposalMutation.isPending || outboundPaused?.email === true}>
               {outboundPaused?.email === true ? 'E-mail gepauzeerd' : sendProposalMutation.isPending ? 'Versturen...' : 'Versturen naar opdrachtgever'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!deleteMatchId} onOpenChange={(open) => { if (!open) setDeleteMatchId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Match verwijderen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              De match wordt definitief verwijderd. De kandidaat verschijnt weer in de shortlist. Dit kan niet ongedaan worden gemaakt.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuleren</AlertDialogCancel>
+            <AlertDialogAction className="bg-red-600 hover:bg-red-700" onClick={() => deleteMatchId && deleteMatchMutation.mutate(deleteMatchId)} disabled={deleteMatchMutation.isPending}>
+              Verwijderen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <MatchOutboundDialog
         open={bulkMessageOpen}
