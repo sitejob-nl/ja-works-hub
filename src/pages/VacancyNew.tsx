@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { useAuth } from '@/contexts/AuthContext';
@@ -28,9 +28,11 @@ const VacancyNew = () => {
   const { user } = useAuth();
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const prefilledCompanyId = searchParams.get('company') ?? '';
 
   const [form, setForm] = useState({
-    company_id: '',
+    company_id: prefilledCompanyId,
     function_id: '' as string | typeof FUNCTION_FREE_TEXT,
     title: '',
     description: '',
@@ -63,6 +65,17 @@ const VacancyNew = () => {
       return data ?? [];
     },
   });
+
+  // Vul de locatie automatisch met het bedrijfsadres wanneer de opdrachtgever vooraf
+  // is gekozen via ?company= (bijv. vanaf de opdrachtgever-pagina).
+  const locationPrefilled = useRef(false);
+  useEffect(() => {
+    if (locationPrefilled.current || !prefilledCompanyId || !companies?.length) return;
+    const company = companies.find((c) => c.id === prefilledCompanyId);
+    if (!company) return;
+    locationPrefilled.current = true;
+    setForm((f) => (f.location ? f : { ...f, location: formatCompanyLocation(company) }));
+  }, [companies, prefilledCompanyId]);
 
   const { data: companyFunctions = [] } = useQuery({
     queryKey: ['company-functions', form.company_id],

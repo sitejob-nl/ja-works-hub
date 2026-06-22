@@ -1,10 +1,15 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { BriefcaseBusiness } from 'lucide-react';
+import { BriefcaseBusiness, Plus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { useOrganizationId } from '@/hooks/useOrganizationId';
+import { useAuth } from '@/contexts/AuthContext';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { formatDate, formatEUR } from '@/lib/format';
+import NewPlacementSheet from '@/components/placement/NewPlacementSheet';
 
 const statusColors: Record<string, string> = {
   actief: 'bg-stat-green/10 text-stat-green border-0',
@@ -13,7 +18,11 @@ const statusColors: Record<string, string> = {
   voortijdig_beeindigd: 'bg-destructive/10 text-destructive border-0',
 };
 
-const PlacementsTab = ({ companyId }: { companyId: string }) => {
+const PlacementsTab = ({ companyId, companyName }: { companyId: string; companyName?: string }) => {
+  const orgId = useOrganizationId();
+  const { user } = useAuth();
+  const [sheetOpen, setSheetOpen] = useState(false);
+
   const { data: placements = [] } = useQuery({
     queryKey: ['company-placements', companyId],
     queryFn: async () => {
@@ -30,7 +39,12 @@ const PlacementsTab = ({ companyId }: { companyId: string }) => {
 
   return (
     <div className="space-y-4">
-      <h3 className="font-medium">Plaatsingen</h3>
+      <div className="flex justify-between items-center">
+        <h3 className="font-medium">Plaatsingen</h3>
+        <Button size="sm" variant="outline" className="gap-1" onClick={() => setSheetOpen(true)}>
+          <Plus className="h-3.5 w-3.5" />Nieuwe plaatsing
+        </Button>
+      </div>
       <div className="bg-card rounded-lg border">
         <Table>
           <TableHeader>
@@ -93,6 +107,15 @@ const PlacementsTab = ({ companyId }: { companyId: string }) => {
           </TableBody>
         </Table>
       </div>
+
+      <NewPlacementSheet
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        orgId={orgId}
+        userId={user?.id}
+        defaultCompanyId={companyId}
+        lockedCompanyName={companyName}
+      />
     </div>
   );
 };
