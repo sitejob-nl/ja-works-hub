@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { useAuth } from '@/contexts/AuthContext';
@@ -7,11 +7,13 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { checkCompliance } from '@/hooks/useComplianceCheck';
 import ComplianceWarningDialog from '@/components/ComplianceWarningDialog';
 import { logAudit } from '@/lib/audit';
-import { generateTimesheetTemplates, getHousingSuggestions, sendPlacementWhatsApp, type HousingSuggestion } from '@/components/placement/PlacementTriggers';
+import { generateTimesheetTemplates, getHousingSuggestions, sendPlacementWhatsApp, assignVehicleOnPlacement, notifyPlacementStakeholders, type HousingSuggestion } from '@/components/placement/PlacementTriggers';
+import { vehicleFreeOn } from '@/lib/vehicle-availability';
 import HousingSuggestionsCard from '@/components/placement/HousingSuggestionsCard';
 import PlacementConfirmationDialog from '@/components/placement/PlacementConfirmationDialog';
 
@@ -42,6 +44,24 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
   const [lastPlacementData, setLastPlacementData] = useState<{ candidateId: string; placementId: string } | null>(null);
   const [showConfirmationDialog, setShowConfirmationDialog] = useState(false);
   const [confirmationPlacementId, setConfirmationPlacementId] = useState<string | null>(null);
+  const [vehicleId, setVehicleId] = useState<string>('');
+  const [startMileage, setStartMileage] = useState<string>('');
+
+  // Beschikbare voertuigen op de startdatum (status 'beschikbaar' + vrij op die datum).
+  const { data: availableVehicles = [] } = useQuery({
+    queryKey: ['available-vehicles', orgId, form.start_date],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('vehicles')
+        .select('id, license_plate, brand, model, current_mileage, status, vehicle_assignments(assigned_date, returned_date)')
+        .eq('organization_id', orgId)
+        .eq('status', 'beschikbaar' as any);
+      if (error) throw error;
+      const day = form.start_date;
+      return (data ?? []).filter((v: any) => !day || vehicleFreeOn(v, day));
+    },
+    enabled: !!orgId && !!match,
+  });
 
   useEffect(() => {
     if (match && vacancy) {
@@ -55,6 +75,8 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
       });
       setConfirmationPlacementId(null);
       setShowConfirmationDialog(false);
+      setVehicleId('');
+      setStartMileage('');
     }
   }, [match, vacancy]);
 
@@ -213,6 +235,30 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
       }
     } catch { /* non-blocking */ }
 
+    // 4b. Voertuig toewijzen (optioneel)
+    if (vehicleId) {
+      try {
+        await assignVehicleOnPlacement({
+          organizationId: orgId, vehicleId, employeeId, candidateId,
+          startDate: form.start_date, startMileage: startMileage ? parseInt(startMileage, 10) : null,
+        });
+        toast.info('Voertuig toegewezen');
+      } catch (e: any) { toast.warning(`Voertuig niet toegewezen: ${e.message}`); }
+    }
+
+    // 4c. Interne opvolg-taken (accountmanager, contract-eigenaar "Maria", administratie)
+    try {
+      await notifyPlacementStakeholders({
+        organizationId: orgId,
+        placementId: placement.id,
+        candidateName: `${candidate?.first_name ?? ''} ${candidate?.last_name ?? ''}`.trim(),
+        companyName: (vacancy.companies as any)?.name ?? '',
+        functionName: form.function_name,
+        startDate: form.start_date,
+        accountManagerId: vacancy.created_by ?? null,
+      });
+    } catch { /* non-blocking */ }
+
     // 5. Show placement confirmation email dialog
     setConfirmationPlacementId(placement.id);
     setShowConfirmationDialog(true);
@@ -274,6 +320,23 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
               <div><Label>Uurtarief medewerker (€) *</Label><Input type="number" step="0.01" value={form.hourly_rate} onChange={(e) => set('hourly_rate', e.target.value)} /></div>
               <div><Label>Factuurtarief klant (€)</Label><Input type="number" step="0.01" value={form.client_hourly_rate} onChange={(e) => set('client_hourly_rate', e.target.value)} placeholder="Verkooptarief aan opdrachtgever" /></div>
               <div><Label>Overwerktarief (€)</Label><Input type="number" step="0.01" value={form.overtime_rate} onChange={(e) => set('overtime_rate', e.target.value)} /></div>
+              {availableVehicles.length > 0 && !placementDone && (
+                <div>
+                  <Label>Voertuig (optioneel)</Label>
+                  <Select value={vehicleId || 'none'} onValueChange={(v) => setVehicleId(v === 'none' ? '' : v)}>
+                    <SelectTrigger><SelectValue placeholder="Geen voertuig" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Geen voertuig</SelectItem>
+                      {availableVehicles.map((v: any) => (
+                        <SelectItem key={v.id} value={v.id}>{v.license_plate}{v.brand ? ` — ${v.brand} ${v.model ?? ''}` : ''}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              {vehicleId && !placementDone && (
+                <div><Label>Begin kilometerstand (optioneel)</Label><Input type="number" value={startMileage} onChange={(e) => setStartMileage(e.target.value)} placeholder="Laat leeg indien onbekend" /></div>
+              )}
               {placementDone && housingSuggestions.length > 0 && lastPlacementData && (
                 <HousingSuggestionsCard
                   suggestions={housingSuggestions}
@@ -318,9 +381,11 @@ const PlacementSheet = ({ match, vacancy, onClose }: Props) => {
             }
           }}
           placementId={confirmationPlacementId}
+          candidateId={match.candidate_id}
           candidateName={`${candidate?.first_name ?? ''} ${candidate?.last_name ?? ''}`.trim()}
           candidateEmail={candidate?.email ?? null}
           candidatePhone={candidate?.phone ?? null}
+          companyId={vacancy.company_id}
           companyName={(vacancy.companies as any)?.name ?? ''}
           functionName={form.function_name}
           startDate={form.start_date}

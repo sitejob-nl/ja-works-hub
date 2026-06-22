@@ -9,12 +9,30 @@ import {
 import { appendAccountSignatureIfMissing } from "./outlook-signature.ts";
 import { isOutboundPaused, logConceptCommunication } from "./outbound-pause.ts";
 
+const MAX_ATTACHMENT_BYTES = 3 * 1024 * 1024 - 1024;
+const MAX_TOTAL_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+
+function base64ByteLength(base64: string) {
+  const len = base64.length;
+  if (len === 0) return 0;
+  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
+  return Math.floor((len * 3) / 4) - padding;
+}
+
+export interface OutlookAttachment {
+  name: string;
+  content_type?: string | null;
+  content_base64: string;
+}
+
 interface SendViaOutlookAccountParams {
   orgId: string;
   to: string | string[];
   cc?: string[];
+  bcc?: string[];
   subject: string;
   htmlBody: string;
+  attachments?: OutlookAttachment[];
   accountId?: string | null;
   candidateId?: string;
   companyId?: string;
@@ -64,7 +82,27 @@ export async function sendViaOutlookAccount(params: SendViaOutlookAccountParams)
   const admin = createAdminClient();
   const toRecipients = recipientList(params.to);
   const ccRecipients = params.cc?.length ? recipientList(params.cc) : [];
+  const bccRecipients = params.bcc?.length ? recipientList(params.bcc) : [];
   if (toRecipients.length === 0) return { success: false, method: "none", error: "Geen ontvanger opgegeven" };
+
+  // Bijlagen (bv. CV-PDF bij een voorstel) als Graph fileAttachments. Limieten == outlook-send-mail.
+  const graphAttachments: Array<Record<string, unknown>> = [];
+  for (const att of params.attachments ?? []) {
+    const contentBase64 = String(att.content_base64 ?? "").replace(/^data:[^,]+,/, "").replace(/\s/g, "");
+    const size = base64ByteLength(contentBase64);
+    if (!att.name || !contentBase64) return { success: false, method: "none", error: "Ongeldige bijlage" };
+    if (size > MAX_ATTACHMENT_BYTES) return { success: false, method: "none", error: "Bijlage te groot (max 3MB)" };
+    graphAttachments.push({
+      "@odata.type": "#microsoft.graph.fileAttachment",
+      name: String(att.name).slice(0, 180),
+      contentType: att.content_type || "application/octet-stream",
+      contentBytes: contentBase64,
+      size,
+    });
+  }
+  if (graphAttachments.reduce((sum, a) => sum + (a.size as number), 0) > MAX_TOTAL_ATTACHMENT_BYTES) {
+    return { success: false, method: "none", error: "Bijlagen samen te groot (max 10MB)" };
+  }
 
   // Kill-switch: bij gepauzeerde uitgaande e-mail niets versturen, wel als concept loggen.
   if (await isOutboundPaused(admin, params.orgId, "email")) {
@@ -117,6 +155,8 @@ export async function sendViaOutlookAccount(params: SendViaOutlookAccountParams)
           body: { contentType: "HTML", content: finalBody },
           toRecipients,
           ...(ccRecipients.length ? { ccRecipients } : {}),
+          ...(bccRecipients.length ? { bccRecipients } : {}),
+          ...(graphAttachments.length ? { attachments: graphAttachments } : {}),
         },
         saveToSentItems: true,
       }),

@@ -48,6 +48,8 @@ Deno.serve(async (req) => {
     const criteriaOptions = normalizeCriteriaOptions(body.criteria_options);
     const limit = Math.min(Math.max(1, Number(body.limit) || 25), 100);
     const excludeIds: string[] = Array.isArray(body.exclude_vacancy_ids) ? body.exclude_vacancy_ids : [];
+    // Vrije-tekst zoek op vacaturetitel/locatie (PostgREST-tekens gestript, zoals rank-candidates).
+    const search = typeof body.search === "string" ? body.search.replace(/[,()%*\\]/g, " ").trim().slice(0, 100) : "";
     if (!candidateId) return json({ error: "candidate_id required" }, 400);
 
     // ── Kandidaat ──
@@ -74,12 +76,13 @@ Deno.serve(async (req) => {
     const PAGE = 1000;
     const vacancies: any[] = [];
     for (let from = 0; ; from += PAGE) {
-      const { data, error } = await userClient
+      let q = userClient
         .from("vacancies")
         .select("id, title, description, location, required_skills, required_certifications, requires_drivers_license, status, company_id, hourly_rate, salary_display, salary_min, salary_max, start_date, start_date_text, end_date, required_count, filled_count, urgency, companies!vacancies_company_id_fkey(name, address_lat, address_lng, visit_address_lat, visit_address_lng)")
         .eq("organization_id", orgId)
-        .eq("status", "open")
-        .range(from, from + PAGE - 1);
+        .eq("status", "open");
+      if (search) q = q.or(`title.ilike.%${search}%,location.ilike.%${search}%`);
+      const { data, error } = await q.range(from, from + PAGE - 1);
       if (error) return json({ error: "Kon vacatures niet laden" }, 500);
       const batch = data ?? [];
       vacancies.push(...batch);

@@ -845,8 +845,13 @@ export type Database = {
           ai_status: string | null
           ai_summary: string | null
           ai_target_functions: string[] | null
+          anonymization_reason: string | null
+          anonymized_at: string | null
+          arrival_date: string | null
           auth_user_id: string | null
           availability_notes: string | null
+          available_from: string | null
+          available_until: string | null
           bank_account_holder: string | null
           birth_country: string | null
           birth_place: string | null
@@ -892,6 +897,9 @@ export type Database = {
           portal_enabled: boolean | null
           portal_language: string | null
           portal_last_login: string | null
+          screened_at: string | null
+          screened_by: string | null
+          screening_data: Json | null
           signup_link_id: string | null
           skills: string[] | null
           source: string | null
@@ -919,8 +927,13 @@ export type Database = {
           ai_status?: string | null
           ai_summary?: string | null
           ai_target_functions?: string[] | null
+          anonymization_reason?: string | null
+          anonymized_at?: string | null
+          arrival_date?: string | null
           auth_user_id?: string | null
           availability_notes?: string | null
+          available_from?: string | null
+          available_until?: string | null
           bank_account_holder?: string | null
           birth_country?: string | null
           birth_place?: string | null
@@ -966,6 +979,9 @@ export type Database = {
           portal_enabled?: boolean | null
           portal_language?: string | null
           portal_last_login?: string | null
+          screened_at?: string | null
+          screened_by?: string | null
+          screening_data?: Json | null
           signup_link_id?: string | null
           skills?: string[] | null
           source?: string | null
@@ -993,8 +1009,13 @@ export type Database = {
           ai_status?: string | null
           ai_summary?: string | null
           ai_target_functions?: string[] | null
+          anonymization_reason?: string | null
+          anonymized_at?: string | null
+          arrival_date?: string | null
           auth_user_id?: string | null
           availability_notes?: string | null
+          available_from?: string | null
+          available_until?: string | null
           bank_account_holder?: string | null
           birth_country?: string | null
           birth_place?: string | null
@@ -1040,6 +1061,9 @@ export type Database = {
           portal_enabled?: boolean | null
           portal_language?: string | null
           portal_last_login?: string | null
+          screened_at?: string | null
+          screened_by?: string | null
+          screening_data?: Json | null
           signup_link_id?: string | null
           skills?: string[] | null
           source?: string | null
@@ -5200,13 +5224,109 @@ export type Database = {
           },
         ]
       }
+      match_rerank_cache: {
+        Row: {
+          candidate_id: string
+          concerns: string[]
+          created_at: string
+          fit_score: number
+          id: string
+          input_hash: string
+          model: string | null
+          organization_id: string
+          reasoning: string
+          strengths: string[]
+          updated_at: string
+          vacancy_id: string
+          verdict: string
+        }
+        Insert: {
+          candidate_id: string
+          concerns?: string[]
+          created_at?: string
+          fit_score: number
+          id?: string
+          input_hash: string
+          model?: string | null
+          organization_id: string
+          reasoning?: string
+          strengths?: string[]
+          updated_at?: string
+          vacancy_id: string
+          verdict: string
+        }
+        Update: {
+          candidate_id?: string
+          concerns?: string[]
+          created_at?: string
+          fit_score?: number
+          id?: string
+          input_hash?: string
+          model?: string | null
+          organization_id?: string
+          reasoning?: string
+          strengths?: string[]
+          updated_at?: string
+          vacancy_id?: string
+          verdict?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "match_rerank_cache_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "match_rerank_cache_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "match_rerank_cache_vacancy_id_fkey"
+            columns: ["vacancy_id"]
+            isOneToOne: false
+            referencedRelation: "vacancies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      match_response_attempts: {
+        Row: {
+          action: string | null
+          created_at: string
+          id: string
+          ip_hash: string | null
+          token: string | null
+        }
+        Insert: {
+          action?: string | null
+          created_at?: string
+          id?: string
+          ip_hash?: string | null
+          token?: string | null
+        }
+        Update: {
+          action?: string | null
+          created_at?: string
+          id?: string
+          ip_hash?: string | null
+          token?: string | null
+        }
+        Relationships: []
+      }
       matches: {
         Row: {
           candidate_id: string
           created_at: string
+          desired_start_date: string | null
           distance_km: number | null
           duration_min: number | null
           id: string
+          interview_date: string | null
           match_breakdown: Json | null
           match_reasoning: string | null
           match_score: number | null
@@ -5225,9 +5345,11 @@ export type Database = {
         Insert: {
           candidate_id: string
           created_at?: string
+          desired_start_date?: string | null
           distance_km?: number | null
           duration_min?: number | null
           id?: string
+          interview_date?: string | null
           match_breakdown?: Json | null
           match_reasoning?: string | null
           match_score?: number | null
@@ -5246,9 +5368,11 @@ export type Database = {
         Update: {
           candidate_id?: string
           created_at?: string
+          desired_start_date?: string | null
           distance_km?: number | null
           duration_min?: number | null
           id?: string
+          interview_date?: string | null
           match_breakdown?: Json | null
           match_reasoning?: string | null
           match_score?: number | null
@@ -7248,6 +7372,30 @@ export type Database = {
           },
         ]
       }
+      registration_attempts: {
+        Row: {
+          created_at: string
+          email: string | null
+          id: string
+          ip_hash: string | null
+          succeeded: boolean
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          id?: string
+          ip_hash?: string | null
+          succeeded?: boolean
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          id?: string
+          ip_hash?: string | null
+          succeeded?: boolean
+        }
+        Relationships: []
+      }
       regulation_acknowledgements: {
         Row: {
           candidate_id: string | null
@@ -7858,6 +8006,64 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      task_attachments: {
+        Row: {
+          created_at: string
+          file_path: string
+          id: string
+          mime_type: string | null
+          name: string
+          organization_id: string
+          size_bytes: number | null
+          task_id: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          file_path: string
+          id?: string
+          mime_type?: string | null
+          name: string
+          organization_id: string
+          size_bytes?: number | null
+          task_id: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          file_path?: string
+          id?: string
+          mime_type?: string | null
+          name?: string
+          organization_id?: string
+          size_bytes?: number | null
+          task_id?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_attachments_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_attachments_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "recruiter_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_attachments_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -9056,6 +9262,10 @@ export type Database = {
         }
         Returns: string
       }
+      anonymize_candidate: {
+        Args: { p_candidate_id: string; p_reason?: string }
+        Returns: undefined
+      }
       check_rate_limit: {
         Args: {
           p_channel: Database["public"]["Enums"]["communication_channel"]
@@ -9075,8 +9285,66 @@ export type Database = {
           ok: boolean
         }[]
       }
+      create_invoice_transaction: {
+        Args: {
+          p_company_id: string
+          p_due_date?: string
+          p_lines?: Json
+          p_org_id: string
+          p_period_end: string
+          p_period_start: string
+          p_reference?: string
+          p_subtotal?: number
+          p_total?: number
+          p_vat_amount?: number
+          p_vat_rate?: number
+        }
+        Returns: {
+          invoice_id: string
+          invoice_number: string
+        }[]
+      }
+      create_placement_transaction: {
+        Args: {
+          p_candidate_id: string
+          p_client_hourly_rate?: number
+          p_company_id: string
+          p_compliance_check_passed?: boolean
+          p_compliance_override?: boolean
+          p_compliance_override_reason?: string
+          p_created_by?: string
+          p_end_date?: string
+          p_function_name: string
+          p_hourly_rate?: number
+          p_match_id: string
+          p_org_id: string
+          p_overtime_rate?: number
+          p_start_date: string
+          p_vacancy_id: string
+        }
+        Returns: {
+          employee_id: string
+          placement_id: string
+        }[]
+      }
       decrypt_sensitive: { Args: { ciphertext: string }; Returns: string }
       encrypt_sensitive: { Args: { plaintext: string }; Returns: string }
+      find_duplicate_candidates: {
+        Args: never
+        Returns: {
+          candidate_id: string
+          created_at: string
+          date_of_birth: string
+          email: string
+          first_name: string
+          group_key: string
+          has_employee: boolean
+          last_name: string
+          match_reason: string
+          phone: string
+          status: string
+        }[]
+      }
       get_campaign_candidates: {
         Args: {
           p_channel: Database["public"]["Enums"]["communication_channel"]
@@ -9108,6 +9376,7 @@ export type Database = {
         }[]
       }
       get_client_portal_company_id: { Args: never; Returns: string }
+      get_cron_secret: { Args: never; Returns: string }
       get_employee_candidate_id: { Args: never; Returns: string }
       get_employee_id: { Args: never; Returns: string }
       get_exact_token: {
@@ -9181,6 +9450,10 @@ export type Database = {
       is_employee_user: { Args: never; Returns: boolean }
       is_internal_user: { Args: never; Returns: boolean }
       is_superadmin: { Args: never; Returns: boolean }
+      merge_candidate_records: {
+        Args: { p_actor?: string; p_loser: string; p_survivor: string }
+        Returns: Json
+      }
       next_invoice_number: { Args: { org_id: string }; Returns: string }
       normalize_domain_host: { Args: { p_host: string }; Returns: string }
       normalize_skill_name: { Args: { value: string }; Returns: string }
@@ -9287,8 +9560,6 @@ export type Database = {
         Args: { new_plan_id: string; org_uuid: string }
         Returns: undefined
       }
-      show_limit: { Args: never; Returns: number }
-      show_trgm: { Args: { "": string }; Returns: string[] }
       sync_unit_status_from_assignments: {
         Args: { p_unit_id: string }
         Returns: undefined
@@ -9379,6 +9650,7 @@ export type Database = {
         | "afgewezen"
         | "geplaatst"
         | "voorgesteld_bij_klant"
+        | "afspraak_op_kantoor"
       payroller_type: "flexpedia" | "brioworks" | "bromida" | "retiva"
       placement_status:
         | "gepland"
@@ -9625,6 +9897,7 @@ export const Constants = {
         "afgewezen",
         "geplaatst",
         "voorgesteld_bij_klant",
+        "afspraak_op_kantoor",
       ],
       payroller_type: ["flexpedia", "brioworks", "bromida", "retiva"],
       placement_status: [

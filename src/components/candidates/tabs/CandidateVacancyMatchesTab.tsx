@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { Briefcase, CalendarDays, Euro, MapPin, Sparkles, UserPlus, Users } from 'lucide-react';
+import { Briefcase, CalendarDays, Euro, MapPin, Search, Sparkles, UserPlus, Users } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -30,6 +31,7 @@ const CandidateVacancyMatchesTab = ({ candidateId, candidate }: { candidateId: s
   const { user } = useAuth();
   const qc = useQueryClient();
   const [minScore, setMinScore] = useState(60);
+  const [vacancySearch, setVacancySearch] = useState('');
   const [includeHardBlocks, setIncludeHardBlocks] = useState(false);
   const [requireSkillSignal, setRequireSkillSignal] = useState(false);
   const [requireKnownDistance, setRequireKnownDistance] = useState(false);
@@ -46,13 +48,14 @@ const CandidateVacancyMatchesTab = ({ candidateId, candidate }: { candidateId: s
   });
 
   const { data: results, isError, isFetching } = useQuery({
-    queryKey: ['rank-vacancies', candidateId, (existing ?? []).length, minScore, includeHardBlocks, requireSkillSignal, requireKnownDistance],
+    queryKey: ['rank-vacancies', candidateId, (existing ?? []).length, minScore, includeHardBlocks, requireSkillSignal, requireKnownDistance, vacancySearch],
     queryFn: async () => {
       const { data, error } = await supabase.functions.invoke('rank-vacancies', {
         body: {
           candidate_id: candidateId,
           exclude_vacancy_ids: existing ?? [],
           include_weak: includeHardBlocks || minScore < 45,
+          search: vacancySearch || undefined,
           criteria_options: {
             minScore,
             requireSkillSignal,
@@ -118,9 +121,12 @@ const CandidateVacancyMatchesTab = ({ candidateId, candidate }: { candidateId: s
       qc.invalidateQueries({ queryKey: ['candidate-existing-match-vacancies', orgId, candidateId] });
       qc.invalidateQueries({ queryKey: ['candidate-matches', orgId, candidateId] });
       qc.invalidateQueries({ queryKey: ['rank-vacancies', candidateId] });
-      toast.success('Voorgesteld op vacature (AI-score wordt berekend)');
+      toast.success('Match gemaakt op vacature (AI-score wordt berekend)');
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => {
+      if (e?.code === '23505') toast.info('Deze match bestaat al');
+      else toast.error(e.message);
+    },
   });
 
   return (
@@ -137,6 +143,11 @@ const CandidateVacancyMatchesTab = ({ candidateId, candidate }: { candidateId: s
           </div>
           <Slider value={[minScore]} min={0} max={90} step={5} onValueChange={(value) => setMinScore(value[0] ?? 0)} className="mt-2" />
         </div>
+      </div>
+
+      <div className="relative max-w-md">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input placeholder="Zoek op vacaturetitel of locatie..." value={vacancySearch} onChange={(e) => setVacancySearch(e.target.value)} className="pl-9" />
       </div>
 
       <div className="flex flex-wrap gap-3 rounded-md border bg-muted/30 px-3 py-2 text-xs">
@@ -209,7 +220,7 @@ const CandidateVacancyMatchesTab = ({ candidateId, candidate }: { candidateId: s
               </div>
               <div className="flex flex-col items-end gap-1 flex-shrink-0">
                 <Button size="sm" variant="outline" onClick={() => proposeMutation.mutate(r)} disabled={proposeMutation.isPending}>
-                  <UserPlus className="h-3 w-3 mr-1" /> Voorstellen
+                  <UserPlus className="h-3 w-3 mr-1" /> Match maken
                 </Button>
                 <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground" onClick={() => setDetail(r)}>
                   Waarom?
