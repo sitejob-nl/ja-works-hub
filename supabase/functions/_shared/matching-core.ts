@@ -331,6 +331,20 @@ function meaningfulTokens(value: string): Set<string> {
   return new Set(value.split(" ").filter((t) => t.length >= 4 && !FUNCTION_STOPWORDS.has(t)));
 }
 
+// Hoog-precieze beroepsconcept-detectie. Sommige functies stranden op losse-token-overlap
+// omdat Nederlandse samenstellingen één token vormen ("vrachtwagenchauffeur" deelt geen token
+// met "chauffeur"/"truck driver"). Voor zulke concepten matchen we op het hele genormaliseerde
+// tekstblok, met woordgrenzen — bewust zó dat heftruck/reachtruck NIET als vrachtwagenchauffeur
+// tellen (klacht Jeroen 17-06: CE-chauffeur moet truck driver matchen, niet "logistiek medewerker").
+function isTruckDriverConcept(text: string): boolean {
+  if (!text) return false;
+  if (/\b(vrachtwagen\w*|trucker|lkw)\b/.test(text)) return true;
+  if (text.includes("internationaal chauffeur") || text.includes("ce chauffeur") || text.includes("code 95")) return true;
+  // "truck driver"/"truck chauffeur" als losse woorden — niet "heftruck driver"/"reachtruckchauffeur".
+  if (/(^|\s)truck\s+(driver|chauffeur)/.test(text)) return true;
+  return false;
+}
+
 function hasFunctionSignal(candidate: MatchCandidate, vacancy: MatchVacancy): boolean {
   // Fuzzy titel-signaal: RAUW normaliseren (zonder alias-mapping), anders ontstaat asymmetrie —
   // een losse skill 'productie' wordt door de alias 'productiewerk', terwijl het titel-token
@@ -353,6 +367,9 @@ function hasFunctionSignal(candidate: MatchCandidate, vacancy: MatchVacancy): bo
     const sigTokens = meaningfulTokens(signal);
     for (const t of sigTokens) if (titleTokens.has(t)) return true;
   }
+  // Beroepsconcept-match (bv. truck driver) die buiten losse-token-overlap valt.
+  const signalBlob = signals.join(" ");
+  if (isTruckDriverConcept(vacancyText) && isTruckDriverConcept(signalBlob)) return true;
   return false;
 }
 
