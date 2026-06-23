@@ -185,17 +185,20 @@ Deno.serve(async (req) => {
 
       for (const candidate of batch) {
         try {
-          if (!candidate.email) {
-            throw new Error("Geen e-mailadres");
-          }
-
-          // Get full candidate data for merge
+          // get_campaign_candidates levert (bewust) geen e-mail; haal het volledige kandidaat-
+          // record op en gebruik DAT e-mailadres. Vroeger checkte de code candidate.email (altijd
+          // leeg) → 100% "Geen e-mailadres". Daarom eerst ophalen, dan pas valideren.
           const { data: fullCandidate } = await serviceClient
             .from("candidates")
             .select("first_name, last_name, email, phone, date_of_birth, nationality, employee_number, employee_status, status, address_street, address_postal, address_city")
             .eq("id", candidate.candidate_id)
             .eq("organization_id", organization_id)
             .single();
+
+          const recipientEmail = (fullCandidate?.email ?? "").trim();
+          if (!recipientEmail) {
+            throw new Error("Geen e-mailadres");
+          }
 
           const merged = mergeTemplate(emailBody, emailSubject, fullCandidate || candidate, orgName);
           // Wrap content-snippets in de huisstijl-frame; volledige HTML-documenten ongemoeid laten.
@@ -205,7 +208,7 @@ Deno.serve(async (req) => {
 
           const sendResult = await sendViaOutlookAccount({
             orgId: organization_id,
-            to: candidate.email,
+            to: recipientEmail,
             subject: merged.subject,
             htmlBody: finalHtml,
             candidateId: candidate.candidate_id,
