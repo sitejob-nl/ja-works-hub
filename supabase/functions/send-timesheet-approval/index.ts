@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendViaOutlookAccount } from "../_shared/outlook-send.ts";
+import { type BrandTheme, escapeHtml, loadBrandTheme, renderBrandedEmail } from "../_shared/email-layout.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,10 +13,6 @@ const json = (body: unknown, status = 200) =>
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
-
-function escapeHtml(str: string): string {
-  return (str || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
 
 function formatDate(iso: string | null | undefined): string {
   if (!iso) return "—";
@@ -43,34 +40,26 @@ function buildEmailHtml(data: {
   totalHours: number;
   totalOvertime: number;
   period: string;
+  theme: BrandTheme;
 }): string {
+  const { theme } = data;
   const rowsHtml = data.rows
     .map((r) => {
       const company = r.placements?.companies?.name ?? "—";
       const h = r.hours ?? 0;
       const ot = r.overtime_hours ?? 0;
       return `<tr>
-        <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;color:#334155;font-size:13px;">${escapeHtml(formatDate(r.work_date))}</td>
-        <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;color:#334155;font-size:13px;">${escapeHtml(company)}</td>
-        <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;color:#334155;font-size:13px;text-align:right;">${formatHours(h)}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;color:${theme.textHex};font-size:13px;">${escapeHtml(formatDate(r.work_date))}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;color:${theme.textHex};font-size:13px;">${escapeHtml(company)}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;color:${theme.textHex};font-size:13px;text-align:right;">${formatHours(h)}</td>
         <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;color:#64748b;font-size:13px;text-align:right;">${ot > 0 ? formatHours(ot) : "—"}</td>
       </tr>`;
     })
     .join("");
 
-  return `<!DOCTYPE html>
-<html lang="nl">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:32px 0;">
-    <tr><td align="center">
-      <table width="640" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-        <tr><td style="background:#1e293b;padding:24px 32px;">
-          <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:600;">Urenbevestiging</h1>
-        </td></tr>
-        <tr><td style="padding:32px;">
-          <p style="margin:0 0 16px;color:#334155;font-size:14px;">Hoi ${escapeHtml(data.candidateName)},</p>
-          <p style="margin:0 0 24px;color:#334155;font-size:14px;">Je uren over <strong>${escapeHtml(data.period)}</strong> zijn goedgekeurd. Hieronder het overzicht:</p>
+  const content = `<h2 style="margin:0 0 16px;color:${theme.navyHex};font-size:18px;">Urenbevestiging</h2>
+          <p style="margin:0 0 16px;color:${theme.textHex};font-size:14px;">Hoi ${escapeHtml(data.candidateName)},</p>
+          <p style="margin:0 0 24px;color:${theme.textHex};font-size:14px;">Je uren over <strong>${escapeHtml(data.period)}</strong> zijn goedgekeurd. Hieronder het overzicht:</p>
 
           <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:6px;border:1px solid #e2e8f0;margin-bottom:16px;">
             <thead>
@@ -83,7 +72,7 @@ function buildEmailHtml(data: {
             </thead>
             <tbody>${rowsHtml}</tbody>
             <tfoot>
-              <tr style="background:#1e293b;">
+              <tr style="background:${theme.navyHex};">
                 <td colspan="2" style="padding:12px;color:#ffffff;font-size:13px;font-weight:600;">Totaal</td>
                 <td style="padding:12px;color:#ffffff;font-size:13px;font-weight:600;text-align:right;">${formatHours(data.totalHours)}</td>
                 <td style="padding:12px;color:#ffffff;font-size:13px;font-weight:600;text-align:right;">${data.totalOvertime > 0 ? formatHours(data.totalOvertime) : "—"}</td>
@@ -91,17 +80,14 @@ function buildEmailHtml(data: {
             </tfoot>
           </table>
 
-          <p style="margin:16px 0 0;color:#334155;font-size:14px;">Heb je vragen over deze uren? Neem dan contact op met je intercedent.</p>
-          <p style="margin:24px 0 0;color:#334155;font-size:14px;">Met vriendelijke groet,<br><strong>JA Werkt</strong></p>
-        </td></tr>
-        <tr><td style="background:#f8fafc;padding:16px 32px;border-top:1px solid #e2e8f0;">
-          <p style="margin:0;color:#94a3b8;font-size:12px;text-align:center;">Dit is een automatisch gegenereerd bericht.</p>
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`;
+          <p style="margin:16px 0 0;color:${theme.textHex};font-size:14px;">Heb je vragen over deze uren? Neem dan contact op met je intercedent.</p>
+          <p style="margin:24px 0 0;color:${theme.textHex};font-size:14px;">Met vriendelijke groet,<br><strong>${escapeHtml(theme.orgName)}</strong></p>`;
+  return renderBrandedEmail({
+    theme,
+    contentHtml: content,
+    preheader: `Je uren over ${data.period} zijn goedgekeurd`,
+    footerNote: "Dit is een automatisch gegenereerd bericht.",
+  });
 }
 
 Deno.serve(async (req) => {
@@ -156,6 +142,9 @@ Deno.serve(async (req) => {
     if (rowErr) return json({ error: rowErr.message }, 500);
     if (!rows || rows.length === 0) return json({ sent: 0, skipped: 0, reason: "Geen goedgekeurde uren gevonden" });
 
+    // Merk-thema (logo + accentkleur) voor de huisstijl-mailframe — org-specifiek, default JA! Werkt.
+    const brandTheme = await loadBrandTheme(serviceClient, orgId);
+
     // Group by candidate
     const byCandidate = new Map<string, TimesheetRow[]>();
     for (const r of rows as any[]) {
@@ -185,7 +174,7 @@ Deno.serve(async (req) => {
       const maxD = formatDate(dates[dates.length - 1]);
       const period = minD === maxD ? minD : `${minD} – ${maxD}`;
 
-      const html = buildEmailHtml({ candidateName: name, rows: items, totalHours, totalOvertime, period });
+      const html = buildEmailHtml({ candidateName: name, rows: items, totalHours, totalOvertime, period, theme: brandTheme });
       const subject = `Urenbevestiging ${period} — ${formatHours(totalHours)} uur goedgekeurd`;
 
       const result = await sendViaOutlookAccount({
@@ -195,6 +184,7 @@ Deno.serve(async (req) => {
         htmlBody: html,
         candidateId,
         sentBy: user.id,
+        senderName: null,
       });
 
       if (result.success) {

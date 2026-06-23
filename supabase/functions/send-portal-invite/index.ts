@@ -1,6 +1,7 @@
 import { requireInternalProfile, createAdminClient } from "../_shared/auth.ts";
 import { sendViaOutlookAccount } from "../_shared/outlook-send.ts";
 import { buildOrganizationPublicUrl } from "../_shared/public-url.ts";
+import { type BrandTheme, brandButton, escapeHtml, renderBrandedEmail, resolveBrandTheme } from "../_shared/email-layout.ts";
 
 import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
 
@@ -10,31 +11,18 @@ const json = (body: unknown, status = 200) =>
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 
-function escapeHtml(str: string): string {
-  return (str || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
-
 function buildInviteEmailHtml(data: {
   firstName: string;
-  orgName: string;
   activationUrl: string;
+  theme: BrandTheme;
 }): string {
-  return `<!DOCTYPE html>
-<html lang="nl">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:32px 0;">
-    <tr><td align="center">
-      <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-        <tr><td style="background:#1e293b;padding:24px 32px;">
-          <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:600;">Welkom bij ${escapeHtml(data.orgName)}</h1>
-        </td></tr>
-        <tr><td style="padding:32px;">
-          <p style="margin:0 0 16px;color:#334155;font-size:14px;">Hoi ${escapeHtml(data.firstName)},</p>
-          <p style="margin:0 0 16px;color:#334155;font-size:14px;">
+  const { theme } = data;
+  const content = `<h2 style="margin:0 0 16px;color:${theme.navyHex};font-size:18px;">Welkom bij ${escapeHtml(theme.orgName)}</h2>
+          <p style="margin:0 0 16px;color:${theme.textHex};font-size:14px;">Hoi ${escapeHtml(data.firstName)},</p>
+          <p style="margin:0 0 16px;color:${theme.textHex};font-size:14px;">
             Je bent succesvol geplaatst en hebt nu toegang tot het medewerkersportaal. Via dit portaal kun je:
           </p>
-          <ul style="margin:0 0 24px;padding:0 0 0 20px;color:#334155;font-size:14px;line-height:1.8;">
+          <ul style="margin:0 0 24px;padding:0 0 0 20px;color:${theme.textHex};font-size:14px;line-height:1.8;">
             <li>Je uren bekijken en bevestigen</li>
             <li>Plaatsingen en werkroosters inzien</li>
             <li>Documenten (ID, contract, loonstroken) ophalen</li>
@@ -43,27 +31,17 @@ function buildInviteEmailHtml(data: {
             <li>Je profiel beheren</li>
           </ul>
 
-          <p style="margin:0 0 16px;color:#334155;font-size:14px;">Activeer je account door een wachtwoord in te stellen:</p>
+          <p style="margin:0 0 4px;color:${theme.textHex};font-size:14px;">Activeer je account door een wachtwoord in te stellen:</p>
+          ${brandButton("Account activeren", data.activationUrl, theme)}
 
-          <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
-            <tr><td align="center" style="padding:12px 0;">
-              <a href="${escapeHtml(data.activationUrl)}" style="display:inline-block;background:#1e293b;color:#ffffff;text-decoration:none;padding:14px 40px;border-radius:6px;font-size:15px;font-weight:600;">
-                Account activeren
-              </a>
-            </td></tr>
-          </table>
-
-          <p style="margin:0 0 8px;color:#64748b;font-size:12px;">Deze link is 7 dagen geldig. Lukt het niet? Stuur een berichtje naar je intercedent.</p>
-          <p style="margin:24px 0 0;color:#334155;font-size:14px;">Met vriendelijke groet,<br><strong>${escapeHtml(data.orgName)}</strong></p>
-        </td></tr>
-        <tr><td style="background:#f8fafc;padding:16px 32px;border-top:1px solid #e2e8f0;">
-          <p style="margin:0;color:#94a3b8;font-size:12px;text-align:center;">Automatische uitnodiging. Reageer niet op deze mail.</p>
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`;
+          <p style="margin:16px 0 0;color:#64748b;font-size:12px;">Deze link is 7 dagen geldig. Lukt het niet? Stuur een berichtje naar je intercedent.</p>
+          <p style="margin:20px 0 0;color:${theme.textHex};font-size:14px;">Met vriendelijke groet,<br><strong>${escapeHtml(theme.orgName)}</strong></p>`;
+  return renderBrandedEmail({
+    theme,
+    contentHtml: content,
+    preheader: "Activeer je medewerkersportaal",
+    footerNote: "Automatische uitnodiging. Reageer niet op deze mail.",
+  });
 }
 
 Deno.serve(async (req) => {
@@ -86,7 +64,7 @@ Deno.serve(async (req) => {
       .select(`
         id, token, email, organization_id, candidate_id, used_at, expires_at,
         candidate:candidate_id(first_name, last_name),
-        organization:organization_id(name, settings)
+        organization:organization_id(name, logo_url, settings)
       `)
       .eq("id", invite_id)
       .maybeSingle();
@@ -103,7 +81,7 @@ Deno.serve(async (req) => {
     const cand: any = invite.candidate;
     const org: any = invite.organization;
     const firstName = cand?.first_name ?? "medewerker";
-    const orgName = org?.name ?? "je organisatie";
+    const brandTheme = resolveBrandTheme(org);
     const activationUrl = await buildOrganizationPublicUrl(
       service,
       invite.organization_id,
@@ -111,7 +89,7 @@ Deno.serve(async (req) => {
     );
 
     const subject = `Welkom — activeer je medewerkersportaal`;
-    const html = buildInviteEmailHtml({ firstName, orgName, activationUrl });
+    const html = buildInviteEmailHtml({ firstName, activationUrl, theme: brandTheme });
 
     const sendResult = await sendViaOutlookAccount({
       orgId: invite.organization_id,
@@ -120,6 +98,7 @@ Deno.serve(async (req) => {
       htmlBody: html,
       candidateId: invite.candidate_id,
       sentBy: auth.userId,
+      senderName: null,
     });
 
     if (!sendResult.success) {
