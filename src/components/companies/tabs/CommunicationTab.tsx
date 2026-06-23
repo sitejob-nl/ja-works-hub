@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
@@ -62,6 +62,21 @@ const CommunicationTab = ({ companyId }: { companyId: string }) => {
       return data;
     },
   });
+
+  // Realtime: nieuwe in-/uitgaande communicatie (bv. binnenkomende WhatsApp/e-mail) verschijnt
+  // live in de tab. Org-gefilterd; de query her-filtert zelf op bedrijf + contactpersonen.
+  useEffect(() => {
+    if (!orgId) return;
+    const channel = supabase
+      .channel(`company-comms-${companyId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'communications', filter: `organization_id=eq.${orgId}` },
+        () => qc.invalidateQueries({ queryKey: ['communications', companyId] }),
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [orgId, companyId, qc]);
 
   const add = useMutation({
     mutationFn: async () => {

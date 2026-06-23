@@ -260,6 +260,24 @@ async function processInboundMessage(
     .maybeSingle();
 
   const candidateId = candidate?.id ?? null;
+
+  // COM1: als het nummer geen kandidaat is, kijk of het een bedrijfscontact is — dan verschijnt
+  // inkomende bedrijfs-WhatsApp ook in de Comm-tab van de opdrachtgever (niet alleen kandidaten).
+  let companyId: string | null = null;
+  let companyContactId: string | null = null;
+  if (!candidateId) {
+    const { data: companyContact } = await supabase
+      .from("company_contacts")
+      .select("id, company_id")
+      .eq("organization_id", orgId)
+      .or(`phone.eq.${from},phone.eq.${fromWithout},phone.eq.${fromLocal}`)
+      .limit(1);
+    if (companyContact?.[0]) {
+      companyContactId = companyContact[0].id;
+      companyId = companyContact[0].company_id;
+    }
+  }
+
   const contactName = contacts?.[0]?.profile?.name ?? from;
 
   // Ja/nee-respons op een bulk match-interesse-bericht → match automatisch naar de juiste fase.
@@ -340,6 +358,8 @@ async function processInboundMessage(
     subject: `WhatsApp van ${contactName} (${from})`,
     body,
     candidate_id: candidateId,
+    company_id: companyId,
+    company_contact_id: companyContactId,
     sent_at: timestamp,
     whatsapp_message_id: messageId,
     whatsapp_status: "received",
