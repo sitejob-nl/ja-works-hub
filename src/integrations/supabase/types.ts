@@ -865,6 +865,7 @@ export type Database = {
           cv_pseudonymized_at: string | null
           cv_raw_text: string | null
           date_of_birth: string | null
+          drivers_license_categories: string[]
           drivers_license_expiry: string | null
           email: string | null
           emergency_contact_name: string | null
@@ -948,6 +949,7 @@ export type Database = {
           cv_pseudonymized_at?: string | null
           cv_raw_text?: string | null
           date_of_birth?: string | null
+          drivers_license_categories?: string[]
           drivers_license_expiry?: string | null
           email?: string | null
           emergency_contact_name?: string | null
@@ -1031,6 +1033,7 @@ export type Database = {
           cv_pseudonymized_at?: string | null
           cv_raw_text?: string | null
           date_of_birth?: string | null
+          drivers_license_categories?: string[]
           drivers_license_expiry?: string | null
           email?: string | null
           emergency_contact_name?: string | null

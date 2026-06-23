@@ -258,6 +258,38 @@ describe('matching-v3 core', () => {
     expect(heftruck.componentScores.functionGroup).toBe(0);
   });
 
+  it('rijbewijsklasse: een C/CE-rijbewijs matcht een chauffeursvacature, óók zonder expliciet doelfunctie-signaal', () => {
+    const vacancy = { title: 'Vrachtwagenchauffeur CE distributie', required_skills: [] as string[] };
+    const ceChauffeur = scoreMatch(
+      { skills: ['magazijnwerk'], drivers_license_categories: ['CE'], availability_notes: 'direct' },
+      vacancy,
+      { km: 5, status: 'estimated' as const },
+    );
+    expect(ceChauffeur.componentScores.functionGroup).toBeGreaterThan(0); // zwaar rijbewijs = chauffeurssignaal
+    expect(ceChauffeur.bonuses).toContain('Rijbewijs CE');
+    expect(ceChauffeur.componentScores.licenseBonus).toBeGreaterThan(0);
+  });
+
+  it('rijbewijsklasse: alleen een B/BE-rijbewijs is GEEN chauffeurssignaal (geen vals-positief)', () => {
+    const vacancy = { title: 'Vrachtwagenchauffeur CE distributie', required_skills: [] as string[] };
+    const bRijbewijs = scoreMatch(
+      { skills: ['magazijnwerk'], drivers_license_categories: ['B', 'BE'] },
+      vacancy,
+    );
+    expect(bRijbewijs.componentScores.functionGroup).toBe(0);
+    expect(bRijbewijs.bonuses.some((b) => b.toLowerCase().includes('rijbewijs'))).toBe(false);
+  });
+
+  it('rijbewijsklasse: een gecombineerde "C/CE"-waarde wordt gesplitst en als zwaar herkend', () => {
+    const vacancy = { title: 'Internationaal chauffeur', required_skills: [] as string[] };
+    const score = scoreMatch(
+      { skills: ['magazijnwerk'], drivers_license_categories: ['B', 'C/CE'] },
+      vacancy,
+    );
+    expect(score.componentScores.functionGroup).toBeGreaterThan(0);
+    expect(score.bonuses).toContain('Rijbewijs C/CE');
+  });
+
   it('gebruikt de volledige vacaturetekst als extra functiematch-context', () => {
     const metOmschrijving = scoreMatch(
       { skills: ['lassen'] },

@@ -31,6 +31,7 @@ export type MatchCandidate = {
   certifications?: string[] | null;
   languages?: string[] | null;
   has_drivers_license?: boolean | null;
+  drivers_license_categories?: string[] | null; // B/BE/C/CE/D/... uit ai_analysis.mobiliteit.rijbewijs_types
   has_dutch_address?: boolean | null;
   available_from?: string | null;
   available_until?: string | null;
@@ -345,6 +346,23 @@ function isTruckDriverConcept(text: string): boolean {
   return false;
 }
 
+// "Zware" rijbewijscategorieën (vrachtwagen/bus): C/C1/CE/C1E en D/D1/DE/D1E. Een B/BE-rijbewijs
+// is GEEN chauffeurssignaal. Categorieën komen als losse strings ("CE") of gecombineerd ("C/CE")
+// uit ai_analysis → splitsen op niet-alfanumeriek.
+const HEAVY_LICENSE_KEYS = new Set(["c", "c1", "ce", "c1e", "d", "d1", "de", "d1e"]);
+
+function licenseTokens(categories?: string[] | null): string[] {
+  return asStrings(categories)
+    .flatMap((c) => c.toLowerCase().split(/[^a-z0-9]+/))
+    .map((t) => t.trim())
+    .filter(Boolean);
+}
+
+function heavyLicenseLabel(candidate: MatchCandidate): string | null {
+  const heavy = [...new Set(licenseTokens(candidate.drivers_license_categories).filter((t) => HEAVY_LICENSE_KEYS.has(t)))];
+  return heavy.length ? heavy.map((t) => t.toUpperCase()).join("/") : null;
+}
+
 function hasFunctionSignal(candidate: MatchCandidate, vacancy: MatchVacancy): boolean {
   // Fuzzy titel-signaal: RAUW normaliseren (zonder alias-mapping), anders ontstaat asymmetrie —
   // een losse skill 'productie' wordt door de alias 'productiewerk', terwijl het titel-token
@@ -369,7 +387,13 @@ function hasFunctionSignal(candidate: MatchCandidate, vacancy: MatchVacancy): bo
   }
   // Beroepsconcept-match (bv. truck driver) die buiten losse-token-overlap valt.
   const signalBlob = signals.join(" ");
-  if (isTruckDriverConcept(vacancyText) && isTruckDriverConcept(signalBlob)) return true;
+  if (isTruckDriverConcept(vacancyText)) {
+    if (isTruckDriverConcept(signalBlob)) return true;
+    // Een C/CE/D-rijbewijs (uit de AI-analyse) is een hard, betrouwbaar signaal dat de kandidaat
+    // daadwerkelijk vrachtwagen/bus mag rijden — telt als functie-match voor een chauffeursvacature,
+    // ook als de doelfuncties/skills dat niet expliciet benoemen (klacht Jeroen 17-06: CE-chauffeur).
+    if (heavyLicenseLabel(candidate)) return true;
+  }
   return false;
 }
 
@@ -447,7 +471,17 @@ export function scoreMatch(
   let bonus = 0;
   if (wantsDutch && speaksDutch(candidate, norm)) { bonus += bonusPoints.language; bonuses.push("Spreekt Nederlands"); }
   if (candidate.has_dutch_address) { bonus += bonusPoints.accommodation; bonuses.push("Eigen accommodatie in NL"); }
-  if (vacancy.requires_drivers_license && candidate.has_drivers_license) { bonus += bonusPoints.license; bonuses.push("Rijbewijs aanwezig"); }
+  // Rijbewijs-pluspunt: óf de vacature vraagt expliciet om een rijbewijs en de kandidaat heeft er één,
+  // óf het is een chauffeursvacature en de kandidaat heeft een zwaar (C/CE/D) rijbewijs. Eén keer tellen.
+  const truckVacancy = isTruckDriverConcept(normalizeAliasKey([vacancy.title, vacancy.description].filter(Boolean).join(" ")));
+  const heavyLabel = heavyLicenseLabel(candidate);
+  let licenseBonus = 0;
+  if (vacancy.requires_drivers_license && candidate.has_drivers_license) {
+    licenseBonus = bonusPoints.license; bonuses.push("Rijbewijs aanwezig");
+  } else if (truckVacancy && heavyLabel) {
+    licenseBonus = bonusPoints.license; bonuses.push(`Rijbewijs ${heavyLabel}`);
+  }
+  bonus += licenseBonus;
 
   // ── Eindscore ─────────────────────────────────────────────────────────────
   // matchPercent (incl. bonus) is voor ranking/weergave. Het LABEL leiden we af van de fit
@@ -502,7 +536,7 @@ export function scoreMatch(
   for (const c of components) componentScores[c.key] = Math.round(c.fraction * c.weight);
   componentScores.languageBonus = wantsDutch && speaksDutch(candidate, norm) ? bonusPoints.language : 0;
   componentScores.accommodationBonus = candidate.has_dutch_address ? bonusPoints.accommodation : 0;
-  componentScores.licenseBonus = vacancy.requires_drivers_license && candidate.has_drivers_license ? bonusPoints.license : 0;
+  componentScores.licenseBonus = licenseBonus;
 
   return {
     matchPercent,
