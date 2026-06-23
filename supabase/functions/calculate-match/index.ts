@@ -121,7 +121,7 @@ Deno.serve(async (req) => {
 
     const { data: candidate, error: candidateError } = await userClient
       .from("candidates")
-      .select("id, organization_id, first_name, last_name, skills, certifications, languages, has_drivers_license, drivers_license_categories, has_dutch_address, address_city, address_lat, address_lng, available_from, available_until, arrival_date, availability_notes, ai_function_group, ai_target_functions, ai_classification, ai_reliability_score")
+      .select("id, organization_id, first_name, last_name, skills, certifications, languages, has_drivers_license, drivers_license_categories, has_dutch_address, address_city, address_lat, address_lng, available_from, available_until, arrival_date, availability_notes, ai_function_group, ai_target_functions, ai_classification, ai_reliability_score, most_recent_role, most_recent_role_year")
       .eq("id", candidate_id)
       .single();
     if (candidateError) throw candidateError;
@@ -156,7 +156,7 @@ Deno.serve(async (req) => {
     };
 
     const distance = await getDistance(serviceClient, candidate, vacancy);
-    const breakdown = scoreMatch(enrichedCandidate, enrichedVacancy, distance, orgAliases, criteriaOptions);
+    const breakdown = scoreMatch(enrichedCandidate, enrichedVacancy, distance, orgAliases, { ...criteriaOptions, nowYear: new Date().getFullYear() });
 
     if (match_id) {
       // Tenant-scope op organization_id: een vreemd/cross-tenant match_id wordt zo een no-op

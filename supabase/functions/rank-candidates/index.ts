@@ -28,7 +28,7 @@ const normalizeCriteriaOptions = (value: unknown): MatchCriteriaOptions => {
 
 const ACTIVE_STATUSES = ["nieuw", "in_behandeling", "beschikbaar", "werkzoekend"];
 const CANDIDATE_FIELDS =
-  "id, first_name, last_name, status, skills, certifications, languages, has_drivers_license, drivers_license_categories, has_dutch_address, compliance_status, address_city, address_lat, address_lng, available_from, available_until, arrival_date, availability_notes, ai_function_group, ai_target_functions, ai_classification, ai_reliability_score";
+  "id, first_name, last_name, status, skills, certifications, languages, has_drivers_license, drivers_license_categories, has_dutch_address, compliance_status, address_city, address_lat, address_lng, available_from, available_until, arrival_date, availability_notes, ai_function_group, ai_target_functions, ai_classification, ai_reliability_score, most_recent_role, most_recent_role_year";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -48,6 +48,7 @@ Deno.serve(async (req) => {
     const vacancyId = body.vacancy_id as string | undefined;
     const includeWeak = body.include_weak === true;
     const criteriaOptions = normalizeCriteriaOptions(body.criteria_options);
+    const scoreOptions = { ...criteriaOptions, nowYear: new Date().getFullYear() };
     // Strip PostgREST-significante tekens (, ( ) % * \) en cap lengte → geen filter-injectie in .or().
     const search = (typeof body.search === "string" ? body.search : "").replace(/[,()%*\\]/g, " ").trim().slice(0, 100);
     const limit = Math.min(Math.max(1, Number(body.limit) || 25), 100);
@@ -117,7 +118,7 @@ Deno.serve(async (req) => {
       .map((c) => {
         const km = haversineKm(c.address_lat, c.address_lng, destLat, destLng);
         const distance = km != null ? { km, status: "estimated" as const } : { status: "missing_coords" as const };
-        const breakdown: MatchBreakdown = scoreMatch(c, vacancyForScore, distance, orgAliases, criteriaOptions);
+        const breakdown: MatchBreakdown = scoreMatch(c, vacancyForScore, distance, orgAliases, scoreOptions);
         return { candidate: c, breakdown };
       })
       .filter((r) => passesShortlist(r.breakdown, includeWeak, criteriaOptions))
