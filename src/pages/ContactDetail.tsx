@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ChevronRight, Pencil, Check, X, ExternalLink, Star } from 'lucide-react';
+import { ChevronRight, Pencil, Check, X, Star } from 'lucide-react';
 import { PhoneLink } from '@/components/ui/contact-links';
 import { MailButton } from '@/components/ui/mail-button';
 import { toast } from 'sonner';
@@ -25,7 +25,6 @@ const ContactDetail = () => {
     function_title: '',
     phone: '',
     email: '',
-    linkedin_url: '',
     notes: '',
   });
 
@@ -54,7 +53,6 @@ const ContactDetail = () => {
       function_title: contact.function_title ?? '',
       phone: contact.phone ?? '',
       email: contact.email ?? '',
-      linkedin_url: contact.linkedin_url ?? '',
       notes: contact.notes ?? '',
     });
     setEditing(true);
@@ -72,7 +70,6 @@ const ContactDetail = () => {
           function_title: form.function_title || null,
           phone: form.phone || null,
           email: form.email || null,
-          linkedin_url: form.linkedin_url || null,
           notes: form.notes || null,
         })
         .eq('id', id!);
@@ -178,10 +175,6 @@ const ContactDetail = () => {
                   <Label>E-mail</Label>
                   <Input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} />
                 </div>
-                <div className="space-y-1.5">
-                  <Label>LinkedIn</Label>
-                  <Input value={form.linkedin_url} onChange={(e) => set('linkedin_url', e.target.value)} placeholder="https://linkedin.com/in/..." />
-                </div>
               </div>
               <div className="space-y-1.5">
                 <Label>Notities</Label>
@@ -218,16 +211,6 @@ const ContactDetail = () => {
                 <div>
                   <dt className="text-xs text-muted-foreground">E-mail</dt>
                   <dd className="mt-0.5 text-sm"><MailButton email={contact.email} asText /></dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-muted-foreground">LinkedIn</dt>
-                  <dd className="mt-0.5 text-sm">
-                    {contact.linkedin_url ? (
-                      <a href={contact.linkedin_url} target="_blank" rel="noopener noreferrer" className="hover:underline inline-flex items-center gap-1">
-                        Profiel <ExternalLink className="h-3 w-3" />
-                      </a>
-                    ) : '—'}
-                  </dd>
                 </div>
                 <div className="sm:col-span-2">
                   <dt className="text-xs text-muted-foreground">Bedrijf</dt>

@@ -23,6 +23,7 @@ import VehicleAssignmentsTab from '@/components/transport/tabs/VehicleAssignment
 import VehicleMileageTab from '@/components/transport/tabs/VehicleMileageTab';
 import VehicleFinesTab from '@/components/transport/tabs/VehicleFinesTab';
 import VehicleDamageTab from '@/components/transport/tabs/VehicleDamageTab';
+import TasksSection from '@/components/shared/TasksSection';
 import { useTabSearchParam } from '@/hooks/useTabSearchParam';
 
 const statusBadge: Record<string, string> = {
@@ -230,6 +231,7 @@ const VehicleDetail = () => {
             <TabsTrigger value="kilometers">Kilometers</TabsTrigger>
             <TabsTrigger value="boetes">Boetes</TabsTrigger>
             <TabsTrigger value="schade">Schade</TabsTrigger>
+            <TabsTrigger value="taken">Taken</TabsTrigger>
           </TabsList>
         </div>
         <TabsContent value="gegevens"><VehicleInfoTab vehicle={vehicle} activeAssignment={activeAssignment} /></TabsContent>
@@ -237,6 +239,7 @@ const VehicleDetail = () => {
         <TabsContent value="kilometers"><VehicleMileageTab vehicle={vehicle} /></TabsContent>
         <TabsContent value="boetes"><VehicleFinesTab vehicle={vehicle} /></TabsContent>
         <TabsContent value="schade"><VehicleDamageTab vehicle={vehicle} /></TabsContent>
+        <TabsContent value="taken"><TasksSection entityId={vehicle.id} entityType="auto" /></TabsContent>
       </Tabs>
     </div>
   );
