@@ -435,9 +435,15 @@ async function refreshToken(admin: AdminClient, credential: MailAccountRow, toke
   if (claimed.error) throw claimed.error;
 
   if (!claimed.data) {
-    await sleep(750);
-    const fresh = await loadToken(admin, credential);
-    return shouldRefresh(fresh) ? fresh : fresh;
+    // Een andere thread vernieuwt het token al. Wacht tot dat klaar is (max ~3s) en geef het
+    // verse token terug zodra het niet meer ververst hoeft. Lukt dat niet op tijd, dan geven we
+    // het laatst geladen token terug als best effort (een volgende Graph-call probeert opnieuw).
+    for (let attempt = 0; attempt < 4; attempt++) {
+      await sleep(750);
+      const fresh = await loadToken(admin, credential);
+      if (!shouldRefresh(fresh)) return fresh;
+    }
+    return await loadToken(admin, credential);
   }
 
   try {
@@ -445,17 +451,29 @@ async function refreshToken(admin: AdminClient, credential: MailAccountRow, toke
     const clientSecret = Deno.env.get("MICROSOFT_CLIENT_SECRET");
     if (!clientId || !clientSecret) throw new OutlookError("outlook_client_secrets_missing", 500, "Microsoft client secrets ontbreken");
 
-    const res = await fetch(TOKEN_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        grant_type: "refresh_token",
-        refresh_token: token.refresh_token,
-        client_id: clientId,
-        client_secret: clientSecret,
-        scope: token.scope || OUTLOOK_SCOPES,
-      }),
-    });
+    // Timeout op de token-refresh: Microsoft mag de edge function niet eindeloos laten hangen.
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+    let res: Response;
+    try {
+      res = await fetch(TOKEN_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        signal: controller.signal,
+        body: new URLSearchParams({
+          grant_type: "refresh_token",
+          refresh_token: token.refresh_token,
+          client_id: clientId,
+          client_secret: clientSecret,
+          scope: token.scope || OUTLOOK_SCOPES,
+        }),
+      });
+    } catch (fetchErr) {
+      const aborted = (fetchErr as Error)?.name === "AbortError";
+      throw new OutlookError("outlook_refresh_failed", aborted ? 504 : 502, aborted ? "Microsoft reageerde niet op tijd (token-refresh time-out)" : "Token-refresh kon Microsoft niet bereiken");
+    } finally {
+      clearTimeout(timeout);
+    }
 
     const body = await res.json().catch(() => ({})) as {
       access_token?: string;

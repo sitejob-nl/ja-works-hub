@@ -70,8 +70,11 @@ export function CampaignWizard({ open, onOpenChange, onComplete, talentpoolId, t
     talentpoolId ? { talentpool_id: talentpoolId } : {}
   );
   const [recipientCount, setRecipientCount] = useState(0);
+  const [channel, setChannel] = useState<"whatsapp" | "email">("whatsapp");
+  const [emailSubject, setEmailSubject] = useState("");
   const [message, setMessage] = useState("");
   const [scheduledAt, setScheduledAt] = useState<Date>();
+  const isEmail = channel === "email";
   const [saving, setSaving] = useState(false);
 
   const mergeFields = [
@@ -89,13 +92,23 @@ export function CampaignWizard({ open, onOpenChange, onComplete, talentpoolId, t
       toast.error("Vul alle verplichte velden in");
       return;
     }
+    if (isEmail && !emailSubject.trim()) {
+      toast.error("Vul een onderwerp in voor de e-mailcampagne");
+      setStep(3);
+      return;
+    }
 
     setSaving(true);
 
     try {
-      // Add opt-out footer if not present
+      // Opt-out footer, kanaal-afhankelijk: WhatsApp/SMS via STOP-antwoord, e-mail via een
+      // afmeldregel. Alleen toevoegen als er nog geen afmeldtekst in staat.
       let finalMessage = message;
-      if (!finalMessage.includes("STOP")) {
+      if (isEmail) {
+        if (!/afmeld|uitschrijv|unsubscribe/i.test(finalMessage)) {
+          finalMessage += "\n\nWil je geen e-mails meer ontvangen? Laat het ons weten, dan schrijven we je uit.";
+        }
+      } else if (!finalMessage.includes("STOP")) {
         finalMessage += "\n\nWil je geen berichten meer ontvangen? Antwoord met STOP.";
       }
 
@@ -104,7 +117,8 @@ export function CampaignWizard({ open, onOpenChange, onComplete, talentpoolId, t
         .insert({
           organization_id: organizationId,
           name,
-          channel: "whatsapp",
+          channel,
+          email_subject: isEmail ? emailSubject.trim() : null,
           segment_filter: segmentFilter,
           message_template: finalMessage,
           status: scheduledAt ? "scheduled" : "draft",
@@ -116,14 +130,16 @@ export function CampaignWizard({ open, onOpenChange, onComplete, talentpoolId, t
       if (error) throw error;
 
       toast.success("Campagne aangemaakt");
-      
+
       // Reset form
       setStep(1);
       setName("");
       setSegmentFilter({});
       setMessage("");
+      setEmailSubject("");
+      setChannel("whatsapp");
       setScheduledAt(undefined);
-      
+
       onOpenChange(false);
       onComplete();
 
@@ -131,7 +147,8 @@ export function CampaignWizard({ open, onOpenChange, onComplete, talentpoolId, t
       if (!scheduledAt) {
         const confirm = window.confirm("Wil je deze campagne nu verzenden?");
         if (confirm && data) {
-          const { error: processError } = await supabase.functions.invoke("bulk-campaign-processor", {
+          const processor = isEmail ? "email-campaign-processor" : "bulk-campaign-processor";
+          const { error: processError } = await supabase.functions.invoke(processor, {
             body: { campaign_id: data.id },
           });
 
@@ -162,6 +179,30 @@ export function CampaignWizard({ open, onOpenChange, onComplete, talentpoolId, t
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Bijv: Zomer vacatures 2024"
               />
+            </div>
+            <div>
+              <Label>Kanaal</Label>
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                <Button
+                  type="button"
+                  variant={channel === "whatsapp" ? "default" : "outline"}
+                  onClick={() => setChannel("whatsapp")}
+                >
+                  WhatsApp
+                </Button>
+                <Button
+                  type="button"
+                  variant={channel === "email" ? "default" : "outline"}
+                  onClick={() => setChannel("email")}
+                >
+                  E-mail
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {isEmail
+                  ? "Verstuurt via de gekoppelde Outlook-afzender, in de huisstijl."
+                  : "Verstuurt via WhatsApp Business."}
+              </p>
             </div>
           </div>
         );
@@ -199,6 +240,17 @@ export function CampaignWizard({ open, onOpenChange, onComplete, talentpoolId, t
         const warnings = getMergeFieldWarnings(message);
         return (
           <div className="space-y-4">
+            {isEmail && (
+              <div>
+                <Label htmlFor="email-subject">Onderwerp *</Label>
+                <Input
+                  id="email-subject"
+                  value={emailSubject}
+                  onChange={(e) => setEmailSubject(e.target.value)}
+                  placeholder="Bijv: Nieuwe kansen bij {{organisatie_naam}}"
+                />
+              </div>
+            )}
             <div>
               <Label>Merge velden</Label>
               <div className="flex flex-wrap gap-2 mt-2">
@@ -246,7 +298,10 @@ export function CampaignWizard({ open, onOpenChange, onComplete, talentpoolId, t
               </div>
             )}
             <div className="p-3 bg-muted rounded text-sm">
-              <strong>Opt-out footer:</strong> Er wordt automatisch een "Antwoord met STOP" footer toegevoegd
+              <strong>Opt-out footer:</strong>{" "}
+              {isEmail
+                ? "Er wordt automatisch een afmeldregel toegevoegd."
+                : 'Er wordt automatisch een "Antwoord met STOP" footer toegevoegd'}
             </div>
           </div>
         );
@@ -295,6 +350,16 @@ export function CampaignWizard({ open, onOpenChange, onComplete, talentpoolId, t
                 <div className="text-sm text-muted-foreground">Campagne naam</div>
                 <div className="font-medium">{name}</div>
               </div>
+              <div>
+                <div className="text-sm text-muted-foreground">Kanaal</div>
+                <div className="font-medium">{isEmail ? "E-mail" : "WhatsApp"}</div>
+              </div>
+              {isEmail && (
+                <div>
+                  <div className="text-sm text-muted-foreground">Onderwerp</div>
+                  <div className="font-medium">{emailSubject || "—"}</div>
+                </div>
+              )}
               <div>
                 <div className="text-sm text-muted-foreground">Ontvangers</div>
                 <div className="font-medium">{recipientCount} kandidaten</div>
