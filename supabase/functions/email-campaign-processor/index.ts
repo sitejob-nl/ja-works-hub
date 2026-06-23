@@ -1,10 +1,15 @@
 import { createAdminClient, requireInternalProfile } from "../_shared/auth.ts";
 import { isOutboundPaused } from "../_shared/outbound-pause.ts";
 import { sendViaOutlookAccount } from "../_shared/outlook-send.ts";
+import { renderBrandedEmail, resolveBrandTheme } from "../_shared/email-layout.ts";
 
 import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Templates uit de editor zijn meestal een content-snippet. Een template die al een volledig
+// HTML-document is (eigen <html>/<body>) laten we ongemoeid — anders dubbele frame.
+const looksLikeFullHtmlDoc = (html: string) => /<\s*(!doctype|html|body)\b/i.test(html);
 
 // Replace {{variabelen}} with candidate data
 function mergeTemplate(html: string, subject: string, candidate: any, orgName: string) {
@@ -115,13 +120,14 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get org name for template variables
+    // Get org branding for template variables + huisstijl-mailframe
     const { data: org } = await serviceClient
       .from("organizations")
-      .select("name")
+      .select("name, logo_url, settings")
       .eq("id", organization_id)
       .single();
     const orgName = org?.name || "";
+    const brandTheme = resolveBrandTheme(org);
 
     // Get candidates
     const { data: candidates, error: candidatesError } = await serviceClient.rpc(
@@ -192,12 +198,16 @@ Deno.serve(async (req) => {
             .single();
 
           const merged = mergeTemplate(emailBody, emailSubject, fullCandidate || candidate, orgName);
+          // Wrap content-snippets in de huisstijl-frame; volledige HTML-documenten ongemoeid laten.
+          const finalHtml = looksLikeFullHtmlDoc(merged.html)
+            ? merged.html
+            : renderBrandedEmail({ theme: brandTheme, contentHtml: merged.html, preheader: merged.subject });
 
           const sendResult = await sendViaOutlookAccount({
             orgId: organization_id,
             to: candidate.email,
             subject: merged.subject,
-            htmlBody: merged.html,
+            htmlBody: finalHtml,
             candidateId: candidate.candidate_id,
             sentBy: auth.userId,
           });
