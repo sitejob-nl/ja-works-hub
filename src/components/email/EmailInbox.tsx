@@ -271,9 +271,17 @@ const EmailInbox = ({ selectedAccount }: { selectedAccount?: string }) => {
         if (communicationError) throw communicationError;
       }
 
+      // Rol-routing: een geconfigureerde eigenaar per triage-categorie (Instellingen →
+      // Mail-triage routering). Niet ingesteld → val terug op de triërende gebruiker.
+      let assignedTo: string | null = user?.id ?? null;
+      const { data: orgRow } = await supabase.from('organizations').select('settings').eq('id', organizationId).single();
+      const routing = (orgRow?.settings as any)?.triage_routing;
+      const routedTo = routing && typeof routing === 'object' ? routing[triage.label] : null;
+      if (typeof routedTo === 'string' && routedTo) assignedTo = routedTo;
+
       const { error: taskError } = await supabase.from('recruiter_tasks' as any).insert({
         organization_id: organizationId,
-        assigned_to: user?.id ?? null,
+        assigned_to: assignedTo,
         title: `${triage.label}: ${selectedMessage.subject || '(Geen onderwerp)'}`,
         description: [
           `Afzender: ${sender || 'onbekend'}`,

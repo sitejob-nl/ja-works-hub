@@ -5,7 +5,7 @@ import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { useAuth } from '@/contexts/AuthContext';
 import { startOfWeek, endOfWeek, addWeeks, subWeeks, addDays, format, getISOWeek, isWithinInterval, parseISO } from 'date-fns';
 import { nl } from 'date-fns/locale';
-import { Calendar, Plus, ChevronLeft, ChevronRight, Users, Briefcase, DollarSign, LayoutList, LayoutGrid, Search, Home } from 'lucide-react';
+import { Calendar, Plus, ChevronLeft, ChevronRight, Users, Briefcase, DollarSign, LayoutList, LayoutGrid, Search, Home, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -101,6 +101,23 @@ const Planning = () => {
     },
   });
 
+  // Contracturen per medewerker (huidige dienstverband) — voor de over-/onderbezetting-check.
+  // Maar weinig medewerkers hebben dit ingevuld; waar het ontbreekt valt de check terug op 40u.
+  const { data: contractHoursByCand } = useQuery({
+    queryKey: ['employment-contract-hours', orgId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('candidate_employment')
+        .select('candidate_id, contract_hours')
+        .eq('is_current', true)
+        .not('contract_hours', 'is', null);
+      if (error) throw error;
+      const map: Record<string, number> = {};
+      for (const r of data ?? []) if (r.candidate_id) map[r.candidate_id] = Number(r.contract_hours);
+      return map;
+    },
+  });
+
   // Open vacancies count
   const { data: openVacancies } = useQuery({
     queryKey: ['open-vacancies-count'],
@@ -144,7 +161,8 @@ const Planning = () => {
     };
   }, [placements, activeEmployees, openVacancies]);
 
-  // Group by employee for calendar view
+  // Group by employee for calendar view + bereken geplande uren (som van cao_hours over de
+  // plaatsingen die deze week dekken) vs contracturen-baseline (of 40u als die ontbreekt).
   const employeeRows = useMemo(() => {
     const map = new Map<string, { employee: any; placements: any[] }>();
     for (const p of filtered) {
@@ -157,12 +175,23 @@ const Planning = () => {
       }
       map.get(empId)!.placements.push(p);
     }
-    return Array.from(map.values()).sort((a, b) => {
-      const an = `${a.employee?.candidates?.first_name} ${a.employee?.candidates?.last_name}`;
-      const bn = `${b.employee?.candidates?.first_name} ${b.employee?.candidates?.last_name}`;
-      return an.localeCompare(bn);
-    });
-  }, [filtered]);
+    return Array.from(map.values())
+      .map(({ employee, placements: empPlacements }) => {
+        const candId = empPlacements[0]?.candidate_id ?? employee?.id ?? null;
+        const plannedHours = empPlacements.reduce((sum: number, p: any) => sum + (Number(p.cao_hours) || 0), 0);
+        const contractHours = candId ? (contractHoursByCand?.[candId] ?? null) : null;
+        const baseline = contractHours ?? 40;
+        const over = plannedHours > 0 && plannedHours > baseline + 0.01;
+        return { employee, placements: empPlacements, candId, plannedHours, contractHours, over };
+      })
+      .sort((a, b) => {
+        const an = `${a.employee?.candidates?.first_name} ${a.employee?.candidates?.last_name}`;
+        const bn = `${b.employee?.candidates?.first_name} ${b.employee?.candidates?.last_name}`;
+        return an.localeCompare(bn);
+      });
+  }, [filtered, contractHoursByCand]);
+
+  const overbookedCount = employeeRows.filter((r) => r.over).length;
 
   // Check if placement covers a day
   const coversDay = (p: any, day: Date) => {
@@ -245,6 +274,16 @@ const Planning = () => {
         </div>
       </div>
 
+      {/* Overbezetting-waarschuwing voor de week */}
+      {overbookedCount > 0 && (
+        <div className="flex items-center gap-2 rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-800">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span>
+            {overbookedCount} medewerker{overbookedCount === 1 ? '' : 's'} overbezet deze week — geplande uren liggen boven de contracturen (of 40u waar contracturen ontbreken).
+          </span>
+        </div>
+      )}
+
       {/* Calendar view */}
       {view === 'calendar' && (
         <Card>
@@ -268,15 +307,28 @@ const Planning = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {employeeRows.map(({ employee, placements: empPlacements }) => {
+                  {employeeRows.map(({ employee, placements: empPlacements, plannedHours, contractHours, over }) => {
                     const cand = employee?.candidates;
                     const empName = `${cand?.first_name ?? ''} ${cand?.last_name ?? ''}`;
+                    const hoursLabel = contractHours != null ? `${plannedHours}/${contractHours} u` : `${plannedHours} u gepland`;
                     return (
                       <TableRow key={employee?.id}>
                         <TableCell className="font-medium sticky left-0 bg-card z-10">
-                          <button className="text-left hover:text-stat-blue transition-colors" onClick={() => navigate(`/kandidaten/${empPlacements[0]?.candidate_id ?? employee?.id}`)}>
+                          <button className="text-left hover:text-stat-blue transition-colors block" onClick={() => navigate(`/kandidaten/${empPlacements[0]?.candidate_id ?? employee?.id}`)}>
                             {empName}
                           </button>
+                          {plannedHours > 0 && (
+                            <Badge
+                              variant="secondary"
+                              className={`mt-1 text-[10px] border-0 gap-0.5 ${over ? 'bg-orange-100 text-orange-700' : 'bg-muted text-muted-foreground'}`}
+                              title={contractHours != null
+                                ? `Geplande uren deze week (${plannedHours}u) versus contracturen (${contractHours}u)`
+                                : `Geplande uren deze week (${plannedHours}u) — geen contracturen ingevuld, drempel 40u`}
+                            >
+                              {over && <AlertTriangle className="h-2.5 w-2.5" />}
+                              {hoursLabel}
+                            </Badge>
+                          )}
                         </TableCell>
                         {days.map((day) => {
                           const active = empPlacements.find((p: any) => coversDay(p, day));

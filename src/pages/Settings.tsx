@@ -31,6 +31,7 @@ import SkillCatalogSettings from '@/components/settings/SkillCatalogSettings';
 import MatchFeedbackReasonsSettings from '@/components/settings/MatchFeedbackReasonsSettings';
 import DomainSettings from '@/components/settings/DomainSettings';
 import OutboundPauseSettings from '@/components/settings/OutboundPauseSettings';
+import TriageRoutingSettings from '@/components/settings/TriageRoutingSettings';
 import { applyBranding, BRANDING_DEFAULTS, type BrandingSettings } from '@/lib/branding';
 import AddressAutocomplete from '@/components/shared/AddressAutocomplete';
 import { resolveAddressCoordinates } from '@/lib/pdok';
@@ -380,6 +381,7 @@ const Settings = () => {
 
             <TabsContent value="algemeen" className="mt-0 space-y-5">
               <OutboundPauseSettings />
+              <TriageRoutingSettings />
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-base">
