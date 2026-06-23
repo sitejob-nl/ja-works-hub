@@ -1,5 +1,5 @@
 import { createAdminClient, requireInternalProfile } from "../_shared/auth.ts";
-import { auditOutlookAction, graphJson, json, loadProviderForAccount, mailboxBasePath } from "../_shared/outlook-accounts.ts";
+import { auditOutlookAction, buildReplyTo, graphJson, json, loadProviderForAccount, mailboxBasePath } from "../_shared/outlook-accounts.ts";
 import { appendAccountSignatureIfMissing, sanitizeEmailHtml } from "../_shared/outlook-signature.ts";
 import { isOutboundPaused, logConceptCommunication } from "../_shared/outbound-pause.ts";
 
@@ -113,6 +113,7 @@ Deno.serve(async (req) => {
       organizationName: org?.name ?? null,
     });
 
+    const replyTo = buildReplyTo(provider.account);
     await graphJson(admin, provider, `${mailboxBasePath(provider.account)}/sendMail`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -123,6 +124,7 @@ Deno.serve(async (req) => {
           toRecipients,
           ccRecipients,
           bccRecipients,
+          ...(replyTo.length ? { replyTo } : {}),
           attachments,
         },
         saveToSentItems: true,

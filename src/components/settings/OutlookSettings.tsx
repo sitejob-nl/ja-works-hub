@@ -43,6 +43,7 @@ type SignatureDraft = {
   enabled: boolean;
   html: string;
   json: string;
+  replyTo: string;
 };
 
 function accountName(account: OutlookAccount) {
@@ -87,7 +88,7 @@ const OutlookSettings = () => {
   const [sharedEmail, setSharedEmail] = useState('');
   const [connectingKey, setConnectingKey] = useState<string | null>(null);
   const [signatureAccount, setSignatureAccount] = useState<OutlookAccount | null>(null);
-  const [signatureDraft, setSignatureDraft] = useState<SignatureDraft>({ enabled: true, html: '', json: '' });
+  const [signatureDraft, setSignatureDraft] = useState<SignatureDraft>({ enabled: true, html: '', json: '', replyTo: '' });
 
   const visible = useOutlookAccounts('any');
   const adminList = useQuery({
@@ -215,6 +216,7 @@ const OutlookSettings = () => {
       enabled: account.signature_enabled !== false,
       html: account.signature_html || defaultSignatureHtml(account),
       json: accountSignatureJson(account),
+      replyTo: account.reply_to_email || '',
     });
   };
 
@@ -227,6 +229,14 @@ const OutlookSettings = () => {
       signature_html: signatureDraft.html,
       signature_json: signatureDraft.json,
     });
+    // Antwoordadres (reply-to) apart opslaan als het gewijzigd is (EM1).
+    if ((signatureDraft.replyTo.trim() || '') !== (signatureAccount.reply_to_email || '')) {
+      await action.mutateAsync({
+        action: 'update_reply_to',
+        account_id: signatureAccount.account_id,
+        reply_to_email: signatureDraft.replyTo.trim() || null,
+      });
+    }
     setSignatureAccount(null);
   };
 
@@ -614,18 +624,33 @@ const OutlookSettings = () => {
     <Dialog open={Boolean(signatureAccount)} onOpenChange={(open) => !open && setSignatureAccount(null)}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle>Handtekening instellen</DialogTitle>
+          <DialogTitle>Afzender-instellingen</DialogTitle>
         </DialogHeader>
         {signatureAccount && (
-          <EmailSignatureEditor
-            key={signatureAccount.account_id}
-            enabled={signatureDraft.enabled}
-            html={signatureDraft.html}
-            json={signatureDraft.json}
-            onEnabledChange={(enabled) => setSignatureDraft((current) => ({ ...current, enabled }))}
-            onChange={(html, json) => setSignatureDraft((current) => ({ ...current, html, json }))}
-            onUploadImage={uploadSignatureImage}
-          />
+          <>
+            <EmailSignatureEditor
+              key={signatureAccount.account_id}
+              enabled={signatureDraft.enabled}
+              html={signatureDraft.html}
+              json={signatureDraft.json}
+              onEnabledChange={(enabled) => setSignatureDraft((current) => ({ ...current, enabled }))}
+              onChange={(html, json) => setSignatureDraft((current) => ({ ...current, html, json }))}
+              onUploadImage={uploadSignatureImage}
+            />
+            <div className="space-y-1.5 border-t pt-4">
+              <Label htmlFor="reply-to-email">Antwoordadres (reply-to)</Label>
+              <Input
+                id="reply-to-email"
+                type="email"
+                placeholder="bijv. info@jawerkt.nl"
+                value={signatureDraft.replyTo}
+                onChange={(e) => setSignatureDraft((current) => ({ ...current, replyTo: e.target.value }))}
+              />
+              <p className="text-xs text-muted-foreground">
+                Antwoorden op mail vanaf dit account komen op dit adres binnen. Leeg laten = antwoorden gaan naar de verzendende mailbox.
+              </p>
+            </div>
+          </>
         )}
         <DialogFooter>
           <Button variant="ghost" onClick={() => setSignatureAccount(null)}>Annuleren</Button>

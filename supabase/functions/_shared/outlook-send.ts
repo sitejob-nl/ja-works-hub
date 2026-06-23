@@ -1,6 +1,7 @@
 import { createAdminClient } from "./auth.ts";
 import {
   auditOutlookAction,
+  buildReplyTo,
   graphJson,
   loadProviderForAccount,
   mailboxBasePath,
@@ -146,6 +147,7 @@ export async function sendViaOutlookAccount(params: SendViaOutlookAccountParams)
         mailboxEmail: from,
       });
 
+    const replyTo = buildReplyTo(provider.account);
     await graphJson(admin, provider, `${mailboxBasePath(provider.account)}/sendMail`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -156,6 +158,7 @@ export async function sendViaOutlookAccount(params: SendViaOutlookAccountParams)
           toRecipients,
           ...(ccRecipients.length ? { ccRecipients } : {}),
           ...(bccRecipients.length ? { bccRecipients } : {}),
+          ...(replyTo.length ? { replyTo } : {}),
           ...(graphAttachments.length ? { attachments: graphAttachments } : {}),
         },
         saveToSentItems: true,
