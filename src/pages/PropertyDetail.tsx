@@ -27,6 +27,7 @@ import InspectionsTab from '@/components/housing/tabs/InspectionsTab';
 import OwnerTab from '@/components/housing/tabs/OwnerTab';
 import CleaningTab from '@/components/housing/tabs/CleaningTab';
 import PropertyContractsTab from '@/components/housing/tabs/PropertyContractsTab';
+import TasksSection from '@/components/shared/TasksSection';
 import { useTabSearchParam } from '@/hooks/useTabSearchParam';
 
 const PropertyDetail = () => {
@@ -169,6 +170,7 @@ const PropertyDetail = () => {
             <TabsTrigger value="sleutels">Sleutels</TabsTrigger>
             <TabsTrigger value="inspecties">Inspecties</TabsTrigger>
             <TabsTrigger value="eigenaar">Eigenaar</TabsTrigger>
+            <TabsTrigger value="taken">Taken</TabsTrigger>
           </TabsList>
         </div>
         <TabsContent value="kamers"><UnitsTab property={property} /></TabsContent>
@@ -179,6 +181,7 @@ const PropertyDetail = () => {
         <TabsContent value="sleutels"><KeysTab propertyId={id!} /></TabsContent>
         <TabsContent value="inspecties"><InspectionsTab propertyId={id!} /></TabsContent>
         <TabsContent value="eigenaar"><OwnerTab property={property} /></TabsContent>
+        <TabsContent value="taken"><TasksSection entityId={id!} entityType="huis" /></TabsContent>
       </Tabs>
 
       <PropertySlideOver open={editOpen} onOpenChange={setEditOpen} property={property} />

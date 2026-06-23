@@ -3,13 +3,15 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { Link, useNavigate } from 'react-router-dom';
-import { UserRound, Search } from 'lucide-react';
+import { UserRound, Search, Plus, Pencil } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { PhoneLink } from '@/components/ui/contact-links';
 import { MailButton } from '@/components/ui/mail-button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
+import ContactDialog from '@/components/contacts/ContactDialog';
 
 const PAGE_SIZE = 20;
 
@@ -18,6 +20,11 @@ const Contacts = () => {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingContact, setEditingContact] = useState<any>(null);
+
+  const openNew = () => { setEditingContact(null); setDialogOpen(true); };
+  const openEdit = (contact: any) => { setEditingContact(contact); setDialogOpen(true); };
 
   const { data, isLoading } = useQuery({
     queryKey: ['all-contacts', orgId, search, page],
@@ -48,9 +55,14 @@ const Contacts = () => {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Contactpersonen</h1>
-        <p className="text-muted-foreground text-sm mt-1">Alle contactpersonen van opdrachtgevers</p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold">Contactpersonen</h1>
+          <p className="text-muted-foreground text-sm mt-1">Alle contactpersonen van opdrachtgevers</p>
+        </div>
+        <Button size="sm" onClick={openNew} className="gap-1.5 shrink-0">
+          <Plus className="h-4 w-4" />Nieuw contact
+        </Button>
       </div>
 
       <div className="flex items-center gap-3">
@@ -70,7 +82,10 @@ const Contacts = () => {
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <UserRound className="h-12 w-12 text-muted-foreground/40 mb-4" />
           <p className="text-lg font-medium text-muted-foreground">Geen contactpersonen gevonden</p>
-          <p className="text-sm text-muted-foreground mt-1">Contactpersonen worden aangemaakt vanuit een opdrachtgever.</p>
+          <p className="text-sm text-muted-foreground mt-1">Maak een nieuw contact aan of voeg er een toe vanuit een opdrachtgever.</p>
+          <Button size="sm" onClick={openNew} className="gap-1.5 mt-4">
+            <Plus className="h-4 w-4" />Nieuw contact
+          </Button>
         </div>
       ) : (
         <>
@@ -84,6 +99,7 @@ const Contacts = () => {
                   <TableHead>Telefoon</TableHead>
                   <TableHead>E-mail</TableHead>
                   <TableHead>Primair</TableHead>
+                  <TableHead className="w-12"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -121,6 +137,17 @@ const Contacts = () => {
                         <Badge variant="default" className="bg-stat-green/10 text-stat-green border-0">Primair</Badge>
                       )}
                     </TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7"
+                        title="Bewerken"
+                        onClick={() => openEdit(c)}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -146,6 +173,12 @@ const Contacts = () => {
           )}
         </>
       )}
+
+      <ContactDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        contact={editingContact ?? undefined}
+      />
     </div>
   );
 };
