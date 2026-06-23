@@ -887,6 +887,8 @@ export type Database = {
           last_name: string
           marital_status: string | null
           middle_name: string | null
+          most_recent_role: string | null
+          most_recent_role_year: number | null
           nationality: string | null
           notes: string | null
           onboarding_completed: boolean | null
@@ -971,6 +973,8 @@ export type Database = {
           last_name: string
           marital_status?: string | null
           middle_name?: string | null
+          most_recent_role?: string | null
+          most_recent_role_year?: number | null
           nationality?: string | null
           notes?: string | null
           onboarding_completed?: boolean | null
@@ -1055,6 +1059,8 @@ export type Database = {
           last_name?: string
           marital_status?: string | null
           middle_name?: string | null
+          most_recent_role?: string | null
+          most_recent_role_year?: number | null
           nationality?: string | null
           notes?: string | null
           onboarding_completed?: boolean | null

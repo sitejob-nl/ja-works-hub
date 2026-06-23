@@ -26,7 +26,7 @@ const normalizeCriteriaOptions = (value: unknown): MatchCriteriaOptions => {
 };
 
 const CANDIDATE_FIELDS =
-  "id, organization_id, first_name, last_name, skills, certifications, languages, has_drivers_license, drivers_license_categories, has_dutch_address, address_lat, address_lng, available_from, available_until, arrival_date, availability_notes, ai_function_group, ai_target_functions, ai_classification, ai_reliability_score";
+  "id, organization_id, first_name, last_name, skills, certifications, languages, has_drivers_license, drivers_license_categories, has_dutch_address, address_lat, address_lng, available_from, available_until, arrival_date, availability_notes, ai_function_group, ai_target_functions, ai_classification, ai_reliability_score, most_recent_role, most_recent_role_year";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -46,6 +46,7 @@ Deno.serve(async (req) => {
     const candidateId = body.candidate_id as string | undefined;
     const includeWeak = body.include_weak === true;
     const criteriaOptions = normalizeCriteriaOptions(body.criteria_options);
+    const scoreOptions = { ...criteriaOptions, nowYear: new Date().getFullYear() };
     const limit = Math.min(Math.max(1, Number(body.limit) || 25), 100);
     const excludeIds: string[] = Array.isArray(body.exclude_vacancy_ids) ? body.exclude_vacancy_ids : [];
     // Vrije-tekst zoek op vacaturetitel/locatie (PostgREST-tekens gestript, zoals rank-candidates).
@@ -123,7 +124,7 @@ Deno.serve(async (req) => {
           required_certifications: v.required_certifications,
           requires_drivers_license: v.requires_drivers_license,
         };
-        const breakdown: MatchBreakdown = scoreMatch(candidate, vacancyForScore, distance, orgAliases, criteriaOptions);
+        const breakdown: MatchBreakdown = scoreMatch(candidate, vacancyForScore, distance, orgAliases, scoreOptions);
         return { vacancy: v, company, breakdown };
       })
       .filter((r) => passesShortlist(r.breakdown, includeWeak, criteriaOptions))

@@ -32,6 +32,8 @@ export type MatchCandidate = {
   languages?: string[] | null;
   has_drivers_license?: boolean | null;
   drivers_license_categories?: string[] | null; // B/BE/C/CE/D/... uit ai_analysis.mobiliteit.rijbewijs_types
+  most_recent_role?: string | null;       // functie van de meest recente werkgever (MG1 GAP2)
+  most_recent_role_year?: number | null;  // eindjaar van die rol (huidig jaar bij lopende rol)
   has_dutch_address?: boolean | null;
   available_from?: string | null;
   available_until?: string | null;
@@ -79,7 +81,11 @@ export type MatchCriteriaOptions = {
   requireKnownDistance?: boolean | null;
   weights?: Partial<typeof FIT_WEIGHTS> | null;
   bonusPoints?: Partial<typeof BONUS_POINTS> | null;
+  nowYear?: number | null; // huidig jaar voor de recency-bonus (MG1 GAP2); afwezig → bonus uit (puur/deterministisch)
 };
+
+// Een meest-recente rol telt als "recent" t.o.v. nu binnen dit venster (jaren).
+export const RECENCY_WINDOW_YEARS = 4;
 
 // Genormaliseerde basis-weging (fit). Som van toepasselijke gewichten wordt naar 100 geschaald.
 export const FIT_WEIGHTS = {
@@ -94,6 +100,7 @@ export const BONUS_POINTS = {
   language: 6,       // spreekt Nederlands
   accommodation: 4,  // eigen (NL) accommodatie
   license: 5,        // rijbewijs aanwezig terwijl de vacature er om vraagt
+  recency: 5,        // meest recente rol is recent én relevant voor de vacature (MG1 GAP2)
 };
 
 const DUTCH_LANGUAGE_KEYS = new Set(["nederlands", "nederland", "dutch", "nl"]);
@@ -397,6 +404,19 @@ function hasFunctionSignal(candidate: MatchCandidate, vacancy: MatchVacancy): bo
   return false;
 }
 
+// Sluit de (meest recente) rol-titel aan op de vacature? Zelfde betekenisvolle-token-/
+// beroepsconcept-logica als hasFunctionSignal, maar specifiek tegen één rol-tekst.
+function roleAlignsWithVacancy(roleText: string | null | undefined, vacancy: MatchVacancy): boolean {
+  if (!roleText) return false;
+  const vacancyText = normalizeAliasKey([vacancy.title, vacancy.description].filter(Boolean).join(" "));
+  if (!vacancyText) return false;
+  const role = normalizeAliasKey(roleText);
+  const titleTokens = meaningfulTokens(vacancyText);
+  for (const t of meaningfulTokens(role)) if (titleTokens.has(t)) return true;
+  if (isTruckDriverConcept(vacancyText) && isTruckDriverConcept(role)) return true;
+  return false;
+}
+
 // AI-betrouwbaarheid → 0-100 (los van de match).
 export function candidateQualityScore(candidate: MatchCandidate): number | null {
   if (typeof candidate.ai_reliability_score !== "number") return null;
@@ -483,6 +503,22 @@ export function scoreMatch(
   }
   bonus += licenseBonus;
 
+  // ── Recency-pluspunt (MG1 GAP2) ─────────────────────────────────────────────
+  // Beloon RECENTE relevante ervaring: de meest recente rol sluit aan op de vacature én
+  // eindigde recent (binnen het venster). Puur additief — oude relevante ervaring wordt nooit
+  // bestraft (kandidaat blijft vindbaar), maar wie er recent in zat drijft bovenaan.
+  // nowYear afwezig (bv. in unit-tests) → bonus uit, zodat de kern deterministisch blijft.
+  let recencyBonus = 0;
+  const nowYear = typeof options?.nowYear === "number" ? options.nowYear : null;
+  const roleYear = candidate.most_recent_role_year;
+  if (nowYear != null && typeof roleYear === "number" && roleYear <= nowYear
+      && (nowYear - roleYear) <= RECENCY_WINDOW_YEARS
+      && roleAlignsWithVacancy(candidate.most_recent_role, vacancy)) {
+    recencyBonus = bonusPoints.recency;
+    bonus += recencyBonus;
+    bonuses.push(`Recent relevante ervaring: ${candidate.most_recent_role} (${roleYear})`);
+  }
+
   // ── Eindscore ─────────────────────────────────────────────────────────────
   // matchPercent (incl. bonus) is voor ranking/weergave. Het LABEL leiden we af van de fit
   // (zonder bonus) zodat een pluspunt het label niet alléén optilt, én 'groen' vereist minstens
@@ -537,6 +573,7 @@ export function scoreMatch(
   componentScores.languageBonus = wantsDutch && speaksDutch(candidate, norm) ? bonusPoints.language : 0;
   componentScores.accommodationBonus = candidate.has_dutch_address ? bonusPoints.accommodation : 0;
   componentScores.licenseBonus = licenseBonus;
+  componentScores.recencyBonus = recencyBonus;
 
   return {
     matchPercent,

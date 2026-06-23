@@ -290,6 +290,32 @@ describe('matching-v3 core', () => {
     expect(score.bonuses).toContain('Rijbewijs C/CE');
   });
 
+  it('recency (GAP2): recente relevante rol krijgt een pluspunt, oude relevante rol niet', () => {
+    const vacancy = { title: 'Lasser MIG/MAG', required_skills: ['lassen'] };
+    const cand = { skills: ['lassen'], most_recent_role: 'Lasser MIG MAG' };
+    const recent = scoreMatch({ ...cand, most_recent_role_year: 2025 }, vacancy, undefined, undefined, { nowYear: 2026 });
+    const oud = scoreMatch({ ...cand, most_recent_role_year: 2008 }, vacancy, undefined, undefined, { nowYear: 2026 });
+    expect(recent.componentScores.recencyBonus).toBeGreaterThan(0);
+    expect(recent.bonuses.some((b) => b.toLowerCase().includes('recent relevante ervaring'))).toBe(true);
+    expect(oud.componentScores.recencyBonus).toBe(0); // oude ervaring: geen bonus, maar ook geen straf
+    expect(recent.matchPercent).toBeGreaterThan(oud.matchPercent);
+  });
+
+  it('recency (GAP2): recente maar NIET-relevante rol krijgt geen pluspunt', () => {
+    const vacancy = { title: 'Lasser MIG/MAG', required_skills: ['lassen'] };
+    const score = scoreMatch(
+      { skills: ['lassen'], most_recent_role: 'Kok', most_recent_role_year: 2025 },
+      vacancy, undefined, undefined, { nowYear: 2026 },
+    );
+    expect(score.componentScores.recencyBonus).toBe(0);
+  });
+
+  it('recency (GAP2): zonder nowYear blijft de score deterministisch (bonus uit)', () => {
+    const vacancy = { title: 'Lasser MIG/MAG', required_skills: ['lassen'] };
+    const cand = { skills: ['lassen'], most_recent_role: 'Lasser MIG MAG', most_recent_role_year: 2025 };
+    expect(scoreMatch(cand, vacancy).componentScores.recencyBonus).toBe(0);
+  });
+
   it('gebruikt de volledige vacaturetekst als extra functiematch-context', () => {
     const metOmschrijving = scoreMatch(
       { skills: ['lassen'] },

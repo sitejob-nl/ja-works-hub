@@ -22,6 +22,15 @@ function formatLanguageLabel(lang: {
   return parts.join(" - ");
 }
 
+// Eindjaar van een (rommelige, meertalige) periode-string: lopende rol → huidig jaar,
+// anders het hoogste 4-cijferige jaartal in de string. Geen dag/maand-parsing (te ambigu).
+function extractRoleEndYear(periode?: string | null): number | null {
+  if (!periode) return null;
+  if (/\b(heden|present|current|today|now|nu)\b/i.test(periode)) return new Date().getFullYear();
+  const years = (periode.match(/(?:19|20)\d{2}/g) ?? []).map(Number);
+  return years.length ? Math.max(...years) : null;
+}
+
 export async function writeCvAnalysisToCandidate(
   admin: SupabaseAdmin,
   candidateId: string,
@@ -45,6 +54,12 @@ export async function writeCvAnalysisToCandidate(
       .map((t) => typeof t === "string" ? t.trim().toUpperCase() : "")
       .filter(Boolean),
   )];
+  // MG1 GAP2: meest recente rol + eindjaar uit werkhistorie[0] (nieuwste eerst). Alleen het
+  // jaartal (robuust), of het huidige jaar bij een lopende rol ("heden"/"present"). De matcher
+  // beloont een RECENTE relevante rol additief (nooit een straf op oude ervaring).
+  const recentRole = analysis?.werkhistorie?.werkgevers?.[0];
+  const mostRecentRole = recentRole?.functie?.trim() || null;
+  const mostRecentRoleYear = extractRoleEndYear(recentRole?.periode);
   // ai_stability heeft een DB-CHECK op {jobhopper, gemiddeld, loyaal}. Het v2-schema
   // levert geen stabiliteits-enum meer, dus leiden we 'm af uit het gemiddelde
   // dienstverband (<12 mnd = jobhopper, 12-24 = gemiddeld, >24 = loyaal). Bij onbekend: null.
@@ -106,6 +121,11 @@ export async function writeCvAnalysisToCandidate(
   // Niet clobberen met een lege lijst (rijbewijs vaak 'onbekend' op het CV): alleen schrijven
   // als de analyse daadwerkelijk klassen vond — net als skills/certs/talen hierboven.
   if (licenseCategories.length > 0) update.drivers_license_categories = licenseCategories;
+  // Alleen schrijven als er werkhistorie is (niet clobberen bij een analyse zonder werkgevers).
+  if (recentRole) {
+    update.most_recent_role = mostRecentRole;
+    update.most_recent_role_year = mostRecentRoleYear;
+  }
 
   const { error } = await admin
     .from("candidates")
