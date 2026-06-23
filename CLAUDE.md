@@ -11,7 +11,7 @@ This file provides guidance to Claude Code when working with the JA Werkt codeba
 **JA Werkt** is a multi-tenant staffing agency (uitzendbureau) SaaS platform built for JA Werkt, a temp agency specializing in labor migrants (arbeidsmigranten) in Brabant/Limburg, Netherlands. The platform consolidates multiple legacy systems (Carerix, Joboti, Umanga, OnTrack, Q8, Buddy) into a single system, while keeping Flexpedia as external payroll engine (loonmotor).
 
 **Key workflows:**
-1. **Candidate → Employee → Placement**: Create candidate → upload docs → hire (in dienst) → onboarding checklist → compliance check → vacancy matching (AI score) → pipeline (voorgesteld → in_gesprek → geaccepteerd) → place with ComplianceWarningDialog → planning
+1. **Candidate → Employee → Placement**: Create candidate → upload docs → hire (in dienst) → onboarding checklist → compliance check → vacancy matching (AI score) → pipeline (nieuwe_match → gescreend → voorgesteld → voorgesteld_bij_klant → afspraak_op_kantoor → geaccepteerd → geplaatst; `in_gesprek` is dormant) → place with ComplianceWarningDialog → planning
 2. **Housing**: Property → rooms (units) → assign resident (3-step wizard) → check-in → costs → keys → check-out. DB trigger blocks overbooking.
 3. **Timesheets**: Enter hours (manual or CSV) → AI validation (edge function, 6 rules) → approval (individual or bulk) → rejected: reopen to concept
 4. **Self-service onboarding**: Intercedent generates link → worker opens `/onboarding/{token}` (public) → fill form + accept docs → token-based auth (7 days, single use)
@@ -41,6 +41,12 @@ Edge functions are Deno/TypeScript and live in `supabase/functions/` (configured
 - **Supabase MCP**: `mcp__claude_ai_Supabase__deploy_edge_function` — you must inline every file *including* `_shared/` deps, mirroring the `functions/<name>/index.ts` + `functions/_shared/*.ts` names returned by `get_edge_function`. Practical only for small bundles; prefer the CLI for large `_shared` trees.
 
 > ⚠️ **Deployed code can diverge from `main`.** `supabase functions deploy` ships whatever working tree you run it from, and functions are often deployed from feature branches/worktrees. Deploying from a checkout that lacks a merged fix silently re-ships the old code — confirm `main` == production, or deploy from the branch that has the fix. `verify_jwt` is driven by `config.toml` (the CLI honors it; the MCP tool defaults to `true`, so pass `verify_jwt: false` for the self-auth functions).
+
+> **CI `quality` gate = `npm run lint` (ESLint) + typecheck + build + vitest.** ESLint lints **both `src/` and `supabase/functions/`**, so an edge-function lint error (e.g. `prefer-const`) fails CI even though `npm run typecheck` skips Deno. The repo allows warnings (only errors fail); run the full `npm run lint` before opening a PR, not just on the files you touched. The dev server uses port 8080 and **falls back to 8081** if it's taken.
+
+> **Edge-function changes need a manual deploy to go live.** Merging to `main` only deploys the **frontend** (Vercel). Edge functions deploy via the Supabase CLI — so a change in `_shared/` (e.g. `matching-core.ts` or `candidate-dossier.ts`) is live only after deploying every function that imports it. Treat merge + `supabase functions deploy` as one step to avoid main-ahead-of-runtime divergence.
+
+> **Local / browser QA accounts live in `.env.local`** (not committed): `DEMO_ORG_*` is an **internal** admin login in the demo org `6dedabe4-…` (with seeded company/vehicle/property for E2E), `QA_SUPERADMIN_*` is a **superadmin-only** account (no org context — can't reach the main app UI). Use `DEMO_ORG_*` for Playwright QA of internal flows; enable the org **outbound kill-switch** (`organizations.settings.outbound_paused = {email,whatsapp:true}`) before exercising flows that send mail/WhatsApp, then revert.
 
 ## Tech Stack
 
@@ -83,7 +89,7 @@ Path alias: `@/*` → `./src/*`
 Standard React layout under `src/` — `components/`, `pages/`, `hooks/`, `lib/`, `contexts/`, `integrations/`, `test/`. `ls src/` to explore. Notes on the parts where behavior isn't obvious from the path:
 
 - **`src/App.tsx`** — single source of truth for the route table.
-- **`src/integrations/supabase/types.ts`** — auto-generated (~6400 lines), never hand-edit. Regenerate via Supabase MCP.
+- **`src/integrations/supabase/types.ts`** — large auto-generated file, never hand-edit. Regenerate via Supabase MCP or the CLI (`npx supabase gen types typescript --project-id noaupcteygfvlyymqtew > src/integrations/supabase/types.ts`).
 - **`src/contexts/`** — one provider per auth zone (`AuthContext`, `PortalContext`, `ClientPortalContext`, `SuperAdminContext`) plus `RecentItemsContext`.
 - **`src/hooks/`**:
   - `useOrganizationId.ts` — **throws** if no org ID; never call outside AuthProvider-wrapped routes.
@@ -141,7 +147,7 @@ Database triggers encrypt sensitive fields (BSN, IBAN, webhook secrets, access t
 
 ## Database Schema
 
-~92 tables, 3 views. Full schema is canonical in [src/integrations/supabase/types.ts](src/integrations/supabase/types.ts) (auto-generated, ~6400 lines, never hand-edit) and discoverable via `mcp__claude_ai_Supabase__list_tables`. Below: only the **non-obvious** parts you can't infer from a list.
+~92 tables, 3 views. Full schema is canonical in [src/integrations/supabase/types.ts](src/integrations/supabase/types.ts) (large auto-generated file, never hand-edit) and discoverable via `mcp__claude_ai_Supabase__list_tables`. Below: only the **non-obvious** parts you can't infer from a list.
 
 ### Domain landscape
 
@@ -178,6 +184,10 @@ Database triggers encrypt sensitive fields (BSN, IBAN, webhook secrets, access t
 - **`notes` is polymorf**: koppelt via `related_entity_type` (waarde `'kandidaat'`, `'bedrijf'`, …) + `related_entity_id` — er is **géén `candidate_id`** op `notes`. `recruiter_tasks` gebruikt hetzelfde `related_entity_type`/`related_entity_id`-patroon.
 - **"In dienst nemen" (`EmployeeNew`)** moet `candidates.employee_status` zetten — de Medewerkers-lijst (`Employees.tsx`) filtert op `employee_status IN ('onboarding','actief','ziek')`, niet op `candidates.status`. Zet ook een `candidate_employment`-rij (`is_current=true`). **`candidate_employment` heeft géén `employee_number`** (dat staat op de legacy `employees`-tabel).
 - **`candidates.cv_has_photo`** (boolean) bestaat wél, maar er is **géén profielfoto-URL-kolom** — publieke profielfoto's worden in de `documents`-bucket-map van de kandidaat bewaard en alleen via `cv_has_photo` geflagd.
+- **`candidates.search_unaccent`** is een `GENERATED ALWAYS … STORED` kolom (lower+unaccent van naam/stad/email/telefoon) met trigram-GIN-index, voor **accent-insensitief zoeken** ("Jose" vindt "José"). Gebruikt de IMMUTABLE wrapper `public.f_unaccent()` (2-arg `unaccent(regdictionary,text)`) — unaccent zelf is STABLE en mag niet direct in een generated column. UI foldt de zoekterm client-side (`Candidates.tsx`).
+- **`matches.interview_date` / `desired_start_date`** worden gezet vanaf de publieke reactiepagina ("op gesprek" + datum/tijd resp. "direct starten" + startdatum). Match-uniciteit zit op een bestaande UNIQUE index `(vacancy_id, candidate_id)` → dubbele match = fout `23505` (UI vangt af). `match_feedback_reasons` (per-org, `applies_to match_status`) voedt de verplichte afwijsreden-dropdown.
+- **`match_response_attempts`** is een service-role-only throttle/log-tabel (gehashte IP) voor het publieke `match-response` endpoint; spiegelt `registration_attempts`. RLS aan + geen policy = deny-all (bewust; advisor-INFO `rls_enabled_no_policy` is verwacht).
+- **`vehicle_status` enum** = `beschikbaar | toegewezen | onderhoud | uit_dienst` (géén `in_gebruik`). Voertuigtoewijzing bij plaatsing zet status op `toegewezen`; een DB-trigger `check_drivers_license()` blokkeert toewijzing zonder geldig rijbewijs.
 
 ### Views
 
@@ -245,6 +255,7 @@ Canonical in [src/integrations/supabase/types.ts](src/integrations/supabase/type
 | `register-organization` | New organization self-registration |
 | `contract-sign` | Digital contract signing (token-based) |
 | `candidate-profile` | Public candidate profile endpoint |
+| `match-response` | Publieke voorstel-reactiepagina (token, geen login): rapport + CV-signed-URL + accepteren (op gesprek/direct starten)/afwijzen. Service-role validatie, single-use, IP-rate-limit via `match_response_attempts` |
 | `portal-activate` | Employee portal account activation |
 | `client-portal-activate` | Client portal (opdrachtgever) account activation |
 | `microsoft-callback` | Microsoft Graph OAuth callback |
@@ -422,7 +433,7 @@ De matching-kern is **deterministisch** in `supabase/functions/_shared/matching-
 
 - **Gewichten (genormaliseerd):** skills 50 / certifications 13 / functionGroup 12 / distance 20 (telt alléén mee als afstand bekend — anders geen straf) / availability 5. **Bonussen** (additief): taal +6, accommodatie +4, rijbewijs +5. Label: `rood` bij hardBlock of <45%, `groen` bij fit ≥72 + minstens één harde match, anders `oranje`.
 - **Functie-groep-guard** (Alam-fix): een als `specialist` geclassificeerde kandidaat (`candidates.ai_classification`) zónder skill-match én zónder functie-titel-signaal wordt gecapt op ≤40 (valt uit de shortlist). Productie-kandidaten worden nooit geraakt; een specialist mét match scoort normaal.
-- **Frontend `VacancyMatchesTab.tsx`:** de match-pipeline is een **lijst** (statusfilter-chips per fase, géén drag-kanban). Klik "Waarom?" → volledige `match_breakdown` (punten per onderdeel). Shortlist "Beste kandidaten" met %-drempelfilter + multi-select + bulk "Voorstellen". **Bulk-acties op matches:** Status wijzigen + **Interesse-bericht (ja/nee)** → WhatsApp-knoppen met reply-id `match_ja:<id>` / `match_nee:<id>`; `whatsapp-webhook → handleMatchInterest()` verschuift de match automatisch (ja → `in_gesprek`, nee → `afgewezen`). Reverse matching op het kandidaatdossier via `CandidateVacancyMatchesTab.tsx`.
+- **Frontend `VacancyMatchesTab.tsx`:** de match-pipeline is een **lijst** (statusfilter-chips per fase, géén drag-kanban). Klik "Waarom?" → volledige `match_breakdown` (punten per onderdeel). Shortlist "Beste kandidaten" met %-drempelfilter + multi-select + bulk "Voorstellen". **Bulk-acties op matches:** Status wijzigen + **Interesse-bericht (ja/nee)** → WhatsApp-knoppen met reply-id `match_ja:<id>` / `match_nee:<id>`; `whatsapp-webhook → handleMatchInterest()` verschuift de match automatisch (ja → `afspraak_op_kantoor`, nee → `afgewezen`). Reverse matching op het kandidaatdossier via `CandidateVacancyMatchesTab.tsx`.
 
 ### Kill-switch uitgaande communicatie (`_shared/outbound-pause.ts`)
 
@@ -440,12 +451,13 @@ Globale org-pauze in `organizations.settings.outbound_paused` (`true` of `{ emai
 
 `enrich-vacancies` (Gemini) vult `required_skills` uit de volledige vacaturetekst, **uitsluitend** uit de actieve org-skillcatalogus (`skills.is_active`). Auto-getriggerd bij `VacancyNew` (alleen als er geen handmatige skills zijn) + handmatige knop **"AI-skills"** op `VacancyDetail`. Cap via `skills_enriched_at`. Curatie van de actieve catalogus → `SkillCatalogSettings.tsx`.
 
-### Match Proposal (voorstelmail met preview)
+### Match Proposal → publieke reactie → plaatsing (tracer bullet, meeting 17-06)
 
-**Edge function:** `send-match-proposal` (dual-mode: `preview=true` returns rendered HTML without sending)
-**Frontend:** `src/components/vacancies/tabs/VacancyMatchesTab.tsx` — preview dialog + send flow
-**Public response page:** `/match/reageer/:token` (alias: `/match-response/:token`) → `src/pages/MatchResponse.tsx` — opdrachtgever kan accepteren/afwijzen via unieke link
-**Security:** `match_proposal_tokens` table; public anon enumeration dropped by SEC-4 hardening migration — public validation flows through service-role edge function
+De verticale slice voorstel → reactie → plaatsing (live):
+- **Voorstelmail (`send-match-proposal`, dual-mode `preview=true`):** bewerkbare editor in `VacancyMatchesTab.tsx` (afzender/ontvanger/CC/BCC, bewerkbare body, CV-bijlage-toggle); **'AI'-label weg + betrouwbaarheidsscore standaard verborgen** richting klant; O365-handtekening via `_shared/outlook-send.ts` (dat nu `bcc` + `attachments` ondersteunt). De CTA-link bevat placeholder `{{RESPONSE_URL}}` die server-side wordt vervangen.
+- **Publieke reactiepagina** `/match/reageer/:token` (alias `/match-response/:token`) → `src/pages/MatchResponse.tsx` + edge fn `match-response`: toont logo/rapport (zonder score/AI-label)/CV-PDF (korte-TTL signed URL, 5 min). Acties: **accepteren gesplitst** in "op gesprek" (+datum/tijd → `afspraak_op_kantoor`) en "direct starten" (+startdatum → `geaccepteerd`), of **afwijzen met verplichte reden** (dropdown uit `match_feedback_reasons`); "vraag stellen" via `mailto:`/`wa.me` naar de accountmanager.
+- **Acceptatie → plaatsing-popup:** bij status `geaccepteerd` opent `PlacementSheet` automatisch (checks: NL-adres/contract via `useComplianceCheck`, voertuig + begin-km, BSN/tel/email); plaatsing via RPC `create_placement_transaction`. Post-triggers (non-blocking) in `PlacementTriggers.ts`: timesheets, housing-suggesties, voertuig-toewijzing, **NT1 opvolg-taken** (accountmanager / contract "Maria" via `organizations.settings.contract_owner_profile_id` → fallback created_by→backoffice→admin / administratie).
+- **Security:** `match_proposal_tokens` (anon-enumeratie gedropt door SEC-4; validatie via service-role edge fn), single-use + 14d-expiry, IP-rate-limit (`match_response_attempts`); CV nooit permanent embedden.
 
 ### Damage reports email
 
