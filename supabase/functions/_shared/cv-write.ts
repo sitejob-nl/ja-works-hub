@@ -38,6 +38,13 @@ export async function writeCvAnalysisToCandidate(
     .filter(Boolean);
   const allSkills = [...new Set([...hardSkills, ...softSkills])].filter(Boolean);
   const targetFunctions = analysis?.doelgroep?.functies ?? [];
+  // Rijbewijsklassen (B/BE/C/CE/D/...) als first-class kolom — genormaliseerd (trim + uppercase),
+  // zodat de matcher een C/CE/D-rijbewijs als chauffeurs-functiesignaal kan meewegen (MG1).
+  const licenseCategories = [...new Set(
+    (analysis?.mobiliteit?.rijbewijs_types ?? [])
+      .map((t) => typeof t === "string" ? t.trim().toUpperCase() : "")
+      .filter(Boolean),
+  )];
   // ai_stability heeft een DB-CHECK op {jobhopper, gemiddeld, loyaal}. Het v2-schema
   // levert geen stabiliteits-enum meer, dus leiden we 'm af uit het gemiddelde
   // dienstverband (<12 mnd = jobhopper, 12-24 = gemiddeld, >24 = loyaal). Bij onbekend: null.
@@ -96,6 +103,9 @@ export async function writeCvAnalysisToCandidate(
   if (allSkills.length > 0) update.skills = allSkills;
   if (certifications.length > 0) update.certifications = certifications;
   if (languages.length > 0) update.languages = languages;
+  // Niet clobberen met een lege lijst (rijbewijs vaak 'onbekend' op het CV): alleen schrijven
+  // als de analyse daadwerkelijk klassen vond — net als skills/certs/talen hierboven.
+  if (licenseCategories.length > 0) update.drivers_license_categories = licenseCategories;
 
   const { error } = await admin
     .from("candidates")
