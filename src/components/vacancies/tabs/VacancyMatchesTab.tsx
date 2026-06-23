@@ -76,6 +76,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
   const [mailHideReport, setMailHideReport] = useState(false);
   const [mailHideReliability, setMailHideReliability] = useState(true);
   const [deleteMatchId, setDeleteMatchId] = useState<string | null>(null);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [scoreFilter, setScoreFilter] = useState<'strong' | '60' | '70' | '80' | 'all'>('strong');
   const [selectedShortlist, setSelectedShortlist] = useState<Set<string>>(new Set());
   // Detail-dialoog: werkt zowel voor een shortlist-kandidaat (met candidate → "Voorstellen")
@@ -377,6 +378,24 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
     onError: (e: any) => { toast.error(e.message); setDeleteMatchId(null); },
   });
 
+  // Bulk verwijderen — voor het snel opschonen van (test)matches. Bewust géén verplichte
+  // reden (afwijzen mét reden is een aparte, behouden flow); geplaatste matches blijven staan.
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async (matchIds: string[]) => {
+      const { error } = await supabase.from('matches').delete().in('id', matchIds);
+      if (error) throw error;
+      return matchIds.length;
+    },
+    onSuccess: (n) => {
+      qc.invalidateQueries({ queryKey: ['vacancy-matches', vacancy.id] });
+      qc.invalidateQueries({ queryKey: ['available-candidates-for-vacancy'] });
+      setSelectedMatches(new Set());
+      setBulkDeleteOpen(false);
+      toast.success(`${n} match${n === 1 ? '' : 'es'} verwijderd`);
+    },
+    onError: (e: any) => { toast.error(e.message); setBulkDeleteOpen(false); },
+  });
+
   // Counts per status (voor de filterchips).
   const counts: Record<string, number> = { all: (matches ?? []).length };
   for (const col of COLUMNS) counts[col.key] = 0;
@@ -384,6 +403,8 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
 
   const visibleMatches = (matches ?? []).filter((m: any) => statusFilter === 'all' || m.status === statusFilter);
   const selectedMatchRows = visibleMatches.filter((m: any) => selectedMatches.has(m.id));
+  // Geplaatste matches verwijderen we nooit (hangt aan een plaatsing) — net als de per-rij-knop.
+  const deletableSelected = selectedMatchRows.filter((m: any) => m.status !== 'geplaatst');
   const allMatchesSelected = visibleMatches.length > 0 && visibleMatches.every((m: any) => selectedMatches.has(m.id));
   const toggleMatch = (id: string) => setSelectedMatches((s) => {
     const next = new Set(s);
@@ -526,7 +547,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
           </label>
           {selectedMatches.size > 0 && (
             <div className="flex items-center gap-2 flex-wrap">
-              <Button size="sm" variant="ghost" onClick={() => setSelectedMatches(new Set())}>Wissen</Button>
+              <Button size="sm" variant="ghost" onClick={() => setSelectedMatches(new Set())}>Selectie wissen</Button>
               <Select value="" onValueChange={(v) => changeStatus([...selectedMatches], v)}>
                 <SelectTrigger className="h-8 w-auto gap-1 text-xs"><SelectValue placeholder="Status wijzigen…" /></SelectTrigger>
                 <SelectContent>
@@ -536,6 +557,11 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
               <Button size="sm" onClick={openBulkMessage} className="gap-1.5">
                 <MessageSquare className="h-3.5 w-3.5" /> Interesse-bericht ({selectedMatches.size})
               </Button>
+              {deletableSelected.length > 0 && (
+                <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-red-600" onClick={() => setBulkDeleteOpen(true)}>
+                  <Trash2 className="h-3.5 w-3.5" /> Verwijderen ({deletableSelected.length})
+                </Button>
+              )}
             </div>
           )}
         </div>
@@ -669,7 +695,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
             </label>
             {selectedShortlist.size > 0 && (
               <div className="flex items-center gap-2">
-                <Button size="sm" variant="ghost" onClick={() => setSelectedShortlist(new Set())}>Wissen</Button>
+                <Button size="sm" variant="ghost" onClick={() => setSelectedShortlist(new Set())}>Selectie wissen</Button>
                 <Button size="sm" onClick={() => bulkProposeMutation.mutate(selectedCandidates)} disabled={bulkProposeMutation.isPending} className="gap-1.5">
                   <UserPlus className="h-3.5 w-3.5" /> {bulkProposeMutation.isPending ? 'Match maken…' : `Match maken (${selectedShortlist.size})`}
                 </Button>
@@ -880,6 +906,23 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
           <AlertDialogFooter>
             <AlertDialogCancel>Annuleren</AlertDialogCancel>
             <AlertDialogAction className="bg-red-600 hover:bg-red-700" onClick={() => deleteMatchId && deleteMatchMutation.mutate(deleteMatchId)} disabled={deleteMatchMutation.isPending}>
+              Verwijderen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={bulkDeleteOpen} onOpenChange={(open) => { if (!open) setBulkDeleteOpen(false); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{deletableSelected.length} match{deletableSelected.length === 1 ? '' : 'es'} verwijderen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              De geselecteerde matches worden definitief verwijderd; de kandidaten verschijnen weer in de shortlist. Geplaatste matches blijven staan. Dit kan niet ongedaan worden gemaakt.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuleren</AlertDialogCancel>
+            <AlertDialogAction className="bg-red-600 hover:bg-red-700" onClick={() => bulkDeleteMutation.mutate(deletableSelected.map((m: any) => m.id))} disabled={bulkDeleteMutation.isPending}>
               Verwijderen
             </AlertDialogAction>
           </AlertDialogFooter>

@@ -1,13 +1,17 @@
+import { useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { ChevronRight, Edit, UserSearch, Sparkles } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { ChevronRight, Edit, UserSearch, Sparkles, MoreHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
+import { logAudit } from '@/lib/audit';
 import VacancyDetailsTab from '@/components/vacancies/tabs/VacancyDetailsTab';
 import VacancyMatchesTab from '@/components/vacancies/tabs/VacancyMatchesTab';
 import VacancyPlacementsTab from '@/components/vacancies/tabs/VacancyPlacementsTab';
@@ -35,7 +39,10 @@ const VacancyDetail = () => {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const { profile } = useAuth();
+  const isAdmin = profile?.role === 'admin';
   const [activeTab, setActiveTab] = useTabSearchParam('details');
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const { data: vacancy, isLoading } = useQuery({
     queryKey: ['vacancy', id],
@@ -98,6 +105,32 @@ const VacancyDetail = () => {
       toast.success(skills.length ? `AI stelde ${skills.length} vaardigheid${skills.length === 1 ? '' : 'heden'} voor` : 'Geen extra vaardigheden gevonden');
     },
     onError: (e: any) => toast.error(e.message),
+  });
+
+  // Definitief verwijderen (alleen admin; RLS dwingt dit ook af). Matches gaan mee (CASCADE);
+  // een vacature met plaatsing blokkeert via een FK (23503) en wordt netjes afgevangen.
+  const deleteVacancy = useMutation({
+    mutationFn: async () => {
+      // .select() zodat we zien of er écht een rij verdween: RLS blokkeert een delete zonder
+      // fout (0 rijen) — dan is de gebruiker geen admin (of de policy mist nog).
+      const { data, error } = await supabase.from('vacancies').delete().eq('id', id!).select('id');
+      if (error) throw error;
+      if (!data || data.length === 0) throw new Error('Verwijderen niet toegestaan — alleen een beheerder kan vacatures verwijderen.');
+      logAudit({ action: 'delete', tableName: 'vacancies', recordId: id!, oldValues: vacancy, reason: 'permanent_deletion' });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['vacancies'] });
+      toast.success('Vacature verwijderd');
+      navigate('/vacatures');
+    },
+    onError: (e: any) => {
+      setDeleteOpen(false);
+      if (e?.code === '23503') {
+        toast.error('Kan niet verwijderen: er zijn nog gekoppelde plaatsingen. Verwijder of ontkoppel die eerst.');
+      } else {
+        toast.error(e.message);
+      }
+    },
   });
 
   if (isLoading || !vacancy) return <div className="p-8 text-muted-foreground">Laden...</div>;
@@ -182,8 +215,38 @@ const VacancyDetail = () => {
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
+          {isAdmin && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="px-2" aria-label="Meer acties"><MoreHorizontal className="h-4 w-4" /></Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem className="text-red-600 focus:text-red-600" onClick={() => setDeleteOpen(true)}>
+                  Verwijderen
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       </div>
+
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Vacature definitief verwijderen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              <span className="font-medium">{vacancy.title}</span> wordt permanent verwijderd, inclusief bijbehorende matches. Dit kan niet ongedaan worden gemaakt.
+              Lukt het niet, dan zijn er nog gekoppelde plaatsingen — sluit de vacature dan in plaats daarvan.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuleren</AlertDialogCancel>
+            <AlertDialogAction className="bg-red-600 hover:bg-red-700" onClick={() => deleteVacancy.mutate()} disabled={deleteVacancy.isPending}>
+              Verwijderen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <VacancyReadinessStrip
         vacancy={vacancy}
