@@ -384,16 +384,6 @@ const CandidateProfile = () => {
         <div className="bg-card border rounded-xl p-6 space-y-4">
           <h2 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">Werk & beschikbaarheid</h2>
 
-          <div className="space-y-1.5">
-            <Label>Vaardigheden</Label>
-            <TagInput value={form.skills} onChange={(v) => set('skills', v)} placeholder="bijv. heftruckcertificaat, lassen, timmerman" />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label>Certificaten</Label>
-            <TagInput value={form.certifications} onChange={(v) => set('certifications', v)} placeholder="bijv. VCA, BHV" />
-          </div>
-
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <Checkbox
@@ -411,7 +401,7 @@ const CandidateProfile = () => {
             )}
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label>Beschikbaar vanaf</Label>
               <Input type="date" value={form.available_from} onChange={(e) => set('available_from', e.target.value)} className="h-12 text-base" />
@@ -419,10 +409,6 @@ const CandidateProfile = () => {
             <div className="space-y-1.5">
               <Label>Beschikbaar tot</Label>
               <Input type="date" value={form.available_until} onChange={(e) => set('available_until', e.target.value)} className="h-12 text-base" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Aankomst/check-in</Label>
-              <Input type="date" value={form.arrival_date} onChange={(e) => set('arrival_date', e.target.value)} className="h-12 text-base" />
             </div>
           </div>
 

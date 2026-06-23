@@ -76,6 +76,7 @@ const sourceLabel: Record<string, string> = {
   linkedin: 'LinkedIn',
   facebook: 'Facebook',
   carerix: 'Carerix',
+  recruitment_partner: 'Recruitmentpartner',
 };
 
 const decisionTitle: Record<string, string> = {

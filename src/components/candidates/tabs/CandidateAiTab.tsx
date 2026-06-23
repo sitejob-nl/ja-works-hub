@@ -143,6 +143,17 @@ const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => 
           .from('candidates')
           .update({ cv_file_url: urlData.publicUrl })
           .eq('id', candidate.id);
+        // Leg het CV ook vast als document-rij zodat het op het Documenten-tabblad verschijnt (DOC1).
+        const { error: docError } = await supabase.from('documents').insert({
+          candidate_id: candidate.id,
+          organization_id: candidate.organization_id,
+          type: 'cv',
+          name: file.name,
+          file_path: filePath,
+          source: 'cv_analyse',
+        });
+        if (docError) console.warn('Document-rij voor CV aanmaken mislukt (niet-kritiek):', docError.message);
+        else qc.invalidateQueries({ queryKey: ['documents', candidate.id] });
       }
 
       const text = await extractCvTextFromFile(file);
