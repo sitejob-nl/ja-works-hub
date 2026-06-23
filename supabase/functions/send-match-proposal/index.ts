@@ -3,6 +3,7 @@ import { createAdminClient, requireInternalProfile } from "../_shared/auth.ts";
 import { buildOrganizationPublicUrl } from "../_shared/public-url.ts";
 import { sanitizeEmailHtml } from "../_shared/outlook-signature.ts";
 import { storagePathFromCvValue } from "../_shared/candidate-dossier.ts";
+import { type BrandTheme, renderBrandedEmail, resolveBrandTheme } from "../_shared/email-layout.ts";
 
 // 14 dagen — gelijk aan de DB-default op match_proposal_tokens.expires_at; expliciet
 // gezet zodat de TTL in code zichtbaar is.
@@ -41,15 +42,14 @@ function renderList(items: unknown, color = "#1e3a5f"): string {
 
 function renderReportRow(label: string, content: string): string {
   if (!content) return "";
-  return `<tr><td style="padding:14px 20px;border-top:1px solid #dbeafe;">
-    <span style="color:#1d4ed8;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">${escapeHtml(label)}</span><br>
+  return `<tr><td style="padding:14px 20px;border-top:1px solid #e2e8f0;">
+    <span style="color:#0C4D78;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">${escapeHtml(label)}</span><br>
     ${content}
   </td></tr>`;
 }
 
 function buildProposalEmailHtml(data: {
-  orgName: string;
-  orgLogoUrl: string | null;
+  theme: BrandTheme;
   orgEmail: string | null;
   orgPhone: string | null;
   contactName: string;
@@ -69,17 +69,18 @@ function buildProposalEmailHtml(data: {
   hideReport?: boolean;
   hideReliability?: boolean;
 }): string {
+  const { theme } = data;
   const profileBadges = [
-    data.functionGroup ? `<span style="display:inline-block;margin:8px 6px 0 0;padding:4px 8px;border-radius:999px;background:#eff6ff;color:#1d4ed8;font-size:12px;">${escapeHtml(data.functionGroup)}</span>` : "",
+    data.functionGroup ? `<span style="display:inline-block;margin:8px 6px 0 0;padding:4px 8px;border-radius:999px;background:#f1f5f9;color:${theme.navyHex};font-size:12px;">${escapeHtml(data.functionGroup)}</span>` : "",
     data.classification ? `<span style="display:inline-block;margin:8px 6px 0 0;padding:4px 8px;border-radius:999px;background:#f8fafc;color:#334155;font-size:12px;">${escapeHtml(data.classification)}</span>` : "",
     (!data.hideReliability && data.reliabilityScore != null) ? `<span style="display:inline-block;margin:8px 6px 0 0;padding:4px 8px;border-radius:999px;background:#ecfdf5;color:#047857;font-size:12px;">Betrouwbaarheid ${Math.round(data.reliabilityScore)}%</span>` : "",
   ].join("");
   const reportRows = data.hideReport ? "" : [
-    renderReportRow("Samenvatting", data.summary ? `<span style="color:#1e3a5f;font-size:14px;line-height:1.5;">${renderText(data.summary)}</span>` : ""),
+    renderReportRow("Samenvatting", data.summary ? `<span style="color:${theme.navyHex};font-size:14px;line-height:1.5;">${renderText(data.summary)}</span>` : ""),
     renderReportRow("Profiel", profileBadges),
     renderReportRow("Sterke signalen", renderList(data.positiveSignals, "#064e3b")),
     renderReportRow("Aandachtspunten", renderList(data.riskFactors, "#92400e")),
-    renderReportRow("Passende functies", renderList(data.targetFunctions, "#1e3a5f")),
+    renderReportRow("Passende functies", renderList(data.targetFunctions, theme.navyHex)),
     renderReportRow("Vragen voor vervolggesprek", renderList(data.interviewQuestions, "#334155")),
     renderReportRow("Matchnotitie", data.matchReasoning ? `<span style="color:#475569;font-size:13px;line-height:1.5;">${renderText(data.matchReasoning)}</span>` : ""),
   ].join("");
@@ -89,72 +90,54 @@ function buildProposalEmailHtml(data: {
     .map((value) => escapeHtml(String(value)))
     .join(" · ");
 
-  return `<!DOCTYPE html>
-<html lang="nl">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:32px 0;">
-    <tr><td align="center">
-      <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-        <tr><td style="background:#0f172a;padding:24px 32px;">
-          ${data.orgLogoUrl ? `<img src="${escapeHtml(data.orgLogoUrl)}" alt="${escapeHtml(data.orgName)}" style="max-height:46px;max-width:180px;display:block;">` : `<h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:600;">${escapeHtml(data.orgName)}</h1>`}
-        </td></tr>
-        <tr><td style="padding:32px;">
-          <h2 style="margin:0 0 8px;color:#1e293b;font-size:18px;">Kandidaatvoorstel</h2>
+  const content = `<h2 style="margin:0 0 8px;color:${theme.navyHex};font-size:18px;">Kandidaatvoorstel</h2>
           <p style="margin:0 0 24px;color:#64748b;font-size:14px;">Wij hebben een geschikte kandidaat gevonden voor ${escapeHtml(data.companyName)}: ${escapeHtml(data.vacancyTitle)}</p>
 
-          <p style="margin:0 0 16px;color:#334155;font-size:14px;">Beste ${escapeHtml(data.contactName)},</p>
-          <p style="margin:0 0 24px;color:#334155;font-size:14px;">
+          <p style="margin:0 0 16px;color:${theme.textHex};font-size:14px;">Beste ${escapeHtml(data.contactName)},</p>
+          <p style="margin:0 0 24px;color:${theme.textHex};font-size:14px;">
             Graag stellen wij de volgende kandidaat aan u voor:
           </p>
 
-          <table width="100%" cellpadding="0" cellspacing="0" style="background:#eff6ff;border-radius:6px;border:1px solid #bfdbfe;margin-bottom:24px;">
-            <tr><td style="padding:16px 20px;border-bottom:1px solid #bfdbfe;">
-              <span style="color:#1d4ed8;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">Kandidaat</span><br>
-              <strong style="color:#1e3a5f;font-size:15px;">${escapeHtml(data.candidateName)}</strong>
+          <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:6px;border:1px solid #e2e8f0;margin-bottom:24px;">
+            <tr><td style="padding:16px 20px;border-bottom:1px solid #e2e8f0;">
+              <span style="color:${theme.navyHex};font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">Kandidaat</span><br>
+              <strong style="color:${theme.navyHex};font-size:15px;">${escapeHtml(data.candidateName)}</strong>
             </td></tr>
-            <tr><td style="padding:16px 20px;border-bottom:1px solid #bfdbfe;">
-              <span style="color:#1d4ed8;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">Functie</span><br>
-              <strong style="color:#1e3a5f;font-size:15px;">${escapeHtml(data.vacancyTitle)}</strong>
+            <tr><td style="padding:16px 20px;border-bottom:1px solid #e2e8f0;">
+              <span style="color:${theme.navyHex};font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">Functie</span><br>
+              <strong style="color:${theme.navyHex};font-size:15px;">${escapeHtml(data.vacancyTitle)}</strong>
             </td></tr>
             <tr><td style="padding:16px 20px;">
-              <span style="color:#1d4ed8;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">Opdrachtgever</span><br>
-              <strong style="color:#1e3a5f;font-size:15px;">${escapeHtml(data.companyName)}</strong>
+              <span style="color:${theme.navyHex};font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">Opdrachtgever</span><br>
+              <strong style="color:${theme.navyHex};font-size:15px;">${escapeHtml(data.companyName)}</strong>
             </td></tr>
           </table>
 
           ${hasReport ? `<table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:6px;border:1px solid #e2e8f0;margin-bottom:24px;">
             <tr><td style="padding:16px 20px;">
-              <strong style="color:#0f172a;font-size:15px;">Kandidaatprofiel</strong>
+              <strong style="color:${theme.navyHex};font-size:15px;">Kandidaatprofiel</strong>
             </td></tr>
             ${reportRows}
           </table>` : ""}
 
-          <p style="margin:0 0 16px;color:#334155;font-size:14px;">
+          <p style="margin:0 0 16px;color:${theme.textHex};font-size:14px;">
             Klik op onderstaande knop om aan te geven of u interesse heeft in deze kandidaat:
           </p>
 
-          <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
-            <tr><td align="center" style="padding:12px 0;">
-              <a href="${escapeHtml(data.responseUrl)}" style="display:inline-block;background:#0f172a;color:#ffffff;text-decoration:none;padding:12px 32px;border-radius:6px;font-size:14px;font-weight:600;">
-                Reageer op dit voorstel
-              </a>
-            </td></tr>
-          </table>
+          <table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 24px;"><tr><td style="border-radius:6px;background:${theme.accentHex};">
+            <a href="${escapeHtml(data.responseUrl)}" style="display:inline-block;padding:12px 32px;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;border-radius:6px;">Reageer op dit voorstel</a>
+          </td></tr></table>
 
-          <p style="margin:24px 0 0;color:#334155;font-size:14px;">
-            Met vriendelijke groet,<br><strong>${escapeHtml(data.orgName)}</strong>
+          <p style="margin:8px 0 0;color:${theme.textHex};font-size:14px;">
+            Met vriendelijke groet,<br><strong>${escapeHtml(theme.orgName)}</strong>
             ${contactLine ? `<br><span style="color:#64748b;font-size:12px;">${contactLine}</span>` : ""}
-          </p>
-        </td></tr>
-        <tr><td style="background:#f8fafc;padding:16px 32px;border-top:1px solid #e2e8f0;">
-          <p style="margin:0;color:#94a3b8;font-size:12px;text-align:center;">Dit is een automatisch gegenereerd bericht van ${escapeHtml(data.orgName)}.</p>
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`;
+          </p>`;
+  return renderBrandedEmail({
+    theme,
+    contentHtml: content,
+    preheader: `Kandidaatvoorstel: ${data.candidateName} voor ${data.vacancyTitle}`,
+    footerNote: "Dit is een automatisch gegenereerd bericht.",
+  });
 }
 
 Deno.serve(async (req) => {
@@ -217,10 +200,10 @@ Deno.serve(async (req) => {
 
     const { data: org } = await serviceClient
       .from("organizations")
-      .select("name, email, phone, logo_url")
+      .select("name, email, phone, logo_url, settings")
       .eq("id", orgId)
       .maybeSingle();
-    const orgName = org?.name || "je organisatie";
+    const brandTheme = resolveBrandTheme(org);
 
     const { data: contacts } = await serviceClient
       .from("company_contacts")
@@ -253,8 +236,7 @@ Deno.serve(async (req) => {
     const hideReport = hide_ai_report === true;
 
     const emailData = {
-      orgName,
-      orgLogoUrl: org?.logo_url ?? null,
+      theme: brandTheme,
       orgEmail: org?.email ?? null,
       orgPhone: org?.phone ?? null,
       contactName: defaultName,

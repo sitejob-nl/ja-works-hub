@@ -78,13 +78,13 @@ function buildReportHtml({ org, candidate, introText, recipientName, showName }:
 <head><meta charset="UTF-8">
 <style>
   body { font-family: 'Helvetica Neue', Arial, sans-serif; color:#1a1a1a; margin:0; padding:32px; font-size:13px; background:#fff; }
-  h1 { font-size:22px; margin:0 0 6px; color:#0f172a; }
-  h2 { font-size:15px; margin:24px 0 8px; color:#0f172a; }
+  h1 { font-size:22px; margin:0 0 6px; color:#0C4D78; }
+  h2 { font-size:15px; margin:24px 0 8px; color:#0C4D78; }
   .header { display:flex; justify-content:space-between; align-items:flex-start; gap:24px; margin-bottom:24px; }
   .meta-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:18px; }
   .meta-box { background:#f8fafc; padding:14px; border-radius:8px; border:1px solid #e2e8f0; }
   .meta-label { font-size:10px; text-transform:uppercase; letter-spacing:.5px; color:#64748b; margin-bottom:4px; }
-  .meta-value { font-weight:600; color:#0f172a; }
+  .meta-value { font-weight:600; color:#0C4D78; }
   .summary { background:#f0f9ff; border-left:3px solid #0284c7; padding:14px; border-radius:4px; font-size:13px; line-height:1.6; color:#0c4a6e; }
   .footer { margin-top:32px; padding-top:14px; border-top:1px solid #e2e8f0; font-size:11px; color:#94a3b8; text-align:center; }
 </style></head>
@@ -96,7 +96,7 @@ function buildReportHtml({ org, candidate, introText, recipientName, showName }:
       <div style="font-size:13px;color:#64748b">AI-analyse rapport · ${formatDate(candidate.ai_analyzed_at)}</div>
     </div>
     <div style="text-align:right;font-size:12px;color:#64748b;line-height:1.5">
-      <strong style="color:#0f172a">${escapeHtml(org.name)}</strong><br>
+      <strong style="color:#0C4D78">${escapeHtml(org.name)}</strong><br>
       ${org.email ? escapeHtml(org.email) + "<br>" : ""}
       ${org.phone ? escapeHtml(org.phone) : ""}
     </div>
@@ -109,13 +109,13 @@ function buildReportHtml({ org, candidate, introText, recipientName, showName }:
     <div class="meta-box">
       <div class="meta-label">Kandidaat</div>
       <div class="meta-value">${escapeHtml(displayName)}</div>
-      ${candidate.ai_function_group ? `<div style="margin-top:6px;font-size:12px;color:#64748b">Functiegroep: <strong style="color:#0f172a">${escapeHtml(candidate.ai_function_group)}</strong></div>` : ""}
-      ${candidate.ai_classification ? `<div style="font-size:12px;color:#64748b">Classificatie: <strong style="color:#0f172a">${escapeHtml(candidate.ai_classification)}</strong></div>` : ""}
+      ${candidate.ai_function_group ? `<div style="margin-top:6px;font-size:12px;color:#64748b">Functiegroep: <strong style="color:#0C4D78">${escapeHtml(candidate.ai_function_group)}</strong></div>` : ""}
+      ${candidate.ai_classification ? `<div style="font-size:12px;color:#64748b">Classificatie: <strong style="color:#0C4D78">${escapeHtml(candidate.ai_classification)}</strong></div>` : ""}
     </div>
     <div class="meta-box">
       <div class="meta-label">Inschatting</div>
       <div>${reliabilityBadge(candidate.ai_reliability_score)}</div>
-      ${candidate.ai_stability ? `<div style="margin-top:8px;font-size:12px;color:#64748b">Stabiliteit: <strong style="color:#0f172a">${escapeHtml(candidate.ai_stability)}</strong></div>` : ""}
+      ${candidate.ai_stability ? `<div style="margin-top:8px;font-size:12px;color:#64748b">Stabiliteit: <strong style="color:#0C4D78">${escapeHtml(candidate.ai_stability)}</strong></div>` : ""}
     </div>
   </div>
 
