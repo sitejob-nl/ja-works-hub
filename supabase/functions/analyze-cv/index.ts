@@ -184,7 +184,7 @@ Deno.serve(async (req) => {
     // Candidate ophalen + tenant-check
     const { data: candidate } = await admin
       .from("candidates")
-      .select("id, organization_id, ai_status, first_name, last_name, status, employee_status, source, cv_file_url, cv_raw_text, notes, available_from, available_until, arrival_date, availability_notes, skills, certifications, languages, address_city, address_country, has_drivers_license")
+      .select("id, organization_id, ai_status, first_name, last_name, status, employee_status, source, cv_file_url, cv_raw_text, notes, available_from, available_until, arrival_date, availability_notes, skills, certifications, languages, address_city, address_country, has_drivers_license, screening_data")
       .eq("id", candidate_id)
       .single();
 
