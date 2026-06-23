@@ -33,48 +33,10 @@ import AiAnalysisCard from '@/components/AiAnalysisCard';
 import AiAnalysisShareDialog from '@/components/candidates/AiAnalysisShareDialog';
 import { logAudit } from '@/lib/audit';
 import { CV_ACCEPT, extractCvTextFromFile } from '@/lib/cvText';
+import { extractFunctionErrorMessage } from '@/lib/functionError';
 
 const formatEuro = (cents: number) =>
   (cents / 100).toLocaleString('nl-NL', { style: 'currency', currency: 'EUR' });
-
-const extractFunctionErrorMessage = async (error: unknown) => {
-  const fallback = error instanceof Error ? error.message : 'Kon analyse niet starten';
-  const context = (error as { context?: unknown })?.context;
-
-  let payload: unknown = null;
-  if (context instanceof Response) {
-    const text = await context.clone().text().catch(() => '');
-    if (text) {
-      try {
-        payload = JSON.parse(text);
-      } catch {
-        payload = { error: text };
-      }
-    }
-  } else if (context && typeof context === 'object' && 'body' in context) {
-    payload = (context as { body?: unknown }).body;
-    if (typeof payload === 'string') {
-      try {
-        payload = JSON.parse(payload);
-      } catch {
-        payload = { error: payload };
-      }
-    }
-  }
-
-  if (payload && typeof payload === 'object') {
-    const body = payload as { error?: unknown; details?: unknown; message?: unknown };
-    const message = body.error ?? body.message;
-    if (typeof message === 'string' && message.trim()) {
-      const details = typeof body.details === 'string' && body.details.trim()
-        ? ` (${body.details.trim().slice(0, 180)})`
-        : '';
-      return `${message}${details}`;
-    }
-  }
-
-  return fallback;
-};
 
 const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => {
   const qc = useQueryClient();
@@ -216,7 +178,7 @@ const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => 
       const { data, error } = await supabase.functions.invoke('analyze-cv', { body });
 
       if (error) {
-        throw new Error(await extractFunctionErrorMessage(error));
+        throw new Error(await extractFunctionErrorMessage(error, 'Kon analyse niet starten'));
       }
       if (data?.error) throw new Error(data.error);
       return data;

@@ -19,6 +19,7 @@ import { Plus, FileText, Search, Eye, Send, CheckCircle2, Euro, Download, Refres
 import { formatDate, formatEUR } from '@/lib/format';
 import { EntityLink } from '@/components/ui/entity-link';
 import { logAudit } from '@/lib/audit';
+import { extractFunctionErrorMessage } from '@/lib/functionError';
 import { payrollerLabel, payrollerBadgeClass, JA_WERKT_PAYROLLERS } from '@/lib/payroller';
 
 type PayrollerType = Database['public']['Enums']['payroller_type'];
@@ -668,7 +669,7 @@ function InvoiceDetailSheet({ invoice, lines, open, onOpenChange, onUpdate }: {
       return data;
     },
     onSuccess: (data) => { toast.success('PDF gegenereerd'); if (data?.pdf_url) onUpdate(); },
-    onError: (e: any) => toast.error(e.message),
+    onError: async (e: any) => toast.error(await extractFunctionErrorMessage(e, 'PDF genereren mislukt')),
   });
 
   // Exact Online sync
@@ -680,7 +681,7 @@ function InvoiceDetailSheet({ invoice, lines, open, onOpenChange, onUpdate }: {
       return data;
     },
     onSuccess: (data) => { toast.success(data?.message || 'Gesynchroniseerd naar Exact Online'); onUpdate(); },
-    onError: (e: any) => toast.error(e.message),
+    onError: async (e: any) => toast.error(await extractFunctionErrorMessage(e, 'Synchroniseren naar Exact Online mislukt')),
   });
 
   return (

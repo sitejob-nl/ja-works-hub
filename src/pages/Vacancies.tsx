@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Link, useNavigate } from 'react-router-dom';
 import { useSearchParamState } from '@/hooks/useSearchParamState';
-import { Briefcase, Plus, Search, AlertTriangle } from 'lucide-react';
+import { Briefcase, Plus, Search, AlertTriangle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -146,7 +146,11 @@ const Vacancies = () => {
         <span className="text-sm text-muted-foreground">{total} vacatures</span>
       </div>
 
-      {!isLoading && vacancies.length === 0 ? (
+      {isLoading ? (
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      ) : vacancies.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <Briefcase className="h-12 w-12 text-muted-foreground/40 mb-4" />
           <p className="text-lg font-medium text-muted-foreground">Nog geen vacatures</p>
@@ -205,6 +209,7 @@ const Vacancies = () => {
                       <TableCell>
                         <Select
                           value={v.status}
+                          disabled={updateStatus.isPending}
                           onValueChange={(newStatus) => updateStatus.mutate({ id: v.id, status: newStatus, oldStatus: v.status })}
                         >
                           <SelectTrigger className={`h-7 px-2 text-xs border-0 w-32 ${statusBadge[v.status] ?? ''}`}>

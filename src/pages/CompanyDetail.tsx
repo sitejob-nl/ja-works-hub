@@ -1,12 +1,16 @@
-import { useParams, Link } from 'react-router-dom';
+import { useState } from 'react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { ChevronRight, MoreHorizontal } from 'lucide-react';
 import { toast } from 'sonner';
+import { logAudit } from '@/lib/audit';
 import CompanyInfoTab from '@/components/companies/tabs/CompanyInfoTab';
 import ContactsTab from '@/components/companies/tabs/ContactsTab';
 import CompanyFunctionsTab from '@/components/companies/tabs/CompanyFunctionsTab';
@@ -22,7 +26,11 @@ import { useTabSearchParam } from '@/hooks/useTabSearchParam';
 const CompanyDetail = () => {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
+  const navigate = useNavigate();
+  const { profile } = useAuth();
+  const isAdmin = profile?.role === 'admin';
   const [activeTab, setActiveTab] = useTabSearchParam('gegevens');
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const { data: company, isLoading } = useQuery({
     queryKey: ['company', id],
@@ -49,6 +57,32 @@ const CompanyDetail = () => {
       qc.invalidateQueries({ queryKey: ['company', id] });
       qc.invalidateQueries({ queryKey: ['companies'] });
       toast.success(company?.is_active ? 'Opdrachtgever gedeactiveerd' : 'Opdrachtgever geactiveerd');
+    },
+  });
+
+  // Definitief verwijderen (alleen admin; RLS dwingt dit ook af). FK's beschermen tegen het
+  // wissen van een opdrachtgever met facturen/plaatsingen — dat geeft 23503, netjes afgevangen.
+  const deleteCompany = useMutation({
+    mutationFn: async () => {
+      // .select() zodat we zien of er écht een rij verdween: RLS blokkeert een delete zonder
+      // fout (0 rijen) — dan is de gebruiker geen admin (of de policy mist nog).
+      const { data, error } = await supabase.from('companies').delete().eq('id', id!).select('id');
+      if (error) throw error;
+      if (!data || data.length === 0) throw new Error('Verwijderen niet toegestaan — alleen een beheerder kan opdrachtgevers verwijderen.');
+      logAudit({ action: 'delete', tableName: 'companies', recordId: id!, oldValues: company, reason: 'permanent_deletion' });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['companies'] });
+      toast.success('Opdrachtgever verwijderd');
+      navigate('/opdrachtgevers');
+    },
+    onError: (e: any) => {
+      setDeleteOpen(false);
+      if (e?.code === '23503') {
+        toast.error('Kan niet verwijderen: er zijn nog gekoppelde gegevens (facturen, vacatures of plaatsingen). Verwijder of ontkoppel die eerst.');
+      } else {
+        toast.error(e.message);
+      }
     },
   });
 
@@ -79,10 +113,36 @@ const CompanyDetail = () => {
               <DropdownMenuItem onClick={() => toggleActive.mutate()}>
                 {company.is_active ? 'Deactiveren' : 'Activeren'}
               </DropdownMenuItem>
+              {isAdmin && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem className="text-red-600 focus:text-red-600" onClick={() => setDeleteOpen(true)}>
+                    Verwijderen
+                  </DropdownMenuItem>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
       </div>
+
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Opdrachtgever definitief verwijderen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              <span className="font-medium">{company.name}</span> wordt permanent verwijderd. Dit kan niet ongedaan worden gemaakt.
+              Lukt het niet, dan zijn er nog gekoppelde gegevens (facturen, vacatures of plaatsingen) — overweeg dan deactiveren.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuleren</AlertDialogCancel>
+            <AlertDialogAction className="bg-red-600 hover:bg-red-700" onClick={() => deleteCompany.mutate()} disabled={deleteCompany.isPending}>
+              Verwijderen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">

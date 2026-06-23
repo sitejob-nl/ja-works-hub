@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { logAudit } from '@/lib/audit';
+import { useFormDraft } from '@/hooks/useFormDraft';
 import KvkNameSearchInput from '@/components/companies/KvkNameSearchInput';
 import AddressAutocomplete from '@/components/shared/AddressAutocomplete';
 import { resolveAddressCoordinates } from '@/lib/pdok';
@@ -29,6 +30,9 @@ const CompanyNew = () => {
   });
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
+
+  // Bewaar invoer tegen per ongeluk weg-navigeren / refresh; wissen na succesvol aanmaken.
+  const { clearDraft } = useFormDraft('draft:company-new', form, setForm);
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -49,6 +53,7 @@ const CompanyNew = () => {
       return data;
     },
     onSuccess: (data) => {
+      clearDraft();
       qc.invalidateQueries({ queryKey: ['companies'] });
       logAudit({ action: 'create', tableName: 'companies', recordId: data.id, newValues: form });
       toast.success('Opdrachtgever aangemaakt');

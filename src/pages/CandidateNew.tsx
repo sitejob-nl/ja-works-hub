@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ChevronRight, Copy, MessageCircle, Mail, Check, AlertTriangle, KeyRound, Upload, Loader2, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { logAudit } from '@/lib/audit';
+import { useFormDraft } from '@/hooks/useFormDraft';
 import { useDeduplication } from '@/hooks/useDeduplication';
 import AddressAutocomplete from '@/components/shared/AddressAutocomplete';
 import { resolveAddressCoordinates } from '@/lib/pdok';
@@ -100,6 +101,10 @@ const CandidateNew = () => {
   });
 
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
+
+  // Bewaar invoer tegen per ongeluk weg-navigeren / refresh; stoppen + wissen zodra de
+  // kandidaat is aangemaakt (step 'link'). CV-bestand en huisvesting blijven buiten het concept.
+  const { clearDraft } = useFormDraft('draft:candidate-new', form, setForm, { enabled: step === 'form' });
 
   // Vult lege formuliervelden met de uit het CV geëxtraheerde waarden. Overschrijft nooit
   // wat de recruiter al heeft ingevuld. Geeft het aantal gevulde velden terug.
@@ -360,6 +365,7 @@ const CandidateNew = () => {
       return { ...data, token: tokenData.token, hadCv: !!cvFile, housingReserved, housingError };
     },
     onSuccess: (data) => {
+      clearDraft();
       qc.invalidateQueries({ queryKey: ['candidates'] });
       logAudit({ action: 'create', tableName: 'candidates', recordId: data.id, newValues: form });
       toast.success('Kandidaat aangemaakt');
