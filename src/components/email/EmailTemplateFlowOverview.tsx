@@ -1,8 +1,11 @@
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { FileText, Mail, MessageSquare, Search, Send, Settings2, ShieldCheck } from 'lucide-react';
+import { Eye, FileText, Mail, MessageSquare, Search, Send, Settings2, ShieldCheck } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -10,6 +13,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { renderBrandedEmailPreview, resolvePreviewBrand, sampleContentForFlow } from '@/lib/email-brand-preview';
 
 type FlowStatus = 'beheerbaar' | 'juridisch' | 'gedeeltelijk' | 'gegenereerd' | 'extern';
 type FlowSource = 'email_templates' | 'contract_templates' | 'whatsapp_templates' | 'generated_html' | 'mixed';
@@ -219,6 +223,22 @@ function activeContract(template: any) {
   return template?.is_active && template?.template_status === 'actief' && !template?.is_placeholder;
 }
 
+// Waar de inhoud van deze flow beheerd wordt + de bijbehorende actie/route.
+function flowSourceHint(flow: MailFlowDefinition): { note: string; to?: string; buttonLabel?: string } {
+  switch (flow.source) {
+    case 'email_templates': {
+      const cats = flow.emailCategories?.map((c) => CATEGORY_LABELS[c] ?? c).join(', ');
+      return { note: `Inhoud beheer je in de e-mailtemplate-lijst onderaan deze pagina${cats ? ` (categorie: ${cats})` : ''}.` };
+    }
+    case 'contract_templates':
+      return { note: 'De inhoud komt uit de juridische contract-templates.', to: '/instellingen', buttonLabel: 'Naar contract-templates' };
+    case 'whatsapp_templates':
+      return { note: 'WhatsApp loopt via Meta-templates, los van de e-mailhuisstijl.', to: '/whatsapp', buttonLabel: 'Naar WhatsApp-templates' };
+    default:
+      return { note: 'De inhoud zit in de code; logo en accentkleur passen zich automatisch aan. Pas die aan via de huisstijl-instellingen.', to: '/instellingen', buttonLabel: 'Naar huisstijl-instellingen' };
+  }
+}
+
 function TemplateBadges({ flow, emailTemplates, contractTemplates, birthdayTemplateId }: {
   flow: MailFlowDefinition;
   emailTemplates: any[];
@@ -294,9 +314,11 @@ function TemplateBadges({ flow, emailTemplates, contractTemplates, birthdayTempl
 
 const EmailTemplateFlowOverview = () => {
   const { profile } = useAuth();
+  const navigate = useNavigate();
   const orgId = profile?.organization_id;
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('all');
+  const [selectedFlow, setSelectedFlow] = useState<MailFlowDefinition | null>(null);
 
   const { data: emailTemplates = [] } = useQuery({
     queryKey: ['email-template-flow-overview', 'email', orgId],
@@ -331,7 +353,7 @@ const EmailTemplateFlowOverview = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('organizations')
-        .select('settings')
+        .select('name, logo_url, settings')
         .eq('id', orgId!)
         .maybeSingle();
       if (error) throw error;
@@ -341,6 +363,7 @@ const EmailTemplateFlowOverview = () => {
   });
 
   const birthdayTemplateId = (orgSettings?.settings as any)?.engagement_settings?.birthday_email_template_id ?? null;
+  const previewBrand = useMemo(() => resolvePreviewBrand(orgSettings), [orgSettings]);
 
   const filteredFlows = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -420,6 +443,7 @@ const EmailTemplateFlowOverview = () => {
               </CardTitle>
               <CardDescription>
                 Alle automatische uitnodigingen, bevestigingen en notificaties met hun verzendroute en templatebron.
+                Klik op een flow voor een voorbeeld in de huisstijl.
               </CardDescription>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row">
@@ -462,7 +486,11 @@ const EmailTemplateFlowOverview = () => {
               </TableHeader>
               <TableBody>
                 {filteredFlows.map((flow) => (
-                  <TableRow key={flow.id} className="align-top">
+                  <TableRow
+                    key={flow.id}
+                    className="align-top cursor-pointer hover:bg-muted/40"
+                    onClick={() => setSelectedFlow(flow)}
+                  >
                     <TableCell>
                       <div className="space-y-2">
                         <div className="flex items-start gap-2">
@@ -518,6 +546,9 @@ const EmailTemplateFlowOverview = () => {
                     </TableCell>
                     <TableCell>
                       <code className="text-xs text-muted-foreground break-all">{flow.codePath}</code>
+                      <div className="mt-2 flex items-center gap-1 text-xs text-stat-blue">
+                        <Eye className="h-3.5 w-3.5" /> Voorbeeld
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -542,6 +573,49 @@ const EmailTemplateFlowOverview = () => {
           ) : null}
         </CardContent>
       </Card>
+
+      <Dialog open={!!selectedFlow} onOpenChange={(open) => !open && setSelectedFlow(null)}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Mail className="h-4 w-4" /> {selectedFlow?.name}
+            </DialogTitle>
+            <DialogDescription>{selectedFlow?.trigger}</DialogDescription>
+          </DialogHeader>
+          {selectedFlow && (
+            <div className="flex-1 overflow-y-auto space-y-3">
+              <p className="text-xs text-muted-foreground">
+                Voorbeeld in de huisstijl — representatief, niet de exacte productiemail.
+              </p>
+              <iframe
+                title={`Voorbeeld ${selectedFlow.name}`}
+                sandbox=""
+                className="w-full rounded-md border bg-white"
+                style={{ height: 460 }}
+                srcDoc={renderBrandedEmailPreview(previewBrand, sampleContentForFlow(selectedFlow.id, previewBrand))}
+              />
+              <div className="rounded-md border bg-muted/30 p-3 text-sm">
+                <div className="flex items-center gap-2 mb-1">
+                  <Badge variant="outline" className={cn('w-fit', STATUS_CLASSES[selectedFlow.status])}>
+                    {STATUS_LABELS[selectedFlow.status]}
+                  </Badge>
+                </div>
+                <p className="text-muted-foreground">{flowSourceHint(selectedFlow).note}</p>
+                {flowSourceHint(selectedFlow).to && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-2"
+                    onClick={() => { const to = flowSourceHint(selectedFlow).to!; setSelectedFlow(null); navigate(to); }}
+                  >
+                    {flowSourceHint(selectedFlow).buttonLabel}
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
