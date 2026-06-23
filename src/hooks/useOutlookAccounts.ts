@@ -24,6 +24,7 @@ export interface OutlookAccount {
   signature_enabled: boolean;
   signature_html: string | null;
   signature_json: unknown | null;
+  reply_to_email: string | null;
   capabilities: {
     mail_read: boolean;
     mail_send: boolean;

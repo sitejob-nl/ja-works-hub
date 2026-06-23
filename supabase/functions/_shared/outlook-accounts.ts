@@ -117,6 +117,7 @@ export type OutlookAccountOption = {
   signature_enabled: boolean;
   signature_html: string | null;
   signature_json: unknown | null;
+  reply_to_email: string | null;
   capabilities: {
     mail_read: boolean;
     mail_send: boolean;
@@ -180,6 +181,14 @@ export function cleanEmail(input: unknown): string | null {
   if (!value || hasUnsafeChar) return null;
   if (!/^[^@]+@[^@]+\.[^@]+$/.test(value)) return null;
   return value;
+}
+
+// Graph `replyTo`-recipients uit het reply_to_email van het mailaccount (EM1). Gevalideerd via
+// cleanEmail; leeg → [] (geen replyTo-header). Hiermee landen antwoorden op het ingestelde adres
+// (bv. info@) i.p.v. de verzendende mailbox.
+export function buildReplyTo(account: MailAccountRow): Array<{ emailAddress: { address: string } }> {
+  const address = cleanEmail(account.reply_to_email);
+  return address ? [{ emailAddress: { address } }] : [];
 }
 
 function accountName(account: MailAccountRow): string | null {
@@ -262,6 +271,7 @@ export function toAccountOption(account: MailAccountRow, grant: AccessGrant | nu
     signature_enabled: account.signature_enabled !== false,
     signature_html: account.signature_html ?? null,
     signature_json: account.signature_json ?? null,
+    reply_to_email: account.reply_to_email ?? null,
     capabilities: {
       mail_read: Boolean(account.mail_read_enabled),
       mail_send: Boolean(account.mail_send_enabled),

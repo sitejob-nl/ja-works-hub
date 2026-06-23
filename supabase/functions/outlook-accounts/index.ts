@@ -204,6 +204,18 @@ Deno.serve(async (req) => {
       return json({ ok: true }, 200, corsHeaders);
     }
 
+    if (action === "update_reply_to") {
+      // EM1: antwoord-adres per mailaccount. Leeg → wissen (null). Antwoorden landen dan op dit
+      // adres (bv. info@) i.p.v. de verzendende mailbox; gebruikt door buildReplyTo in de senders.
+      const account = await loadAccount(admin, auth.organizationId, body.account_id);
+      if (!account) return json({ error: "mail_account_not_found" }, 404, corsHeaders);
+      const replyTo = body.reply_to_email ? cleanEmail(body.reply_to_email) : null;
+      if (body.reply_to_email && !replyTo) return json({ error: "invalid_email" }, 400, corsHeaders);
+      const { error } = await admin.from("mail_accounts").update({ reply_to_email: replyTo }).eq("id", account.id);
+      if (error) throw error;
+      return json({ ok: true }, 200, corsHeaders);
+    }
+
     if (action === "delete_account") {
       const account = await loadAccount(admin, auth.organizationId, body.account_id);
       if (!account) return json({ error: "mail_account_not_found" }, 404, corsHeaders);
