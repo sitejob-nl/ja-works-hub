@@ -119,6 +119,9 @@ const getProfileLinkStatus = (candidate: any, tokens: any[]) => {
 };
 
 const candidateName = (candidate: any) => `${candidate.last_name ?? ''} ${candidate.first_name ?? ''}`.trim().toLowerCase();
+// Accent-insensitief zoeken: strip diacrieten + lowercase ("José" -> "jose"). Spiegelt de
+// DB-kolom candidates.search_unaccent zodat client- en serverzoek consistent zijn.
+const foldAccents = (s: string) => s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
 type CandidateTab = 'alle' | 'instroom' | 'in-dienst';
 
 const Candidates = () => {
@@ -224,7 +227,7 @@ const Candidates = () => {
     queryFn: async () => {
       let query = supabase.from('candidates').select('*', { count: 'exact' });
       if (search) {
-        query = query.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,address_city.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%,phone_nl.ilike.%${search}%`);
+        query = query.ilike('search_unaccent', `%${foldAccents(search)}%`);
       }
       if (cvSearch.trim()) {
         query = query.textSearch('cv_raw_text', cvSearch.trim(), { config: 'dutch' });
@@ -291,19 +294,19 @@ const Candidates = () => {
       if (error) throw error;
 
       const activeCandidates = toInServiceCandidates(data ?? []);
-      const searchValue = search.trim().toLowerCase();
+      const searchValue = foldAccents(search.trim());
       const filtered = activeCandidates.filter((candidate: any) => {
         if (employeeStatusFilter !== 'all' && candidate.employee_status !== employeeStatusFilter) return false;
         if (!searchValue) return true;
 
         const activePlacement = candidate.activePlacement;
-        const haystack = [
+        const haystack = foldAccents([
           candidate.first_name,
           candidate.last_name,
           candidate.employee_number,
           activePlacement?.companies?.name,
           activePlacement?.function_name,
-        ].filter(Boolean).join(' ').toLowerCase();
+        ].filter(Boolean).join(' '));
 
         return haystack.includes(searchValue);
       });

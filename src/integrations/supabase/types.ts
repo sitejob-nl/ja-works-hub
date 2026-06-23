@@ -900,6 +900,7 @@ export type Database = {
           screened_at: string | null
           screened_by: string | null
           screening_data: Json | null
+          search_unaccent: string | null
           signup_link_id: string | null
           skills: string[] | null
           source: string | null
@@ -982,6 +983,7 @@ export type Database = {
           screened_at?: string | null
           screened_by?: string | null
           screening_data?: Json | null
+          search_unaccent?: string | null
           signup_link_id?: string | null
           skills?: string[] | null
           source?: string | null
@@ -1064,6 +1066,7 @@ export type Database = {
           screened_at?: string | null
           screened_by?: string | null
           screening_data?: Json | null
+          search_unaccent?: string | null
           signup_link_id?: string | null
           skills?: string[] | null
           source?: string | null
@@ -9329,6 +9332,7 @@ export type Database = {
       }
       decrypt_sensitive: { Args: { ciphertext: string }; Returns: string }
       encrypt_sensitive: { Args: { plaintext: string }; Returns: string }
+      f_unaccent: { Args: { "": string }; Returns: string }
       find_duplicate_candidates: {
         Args: never
         Returns: {
