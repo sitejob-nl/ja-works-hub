@@ -7,7 +7,7 @@ import {
   UserCheck, Briefcase, Home, Clock, CheckCircle2,
   FileWarning, UserX, AlertTriangle, Plus, Pencil, Trash2, RefreshCw,
 } from 'lucide-react';
-import { startOfWeek, endOfWeek, format } from 'date-fns';
+import { startOfWeek, endOfWeek, format, subWeeks, getISOWeek } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { formatDate, formatRelativeTime } from '@/lib/format';
@@ -140,11 +140,14 @@ const Dashboard = () => {
 
   useEffect(() => {
     const fetchStats = async () => {
+      // Dashboard toont de daadwerkelijk gedraaide uren van VORIGE week (meeting 17-06):
+      // de huidige week is nog onvolledig en geeft een vertekend beeld.
+      const lastWeek = subWeeks(new Date(), 1);
       const [empRes, vacRes, unitRes, tsRes] = await Promise.all([
         supabase.from('employees').select('id', { count: 'exact', head: true }).eq('status', 'actief'),
         supabase.from('vacancies').select('id', { count: 'exact', head: true }).eq('status', 'open'),
         supabase.from('v_unit_occupancy').select('capacity, current_occupancy'),
-        supabase.from('timesheets').select('hours').gte('work_date', format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd')).lte('work_date', format(endOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd')),
+        supabase.from('timesheets').select('hours').gte('work_date', format(startOfWeek(lastWeek, { weekStartsOn: 1 }), 'yyyy-MM-dd')).lte('work_date', format(endOfWeek(lastWeek, { weekStartsOn: 1 }), 'yyyy-MM-dd')),
       ]);
 
       const totalCap = unitRes.data?.reduce((s, u) => s + (u.capacity ?? 0), 0) ?? 0;
@@ -375,6 +378,7 @@ const Dashboard = () => {
   // Sort: red first, then orange
   alerts.sort((a, b) => (a.severity === 'red' && b.severity !== 'red' ? -1 : a.severity !== 'red' && b.severity === 'red' ? 1 : 0));
   const visibleAlerts = alerts.slice(0, 15);
+  const prevWeekNr = getISOWeek(subWeeks(new Date(), 1));
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -388,8 +392,8 @@ const Dashboard = () => {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <StatCard icon={UserCheck} label="Actieve medewerkers" value={stats.activeEmployees} colorClass="text-stat-blue" bgClass="bg-stat-blue/10" to="/medewerkers" />
         <StatCard icon={Briefcase} label="Open vacatures" value={stats.openVacancies} colorClass="text-stat-orange" bgClass="bg-stat-orange/10" to="/vacatures" />
-        <StatCard icon={Home} label="Bezetting" value={stats.occupancyRate} colorClass="text-stat-green" bgClass="bg-stat-green/10" to="/huisvesting" />
-        <StatCard icon={Clock} label="Uren deze week" value={stats.weeklyHours} colorClass="text-stat-purple" bgClass="bg-stat-purple/10" to="/uren" />
+        <StatCard icon={Home} label="Huisvestingsbezetting" value={stats.occupancyRate} colorClass="text-stat-green" bgClass="bg-stat-green/10" to="/huisvesting" />
+        <StatCard icon={Clock} label={`Gewerkte uren wk ${prevWeekNr}`} value={stats.weeklyHours} colorClass="text-stat-purple" bgClass="bg-stat-purple/10" to="/uren" />
       </div>
 
       {/* KPI Dashboard for management */}

@@ -151,7 +151,7 @@ const KpiDashboard = () => {
     { icon: DollarSign, label: 'Omzet deze week', value: fmt(k.revenueWeek), sub: `Kosten: ${fmt(k.costWeek)}`, color: 'text-stat-green', bg: 'bg-stat-green/10' },
     { icon: TrendingUp, label: 'Brutomarge', value: fmt(k.marginWeek), sub: `${k.marginPctWeek}% marge`, color: 'text-stat-blue', bg: 'bg-stat-blue/10' },
     { icon: Clock, label: 'Uren deze week', value: k.totalHoursWeek.toFixed(0), sub: `${k.activePlacements} actieve plaatsingen`, color: 'text-stat-purple', bg: 'bg-stat-purple/10' },
-    { icon: Users, label: 'Actieve medewerkers', value: k.activeEmployees, sub: `${k.activeClients} opdrachtgevers`, color: 'text-stat-orange', bg: 'bg-stat-orange/10' },
+    { icon: Building2, label: 'Actieve opdrachtgevers', value: k.activeClients, sub: `${k.activePlacements} actieve plaatsingen`, color: 'text-stat-orange', bg: 'bg-stat-orange/10' },
     { icon: Home, label: 'Kamerbezetting', value: `${k.occupancyPct}%`, sub: `${k.availableRooms} van ${k.totalCapacity} vrij`, color: 'text-stat-green', bg: 'bg-stat-green/10' },
     { icon: Car, label: "Wagenpark", value: `${k.availableCars} vrij`, sub: `${k.totalCars} totaal`, color: 'text-stat-orange', bg: 'bg-stat-orange/10' },
   ];

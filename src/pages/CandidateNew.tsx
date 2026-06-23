@@ -710,13 +710,13 @@ const CandidateNew = () => {
                       <span className="font-medium">{d.first_name} {d.last_name}</span>
                       <span className="text-muted-foreground ml-2">— match op {d.matchedOn.join(', ')}</span>
                     </span>
-                    <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={() => navigate(`/kandidaten/${d.id}`)}>
+                    <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={() => window.open(`/kandidaten/${d.id}`, '_blank', 'noopener,noreferrer')}>
                       Bekijk
                     </Button>
                   </div>
                 ))}
               </div>
-              <p className="text-xs text-orange-600">Je kunt de kandidaat alsnog aanmaken als het geen duplicaat is.</p>
+              <p className="text-xs text-orange-600">Bekijken opent in een nieuw tabblad — je ingevulde gegevens blijven behouden. Je kunt de kandidaat alsnog aanmaken als het geen duplicaat is.</p>
             </div>
           )}
 

@@ -160,9 +160,9 @@ const CompanyFunctionsTab = ({ companyId }: { companyId: string }) => {
               </div>
             </div>
             <div>
-              <Label>Standaard uurtarief (€)</Label>
-              <Input type="number" step="0.01" value={form.default_hourly_rate} onChange={e => set('default_hourly_rate', e.target.value)} placeholder="optioneel; alleen als geen range" />
-              <p className="text-xs text-muted-foreground mt-1">Range hierboven heeft voorrang. Dit veld is voor backwards compatibility.</p>
+              <Label>Vast uurtarief (€)</Label>
+              <Input type="number" step="0.01" value={form.default_hourly_rate} onChange={e => set('default_hourly_rate', e.target.value)} placeholder="optioneel" />
+              <p className="text-xs text-muted-foreground mt-1">Alleen invullen als er géén salaris-range (min/max) hierboven is.</p>
             </div>
             <div>
               <Label>Standaard-vaardigheden</Label>

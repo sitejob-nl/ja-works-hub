@@ -30,6 +30,7 @@ const sources = [
   { value: 'indeed', label: 'Indeed' },
   { value: 'linkedin', label: 'LinkedIn' },
   { value: 'referral', label: 'Referral' },
+  { value: 'recruitment_partner', label: 'Recruitmentpartner' },
   { value: 'overig', label: 'Overig' },
 ];
 
