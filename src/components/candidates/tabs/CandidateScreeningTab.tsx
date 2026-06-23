@@ -32,6 +32,7 @@ import {
   PhoneCall,
   Save,
   ShieldQuestion,
+  Sparkles,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useModuleEnabled } from '@/hooks/useModuleEnabled';
@@ -386,6 +387,7 @@ const CandidateScreeningTab = ({
   const [saving, setSaving] = useState(false);
   const [manualSaving, setManualSaving] = useState(false);
   const [creatingTask, setCreatingTask] = useState(false);
+  const [reanalyzing, setReanalyzing] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>((candidate.screening_data as any)?.updated_at ?? candidate.screened_at ?? null);
   const [lastSavedSnapshot, setLastSavedSnapshot] = useState(() => buildSnapshot(getInitialData(candidate), getProfileDraft(candidate)));
   const saveSeq = useRef(0);
@@ -618,22 +620,44 @@ const CandidateScreeningTab = ({
     }
   };
 
-  const handleComplete = async () => {
+  const validateBeforeComplete = (): boolean => {
     const missing = importantMissingFields(profileDraft, data.availability);
     if (data.result === 'niet_gescreend') {
       toast.error('Kies eerst goedgekeurd of afgekeurd');
-      return;
+      return false;
     }
     if (data.summary.trim().length < 10) {
       toast.error('Vul een korte samenvatting in');
-      return;
+      return false;
     }
     if (missing.length > 0 && !data.answers.critical_unknowns?.notes?.trim()) {
       toast.error(`Leg bij Besluit vast waarom ontbrekend akkoord is: ${missing.join(', ')}`);
       setData((current) => ({ ...current, current_step: 'besluit' }));
-      return;
+      return false;
     }
+    return true;
+  };
+
+  const handleComplete = async () => {
+    if (!validateBeforeComplete()) return;
     await persistDraft({ complete: true, manual: true });
+  };
+
+  // Afronden + de AI opnieuw laten analyseren mét de screening erin (NS1, meeting 17-06):
+  // de recruiter-screening weegt zwaarder dan het CV; het profiel wordt herzien.
+  const handleCompleteAndReanalyze = async () => {
+    if (!validateBeforeComplete()) return;
+    setReanalyzing(true);
+    try {
+      await persistDraft({ complete: true, manual: true });
+      const { error } = await supabase.functions.invoke('analyze-cv', { body: { candidate_id: candidate.id } });
+      if (error) throw error;
+      toast.success('Screening opgeslagen — AI heranalyseert met de screening (1-3 min)');
+    } catch (e: any) {
+      toast.error(e?.message || 'Heranalyse kon niet starten');
+    } finally {
+      setReanalyzing(false);
+    }
   };
 
   const renderProfileFields = () => {
@@ -970,9 +994,14 @@ const CandidateScreeningTab = ({
                     Kritieke velden ontbreken nog: {importantMissingFields(profileDraft, data.availability).join(', ')}. Leg bij “Kritieke onbekenden” vast waarom dit akkoord is.
                   </p>
                 )}
-                <Button onClick={handleComplete} disabled={manualSaving} className="gap-2" data-testid="screening-complete">
-                  <ClipboardCheck className="h-4 w-4" /> {manualSaving ? 'Afronden...' : 'Screening afronden'}
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button onClick={handleComplete} disabled={manualSaving || reanalyzing} className="gap-2" data-testid="screening-complete">
+                    <ClipboardCheck className="h-4 w-4" /> {manualSaving ? 'Afronden...' : 'Screening afronden'}
+                  </Button>
+                  <Button variant="secondary" onClick={handleCompleteAndReanalyze} disabled={manualSaving || reanalyzing} className="gap-2" data-testid="screening-complete-reanalyze">
+                    <Sparkles className="h-4 w-4" /> {reanalyzing ? 'Bezig...' : 'Afronden + opnieuw analyseren'}
+                  </Button>
+                </div>
               </div>
             )}
 
