@@ -236,6 +236,28 @@ describe('matching-v3 core', () => {
     expect(specialist.matchPercent).toBeGreaterThan(40);
   });
 
+  it('functie-concept: CE/truck-driver-signaal matcht een vrachtwagenchauffeur-vacature (specialist niet gecapt)', () => {
+    const vacancy = { title: 'Vrachtwagenchauffeur CE distributie', required_skills: [] as string[] };
+    const dichtbij = { km: 5, status: 'estimated' as const };
+    const chauffeur = scoreMatch(
+      { ai_classification: 'specialist', ai_target_functions: ['Internationaal chauffeur'], skills: ['Code 95'], availability_notes: 'direct' },
+      vacancy,
+      dichtbij,
+    );
+    expect(chauffeur.componentScores.functionGroup).toBeGreaterThan(0); // truck-driver-concept herkend
+    expect(chauffeur.missing.some((m) => m.toLowerCase().includes('specialist'))).toBe(false); // niet gecapt
+    expect(chauffeur.matchPercent).toBeGreaterThan(40);
+  });
+
+  it('functie-concept: heftruck-kandidaat matcht NIET als vrachtwagenchauffeur (geen vals-positief)', () => {
+    const vacancy = { title: 'Vrachtwagenchauffeur CE distributie', required_skills: [] as string[] };
+    const heftruck = scoreMatch(
+      { ai_target_functions: ['Heftruckchauffeur'], skills: ['Heftruck'] },
+      vacancy,
+    );
+    expect(heftruck.componentScores.functionGroup).toBe(0);
+  });
+
   it('gebruikt de volledige vacaturetekst als extra functiematch-context', () => {
     const metOmschrijving = scoreMatch(
       { skills: ['lassen'] },
