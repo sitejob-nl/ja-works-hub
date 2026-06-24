@@ -3,7 +3,8 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { ChevronRight, Edit, UserSearch, Sparkles, MoreHorizontal } from 'lucide-react';
+import { Edit, UserSearch, Sparkles, MoreHorizontal } from 'lucide-react';
+import PageHeader from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -154,32 +155,10 @@ const VacancyDetail = () => {
 
   return (
     <div className="space-y-4 sm:space-y-6 min-w-0">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Link to="/vacatures" className="hover:text-foreground">Vacatures</Link>
-        <ChevronRight className="h-4 w-4" />
-        <span className="text-foreground truncate">{vacancy.title}</span>
-      </div>
-
-      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-xl sm:text-2xl font-semibold truncate">{vacancy.title}</h1>
-          {company && (
-            <Link to={`/opdrachtgevers/${company.id}`} className="text-sm text-muted-foreground hover:text-stat-blue">
-              {company.name}
-            </Link>
-          )}
-          <div className="flex items-center gap-2 mt-2 flex-wrap">
-            <Badge variant="secondary" className={statusBadge[vacancy.status] ?? ''}>{statusLabel[vacancy.status] ?? vacancy.status}</Badge>
-            {vacancy.urgency && urgencyMeta[vacancy.urgency] && (
-              <Badge variant="secondary" className={urgencyMeta[vacancy.urgency].className}>Urgentie: {urgencyMeta[vacancy.urgency].label}</Badge>
-            )}
-          </div>
-          <div className="mt-3 max-w-64">
-            <div className="text-xs text-muted-foreground mb-1">{vacancy.filled_count} van {vacancy.required_count} vervuld</div>
-            <Progress value={pct} className="h-2" />
-          </div>
-        </div>
-        <div className="flex gap-2 flex-wrap">
+      <PageHeader
+        breadcrumbs={[{ label: 'Vacatures', to: '/vacatures' }, { label: vacancy.title }]}
+        title={vacancy.title}
+        actions={<>
           <Button size="sm" onClick={handlePrimaryAction} disabled={!hasRequirements && enrichMutation.isPending} className="gap-1">
             <UserSearch className="h-4 w-4" />
             <span>{!hasRequirements && enrichMutation.isPending ? 'AI bezig...' : primaryActionLabel}</span>
@@ -227,8 +206,24 @@ const VacancyDetail = () => {
               </DropdownMenuContent>
             </DropdownMenu>
           )}
+        </>}
+      >
+        {company && (
+          <Link to={`/opdrachtgevers/${company.id}`} className="text-sm text-muted-foreground hover:text-stat-blue">
+            {company.name}
+          </Link>
+        )}
+        <div className="flex items-center gap-2 mt-2 flex-wrap">
+          <Badge variant="secondary" className={statusBadge[vacancy.status] ?? ''}>{statusLabel[vacancy.status] ?? vacancy.status}</Badge>
+          {vacancy.urgency && urgencyMeta[vacancy.urgency] && (
+            <Badge variant="secondary" className={urgencyMeta[vacancy.urgency].className}>Urgentie: {urgencyMeta[vacancy.urgency].label}</Badge>
+          )}
         </div>
-      </div>
+        <div className="mt-3 max-w-64">
+          <div className="text-xs text-muted-foreground mb-1">{vacancy.filled_count} van {vacancy.required_count} vervuld</div>
+          <Progress value={pct} className="h-2" />
+        </div>
+      </PageHeader>
 
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>

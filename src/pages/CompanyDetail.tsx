@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { ChevronRight, MoreHorizontal } from 'lucide-react';
+import { MoreHorizontal } from 'lucide-react';
+import PageHeader from '@/components/layout/PageHeader';
 import { toast } from 'sonner';
 import { logAudit } from '@/lib/audit';
 import CompanyInfoTab from '@/components/companies/tabs/CompanyInfoTab';
@@ -91,20 +92,10 @@ const CompanyDetail = () => {
 
   return (
     <div className="space-y-4 sm:space-y-6 min-w-0">
-      <div className="flex items-center gap-1 text-sm text-muted-foreground">
-        <Link to="/opdrachtgevers" className="hover:text-foreground transition-colors">Opdrachtgevers</Link>
-        <ChevronRight className="h-3 w-3" />
-        <span className="text-foreground truncate">{company.name}</span>
-      </div>
-
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-2 flex-wrap min-w-0">
-          <h1 className="text-xl sm:text-2xl font-semibold truncate">{company.name}</h1>
-          <Badge variant={company.is_active ? 'default' : 'secondary'} className={company.is_active ? 'bg-stat-green/10 text-stat-green border-0' : ''}>
-            {company.is_active ? 'Actief' : 'Inactief'}
-          </Badge>
-        </div>
-        <div className="flex items-center gap-2">
+      <PageHeader
+        breadcrumbs={[{ label: 'Opdrachtgevers', to: '/opdrachtgevers' }, { label: company.name }]}
+        title={company.name}
+        actions={
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
@@ -123,8 +114,14 @@ const CompanyDetail = () => {
               )}
             </DropdownMenuContent>
           </DropdownMenu>
+        }
+      >
+        <div className="mt-2">
+          <Badge variant={company.is_active ? 'default' : 'secondary'} className={company.is_active ? 'bg-stat-green/10 text-stat-green border-0' : ''}>
+            {company.is_active ? 'Actief' : 'Inactief'}
+          </Badge>
         </div>
-      </div>
+      </PageHeader>
 
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
