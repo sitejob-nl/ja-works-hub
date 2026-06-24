@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import EntityLink from '@/components/ui/entity-link';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatDate, formatEUR } from '@/lib/format';
@@ -341,7 +342,7 @@ export const BirthdaysCard = () => {
           <div className="space-y-2 max-h-[250px] overflow-y-auto">
             {birthdays.map((b: any) => (
               <div key={b.id} className="flex items-center justify-between p-2 rounded-md text-sm">
-                <span className="font-medium">{b.first_name} {b.last_name}</span>
+                <EntityLink type="candidate" id={b.id} className="font-medium">{b.first_name} {b.last_name}</EntityLink>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-muted-foreground">{b.age} jaar</span>
                   <Badge variant="secondary" className="text-[10px]">

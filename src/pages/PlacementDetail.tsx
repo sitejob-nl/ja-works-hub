@@ -14,7 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
-import { Save, Building2, User, FileText, XCircle, ExternalLink } from 'lucide-react';
+import { Save, Building2, User, FileText, XCircle, ExternalLink, Briefcase } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import { toast } from 'sonner';
 import { formatDate, formatEUR } from '@/lib/format';
@@ -199,6 +199,7 @@ const PlacementDetail = () => {
           {placement.payroller && <Badge variant="outline" className="text-xs">{payrollerLabel[placement.payroller] ?? placement.payroller}</Badge>}
           {company && <Link to={`/opdrachtgevers/${company.id}`} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"><Building2 className="h-3 w-3" />{company.name}</Link>}
           {placement.candidate_id && <Link to={`/kandidaten/${placement.candidate_id}`} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"><User className="h-3 w-3" />{cand?.first_name} {cand?.last_name}</Link>}
+          {placement.vacancy_id && <Link to={`/vacatures/${placement.vacancy_id}`} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"><Briefcase className="h-3 w-3" />Vacature</Link>}
         </div>
         <p className="text-sm text-muted-foreground mt-1">
           {cand?.first_name} {cand?.last_name} → {company?.name} · {formatDate(placement.start_date)} t/m {formatDate(placement.expected_end_date || placement.end_date)}

@@ -9,6 +9,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
   PieChart, Pie, Legend,
 } from 'recharts';
+import EntityLink from '@/components/ui/entity-link';
 
 const CHART_COLORS = [
   'hsl(197, 100%, 60%)',
@@ -78,17 +79,18 @@ const KpiDashboard = () => {
       const marginPctWeek = revenueWeek > 0 ? (marginWeek / revenueWeek) * 100 : 0;
 
       // Monthly revenue per client
-      const clientRevenue: Record<string, { name: string; revenue: number; cost: number; hours: number }> = {};
+      const clientRevenue: Record<string, { id: string | null; name: string; revenue: number; cost: number; hours: number }> = {};
       for (const t of tsMonth as any[]) {
         const companyName = t.placements?.companies?.name ?? 'Onbekend';
-        const companyId = t.placements?.company_id ?? 'unknown';
+        const companyId = t.placements?.company_id ?? null;
+        const key = companyId ?? 'unknown';
         const clientRate = Number(t.placements?.client_hourly_rate ?? t.placements?.hourly_rate ?? t.hourly_rate ?? 0) * 1.25;
         const empRate = Number(t.hourly_rate ?? 0);
         const hrs = Number(t.hours ?? 0) + Number(t.overtime_hours ?? 0);
-        if (!clientRevenue[companyId]) clientRevenue[companyId] = { name: companyName, revenue: 0, cost: 0, hours: 0 };
-        clientRevenue[companyId].revenue += clientRate * hrs;
-        clientRevenue[companyId].cost += empRate * hrs;
-        clientRevenue[companyId].hours += hrs;
+        if (!clientRevenue[key]) clientRevenue[key] = { id: companyId, name: companyName, revenue: 0, cost: 0, hours: 0 };
+        clientRevenue[key].revenue += clientRate * hrs;
+        clientRevenue[key].cost += empRate * hrs;
+        clientRevenue[key].hours += hrs;
       }
       const revenueByClient = Object.values(clientRevenue)
         .filter(c => c.hours > 0)
@@ -322,7 +324,7 @@ const KpiDashboard = () => {
                   const pct = c.revenue > 0 ? Math.round((margin / c.revenue) * 100) : 0;
                   return (
                     <tr key={i} className="border-b last:border-0">
-                      <td className="py-2 font-medium">{c.name}</td>
+                      <td className="py-2 font-medium"><EntityLink type="company" id={c.id} fallback={c.name}>{c.name}</EntityLink></td>
                       <td className="py-2 text-right text-muted-foreground">{c.hours.toFixed(1)}</td>
                       <td className="py-2 text-right">{fmt(Math.round(c.revenue))}</td>
                       <td className="py-2 text-right text-muted-foreground">{fmt(Math.round(c.cost))}</td>
