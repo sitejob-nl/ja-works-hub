@@ -195,6 +195,19 @@ const Timesheets = () => {
   const generateHourLetter = useMutation({
     mutationFn: async () => {
       if (employeeFilter === 'all') throw new Error('Selecteer eerst een medewerker');
+      // employeeFilter is een candidate_id (de medewerker-select leest uit `candidates`).
+      // hour_letters.employee_id is echter een verplichte FK naar de (legacy) employees-tabel,
+      // dus die resolven we via candidate_id. Bugfix: voorheen werd de candidate_id
+      // rechtstreeks als employee_id weggeschreven (verkeerde/dangling FK).
+      const { data: empRows, error: empErr } = await supabase
+        .from('employees')
+        .select('id')
+        .eq('candidate_id', employeeFilter)
+        .order('created_at', { ascending: false })
+        .limit(1);
+      if (empErr) throw empErr;
+      const employeeId = empRows?.[0]?.id;
+      if (!employeeId) throw new Error('Geen dienstverband-record gevonden voor deze medewerker; urenbrief kan niet worden aangemaakt.');
       // Group timesheets by placement
       const placementIds = [...new Set(timesheets.map((t: any) => t.placement_id))];
       const results = [];
@@ -207,7 +220,8 @@ const Timesheets = () => {
         
         const { data, error } = await supabase.from('hour_letters').insert({
           organization_id: orgId,
-          employee_id: employeeFilter,
+          employee_id: employeeId,
+          candidate_id: employeeFilter,
           placement_id: pid,
           week_number: weekNum,
           year: weekRef.getFullYear(),
