@@ -11,6 +11,7 @@ import { startOfWeek, endOfWeek, format, subWeeks, getISOWeek } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { formatDate, formatRelativeTime } from '@/lib/format';
+import { entityPath } from '@/lib/entity-routes';
 import { toast } from 'sonner';
 import KpiDashboard from '@/components/dashboard/KpiDashboard';
 import OnboardingWizard from '@/components/onboarding/OnboardingWizard';
@@ -316,7 +317,7 @@ const Dashboard = () => {
       icon: FileWarning,
       description: `${doc.name} van ${cand?.first_name} ${cand?.last_name} ${isExpired ? 'is verlopen op' : 'verloopt op'} ${formatDate(doc.expiry_date)}`,
       category: 'Document',
-      link: `/kandidaten/${cand?.id}`,
+      link: entityPath('candidate', cand?.id, { tab: 'documenten' }),
     });
   }
 

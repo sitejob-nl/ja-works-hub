@@ -6,6 +6,7 @@ import { Car, Plus, Search, Fuel } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import EntityLink from '@/components/ui/entity-link';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
@@ -215,7 +216,7 @@ const Transport = () => {
                           </TableCell>
                           <TableCell className="font-mono text-xs">{v.fuel_card_reference ?? '—'}</TableCell>
                           <TableCell><Badge variant="secondary" className={statusBadge[v.status] ?? ''}>{statusLabel[v.status] ?? v.status}</Badge></TableCell>
-                          <TableCell>{assignee ? `${assignee.first_name} ${assignee.last_name}` : '—'}</TableCell>
+                          <TableCell>{assignee ? <EntityLink type="employee" id={activeAssignment?.employees?.id}>{assignee.first_name} {assignee.last_name}</EntityLink> : '—'}</TableCell>
                           <TableCell className="max-w-[200px]">
                             {v.notes ? (
                               <span className="text-xs text-muted-foreground truncate block" title={v.notes}>{v.notes}</span>

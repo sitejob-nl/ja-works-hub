@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { Briefcase, CalendarDays, Euro, MapPin, Search, Sparkles, UserPlus, Users } from 'lucide-react';
+import EntityLink from '@/components/ui/entity-link';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { useAuth } from '@/contexts/AuthContext';
@@ -200,7 +201,7 @@ const CandidateVacancyMatchesTab = ({ candidateId, candidate }: { candidateId: s
                   </Badge>
                 </div>
                 {r.vacancy.company_name && (
-                  <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1"><Briefcase className="h-3 w-3" /> {r.vacancy.company_name}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1"><Briefcase className="h-3 w-3" /> <EntityLink type="company" id={r.vacancy.company_id} fallback={r.vacancy.company_name}>{r.vacancy.company_name}</EntityLink></p>
                 )}
                 <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
                   {r.vacancy.location && <span className="inline-flex items-center gap-1"><MapPin className="h-3 w-3" /> {r.vacancy.location}</span>}
