@@ -9,6 +9,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
   PieChart, Pie, Legend,
 } from 'recharts';
+import { Link, useNavigate } from 'react-router-dom';
 import EntityLink from '@/components/ui/entity-link';
 
 const CHART_COLORS = [
@@ -150,15 +151,16 @@ const KpiDashboard = () => {
   const fmt = (n: number) => `€${n.toLocaleString('nl-NL')}`;
 
   const cards = [
-    { icon: DollarSign, label: 'Omzet deze week', value: fmt(k.revenueWeek), sub: `Kosten: ${fmt(k.costWeek)}`, color: 'text-stat-green', bg: 'bg-stat-green/10' },
-    { icon: TrendingUp, label: 'Brutomarge', value: fmt(k.marginWeek), sub: `${k.marginPctWeek}% marge`, color: 'text-stat-blue', bg: 'bg-stat-blue/10' },
-    { icon: Clock, label: 'Uren deze week', value: k.totalHoursWeek.toFixed(0), sub: `${k.activePlacements} actieve plaatsingen`, color: 'text-stat-purple', bg: 'bg-stat-purple/10' },
-    { icon: Building2, label: 'Actieve opdrachtgevers', value: k.activeClients, sub: `${k.activePlacements} actieve plaatsingen`, color: 'text-stat-orange', bg: 'bg-stat-orange/10' },
-    { icon: Home, label: 'Kamerbezetting', value: `${k.occupancyPct}%`, sub: `${k.availableRooms} van ${k.totalCapacity} vrij`, color: 'text-stat-green', bg: 'bg-stat-green/10' },
-    { icon: Car, label: "Wagenpark", value: `${k.availableCars} vrij`, sub: `${k.totalCars} totaal`, color: 'text-stat-orange', bg: 'bg-stat-orange/10' },
+    { icon: DollarSign, label: 'Omzet deze week', value: fmt(k.revenueWeek), sub: `Kosten: ${fmt(k.costWeek)}`, color: 'text-stat-green', bg: 'bg-stat-green/10', to: '/facturatie' },
+    { icon: TrendingUp, label: 'Brutomarge', value: fmt(k.marginWeek), sub: `${k.marginPctWeek}% marge`, color: 'text-stat-blue', bg: 'bg-stat-blue/10', to: '/facturatie' },
+    { icon: Clock, label: 'Uren deze week', value: k.totalHoursWeek.toFixed(0), sub: `${k.activePlacements} actieve plaatsingen`, color: 'text-stat-purple', bg: 'bg-stat-purple/10', to: '/uren' },
+    { icon: Building2, label: 'Actieve opdrachtgevers', value: k.activeClients, sub: `${k.activePlacements} actieve plaatsingen`, color: 'text-stat-orange', bg: 'bg-stat-orange/10', to: '/opdrachtgevers' },
+    { icon: Home, label: 'Kamerbezetting', value: `${k.occupancyPct}%`, sub: `${k.availableRooms} van ${k.totalCapacity} vrij`, color: 'text-stat-green', bg: 'bg-stat-green/10', to: '/huisvesting' },
+    { icon: Car, label: "Wagenpark", value: `${k.availableCars} vrij`, sub: `${k.totalCars} totaal`, color: 'text-stat-orange', bg: 'bg-stat-orange/10', to: '/transport' },
   ];
 
   const monthLabel = format(now, 'MMMM yyyy', { locale: nl });
+  const navigate = useNavigate();
 
   return (
     <div className="space-y-6">
@@ -170,7 +172,11 @@ const KpiDashboard = () => {
       {/* KPI cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         {cards.map((c) => (
-          <div key={c.label} className="bg-card border rounded-lg p-3">
+          <Link
+            key={c.label}
+            to={c.to}
+            className="bg-card border rounded-lg p-3 block transition-colors hover:border-primary/40 hover:bg-muted/30"
+          >
             <div className="flex items-center gap-2 mb-1.5">
               <div className={`h-7 w-7 rounded-md ${c.bg} flex items-center justify-center`}>
                 <c.icon className={`h-3.5 w-3.5 ${c.color}`} />
@@ -179,7 +185,7 @@ const KpiDashboard = () => {
             <p className="text-lg font-semibold">{c.value}</p>
             <p className="text-[11px] text-muted-foreground">{c.label}</p>
             {c.sub && <p className="text-[10px] text-muted-foreground/70 mt-0.5">{c.sub}</p>}
-          </div>
+          </Link>
         ))}
       </div>
 
@@ -210,7 +216,14 @@ const KpiDashboard = () => {
                   ]}
                   contentStyle={{ fontSize: 12, borderRadius: 8 }}
                 />
-                <Bar dataKey="revenue" name="Omzet" radius={[0, 4, 4, 0]} barSize={16}>
+                <Bar
+                  dataKey="revenue"
+                  name="Omzet"
+                  radius={[0, 4, 4, 0]}
+                  barSize={16}
+                  style={{ cursor: 'pointer' }}
+                  onClick={(d: any) => { const cid = d?.id ?? d?.payload?.id; if (cid) navigate(`/opdrachtgevers/${cid}`); }}
+                >
                   {k.revenueByClient.map((_, i) => (
                     <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
                   ))}
