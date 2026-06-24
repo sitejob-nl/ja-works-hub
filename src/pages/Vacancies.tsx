@@ -14,6 +14,8 @@ import { formatDate, formatEUR } from '@/lib/format';
 import { logAudit } from '@/lib/audit';
 import { getPaginationRange } from '@/lib/pagination';
 import { toast } from 'sonner';
+import ErrorState from '@/components/shared/ErrorState';
+import { toFriendlyError } from '@/lib/errorMessages';
 
 const PAGE_SIZE = 10;
 
@@ -60,7 +62,7 @@ const Vacancies = () => {
     return () => clearTimeout(t);
   }, [search]);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['vacancies', debouncedSearch, statusFilter, urgencyFilter, page],
     queryFn: async () => {
       const searchTerm = debouncedSearch.trim();
@@ -103,7 +105,7 @@ const Vacancies = () => {
       qc.invalidateQueries({ queryKey: ['vacancies'] });
       toast.success('Status bijgewerkt');
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => toast.error(toFriendlyError(e)),
   });
 
   const vacancies = data?.vacancies ?? [];
@@ -146,7 +148,9 @@ const Vacancies = () => {
         <span className="text-sm text-muted-foreground">{total} vacatures</span>
       </div>
 
-      {isLoading ? (
+      {isError ? (
+        <ErrorState error={error} onRetry={() => refetch()} />
+      ) : isLoading ? (
         <div className="flex items-center justify-center py-20">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>

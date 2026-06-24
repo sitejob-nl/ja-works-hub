@@ -12,6 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { formatDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { toFriendlyError } from '@/lib/errorMessages';
 
 interface DupRow {
   group_key: string;
@@ -77,7 +78,7 @@ const DuplicateCandidates = () => {
       qc.invalidateQueries({ queryKey: ['candidates'] });
       toast.success(`${merged} dubbel profiel${merged === 1 ? '' : 'en'} samengevoegd`);
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => toast.error(toFriendlyError(e)),
   });
 
   const fullName = (r: DupRow) => `${r.first_name ?? ''} ${r.last_name ?? ''}`.trim() || '(naamloos)';

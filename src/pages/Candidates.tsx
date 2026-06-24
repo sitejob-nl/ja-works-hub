@@ -21,6 +21,7 @@ import SkillMultiSelect from '@/components/shared/SkillMultiSelect';
 import { PhoneLink } from '@/components/ui/contact-links';
 import { MailButton } from '@/components/ui/mail-button';
 import { formatDate } from '@/lib/format';
+import ErrorState from '@/components/shared/ErrorState';
 import { getPaginationRange } from '@/lib/pagination';
 
 const PAGE_SIZE = 10;
@@ -222,7 +223,7 @@ const Candidates = () => {
   };
 
   // Query for "Alle" tab
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['candidates', search, statusFilter, complianceFilter, cvSearch, nameSort, page, housingFilter, screeningFilter, licenseFilter, nationalityFilter, languageFilter, skillsFilter],
     queryFn: async () => {
       let query = supabase.from('candidates').select('*', { count: 'exact' });
@@ -604,7 +605,9 @@ const Candidates = () => {
       {/* ===== ALLE KANDIDATEN TAB ===== */}
       {activeTab === 'alle' && (
         <>
-          {isLoading ? (
+          {isError ? (
+            <ErrorState error={error} onRetry={() => refetch()} />
+          ) : isLoading ? (
             <div className="bg-card rounded-lg border p-4 space-y-3">
               {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
             </div>
