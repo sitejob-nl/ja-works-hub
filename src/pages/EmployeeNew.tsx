@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { usePublicUrl } from '@/hooks/usePublicUrl';
@@ -26,6 +26,8 @@ const EmployeeNew = () => {
   const { buildUrl } = usePublicUrl();
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const preselectId = searchParams.get('candidate');
 
   const [step, setStep] = useState<1 | 2>(1);
   const [candidateSearch, setCandidateSearch] = useState('');
@@ -33,6 +35,28 @@ const EmployeeNew = () => {
   const [form, setForm] = useState({
     employee_number: '', start_date: '', contract_type: '', contract_hours: '', notes: '',
   });
+
+  // Voorgeselecteerde kandidaat (bv. via "In dienst nemen" op het kandidaatdossier):
+  // sla stap 1 over en spring direct naar de dienstverband-gegevens.
+  const { data: preselectCandidate } = useQuery({
+    queryKey: ['hire-preselect-candidate', preselectId],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('candidates')
+        .select('id, first_name, last_name, phone, compliance_status, status')
+        .eq('id', preselectId!)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!preselectId,
+  });
+
+  useEffect(() => {
+    if (preselectCandidate && !selectedCandidate) {
+      setSelectedCandidate(preselectCandidate);
+      setStep(2);
+    }
+  }, [preselectCandidate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { data: candidates = [] } = useQuery({
     queryKey: ['hire-candidates', candidateSearch],
