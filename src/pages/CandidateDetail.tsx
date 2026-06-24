@@ -9,7 +9,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { MoreHorizontal, FileText, Link2, Copy, Check, MessageCircle, Mail, ClipboardCheck, Briefcase } from 'lucide-react';
+import { MoreHorizontal, FileText, Link2, Copy, Check, MessageCircle, Mail, ClipboardCheck, Briefcase, Sparkles } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import { toast } from 'sonner';
 import { getErrorMessage } from '@/lib/error-message';
@@ -360,6 +360,19 @@ const CandidateDetail = () => {
         <div className="flex items-center gap-2 flex-wrap mt-2">
           <Badge variant="secondary" className={statusBadge[candidate.status] ?? ''}>{statusLabel[candidate.status] ?? candidate.status}</Badge>
           <Badge variant="secondary" className={complianceBadge[candidate.compliance_status] ?? ''}>{candidate.compliance_status}</Badge>
+          {candidate.ai_status === 'completed' && candidate.ai_reliability_score != null ? (
+            <Link to={`/kandidaten/${id}?tab=screening`} title="AI-dossieranalyse bekijken">
+              <Badge variant="secondary" className={`gap-1 ${candidate.ai_reliability_score >= 7 ? 'bg-stat-green/10 text-stat-green' : candidate.ai_reliability_score >= 4 ? 'bg-stat-orange/10 text-stat-orange' : 'bg-destructive/10 text-destructive'}`}>
+                <Sparkles className="h-3 w-3" /> Plaatsbaarheid {candidate.ai_reliability_score}/10
+              </Badge>
+            </Link>
+          ) : candidate.ai_status === 'analyzing' ? (
+            <Badge variant="secondary" className="gap-1"><Sparkles className="h-3 w-3 animate-pulse" /> AI analyseert…</Badge>
+          ) : (
+            <Link to={`/kandidaten/${id}?tab=screening`} title="AI-dossieranalyse starten">
+              <Badge variant="outline" className="gap-1 text-muted-foreground"><Sparkles className="h-3 w-3" /> AI: niet geanalyseerd</Badge>
+            </Link>
+          )}
         </div>
       </PageHeader>
 

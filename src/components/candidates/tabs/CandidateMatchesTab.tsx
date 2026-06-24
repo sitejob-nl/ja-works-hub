@@ -5,7 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { useOutboundPause } from '@/hooks/useOutboundPause';
 import { useAuth } from '@/contexts/AuthContext';
-import { AlertTriangle, Mail, UserPlus } from 'lucide-react';
+import { AlertTriangle, Mail, UserPlus, Briefcase } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -26,7 +26,7 @@ const CandidateMatchesTab = ({ candidateId, candidate }: { candidateId: string; 
   const [previewMatchId, setPreviewMatchId] = useState<string | null>(null);
   const [previewData, setPreviewData] = useState<{ to: string; contact_name: string; subject: string; html: string } | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
-  const [detail, setDetail] = useState<{ title: string; description: string; breakdown?: MatchBreakdown | null; quality?: number | null; candidate?: any | null } | null>(null);
+  const [detail, setDetail] = useState<{ title: string; description: string; breakdown?: MatchBreakdown | null; quality?: number | null; candidate?: any | null; vacancyId?: string | null } | null>(null);
   const { data: outboundPaused } = useOutboundPause(orgId);
 
   const { data: matches = [] } = useQuery({
@@ -209,6 +209,7 @@ const CandidateMatchesTab = ({ candidateId, candidate }: { candidateId: string; 
                 breakdown,
                 quality: breakdown?.candidateQuality ?? null,
                 candidate,
+                vacancyId: m.vacancy_id,
               })}
               primaryAction={m.status === 'voorgesteld' ? (
                 <Button size="sm" variant="outline" className="h-10 gap-1.5" onClick={() => openPreview(m.id)} disabled={previewLoading && previewMatchId === m.id}>
@@ -233,6 +234,11 @@ const CandidateMatchesTab = ({ candidateId, candidate }: { candidateId: string; 
         breakdown={detail?.breakdown ?? null}
         candidateQuality={detail?.quality ?? null}
         candidate={detail?.candidate ?? null}
+        action={detail?.vacancyId ? (
+          <Button asChild variant="outline" size="sm" className="gap-1.5">
+            <Link to={`/vacatures/${detail.vacancyId}`}><Briefcase className="h-3.5 w-3.5" /> Bekijk vacature</Link>
+          </Button>
+        ) : undefined}
       />
 
       <Dialog open={!!previewMatchId} onOpenChange={(open) => { if (!open) { setPreviewMatchId(null); setPreviewData(null); } }}>
