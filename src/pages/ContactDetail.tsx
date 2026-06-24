@@ -9,7 +9,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ChevronRight, Pencil, Check, X, Star } from 'lucide-react';
+import { Pencil, Check, X, Star } from 'lucide-react';
+import PageHeader from '@/components/layout/PageHeader';
 import { PhoneLink } from '@/components/ui/contact-links';
 import { MailButton } from '@/components/ui/mail-button';
 import { toast } from 'sonner';
@@ -108,41 +109,33 @@ const ContactDetail = () => {
 
   return (
     <div className="space-y-4 sm:space-y-6 min-w-0">
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-1 text-sm text-muted-foreground">
-        <Link to="/contacten" className="hover:text-foreground transition-colors">Contacten</Link>
-        <ChevronRight className="h-3 w-3" />
-        <span className="text-foreground truncate">{contact.full_name}</span>
-      </div>
-
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-semibold truncate">{contact.full_name}</h1>
-            {contact.is_primary && (
-              <Badge variant="default" className="bg-stat-orange/10 text-stat-orange border-0 gap-1">
-                <Star className="h-3 w-3 fill-current" /> Primair contact
-              </Badge>
-            )}
-          </div>
-          {contact.function_title && (
-            <p className="text-muted-foreground text-sm mt-1">{contact.function_title}</p>
-          )}
-          {contact.companies && (
-            <p className="text-sm mt-1">
-              <Link to={`/opdrachtgevers/${contact.companies.id}`} className="hover:underline">
-                {contact.companies.name}
-              </Link>
-            </p>
-          )}
-        </div>
-        {!editing && (
+      <PageHeader
+        breadcrumbs={[{ label: 'Contacten', to: '/contacten' }, { label: contact.full_name }]}
+        title={contact.full_name}
+        actions={!editing ? (
           <Button variant="outline" size="sm" onClick={startEdit} className="gap-1.5 shrink-0">
             <Pencil className="h-3.5 w-3.5" /> Bewerken
           </Button>
+        ) : undefined}
+      >
+        {contact.is_primary && (
+          <div className="mt-2">
+            <Badge variant="default" className="bg-stat-orange/10 text-stat-orange border-0 gap-1">
+              <Star className="h-3 w-3 fill-current" /> Primair contact
+            </Badge>
+          </div>
         )}
-      </div>
+        {contact.function_title && (
+          <p className="text-muted-foreground text-sm mt-1">{contact.function_title}</p>
+        )}
+        {contact.companies && (
+          <p className="text-sm mt-1">
+            <Link to={`/opdrachtgevers/${contact.companies.id}`} className="hover:underline">
+              {contact.companies.name}
+            </Link>
+          </p>
+        )}
+      </PageHeader>
 
       {/* Tabs */}
       <Tabs defaultValue="profiel" className="w-full">

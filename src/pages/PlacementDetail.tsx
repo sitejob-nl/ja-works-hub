@@ -14,7 +14,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
-import { ChevronRight, Save, Building2, User, FileText, XCircle, ExternalLink } from 'lucide-react';
+import { Save, Building2, User, FileText, XCircle, ExternalLink } from 'lucide-react';
+import PageHeader from '@/components/layout/PageHeader';
 import { toast } from 'sonner';
 import { formatDate, formatEUR } from '@/lib/format';
 import { logAudit } from '@/lib/audit';
@@ -172,32 +173,10 @@ const PlacementDetail = () => {
 
   return (
     <div className="space-y-4 sm:space-y-6 min-w-0">
-      {/* Breadcrumb + Quick links */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1 text-sm text-muted-foreground">
-          <Link to="/plaatsingen" className="hover:text-foreground transition-colors">Plaatsingen</Link>
-          <ChevronRight className="h-3 w-3" />
-          <span className="text-foreground truncate">{placement.function_name}</span>
-        </div>
-        <div className="flex items-center gap-2">
-          {company && <Link to={`/opdrachtgevers/${company.id}`} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"><Building2 className="h-3 w-3" />{company.name}</Link>}
-          {placement.candidate_id && <Link to={`/kandidaten/${placement.candidate_id}`} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"><User className="h-3 w-3" />{cand?.first_name} {cand?.last_name}</Link>}
-        </div>
-      </div>
-
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-xl sm:text-2xl font-semibold truncate">{placement.function_name}</h1>
-            <Badge variant="secondary" className={statusBadge[placement.status] ?? ''}>{statusLabel[placement.status] ?? placement.status}</Badge>
-            {placement.payroller && <Badge variant="outline" className="text-xs">{payrollerLabel[placement.payroller] ?? placement.payroller}</Badge>}
-          </div>
-          <p className="text-sm text-muted-foreground mt-1">
-            {cand?.first_name} {cand?.last_name} → {company?.name} · {formatDate(placement.start_date)} t/m {formatDate(placement.expected_end_date || placement.end_date)}
-          </p>
-        </div>
-        <div className="flex gap-2">
+      <PageHeader
+        breadcrumbs={[{ label: 'Plaatsingen', to: '/plaatsingen' }, { label: placement.function_name }]}
+        title={placement.function_name}
+        actions={<>
           {canTerminate && (
             <Button variant="destructive" size="sm" onClick={() => setShowTerminate(true)} className="gap-1">
               <XCircle className="h-3.5 w-3.5" /> Beëindigen
@@ -213,8 +192,18 @@ const PlacementDetail = () => {
               </Button>
             </>
           )}
+        </>}
+      >
+        <div className="flex items-center gap-2 flex-wrap mt-2">
+          <Badge variant="secondary" className={statusBadge[placement.status] ?? ''}>{statusLabel[placement.status] ?? placement.status}</Badge>
+          {placement.payroller && <Badge variant="outline" className="text-xs">{payrollerLabel[placement.payroller] ?? placement.payroller}</Badge>}
+          {company && <Link to={`/opdrachtgevers/${company.id}`} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"><Building2 className="h-3 w-3" />{company.name}</Link>}
+          {placement.candidate_id && <Link to={`/kandidaten/${placement.candidate_id}`} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"><User className="h-3 w-3" />{cand?.first_name} {cand?.last_name}</Link>}
         </div>
-      </div>
+        <p className="text-sm text-muted-foreground mt-1">
+          {cand?.first_name} {cand?.last_name} → {company?.name} · {formatDate(placement.start_date)} t/m {formatDate(placement.expected_end_date || placement.end_date)}
+        </p>
+      </PageHeader>
 
       {/* Terminated info */}
       {placement.terminated_by && (

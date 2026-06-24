@@ -9,7 +9,8 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { ChevronRight, MoreHorizontal, FileText, Link2, Copy, Check, MessageCircle, Mail, ClipboardCheck, Briefcase } from 'lucide-react';
+import { MoreHorizontal, FileText, Link2, Copy, Check, MessageCircle, Mail, ClipboardCheck, Briefcase } from 'lucide-react';
+import PageHeader from '@/components/layout/PageHeader';
 import { toast } from 'sonner';
 import { getErrorMessage } from '@/lib/error-message';
 import CandidateProfileTab from '@/components/candidates/tabs/CandidateProfileTab';
@@ -286,19 +287,10 @@ const CandidateDetail = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <div className="flex items-center gap-1 text-sm text-muted-foreground">
-        <Link to="/kandidaten" className="hover:text-foreground transition-colors">Kandidaten</Link>
-        <ChevronRight className="h-3 w-3" />
-        <span className="text-foreground truncate">{candidate.first_name} {candidate.last_name}</span>
-      </div>
-
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-2 flex-wrap min-w-0">
-          <h1 className="text-xl sm:text-2xl font-semibold truncate">{candidate.first_name} {candidate.last_name}</h1>
-          <Badge variant="secondary" className={statusBadge[candidate.status] ?? ''}>{statusLabel[candidate.status] ?? candidate.status}</Badge>
-          <Badge variant="secondary" className={complianceBadge[candidate.compliance_status] ?? ''}>{candidate.compliance_status}</Badge>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
+      <PageHeader
+        breadcrumbs={[{ label: 'Kandidaten', to: '/kandidaten' }, { label: `${candidate.first_name ?? ''} ${candidate.last_name ?? ''}`.trim() }]}
+        title={`${candidate.first_name ?? ''} ${candidate.last_name ?? ''}`.trim()}
+        actions={<>
           <Button
             variant="outline"
             size="sm"
@@ -363,8 +355,13 @@ const CandidateDetail = () => {
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
+        </>}
+      >
+        <div className="flex items-center gap-2 flex-wrap mt-2">
+          <Badge variant="secondary" className={statusBadge[candidate.status] ?? ''}>{statusLabel[candidate.status] ?? candidate.status}</Badge>
+          <Badge variant="secondary" className={complianceBadge[candidate.compliance_status] ?? ''}>{candidate.compliance_status}</Badge>
         </div>
-      </div>
+      </PageHeader>
 
       {/* Profile Link Dialog */}
       <Dialog open={linkDialogOpen} onOpenChange={setLinkDialogOpen}>
