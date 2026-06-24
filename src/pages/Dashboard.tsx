@@ -392,7 +392,7 @@ const Dashboard = () => {
       {/* Stat cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <StatCard icon={UserCheck} label="Actieve medewerkers" value={stats.activeEmployees} colorClass="text-stat-blue" bgClass="bg-stat-blue/10" to="/medewerkers" />
-        <StatCard icon={Briefcase} label="Open vacatures" value={stats.openVacancies} colorClass="text-stat-orange" bgClass="bg-stat-orange/10" to="/vacatures" />
+        <StatCard icon={Briefcase} label="Open vacatures" value={stats.openVacancies} colorClass="text-stat-orange" bgClass="bg-stat-orange/10" to="/vacatures?status=open" />
         <StatCard icon={Home} label="Huisvestingsbezetting" value={stats.occupancyRate} colorClass="text-stat-green" bgClass="bg-stat-green/10" to="/huisvesting" />
         <StatCard icon={Clock} label={`Gewerkte uren wk ${prevWeekNr}`} value={stats.weeklyHours} colorClass="text-stat-purple" bgClass="bg-stat-purple/10" to="/uren" />
       </div>
