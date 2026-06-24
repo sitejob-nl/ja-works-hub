@@ -18,6 +18,7 @@ import { formatDate, formatEUR } from '@/lib/format';
 import { payrollerLabel } from '@/lib/payroller';
 import { getPaginationRange } from '@/lib/pagination';
 import { EntityLink } from '@/components/ui/entity-link';
+import ErrorState from '@/components/shared/ErrorState';
 
 type PlacementStatus = Database['public']['Enums']['placement_status'];
 type PayrollerType = Database['public']['Enums']['payroller_type'];
@@ -47,7 +48,7 @@ export default function PlacementsPage() {
   const [payrollerFilter, setPayrollerFilter] = useState<PayrollerType | 'all'>('all');
   const [page, setPage] = useState(0);
 
-  const { data: placements, isLoading } = useQuery({
+  const { data: placements, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['placements-list', orgId, statusFilter, payrollerFilter],
     queryFn: async () => {
       let q = supabase
@@ -142,7 +143,9 @@ export default function PlacementsPage() {
       {/* Table */}
       <Card>
         <CardContent className="p-0">
-          {isLoading ? (
+          {isError ? (
+            <ErrorState error={error} onRetry={() => refetch()} />
+          ) : isLoading ? (
             <div className="p-6 space-y-3">{[...Array(6)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
           ) : (
             <Table>

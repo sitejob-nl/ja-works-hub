@@ -14,6 +14,8 @@ import { Pagination, PaginationContent, PaginationItem, PaginationLink, Paginati
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import ImportWizard from '@/components/import/ImportWizard';
 import { toast } from 'sonner';
+import ErrorState from '@/components/shared/ErrorState';
+import { toFriendlyError } from '@/lib/errorMessages';
 import { useAuth } from '@/contexts/AuthContext';
 import { logAudit } from '@/lib/audit';
 
@@ -122,10 +124,10 @@ const Companies = () => {
       qc.invalidateQueries({ queryKey: ['companies'] });
       qc.invalidateQueries({ queryKey: ['companies-kvk-count'] });
     },
-    onError: (e: any) => toast.error(`Bulk-update mislukt: ${e?.message ?? 'onbekende fout'}`),
+    onError: (e: any) => toast.error(toFriendlyError(e, 'Bulk-update mislukt')),
   });
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['companies', search, statusFilter, page],
     queryFn: async () => {
       let query = supabase
@@ -211,7 +213,9 @@ const Companies = () => {
         <span className="text-sm text-muted-foreground">{total} opdrachtgevers</span>
       </div>
 
-      {!isLoading && companies.length === 0 ? (
+      {isError ? (
+        <ErrorState error={error} onRetry={() => refetch()} />
+      ) : !isLoading && companies.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <Building2 className="h-12 w-12 text-muted-foreground/40 mb-4" />
           <p className="text-lg font-medium text-muted-foreground">Nog geen opdrachtgevers</p>

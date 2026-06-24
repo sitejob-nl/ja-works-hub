@@ -13,6 +13,7 @@ import TagInput from '@/components/ui/tag-input';
 import SkillMultiSelect from '@/components/shared/SkillMultiSelect';
 import { ChevronRight, Plus } from 'lucide-react';
 import { toast } from 'sonner';
+import { toFriendlyError } from '@/lib/errorMessages';
 
 const FUNCTION_FREE_TEXT = '__free_text__';
 
@@ -203,7 +204,7 @@ const VacancyEdit = () => {
       toast.success('Vacature bijgewerkt');
       navigate(`/vacatures/${id}`);
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => toast.error(toFriendlyError(e)),
   });
 
   if (isLoading) return <div className="p-8 text-muted-foreground">Laden...</div>;
