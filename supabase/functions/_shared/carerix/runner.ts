@@ -288,6 +288,69 @@ async function bulkEnrichCandidates(
   }
 }
 
+function normKey(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim().toLowerCase();
+  return trimmed === '' ? null : trimmed;
+}
+
+type DedupResult = string | null | 'AMBIGUOUS';
+
+// Pre-insert dedup-fallback voor kandidaten. De primaire ontdubbeling loopt via de
+// idMapper (Carerix-ID -> external_mappings). Raakt die koppeling tussen runs zoek
+// (of komt iemand onder een nieuw Carerix-ID binnen), dan zou insertIfNew een
+// gloednieuwe rij maken i.p.v. de bestaande persoon te herkennen -> duplicaat.
+// Hier matchen we op DOB + (e-mail of voor+achternaam). Bewust NOOIT op e-mail
+// alleen (info@jawerkt.nl is een gedeelde catch-all) en nooit op naam alleen.
+// Bij meerdere kandidaten op dezelfde DOB+identiteit: conservatief toch invoegen.
+async function findExistingCandidate(
+  ctx: RunnerContext,
+  payload: Record<string, unknown>,
+): Promise<DedupResult> {
+  const dob = typeof payload.date_of_birth === 'string' && payload.date_of_birth.trim() !== ''
+    ? payload.date_of_birth.trim()
+    : null;
+  // Zonder geboortedatum kunnen we geen veilige strong-identity match doen.
+  if (!dob) return null;
+
+  const email = normKey(payload.email);
+  const firstName = normKey(payload.first_name);
+  const lastName = normKey(payload.last_name);
+
+  // E-en query: alle kandidaten met dezelfde DOB in deze org (DOB is selectief),
+  // daarna in-memory regel (a)/(b). Cap defensief - dezelfde DOB delen hooguit een paar mensen.
+  const { data, error } = await ctx.admin
+    .from('candidates')
+    .select('id, first_name, last_name, email')
+    .eq('organization_id', ctx.organizationId)
+    .eq('date_of_birth', dob)
+    .limit(50);
+
+  if (error || !data || data.length === 0) return null;
+
+  const matches = new Set<string>();
+  for (const row of data as Array<Record<string, unknown>>) {
+    const id = typeof row.id === 'string' ? row.id : null;
+    if (!id) continue;
+
+    const rowEmail = normKey(row.email);
+    const rowFirst = normKey(row.first_name);
+    const rowLast = normKey(row.last_name);
+
+    // Regel (a): zelfde e-mail + zelfde DOB (DOB is al gelijk via de query).
+    const matchesEmail = email !== null && rowEmail !== null && rowEmail === email;
+    // Regel (b): zelfde voornaam + achternaam + DOB.
+    const matchesName = firstName !== null && lastName !== null
+      && rowFirst === firstName && rowLast === lastName;
+
+    if (matchesEmail || matchesName) matches.add(id);
+  }
+
+  if (matches.size === 0) return null;
+  if (matches.size > 1) return 'AMBIGUOUS';
+  return [...matches][0];
+}
+
 async function insertIfNew<T extends Record<string, unknown>>(
   ctx: RunnerContext,
   table: string,
@@ -302,6 +365,27 @@ async function insertIfNew<T extends Record<string, unknown>>(
   if (existing) {
     stats.skipped++;
     return existing;
+  }
+
+  // Dedup-fallback: alleen kandidaten, en alleen wanneer er nog geen Carerix-ID-mapping is.
+  // Vindt een eenduidige bestaande persoon -> koppeling herstellen + verrijken i.p.v.
+  // een duplicaat invoeren. Andere entiteiten (company/contact/vacancy/...) zijn uitgesloten.
+  if (entityType === 'candidate' && !ctx.dryRun) {
+    const match = await findExistingCandidate(ctx, payload as Record<string, unknown>);
+    if (typeof match === 'string' && match !== 'AMBIGUOUS') {
+      try {
+        await ctx.idMapper.save(entityType, match, carerixId, mappingMetadata);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`[carerix] dedup idMapper.save faalde (carerix=${carerixId}): ${msg}`);
+      }
+      await bulkEnrichCandidates(ctx, [{ candidateId: match, payload: payload as Record<string, unknown> }], stats);
+      return match;
+    }
+    if (match === 'AMBIGUOUS') {
+      // Meerdere kandidaten matchen op dezelfde DOB+identiteit - niet gokken, normaal invoegen.
+      console.warn(`[carerix] dedup ambigu (carerix=${carerixId}, dob=${String((payload as Record<string, unknown>).date_of_birth)}) - nieuwe rij ingevoegd`);
+    }
   }
 
   if (ctx.dryRun) {
