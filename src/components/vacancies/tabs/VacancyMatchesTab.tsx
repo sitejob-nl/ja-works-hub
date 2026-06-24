@@ -5,7 +5,7 @@ import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { useOutboundPause } from '@/hooks/useOutboundPause';
 import { useAuth } from '@/contexts/AuthContext';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, Search, UserPlus, Sparkles, Mail, Star, X, MessageSquare, Trash2, FileText } from 'lucide-react';
+import { AlertTriangle, Search, UserPlus, Sparkles, Mail, Star, X, MessageSquare, Trash2, FileText, PhoneCall } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -608,6 +608,13 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
                 </div>
                 <div className="flex flex-col items-end gap-1 flex-shrink-0">
                   <div className="flex items-center gap-1">
+                    {m.status !== 'geplaatst' && (
+                      <Link to={`/kandidaten/${c.id}?tab=screening&vacancy=${vacancy.id}`} onClick={(e) => e.stopPropagation()}>
+                        <Button size="sm" variant="ghost" className="h-9 text-xs" title="Bellen / screenen voor deze vacature" aria-label="Bellen / screenen voor deze vacature">
+                          <PhoneCall className="h-3.5 w-3.5" />
+                        </Button>
+                      </Link>
+                    )}
                     {m.status === 'voorgesteld' && (
                       <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => openProposalEditor(m.id)} disabled={previewLoading && previewMatchId === m.id}>
                         <Mail className="h-3 w-3 mr-1" /> {previewLoading && previewMatchId === m.id ? '...' : 'Mail'}

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
@@ -92,6 +92,8 @@ const CandidateDetail = () => {
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [activeTab, setActiveTab] = useTabSearchParam('profiel');
+  const [searchParams] = useSearchParams();
+  const screeningVacancyId = searchParams.get('vacancy');
   const [screeningDirty, setScreeningDirty] = useState(false);
   const [pendingTab, setPendingTab] = useState<string | null>(null);
   const [tabGuardOpen, setTabGuardOpen] = useState(false);
@@ -430,6 +432,7 @@ const CandidateDetail = () => {
             <CandidateAiTab candidate={candidate} />
             <CandidateScreeningTab
               candidate={candidate}
+              vacancyId={screeningVacancyId}
               onUpdate={() => qc.invalidateQueries({ queryKey: ['candidate', id] })}
               onDirtyChange={setScreeningDirty}
             />
