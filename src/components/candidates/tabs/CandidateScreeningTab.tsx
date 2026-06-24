@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDecryptedCandidate } from '@/hooks/useDecryptedCandidate';
 import { logAudit } from '@/lib/audit';
+import { deriveCallQuestions } from '@/lib/callQuestions';
+import { extractFunctionErrorMessage } from '@/lib/functionError';
 import { InlineSensitiveField } from '@/components/shared/InlineFields';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -372,10 +374,12 @@ const buildScreeningNoteContent = (data: ScreeningData): string => {
 
 const CandidateScreeningTab = ({
   candidate,
+  vacancyId,
   onUpdate,
   onDirtyChange,
 }: {
   candidate: any;
+  vacancyId?: string | null;
   onUpdate: () => void;
   onDirtyChange?: (dirty: boolean) => void;
 }) => {
@@ -392,6 +396,62 @@ const CandidateScreeningTab = ({
   const [lastSavedSnapshot, setLastSavedSnapshot] = useState(() => buildSnapshot(getInitialData(candidate), getProfileDraft(candidate)));
   const saveSeq = useRef(0);
   const aiEnabled = useModuleEnabled('ai-analyse');
+
+  // Vakinhoudelijke belvragen (hybride): geopend vanuit een match → ?vacancy=<id>.
+  // Deterministische laag = gratis, uit match_breakdown.missing; AI-laag = Gemini (kost credits).
+  const [aiCallQuestions, setAiCallQuestions] = useState<string[]>([]);
+  const [aiCallLoading, setAiCallLoading] = useState(false);
+  const [aiCallMeta, setAiCallMeta] = useState<{ cost: number; balance: number } | null>(null);
+
+  const { data: screeningVacancy } = useQuery({
+    queryKey: ['screening-vacancy', vacancyId],
+    enabled: !!vacancyId,
+    queryFn: async () => {
+      const { data, error } = await supabase.from('vacancies').select('id, title').eq('id', vacancyId!).single();
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const { data: screeningMatch } = useQuery({
+    queryKey: ['screening-match', candidate.id, vacancyId],
+    enabled: !!vacancyId,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('matches')
+        .select('match_breakdown')
+        .eq('candidate_id', candidate.id)
+        .eq('vacancy_id', vacancyId!)
+        .maybeSingle();
+      return data ?? null;
+    },
+  });
+
+  const deterministicCallQuestions = useMemo(
+    () => deriveCallQuestions((screeningMatch?.match_breakdown as any) ?? null),
+    [screeningMatch],
+  );
+
+  const generateAiCallQuestions = async () => {
+    if (!vacancyId) return;
+    setAiCallLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-call-questions', {
+        body: { candidate_id: candidate.id, vacancy_id: vacancyId },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      const qs = Array.isArray((data as any)?.questions) ? (data as any).questions as string[] : [];
+      setAiCallQuestions(qs);
+      const cost = (data as any)?.cost_cents;
+      if (typeof cost === 'number') setAiCallMeta({ cost, balance: (data as any)?.balance_cents ?? 0 });
+      toast.success(`AI-vragen gegenereerd${typeof cost === 'number' ? ` (${(cost / 100).toLocaleString('nl-NL', { style: 'currency', currency: 'EUR' })})` : ''}`);
+    } catch (e) {
+      toast.error(await extractFunctionErrorMessage(e, 'AI-vragen genereren mislukt'));
+    } finally {
+      setAiCallLoading(false);
+    }
+  };
 
   const currentStepIndex = Math.max(0, SCREENING_STEPS.findIndex((step) => step.id === data.current_step));
   const currentStep = SCREENING_STEPS[currentStepIndex] ?? SCREENING_STEPS[0];
@@ -887,6 +947,49 @@ const CandidateScreeningTab = ({
                       </div>
                     ))}
                   </div>
+                </div>
+              )}
+            </Card>
+          )}
+
+          {vacancyId && (
+            <Card className="p-4 space-y-3 border-l-4 border-l-green-500">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <Briefcase className="h-4 w-4 text-green-600" />
+                  <h3 className="font-semibold text-sm">
+                    Vakinhoudelijke vragen{screeningVacancy?.title ? ` — ${screeningVacancy.title}` : ''}
+                  </h3>
+                </div>
+                {aiEnabled && (
+                  <Button size="sm" variant="outline" onClick={generateAiCallQuestions} disabled={aiCallLoading}>
+                    <Sparkles className="h-3.5 w-3.5 mr-1" /> {aiCallLoading ? 'AI bezig…' : 'AI-vragen genereren'}
+                  </Button>
+                )}
+              </div>
+              {deterministicCallQuestions.length > 0 ? (
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground uppercase tracking-wide">Op basis van de match</Label>
+                  {deterministicCallQuestions.map((q, i) => (
+                    <div key={`det-${i}`} className="rounded-md border bg-background px-3 py-2 text-sm">{q}</div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Geen openstaande gaten uit de match — gebruik de AI-knop voor extra vakinhoudelijke vragen.
+                </p>
+              )}
+              {aiCallQuestions.length > 0 && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground uppercase tracking-wide">AI-gegenereerd</Label>
+                  {aiCallQuestions.map((q, i) => (
+                    <div key={`ai-${i}`} className="rounded-md border bg-background px-3 py-2 text-sm">{q}</div>
+                  ))}
+                  {aiCallMeta && (
+                    <p className="text-[11px] text-muted-foreground">
+                      Kosten: {(aiCallMeta.cost / 100).toLocaleString('nl-NL', { style: 'currency', currency: 'EUR' })} · resterend budget: {(aiCallMeta.balance / 100).toLocaleString('nl-NL', { style: 'currency', currency: 'EUR' })}
+                    </p>
+                  )}
                 </div>
               )}
             </Card>
