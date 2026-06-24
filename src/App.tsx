@@ -64,6 +64,7 @@ const Communications = lazy(() => import("@/pages/Communications"));
 const KnowledgeBasePage = lazy(() => import("@/pages/KnowledgeBase"));
 const WhatsAppPage = lazy(() => import("@/pages/WhatsApp"));
 const ExactOnlinePage = lazy(() => import("@/pages/ExactOnline"));
+const OmzetPage = lazy(() => import("@/pages/Omzet"));
 const Onboarding = lazy(() => import("@/pages/Onboarding"));
 const CvTool = lazy(() => import("@/pages/CvTool"));
 const RecruiterWorkbench = lazy(() => import("@/pages/RecruiterWorkbench"));
@@ -217,6 +218,7 @@ const App = () => (
                 <Route path="/bulk-campaigns/:id" element={<BulkCampaignDetail />} />
                 <Route path="/kennisbank" element={<KnowledgeBasePage />} />
                 <Route path="/exact-online" element={<ExactOnlinePage />} />
+                <Route path="/omzet" element={<OmzetPage />} />
                 <Route path="/cv-tool/:candidateId" element={<CvTool />} />
                 <Route path="/importeren" element={<ImportData />} />
                 <Route path="/carerix-import" element={<CarerixImport />} />
