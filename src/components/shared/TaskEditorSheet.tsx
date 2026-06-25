@@ -115,7 +115,7 @@ const TaskEditorSheet = ({ open, onOpenChange, task, lockedEntity, onSaved }: Ta
       } else {
         const { data, error } = await supabase
           .from('recruiter_tasks')
-          .insert({ ...payload, organization_id: orgId, status: 'open', ai_generated: false })
+          .insert({ ...payload, organization_id: orgId, status: 'open', ai_generated: false, created_by: user?.id ?? null })
           .select('id')
           .single();
         if (error) throw error;

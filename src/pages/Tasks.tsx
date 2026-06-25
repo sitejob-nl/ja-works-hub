@@ -18,7 +18,7 @@ const Tasks = () => {
   const { user } = useAuth();
   const orgId = useOrganizationId();
   const qc = useQueryClient();
-  const [viewMode, setViewMode] = useState<'mine' | 'all'>('mine');
+  const [viewMode, setViewMode] = useState<'mine' | 'created' | 'all'>('mine');
   const [priorityFilter, setPriorityFilter] = useState('all');
   const [deadlineFilter, setDeadlineFilter] = useState('all');
   const [editorOpen, setEditorOpen] = useState(false);
@@ -33,6 +33,7 @@ const Tasks = () => {
         .eq('organization_id', orgId)
         .order('created_at', { ascending: false });
       if (viewMode === 'mine') q = q.eq('assigned_to', user!.id);
+      else if (viewMode === 'created') q = q.eq('created_by', user!.id);
       const { data, error } = await q;
       if (error) throw error;
       return (data as any[]) ?? [];
@@ -117,9 +118,13 @@ const Tasks = () => {
       <div className="flex flex-wrap gap-2">
         <div className="flex rounded-md border overflow-hidden">
           <button
-            className={cn('px-3 py-1.5 text-sm transition-colors', viewMode === 'mine' ? 'bg-primary text-primary-foreground' : 'bg-background hover:bg-muted')}
+            className={cn('px-3 py-1.5 text-sm transition-colors border-r', viewMode === 'mine' ? 'bg-primary text-primary-foreground' : 'bg-background hover:bg-muted')}
             onClick={() => setViewMode('mine')}
-          >Mijn taken</button>
+          >Aan mij toegewezen</button>
+          <button
+            className={cn('px-3 py-1.5 text-sm transition-colors border-r', viewMode === 'created' ? 'bg-primary text-primary-foreground' : 'bg-background hover:bg-muted')}
+            onClick={() => setViewMode('created')}
+          >Door mij gemaakt</button>
           <button
             className={cn('px-3 py-1.5 text-sm transition-colors', viewMode === 'all' ? 'bg-primary text-primary-foreground' : 'bg-background hover:bg-muted')}
             onClick={() => setViewMode('all')}

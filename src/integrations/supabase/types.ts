@@ -7320,6 +7320,7 @@ export type Database = {
           category: string | null
           completed_at: string | null
           created_at: string
+          created_by: string | null
           description: string | null
           due_date: string | null
           id: string
@@ -7338,6 +7339,7 @@ export type Database = {
           category?: string | null
           completed_at?: string | null
           created_at?: string
+          created_by?: string | null
           description?: string | null
           due_date?: string | null
           id?: string
@@ -7356,6 +7358,7 @@ export type Database = {
           category?: string | null
           completed_at?: string | null
           created_at?: string
+          created_by?: string | null
           description?: string | null
           due_date?: string | null
           id?: string
@@ -7371,6 +7374,13 @@ export type Database = {
           {
             foreignKeyName: "recruiter_tasks_assigned_to_fkey"
             columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recruiter_tasks_created_by_fkey"
+            columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
