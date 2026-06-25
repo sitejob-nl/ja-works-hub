@@ -247,8 +247,9 @@ Deno.serve(async (req) => {
     if (skillNames.length > 0) {
       skillGuidance =
         "STANDAARD VAARDIGHEIDSTERMEN VAN DEZE ORGANISATIE — gebruik EXACT deze schrijfwijze in " +
-        "competenties.hard_skills wanneer de kandidaat de vaardigheid aantoonbaar heeft (verzin niets " +
-        "en gebruik geen term zonder bewijs):\n" +
+        "competenties.hard_skills[].vaardigheid wanneer de kandidaat de vaardigheid aantoonbaar heeft. " +
+        "Verzin niets en neem een term ALLEEN op met een letterlijk bewijsfragment uit het dossier in het bewijs-veld; " +
+        "geen bewijs = niet opnemen:\n" +
         skillNames.join(", ");
     }
 
@@ -411,8 +412,11 @@ Deno.serve(async (req) => {
         );
       }
 
-      // Schrijf resultaat naar candidate
-      await writeCvAnalysisToCandidate(admin, candidate_id, orgId, result.analysis);
+      // Schrijf resultaat naar candidate. dossierText = exact de (gepseudonimiseerde) tekst
+      // die het model zag → grounding-filter verifieert bewijsfragmenten daartegen.
+      await writeCvAnalysisToCandidate(admin, candidate_id, orgId, result.analysis, {
+        dossierText: pseudonymized,
+      });
 
       // Geef het geanalyseerde (CV-)document meteen een nette naam + type 'cv'.
       await relabelSelectedCvDocument(admin, orgId, candidate, dossier.selectedDocument);

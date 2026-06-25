@@ -7,6 +7,58 @@ import type { CvAnalysisResult } from "./cv-prompt.ts";
 // deno-lint-ignore no-explicit-any
 type SupabaseAdmin = any;
 
+// Normaliseert tekst voor letterlijke-bewijs-verificatie: case-, accent- en
+// leesteken-agnostisch, zodat een bewijscitaat ook matcht op kleine vormverschillen.
+function normalizeForMatch(value: string): string {
+  return String(value ?? "")
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+// hard_skills mag plain strings bevatten (legacy / VPS-Qwen) óf {vaardigheid,bron,bewijs}
+// (het geverifieerde Gemini/Cloud-pad). Grounding-filter tegen hallucinaties:
+// - met dossierText: behoud een vaardigheid alleen als het bewijsfragment LETTERLIJK in
+//   het dossier voorkomt (taal-onafhankelijk — het citaat komt uit de brontekst zelf).
+// - zonder dossierText of bij string-items: behoud zoals aangeleverd (back-compat, geen regressie).
+// Levert altijd een platte string[] op, zodat ai_analysis.competenties.hard_skills en
+// candidate.skills consistent string[] blijven (bestaande rijen + UI + matching).
+export function resolveHardSkills(
+  raw: unknown,
+  dossierText?: string,
+): { terms: string[]; dropped: string[] } {
+  const items = Array.isArray(raw) ? raw : [];
+  const normalizedDossier = dossierText ? normalizeForMatch(dossierText) : null;
+  const terms: string[] = [];
+  const dropped: string[] = [];
+  for (const item of items) {
+    if (typeof item === "string") {
+      const t = item.trim();
+      if (t) terms.push(t);
+      continue;
+    }
+    if (!item || typeof item !== "object") continue;
+    // deno-lint-ignore no-explicit-any
+    const obj = item as any;
+    const term = String(obj.vaardigheid ?? "").trim();
+    if (!term) continue;
+    if (!normalizedDossier) {
+      terms.push(term); // niet te verifiëren → behoud
+      continue;
+    }
+    const bewijs = normalizeForMatch(obj.bewijs ?? "");
+    // Bewijs moet niet-triviaal zijn (>=4 tekens) én letterlijk in het dossier voorkomen.
+    if (bewijs.length >= 4 && normalizedDossier.includes(bewijs)) {
+      terms.push(term);
+    } else {
+      dropped.push(term);
+    }
+  }
+  return { terms: [...new Set(terms)], dropped };
+}
+
 function formatLanguageLabel(lang: {
   taal?: string;
   niveau?: string;
@@ -36,9 +88,26 @@ export async function writeCvAnalysisToCandidate(
   candidateId: string,
   organizationId: string,
   analysis: CvAnalysisResult,
+  opts: { dossierText?: string } = {},
 ): Promise<void> {
-  const hardSkills = analysis?.competenties?.hard_skills ?? [];
-  const softSkills = analysis?.competenties?.soft_skills ?? [];
+  // Grounding-filter: ongegronde (gehallucineerde) hard skills eruit, en collapse terug
+  // naar string[] zodat downstream (UI, sync-trigger, matching) ongewijzigd blijft.
+  const { terms: hardSkills, dropped: droppedHardSkills } = resolveHardSkills(
+    analysis?.competenties?.hard_skills,
+    opts.dossierText,
+  );
+  if (droppedHardSkills.length > 0) {
+    console.warn(
+      `[cv-write] ${droppedHardSkills.length} ongegronde hard skill(s) verwijderd voor kandidaat ${candidateId}: ${droppedHardSkills.join(", ")}`,
+    );
+  }
+  if (analysis?.competenties) {
+    // deno-lint-ignore no-explicit-any
+    (analysis.competenties as any).hard_skills = hardSkills;
+  }
+  const softSkills = (analysis?.competenties?.soft_skills ?? [])
+    .map((s) => typeof s === "string" ? s : String((s as { vaardigheid?: string })?.vaardigheid ?? ""))
+    .filter(Boolean);
   const certifications = (analysis?.competenties?.certificaten ?? [])
     .map((cert) => typeof cert === "string" ? cert : cert?.naam)
     .filter(Boolean);

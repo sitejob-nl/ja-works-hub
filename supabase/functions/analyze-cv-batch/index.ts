@@ -159,8 +159,9 @@ async function buildOrgPrompt(admin: Admin, orgId: string): Promise<{ addendum: 
   if (skillNames.length > 0) {
     skillGuidance =
       "STANDAARD VAARDIGHEIDSTERMEN VAN DEZE ORGANISATIE — gebruik EXACT deze schrijfwijze in " +
-      "competenties.hard_skills wanneer de kandidaat de vaardigheid aantoonbaar heeft (verzin niets " +
-      "en gebruik geen term zonder bewijs):\n" + skillNames.join(", ");
+      "competenties.hard_skills[].vaardigheid wanneer de kandidaat de vaardigheid aantoonbaar heeft. " +
+      "Verzin niets en neem een term ALLEEN op met een letterlijk bewijsfragment uit het dossier in het bewijs-veld; " +
+      "geen bewijs = niet opnemen:\n" + skillNames.join(", ");
   }
   const addendum = [sanitized.text, skillGuidance].filter((s) => s && s.trim().length > 0).join("\n\n");
   const cvAiModel = typeof settings.cv_ai_model === "string" && settings.cv_ai_model ? settings.cv_ai_model : null;
@@ -259,7 +260,9 @@ async function processCandidateSync(admin: Admin, c: CandidateForDossier, ctx: S
       return { candidate_id: c.id, status: "failed", reason: "saldo onvoldoende tijdens afschrijving", stop: true };
     }
 
-    await writeCvAnalysisToCandidate(admin, c.id, c.organization_id, result.analysis);
+    await writeCvAnalysisToCandidate(admin, c.id, c.organization_id, result.analysis, {
+      dossierText: pseudo,
+    });
     await relabelSelectedCvDocument(admin, c.organization_id, c, dossier.selectedDocument);
     await logAiUsage(admin, {
       organization_id: c.organization_id, user_id: ctx.userId, provider: ctx.provider,
