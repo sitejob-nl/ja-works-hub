@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
@@ -26,15 +26,38 @@ import MatchFeedbackDialog from '@/components/matches/MatchFeedbackDialog';
 import MatchInspectorDialog from '@/components/matches/MatchInspectorDialog';
 import MatchOutboundDialog from '@/components/matches/MatchOutboundDialog';
 import { type MatchBreakdown } from '@/lib/matching';
-import { MATCH_STATUS_STEPS, getNextMatchStatus, isTerminalMatchStatus, matchStatusNeedsFeedbackDialog } from '@/lib/match-status';
+import { MATCH_STATUS_STEPS, getMatchStatusMeta, getNextMatchStatus, isTerminalMatchStatus, matchStatusNeedsFeedbackDialog } from '@/lib/match-status';
 import { scoreBadgeClass } from '@/lib/match-presenters';
 
 const COLUMNS = MATCH_STATUS_STEPS;
 
-const STATUS_LABEL: Record<string, string> = Object.fromEntries(COLUMNS.map((c) => [c.key, c.label]));
-STATUS_LABEL.geplaatst = 'Geplaatst';
-const STATUS_COLOR: Record<string, string> = Object.fromEntries(COLUMNS.map((c) => [c.key, c.color]));
-STATUS_COLOR.geplaatst = 'bg-emerald-600';
+// Status-label/-kleur komen uit de gedeelde match-status-bron (getMatchStatusMeta),
+// niet meer uit lokaal her-gedefinieerde maps.
+const statusLabel = (status: string) => getMatchStatusMeta(status).label;
+
+// Gedeelde skill/cert-badge-rendering voor de twee match-lijsten in deze tab
+// (pipeline + shortlist), zodat de badge-opmaak op één plek staat.
+const MatchSkillBadges = ({
+  skillMatches = [],
+  certMatches = [],
+  fallbackSkills = [],
+  extras,
+}: {
+  skillMatches?: string[];
+  certMatches?: string[];
+  fallbackSkills?: string[];
+  extras?: ReactNode;
+}) => {
+  const showFallback = skillMatches.length === 0 && certMatches.length === 0 && fallbackSkills.length > 0;
+  return (
+    <div className="flex gap-1 mt-1 flex-wrap">
+      {skillMatches.slice(0, 4).map((s) => <Badge key={`skill-${s}`} variant="outline" className="text-xs">{s}</Badge>)}
+      {certMatches.slice(0, 2).map((s) => <Badge key={`cert-${s}`} variant="outline" className="text-xs">{s}</Badge>)}
+      {extras}
+      {showFallback && fallbackSkills.slice(0, 3).map((s) => <Badge key={`fallback-${s}`} variant="outline" className="text-xs">{s}</Badge>)}
+    </div>
+  );
+};
 
 const sourceLabel: Record<string, string> = {
   sollicitatie: 'Sollicitatie',
@@ -430,7 +453,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
       return;
     }
     Promise.all(matchIds.map((id) => statusMutation.mutateAsync({ matchId: id, status: toStatus })))
-      .then(() => { if (matchIds.length > 1) toast.success(`${matchIds.length} matches → ${STATUS_LABEL[toStatus]}`); else toast.success('Status bijgewerkt'); setSelectedMatches(new Set()); openPlacementForAccepted(matchIds, toStatus); })
+      .then(() => { if (matchIds.length > 1) toast.success(`${matchIds.length} matches → ${statusLabel(toStatus)}`); else toast.success('Status bijgewerkt'); setSelectedMatches(new Set()); openPlacementForAccepted(matchIds, toStatus); })
       .catch(() => { /* per-mutation toast */ });
   };
 
@@ -439,7 +462,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
     const { matchIds, toStatus } = feedbackRequest;
     Promise.all(matchIds.map((id) => statusMutation.mutateAsync({ matchId: id, status: toStatus, reasonId: feedbackReasonId || null, notes: feedbackNotes })))
       .then(() => {
-        toast.success(matchIds.length > 1 ? `${matchIds.length} matches → ${STATUS_LABEL[toStatus]}` : 'Status bijgewerkt');
+        toast.success(matchIds.length > 1 ? `${matchIds.length} matches → ${statusLabel(toStatus)}` : 'Status bijgewerkt');
         setFeedbackRequest(null); setFeedbackReasonId(''); setFeedbackNotes(''); setSelectedMatches(new Set());
         openPlacementForAccepted(matchIds, toStatus);
       })
@@ -573,6 +596,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
           const c = m.candidates ?? {};
           const checked = selectedMatches.has(m.id);
           const bd = m.match_breakdown;
+          const meta = getMatchStatusMeta(m.status);
           return (
             <Card key={m.id} className={cn('p-3', checked && 'ring-1 ring-primary')}>
               <div className="flex items-start gap-3">
@@ -586,7 +610,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
                   <div className="flex items-center gap-2 min-w-0 flex-wrap">
                     <Link to={`/kandidaten/${c.id}`} onClick={(e) => e.stopPropagation()} className="font-medium text-sm hover:text-stat-blue truncate">{c.first_name} {c.last_name}</Link>
                     <Badge variant="outline" className="text-[10px] px-1.5 py-0 flex items-center gap-1 flex-shrink-0">
-                      <span className={cn('w-1.5 h-1.5 rounded-full', STATUS_COLOR[m.status] ?? 'bg-slate-400')} /> {STATUS_LABEL[m.status] ?? m.status}
+                      <span className={cn('w-1.5 h-1.5 rounded-full', meta.color)} /> {meta.label}
                     </Badge>
                     {m.match_score != null && (
                       <span className="flex items-center gap-0.5 text-xs text-amber-600 flex-shrink-0">
@@ -595,10 +619,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
                     )}
                     {m.source && <Badge variant="outline" className="text-[10px] px-1.5 py-0 flex-shrink-0">{sourceLabel[m.source] ?? m.source}</Badge>}
                   </div>
-                  <div className="flex gap-1 mt-1 flex-wrap">
-                    {(bd?.skillMatches ?? []).slice(0, 4).map((s: string) => <Badge key={`skill-${s}`} variant="outline" className="text-xs">{s}</Badge>)}
-                    {(bd?.certificationMatches ?? []).slice(0, 2).map((s: string) => <Badge key={`cert-${s}`} variant="outline" className="text-xs">{s}</Badge>)}
-                  </div>
+                  <MatchSkillBadges skillMatches={bd?.skillMatches} certMatches={bd?.certificationMatches} />
                   {(m.duration_min || m.distance_km) && (
                     <p className="text-[11px] text-muted-foreground mt-1">
                       Reistijd: {m.duration_min ? `${Math.round(m.duration_min)} min` : 'onbekend'}{m.distance_km ? `, ${Math.round(m.distance_km)} km` : ''}
@@ -624,8 +645,8 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
                       <Button size="sm" className="h-7 text-xs" onClick={() => setPlacementMatch(m)}>Plaatsen</Button>
                     )}
                     {getNextMatchStatus(m.status) && (
-                      <Button size="sm" variant="outline" className="h-9 text-xs" onClick={() => changeStatus([m.id], getNextMatchStatus(m.status)!)} title={`Naar ${STATUS_LABEL[getNextMatchStatus(m.status)!]}`}>
-                        → {STATUS_LABEL[getNextMatchStatus(m.status)!]}
+                      <Button size="sm" variant="outline" className="h-9 text-xs" onClick={() => changeStatus([m.id], getNextMatchStatus(m.status)!)} title={`Naar ${statusLabel(getNextMatchStatus(m.status)!)}`}>
+                        → {statusLabel(getNextMatchStatus(m.status)!)}
                       </Button>
                     )}
                     {!isTerminalMatchStatus(m.status) && (
@@ -655,7 +676,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
         })}
         {visibleMatches.length === 0 && (
           <p className="text-sm text-muted-foreground py-6 text-center">
-            {statusFilter === 'all' ? 'Nog geen matches. Stel hieronder kandidaten voor uit de database.' : `Geen matches in "${STATUS_LABEL[statusFilter]}".`}
+            {statusFilter === 'all' ? 'Nog geen matches. Stel hieronder kandidaten voor uit de database.' : `Geen matches in "${statusLabel(statusFilter)}".`}
           </p>
         )}
       </div>
@@ -736,12 +757,12 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
                         <Badge variant="outline" className="text-[10px] px-1.5 py-0 flex-shrink-0" title="Algemene AI-kwaliteitsscore (los van deze vacature)">★ {c._candidateQuality}</Badge>
                       )}
                     </div>
-                    <div className="flex gap-1 mt-1 flex-wrap">
-                      {c._vacancyScore.skillMatches.slice(0, 4).map((s: string) => <Badge key={`skill-${s}`} variant="outline" className="text-xs">{s}</Badge>)}
-                      {c._vacancyScore.certificationMatches.slice(0, 2).map((s: string) => <Badge key={`cert-${s}`} variant="outline" className="text-xs">{s}</Badge>)}
-                      {vacancy.requires_drivers_license && c.has_drivers_license && <Badge variant="outline" className="text-xs">Rijbewijs</Badge>}
-                      {c._vacancyScore.skillMatches.length === 0 && c._vacancyScore.certificationMatches.length === 0 && (c.skills ?? []).slice(0, 3).map((s: string) => <Badge key={s} variant="outline" className="text-xs">{s}</Badge>)}
-                    </div>
+                    <MatchSkillBadges
+                      skillMatches={c._vacancyScore.skillMatches}
+                      certMatches={c._vacancyScore.certificationMatches}
+                      fallbackSkills={c.skills ?? []}
+                      extras={vacancy.requires_drivers_license && c.has_drivers_license ? <Badge variant="outline" className="text-xs">Rijbewijs</Badge> : null}
+                    />
                     {c._vacancyScore.missing.length > 0 && (
                       <p className="text-[11px] text-amber-700 mt-1 line-clamp-1">{c._vacancyScore.missing[0]}</p>
                     )}
