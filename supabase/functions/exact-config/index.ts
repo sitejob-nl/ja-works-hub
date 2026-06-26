@@ -48,8 +48,11 @@ Deno.serve(async (req) => {
       return new Response("Unauthorized", { status: 401 });
     }
 
-    // Handle disconnect
-    if (body.action === "disconnect") {
+    // Handle disconnect én suspended (admin kill-switch in SiteJob Connect):
+    // beide wissen de lokale credentials. Zonder de suspended-tak zou een
+    // suspended-push doorvallen naar de config-update hieronder en de koppeling
+    // ten onrechte als actief laten staan.
+    if (body.action === "disconnect" || body.action === "suspended") {
       await serviceClient
         .from("exact_config")
         .update({
@@ -61,7 +64,7 @@ Deno.serve(async (req) => {
         })
         .eq("id", config.id);
 
-      console.log("Exact disconnected for org:", config.organization_id);
+      console.log(`Exact ${body.action} for org:`, config.organization_id);
       return new Response(JSON.stringify({ ok: true }), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
