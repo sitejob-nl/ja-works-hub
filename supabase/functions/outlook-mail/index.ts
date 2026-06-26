@@ -9,6 +9,7 @@ import {
 } from "../_shared/outlook-accounts.ts";
 
 import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
+import { persistMatchedInboundMail } from "../_shared/inbound-mail-persist.ts";
 
 type MailAction = "folders" | "list" | "detail" | "attachment" | "delete" | "mark_read" | "move";
 
@@ -121,7 +122,21 @@ Deno.serve(async (req) => {
           "$orderby": String(body.folder_id || "").toLowerCase() === "sentitems" ? "sentDateTime desc" : "receivedDateTime desc",
         }));
       const data = await graphJson<{ value?: any[]; "@odata.nextLink"?: string }>(admin, provider, url);
-      return json({ messages: (data.value ?? []).map(mapMessage), next_link: data["@odata.nextLink"] ?? null }, 200, corsHeaders);
+      const messages = (data.value ?? []).map(mapMessage);
+
+      // COM1: leg inkomende mail van/over een bekende kandidaat/opdrachtgever
+      // automatisch vast in `communications` (match-gated, AVG-minimaal). In de
+      // achtergrond zodat de listing niet vertraagt; faalt dit, dan blijft de mail
+      // gewoon zichtbaar (alleen handmatige triage logt 'm dan).
+      const mailboxEmail = provider.account.mailbox_email || provider.account.from_email;
+      const persistPromise = persistMatchedInboundMail(admin, auth.organizationId, mailboxEmail, messages)
+        .catch((e) => console.warn("[outlook-mail] inbound auto-persist overgeslagen:", (e as Error).message));
+      // deno-lint-ignore no-explicit-any
+      const edge = (globalThis as any).EdgeRuntime;
+      if (edge?.waitUntil) edge.waitUntil(persistPromise);
+      else await persistPromise;
+
+      return json({ messages, next_link: data["@odata.nextLink"] ?? null }, 200, corsHeaders);
     }
 
     if (action === "detail") {
