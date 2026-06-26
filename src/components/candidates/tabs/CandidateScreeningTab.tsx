@@ -876,7 +876,10 @@ const CandidateScreeningTab = ({
       </Card>
 
       <div className="grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)]">
-        <Card className="p-3 h-fit">
+        {/* Stappen-overzicht: scrollt mee in de 2-koloms-weergave (sticky), zodat je
+            tijdens het invullen van een lange stap altijd de stappen ziet. self-start
+            voorkomt dat de kaart de rij vult zodat sticky ruimte heeft om te bewegen. */}
+        <Card className="p-3 h-fit xl:sticky xl:top-4 xl:self-start">
           <div className="space-y-1">
             {SCREENING_STEPS.map((step, index) => {
               const Icon = step.icon;
