@@ -29,20 +29,33 @@ export function getExactWebhookCallbackUrl(): string {
  * Tokens expire after 10 minutes — always call this before each API request.
  */
 export async function getExactToken(tenantId: string, webhookSecret: string): Promise<ExactTokenResponse> {
-  const res = await fetch(getExactConnectUrl("exact-token"), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ tenant_id: tenantId, secret: webhookSecret }),
-  });
+  // SiteJob Connect serialiseert de token-refresh van Exact. Bij een gelijktijdige
+  // refresh antwoordt exact-token met HTTP 503 ("busy"). Poll dan 1s en retry
+  // (max ~10s) i.p.v. de Exact-call te laten falen — anders krijg je intermitterende
+  // sync-fouten zodra twee calls tegelijk een refresh triggeren.
+  const MAX_ATTEMPTS = 10;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const res = await fetch(getExactConnectUrl("exact-token"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tenant_id: tenantId, secret: webhookSecret }),
+    });
 
-  const data = await res.json();
-  if (!res.ok) {
-    if (data.needs_reauth) {
-      throw new Error("REAUTH_REQUIRED");
+    if (res.status === 503 && attempt < MAX_ATTEMPTS) {
+      await new Promise((r) => setTimeout(r, 1000));
+      continue;
     }
-    throw new Error(data.error || "Token ophalen mislukt");
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      if (data.needs_reauth) {
+        throw new Error("REAUTH_REQUIRED");
+      }
+      throw new Error(data.error || (res.status === 503 ? "Connect bleef bezig (503)" : "Token ophalen mislukt"));
+    }
+    return data as ExactTokenResponse;
   }
-  return data as ExactTokenResponse;
+  throw new Error("Token ophalen mislukt: Connect bleef bezig (503)");
 }
 
 /** Register webhook subscriptions in Exact Online for the topics JA Werkt syncs back. */
