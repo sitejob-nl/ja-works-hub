@@ -99,18 +99,26 @@ const MatchRow = ({
           />
         )}
 
-        {/* Klikbare rij-body -> detailpaneel met kandidaatgegevens + waarom-uitleg */}
-        <button
-          type="button"
+        {/* Klikbare rij-body -> detailpaneel met kandidaatgegevens + waarom-uitleg.
+            <div role="button"> i.p.v. <button> zodat de kandidaat-deeplink (een <a>)
+            er geldig in genest kan worden; klikken op de naam navigeert (stopPropagation),
+            klikken elders opent het detailpaneel. */}
+        <div
+          role={onInspect ? 'button' : undefined}
+          tabIndex={onInspect ? 0 : undefined}
           onClick={onInspect}
-          disabled={!onInspect}
-          className="min-w-0 flex-1 space-y-1 text-left disabled:cursor-default"
+          onKeyDown={onInspect ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onInspect(); } } : undefined}
+          className={cn('min-w-0 flex-1 space-y-1 text-left', onInspect && 'cursor-pointer')}
         >
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="inline-flex items-center font-medium text-foreground">
+            <EntityLink
+              type="candidate"
+              id={candidate?.id}
+              className="inline-flex items-center font-medium text-foreground hover:text-stat-blue"
+            >
               <User className="mr-1 h-3.5 w-3.5 text-muted-foreground" />
               {fullName(candidate)}
-            </span>
+            </EntityLink>
             {typeof scorePercent === 'number' && (
               <Badge className={cn('gap-1 border-0 text-[11px]', scoreBadgeClass[scoreLabel as MatchBreakdown['label']])}>
                 <Star className="h-3 w-3" /> {Math.round(scorePercent)}%
@@ -155,7 +163,7 @@ const MatchRow = ({
               <span className="line-clamp-1">{issue.label}</span>
             </p>
           )}
-        </button>
+        </div>
 
         {/* Acties (geen detail-open) */}
         <div className="flex shrink-0 flex-col items-end gap-1.5" onClick={stop}>

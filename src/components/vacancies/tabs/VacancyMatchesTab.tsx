@@ -25,6 +25,7 @@ import PlacementSheet from '@/components/vacancies/PlacementSheet';
 import MatchFeedbackDialog from '@/components/matches/MatchFeedbackDialog';
 import MatchInspectorDialog from '@/components/matches/MatchInspectorDialog';
 import MatchOutboundDialog from '@/components/matches/MatchOutboundDialog';
+import MatchRow from '@/components/matches/MatchRow';
 import { type MatchBreakdown } from '@/lib/matching';
 import { MATCH_STATUS_STEPS, getMatchStatusMeta, getNextMatchStatus, isTerminalMatchStatus, matchStatusNeedsFeedbackDialog } from '@/lib/match-status';
 import { scoreBadgeClass } from '@/lib/match-presenters';
@@ -596,82 +597,65 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
           const c = m.candidates ?? {};
           const checked = selectedMatches.has(m.id);
           const bd = m.match_breakdown;
-          const meta = getMatchStatusMeta(m.status);
+          // De per-rij render is geünificeerd op de gedeelde MatchRow (zelfde component
+          // als MatchPipeline + CandidateMatchesTab). Alle orchestratie blijft hier:
+          // changeStatus/openPlacementForAccepted/feedbackDialog/mail-editor/PlacementSheet
+          // ongewijzigd; MatchRow krijgt alleen de bestaande handlers via zijn seams.
+          // hideVacancy: dit is de matchtab van één vacature, dus geen vacatureregel.
           return (
-            <Card key={m.id} className={cn('p-3', checked && 'ring-1 ring-primary')}>
-              <div className="flex items-start gap-3">
-                <Checkbox className="mt-1 flex-shrink-0" checked={checked} onCheckedChange={() => toggleMatch(m.id)} />
-                <div
-                  className="min-w-0 flex-1 cursor-pointer"
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setDetail({ name: `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim(), breakdown: bd, quality: bd?.candidateQuality ?? null, candidate: c })}
-                >
-                  <div className="flex items-center gap-2 min-w-0 flex-wrap">
-                    <Link to={`/kandidaten/${c.id}`} onClick={(e) => e.stopPropagation()} className="font-medium text-sm hover:text-stat-blue truncate">{c.first_name} {c.last_name}</Link>
-                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 flex items-center gap-1 flex-shrink-0">
-                      <span className={cn('w-1.5 h-1.5 rounded-full', meta.color)} /> {meta.label}
-                    </Badge>
-                    {m.match_score != null && (
-                      <span className="flex items-center gap-0.5 text-xs text-amber-600 flex-shrink-0">
-                        <Star className="h-3 w-3 fill-amber-400 text-amber-400" /> {Math.round(m.match_score)}%
-                      </span>
-                    )}
-                    {m.source && <Badge variant="outline" className="text-[10px] px-1.5 py-0 flex-shrink-0">{sourceLabel[m.source] ?? m.source}</Badge>}
-                  </div>
-                  <MatchSkillBadges skillMatches={bd?.skillMatches} certMatches={bd?.certificationMatches} />
-                  {(m.duration_min || m.distance_km) && (
-                    <p className="text-[11px] text-muted-foreground mt-1">
-                      Reistijd: {m.duration_min ? `${Math.round(m.duration_min)} min` : 'onbekend'}{m.distance_km ? `, ${Math.round(m.distance_km)} km` : ''}
-                    </p>
-                  )}
-                  {bd?.missing?.length > 0 && <p className="text-[11px] text-amber-700 mt-1 line-clamp-1">{bd.missing[0]}</p>}
-                </div>
-                <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                  <div className="flex items-center gap-1">
-                    {m.status !== 'geplaatst' && (
-                      <Link to={`/kandidaten/${c.id}?tab=screening&vacancy=${vacancy.id}`} onClick={(e) => e.stopPropagation()}>
-                        <Button size="sm" variant="ghost" className="h-9 text-xs" title="Bellen / screenen voor deze vacature" aria-label="Bellen / screenen voor deze vacature">
-                          <PhoneCall className="h-3.5 w-3.5" />
-                        </Button>
-                      </Link>
-                    )}
-                    {m.status === 'voorgesteld' && (
-                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => openProposalEditor(m.id)} disabled={previewLoading && previewMatchId === m.id}>
-                        <Mail className="h-3 w-3 mr-1" /> {previewLoading && previewMatchId === m.id ? '...' : 'Mail'}
-                      </Button>
-                    )}
-                    {m.status === 'geaccepteerd' && (
-                      <Button size="sm" className="h-7 text-xs" onClick={() => setPlacementMatch(m)}>Plaatsen</Button>
-                    )}
-                    {getNextMatchStatus(m.status) && (
-                      <Button size="sm" variant="outline" className="h-9 text-xs" onClick={() => changeStatus([m.id], getNextMatchStatus(m.status)!)} title={`Naar ${statusLabel(getNextMatchStatus(m.status)!)}`}>
-                        → {statusLabel(getNextMatchStatus(m.status)!)}
-                      </Button>
-                    )}
-                    {!isTerminalMatchStatus(m.status) && (
-                      <Button size="sm" variant="ghost" className="h-9 text-xs text-red-600" onClick={() => changeStatus([m.id], 'afgewezen')} aria-label={`Match afwijzen voor ${c.first_name ?? ''} ${c.last_name ?? ''}`.trim()}>
-                        <X className="h-3 w-3" />
-                      </Button>
-                    )}
-                    {m.status !== 'geplaatst' && (
-                      <Button size="sm" variant="ghost" className="h-9 text-xs text-muted-foreground hover:text-red-600" onClick={() => setDeleteMatchId(m.id)} aria-label={`Match verwijderen voor ${c.first_name ?? ''} ${c.last_name ?? ''}`.trim()} title="Match verwijderen">
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    )}
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-7 text-xs text-muted-foreground"
-                    disabled={!bd}
-                    onClick={() => setDetail({ name: `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim(), breakdown: bd, quality: bd?.candidateQuality ?? null, candidate: c })}
-                  >
-                    Waarom?
+            <MatchRow
+              key={m.id}
+              id={m.id}
+              status={m.status}
+              candidate={c}
+              hideVacancy
+              sourceLabel={m.source ? (sourceLabel[m.source] ?? m.source) : null}
+              score={m.match_score}
+              breakdown={bd}
+              candidateQuality={bd?.candidateQuality ?? null}
+              distanceKm={m.distance_km}
+              durationMin={m.duration_min}
+              statusChangedAt={m.status_changed_at}
+              createdAt={m.created_at}
+              selected={checked}
+              onSelectChange={() => toggleMatch(m.id)}
+              onInspect={() => setDetail({ name: `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim(), breakdown: bd, quality: bd?.candidateQuality ?? null, candidate: c })}
+              primaryAction={
+                m.status === 'voorgesteld' ? (
+                  <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => openProposalEditor(m.id)} disabled={previewLoading && previewMatchId === m.id}>
+                    <Mail className="h-3 w-3 mr-1" /> {previewLoading && previewMatchId === m.id ? '...' : 'Mail'}
                   </Button>
-                </div>
-              </div>
-            </Card>
+                ) : m.status === 'geaccepteerd' ? (
+                  <Button size="sm" className="h-8 text-xs" onClick={() => setPlacementMatch(m)}>Plaatsen</Button>
+                ) : undefined
+              }
+              secondaryActions={
+                <>
+                  {m.status !== 'geplaatst' && (
+                    <Link to={`/kandidaten/${c.id}?tab=screening&vacancy=${vacancy.id}`} onClick={(e) => e.stopPropagation()}>
+                      <Button size="sm" variant="ghost" className="h-8 text-xs" title="Bellen / screenen voor deze vacature" aria-label="Bellen / screenen voor deze vacature">
+                        <PhoneCall className="h-3.5 w-3.5" />
+                      </Button>
+                    </Link>
+                  )}
+                  {getNextMatchStatus(m.status) && (
+                    <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => changeStatus([m.id], getNextMatchStatus(m.status)!)} title={`Naar ${statusLabel(getNextMatchStatus(m.status)!)}`}>
+                      → {statusLabel(getNextMatchStatus(m.status)!)}
+                    </Button>
+                  )}
+                  {!isTerminalMatchStatus(m.status) && (
+                    <Button size="sm" variant="ghost" className="h-8 text-xs text-red-600" onClick={() => changeStatus([m.id], 'afgewezen')} aria-label={`Match afwijzen voor ${c.first_name ?? ''} ${c.last_name ?? ''}`.trim()}>
+                      <X className="h-3 w-3" />
+                    </Button>
+                  )}
+                  {m.status !== 'geplaatst' && (
+                    <Button size="sm" variant="ghost" className="h-8 text-xs text-muted-foreground hover:text-red-600" onClick={() => setDeleteMatchId(m.id)} aria-label={`Match verwijderen voor ${c.first_name ?? ''} ${c.last_name ?? ''}`.trim()} title="Match verwijderen">
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  )}
+                </>
+              }
+            />
           );
         })}
         {visibleMatches.length === 0 && (
