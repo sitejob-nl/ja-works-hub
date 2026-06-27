@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { unwrap, unwrapList } from '@/lib/db';
+import { qk } from '@/lib/query-keys';
 import { ChevronRight, Edit, MoreHorizontal, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -44,9 +46,8 @@ const VehicleDetail = () => {
   const [activeTab, setActiveTab] = useTabSearchParam('gegevens');
 
   const { data: vehicle, isLoading } = useQuery({
-    queryKey: ['vehicle', id],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('vehicles').select(`
+    queryKey: qk.vehicles.detail(id),
+    queryFn: () => unwrap(supabase.from('vehicles').select(`
         *,
         vehicle_assignments!vehicle_assignments_vehicle_id_fkey(
           id, assigned_date, returned_date, start_mileage, end_mileage,
@@ -54,20 +55,16 @@ const VehicleDetail = () => {
             id, candidates!employees_candidate_id_fkey(first_name, last_name)
           )
         )
-      `).eq('id', id!).single();
-      if (error) throw error;
-      return data;
-    },
+      `).eq('id', id!).single()),
     enabled: !!id,
   });
 
   const statusMutation = useMutation({
     mutationFn: async (status: string) => {
-      const { error } = await supabase.from('vehicles').update({ status } as any).eq('id', id!);
-      if (error) throw error;
+      await unwrap(supabase.from('vehicles').update({ status } as any).eq('id', id!));
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['vehicle', id] });
+      qc.invalidateQueries({ queryKey: qk.vehicles.detail(id) });
       qc.invalidateQueries({ queryKey: ['vehicles'] });
       toast.success('Status bijgewerkt');
     },
@@ -76,7 +73,7 @@ const VehicleDetail = () => {
 
   // Counts voor delete-dialog: hoeveel kind-records gaan mee weg
   const { data: deleteImpact } = useQuery({
-    queryKey: ['vehicle-delete-impact', id],
+    queryKey: qk.vehicles.deleteImpact(id),
     queryFn: async () => {
       const [assignments, damage, fines, mileage, fuel] = await Promise.all([
         supabase.from('vehicle_assignments').select('id', { count: 'exact', head: true }).eq('vehicle_id', id!),
@@ -103,13 +100,12 @@ const VehicleDetail = () => {
   const hardDelete = useMutation({
     mutationFn: async () => {
       // Pre-check: weiger als er een actieve toewijzing is
-      const { data: active, error: aErr } = await supabase
+      const active = await unwrapList<any>(supabase
         .from('vehicle_assignments')
         .select('id')
         .eq('vehicle_id', id!)
         .is('returned_date', null)
-        .limit(1);
-      if (aErr) throw aErr;
+        .limit(1));
       if ((active ?? []).length > 0) {
         throw new Error('Voertuig heeft een actieve toewijzing — eerst inleveren voordat je kunt verwijderen.');
       }
@@ -123,16 +119,12 @@ const VehicleDetail = () => {
       }
 
       // Delete child rijen die niet via CASCADE gaan (RESTRICT / NO ACTION)
-      const { error: e1 } = await supabase.from('fuel_card_transactions').delete().eq('vehicle_id', id!);
-      if (e1) throw e1;
-      const { error: e2 } = await supabase.from('vehicle_damage_reports').delete().eq('vehicle_id', id!);
-      if (e2) throw e2;
-      const { error: e3 } = await supabase.from('vehicle_assignments').delete().eq('vehicle_id', id!);
-      if (e3) throw e3;
+      await unwrap(supabase.from('fuel_card_transactions').delete().eq('vehicle_id', id!));
+      await unwrap(supabase.from('vehicle_damage_reports').delete().eq('vehicle_id', id!));
+      await unwrap(supabase.from('vehicle_assignments').delete().eq('vehicle_id', id!));
 
       // Vehicle delete cascadeert mileage_entries + vehicle_fines via FK
-      const { error } = await supabase.from('vehicles').delete().eq('id', id!);
-      if (error) throw error;
+      await unwrap(supabase.from('vehicles').delete().eq('id', id!));
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['vehicles'] });

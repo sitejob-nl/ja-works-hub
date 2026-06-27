@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { unwrap } from '@/lib/db';
 import { useAuth } from '@/contexts/AuthContext';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -104,6 +105,7 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
 
     if (uploadError) throw uploadError;
 
+    // eslint-disable-next-line no-restricted-syntax -- bij fout storage-rollback (remove) vóór throw; unwrap zou direct throwen zonder cleanup
     const { error: contractError } = await supabase.from('property_contracts' as any).insert({
       organization_id: orgId,
       property_id: propertyId,
@@ -166,12 +168,10 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
       };
       let propertyId: string;
       if (isEdit) {
-        const { error } = await supabase.from('properties').update(payload).eq('id', property.id);
-        if (error) throw error;
+        await unwrap(supabase.from('properties').update(payload).eq('id', property.id));
         propertyId = property.id as string;
       } else {
-        const { data, error } = await supabase.from('properties').insert({ ...payload, organization_id: orgId }).select('id').single();
-        if (error) throw error;
+        const data = await unwrap<{ id: string }>(supabase.from('properties').insert({ ...payload, organization_id: orgId }).select('id').single());
         propertyId = data.id as string;
       }
 

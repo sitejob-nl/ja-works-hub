@@ -39,6 +39,31 @@ export const qk = {
   vehicles: {
     /** Vehicle entity — shared by VehicleDetail + the transport tabs' invalidations. */
     detail: (id: string) => ['vehicle', id] as const,
+    deleteImpact: (id: string) => ['vehicle-delete-impact', id] as const,
+  },
+  fuel: {
+    analysisSettings: (orgId: string) => ['organization-fuel-analysis-settings', orgId] as const,
+    transactions: (orgId: string) => ['fuel-transactions', orgId] as const,
+    dataQuality: (orgId: string) => ['fuel-analysis-data-quality', orgId] as const,
+    imports: (orgId: string) => ['fuel-card-imports', orgId] as const,
+  },
+  housing: {
+    property: (propertyId: string) => ['property', propertyId] as const,
+    availableEmployees: (orgId: string, search: string) =>
+      ['available-employees-housing', orgId, search] as const,
+    moveTargets: (orgId: string) => ['move-targets', orgId] as const,
+  },
+  employees: {
+    housingAssignments: (orgId: string, candidateId: string) =>
+      ['housing-assignments', orgId, candidateId] as const,
+    keyRegistrations: (orgId: string, candidateId: string) =>
+      ['key-registrations', orgId, candidateId] as const,
+    assignableUnits: (orgId: string) => ['assignable-units', orgId] as const,
+    contracts: (candidateId: string) => ['contracts', candidateId] as const,
+    contractTemplates: (orgId: string) => ['contract-templates', orgId] as const,
+    organization: (orgId: string) => ['organization', orgId] as const,
+    activePlacement: (candidateId: string) => ['active-placement', candidateId] as const,
+    sickReports: (candidateId: string) => ['sick-reports', candidateId] as const,
   },
   transport: {
     damage: (vehicleId: string) => ['vehicle-damage', vehicleId] as const,

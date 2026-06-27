@@ -1,6 +1,8 @@
 import { useMemo } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { unwrap } from '@/lib/db';
+import { qk } from '@/lib/query-keys';
 import { logAudit } from '@/lib/audit';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { EntityLink } from '@/components/ui/entity-link';
@@ -118,24 +120,22 @@ const CostsTab = ({ property }: { property: any }) => {
 
   const toggleDeposit = useMutation({
     mutationFn: async ({ id, paid }: { id: string; paid: boolean }) => {
-      const { error } = await supabase.from('housing_assignments').update({ deposit_paid: paid }).eq('id', id);
-      if (error) throw error;
+      await unwrap(supabase.from('housing_assignments').update({ deposit_paid: paid }).eq('id', id));
     },
     onSuccess: (_data, variables) => {
       logAudit({ action: 'update', tableName: 'housing_assignments', recordId: variables.id, newValues: { deposit_paid: variables.paid } });
-      qc.invalidateQueries({ queryKey: ['property', property.id] });
+      qc.invalidateQueries({ queryKey: qk.housing.property(property.id) });
       toast.success('Borg status bijgewerkt');
     },
   });
 
   const updateRentPaid = useMutation({
     mutationFn: async ({ id, date }: { id: string; date: string }) => {
-      const { error } = await supabase.from('housing_assignments').update({ rent_paid_until: date || null }).eq('id', id);
-      if (error) throw error;
+      await unwrap(supabase.from('housing_assignments').update({ rent_paid_until: date || null }).eq('id', id));
     },
     onSuccess: (_data, variables) => {
       logAudit({ action: 'update', tableName: 'housing_assignments', recordId: variables.id, newValues: { rent_paid_until: variables.date } });
-      qc.invalidateQueries({ queryKey: ['property', property.id] });
+      qc.invalidateQueries({ queryKey: qk.housing.property(property.id) });
       toast.success('Huur betaald tot bijgewerkt');
     },
   });

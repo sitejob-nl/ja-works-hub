@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { unwrap, unwrapList } from '@/lib/db';
+import { qk } from '@/lib/query-keys';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePublicUrl } from '@/hooks/usePublicUrl';
@@ -25,12 +27,13 @@ const statusColors: Record<string, string> = {
 };
 
 const resolveEmployeeId = async (candidateId: string) => {
-  const { data, error } = await supabase
-    .from('employees')
-    .select('id')
-    .eq('candidate_id', candidateId)
-    .maybeSingle();
-  if (error) throw error;
+  const data = await unwrap(
+    supabase
+      .from('employees')
+      .select('id')
+      .eq('candidate_id', candidateId)
+      .maybeSingle()
+  );
   if (!data?.id) throw new Error('Geen medewerkerrecord gevonden voor deze kandidaat');
   return data.id;
 };
@@ -47,47 +50,41 @@ const EmployeeContractsTab = ({ candidateId, candidate, employment }: { candidat
   const [viewContract, setViewContract] = useState<any>(null);
 
   const { data: contracts = [] } = useQuery({
-    queryKey: ['contracts', candidateId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('contracts')
-        .select('*')
-        .eq('candidate_id', candidateId)
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return data;
-    },
+    queryKey: qk.employees.contracts(candidateId),
+    queryFn: () =>
+      unwrapList<any>(
+        supabase
+          .from('contracts')
+          .select('*')
+          .eq('candidate_id', candidateId)
+          .order('created_at', { ascending: false })
+      ),
   });
 
   const { data: templates = [] } = useQuery<any[]>({
-    queryKey: ['contract-templates', orgId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('contract_templates' as any)
-        .select('*')
-        .eq('organization_id', orgId)
-        .eq('is_active', true)
-        .eq('template_status', 'actief')
-        .eq('is_placeholder', false)
-        .order('name');
-      if (error) throw error;
-      return (data ?? []) as any[];
-    },
+    queryKey: qk.employees.contractTemplates(orgId),
+    queryFn: () =>
+      unwrapList<any>(
+        supabase
+          .from('contract_templates' as any)
+          .select('*')
+          .eq('organization_id', orgId)
+          .eq('is_active', true)
+          .eq('template_status', 'actief')
+          .eq('is_placeholder', false)
+          .order('name')
+      ),
   });
 
   // Get org info for merge fields
   const { data: org } = useQuery({
-    queryKey: ['organization', orgId],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('organizations').select('name').eq('id', orgId).single();
-      if (error) throw error;
-      return data;
-    },
+    queryKey: qk.employees.organization(orgId),
+    queryFn: () => unwrap(supabase.from('organizations').select('name').eq('id', orgId).single()),
   });
 
   // Get active placement for merge fields
   const { data: placement } = useQuery({
-    queryKey: ['active-placement', candidateId],
+    queryKey: qk.employees.activePlacement(candidateId),
     queryFn: async () => {
       const { data } = await supabase
         .from('placements')
@@ -129,7 +126,7 @@ const EmployeeContractsTab = ({ candidateId, candidate, employment }: { candidat
     mutationFn: async () => {
       const token = crypto.randomUUID();
       const employeeId = await resolveEmployeeId(candidateId);
-      const { error } = await supabase.from('contracts').insert({
+      await unwrap(supabase.from('contracts').insert({
         organization_id: orgId,
         employee_id: employeeId,
         candidate_id: candidateId,
@@ -142,11 +139,10 @@ const EmployeeContractsTab = ({ candidateId, candidate, employment }: { candidat
         template_version_name: templates.find((t: any) => t.id === selectedTemplate)?.name ?? null,
         template_version_status: templates.find((t: any) => t.id === selectedTemplate)?.template_status ?? null,
         legal_document_type: templates.find((t: any) => t.id === selectedTemplate)?.template_type ?? null,
-      } as any);
-      if (error) throw error;
+      } as any));
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['contracts', candidateId] });
+      qc.invalidateQueries({ queryKey: qk.employees.contracts(candidateId) });
       logAudit({ action: 'create', tableName: 'contracts', recordId: candidateId, newValues: { title: contractTitle } });
       setCreating(false);
       setContractContent('');
@@ -165,13 +161,12 @@ const EmployeeContractsTab = ({ candidateId, candidate, employment }: { candidat
 
   const markSent = useMutation({
     mutationFn: async (contractId: string) => {
-      const { error } = await supabase.from('contracts')
+      await unwrap(supabase.from('contracts')
         .update({ status: 'verzonden' as any, sent_at: new Date().toISOString() })
-        .eq('id', contractId);
-      if (error) throw error;
+        .eq('id', contractId));
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['contracts', candidateId] });
+      qc.invalidateQueries({ queryKey: qk.employees.contracts(candidateId) });
       toast.success('Contract als verzonden gemarkeerd');
     },
   });
@@ -179,7 +174,7 @@ const EmployeeContractsTab = ({ candidateId, candidate, employment }: { candidat
   const markSigned = useMutation({
     mutationFn: async (contractId: string) => {
       const signedAt = new Date().toISOString();
-      const { error } = await supabase.from('contracts')
+      await unwrap(supabase.from('contracts')
         .update({
           status: 'getekend' as any,
           signed_at: signedAt,
@@ -191,11 +186,10 @@ const EmployeeContractsTab = ({ candidateId, candidate, employment }: { candidat
             note: 'Niet digitaal ondertekend via publieke tekenlink',
           },
         } as any)
-        .eq('id', contractId);
-      if (error) throw error;
+        .eq('id', contractId));
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['contracts', candidateId] });
+      qc.invalidateQueries({ queryKey: qk.employees.contracts(candidateId) });
       toast.success('Contract als getekend gemarkeerd');
     },
   });

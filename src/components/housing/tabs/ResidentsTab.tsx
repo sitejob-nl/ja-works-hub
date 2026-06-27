@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { unwrap, unwrapList } from '@/lib/db';
+import { qk } from '@/lib/query-keys';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { Link } from 'react-router-dom';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -73,14 +75,13 @@ const ResidentsTab = ({ property }: { property: any }) => {
 
   // Query workers from candidates (merged employee model) without active housing.
   const { data: availableEmployees = [] } = useQuery({
-    queryKey: ['available-employees-housing', orgId, empSearch],
+    queryKey: qk.housing.availableEmployees(orgId, empSearch),
     queryFn: async () => {
-      const { data: activeAssigns, error: activeAssignsError } = await supabase.from('housing_assignments')
+      const activeAssigns = await unwrapList<any>(supabase.from('housing_assignments')
         .select('candidate_id')
         .eq('organization_id', orgId!)
-        .in('status', ACTIVE_HOUSING_STATUSES as any);
-      if (activeAssignsError) throw activeAssignsError;
-      const occupiedIds = (activeAssigns ?? []).map((a: any) => a.candidate_id).filter(Boolean);
+        .in('status', ACTIVE_HOUSING_STATUSES as any));
+      const occupiedIds = activeAssigns.map((a: any) => a.candidate_id).filter(Boolean);
 
       let query = supabase.from('candidates')
         .select('id, first_name, last_name, employee_number, employee_status, status, email, phone')
@@ -95,9 +96,8 @@ const ResidentsTab = ({ property }: { property: any }) => {
         query = query.or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%,employee_number.ilike.%${term}%`);
       }
 
-      const { data, error } = await query;
-      if (error) throw error;
-      return (data ?? []).filter((e: any) => !occupiedIds.includes(e.id) && isAssignableHousingCandidate(e));
+      const data = await unwrapList<any>(query);
+      return data.filter((e: any) => !occupiedIds.includes(e.id) && isAssignableHousingCandidate(e));
     },
     enabled: assigning && step === 1 && !!orgId,
   });
@@ -112,7 +112,7 @@ const ResidentsTab = ({ property }: { property: any }) => {
     mutationFn: async () => {
       const deductionNum = form.deduction_amount ? Number(form.deduction_amount) : null;
       const employeeId = await resolveEmployeeId(selectedEmployee, orgId!, form.check_in_date);
-      const { error } = await supabase.from('housing_assignments').insert({
+      await unwrap(supabase.from('housing_assignments').insert({
         organization_id: orgId,
         unit_id: selectedUnit.id,
         employee_id: employeeId,
@@ -122,11 +122,10 @@ const ResidentsTab = ({ property }: { property: any }) => {
         deduction_amount: deductionNum,
         payment_frequency: form.payment_frequency,
         monthly_deduction: form.payment_frequency === 'maandelijks' ? deductionNum : (deductionNum ? Math.round(deductionNum * 4.33 * 100) / 100 : null),
-      });
-      if (error) throw error;
+      }));
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['property', property.id] });
+      qc.invalidateQueries({ queryKey: qk.housing.property(property.id) });
       logAudit({
         action: 'create',
         tableName: 'housing_assignments',
@@ -143,11 +142,10 @@ const ResidentsTab = ({ property }: { property: any }) => {
     mutationFn: async ({ assignmentId, status, checkOut }: { assignmentId: string; status: string; checkOut?: boolean }) => {
       const update: any = { status };
       if (checkOut) update.check_out_date = new Date().toISOString().split('T')[0];
-      const { error } = await supabase.from('housing_assignments').update(update).eq('id', assignmentId);
-      if (error) throw error;
+      await unwrap(supabase.from('housing_assignments').update(update).eq('id', assignmentId));
     },
     onSuccess: (_, vars) => {
-      qc.invalidateQueries({ queryKey: ['property', property.id] });
+      qc.invalidateQueries({ queryKey: qk.housing.property(property.id) });
       logAudit({
         action: 'status_change',
         tableName: 'housing_assignments',
@@ -172,12 +170,11 @@ const ResidentsTab = ({ property }: { property: any }) => {
         payment_frequency: editForm.payment_frequency,
         monthly_deduction: monthly,
       };
-      const { error } = await supabase.from('housing_assignments').update(update).eq('id', editingAssignment.id);
-      if (error) throw error;
+      await unwrap(supabase.from('housing_assignments').update(update).eq('id', editingAssignment.id));
       return update;
     },
     onSuccess: (update) => {
-      qc.invalidateQueries({ queryKey: ['property', property.id] });
+      qc.invalidateQueries({ queryKey: qk.housing.property(property.id) });
       logAudit({
         action: 'update',
         tableName: 'housing_assignments',
@@ -195,12 +192,11 @@ const ResidentsTab = ({ property }: { property: any }) => {
       if (assignment.status === 'ingecheckt') {
         throw new Error('Bewoner is ingecheckt — eerst uitchecken voordat de toewijzing verwijderd kan worden.');
       }
-      const { error } = await supabase.from('housing_assignments').delete().eq('id', assignment.id);
-      if (error) throw error;
+      await unwrap(supabase.from('housing_assignments').delete().eq('id', assignment.id));
       return assignment;
     },
     onSuccess: (assignment) => {
-      qc.invalidateQueries({ queryKey: ['property', property.id] });
+      qc.invalidateQueries({ queryKey: qk.housing.property(property.id) });
       logAudit({
         action: 'delete',
         tableName: 'housing_assignments',
@@ -220,12 +216,11 @@ const ResidentsTab = ({ property }: { property: any }) => {
     mutationFn: async () => {
       if (!movingAssignment || !moveTargetUnit) throw new Error('Geen kamer geselecteerd');
       // Pre-check: target unit must have remaining capacity
-      const { data: targetUnit, error: unitErr } = await supabase
+      const targetUnit = await unwrap<any>(supabase
         .from('units')
         .select('id, name, capacity, status, property_id, housing_assignments!housing_assignments_unit_id_fkey(id, status)')
         .eq('id', moveTargetUnit)
-        .single();
-      if (unitErr) throw unitErr;
+        .single());
       if (targetUnit.status !== 'beschikbaar') {
         throw new Error(`Kamer "${targetUnit.name}" is niet beschikbaar (status: ${targetUnit.status}).`);
       }
@@ -234,15 +229,14 @@ const ResidentsTab = ({ property }: { property: any }) => {
         throw new Error(`Kamer "${targetUnit.name}" is vol (${occupied}/${targetUnit.capacity}).`);
       }
       const oldUnitId = movingAssignment.unit_id;
-      const { error } = await supabase
+      await unwrap(supabase
         .from('housing_assignments')
         .update({ unit_id: moveTargetUnit })
-        .eq('id', movingAssignment.id);
-      if (error) throw error;
+        .eq('id', movingAssignment.id));
       return { newUnitName: targetUnit.name, oldUnitId };
     },
     onSuccess: (res) => {
-      qc.invalidateQueries({ queryKey: ['property', property.id] });
+      qc.invalidateQueries({ queryKey: qk.housing.property(property.id) });
       qc.invalidateQueries({ queryKey: ['properties'] });
       logAudit({
         action: 'update',
@@ -263,9 +257,9 @@ const ResidentsTab = ({ property }: { property: any }) => {
 
   // Properties for move target (all org's panden + their units)
   const { data: moveTargets = [] } = useQuery({
-    queryKey: ['move-targets', orgId],
+    queryKey: qk.housing.moveTargets(orgId),
     queryFn: async () => {
-      const { data, error } = await supabase
+      return unwrapList<any>(supabase
         .from('properties')
         .select(`
           id, name, address_street, address_city,
@@ -276,9 +270,7 @@ const ResidentsTab = ({ property }: { property: any }) => {
         `)
         .eq('organization_id', orgId!)
         .eq('is_active', true)
-        .order('address_city');
-      if (error) throw error;
-      return data;
+        .order('address_city'));
     },
     enabled: !!movingAssignment && !!orgId,
   });
