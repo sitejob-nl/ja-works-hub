@@ -9,6 +9,24 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.{test,spec}.{ts,tsx}"],
+    coverage: {
+      // Informational only — no thresholds, not wired into the CI gate. A hard
+      // threshold blocks unrelated PRs and invites coverage-gaming; we report and
+      // ratchet later. Narrowed to the pure lib layer (all:false) for a clean signal;
+      // src/hooks/** gets added once it has a real test behind it.
+      provider: "v8",
+      reporter: ["text", "html", "json-summary"],
+      include: ["src/lib/**"],
+      all: false,
+      exclude: [
+        "src/integrations/supabase/types.ts",
+        "src/components/ui/**",
+        "src/test/**",
+        "scripts/**",
+        "**/*.d.ts",
+        "**/*.test.{ts,tsx}",
+      ],
+    },
   },
   resolve: {
     alias: { "@": path.resolve(__dirname, "./src") },
