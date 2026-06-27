@@ -308,7 +308,9 @@ Deno.serve(async (req) => {
   try {
     const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const body = await req.json().catch(() => ({}));
-    const provider: AiProvider = body.provider === "gemini" || body.provider === "cloud" ? body.provider : "vps";
+    // Default = gemini (de standaard screening-provider). vps/cloud blijven expliciet
+    // selecteerbaar voor een superadmin-backfill, maar nooit meer de stille default.
+    const provider: AiProvider = body.provider === "vps" || body.provider === "cloud" ? body.provider : "gemini";
 
     // --- Auth: service-role (self-trigger) | superadmin (org via body) | org-admin (eigen org) ---
     let orgId: string | null = body.organization_id || null;
