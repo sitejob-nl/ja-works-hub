@@ -36,4 +36,22 @@ export const qk = {
   talentpools: {
     forCandidateAdd: (orgId: string) => ['talentpools-for-candidate-add', orgId] as const,
   },
+  vehicles: {
+    /** Vehicle entity — shared by VehicleDetail + the transport tabs' invalidations. */
+    detail: (id: string) => ['vehicle', id] as const,
+  },
+  transport: {
+    damage: (vehicleId: string) => ['vehicle-damage', vehicleId] as const,
+    damagePhotoUrls: (vehicleId: string, paths: readonly string[]) =>
+      ['vehicle-damage-photo-urls', vehicleId, paths] as const,
+    damageContactSettings: (orgId: string) => ['damage-contact-settings', orgId] as const,
+    damageAssignableEmployees: (orgId: string, employeeId: string | null | undefined) =>
+      ['damage-assignable-employees', orgId, employeeId] as const,
+    fines: (vehicleId: string) => ['vehicle-fines', vehicleId] as const,
+    finePhotoUrls: (vehicleId: string, paths: readonly string[]) =>
+      ['vehicle-fine-photo-urls', vehicleId, paths] as const,
+    fineAssignedEmployees: (vehicleId: string) => ['vehicle-assigned-employees-fines', vehicleId] as const,
+    /** Global transport-fines list (invalidated alongside per-vehicle fines). */
+    allFines: () => ['transport-fines'] as const,
+  },
 } as const;
