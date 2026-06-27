@@ -1,23 +1,16 @@
-// Kandidaatdossier-analyse — twee providers:
-//   1. VPS (Ollama Qwen3 op Hetzner) — async, callback komt 1-3 min later terug
-//      op analyze-cv-callback. Gratis voor klant.
-//   2. Cloud (Anthropic Claude Haiku 4.5) — synchroon, ~5-10s. Trekt credits.
+// Kandidaatdossier-analyse — draait UITSLUITEND op Gemini (synchroon, ~10s, trekt credits).
 //
-// Provider-keuze:
-//   - body.provider override ('vps' | 'cloud')
-//   - anders organizations.settings.cv_ai_provider
-//   - default 'vps'
+// De oude VPS/Qwen-route (Ollama op Hetzner, CPU) en de Anthropic-cloud-route zijn
+// uitgefaseerd: de VPS-default liet kandidaten minutenlang op 'analyzing' hangen.
+// Gemini is de enige screening-provider; er is geen provider-keuze meer.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { pseudonymizeCv } from "../_shared/cv-pseudonymize.ts";
-import { analyzeWithAnthropic, calculateCostCents } from "../_shared/anthropic-cv.ts";
+import { calculateCostCents } from "../_shared/anthropic-cv.ts";
 import { analyzeWithGemini, GEMINI_DEFAULT_MODEL, geminiPricingForModel } from "../_shared/gemini-cv.ts";
 import { logAiUsage, writeCvAnalysisToCandidate } from "../_shared/cv-write.ts";
 import { sanitizeOrgPrompt } from "../_shared/sanitize-org-prompt.ts";
 import { buildCandidateDossier } from "../_shared/candidate-dossier.ts";
-import { buildVpsPrompt, CV_ANALYSIS_SCHEMA, CV_ANALYSIS_TOOL_NAME } from "../_shared/cv-prompt.ts";
-
-type AiProvider = "vps" | "cloud" | "gemini";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -25,11 +18,9 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-// Pre-flight reservering: een synchrone analyse wordt geweigerd als saldo < dit bedrag.
-// Cloud (Anthropic ~3 cent/CV) houdt een ruime 25-cent buffer aan. Gemini is met de
-// maxOutputTokens-cap ~1 cent/dossier, dus een lagere drempel volstaat en blokkeert
-// orgs met klein saldo niet onnodig.
-const CLOUD_PREFLIGHT_RESERVATION_CENTS = 25;
+// Pre-flight reservering: een analyse wordt geweigerd als saldo < dit bedrag.
+// Gemini is met de maxOutputTokens-cap ~1 cent/dossier, dus een lage drempel volstaat
+// en blokkeert orgs met klein saldo niet onnodig.
 const GEMINI_PREFLIGHT_RESERVATION_CENTS = 5;
 
 // Max bestandsgrootte die we als VISION-input naar Gemini sturen. Boven dit punt slaan
@@ -165,10 +156,9 @@ Deno.serve(async (req) => {
 
     const orgId = profile.organization_id as string;
     const body = await req.json();
-    const { cv_text, candidate_id, provider: providerOverride, model: modelOverride } = body as {
+    const { cv_text, candidate_id, model: modelOverride } = body as {
       cv_text?: string;
       candidate_id?: string;
-      provider?: AiProvider;
       model?: string;
     };
 
@@ -204,17 +194,10 @@ Deno.serve(async (req) => {
       .single();
     const orgSettings = (org?.settings as Record<string, unknown> | null) ?? {};
 
-    // Bepaal provider — override > org-setting > default 'vps'
-    let provider: AiProvider = "vps";
-    if (providerOverride === "vps" || providerOverride === "cloud" || providerOverride === "gemini") {
-      provider = providerOverride;
-    } else if (orgSettings.cv_ai_provider === "cloud") {
-      provider = "cloud";
-    } else if (orgSettings.cv_ai_provider === "gemini") {
-      provider = "gemini";
-    }
+    // Screening draait uitsluitend op Gemini — geen provider-keuze meer.
+    const provider = "gemini";
 
-    // Gemini-model — request > org-setting > env > default (alleen relevant bij provider 'gemini')
+    // Gemini-model — request > org-setting > env > default
     const geminiModel = modelOverride ||
       (typeof orgSettings.cv_ai_model === "string" && orgSettings.cv_ai_model) ||
       Deno.env.get("GEMINI_MODEL") ||
@@ -294,17 +277,12 @@ Deno.serve(async (req) => {
     // SYNCHRONE CREDIT-PADEN — Cloud (Anthropic) of Gemini (Google)
     // Beide: synchroon, trekken credits, schrijven direct weg (geen callback).
     // ===========================================================
-    if (provider === "cloud" || provider === "gemini") {
-      const isGemini = provider === "gemini";
-      const apiKey = isGemini
-        ? Deno.env.get("GEMINI_API_KEY")
-        : Deno.env.get("ANTHROPIC_API_KEY");
-      const keyName = isGemini ? "GEMINI_API_KEY" : "ANTHROPIC_API_KEY";
-
+    {
+      const apiKey = Deno.env.get("GEMINI_API_KEY");
       if (!apiKey) {
         await admin.from("candidates").update({ ai_status: "failed" }).eq("id", candidate_id);
         return jsonResponse(
-          { error: `${isGemini ? "Gemini" : "Cloud"}-provider niet geconfigureerd (${keyName} ontbreekt)` },
+          { error: "Gemini-provider niet geconfigureerd (GEMINI_API_KEY ontbreekt)" },
           500,
         );
       }
@@ -312,22 +290,15 @@ Deno.serve(async (req) => {
       // Pre-flight: saldo checken
       const { data: credits } = await admin
         .from("organization_credits")
-        .select("balance_cents, pricing_input_cents_per_mtok, pricing_output_cents_per_mtok")
+        .select("balance_cents")
         .eq("organization_id", orgId)
         .single();
 
       const balance = credits?.balance_cents ?? 0;
-      // Gemini-tarieven volgen het gekozen model; Cloud volgt de org-credit-tarieven.
       const geminiPricing = geminiPricingForModel(geminiModel);
-      const pricingIn = isGemini
-        ? geminiPricing.inputCentsPerMtok
-        : (credits?.pricing_input_cents_per_mtok ?? 270);
-      const pricingOut = isGemini
-        ? geminiPricing.outputCentsPerMtok
-        : (credits?.pricing_output_cents_per_mtok ?? 1350);
-      const reservationCents = isGemini
-        ? GEMINI_PREFLIGHT_RESERVATION_CENTS
-        : CLOUD_PREFLIGHT_RESERVATION_CENTS;
+      const pricingIn = geminiPricing.inputCentsPerMtok;
+      const pricingOut = geminiPricing.outputCentsPerMtok;
+      const reservationCents = GEMINI_PREFLIGHT_RESERVATION_CENTS;
 
       if (balance < reservationCents) {
         await admin.from("candidates").update({ ai_status: null }).eq("id", candidate_id);
@@ -341,37 +312,28 @@ Deno.serve(async (req) => {
         );
       }
 
-      // VISION-fallback alleen op het Gemini-pad: gescand/foto-CV (of tekstloze PDF)
-      // als inline bestand meesturen. Anthropic-pad blijft tekst-only (ongemoeid).
-      const visionParts = isGemini
-        ? await loadVisionFileParts(admin, dossier.visionFile)
-        : [];
+      // VISION: gescand/foto-CV (of tekstloze PDF) als inline bestand meesturen naar Gemini.
+      const visionParts = await loadVisionFileParts(admin, dossier.visionFile);
 
-      // Provider-call (synchroon) — met optioneel gesanitized org-addendum
+      // Gemini-call (synchroon) — met optioneel gesanitized org-addendum
       let result;
       try {
-        result = isGemini
-          ? await analyzeWithGemini(
-            pseudonymized,
-            apiKey,
-            promptAddendum,
-            { model: geminiModel, fileParts: visionParts.length > 0 ? visionParts : undefined },
-          )
-          : await analyzeWithAnthropic(
-            pseudonymized,
-            apiKey,
-            promptAddendum,
-          );
+        result = await analyzeWithGemini(
+          pseudonymized,
+          apiKey,
+          promptAddendum,
+          { model: geminiModel, fileParts: visionParts.length > 0 ? visionParts : undefined },
+        );
       } catch (e) {
         const msg = (e as Error).message;
-        console.error(`[analyze-cv] ${provider}-call mislukt:`, msg);
+        console.error(`[analyze-cv] Gemini-call mislukt:`, msg);
         await admin.from("candidates").update({ ai_status: "failed" }).eq("id", candidate_id);
         // Return 200 with error in body — anders verstopt Supabase functions-js
         // de body achter een FunctionsHttpError en zie je alleen "non-2xx".
         return jsonResponse(
           {
             success: false,
-            error: `${isGemini ? "Gemini" : "Cloud"}-analyse mislukt: ${msg}`,
+            error: `Gemini-analyse mislukt: ${msg}`,
             detail: msg,
           },
           200,
@@ -454,9 +416,7 @@ Deno.serve(async (req) => {
             counts: dossier.counts,
           },
         },
-        reason: isGemini
-          ? `AI kandidaatdossier-analyse voltooid via Gemini (${result.model})`
-          : "AI kandidaatdossier-analyse voltooid via Cloud (Anthropic Haiku)",
+        reason: `AI kandidaatdossier-analyse voltooid via Gemini (${result.model})`,
       });
 
       return jsonResponse(
@@ -478,90 +438,6 @@ Deno.serve(async (req) => {
         200,
       );
     }
-
-    // ===========================================================
-    // VPS-PAD — async, callback verwerkt het resultaat
-    // ===========================================================
-    const OLLAMA_BASE_URL = Deno.env.get("OLLAMA_BASE_URL");
-    const OLLAMA_API_KEY = Deno.env.get("OLLAMA_API_KEY");
-
-    if (!OLLAMA_BASE_URL || !OLLAMA_API_KEY) {
-      await admin.from("candidates").update({ ai_status: "failed" }).eq("id", candidate_id);
-      return jsonResponse(
-        { error: "VPS niet geconfigureerd (OLLAMA_BASE_URL/OLLAMA_API_KEY ontbreekt)" },
-        500,
-      );
-    }
-
-    const callbackUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/analyze-cv-callback`;
-    const workerUrl = `${OLLAMA_BASE_URL}/analyze`;
-    const vpsPrompt = buildVpsPrompt(promptAddendum);
-
-    console.log(`[analyze-cv] VPS-call candidate=${candidate_id} org=${orgId}`);
-
-    try {
-      const workerResp = await fetch(workerUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${OLLAMA_API_KEY}`,
-        },
-        body: JSON.stringify({
-          // Backwards compatible: de huidige VPS-worker leest cv_text.
-          // Inhoud is voortaan het volledige gepseudonimiseerde kandidaatdossier.
-          cv_text: pseudonymized,
-          dossier_text: pseudonymized,
-          system_prompt: vpsPrompt,
-          prompt_addendum: sanitizedAddendum.text || null,
-          prompt_version: "candidate_dossier_v2",
-          tool_name: CV_ANALYSIS_TOOL_NAME,
-          analysis_schema: CV_ANALYSIS_SCHEMA,
-          input_meta: {
-            selected_document: dossier.selectedDocument,
-            warnings: dossier.warnings,
-            counts: dossier.counts,
-            has_photo: dossier.hasPhoto,
-          },
-          candidate_id,
-          organization_id: orgId,
-          user_id: user.id,
-          callback_url: callbackUrl,
-        }),
-      });
-
-      if (!workerResp.ok) {
-        const errBody = await workerResp.text();
-        console.error(`[analyze-cv] Worker rejected: ${workerResp.status} ${errBody}`);
-        await admin.from("candidates").update({ ai_status: "failed" }).eq("id", candidate_id);
-        return jsonResponse(
-          { error: `VPS worker fout: ${workerResp.status}`, details: errBody },
-          502,
-        );
-      }
-    } catch (fetchErr) {
-      console.error(`[analyze-cv] Cannot reach VPS:`, fetchErr);
-      await admin.from("candidates").update({ ai_status: "failed" }).eq("id", candidate_id);
-      return jsonResponse(
-        { error: `Kan VPS niet bereiken: ${(fetchErr as Error).message}` },
-        502,
-      );
-    }
-
-    return jsonResponse(
-      {
-        success: true,
-        status: "analyzing",
-        provider: "vps",
-        candidate_id,
-        dossier_meta: {
-          selected_document: dossier.selectedDocument,
-          warnings: dossier.warnings,
-          counts: dossier.counts,
-        },
-        message: "Kandidaatdossier-analyse gestart. Resultaat verschijnt automatisch.",
-      },
-      202,
-    );
   } catch (error) {
     console.error("[analyze-cv] Error:", error);
     return jsonResponse({ error: `Fout: ${(error as Error).message}` }, 500);
