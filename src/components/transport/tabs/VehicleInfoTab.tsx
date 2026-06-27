@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { unwrap } from '@/lib/db';
+import { qk } from '@/lib/query-keys';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -48,11 +50,10 @@ const VehicleInfoTab = ({ vehicle, activeAssignment }: { vehicle: any; activeAss
       if (rdwPreview.doors != null) payload.doors = rdwPreview.doors;
       if (rdwPreview.weight) payload.weight = rdwPreview.weight;
       if (rdwPreview.fuel_consumption != null) payload.avg_consumption_per_100km = rdwPreview.fuel_consumption;
-      const { error } = await supabase.from('vehicles').update(payload).eq('id', vehicle.id);
-      if (error) throw error;
+      await unwrap(supabase.from('vehicles').update(payload).eq('id', vehicle.id));
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['vehicle', vehicle.id] });
+      qc.invalidateQueries({ queryKey: qk.vehicles.detail(vehicle.id) });
       logAudit({ action: 'update', tableName: 'vehicles', recordId: vehicle.id, newValues: { source: 'rdw_enrichment', license_plate: vehicle.license_plate } });
       setRdwPreview(null);
       toast.success('RDW-gegevens overgenomen');

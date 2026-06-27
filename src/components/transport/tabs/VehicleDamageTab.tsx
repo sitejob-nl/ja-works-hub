@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { unwrap, unwrapList } from '@/lib/db';
+import { qk } from '@/lib/query-keys';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent } from '@/components/ui/card';
@@ -60,16 +62,14 @@ const VehicleDamageTab = ({ vehicle }: { vehicle: any }) => {
   const [lightbox, setLightbox] = useState<string | null>(null);
 
   const { data: reports = [] } = useQuery({
-    queryKey: ['vehicle-damage', vehicle.id],
-    queryFn: async () => {
-      const { data, error } = await supabase
+    queryKey: qk.transport.damage(vehicle.id),
+    queryFn: () => unwrapList<any>(
+      supabase
         .from('vehicle_damage_reports')
         .select('*, employees(id, candidates(first_name, last_name, phone, email))')
         .eq('vehicle_id', vehicle.id)
-        .order('reported_at', { ascending: false });
-      if (error) throw error;
-      return data as any[];
-    },
+        .order('reported_at', { ascending: false }),
+    ),
   });
 
   const damagePhotoPaths = useMemo(
@@ -78,7 +78,8 @@ const VehicleDamageTab = ({ vehicle }: { vehicle: any }) => {
   );
 
   const { data: damagePhotoUrls = {} } = useQuery({
-    queryKey: ['vehicle-damage-photo-urls', vehicle.id, damagePhotoPaths],
+    queryKey: qk.transport.damagePhotoUrls(vehicle.id, damagePhotoPaths),
+    // Storage signed-URL fan-out blijft rauw (geen unwrap — geen supabase.from-tabel).
     queryFn: async () => {
       const entries = await Promise.all(
         damagePhotoPaths.map(async (path) => {
@@ -95,12 +96,10 @@ const VehicleDamageTab = ({ vehicle }: { vehicle: any }) => {
   });
 
   const { data: org } = useQuery({
-    queryKey: ['damage-contact-settings', orgId],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('organizations').select('settings').eq('id', orgId).single();
-      if (error) throw error;
-      return data;
-    },
+    queryKey: qk.transport.damageContactSettings(orgId),
+    queryFn: () => unwrap(
+      supabase.from('organizations').select('settings').eq('id', orgId).single(),
+    ),
     enabled: !!orgId,
   });
 
@@ -109,23 +108,21 @@ const VehicleDamageTab = ({ vehicle }: { vehicle: any }) => {
 
   const resolveMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('vehicle_damage_reports')
+      await unwrap(supabase.from('vehicle_damage_reports')
         .update({ resolved: true, resolved_at: new Date().toISOString() } as any)
-        .eq('id', id);
-      if (error) throw error;
+        .eq('id', id));
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['vehicle-damage', vehicle.id] }); toast.success('Markeerd als opgelost'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: qk.transport.damage(vehicle.id) }); toast.success('Markeerd als opgelost'); },
   });
 
   const reopenMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('vehicle_damage_reports')
+      await unwrap(supabase.from('vehicle_damage_reports')
         .update({ resolved: false, resolved_at: null } as any)
-        .eq('id', id);
-      if (error) throw error;
+        .eq('id', id));
     },
     onSuccess: (_, id) => {
-      qc.invalidateQueries({ queryKey: ['vehicle-damage', vehicle.id] });
+      qc.invalidateQueries({ queryKey: qk.transport.damage(vehicle.id) });
       logAudit({ action: 'status_change', tableName: 'vehicle_damage_reports', recordId: id, newValues: { resolved: false } });
       toast.success('Schademelding heropend');
     },
@@ -137,12 +134,11 @@ const VehicleDamageTab = ({ vehicle }: { vehicle: any }) => {
       if (r.photos && r.photos.length > 0) {
         await supabase.storage.from('documents').remove(r.photos);
       }
-      const { error } = await supabase.from('vehicle_damage_reports').delete().eq('id', r.id);
-      if (error) throw error;
+      await unwrap(supabase.from('vehicle_damage_reports').delete().eq('id', r.id));
       return r;
     },
     onSuccess: (r) => {
-      qc.invalidateQueries({ queryKey: ['vehicle-damage', vehicle.id] });
+      qc.invalidateQueries({ queryKey: qk.transport.damage(vehicle.id) });
       logAudit({ action: 'delete', tableName: 'vehicle_damage_reports', recordId: r.id });
       toast.success('Schademelding verwijderd');
       setReportToDelete(null);
@@ -159,12 +155,11 @@ const VehicleDamageTab = ({ vehicle }: { vehicle: any }) => {
         const msg = (data as any)?.error ?? fnErr.message;
         throw new Error(msg);
       }
-      const { error } = await supabase.from('vehicle_damage_reports')
+      await unwrap(supabase.from('vehicle_damage_reports')
         .update({ garage_notified: true, garage_notified_at: new Date().toISOString(), route_status: 'internal_notified' } as any)
-        .eq('id', id);
-      if (error) throw error;
+        .eq('id', id));
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['vehicle-damage', vehicle.id] }); toast.success('Interne regie geïnformeerd'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: qk.transport.damage(vehicle.id) }); toast.success('Interne regie geïnformeerd'); },
     onError: (e: any) => toast.error(`Notificatie mislukt: ${e.message}`),
   });
 
@@ -302,7 +297,7 @@ const VehicleDamageTab = ({ vehicle }: { vehicle: any }) => {
         vehicleId={vehicle.id}
         orgId={orgId}
         defaultInternalEmail={damageSettings.internal_email}
-        onDone={() => qc.invalidateQueries({ queryKey: ['vehicle-damage', vehicle.id] })}
+        onDone={() => qc.invalidateQueries({ queryKey: qk.transport.damage(vehicle.id) })}
       />
 
       {/* Edit existing report sheet */}
@@ -312,7 +307,7 @@ const VehicleDamageTab = ({ vehicle }: { vehicle: any }) => {
         vehicleId={vehicle.id}
         orgId={orgId}
         defaultInternalEmail={damageSettings.internal_email}
-        onDone={() => qc.invalidateQueries({ queryKey: ['vehicle-damage', vehicle.id] })}
+        onDone={() => qc.invalidateQueries({ queryKey: qk.transport.damage(vehicle.id) })}
         existing={editingReport}
       />
 
@@ -375,14 +370,15 @@ const DamageSheet = ({ open, onOpenChange, vehicleId, orgId, onDone, existing, d
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
 
   const { data: employees = [] } = useQuery({
-    queryKey: ['damage-assignable-employees', orgId, existing?.employee_id],
+    queryKey: qk.transport.damageAssignableEmployees(orgId, existing?.employee_id),
     queryFn: async () => {
-      const { data, error } = await supabase.from('employees')
-        .select('id, candidate_id, status, candidates!employees_candidate_id_fkey(first_name, last_name, employee_status, employee_number)')
-        .eq('organization_id', orgId!)
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return ((data ?? []) as any[])
+      const rows = await unwrapList<any>(
+        supabase.from('employees')
+          .select('id, candidate_id, status, candidates!employees_candidate_id_fkey(first_name, last_name, employee_status, employee_number)')
+          .eq('organization_id', orgId!)
+          .order('created_at', { ascending: false }),
+      );
+      return rows
         .filter((employee) => {
           const status = employee.candidates?.employee_status ?? employee.status;
           return assignableEmployeeStatuses.has(status) || employee.id === existing?.employee_id;
@@ -442,8 +438,7 @@ const DamageSheet = ({ open, onOpenChange, vehicleId, orgId, onDone, existing, d
           ...corePayload,
           photos: [...existingPhotos, ...newPhotoPaths],
         };
-        const { error } = await supabase.from('vehicle_damage_reports').update(updatePayload).eq('id', existing.id);
-        if (error) throw error;
+        await unwrap(supabase.from('vehicle_damage_reports').update(updatePayload).eq('id', existing.id));
         reportId = existing.id;
         logAudit({ action: 'update', tableName: 'vehicle_damage_reports', recordId: existing.id });
       } else {
@@ -455,8 +450,9 @@ const DamageSheet = ({ open, onOpenChange, vehicleId, orgId, onDone, existing, d
           garage_notified: false,
           garage_notified_at: null,
         };
-        const { data: inserted, error } = await supabase.from('vehicle_damage_reports').insert(insertPayload).select('id').single();
-        if (error) throw error;
+        const inserted = await unwrap<{ id: string } | null>(
+          supabase.from('vehicle_damage_reports').insert(insertPayload).select('id').single(),
+        );
         reportId = inserted?.id ?? null;
         logAudit({ action: 'create', tableName: 'vehicle_damage_reports', recordId: reportId ?? 'new' });
       }

@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { unwrap, unwrapList } from '@/lib/db';
+import { qk } from '@/lib/query-keys';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { FileText, MoreHorizontal, Pencil, Plus, Trash2, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -73,16 +75,14 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
   const notes = form.notes; const setNotes = (v: string) => setForm(f => ({ ...f, notes: v }));
 
   const { data: fines } = useQuery({
-    queryKey: ['vehicle-fines', vehicle.id],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('vehicle_fines').select(`
+    queryKey: qk.transport.fines(vehicle.id),
+    queryFn: () => unwrapList<any>(
+      supabase.from('vehicle_fines').select(`
         *,
         candidates!vehicle_fines_candidate_id_fkey(id, first_name, last_name),
         employees!vehicle_fines_employee_id_fkey(id, candidates!employees_candidate_id_fkey(first_name, last_name))
-      `).eq('vehicle_id', vehicle.id).order('fine_date', { ascending: false });
-      if (error) throw error;
-      return data ?? [];
-    },
+      `).eq('vehicle_id', vehicle.id).order('fine_date', { ascending: false }),
+    ),
   });
 
   const finePhotoPaths = Array.from(
@@ -90,7 +90,8 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
   );
 
   const { data: finePhotoUrls = {} } = useQuery({
-    queryKey: ['vehicle-fine-photo-urls', vehicle.id, finePhotoPaths],
+    queryKey: qk.transport.finePhotoUrls(vehicle.id, finePhotoPaths),
+    // Storage signed-URL fan-out blijft rauw (geen unwrap — geen supabase.from-tabel).
     queryFn: async () => {
       const entries = await Promise.all(
         finePhotoPaths.map(async (path) => {
@@ -106,18 +107,19 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
   });
 
   const { data: assignedEmployees } = useQuery({
-    queryKey: ['vehicle-assigned-employees-fines', vehicle.id],
+    queryKey: qk.transport.fineAssignedEmployees(vehicle.id),
     queryFn: async () => {
-      const { data, error } = await supabase.from('vehicle_assignments').select(`
+      const rows = await unwrapList<any>(
+        supabase.from('vehicle_assignments').select(`
         candidate_id,
         employees!vehicle_assignments_employee_id_fkey(
           id,
           candidates!employees_candidate_id_fkey(id, first_name, last_name)
         )
-      `).eq('vehicle_id', vehicle.id);
-      if (error) throw error;
+      `).eq('vehicle_id', vehicle.id),
+      );
       const unique = new Map<string, any>();
-      (data ?? []).forEach((a: any) => {
+      rows.forEach((a: any) => {
         if (a.employees) unique.set(a.employees.id, { ...a.employees, candidate_id: a.candidate_id ?? a.employees.candidates?.id ?? null });
       });
       return Array.from(unique.values());
@@ -186,20 +188,20 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
         photos: [...existingPhotos, ...newPhotoPaths],
       };
       if (editingId) {
-        const { error } = await supabase.from('vehicle_fines').update(payload).eq('id', editingId);
-        if (error) throw error;
+        await unwrap(supabase.from('vehicle_fines').update(payload).eq('id', editingId));
         return editingId;
       } else {
-        const { data, error } = await supabase.from('vehicle_fines').insert({
-          ...payload, organization_id: orgId, vehicle_id: vehicle.id,
-        }).select('id').single();
-        if (error) throw error;
+        const data = await unwrap<{ id: string }>(
+          supabase.from('vehicle_fines').insert({
+            ...payload, organization_id: orgId, vehicle_id: vehicle.id,
+          }).select('id').single(),
+        );
         return data.id;
       }
     },
     onSuccess: (recordId) => {
-      qc.invalidateQueries({ queryKey: ['vehicle-fines', vehicle.id] });
-      qc.invalidateQueries({ queryKey: ['transport-fines'] });
+      qc.invalidateQueries({ queryKey: qk.transport.fines(vehicle.id) });
+      qc.invalidateQueries({ queryKey: qk.transport.allFines() });
       logAudit({ action: editingId ? 'update' : 'create', tableName: 'vehicle_fines', recordId });
       toast.success(editingId ? 'Boete bijgewerkt' : 'Boete geregistreerd');
       closeSheet();
@@ -212,13 +214,12 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
       if (fine.photos?.length > 0) {
         await supabase.storage.from('documents').remove(fine.photos);
       }
-      const { error } = await supabase.from('vehicle_fines').delete().eq('id', fine.id);
-      if (error) throw error;
+      await unwrap(supabase.from('vehicle_fines').delete().eq('id', fine.id));
       return fine;
     },
     onSuccess: (fine) => {
-      qc.invalidateQueries({ queryKey: ['vehicle-fines', vehicle.id] });
-      qc.invalidateQueries({ queryKey: ['transport-fines'] });
+      qc.invalidateQueries({ queryKey: qk.transport.fines(vehicle.id) });
+      qc.invalidateQueries({ queryKey: qk.transport.allFines() });
       logAudit({ action: 'delete', tableName: 'vehicle_fines', recordId: fine.id });
       toast.success('Boete verwijderd');
       setFineToDelete(null);
@@ -228,15 +229,14 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
 
   const paidMutation = useMutation({
     mutationFn: async ({ id, paid }: { id: string; paid: boolean }) => {
-      const { error } = await supabase.from('vehicle_fines').update({
+      await unwrap(supabase.from('vehicle_fines').update({
         paid,
         paid_at: paid ? new Date().toISOString() : null,
-      }).eq('id', id);
-      if (error) throw error;
+      }).eq('id', id));
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['vehicle-fines', vehicle.id] });
-      qc.invalidateQueries({ queryKey: ['transport-fines'] });
+      qc.invalidateQueries({ queryKey: qk.transport.fines(vehicle.id) });
+      qc.invalidateQueries({ queryKey: qk.transport.allFines() });
       toast.success('Betaalstatus bijgewerkt');
     },
     onError: (e: any) => toast.error(e.message),
