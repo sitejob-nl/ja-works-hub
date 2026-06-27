@@ -1,6 +1,8 @@
 import { Fragment, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { unwrap } from '@/lib/db';
+import { qk } from '@/lib/query-keys';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -93,19 +95,17 @@ const UnitsTab = ({ property }: { property: any }) => {
         notes: form.notes || null,
       };
       if (editingId) {
-        const { error } = await supabase.from('units').update(payload).eq('id', editingId);
-        if (error) throw error;
+        await unwrap(supabase.from('units').update(payload).eq('id', editingId));
       } else {
-        const { error } = await supabase.from('units').insert({
+        await unwrap(supabase.from('units').insert({
           ...payload,
           organization_id: orgId,
           property_id: property.id,
-        });
-        if (error) throw error;
+        }));
       }
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['property', property.id] });
+      qc.invalidateQueries({ queryKey: qk.housing.property(property.id) });
       qc.invalidateQueries({ queryKey: ['properties'] });
       const wasEdit = editingId !== null;
       setSheetOpen(false);
@@ -119,6 +119,7 @@ const UnitsTab = ({ property }: { property: any }) => {
   const deleteUnit = useMutation({
     mutationFn: async (unitId: string) => {
       // Pre-check: weiger als er bewoner-records (actief of historisch) hangen
+      // eslint-disable-next-line no-restricted-syntax -- count-query (head:true) levert `count`, niet `data` → unwrap past niet
       const { count, error: countErr } = await supabase
         .from('housing_assignments')
         .select('id', { count: 'exact', head: true })
@@ -128,11 +129,10 @@ const UnitsTab = ({ property }: { property: any }) => {
         throw new Error(`Kamer heeft nog ${count} bewoner-record(s). Deze blokkeren de verwijdering.`);
       }
       // Cascades naar housing_inspections + key_registrations via FK
-      const { error } = await supabase.from('units').delete().eq('id', unitId);
-      if (error) throw error;
+      await unwrap(supabase.from('units').delete().eq('id', unitId));
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['property', property.id] });
+      qc.invalidateQueries({ queryKey: qk.housing.property(property.id) });
       qc.invalidateQueries({ queryKey: ['properties'] });
       toast.success('Kamer verwijderd');
       setUnitToDelete(null);
@@ -170,12 +170,11 @@ const UnitsTab = ({ property }: { property: any }) => {
         weekly_cost: r.weekly_cost ? Number(r.weekly_cost) : null,
         status: 'beschikbaar' as UnitStatus,
       }));
-      const { error } = await supabase.from('units').insert(payload);
-      if (error) throw error;
+      await unwrap(supabase.from('units').insert(payload));
       return valid.length;
     },
     onSuccess: (count) => {
-      qc.invalidateQueries({ queryKey: ['property', property.id] });
+      qc.invalidateQueries({ queryKey: qk.housing.property(property.id) });
       qc.invalidateQueries({ queryKey: ['properties'] });
       setBulkOpen(false);
       setBulkRows([emptyBulkRow(), emptyBulkRow(), emptyBulkRow()]);

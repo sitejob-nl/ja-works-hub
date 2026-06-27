@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { unwrap, unwrapList } from '@/lib/db';
+import { qk } from '@/lib/query-keys';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { useHasRole } from '@/contexts/AuthContext';
 import { Plus } from 'lucide-react';
@@ -23,28 +25,24 @@ const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
   const qc = useQueryClient();
 
   const { data: assignments = [] } = useQuery({
-    queryKey: ['housing-assignments', orgId, candidateId],
+    queryKey: qk.employees.housingAssignments(orgId, candidateId),
     queryFn: async () => {
-      const { data, error } = await supabase.from('housing_assignments')
+      return unwrapList<any>(supabase.from('housing_assignments')
         .select('*, units!housing_assignments_unit_id_fkey(id, name, properties!units_property_id_fkey(id, name, address_street, address_city))')
         .eq('organization_id', orgId)
         .eq('candidate_id', candidateId)
-        .order('check_in_date', { ascending: false });
-      if (error) throw error;
-      return data;
+        .order('check_in_date', { ascending: false }));
     },
   });
 
   const { data: keys = [] } = useQuery({
-    queryKey: ['key-registrations', orgId, candidateId],
+    queryKey: qk.employees.keyRegistrations(orgId, candidateId),
     queryFn: async () => {
-      const { data, error } = await supabase.from('key_registrations')
+      return unwrapList<any>(supabase.from('key_registrations')
         .select('*, units!key_registrations_unit_id_fkey(name)')
         .eq('organization_id', orgId)
         .eq('candidate_id', candidateId)
-        .order('issued_at', { ascending: false });
-      if (error) throw error;
-      return data;
+        .order('issued_at', { ascending: false }));
     },
   });
 
@@ -56,16 +54,14 @@ const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
   const [paymentFrequency, setPaymentFrequency] = useState<'wekelijks' | 'maandelijks'>('wekelijks');
 
   const { data: eligibleUnits = [] } = useQuery({
-    queryKey: ['assignable-units', orgId],
+    queryKey: qk.employees.assignableUnits(orgId),
     queryFn: async () => {
       // 'onderhoud'/'geblokkeerd' panden vallen hard af; de rest beoordelen we op datum-bezetting.
-      const { data, error } = await supabase.from('units')
+      return unwrapList<any>(supabase.from('units')
         .select('id, name, capacity, status, weekly_cost, properties!units_property_id_fkey(id, name, address_street, address_city), housing_assignments!housing_assignments_unit_id_fkey(id, status, check_in_date, check_out_date)')
         .eq('organization_id', orgId)
         .in('status', ['beschikbaar', 'gereserveerd', 'bezet'] as any)
-        .order('name');
-      if (error) throw error;
-      return data ?? [];
+        .order('name'));
     },
     enabled: assignOpen,
   });
@@ -85,15 +81,14 @@ const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
 
   const assignRoom = useMutation({
     mutationFn: async () => {
-      const { data: candidate, error: candErr } = await supabase.from('candidates')
+      const candidate = await unwrap(supabase.from('candidates')
         .select('id, employee_number, employee_status')
         .eq('organization_id', orgId)
         .eq('id', candidateId)
-        .single();
-      if (candErr) throw candErr;
+        .single());
       const employeeId = await resolveEmployeeId(candidate, orgId, checkInDate);
       const deductionNum = deductionAmount ? Number(deductionAmount) : null;
-      const { error } = await supabase.from('housing_assignments').insert({
+      await unwrap(supabase.from('housing_assignments').insert({
         organization_id: orgId,
         unit_id: unitId,
         employee_id: employeeId,
@@ -103,11 +98,10 @@ const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
         deduction_amount: deductionNum,
         payment_frequency: paymentFrequency,
         monthly_deduction: paymentFrequency === 'maandelijks' ? deductionNum : (deductionNum ? Math.round(deductionNum * 4.33 * 100) / 100 : null),
-      });
-      if (error) throw error;
+      }));
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['housing-assignments', orgId, candidateId] });
+      qc.invalidateQueries({ queryKey: qk.employees.housingAssignments(orgId, candidateId) });
       toast.success('Kamer toegewezen');
       setAssignOpen(false);
       setPropertyId(''); setUnitId(''); setCheckInDate(''); setDeductionAmount('');

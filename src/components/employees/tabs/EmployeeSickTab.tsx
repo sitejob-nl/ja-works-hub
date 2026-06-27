@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { unwrap, unwrapList } from '@/lib/db';
+import { qk } from '@/lib/query-keys';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { useAuth } from '@/contexts/AuthContext';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -15,12 +17,13 @@ import { toast } from 'sonner';
 import { logAudit } from '@/lib/audit';
 
 const resolveEmployeeId = async (candidateId: string) => {
-  const { data, error } = await supabase
-    .from('employees')
-    .select('id')
-    .eq('candidate_id', candidateId)
-    .maybeSingle();
-  if (error) throw error;
+  const data = await unwrap<{ id: string }>(
+    supabase
+      .from('employees')
+      .select('id')
+      .eq('candidate_id', candidateId)
+      .maybeSingle()
+  );
   if (!data?.id) throw new Error('Geen medewerkerrecord gevonden voor deze kandidaat');
   return data.id;
 };
@@ -35,33 +38,34 @@ const EmployeeSickTab = ({ candidateId, candidate }: { candidateId: string; cand
   const planningNoteId = `sick-planning-note-${candidateId}`;
 
   const { data: reports = [] } = useQuery({
-    queryKey: ['sick-reports', candidateId],
+    queryKey: qk.employees.sickReports(candidateId),
     queryFn: async () => {
-      const { data, error } = await supabase.from('sick_reports')
-        .select('*')
-        .eq('candidate_id', candidateId)
-        .order('reported_at', { ascending: false });
-      if (error) throw error;
-      return data;
+      return unwrapList<any>(
+        supabase.from('sick_reports')
+          .select('*')
+          .eq('candidate_id', candidateId)
+          .order('reported_at', { ascending: false })
+      );
     },
   });
 
   const createReport = useMutation({
     mutationFn: async () => {
       const employeeId = await resolveEmployeeId(candidateId);
-      const { data: inserted, error } = await supabase
-        .from('sick_reports')
-        .insert({
-          organization_id: orgId,
-          employee_id: employeeId,
-          candidate_id: candidateId,
-          created_by: user?.id ?? null,
-          expected_return_date: form.expected_return_date || null,
-          notes: form.notes || null,
-        })
-        .select('id')
-        .single();
-      if (error) throw error;
+      const inserted = await unwrap<{ id: string }>(
+        supabase
+          .from('sick_reports')
+          .insert({
+            organization_id: orgId,
+            employee_id: employeeId,
+            candidate_id: candidateId,
+            created_by: user?.id ?? null,
+            expected_return_date: form.expected_return_date || null,
+            notes: form.notes || null,
+          })
+          .select('id')
+          .single()
+      );
 
       // Trigger cascade: recruiter_task, status → ziek, email opdrachtgever, WhatsApp kandidaat
       try {
@@ -73,8 +77,8 @@ const EmployeeSickTab = ({ candidateId, candidate }: { candidateId: string; cand
       }
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['sick-reports', candidateId] });
-      qc.invalidateQueries({ queryKey: ['candidate', candidateId] });
+      qc.invalidateQueries({ queryKey: qk.employees.sickReports(candidateId) });
+      qc.invalidateQueries({ queryKey: qk.candidates.detail(candidateId) });
       qc.invalidateQueries({ queryKey: ['candidates'] });
       logAudit({
         action: 'create',
@@ -91,16 +95,18 @@ const EmployeeSickTab = ({ candidateId, candidate }: { candidateId: string; cand
 
   const recover = useMutation({
     mutationFn: async (reportId: string) => {
-      const { error } = await supabase.from('sick_reports')
-        .update({ actual_return_date: new Date().toISOString().split('T')[0] })
-        .eq('id', reportId);
-      if (error) throw error;
-      const { error: e2 } = await supabase.from('candidates').update({ employee_status: 'actief' as any }).eq('id', candidateId);
-      if (e2) throw e2;
+      await unwrap(
+        supabase.from('sick_reports')
+          .update({ actual_return_date: new Date().toISOString().split('T')[0] })
+          .eq('id', reportId)
+      );
+      await unwrap(
+        supabase.from('candidates').update({ employee_status: 'actief' as any }).eq('id', candidateId)
+      );
     },
     onSuccess: (_, reportId) => {
-      qc.invalidateQueries({ queryKey: ['sick-reports', candidateId] });
-      qc.invalidateQueries({ queryKey: ['candidate', candidateId] });
+      qc.invalidateQueries({ queryKey: qk.employees.sickReports(candidateId) });
+      qc.invalidateQueries({ queryKey: qk.candidates.detail(candidateId) });
       qc.invalidateQueries({ queryKey: ['candidates'] });
       logAudit({
         action: 'status_change',

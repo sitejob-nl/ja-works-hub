@@ -1,6 +1,8 @@
 import { useEffect, useId, useState, useMemo, type ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { unwrap, unwrapList } from '@/lib/db';
+import { qk } from '@/lib/query-keys';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { useAuth } from '@/contexts/AuthContext';
 import { getDrivingDistance } from '@/lib/distance';
@@ -150,15 +152,15 @@ const FuelCardAnalysis = () => {
   /* ── Queries ─────────────────────────────────────── */
 
   const { data: organizationSettings } = useQuery({
-    queryKey: ['organization-fuel-analysis-settings', orgId],
+    queryKey: qk.fuel.analysisSettings(orgId),
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('organizations')
-        .select('settings')
-        .eq('id', orgId!)
-        .single();
-      if (error) throw error;
-      return data as { settings: Record<string, unknown> | null };
+      return unwrap<{ settings: Record<string, unknown> | null }>(
+        supabase
+          .from('organizations')
+          .select('settings')
+          .eq('id', orgId!)
+          .single(),
+      );
     },
     enabled: !!orgId,
   });
@@ -169,28 +171,28 @@ const FuelCardAnalysis = () => {
   );
 
   const { data: transactions = [] } = useQuery({
-    queryKey: ['fuel-transactions', orgId],
+    queryKey: qk.fuel.transactions(orgId),
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('fuel_card_transactions')
-        .select('*, vehicles(id, license_plate, tank_capacity_liters, avg_consumption_per_100km), employees(id, candidates(first_name, last_name))')
-        .eq('organization_id', orgId!)
-        .order('transaction_date', { ascending: false });
-      if (error) throw error;
-      return data as any[];
+      return unwrapList<any>(
+        supabase
+          .from('fuel_card_transactions')
+          .select('*, vehicles(id, license_plate, tank_capacity_liters, avg_consumption_per_100km), employees(id, candidates(first_name, last_name))')
+          .eq('organization_id', orgId!)
+          .order('transaction_date', { ascending: false }),
+      );
     },
     enabled: !!orgId,
   });
 
   const { data: dataQuality } = useQuery({
-    queryKey: ['fuel-analysis-data-quality', orgId],
+    queryKey: qk.fuel.dataQuality(orgId),
     queryFn: async (): Promise<FuelAnalysisDataQuality> => {
-      const { data, error } = await supabase
-        .from('vehicles')
-        .select('id, fuel_card_reference, tank_capacity_liters, avg_consumption_per_100km, current_mileage, doors, seats')
-        .eq('organization_id', orgId!);
-      if (error) throw error;
-      const vehicles = data ?? [];
+      const vehicles = await unwrapList<any>(
+        supabase
+          .from('vehicles')
+          .select('id, fuel_card_reference, tank_capacity_liters, avg_consumption_per_100km, current_mileage, doors, seats')
+          .eq('organization_id', orgId!),
+      );
       return {
         vehiclesTotal: vehicles.length,
         withoutFuelCard: vehicles.filter((vehicle) => !String(vehicle.fuel_card_reference ?? '').trim()).length,
@@ -235,16 +237,14 @@ const FuelCardAnalysis = () => {
 
   const markReviewed = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('fuel_card_transactions').update({ reviewed: true, reviewed_at: new Date().toISOString(), reviewed_by: user?.id } as any).eq('id', id);
-      if (error) throw error;
+      await unwrap(supabase.from('fuel_card_transactions').update({ reviewed: true, reviewed_at: new Date().toISOString(), reviewed_by: user?.id } as any).eq('id', id));
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['fuel-transactions'] }); toast.success('Gemarkeerd als bekeken'); },
   });
 
   const saveNote = useMutation({
     mutationFn: async ({ id, note }: { id: string; note: string }) => {
-      const { error } = await supabase.from('fuel_card_transactions').update({ flag_notes: note } as any).eq('id', id);
-      if (error) throw error;
+      await unwrap(supabase.from('fuel_card_transactions').update({ flag_notes: note } as any).eq('id', id));
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['fuel-transactions'] }); toast.success('Notitie opgeslagen'); },
   });
@@ -254,14 +254,13 @@ const FuelCardAnalysis = () => {
       const settings = (organizationSettings?.settings && typeof organizationSettings.settings === 'object')
         ? organizationSettings.settings
         : {};
-      const { error } = await supabase
+      await unwrap(supabase
         .from('organizations')
         .update({ settings: { ...settings, fuel_analysis_conditions: next } })
-        .eq('id', orgId!);
-      if (error) throw error;
+        .eq('id', orgId!));
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['organization-fuel-analysis-settings', orgId] });
+      qc.invalidateQueries({ queryKey: qk.fuel.analysisSettings(orgId) });
       toast.success('Voorwaarden opgeslagen');
     },
     onError: (e: any) => toast.error(e.message ?? 'Voorwaarden opslaan mislukt'),
@@ -270,15 +269,15 @@ const FuelCardAnalysis = () => {
   /* ── Import history (uit fuel_card_imports tabel) ─ */
 
   const { data: imports = [] } = useQuery({
-    queryKey: ['fuel-card-imports', orgId],
+    queryKey: qk.fuel.imports(orgId),
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('fuel_card_imports')
-        .select('*')
-        .eq('organization_id', orgId!)
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return data;
+      return unwrapList<any>(
+        supabase
+          .from('fuel_card_imports')
+          .select('*')
+          .eq('organization_id', orgId!)
+          .order('created_at', { ascending: false }),
+      );
     },
     enabled: !!orgId,
   });
@@ -297,10 +296,8 @@ const FuelCardAnalysis = () => {
   const [deleteImportId, setDeleteImportId] = useState<string | null>(null);
   const deleteImport = useMutation({
     mutationFn: async (id: string) => {
-      const { error: txErr } = await supabase.from('fuel_card_transactions').delete().eq('import_batch_id', id);
-      if (txErr) throw txErr;
-      const { error: impErr } = await supabase.from('fuel_card_imports').delete().eq('id', id);
-      if (impErr) throw impErr;
+      await unwrap(supabase.from('fuel_card_transactions').delete().eq('import_batch_id', id));
+      await unwrap(supabase.from('fuel_card_imports').delete().eq('id', id));
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['fuel-transactions'] });
@@ -1041,10 +1038,8 @@ const ImportSheet = ({ open, onOpenChange, orgId, conditions, onDone }: {
     try {
       // Vervang oude import als duplicate werd gedetecteerd
       if (existing) {
-        const { error: delTxErr } = await supabase.from('fuel_card_transactions').delete().eq('import_batch_id', existing.id);
-        if (delTxErr) throw delTxErr;
-        const { error: delImpErr } = await supabase.from('fuel_card_imports').delete().eq('id', existing.id);
-        if (delImpErr) throw delImpErr;
+        await unwrap(supabase.from('fuel_card_transactions').delete().eq('import_batch_id', existing.id));
+        await unwrap(supabase.from('fuel_card_imports').delete().eq('id', existing.id));
       }
 
       // Fetch vehicles, active assignments and active placements for matching.
@@ -1342,7 +1337,7 @@ const ImportSheet = ({ open, onOpenChange, orgId, conditions, onDone }: {
         const totalLiters = inserts.reduce((s, i) => s + (Number(i.liters) || 0), 0);
         const totalAmount = inserts.reduce((s, i) => s + (Number(i.amount_eur) || 0), 0);
         const dates = inserts.map(i => i.transaction_date).filter(Boolean).sort();
-        const { error: impErr } = await supabase.from('fuel_card_imports').insert({
+        await unwrap(supabase.from('fuel_card_imports').insert({
           id: batchId,
           organization_id: orgId,
           file_hash: fileMeta.hash,
@@ -1352,16 +1347,14 @@ const ImportSheet = ({ open, onOpenChange, orgId, conditions, onDone }: {
           total_amount_eur: Math.round(totalAmount * 100) / 100,
           period_start: dates[0] ?? null,
           period_end: dates[dates.length - 1] ?? null,
-        });
-        if (impErr) throw impErr;
+        }));
       }
 
       // Insert in batches of 100
       let totalInserted = 0;
       for (let i = 0; i < inserts.length; i += 100) {
         const batch = inserts.slice(i, i + 100);
-        const { error } = await supabase.from('fuel_card_transactions').insert(batch);
-        if (error) throw error;
+        await unwrap(supabase.from('fuel_card_transactions').insert(batch));
         totalInserted += batch.length;
       }
 
@@ -1371,6 +1364,7 @@ const ImportSheet = ({ open, onOpenChange, orgId, conditions, onDone }: {
         const v = (vehicles ?? []).find(x => x.id === vehicleId);
         const current = Number(v?.current_mileage) || 0;
         if (km > current) {
+          // eslint-disable-next-line no-restricted-syntax -- per-rij best-effort: bij fout doorgaan met de loop (geen throw), unwrap zou afbreken
           const { error } = await supabase.from('vehicles').update({ current_mileage: km }).eq('id', vehicleId);
           if (!error) {
             kmUpdates += 1;
@@ -1391,6 +1385,7 @@ const ImportSheet = ({ open, onOpenChange, orgId, conditions, onDone }: {
         const v = (vehicles ?? []).find(x => x.id === vehicleId);
         const current = String(v?.fuel_card_reference ?? '').trim();
         if (fuelCardReference && current !== fuelCardReference) {
+          // eslint-disable-next-line no-restricted-syntax -- per-rij best-effort: bij fout doorgaan met de loop (geen throw), unwrap zou afbreken
           const { error } = await supabase.from('vehicles').update({ fuel_card_reference: fuelCardReference }).eq('id', vehicleId);
           if (!error) {
             fuelCardUpdates += 1;

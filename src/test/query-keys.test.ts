@@ -36,6 +36,37 @@ describe('qk.regulations / talentpools', () => {
 describe('qk.vehicles', () => {
   it('reproduceert het vehicle-detail token', () => {
     expect(qk.vehicles.detail('v1')).toEqual(['vehicle', 'v1']);
+    expect(qk.vehicles.deleteImpact('v1')).toEqual(['vehicle-delete-impact', 'v1']);
+  });
+});
+
+describe('qk.fuel (B4-doel)', () => {
+  it('reproduceert de fuel-tokens verbatim', () => {
+    expect(qk.fuel.analysisSettings('org1')).toEqual(['organization-fuel-analysis-settings', 'org1']);
+    expect(qk.fuel.transactions('org1')).toEqual(['fuel-transactions', 'org1']);
+    expect(qk.fuel.dataQuality('org1')).toEqual(['fuel-analysis-data-quality', 'org1']);
+    expect(qk.fuel.imports('org1')).toEqual(['fuel-card-imports', 'org1']);
+  });
+});
+
+describe('qk.housing (B5-doel)', () => {
+  it('reproduceert de housing-tokens verbatim', () => {
+    expect(qk.housing.property('p1')).toEqual(['property', 'p1']);
+    expect(qk.housing.availableEmployees('org1', 'jan')).toEqual(['available-employees-housing', 'org1', 'jan']);
+    expect(qk.housing.moveTargets('org1')).toEqual(['move-targets', 'org1']);
+  });
+});
+
+describe('qk.employees (B6-doel)', () => {
+  it('reproduceert de employee-domein tokens verbatim', () => {
+    expect(qk.employees.housingAssignments('org1', 'c1')).toEqual(['housing-assignments', 'org1', 'c1']);
+    expect(qk.employees.keyRegistrations('org1', 'c1')).toEqual(['key-registrations', 'org1', 'c1']);
+    expect(qk.employees.assignableUnits('org1')).toEqual(['assignable-units', 'org1']);
+    expect(qk.employees.contracts('c1')).toEqual(['contracts', 'c1']);
+    expect(qk.employees.contractTemplates('org1')).toEqual(['contract-templates', 'org1']);
+    expect(qk.employees.organization('org1')).toEqual(['organization', 'org1']);
+    expect(qk.employees.activePlacement('c1')).toEqual(['active-placement', 'c1']);
+    expect(qk.employees.sickReports('c1')).toEqual(['sick-reports', 'c1']);
   });
 });
 
