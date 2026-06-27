@@ -12,11 +12,11 @@ export default defineConfig({
     coverage: {
       // Informational only — no thresholds, not wired into the CI gate. A hard
       // threshold blocks unrelated PRs and invites coverage-gaming; we report and
-      // ratchet later. Narrowed to the pure lib layer (all:false) for a clean signal;
-      // src/hooks/** gets added once it has a real test behind it.
+      // ratchet later. Narrowed to lib + hooks (all:false) for a clean signal —
+      // src/hooks/** is included now that useComplianceCheck has a real test behind it.
       provider: "v8",
       reporter: ["text", "html", "json-summary"],
-      include: ["src/lib/**"],
+      include: ["src/lib/**", "src/hooks/**"],
       all: false,
       exclude: [
         "src/integrations/supabase/types.ts",
