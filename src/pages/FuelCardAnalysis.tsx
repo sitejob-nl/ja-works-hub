@@ -22,7 +22,12 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { toast } from 'sonner';
 import { formatDate, formatEUR } from '@/lib/format';
 import { logAudit } from '@/lib/audit';
-import { isLikelyVehiclePlateReference, normalizeVehicleRef } from '@/lib/fuel-analysis';
+import {
+  isLikelyVehiclePlateReference, normalizeVehicleRef, displayPlate, clampNumber,
+  coerceConditions, appendFlagNote, isoDate, currentWeekStart, dateInRange,
+  countWorkDays, haversineKm, DEFAULT_FUEL_CONDITIONS,
+} from '@/lib/fuel-analysis';
+import type { FuelAnalysisConditions, FuelAnalysisDataQuality } from '@/lib/fuel-analysis';
 import { Upload, AlertTriangle, CheckCircle2, StickyNote, Car, UserRound, CreditCard, Trash2, Settings2, Save, Info, CalendarDays } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import Papa from 'papaparse';
@@ -33,112 +38,9 @@ import { readExcelObjects } from '@/lib/spreadsheet';
 
 // Toon-versie van het kenteken: bij voorkeur de origineel uit Q8 (met streepjes),
 // anders de opgeslagen license_plate, anders die van het gematchte voertuig.
-const displayPlate = (t: any): string => {
-  const raw = (t?.raw_data?.['Kentekenplaat'] as string | undefined)?.trim();
-  if (raw) return raw;
-  if (t?.license_plate) return t.license_plate;
-  if (t?.vehicles?.license_plate) return t.vehicles.license_plate;
-  return '';
-};
-
 const now = new Date();
 const monthStart = format(startOfMonth(now), 'yyyy-MM-dd');
 const monthEnd = format(endOfMonth(now), 'yyyy-MM-dd');
-
-type FuelAnalysisConditions = {
-  multiple_same_day_enabled: boolean;
-  tank_capacity_enabled: boolean;
-  tank_capacity_margin_pct: number;
-  consumption_enabled: boolean;
-  consumption_margin_pct: number;
-  route_consumption_enabled: boolean;
-  route_consumption_margin_pct: number;
-  route_distance_multiplier: number;
-  mileage_jump_enabled: boolean;
-  mileage_jump_max_km: number;
-};
-
-const DEFAULT_FUEL_CONDITIONS: FuelAnalysisConditions = {
-  multiple_same_day_enabled: true,
-  tank_capacity_enabled: true,
-  tank_capacity_margin_pct: 10,
-  consumption_enabled: true,
-  consumption_margin_pct: 10,
-  route_consumption_enabled: true,
-  route_consumption_margin_pct: 10,
-  route_distance_multiplier: 1.25,
-  mileage_jump_enabled: true,
-  mileage_jump_max_km: 300,
-};
-
-const DEFAULT_WORK_DAYS = ['ma', 'di', 'wo', 'do', 'vr'];
-const DAY_KEY: Record<number, string> = { 0: 'zo', 1: 'ma', 2: 'di', 3: 'wo', 4: 'do', 5: 'vr', 6: 'za' };
-
-type FuelAnalysisDataQuality = {
-  vehiclesTotal: number;
-  withoutFuelCard: number;
-  withoutTankCapacity: number;
-  withoutConsumption: number;
-  withoutMileage: number;
-  withoutDoors: number;
-  withoutSeats: number;
-};
-
-const clampNumber = (value: unknown, fallback: number, min: number, max: number) => {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return fallback;
-  return Math.min(max, Math.max(min, parsed));
-};
-
-const coerceConditions = (value: unknown): FuelAnalysisConditions => {
-  const raw = (value && typeof value === 'object' ? value : {}) as Partial<FuelAnalysisConditions>;
-  return {
-    multiple_same_day_enabled: raw.multiple_same_day_enabled ?? DEFAULT_FUEL_CONDITIONS.multiple_same_day_enabled,
-    tank_capacity_enabled: raw.tank_capacity_enabled ?? DEFAULT_FUEL_CONDITIONS.tank_capacity_enabled,
-    tank_capacity_margin_pct: clampNumber(raw.tank_capacity_margin_pct, DEFAULT_FUEL_CONDITIONS.tank_capacity_margin_pct, 0, 100),
-    consumption_enabled: raw.consumption_enabled ?? DEFAULT_FUEL_CONDITIONS.consumption_enabled,
-    consumption_margin_pct: clampNumber(raw.consumption_margin_pct, DEFAULT_FUEL_CONDITIONS.consumption_margin_pct, 0, 300),
-    route_consumption_enabled: raw.route_consumption_enabled ?? DEFAULT_FUEL_CONDITIONS.route_consumption_enabled,
-    route_consumption_margin_pct: clampNumber(raw.route_consumption_margin_pct, DEFAULT_FUEL_CONDITIONS.route_consumption_margin_pct, 0, 300),
-    route_distance_multiplier: clampNumber(raw.route_distance_multiplier, DEFAULT_FUEL_CONDITIONS.route_distance_multiplier, 1, 2.5),
-    mileage_jump_enabled: raw.mileage_jump_enabled ?? DEFAULT_FUEL_CONDITIONS.mileage_jump_enabled,
-    mileage_jump_max_km: clampNumber(raw.mileage_jump_max_km, DEFAULT_FUEL_CONDITIONS.mileage_jump_max_km, 1, 5000),
-  };
-};
-
-const appendFlagNote = (insert: any, note: string) => {
-  insert.flag_notes = [insert.flag_notes, note].filter(Boolean).join('\n');
-};
-
-const isoDate = (date: Date) => format(date, 'yyyy-MM-dd');
-const currentWeekStart = () => isoDate(startOfWeek(new Date(), { weekStartsOn: 1 }));
-
-const dateInRange = (date: string | null | undefined, start: string, end: string) => {
-  if (!date) return false;
-  return date >= start && date <= end;
-};
-
-const countWorkDays = (startIso: string, endIso: string, workDays: string[] | null | undefined) => {
-  const wanted = new Set((workDays?.length ? workDays : DEFAULT_WORK_DAYS).map(day => day.toLowerCase()));
-  let count = 0;
-  const cursor = new Date(`${startIso}T00:00:00`);
-  const end = new Date(`${endIso}T00:00:00`);
-  while (cursor <= end) {
-    if (wanted.has(DAY_KEY[cursor.getDay()])) count += 1;
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  return count;
-};
-
-const haversineKm = (fromLat: number, fromLng: number, toLat: number, toLng: number) => {
-  const toRad = (value: number) => (value * Math.PI) / 180;
-  const earthKm = 6371;
-  const dLat = toRad(toLat - fromLat);
-  const dLng = toRad(toLng - fromLng);
-  const a = Math.sin(dLat / 2) ** 2
-    + Math.cos(toRad(fromLat)) * Math.cos(toRad(toLat)) * Math.sin(dLng / 2) ** 2;
-  return earthKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-};
 
 /* ─── Component ──────────────────────────────────────────── */
 
