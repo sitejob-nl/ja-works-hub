@@ -3,9 +3,15 @@ import react from "@vitejs/plugin-react-swc";
 import path from "path";
 
 import { VitePWA } from "vite-plugin-pwa";
+import { sentryVitePlugin } from "@sentry/vite-plugin";
 
 // https://vitejs.dev/config/
-export default defineConfig(({ mode }) => ({
+export default defineConfig(({ mode }) => {
+  // Sourcemap-upload naar Sentry alleen tijdens een build mét auth-token (Vercel prod).
+  // Zonder token: plugin overgeslagen én geen .map gegenereerd → niets lekt, build groen.
+  const sentryAuthToken = process.env.SENTRY_AUTH_TOKEN;
+
+  return {
   server: {
     host: "::",
     port: 8080,
@@ -51,6 +57,14 @@ export default defineConfig(({ mode }) => ({
         ],
       },
     }),
+    // Upload + verwijder sourcemaps naar Sentry; alleen actief mét auth-token (Vercel prod).
+    sentryAuthToken ? sentryVitePlugin({
+      org: process.env.SENTRY_ORG,
+      project: process.env.SENTRY_PROJECT,
+      authToken: sentryAuthToken,
+      release: { name: process.env.VERCEL_GIT_COMMIT_SHA },
+      sourcemaps: { filesToDeleteAfterUpload: ["./dist/**/*.map"] },
+    }) : null,
   ].filter(Boolean),
   resolve: {
     alias: {
@@ -58,6 +72,9 @@ export default defineConfig(({ mode }) => ({
     },
   },
   build: {
+    // Hidden sourcemaps alleen als Sentry ze gaat uploaden+verwijderen; anders niet,
+    // zodat er nooit .map-bestanden in dist (en dus in productie) belanden.
+    sourcemap: sentryAuthToken ? "hidden" : false,
     rollupOptions: {
       output: {
         // Split large, rarely-changing vendor libs into their own chunks so they
@@ -81,4 +98,5 @@ export default defineConfig(({ mode }) => ({
       },
     },
   },
-}));
+  };
+});

@@ -1,11 +1,21 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Outlet } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
+import { setObservabilityUser } from '@/lib/observability';
 import AppSidebar from './AppSidebar';
 import TopBar from './TopBar';
 import RecentItemsBar from './RecentItemsBar';
 
 const AppLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { user, profile } = useAuth();
+
+  // Eén mountpunt voor de Sentry user-context (AppLayout rendert eenmaal voor de
+  // ingelogde shell; AuthProvider zit meerdere keren in de routeboom). Alleen id +
+  // organization_id, nooit PII. Bij user→null (uitloggen) wist dit de context.
+  useEffect(() => {
+    setObservabilityUser(user?.id, profile?.organization_id);
+  }, [user?.id, profile?.organization_id]);
 
   return (
     <div className="flex h-screen w-full overflow-hidden">
