@@ -1,10 +1,9 @@
 import { useEffect, useId, useState, useMemo, type ReactNode } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { unwrap, unwrapList } from '@/lib/db';
-import { qk } from '@/lib/query-keys';
+import { unwrap } from '@/lib/db';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
-import { useAuth } from '@/contexts/AuthContext';
+import { useFuelCardData } from '@/hooks/useFuelCardData';
 import { getDrivingDistance } from '@/lib/distance';
 
 import { Card, CardContent } from '@/components/ui/card';
@@ -24,7 +23,7 @@ import { formatDate, formatEUR } from '@/lib/format';
 import { logAudit } from '@/lib/audit';
 import {
   isLikelyVehiclePlateReference, normalizeVehicleRef, displayPlate, clampNumber,
-  coerceConditions, appendFlagNote, isoDate, currentWeekStart, dateInRange,
+  appendFlagNote, isoDate, currentWeekStart, dateInRange,
   countWorkDays, haversineKm, DEFAULT_FUEL_CONDITIONS,
 } from '@/lib/fuel-analysis';
 import type { FuelAnalysisConditions, FuelAnalysisDataQuality } from '@/lib/fuel-analysis';
@@ -46,67 +45,25 @@ const monthEnd = format(endOfMonth(now), 'yyyy-MM-dd');
 
 const FuelCardAnalysis = () => {
   const orgId = useOrganizationId();
-  const { user } = useAuth();
   const qc = useQueryClient();
   const [importOpen, setImportOpen] = useState(false);
   const [selectedWeekStart, setSelectedWeekStart] = useState(currentWeekStart());
+  const [deleteImportId, setDeleteImportId] = useState<string | null>(null);
 
-  /* ── Queries ─────────────────────────────────────── */
+  /* ── Datalaag (zie useFuelCardData) ──────────────── */
 
-  const { data: organizationSettings } = useQuery({
-    queryKey: qk.fuel.analysisSettings(orgId),
-    queryFn: async () => {
-      return unwrap<{ settings: Record<string, unknown> | null }>(
-        supabase
-          .from('organizations')
-          .select('settings')
-          .eq('id', orgId!)
-          .single(),
-      );
-    },
-    enabled: !!orgId,
-  });
+  const {
+    conditions,
+    transactions,
+    dataQuality,
+    imports,
+    markReviewed,
+    saveNote,
+    saveConditions,
+    deleteImport,
+  } = useFuelCardData();
 
-  const conditions = useMemo(
-    () => coerceConditions(organizationSettings?.settings?.fuel_analysis_conditions),
-    [organizationSettings?.settings],
-  );
-
-  const { data: transactions = [] } = useQuery({
-    queryKey: qk.fuel.transactions(orgId),
-    queryFn: async () => {
-      return unwrapList<any>(
-        supabase
-          .from('fuel_card_transactions')
-          .select('*, vehicles(id, license_plate, tank_capacity_liters, avg_consumption_per_100km), employees(id, candidates(first_name, last_name))')
-          .eq('organization_id', orgId!)
-          .order('transaction_date', { ascending: false }),
-      );
-    },
-    enabled: !!orgId,
-  });
-
-  const { data: dataQuality } = useQuery({
-    queryKey: qk.fuel.dataQuality(orgId),
-    queryFn: async (): Promise<FuelAnalysisDataQuality> => {
-      const vehicles = await unwrapList<any>(
-        supabase
-          .from('vehicles')
-          .select('id, fuel_card_reference, tank_capacity_liters, avg_consumption_per_100km, current_mileage, doors, seats')
-          .eq('organization_id', orgId!),
-      );
-      return {
-        vehiclesTotal: vehicles.length,
-        withoutFuelCard: vehicles.filter((vehicle) => !String(vehicle.fuel_card_reference ?? '').trim()).length,
-        withoutTankCapacity: vehicles.filter((vehicle) => !Number(vehicle.tank_capacity_liters)).length,
-        withoutConsumption: vehicles.filter((vehicle) => !Number(vehicle.avg_consumption_per_100km)).length,
-        withoutMileage: vehicles.filter((vehicle) => !Number(vehicle.current_mileage)).length,
-        withoutDoors: vehicles.filter((vehicle) => !Number(vehicle.doors)).length,
-        withoutSeats: vehicles.filter((vehicle) => !Number(vehicle.seats)).length,
-      };
-    },
-    enabled: !!orgId,
-  });
+  /* ── Afgeleide weergave-data ─────────────────────── */
 
   const thisMonth = useMemo(() => transactions.filter(t => t.transaction_date >= monthStart && t.transaction_date <= monthEnd), [transactions]);
   const flagged = useMemo(() => transactions.filter(t => !t.reviewed && (t.flag_over_capacity || t.flag_multiple_same_day || t.flag_excessive_consumption)), [transactions]);
@@ -135,54 +92,7 @@ const FuelCardAnalysis = () => {
   const totalAmount = thisMonth.reduce((s, t) => s + Number(t.amount_eur), 0);
   const flagCount = allFlagged.length;
 
-  /* ── Mutations ───────────────────────────────────── */
-
-  const markReviewed = useMutation({
-    mutationFn: async (id: string) => {
-      await unwrap(supabase.from('fuel_card_transactions').update({ reviewed: true, reviewed_at: new Date().toISOString(), reviewed_by: user?.id } as any).eq('id', id));
-    },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['fuel-transactions'] }); toast.success('Gemarkeerd als bekeken'); },
-  });
-
-  const saveNote = useMutation({
-    mutationFn: async ({ id, note }: { id: string; note: string }) => {
-      await unwrap(supabase.from('fuel_card_transactions').update({ flag_notes: note } as any).eq('id', id));
-    },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['fuel-transactions'] }); toast.success('Notitie opgeslagen'); },
-  });
-
-  const saveConditions = useMutation({
-    mutationFn: async (next: FuelAnalysisConditions) => {
-      const settings = (organizationSettings?.settings && typeof organizationSettings.settings === 'object')
-        ? organizationSettings.settings
-        : {};
-      await unwrap(supabase
-        .from('organizations')
-        .update({ settings: { ...settings, fuel_analysis_conditions: next } })
-        .eq('id', orgId!));
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: qk.fuel.analysisSettings(orgId) });
-      toast.success('Voorwaarden opgeslagen');
-    },
-    onError: (e: any) => toast.error(e.message ?? 'Voorwaarden opslaan mislukt'),
-  });
-
-  /* ── Import history (uit fuel_card_imports tabel) ─ */
-
-  const { data: imports = [] } = useQuery({
-    queryKey: qk.fuel.imports(orgId),
-    queryFn: async () => {
-      return unwrapList<any>(
-        supabase
-          .from('fuel_card_imports')
-          .select('*')
-          .eq('organization_id', orgId!)
-          .order('created_at', { ascending: false }),
-      );
-    },
-    enabled: !!orgId,
-  });
+  /* ── Afgeleide import-data ───────────────────────── */
 
   const flagsByBatch = useMemo(() => {
     const m: Record<string, number> = {};
@@ -194,21 +104,6 @@ const FuelCardAnalysis = () => {
     });
     return m;
   }, [transactions]);
-
-  const [deleteImportId, setDeleteImportId] = useState<string | null>(null);
-  const deleteImport = useMutation({
-    mutationFn: async (id: string) => {
-      await unwrap(supabase.from('fuel_card_transactions').delete().eq('import_batch_id', id));
-      await unwrap(supabase.from('fuel_card_imports').delete().eq('id', id));
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['fuel-transactions'] });
-      qc.invalidateQueries({ queryKey: ['fuel-card-imports'] });
-      toast.success('Import verwijderd');
-      setDeleteImportId(null);
-    },
-    onError: (e: any) => toast.error(e.message ?? 'Verwijderen mislukt'),
-  });
 
   return (
     <div>
@@ -346,7 +241,7 @@ const FuelCardAnalysis = () => {
           <AlertDialogFooter>
             <AlertDialogCancel>Annuleren</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => deleteImportId && deleteImport.mutate(deleteImportId)}
+              onClick={() => deleteImportId && deleteImport.mutate(deleteImportId, { onSuccess: () => setDeleteImportId(null) })}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Verwijderen
