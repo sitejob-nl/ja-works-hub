@@ -12,12 +12,26 @@ import { toast } from 'sonner';
 
 interface BatchResult {
   candidate_id: string;
-  status: 'queued' | 'skipped' | 'failed';
+  status: 'queued' | 'completed' | 'skipped' | 'failed';
   reason?: string;
+  cost_cents?: number;
   pseudonymized_meta?: { name: number; email: number; phone: number; bsn: number; iban: number };
   has_photo?: boolean;
   selected_document?: { name?: string; reason?: string; type?: string | null } | null;
   context_counts?: { notes?: number; communications?: number; placements?: number; employments?: number };
+}
+
+interface BatchResponse {
+  processed?: number;
+  completed?: number;
+  failed?: number;
+  skipped?: number;
+  continued?: boolean;
+  done?: boolean;
+  cost_cents?: number;
+  stopped_reason?: string;
+  results: BatchResult[];
+  message?: string;
 }
 
 const textDocPattern = /\.(pdf|docx?|odt|rtf|txt)(?:$|[?#])/i;
@@ -108,16 +122,26 @@ const SuperAdminCvBackfill = () => {
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
-      return data as { processed: number; results: BatchResult[]; message?: string };
+      return data as BatchResponse;
     },
     onSuccess: (data) => {
-      setLastResults(data.results);
+      const results = data.results ?? [];
+      setLastResults(results);
       qc.invalidateQueries({ queryKey: ['cv-backfill-stats'] });
-      if (data.processed === 0) {
+      const completed = data.completed ?? results.filter((r) => r.status === 'completed').length;
+      const queued = results.filter((r) => r.status === 'queued').length;
+      const failed = data.failed ?? results.filter((r) => r.status === 'failed').length;
+      const skipped = data.skipped ?? results.filter((r) => r.status === 'skipped').length;
+      const processed = data.processed ?? completed + queued + failed + skipped;
+      if (processed === 0) {
         toast.info(data.message ?? 'Geen kandidaten te verwerken');
+      } else if (completed > 0) {
+        const tail = failed || skipped ? ` (${failed} mislukt, ${skipped} overgeslagen)` : '';
+        toast.success(`${completed} kandidaatdossiers via Gemini voltooid${tail}`);
+      } else if (queued > 0) {
+        toast.success(`${queued} kandidaatdossiers naar Gemini gestuurd`);
       } else {
-        const queued = data.results.filter((r) => r.status === 'queued').length;
-        toast.success(`${queued} kandidaatdossiers naar VPS gestuurd (${data.processed} verwerkt)`);
+        toast.info(`Batch verwerkt (${failed} mislukt, ${skipped} overgeslagen)`);
       }
     },
     onError: (e: any) => toast.error(e.message ?? 'Batch mislukt'),
@@ -162,7 +186,7 @@ const SuperAdminCvBackfill = () => {
           <CardTitle className="text-base text-white">Batch starten</CardTitle>
           <CardDescription className="text-zinc-400">
             <Shield className="h-3 w-3 inline mr-1" />
-            Dossier wordt server-side opgebouwd uit CV/documenten en interne notities, daarna gepseudonimiseerd vóór verzending naar de VPS.
+            Dossier wordt server-side opgebouwd uit CV/documenten en interne notities, daarna gepseudonimiseerd vóór verzending naar Gemini.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -212,7 +236,7 @@ const SuperAdminCvBackfill = () => {
               {runBatch.isPending ? `Verwerken (~${batchSize * 2}s)...` : `Verwerk ${batchSize} dossiers`}
             </Button>
             <p className="text-xs text-zinc-500 mt-2">
-              Throttle 1.5s/dossier. Verwerk batches achter elkaar tot de wachtrij leeg is.
+              Verwerk batches achter elkaar tot de wachtrij leeg is.
             </p>
           </div>
         </CardContent>
@@ -280,13 +304,13 @@ const Stat = ({ label, value, sub, accent, icon: Icon }: { label: string; value:
 };
 
 const ResultIcon = ({ status }: { status: BatchResult['status'] }) => {
-  if (status === 'queued') return <CheckCircle2 className="h-4 w-4 text-green-500 mt-0.5" />;
+  if (status === 'queued' || status === 'completed') return <CheckCircle2 className="h-4 w-4 text-green-500 mt-0.5" />;
   if (status === 'failed') return <AlertTriangle className="h-4 w-4 text-red-500 mt-0.5" />;
   return <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5" />;
 };
 
 const statusBadgeClass = (s: BatchResult['status']) => {
-  if (s === 'queued') return 'border-green-800 text-green-400';
+  if (s === 'queued' || s === 'completed') return 'border-green-800 text-green-400';
   if (s === 'failed') return 'border-red-800 text-red-400';
   return 'border-amber-800 text-amber-400';
 };

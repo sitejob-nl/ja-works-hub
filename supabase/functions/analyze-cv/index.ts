@@ -1,8 +1,7 @@
 // Kandidaatdossier-analyse — draait UITSLUITEND op Gemini (synchroon, ~10s, trekt credits).
 //
-// De oude VPS/Qwen-route (Ollama op Hetzner, CPU) en de Anthropic-cloud-route zijn
-// uitgefaseerd: de VPS-default liet kandidaten minutenlang op 'analyzing' hangen.
-// Gemini is de enige screening-provider; er is geen provider-keuze meer.
+// De oudere alternatieve routes zijn uitgefaseerd: de async default liet kandidaten
+// minutenlang op 'analyzing' hangen. Gemini is de enige screeningprovider.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { pseudonymizeCv } from "../_shared/cv-pseudonymize.ts";
@@ -186,7 +185,7 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "Analyse loopt al voor deze kandidaat" }, 409);
     }
 
-    // Org-settings ophalen (provider-keuze + optioneel prompt-addendum voor beide paden)
+    // Org-settings ophalen voor het optionele prompt-addendum en Gemini-model.
     const { data: org } = await admin
       .from("organizations")
       .select("settings")
@@ -194,7 +193,7 @@ Deno.serve(async (req) => {
       .single();
     const orgSettings = (org?.settings as Record<string, unknown> | null) ?? {};
 
-    // Screening draait uitsluitend op Gemini — geen provider-keuze meer.
+    // Screening draait uitsluitend op Gemini.
     const provider = "gemini";
 
     // Gemini-model — request > org-setting > env > default
@@ -203,7 +202,7 @@ Deno.serve(async (req) => {
       Deno.env.get("GEMINI_MODEL") ||
       GEMINI_DEFAULT_MODEL;
 
-    // Prompt-addendum. Server-side gesanitized en doorgegeven aan Cloud én VPS.
+    // Prompt-addendum. Server-side gesanitized en doorgegeven aan Gemini.
     const rawAddendum = typeof orgSettings.candidate_analysis_prompt === "string"
       ? orgSettings.candidate_analysis_prompt
       : typeof orgSettings.cv_prompt_addendum === "string"
@@ -247,7 +246,7 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "Te weinig kandidaatdata om te analyseren" }, 400);
     }
 
-    // Status + ruwe documenttekst alvast wegschrijven (gemeenschappelijk voor beide paden)
+    // Status + ruwe documenttekst alvast wegschrijven.
     await admin
       .from("candidates")
       .update({
@@ -274,8 +273,7 @@ Deno.serve(async (req) => {
       .eq("organization_id", orgId);
 
     // ===========================================================
-    // SYNCHRONE CREDIT-PADEN — Cloud (Anthropic) of Gemini (Google)
-    // Beide: synchroon, trekken credits, schrijven direct weg (geen callback).
+    // SYNCHROON GEMINI-PAD — trekt credits en schrijft direct weg (geen callback).
     // ===========================================================
     {
       const apiKey = Deno.env.get("GEMINI_API_KEY");
