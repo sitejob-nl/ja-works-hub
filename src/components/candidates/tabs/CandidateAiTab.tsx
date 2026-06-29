@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type DragEvent } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -22,7 +22,7 @@ import AiAnalysisShareDialog from '@/components/candidates/AiAnalysisShareDialog
 import { logAudit } from '@/lib/audit';
 import { CV_ACCEPT, extractCvTextFromFile } from '@/lib/cvText';
 import { extractFunctionErrorMessage } from '@/lib/functionError';
-import { noFileDropInputProps } from '@/lib/file-input';
+import { allowFileDrop, getDroppedFiles } from '@/lib/file-input';
 
 const formatEuro = (cents: number) =>
   (cents / 100).toLocaleString('nl-NL', { style: 'currency', currency: 'EUR' });
@@ -68,10 +68,7 @@ const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => 
   }, [candidate.id, qc]);
 
   // Extract text from uploaded CV/document/image and store the original file.
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  const processCvFile = async (file: File) => {
     if (file.size > 15 * 1024 * 1024) {
       toast.error('Bestand is te groot (maximaal 15 MB)');
       return;
@@ -125,6 +122,17 @@ const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => 
       setExtracting(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) await processCvFile(file);
+  };
+
+  const handleFileDrop = async (event: DragEvent<HTMLDivElement>) => {
+    if (extracting) return;
+    const [droppedFile] = getDroppedFiles(event);
+    if (droppedFile) await processCvFile(droppedFile);
   };
 
   // Trigger AI analysis. The edge function is Gemini-only; provider selection was removed.
@@ -256,7 +264,11 @@ const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => 
 
 
       {/* CV Input section */}
-      <Card className="p-5 space-y-4">
+      <Card
+        className="p-5 space-y-4 border-dashed"
+        onDragOver={allowFileDrop}
+        onDrop={handleFileDrop}
+      >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <FileText className="h-4 w-4 text-muted-foreground" />
@@ -268,7 +280,6 @@ const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => 
               type="file"
               accept={CV_ACCEPT}
               className="hidden"
-              {...noFileDropInputProps}
               onChange={handleFileUpload}
             />
             <Button
@@ -283,6 +294,9 @@ const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => 
             </Button>
           </div>
         </div>
+        <p className="text-xs text-muted-foreground">
+          Sleep hier direct een CV of document naartoe, of kies een bestand via de knop.
+        </p>
 
         <Textarea
           value={cvText}

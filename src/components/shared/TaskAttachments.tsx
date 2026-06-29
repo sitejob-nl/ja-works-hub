@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, type DragEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Paperclip, FileText, Image as ImageIcon, Download, Trash2, X } from 'lucide-react';
 import { formatDate } from '@/lib/format';
 import { uploadTaskFiles } from '@/lib/taskAttachments';
-import { noFileDropInputProps } from '@/lib/file-input';
+import { allowFileDrop, getDroppedFiles } from '@/lib/file-input';
 import { toast } from 'sonner';
 
 const IMAGE_EXT = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'heic'];
@@ -85,21 +85,28 @@ const TaskAttachments = ({ taskId, staged, setStaged }: TaskAttachmentsProps) =>
     window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
   };
 
-  const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const picked = Array.from(e.target.files ?? []);
-    if (picked.length === 0) return;
+  const addFiles = (selectedFiles: File[]) => {
+    if (selectedFiles.length === 0) return;
     if (taskId) {
-      uploadNow.mutate(picked);
+      uploadNow.mutate(selectedFiles);
     } else {
-      setStaged([...staged, ...picked]);
+      setStaged([...staged, ...selectedFiles]);
     }
+  };
+
+  const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
+    addFiles(Array.from(e.target.files ?? []));
     if (fileRef.current) fileRef.current.value = '';
+  };
+
+  const onDrop = (event: DragEvent<HTMLDivElement>) => {
+    addFiles(getDroppedFiles(event));
   };
 
   const Icon = (name: string) => (isImage(name) ? ImageIcon : FileText);
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 rounded-md border border-dashed border-transparent p-2 transition-colors hover:border-primary/40" onDragOver={allowFileDrop} onDrop={onDrop}>
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium flex items-center gap-1.5">
           <Paperclip className="h-3.5 w-3.5" /> Bijlagen
@@ -107,7 +114,7 @@ const TaskAttachments = ({ taskId, staged, setStaged }: TaskAttachmentsProps) =>
         <Button type="button" variant="outline" size="sm" onClick={() => fileRef.current?.click()} disabled={uploadNow.isPending}>
           {uploadNow.isPending ? 'Uploaden…' : 'Bestand toevoegen'}
         </Button>
-        <input ref={fileRef} type="file" multiple className="hidden" {...noFileDropInputProps} onChange={onPick} />
+        <input ref={fileRef} type="file" multiple className="hidden" onChange={onPick} />
       </div>
 
       {/* Persisted bijlagen (bewerken) */}

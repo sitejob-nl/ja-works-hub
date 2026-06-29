@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, type DragEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -26,7 +26,7 @@ import SkillMultiSelect from '@/components/shared/SkillMultiSelect';
 import HousingRoomPicker, { type HousingSelection } from '@/components/housing/HousingRoomPicker';
 import { COUNTRIES, NATIONALITIES, LANGUAGES, normalizeNationality, normalizeLanguages } from '@/lib/candidate-options';
 import { resolveEmployeeId } from '@/lib/assignments';
-import { noFileDropInputProps } from '@/lib/file-input';
+import { allowFileDrop, getDroppedFiles } from '@/lib/file-input';
 
 // Leest de JSON-foutmelding uit een mislukte supabase.functions.invoke (bv. 402-saldo).
 // FunctionsHttpError verbergt de body achter context (een Response).
@@ -165,10 +165,7 @@ const CandidateNew = () => {
     return count;
   };
 
-  const handleCvUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  const processCvFile = async (file: File) => {
     if (file.size > 15 * 1024 * 1024) {
       toast.error('Bestand is te groot (maximaal 15 MB)');
       if (cvInputRef.current) cvInputRef.current.value = '';
@@ -224,6 +221,17 @@ const CandidateNew = () => {
       setCvExtracting(false);
       if (cvInputRef.current) cvInputRef.current.value = '';
     }
+  };
+
+  const handleCvUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) await processCvFile(file);
+  };
+
+  const handleCvDrop = async (event: DragEvent<HTMLDivElement>) => {
+    if (cvExtracting) return;
+    const [droppedFile] = getDroppedFiles(event);
+    if (droppedFile) await processCvFile(droppedFile);
   };
 
   // Catalogus voor het filteren van uit-CV-geëxtraheerde skills. Deelt de cache-key
@@ -573,14 +581,18 @@ const CandidateNew = () => {
 
       <h1 className="text-2xl font-semibold">Nieuwe kandidaat</h1>
 
-      <div className="bg-card rounded-lg border p-5 max-w-3xl">
+      <div
+        className="bg-card rounded-lg border border-dashed p-5 max-w-3xl transition-colors hover:border-primary/60"
+        onDragOver={allowFileDrop}
+        onDrop={handleCvDrop}
+      >
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-start gap-2.5">
             <FileText className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
             <div>
               <p className="text-sm font-medium">CV uploaden &amp; automatisch invullen</p>
               <p className="text-xs text-muted-foreground">
-                Upload een CV (PDF, Word of afbeelding). Lege velden worden alvast ingevuld; controleer ze. De AI-analyse start automatisch na het aanmaken.
+                Sleep of upload een CV (PDF, Word of afbeelding). Lege velden worden alvast ingevuld; controleer ze. De AI-analyse start automatisch na het aanmaken.
               </p>
             </div>
           </div>
@@ -589,7 +601,6 @@ const CandidateNew = () => {
             type="file"
             accept={CV_ACCEPT}
             className="hidden"
-            {...noFileDropInputProps}
             onChange={handleCvUpload}
           />
           <Button

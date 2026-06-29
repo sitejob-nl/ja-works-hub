@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type DragEvent } from 'react';
 import { usePortal } from '@/contexts/PortalContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { nl } from 'date-fns/locale';
 import type { Database } from '@/integrations/supabase/types';
+import { allowFileDrop, getDroppedFiles } from '@/lib/file-input';
 
 type DocType = Database['public']['Enums']['document_type'];
 type DocStatus = Database['public']['Enums']['document_status'];
@@ -80,8 +81,7 @@ const PortalDocuments = () => {
 
   const uploadMutation = useMutation({
     mutationFn: async () => {
-      if (!file) throw new Error('Kies eerst een bestand');
-      if (!candidateId || !orgId) throw new Error('Kandidaatgegevens ontbreken');
+      if (!file || !candidateId || !orgId) throw new Error('Vul alle velden in');
 
       let filePath: string | null = null;
       const ext = file.name.split('.').pop();
@@ -120,6 +120,11 @@ const PortalDocuments = () => {
     setFile(null);
   };
 
+  const handleFileDrop = (event: DragEvent<HTMLDivElement>) => {
+    const [droppedFile] = getDroppedFiles(event);
+    if (droppedFile) setFile(droppedFile);
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -151,8 +156,17 @@ const PortalDocuments = () => {
                 <Input value={docName} onChange={(e) => setDocName(e.target.value)} placeholder="Bijv. Paspoort" />
               </div>
               <div className="space-y-2">
-                <Label>Bestand *</Label>
-                <Input type="file" required onChange={(e) => setFile(e.target.files?.[0] || null)} />
+                <Label>Bestand</Label>
+                <div
+                  className="rounded-md border border-dashed border-input bg-background p-3 transition-colors hover:border-primary/60"
+                  onDragOver={allowFileDrop}
+                  onDrop={handleFileDrop}
+                >
+                  <Input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {file ? `${file.name} staat klaar` : 'Sleep hier een bestand naartoe of kies een bestand.'}
+                  </p>
+                </div>
               </div>
               <div className="space-y-2">
                 <Label>Vervaldatum (optioneel)</Label>

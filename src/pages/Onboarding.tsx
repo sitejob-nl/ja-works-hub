@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, type DragEvent } from 'react';
 import { useParams } from 'react-router-dom';
 import { Check, Loader2, AlertTriangle, FileCheck, Upload, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
 import AddressAutocomplete from '@/components/shared/AddressAutocomplete';
 import { resolveAddressCoordinates } from '@/lib/pdok';
-import { noFileDropInputProps } from '@/lib/file-input';
+import { allowFileDrop, getDroppedFiles } from '@/lib/file-input';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -112,6 +112,20 @@ const Onboarding = () => {
   const setValue = (fieldId: string, value: string) => {
     setValues(v => ({ ...v, [fieldId]: value }));
     setValidationErrors(e => { const n = { ...e }; delete n[fieldId]; return n; });
+  };
+
+  const selectDynamicFile = (fieldId: string, file: File) => {
+    if (file.size > 10 * 1024 * 1024) {
+      setValidationErrors(errors => ({ ...errors, [fieldId]: 'Bestand mag maximaal 10MB zijn' }));
+      return;
+    }
+    setFiles(f => ({ ...f, [fieldId]: file }));
+    setValue(fieldId, file.name);
+  };
+
+  const handleDynamicFileDrop = (fieldId: string) => (event: DragEvent<HTMLLabelElement>) => {
+    const [droppedFile] = getDroppedFiles(event);
+    if (droppedFile) selectDynamicFile(fieldId, droppedFile);
   };
 
   const getAddressFields = (fields: FormField[]) => ({
@@ -338,21 +352,18 @@ const Onboarding = () => {
         )}
         {field.field_type === 'file' && (
           <div className="mt-1">
-            <label className="flex items-center gap-2 px-3 py-2 rounded-md border border-dashed cursor-pointer hover:bg-secondary/50 transition-colors">
+            <label
+              className="flex items-center gap-2 px-3 py-2 rounded-md border border-dashed cursor-pointer hover:bg-secondary/50 transition-colors"
+              onDragOver={allowFileDrop}
+              onDrop={handleDynamicFileDrop(field.id)}
+            >
               <Upload className="h-4 w-4 text-muted-foreground" />
               <span className="text-sm text-muted-foreground">
-                {files[field.id] ? files[field.id].name : 'Bestand kiezen...'}
+                {files[field.id] ? files[field.id].name : 'Sleep bestand hierheen of kies...'}
               </span>
-              <input type="file" accept="image/*,.pdf" className="hidden" {...noFileDropInputProps} onChange={e => {
+              <input type="file" accept="image/*,.pdf" className="hidden" onChange={e => {
                 const file = e.target.files?.[0];
-                if (file) {
-                  if (file.size > 10 * 1024 * 1024) {
-                    setValidationErrors(errors => ({ ...errors, [field.id]: 'Bestand mag maximaal 10MB zijn' }));
-                    return;
-                  }
-                  setFiles(f => ({ ...f, [field.id]: file }));
-                  setValue(field.id, file.name);
-                }
+                if (file) selectDynamicFile(field.id, file);
               }} />
             </label>
           </div>

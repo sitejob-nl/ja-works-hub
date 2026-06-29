@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, type DragEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
@@ -10,10 +10,11 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { Plus, CreditCard, Car, Award, FileText, FileCheck, File, Download, FileSignature, ClipboardCheck, GraduationCap, Camera, UserSquare } from 'lucide-react';
+import { Plus, CreditCard, Car, Award, FileText, FileCheck, File, Download, FileSignature, ClipboardCheck, GraduationCap, Camera, UserSquare, Upload } from 'lucide-react';
 import { formatDate } from '@/lib/format';
 import { toast } from 'sonner';
 import type { Database } from '@/integrations/supabase/types';
+import { allowFileDrop, getDroppedFiles } from '@/lib/file-input';
 
 type DocType = Database['public']['Enums']['document_type'];
 
@@ -101,35 +102,46 @@ const CandidateDocumentsTab = ({ candidateId }: { candidateId: string }) => {
     window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
   };
 
+  const selectFile = (selected: File | null) => {
+    setFile(selected);
+    if (selected && !form.name.trim()) {
+      setForm((f) => ({ ...f, name: selected.name }));
+    }
+  };
+
+  const handleFileDrop = (event: DragEvent<HTMLDivElement>) => {
+    const [droppedFile] = getDroppedFiles(event);
+    if (droppedFile) selectFile(droppedFile);
+  };
+
   const add = useMutation({
     mutationFn: async () => {
-      if (!file) throw new Error('Kies eerst een bestand');
-
-      const documentName = form.name.trim() || file.name;
-      const ext = file.name.includes('.') ? file.name.split('.').pop() : 'bin';
-      const path = `${orgId}/${candidateId}/${crypto.randomUUID()}.${ext}`;
-      const { error: uploadErr } = await supabase.storage.from('documents').upload(path, file);
-      if (uploadErr) throw uploadErr;
-
+      let filePath: string | null = null;
+      if (file) {
+        const ext = file.name.split('.').pop();
+        const path = `${orgId}/${candidateId}/${crypto.randomUUID()}.${ext}`;
+        const { error: uploadErr } = await supabase.storage.from('documents').upload(path, file);
+        if (uploadErr) throw uploadErr;
+        filePath = path;
+      }
       const { error } = await supabase.from('documents').insert({
         organization_id: orgId,
         candidate_id: candidateId,
         type: form.type,
-        name: documentName,
+        name: form.name,
         issued_date: form.issued_date || null,
         expiry_date: form.expiry_date || null,
         notes: form.notes || null,
-        file_path: path,
+        file_path: filePath,
       });
       if (error) throw error;
     },
     onSuccess: () => {
-      logAudit({ action: 'create', tableName: 'documents', recordId: candidateId, newValues: { type: form.type, name: form.name.trim() || file?.name } });
+      logAudit({ action: 'create', tableName: 'documents', recordId: candidateId, newValues: { type: form.type, name: form.name } });
       qc.invalidateQueries({ queryKey: ['documents', candidateId] });
       setAdding(false);
       setForm({ type: 'overig', name: '', issued_date: '', expiry_date: '', notes: '' });
       setFile(null);
-      if (fileRef.current) fileRef.current.value = '';
       toast.success('Document geüpload');
     },
     onError: (e: any) => toast.error(e.message),
@@ -155,19 +167,31 @@ const CandidateDocumentsTab = ({ candidateId }: { candidateId: string }) => {
                 </SelectContent>
               </Select>
             </div>
-            <div><Label>Naam (optioneel)</Label><Input value={form.name} onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Leeg laten gebruikt de bestandsnaam" /></div>
+            <div><Label>Naam</Label><Input value={form.name} onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))} /></div>
             <div className="grid grid-cols-2 gap-3">
               <div><Label>Uitgiftedatum</Label><Input type="date" value={form.issued_date} onChange={(e) => setForm(f => ({ ...f, issued_date: e.target.value }))} /></div>
               <div><Label>Verloopdatum</Label><Input type="date" value={form.expiry_date} onChange={(e) => setForm(f => ({ ...f, expiry_date: e.target.value }))} /></div>
             </div>
             <div>
-              <Label>Bestand *</Label>
-              <Input ref={fileRef} type="file" required onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+              <Label>Bestand</Label>
+              <div
+                className="rounded-md border border-dashed border-input bg-background p-3 transition-colors hover:border-primary/60"
+                onDragOver={allowFileDrop}
+                onDrop={handleFileDrop}
+              >
+                <div className="flex items-center gap-2">
+                  <Upload className="h-4 w-4 text-muted-foreground" />
+                  <Input ref={fileRef} type="file" onChange={(e) => selectFile(e.target.files?.[0] ?? null)} />
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {file ? `${file.name} staat klaar` : 'Sleep hier een bestand naartoe of kies een bestand.'}
+                </p>
+              </div>
             </div>
             <div><Label>Notities</Label><Textarea value={form.notes} onChange={(e) => setForm(f => ({ ...f, notes: e.target.value }))} rows={3} /></div>
             <div className="flex justify-end gap-3 pt-4">
               <Button variant="ghost" onClick={() => setAdding(false)}>Annuleren</Button>
-              <Button onClick={() => add.mutate()} disabled={!file || add.isPending}>{add.isPending ? 'Uploaden...' : 'Opslaan'}</Button>
+              <Button onClick={() => add.mutate()} disabled={!form.name || add.isPending}>{add.isPending ? 'Uploaden...' : 'Opslaan'}</Button>
             </div>
           </div>
         </SheetContent>

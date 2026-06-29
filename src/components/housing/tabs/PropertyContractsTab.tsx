@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type DragEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Upload, ExternalLink, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { logAudit } from '@/lib/audit';
+import { allowFileDrop, getDroppedFiles } from '@/lib/file-input';
 
 const CONTRACT_TYPE_LABELS: Record<string, string> = {
   inhuur: 'Inhuurcontract',
@@ -92,6 +93,11 @@ export default function PropertyContractsTab({ property }: { property: any }) {
     window.open(data.signedUrl, '_blank');
   };
 
+  const handleFileDrop = (event: DragEvent<HTMLDivElement>) => {
+    const [droppedFile] = getDroppedFiles(event);
+    if (droppedFile) setFile(droppedFile);
+  };
+
   return (
     <div className="space-y-4">
       <Card>
@@ -108,8 +114,17 @@ export default function PropertyContractsTab({ property }: { property: any }) {
             </Select>
           </div>
           <div className="space-y-1.5 md:col-span-2">
-            <Label>Bestand *</Label>
-            <Input type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" required onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+            <Label>Bestand</Label>
+            <div
+              className="rounded-md border border-dashed border-input bg-background p-3 transition-colors hover:border-primary/60"
+              onDragOver={allowFileDrop}
+              onDrop={handleFileDrop}
+            >
+              <Input type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+              <p className="mt-2 text-xs text-muted-foreground">
+                {file ? `${file.name} staat klaar` : 'Sleep hier een contract naartoe of kies een bestand.'}
+              </p>
+            </div>
           </div>
           <div className="space-y-1.5">
             <Label>Begindatum</Label>

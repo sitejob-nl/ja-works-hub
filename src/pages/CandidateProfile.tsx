@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type DragEvent } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { getErrorMessage } from '@/lib/error-message';
@@ -15,7 +15,7 @@ import { resolveAddressCoordinates } from '@/lib/pdok';
 import NationalitySelect from '@/components/shared/NationalitySelect';
 import LanguageMultiSelect from '@/components/shared/LanguageMultiSelect';
 import { normalizeNationality, normalizeLanguages } from '@/lib/candidate-options';
-import { noFileDropInputProps } from '@/lib/file-input';
+import { allowFileDrop, getDroppedFiles } from '@/lib/file-input';
 
 type PageState = 'loading' | 'invalid' | 'expired' | 'used' | 'form' | 'success';
 
@@ -51,6 +51,11 @@ const CandidateProfile = () => {
   const cvInputRef = useRef<HTMLInputElement>(null);
 
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
+
+  const handleCvDrop = (event: DragEvent<HTMLDivElement>) => {
+    const [droppedFile] = getDroppedFiles(event);
+    if (droppedFile) setCvFile(droppedFile);
+  };
 
   // Validate token on mount
   useEffect(() => {
@@ -457,7 +462,6 @@ const CandidateProfile = () => {
                 accept="image/*"
                 capture="user"
                 className="hidden"
-                {...noFileDropInputProps}
                 onChange={handlePhotoChange}
               />
             </div>
@@ -469,12 +473,14 @@ const CandidateProfile = () => {
             <div
               className="border-2 border-dashed border-border rounded-lg p-6 text-center cursor-pointer hover:bg-muted/50 transition-colors"
               onClick={() => cvInputRef.current?.click()}
+              onDragOver={allowFileDrop}
+              onDrop={handleCvDrop}
             >
               <Upload className="h-6 w-6 text-muted-foreground mx-auto mb-2" />
               {cvFile ? (
                 <p className="text-sm font-medium">{cvFile.name}</p>
               ) : (
-                <p className="text-sm text-muted-foreground">Tik om een bestand te kiezen (PDF, Word, afbeelding)</p>
+                <p className="text-sm text-muted-foreground">Sleep een bestand hierheen of tik om te kiezen (PDF, Word, afbeelding)</p>
               )}
             </div>
             <input
@@ -482,7 +488,6 @@ const CandidateProfile = () => {
               type="file"
               accept=".pdf,.doc,.docx,image/*"
               className="hidden"
-              {...noFileDropInputProps}
               onChange={(e) => setCvFile(e.target.files?.[0] ?? null)}
             />
           </div>
