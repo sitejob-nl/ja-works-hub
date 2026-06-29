@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
-import { AlertTriangle, Bell, ExternalLink, FileSpreadsheet, Loader2, CheckCircle2, ListChecks, RefreshCw, XCircle } from 'lucide-react';
+import { AlertTriangle, Bell, ExternalLink, FileSpreadsheet, Loader2, CheckCircle2, ListChecks, RefreshCw, XCircle, Unlink } from 'lucide-react';
 import ExactGLAccountMappings from './ExactGLAccountMappings';
 
 type ExactDiagnosticResult = {
@@ -28,6 +28,7 @@ type ExactWebhookResult = {
 const ExactOnlineSettings = () => {
   const orgId = useOrganizationId();
   const queryClient = useQueryClient();
+  const setupWindowRef = useRef<Window | null>(null);
   const [registering, setRegistering] = useState(false);
   const [diagnosticResult, setDiagnosticResult] = useState<ExactDiagnosticResult | null>(null);
   const [webhookResult, setWebhookResult] = useState<ExactWebhookResult | null>(null);
@@ -59,18 +60,14 @@ const ExactOnlineSettings = () => {
       queryClient.invalidateQueries({ queryKey: ['exact-config'] });
       toast.success('Exact Online tenant geregistreerd');
       if (data?.setup_url) {
-        window.open(data.setup_url, 'exact-setup', 'width=600,height=700');
-        const handler = (e: MessageEvent) => {
-          if (e.data?.type === 'exact-connected') {
-            queryClient.invalidateQueries({ queryKey: ['exact-config'] });
-            toast.success('Exact Online gekoppeld!');
-            window.removeEventListener('message', handler);
-          }
-        };
-        window.addEventListener('message', handler);
+        openSetupUrl(data.setup_url);
       }
     },
-    onError: (err: Error) => toast.error('Registratie mislukt: ' + err.message),
+    onError: (err: Error) => {
+      setupWindowRef.current?.close();
+      setupWindowRef.current = null;
+      toast.error('Registratie mislukt: ' + err.message);
+    },
     onSettled: () => setRegistering(false),
   });
 
@@ -96,6 +93,22 @@ const ExactOnlineSettings = () => {
     onError: (e: any) => toast.error('Webhooks activeren mislukt: ' + e.message),
   });
 
+  const disconnectMutation = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke('exact-disconnect');
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['exact-config'] });
+      setDiagnosticResult(null);
+      setWebhookResult(null);
+      toast.success('Exact Online ontkoppeld');
+    },
+    onError: (e: any) => toast.error('Ontkoppelen mislukt: ' + e.message),
+  });
+
   const testConnection = useMutation({
     mutationFn: async () => {
       const { data, error } = await supabase.functions.invoke('exact-api', {
@@ -116,21 +129,41 @@ const ExactOnlineSettings = () => {
     },
   });
 
-  const openSetup = () => {
-    if (!config?.tenant_id) return;
-    window.open(
-      `https://connect.sitejob.nl/exact-setup?tenant_id=${config.tenant_id}`,
-      'exact-setup',
-      'width=600,height=700'
-    );
+  useEffect(() => {
     const handler = (e: MessageEvent) => {
-      if (e.data?.type === 'exact-connected') {
-        queryClient.invalidateQueries({ queryKey: ['exact-config'] });
-        toast.success('Exact Online gekoppeld!');
-        window.removeEventListener('message', handler);
-      }
+      if (e.data?.type !== 'exact-connected') return;
+      queryClient.invalidateQueries({ queryKey: ['exact-config'] });
+      setupWindowRef.current = null;
+      toast.success('Exact Online gekoppeld!');
     };
     window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, [queryClient]);
+
+  const prepareSetupPopup = () => {
+    setupWindowRef.current = window.open('', 'exact-setup', 'width=600,height=700');
+  };
+
+  const openSetupUrl = (url: string) => {
+    const popup = setupWindowRef.current && !setupWindowRef.current.closed
+      ? setupWindowRef.current
+      : window.open('', 'exact-setup', 'width=600,height=700');
+
+    if (popup) {
+      popup.location.href = url;
+      popup.focus();
+      setupWindowRef.current = popup;
+    }
+  };
+
+  const startRegistration = () => {
+    prepareSetupPopup();
+    registerMutation.mutate();
+  };
+
+  const openSetup = () => {
+    if (!config?.tenant_id) return;
+    openSetupUrl(`https://connect.sitejob.nl/exact-setup?tenant_id=${config.tenant_id}`);
   };
 
   if (isLoading) {
@@ -196,15 +229,15 @@ const ExactOnlineSettings = () => {
           )}
 
           <Separator />
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {!isRegistered ? (
-              <Button onClick={() => registerMutation.mutate()} disabled={registering} className="gap-2">
+              <Button onClick={startRegistration} disabled={registering} className="gap-2">
                 {registering && <Loader2 className="h-4 w-4 animate-spin" />}
                 Exact Online koppelen
               </Button>
             ) : !isConnected ? (
-              <Button variant="outline" className="gap-2" onClick={openSetup}>
-                <ExternalLink className="h-4 w-4" /> Setup voltooien
+              <Button variant="outline" className="gap-2" onClick={startRegistration} disabled={registering}>
+                {registering ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />} Setup voltooien
               </Button>
             ) : (
               <>
@@ -230,6 +263,20 @@ const ExactOnlineSettings = () => {
                 >
                   {testConnection.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ListChecks className="h-4 w-4" />}
                   Test koppeling
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2 text-destructive hover:text-destructive"
+                  onClick={() => {
+                    if (window.confirm('Weet je zeker dat je Exact Online wilt ontkoppelen?')) {
+                      disconnectMutation.mutate();
+                    }
+                  }}
+                  disabled={disconnectMutation.isPending}
+                >
+                  {disconnectMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Unlink className="h-4 w-4" />}
+                  Ontkoppelen
                 </Button>
               </>
             )}

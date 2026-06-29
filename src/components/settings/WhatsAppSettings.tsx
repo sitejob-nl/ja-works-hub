@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
@@ -334,6 +334,7 @@ function BusinessProfileSection() {
 const WhatsAppSettings = () => {
   const orgId = useOrganizationId();
   const queryClient = useQueryClient();
+  const setupWindowRef = useRef<Window | null>(null);
   const [registering, setRegistering] = useState(false);
 
   const { data: config, isLoading } = useQuery({
@@ -357,12 +358,13 @@ const WhatsAppSettings = () => {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['whatsapp-config'] });
       toast.success('WhatsApp tenant geregistreerd');
-      // Open setup URL
       if (data?.setup_url) {
-        window.open(data.setup_url, '_blank');
+        openSetupUrl(data.setup_url);
       }
     },
     onError: (err: Error) => {
+      setupWindowRef.current?.close();
+      setupWindowRef.current = null;
       toast.error('Registratie mislukt: ' + err.message);
     },
     onSettled: () => setRegistering(false),
@@ -396,6 +398,39 @@ const WhatsAppSettings = () => {
       toast.error('Synchronisatie mislukt: ' + err.message);
     },
   });
+
+  useEffect(() => {
+    const handler = (e: MessageEvent) => {
+      if (e.data?.type !== 'whatsapp-connected') return;
+      queryClient.invalidateQueries({ queryKey: ['whatsapp-config'] });
+      setupWindowRef.current = null;
+      toast.success('WhatsApp gekoppeld!');
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, [queryClient]);
+
+  const openSetupUrl = (url: string) => {
+    const popup = setupWindowRef.current && !setupWindowRef.current.closed
+      ? setupWindowRef.current
+      : window.open('', 'whatsapp-setup', 'width=600,height=700');
+
+    if (popup) {
+      popup.location.href = url;
+      popup.focus();
+      setupWindowRef.current = popup;
+    }
+  };
+
+  const openSetup = () => {
+    if (!config?.tenant_id) return;
+    openSetupUrl(`https://connect.sitejob.nl/whatsapp-setup?tenant_id=${config.tenant_id}`);
+  };
+
+  const startRegistration = () => {
+    setupWindowRef.current = window.open('', 'whatsapp-setup', 'width=600,height=700');
+    registerMutation.mutate();
+  };
 
   if (isLoading) {
     return (
@@ -463,7 +498,7 @@ const WhatsAppSettings = () => {
           <div className="flex flex-wrap gap-2">
             {!isRegistered ? (
               <Button
-                onClick={() => registerMutation.mutate()}
+                onClick={startRegistration}
                 disabled={registering}
                 className="gap-2"
               >
@@ -474,14 +509,11 @@ const WhatsAppSettings = () => {
               <Button
                 variant="outline"
                 className="gap-2"
-                onClick={() =>
-                  window.open(
-                    `https://connect.sitejob.nl/whatsapp-setup?tenant_id=${config.tenant_id}`,
-                    '_blank'
-                  )
-                }
+                onClick={startRegistration}
+                disabled={registering}
               >
-                <ExternalLink className="h-4 w-4" /> Setup voltooien
+                {registering ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}
+                Setup voltooien
               </Button>
             ) : (
               <>
@@ -489,12 +521,7 @@ const WhatsAppSettings = () => {
                   variant="outline"
                   size="sm"
                   className="gap-2"
-                  onClick={() =>
-                    window.open(
-                      `https://connect.sitejob.nl/whatsapp-setup?tenant_id=${config.tenant_id}`,
-                      '_blank'
-                    )
-                  }
+                  onClick={openSetup}
                 >
                   <ExternalLink className="h-4 w-4" /> Beheer koppeling
                 </Button>

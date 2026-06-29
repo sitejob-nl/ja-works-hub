@@ -10,6 +10,34 @@ const regionBaseUrls: Record<string, string> = {
   es: "https://start.exactonline.es",
 };
 
+async function validateWebhookSecret(serviceClient: any, config: any, webhookSecret: string): Promise<string | null> {
+  const { data: decrypted, error: decryptError } = await serviceClient.rpc("decrypt_sensitive", {
+    ciphertext: config.webhook_secret,
+  });
+
+  if (!decryptError && decrypted === webhookSecret) {
+    return decrypted;
+  }
+
+  // Legacy repair: older exact-register stored webhook_secret in plaintext.
+  // Accept it only when it exactly matches the incoming Connect secret, then
+  // immediately rewrite the row encrypted so all later reads use the safe path.
+  if (config.webhook_secret === webhookSecret) {
+    const { data: encrypted, error: encryptError } = await serviceClient.rpc("encrypt_sensitive", {
+      plaintext: webhookSecret,
+    });
+    if (!encryptError && encrypted) {
+      await serviceClient
+        .from("exact_config")
+        .update({ webhook_secret: encrypted, updated_at: new Date().toISOString() })
+        .eq("id", config.id);
+    }
+    return webhookSecret;
+  }
+
+  return null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -38,12 +66,8 @@ Deno.serve(async (req) => {
       return new Response("Not found", { status: 404 });
     }
 
-    // Decrypt webhook_secret via RPC and compare
-    const { data: decrypted } = await serviceClient.rpc("get_exact_token", {
-      p_org_id: config.organization_id,
-    });
-
-    if (!decrypted?.[0] || decrypted[0].decrypted_webhook_secret !== webhookSecret) {
+    const decryptedWebhookSecret = await validateWebhookSecret(serviceClient, config, webhookSecret);
+    if (!decryptedWebhookSecret) {
       console.error("Webhook secret mismatch");
       return new Response("Unauthorized", { status: 401 });
     }
@@ -95,9 +119,9 @@ Deno.serve(async (req) => {
     console.log("Exact config updated for org:", config.organization_id, "division:", body.division);
 
     // Register webhook subscriptions in Exact after successful config push
-    if (body.division && config.tenant_id && decrypted[0].decrypted_webhook_secret) {
+    if (body.division && config.tenant_id && decryptedWebhookSecret) {
       try {
-        const tokenData = await getExactToken(config.tenant_id, decrypted[0].decrypted_webhook_secret);
+        const tokenData = await getExactToken(config.tenant_id, decryptedWebhookSecret);
         const webhookResult = await registerExactWebhookSubscriptions(tokenData.base_url, tokenData.division, tokenData.access_token);
         console.log("Exact webhook subscriptions checked:", webhookResult);
       } catch (err) {

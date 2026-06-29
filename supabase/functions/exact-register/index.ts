@@ -3,6 +3,13 @@ import { getExactConnectUrl } from "../_shared/exact-helpers.ts";
 
 import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
 
+const SETUP_BASE_URL = "https://connect.sitejob.nl/exact-setup";
+
+function connectErrorMessage(data: any, fallback: string): string {
+  const message = data?.error ?? data?.message ?? data?.details?.error ?? data?.details?.message;
+  return typeof message === "string" && message.trim() ? message.slice(0, 500) : fallback.slice(0, 500);
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -51,6 +58,26 @@ Deno.serve(async (req) => {
 
     // Derive org_id from the authenticated user; ignore any body.organization_id.
     const organization_id = profile.organization_id;
+    const serviceClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+
+    const { data: existing } = await serviceClient
+      .from("exact_config")
+      .select("tenant_id, is_active, division")
+      .eq("organization_id", organization_id)
+      .maybeSingle();
+
+    if (existing?.tenant_id && existing.is_active) {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          tenant_id: existing.tenant_id,
+          setup_url: `${SETUP_BASE_URL}?tenant_id=${existing.tenant_id}`,
+          already_registered: true,
+          is_active: existing.is_active,
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
 
     const CONNECT_API_KEY = Deno.env.get("CONNECT_API_KEY");
     if (!CONNECT_API_KEY) {
@@ -58,7 +85,7 @@ Deno.serve(async (req) => {
     }
 
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-    const webhookUrl = `${SUPABASE_URL}/functions/v1/exact-webhook`;
+    const webhookUrl = `${SUPABASE_URL}/functions/v1/exact-webhook?organization_id=${encodeURIComponent(organization_id)}`;
 
     const registerRes = await fetch(
       getExactConnectUrl("exact-register-tenant"),
@@ -76,21 +103,53 @@ Deno.serve(async (req) => {
       }
     );
 
-    const registerBody = await registerRes.json();
+    const registerText = await registerRes.text();
+    let registerBody: any = {};
+    try {
+      registerBody = registerText ? JSON.parse(registerText) : {};
+    } catch {
+      registerBody = { raw: registerText };
+    }
+
     if (!registerRes.ok) {
-      console.error("Register tenant failed:", registerBody);
-      return new Response(JSON.stringify({ error: "Failed to register tenant", details: registerBody }), {
+      const errText = connectErrorMessage(registerBody, registerText || `HTTP ${registerRes.status}`);
+      console.error("Register tenant failed:", registerRes.status, errText);
+      return new Response(JSON.stringify({ error: `Failed to register tenant: ${errText}`, details: registerBody }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const { tenant_id, webhook_secret } = registerBody;
+    if (!tenant_id || !webhook_secret) {
+      return new Response(JSON.stringify({ error: "Connect returned incomplete tenant data" }), {
+        status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
-    const serviceClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const { data: encryptedSecret, error: encError } = await serviceClient.rpc("encrypt_sensitive", {
+      plaintext: webhook_secret,
+    });
+    if (encError || !encryptedSecret) {
+      console.error("Encrypt Exact webhook_secret failed:", encError);
+      return new Response(JSON.stringify({ error: "Failed to encrypt webhook secret" }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const { error: upsertError } = await serviceClient
       .from("exact_config")
-      .upsert({ organization_id, tenant_id, webhook_secret, is_active: false }, { onConflict: "organization_id" });
+      .upsert(
+        {
+          organization_id,
+          tenant_id,
+          webhook_secret: encryptedSecret,
+          division: null,
+          company_name: null,
+          base_url: null,
+          is_active: false,
+        },
+        { onConflict: "organization_id" },
+      );
 
     if (upsertError) {
       console.error("Upsert error:", upsertError);
@@ -98,7 +157,7 @@ Deno.serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ success: true, tenant_id, setup_url: `https://connect.sitejob.nl/exact-setup?tenant_id=${tenant_id}` }),
+      JSON.stringify({ success: true, tenant_id, setup_url: `${SETUP_BASE_URL}?tenant_id=${tenant_id}` }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
