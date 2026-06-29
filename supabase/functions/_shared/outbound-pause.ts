@@ -43,6 +43,7 @@ interface ConceptRow {
   body?: string | null;
   emailTo?: string[] | null;
   emailCc?: string[] | null;
+  emailAttachments?: Array<Record<string, unknown>> | null;
   emailFrom?: string | null;
   candidateId?: string | null;
   companyId?: string | null;
@@ -82,6 +83,7 @@ export async function logConceptCommunication(admin: Admin, row: ConceptRow): Pr
       body: row.body ?? null,
       email_to: row.emailTo ?? null,
       email_cc: row.emailCc ?? null,
+      email_attachments: row.emailAttachments ?? null,
       email_from: row.emailFrom ?? null,
       sent_by: row.sentBy ?? null,
     } as any);
