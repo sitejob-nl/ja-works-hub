@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, FileText, Loader2, Mail, RefreshCw } from 'lucide-react';
+import { AlertTriangle, Copy, ExternalLink, FileText, Loader2, Mail, RefreshCw } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { useOutboundPause } from '@/hooks/useOutboundPause';
@@ -91,6 +91,8 @@ const MatchProposalEmailDialog = ({ open, matchId, onOpenChange, onSent }: Match
   const [introText, setIntroText] = useState('');
   const [closingText, setClosingText] = useState('');
   const [previewHtml, setPreviewHtml] = useState('');
+  const [proposalResponseUrl, setProposalResponseUrl] = useState('');
+  const [proposalTokenId, setProposalTokenId] = useState<string | null>(null);
   const [mailRecipients, setMailRecipients] = useState<RecipientOption[]>([]);
   const [mailHasCv, setMailHasCv] = useState(false);
   const [mailIncludeCv, setMailIncludeCv] = useState(false);
@@ -111,6 +113,8 @@ const MatchProposalEmailDialog = ({ open, matchId, onOpenChange, onSent }: Match
     setIntroText('');
     setClosingText('');
     setPreviewHtml('');
+    setProposalResponseUrl('');
+    setProposalTokenId(null);
     setMailRecipients([]);
     setMailHasCv(false);
     setMailIncludeCv(false);
@@ -121,7 +125,7 @@ const MatchProposalEmailDialog = ({ open, matchId, onOpenChange, onSent }: Match
   const loadPreview = useCallback(async (
     targetMatchId: string,
     nextSections: ProposalSections,
-    opts: { resetTo?: boolean; intro?: string; closing?: string; syncText?: boolean } = {},
+    opts: { resetTo?: boolean; intro?: string; closing?: string; syncText?: boolean; recipientEmail?: string; proposalTokenId?: string | null } = {},
   ) => {
     setPreviewLoading(true);
     try {
@@ -132,6 +136,8 @@ const MatchProposalEmailDialog = ({ open, matchId, onOpenChange, onSent }: Match
         body: JSON.stringify({
           match_id: targetMatchId,
           preview: true,
+          proposal_token_id: opts.proposalTokenId,
+          recipient_email: opts.recipientEmail || undefined,
           include_sections: nextSections,
           intro_text: opts.intro,
           closing_text: opts.closing,
@@ -141,6 +147,8 @@ const MatchProposalEmailDialog = ({ open, matchId, onOpenChange, onSent }: Match
       if (!res.ok) throw new Error(json.error ?? 'Kon preview niet laden');
       setMailSubject(json.subject ?? '');
       setPreviewHtml(json.html ?? '');
+      setProposalResponseUrl(json.response_url ?? '');
+      setProposalTokenId(json.proposal_token_id ?? null);
       setMailRecipients(json.recipients ?? []);
       setMailHasCv(Boolean(json.has_cv));
       if (opts.syncText !== false) {
@@ -174,11 +182,23 @@ const MatchProposalEmailDialog = ({ open, matchId, onOpenChange, onSent }: Match
   const handleSectionChange = (key: keyof ProposalSections, checked: boolean) => {
     const nextSections = { ...sections, [key]: checked };
     setSections(nextSections);
-    if (matchId) void loadPreview(matchId, nextSections, { intro: introText, closing: closingText, syncText: false });
+    if (matchId) void loadPreview(matchId, nextSections, {
+      intro: introText,
+      closing: closingText,
+      syncText: false,
+      recipientEmail: mailTo,
+      proposalTokenId,
+    });
   };
 
   const refreshPreview = () => {
-    if (matchId) void loadPreview(matchId, sections, { intro: introText, closing: closingText, syncText: false });
+    if (matchId) void loadPreview(matchId, sections, {
+      intro: introText,
+      closing: closingText,
+      syncText: false,
+      recipientEmail: mailTo,
+      proposalTokenId,
+    });
   };
 
   const sendMutation = useMutation({
@@ -199,6 +219,7 @@ const MatchProposalEmailDialog = ({ open, matchId, onOpenChange, onSent }: Match
           cc: mailCc ? splitEmails(mailCc) : undefined,
           bcc: mailBcc ? splitEmails(mailBcc) : undefined,
           subject: mailSubject.trim(),
+          proposal_token_id: proposalTokenId,
           intro_text: introText,
           closing_text: closingText,
           include_cv: mailIncludeCv,
@@ -217,6 +238,12 @@ const MatchProposalEmailDialog = ({ open, matchId, onOpenChange, onSent }: Match
     },
     onError: (error: Error) => toast.error(error.message),
   });
+
+  const copyProposalLink = async () => {
+    if (!proposalResponseUrl) return;
+    await navigator.clipboard.writeText(proposalResponseUrl);
+    toast.success('Klantlink gekopieerd');
+  };
 
   return (
     <Dialog open={open} onOpenChange={handleDialogOpenChange}>
@@ -353,9 +380,28 @@ const MatchProposalEmailDialog = ({ open, matchId, onOpenChange, onSent }: Match
               <Label className="text-xs text-muted-foreground">Preview</Label>
               {previewLoading && <span className="inline-flex items-center gap-1 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Laden</span>}
             </div>
+            {proposalResponseUrl && (
+              <div className="rounded-md border bg-muted/20 p-3">
+                <Label className="text-xs text-muted-foreground">Publieke klantlink</Label>
+                <div className="mt-1 flex gap-2">
+                  <Input value={proposalResponseUrl} readOnly className="h-9 bg-white text-xs" />
+                  <Button type="button" variant="outline" size="icon" onClick={copyProposalLink} title="Kopieer klantlink">
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                  <Button type="button" variant="outline" size="icon" asChild title="Open preview">
+                    <a href={proposalResponseUrl} target="_blank" rel="noreferrer">
+                      <ExternalLink className="h-4 w-4" />
+                    </a>
+                  </Button>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Deze link is publiek en werkt zonder klantaccount. Dezelfde link wordt gebruikt als je de mail verstuurt.
+                </p>
+              </div>
+            )}
             <div className="overflow-hidden rounded-md border bg-white">
               {previewHtml ? (
-                <iframe title="email-preview" srcDoc={previewHtml} sandbox="" className="h-[620px] w-full bg-white" />
+                <iframe title="email-preview" srcDoc={previewHtml} sandbox="allow-popups allow-popups-to-escape-sandbox" className="h-[620px] w-full bg-white" />
               ) : (
                 <div className="flex h-[360px] items-center justify-center text-sm text-muted-foreground">
                   Preview laden...

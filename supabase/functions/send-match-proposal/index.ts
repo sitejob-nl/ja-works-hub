@@ -70,6 +70,81 @@ function renderReportRow(label: string, content: string): string {
   </td></tr>`;
 }
 
+async function ensureProposalToken(
+  serviceClient: ReturnType<typeof createAdminClient>,
+  params: {
+    orgId: string;
+    matchId: string;
+    contactEmail?: string | null;
+    tokenId?: string | null;
+  },
+): Promise<{ id: string; token: string }> {
+  const now = new Date().toISOString();
+  const expiresAt = new Date(Date.now() + TOKEN_TTL_MS).toISOString();
+  const selectCols = "id, token, expires_at, used_at, response, contact_email";
+
+  const updateContactEmail = async (id: string) => {
+    if (!params.contactEmail) return;
+    await serviceClient
+      .from("match_proposal_tokens")
+      .update({ contact_email: params.contactEmail })
+      .eq("id", id)
+      .eq("organization_id", params.orgId)
+      .eq("match_id", params.matchId);
+  };
+
+  if (params.tokenId) {
+    const { data: existing } = await serviceClient
+      .from("match_proposal_tokens")
+      .select(selectCols)
+      .eq("id", params.tokenId)
+      .eq("organization_id", params.orgId)
+      .eq("match_id", params.matchId)
+      .maybeSingle();
+
+    if (
+      existing &&
+      !existing.used_at &&
+      !existing.response &&
+      new Date(existing.expires_at).getTime() > Date.now()
+    ) {
+      await updateContactEmail(existing.id);
+      return { id: existing.id, token: existing.token };
+    }
+  }
+
+  const { data: reusable } = await serviceClient
+    .from("match_proposal_tokens")
+    .select(selectCols)
+    .eq("organization_id", params.orgId)
+    .eq("match_id", params.matchId)
+    .is("used_at", null)
+    .is("response", null)
+    .gt("expires_at", now)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (reusable) {
+    await updateContactEmail(reusable.id);
+    return { id: reusable.id, token: reusable.token };
+  }
+
+  const { data: created, error } = await serviceClient
+    .from("match_proposal_tokens")
+    .insert({
+      match_id: params.matchId,
+      organization_id: params.orgId,
+      contact_email: params.contactEmail ?? null,
+      expires_at: expiresAt,
+    })
+    .select("id, token")
+    .single();
+
+  if (error || !created) throw new Error("Failed to create proposal token");
+  return { id: created.id, token: created.token };
+}
+
 function buildProposalEmailHtml(data: {
   theme: BrandTheme;
   orgEmail: string | null;
@@ -176,7 +251,7 @@ function buildProposalEmailHtml(data: {
           <p style="margin:0 0 16px;color:${theme.textHex};font-size:14px;line-height:1.6;">${renderText(data.closingText)}</p>
 
           <table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 24px;"><tr><td style="border-radius:6px;background:${theme.accentHex};">
-            <a href="${escapeHtml(data.responseUrl)}" style="display:inline-block;padding:12px 32px;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;border-radius:6px;">Reageer op dit voorstel</a>
+            <a href="${escapeHtml(data.responseUrl)}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:12px 32px;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;border-radius:6px;">Reageer op dit voorstel</a>
           </td></tr></table>
 
           <p style="margin:8px 0 0;color:${theme.textHex};font-size:14px;">
@@ -215,6 +290,7 @@ Deno.serve(async (req) => {
       bcc,
       subject: subjectOverride,
       html: htmlOverride,
+      proposal_token_id,
       intro_text,
       closing_text,
       hide_ai_report,
@@ -339,9 +415,20 @@ Deno.serve(async (req) => {
       includeReliability: !hideReport && sectionEnabled("reliability", !hideReliability),
     };
 
+    const requestedTokenId = typeof proposal_token_id === "string" ? proposal_token_id : null;
+    const previewRecipient = (typeof recipient_email === "string" && recipient_email.trim())
+      ? recipient_email.trim()
+      : defaultEmail;
+    const previewToken = await ensureProposalToken(serviceClient, {
+      orgId,
+      matchId: match.id,
+      contactEmail: previewRecipient ?? null,
+      tokenId: requestedTokenId,
+    });
+    const previewResponseUrl = await buildOrganizationPublicUrl(serviceClient, orgId, `/match-response/${previewToken.token}`);
+
     if (preview) {
-      // Placeholder ipv het echte token (bestaat nog niet); op verzenden vervangen.
-      const html = buildProposalEmailHtml({ ...emailData, responseUrl: "{{RESPONSE_URL}}" });
+      const html = buildProposalEmailHtml({ ...emailData, responseUrl: previewResponseUrl });
       return json({
         preview: true,
         to: defaultEmail,
@@ -350,6 +437,8 @@ Deno.serve(async (req) => {
         intro_text: introText,
         closing_text: closingText,
         html,
+        proposal_token_id: previewToken.id,
+        response_url: previewResponseUrl,
         recipients: recipientOptions,
         has_cv: !!candidate.cv_file_url,
       });
@@ -383,18 +472,14 @@ Deno.serve(async (req) => {
       }
     }
 
-    const { data: token, error: tokenErr } = await serviceClient
-      .from("match_proposal_tokens")
-      .insert({
-        match_id: match.id,
-        organization_id: orgId,
-        contact_email: finalRecipient,
-        expires_at: new Date(Date.now() + TOKEN_TTL_MS).toISOString(),
-      })
-      .select("token")
-      .single();
+    const token = await ensureProposalToken(serviceClient, {
+      orgId,
+      matchId: match.id,
+      contactEmail: finalRecipient,
+      tokenId: requestedTokenId,
+    }).catch(() => null);
 
-    if (tokenErr || !token) {
+    if (!token) {
       return json({ error: "Failed to create proposal token" }, 500);
     }
 
