@@ -26,6 +26,14 @@ export interface OutlookAttachment {
   content_base64: string;
 }
 
+interface GraphAttachment {
+  "@odata.type": "#microsoft.graph.fileAttachment";
+  name: string;
+  contentType: string;
+  contentBytes: string;
+  size: number;
+}
+
 interface SendViaOutlookAccountParams {
   orgId: string;
   to: string | string[];
@@ -88,7 +96,7 @@ export async function sendViaOutlookAccount(params: SendViaOutlookAccountParams)
   if (toRecipients.length === 0) return { success: false, method: "none", error: "Geen ontvanger opgegeven" };
 
   // Bijlagen (bv. CV-PDF bij een voorstel) als Graph fileAttachments. Limieten == outlook-send-mail.
-  const graphAttachments: Array<Record<string, unknown>> = [];
+  const graphAttachments: GraphAttachment[] = [];
   for (const att of params.attachments ?? []) {
     const contentBase64 = String(att.content_base64 ?? "").replace(/^data:[^,]+,/, "").replace(/\s/g, "");
     const size = base64ByteLength(contentBase64);
@@ -105,6 +113,11 @@ export async function sendViaOutlookAccount(params: SendViaOutlookAccountParams)
   if (graphAttachments.reduce((sum, a) => sum + (a.size as number), 0) > MAX_TOTAL_ATTACHMENT_BYTES) {
     return { success: false, method: "none", error: "Bijlagen samen te groot (max 10MB)" };
   }
+  const communicationAttachments = graphAttachments.map((att) => ({
+    name: att.name,
+    content_type: att.contentType,
+    size: att.size,
+  }));
 
   // Kill-switch: bij gepauzeerde uitgaande e-mail niets versturen, wel als concept loggen.
   if (await isOutboundPaused(admin, params.orgId, "email")) {
@@ -116,6 +129,7 @@ export async function sendViaOutlookAccount(params: SendViaOutlookAccountParams)
         body: params.htmlBody,
         emailTo: toRecipients.map((r) => r.emailAddress.address),
         emailCc: ccRecipients.map((r) => r.emailAddress.address),
+        emailAttachments: communicationAttachments.length ? communicationAttachments : null,
         candidateId: params.candidateId ?? null,
         companyId: params.companyId ?? null,
         companyContactId: params.companyContactId ?? null,
@@ -180,6 +194,7 @@ export async function sendViaOutlookAccount(params: SendViaOutlookAccountParams)
         body: finalBody,
         email_to: toRecipients.map((r) => r.emailAddress.address),
         email_cc: ccRecipients.map((r) => r.emailAddress.address),
+        email_attachments: communicationAttachments.length ? communicationAttachments : null,
         email_from: from,
         sent_at: new Date().toISOString(),
         sent_by: params.sentBy ?? null,
