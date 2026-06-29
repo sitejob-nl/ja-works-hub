@@ -257,9 +257,9 @@ const PlacementConfirmationDialog = ({
                         </Badge>
                       )}
                       {selectedSuggestion.weeklyCost != null ? (
-                        <span>\u20ac{selectedSuggestion.weeklyCost}/week</span>
+                        <span>&euro;{selectedSuggestion.weeklyCost}/week</span>
                       ) : selectedSuggestion.monthlyCost != null ? (
-                        <span>\u20ac{selectedSuggestion.monthlyCost}/mnd</span>
+                        <span>&euro;{selectedSuggestion.monthlyCost}/mnd</span>
                       ) : null}
                     </div>
                   </div>

@@ -241,8 +241,8 @@ test("Fase 1: vacaturematch toont passende kandidaat, verbergt niet-passende kan
   await expect(page.getByText(/[89][0-9]% match/i).first()).toBeVisible();
   await expect(page.getByText(`Nietpassend Administratie ${suffix}`)).toHaveCount(0);
 
-  await page.getByText(`Passend Lasser ${suffix}`).locator("xpath=ancestor::div[contains(@class, 'rounded')][1]").getByRole("button", { name: /Nieuwe match/i }).click();
-  await expect(page.getByText(/Nieuwe match aangemaakt/i).first()).toBeVisible({ timeout: 20_000 });
+  await page.getByText(`Passend Lasser ${suffix}`).locator("xpath=ancestor::div[contains(@class, 'rounded')][1]").getByRole("button", { name: /Match maken/i }).click();
+  await expect(page.getByText(/Match gemaakt/i).first()).toBeVisible({ timeout: 20_000 });
 
   const matchRows = await restGet<{ id: string; match_breakdown: Record<string, unknown> | null }>(
     page,

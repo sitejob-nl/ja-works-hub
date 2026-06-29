@@ -22,13 +22,15 @@ interface BatchResult {
 }
 
 interface BatchResponse {
+  success?: boolean;
+  provider?: 'vps' | 'gemini' | 'cloud';
   processed?: number;
   completed?: number;
   failed?: number;
   skipped?: number;
+  cost_cents?: number;
   continued?: boolean;
   done?: boolean;
-  cost_cents?: number;
   stopped_reason?: string;
   results: BatchResult[];
   message?: string;
@@ -42,9 +44,11 @@ const applyOrgFilter = (query: any, orgFilter: string) =>
 const SuperAdminCvBackfill = () => {
   const qc = useQueryClient();
   const [batchSize, setBatchSize] = useState(5);
+  const [maxCandidates, setMaxCandidates] = useState(5);
   const [orgFilter, setOrgFilter] = useState<string>('');
   const [includeFailed, setIncludeFailed] = useState(false);
   const [lastResults, setLastResults] = useState<BatchResult[] | null>(null);
+  const [lastSummary, setLastSummary] = useState<BatchResponse | null>(null);
 
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['cv-backfill-stats', orgFilter],
@@ -116,7 +120,8 @@ const SuperAdminCvBackfill = () => {
       const { data, error } = await supabase.functions.invoke('analyze-cv-batch', {
         body: {
           batch_size: batchSize,
-          organization_id: orgFilter || null,
+          max_candidates: maxCandidates,
+          organization_id: orgFilter,
           include_failed: includeFailed,
         },
       });
@@ -127,17 +132,18 @@ const SuperAdminCvBackfill = () => {
     onSuccess: (data) => {
       const results = data.results ?? [];
       setLastResults(results);
+      setLastSummary(data);
       qc.invalidateQueries({ queryKey: ['cv-backfill-stats'] });
       const completed = data.completed ?? results.filter((r) => r.status === 'completed').length;
       const queued = results.filter((r) => r.status === 'queued').length;
       const failed = data.failed ?? results.filter((r) => r.status === 'failed').length;
       const skipped = data.skipped ?? results.filter((r) => r.status === 'skipped').length;
       const processed = data.processed ?? completed + queued + failed + skipped;
-      if (processed === 0) {
+      if (processed === 0 && queued === 0) {
         toast.info(data.message ?? 'Geen kandidaten te verwerken');
       } else if (completed > 0) {
         const tail = failed || skipped ? ` (${failed} mislukt, ${skipped} overgeslagen)` : '';
-        toast.success(`${completed} kandidaatdossiers via Gemini voltooid${tail}`);
+        toast.success(`${completed} kandidaatdossiers via ${data.provider ?? 'AI'} voltooid${tail}`);
       } else if (queued > 0) {
         toast.success(`${queued} kandidaatdossiers naar Gemini gestuurd`);
       } else {
@@ -146,6 +152,8 @@ const SuperAdminCvBackfill = () => {
     },
     onError: (e: any) => toast.error(e.message ?? 'Batch mislukt'),
   });
+
+  const canStartBatch = Boolean(orgFilter) && !runBatch.isPending;
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6 text-zinc-200">
@@ -186,30 +194,42 @@ const SuperAdminCvBackfill = () => {
           <CardTitle className="text-base text-white">Batch starten</CardTitle>
           <CardDescription className="text-zinc-400">
             <Shield className="h-3 w-3 inline mr-1" />
-            Dossier wordt server-side opgebouwd uit CV/documenten en interne notities, daarna gepseudonimiseerd vóór verzending naar Gemini.
+            Dossier wordt server-side opgebouwd uit CV/documenten, screening en interne notities, daarna gepseudonimiseerd vóór AI-verwerking.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
-              <Label className="text-zinc-300">Batch grootte (1-25)</Label>
+              <Label className="text-zinc-300">Batch grootte (1-50)</Label>
               <Input
                 type="number"
                 min={1}
-                max={25}
+                max={50}
                 value={batchSize}
-                onChange={(e) => setBatchSize(Math.min(25, Math.max(1, parseInt(e.target.value) || 5)))}
+                onChange={(e) => setBatchSize(Math.min(50, Math.max(1, parseInt(e.target.value) || 5)))}
                 className="bg-zinc-800 border-zinc-700"
               />
             </div>
             <div>
-              <Label className="text-zinc-300">Filter op organisatie (optioneel)</Label>
+              <Label className="text-zinc-300">Max kandidaten</Label>
+              <Input
+                type="number"
+                min={0}
+                max={5000}
+                value={maxCandidates}
+                onChange={(e) => setMaxCandidates(Math.max(0, parseInt(e.target.value) || 0))}
+                className="bg-zinc-800 border-zinc-700"
+              />
+              <p className="text-[11px] text-zinc-500 mt-1">5 = smoke, 25 = brede sample, 0 = volledige run.</p>
+            </div>
+            <div>
+              <Label className="text-zinc-300">Organisatie</Label>
               <select
                 value={orgFilter}
                 onChange={(e) => setOrgFilter(e.target.value)}
                 className="w-full h-10 rounded-md bg-zinc-800 border border-zinc-700 px-3 text-sm text-zinc-200"
               >
-                <option value="">Alle organisaties</option>
+                <option value="">Kies organisatie</option>
                 {orgs.map((o) => (
                   <option key={o.id} value={o.id}>{o.name}</option>
                 ))}
@@ -229,18 +249,39 @@ const SuperAdminCvBackfill = () => {
           <div className="pt-2">
             <Button
               onClick={() => runBatch.mutate()}
-              disabled={runBatch.isPending}
+              disabled={!canStartBatch}
               className="bg-red-600 hover:bg-red-700"
             >
               {runBatch.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              {runBatch.isPending ? `Verwerken (~${batchSize * 2}s)...` : `Verwerk ${batchSize} dossiers`}
+              {runBatch.isPending ? 'Verwerken...' : maxCandidates > 0 ? `Dry-run ${maxCandidates} dossiers` : 'Start volledige run'}
             </Button>
             <p className="text-xs text-zinc-500 mt-2">
-              Verwerk batches achter elkaar tot de wachtrij leeg is.
+              Gemini is de standaardprovider. Laat `max kandidaten` op 5 of 25 staan voor staged acceptatie; zet pas op 0 na QA-akkoord en saldocheck.
             </p>
+            {!orgFilter && <p className="text-xs text-amber-400 mt-2">Kies eerst een organisatie; een backfill over alle organisaties tegelijk is bewust geblokkeerd.</p>}
           </div>
         </CardContent>
       </Card>
+
+      {lastSummary && (
+        <Card className="bg-zinc-900 border-zinc-800">
+          <CardHeader>
+            <CardTitle className="text-base text-white">Samenvatting laatste run</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <Stat label="Provider" value={lastSummary.provider ?? 'onbekend'} />
+            <Stat label="Voltooid" value={lastSummary.completed ?? lastResults?.filter((r) => r.status === 'completed').length ?? 0} accent="green" />
+            <Stat label="Mislukt" value={lastSummary.failed ?? 0} accent="red" />
+            <Stat label="Overgeslagen" value={lastSummary.skipped ?? 0} accent="amber" />
+            <Stat label="Kosten" value={lastSummary.cost_cents ?? 0} sub="cent" accent="blue" />
+            {(lastSummary.stopped_reason || lastSummary.continued || lastSummary.done) && (
+              <div className="col-span-2 md:col-span-5 text-xs text-zinc-400">
+                Status: {lastSummary.stopped_reason ?? (lastSummary.continued ? 'wordt vervolgd via self-trigger' : 'klaar')}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {lastResults && lastResults.length > 0 && (
         <Card className="bg-zinc-900 border-zinc-800">
@@ -272,6 +313,7 @@ const SuperAdminCvBackfill = () => {
                       </span>
                     )}
                     {r.reason && <span className="text-xs text-red-400">{r.reason}</span>}
+                    {typeof r.cost_cents === 'number' && <span className="text-xs text-zinc-500">kosten: {r.cost_cents} cent</span>}
                   </div>
                 </div>
               </div>
@@ -283,7 +325,7 @@ const SuperAdminCvBackfill = () => {
   );
 };
 
-const Stat = ({ label, value, sub, accent, icon: Icon }: { label: string; value: number; sub?: string; accent?: 'green' | 'amber' | 'red' | 'purple' | 'blue'; icon?: any }) => {
+const Stat = ({ label, value, sub, accent, icon: Icon }: { label: string; value: number | string; sub?: string; accent?: 'green' | 'amber' | 'red' | 'purple' | 'blue'; icon?: any }) => {
   const accentClass = {
     green: 'text-green-400',
     amber: 'text-amber-400',

@@ -5,26 +5,22 @@ import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { useOutboundPause } from '@/hooks/useOutboundPause';
 import { useAuth } from '@/contexts/AuthContext';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, Search, UserPlus, Sparkles, Mail, Star, X, MessageSquare, Trash2, FileText, PhoneCall } from 'lucide-react';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Search, UserPlus, Sparkles, Mail, Star, X, MessageSquare, Trash2, PhoneCall } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { useOutlookAccounts } from '@/hooks/useOutlookAccounts';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import PlacementSheet from '@/components/vacancies/PlacementSheet';
 import MatchFeedbackDialog from '@/components/matches/MatchFeedbackDialog';
 import MatchInspectorDialog from '@/components/matches/MatchInspectorDialog';
 import MatchOutboundDialog from '@/components/matches/MatchOutboundDialog';
+import MatchProposalEmailDialog from '@/components/matches/MatchProposalEmailDialog';
 import MatchRow from '@/components/matches/MatchRow';
 import { type MatchBreakdown } from '@/lib/matching';
 import { MATCH_STATUS_STEPS, getMatchStatusMeta, getNextMatchStatus, isTerminalMatchStatus, matchStatusNeedsFeedbackDialog } from '@/lib/match-status';
@@ -83,27 +79,11 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
   const [candidateSearch, setCandidateSearch] = useState('');
   const [placementMatch, setPlacementMatch] = useState<any>(null);
   const [previewMatchId, setPreviewMatchId] = useState<string | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
-  // V1 voorstel-editor (afzender/ontvanger/CC/BCC/toggles/CV + bewerkbare body)
-  const { usableAccounts, defaultAccountId } = useOutlookAccounts('mail_send');
-  const personalAccounts = usableAccounts.filter((a) => a.scope === 'personal');
-  const orgAccounts = usableAccounts.filter((a) => a.scope === 'organization');
-  const [mailAccountId, setMailAccountId] = useState<string | undefined>(undefined);
-  const [mailTo, setMailTo] = useState('');
-  const [mailCc, setMailCc] = useState('');
-  const [mailBcc, setMailBcc] = useState('');
-  const [mailSubject, setMailSubject] = useState('');
-  const [mailBody, setMailBody] = useState('');
-  const [mailRecipients, setMailRecipients] = useState<{ email: string; name: string; is_primary: boolean }[]>([]);
-  const [mailHasCv, setMailHasCv] = useState(false);
-  const [mailIncludeCv, setMailIncludeCv] = useState(false);
-  const [mailHideReport, setMailHideReport] = useState(false);
-  const [mailHideReliability, setMailHideReliability] = useState(true);
   const [deleteMatchId, setDeleteMatchId] = useState<string | null>(null);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [scoreFilter, setScoreFilter] = useState<'strong' | '60' | '70' | '80' | 'all'>('strong');
   const [selectedShortlist, setSelectedShortlist] = useState<Set<string>>(new Set());
-  // Detail-dialoog: werkt zowel voor een shortlist-kandidaat (met candidate → "Voorstellen")
+  // Detail-dialoog: werkt zowel voor een shortlist-kandidaat (met candidate → "Match maken")
   // als voor een bestaande match (alleen lezen, breakdown uit match_breakdown).
   const [detail, setDetail] = useState<{ name: string; breakdown: any; quality?: number | null; candidate?: any } | null>(null);
   const showWeakMatches = scoreFilter === 'all';
@@ -322,71 +302,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
     },
   });
 
-  // Haalt (of ververst) de server-side preview op met de huidige toggles.
-  const openPreview = async (matchId: string, opts: { hideReport: boolean; hideReliability: boolean; resetTo?: boolean }) => {
-    setPreviewMatchId(matchId);
-    setPreviewLoading(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-match-proposal`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
-        body: JSON.stringify({ match_id: matchId, preview: true, hide_ai_report: opts.hideReport, hide_reliability: opts.hideReliability }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? 'Kon preview niet laden');
-      setMailSubject(json.subject ?? '');
-      setMailBody(json.html ?? '');
-      setMailRecipients(json.recipients ?? []);
-      setMailHasCv(!!json.has_cv);
-      if (opts.resetTo) setMailTo(json.to ?? '');
-    } catch (e: any) {
-      toast.error(e.message);
-      setPreviewMatchId(null);
-    } finally {
-      setPreviewLoading(false);
-    }
-  };
-
-  // Opent de editor met standaardwaarden (score verborgen, rapport zichtbaar).
-  const openProposalEditor = (matchId: string) => {
-    setMailHideReport(false);
-    setMailHideReliability(true);
-    setMailCc(''); setMailBcc(''); setMailIncludeCv(false);
-    setMailAccountId(defaultAccountId);
-    openPreview(matchId, { hideReport: false, hideReliability: true, resetTo: true });
-  };
-
-  const splitEmails = (value: string) => value.split(/[;,]/).map((s) => s.trim()).filter(Boolean);
-
-  const sendProposalMutation = useMutation({
-    mutationFn: async (matchId: string) => {
-      const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-match-proposal`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
-        body: JSON.stringify({
-          match_id: matchId,
-          account_id: mailAccountId ?? null,
-          recipient_email: mailTo || undefined,
-          cc: mailCc ? splitEmails(mailCc) : undefined,
-          bcc: mailBcc ? splitEmails(mailBcc) : undefined,
-          subject: mailSubject || undefined,
-          html: mailBody || undefined,
-          include_cv: mailIncludeCv,
-        }),
-      });
-      const json = await res.json();
-      if (!res.ok || json.success === false) throw new Error(json.error ?? json.outlook_error ?? 'Fout bij versturen');
-      return json;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['vacancy-matches', vacancy.id] });
-      toast.success('Voorstel verstuurd naar opdrachtgever');
-      setPreviewMatchId(null);
-    },
-    onError: (e: any) => toast.error(e.message),
-  });
+  const openProposalEditor = (matchId: string) => setPreviewMatchId(matchId);
 
   const deleteMatchMutation = useMutation({
     mutationFn: async (matchId: string) => {
@@ -622,8 +538,8 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
               onInspect={() => setDetail({ name: `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim(), breakdown: bd, quality: bd?.candidateQuality ?? null, candidate: c })}
               primaryAction={
                 m.status === 'voorgesteld' ? (
-                  <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => openProposalEditor(m.id)} disabled={previewLoading && previewMatchId === m.id}>
-                    <Mail className="h-3 w-3 mr-1" /> {previewLoading && previewMatchId === m.id ? '...' : 'Mail'}
+                  <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => openProposalEditor(m.id)}>
+                    <Mail className="h-3 w-3 mr-1" /> Mail
                   </Button>
                 ) : m.status === 'geaccepteerd' ? (
                   <Button size="sm" className="h-8 text-xs" onClick={() => setPlacementMatch(m)}>Plaatsen</Button>
@@ -753,7 +669,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
                   </div>
                   <div className="flex flex-col items-end gap-1 flex-shrink-0">
                     <Button size="sm" variant="outline" onClick={() => proposeMutation.mutate(c)} disabled={proposeMutation.isPending}>
-                      <UserPlus className="h-3 w-3 mr-1" /> Nieuwe match
+                      <UserPlus className="h-3 w-3 mr-1" /> Match maken
                     </Button>
                     <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground" onClick={() => setDetail({ name: `${c.first_name} ${c.last_name}`, breakdown: c._vacancyScore, quality: c._candidateQuality, candidate: candidateWithContext })}>
                       Waarom?
@@ -794,118 +710,15 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
 
       <PlacementSheet match={placementMatch} vacancy={vacancy} onClose={() => setPlacementMatch(null)} />
 
-      <Dialog open={!!previewMatchId} onOpenChange={(open) => { if (!open) setPreviewMatchId(null); }}>
-        <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Voorstel versturen</DialogTitle>
-            <DialogDescription>Pas de mail aan en kies afzender, ontvanger en bijlagen.</DialogDescription>
-          </DialogHeader>
-          {outboundPaused?.email === true && (
-            <Alert variant="destructive">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>E-mail staat op pauze</AlertTitle>
-              <AlertDescription>Je kunt de voorbereiding controleren, maar versturen is geblokkeerd door de outbound kill-switch.</AlertDescription>
-            </Alert>
-          )}
-
-          <div className="space-y-3">
-            {usableAccounts.length > 1 && (
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Afzender</Label>
-                <Select value={mailAccountId} onValueChange={setMailAccountId}>
-                  <SelectTrigger><SelectValue placeholder="Kies afzender-mailbox" /></SelectTrigger>
-                  <SelectContent>
-                    {personalAccounts.length > 0 && (
-                      <SelectGroup>
-                        <SelectLabel>Persoonlijk</SelectLabel>
-                        {personalAccounts.map((a) => <SelectItem key={a.account_id} value={a.account_id}>{a.label || a.email || 'Persoonlijke mailbox'}</SelectItem>)}
-                      </SelectGroup>
-                    )}
-                    {orgAccounts.length > 0 && (
-                      <SelectGroup>
-                        <SelectLabel>Bedrijf</SelectLabel>
-                        {orgAccounts.map((a) => <SelectItem key={a.account_id} value={a.account_id}>{a.label || a.email || 'Bedrijfsmailbox'}</SelectItem>)}
-                      </SelectGroup>
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Aan</Label>
-              {mailRecipients.length > 0 ? (
-                <Select value={mailTo} onValueChange={setMailTo}>
-                  <SelectTrigger><SelectValue placeholder="Kies ontvanger" /></SelectTrigger>
-                  <SelectContent>
-                    {mailRecipients.map((r) => (
-                      <SelectItem key={r.email} value={r.email}>
-                        {r.is_primary ? '★ ' : ''}{r.name} &lt;{r.email}&gt;
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : (
-                <Input value={mailTo} onChange={(e) => setMailTo(e.target.value)} placeholder="ontvanger@bedrijf.nl" />
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">CC</Label>
-                <Input value={mailCc} onChange={(e) => setMailCc(e.target.value)} placeholder="optioneel, komma-gescheiden" />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">BCC</Label>
-                <Input value={mailBcc} onChange={(e) => setMailBcc(e.target.value)} placeholder="optioneel, komma-gescheiden" />
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Onderwerp</Label>
-              <Input value={mailSubject} onChange={(e) => setMailSubject(e.target.value)} />
-            </div>
-
-            <div className="flex flex-wrap gap-4 pt-1">
-              <label className="flex items-center gap-2 text-sm cursor-pointer">
-                <Checkbox checked={mailHideReport} onCheckedChange={(v) => { setMailHideReport(!!v); openPreview(previewMatchId!, { hideReport: !!v, hideReliability: mailHideReliability }); }} />
-                Rapport verbergen
-              </label>
-              <label className="flex items-center gap-2 text-sm cursor-pointer">
-                <Checkbox checked={mailHideReliability} onCheckedChange={(v) => { setMailHideReliability(!!v); openPreview(previewMatchId!, { hideReport: mailHideReport, hideReliability: !!v }); }} />
-                Betrouwbaarheidsscore verbergen
-              </label>
-              {mailHasCv && (
-                <label className="flex items-center gap-2 text-sm cursor-pointer">
-                  <Checkbox checked={mailIncludeCv} onCheckedChange={(v) => setMailIncludeCv(!!v)} />
-                  <FileText className="h-3.5 w-3.5" /> CV meesturen
-                </label>
-              )}
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Bericht (HTML)</Label>
-              <Textarea value={mailBody} onChange={(e) => setMailBody(e.target.value)} className="font-mono text-xs h-28" />
-            </div>
-
-            <div>
-              <Label className="text-xs text-muted-foreground">Voorbeeld</Label>
-              <div className="border rounded mt-1">
-                {previewLoading
-                  ? <div className="py-10 text-center text-sm text-muted-foreground">Voorbeeld laden…</div>
-                  : <iframe title="email-preview" srcDoc={mailBody} sandbox="" className="w-full" style={{ height: '360px' }} />}
-              </div>
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPreviewMatchId(null)}>Annuleren</Button>
-            <Button onClick={() => previewMatchId && sendProposalMutation.mutate(previewMatchId)} disabled={!mailBody || !mailTo || sendProposalMutation.isPending || outboundPaused?.email === true}>
-              {outboundPaused?.email === true ? 'E-mail gepauzeerd' : sendProposalMutation.isPending ? 'Versturen...' : 'Versturen naar opdrachtgever'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <MatchProposalEmailDialog
+        open={!!previewMatchId}
+        matchId={previewMatchId}
+        onOpenChange={(open) => { if (!open) setPreviewMatchId(null); }}
+        onSent={() => {
+          qc.invalidateQueries({ queryKey: ['vacancy-matches', vacancy.id] });
+          qc.invalidateQueries({ queryKey: ['match-pipeline'] });
+        }}
+      />
 
       <AlertDialog open={!!deleteMatchId} onOpenChange={(open) => { if (!open) setDeleteMatchId(null); }}>
         <AlertDialogContent>

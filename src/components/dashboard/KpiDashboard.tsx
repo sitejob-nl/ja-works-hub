@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, format } from 'date-fns';
 import { nl } from 'date-fns/locale';
 import {
-  DollarSign, Clock, Home, Car, Building2, TrendingUp, Users, Percent,
+  DollarSign, Home, Car, Building2, TrendingUp, Users, Percent,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
@@ -64,8 +64,7 @@ const KpiDashboard = () => {
       const tsWeek = tsWeekRes.data ?? [];
       const tsMonth = tsMonthRes.data ?? [];
 
-      // Weekly hours & revenue
-      const totalHoursWeek = tsWeek.reduce((s, t: any) => s + Number(t.hours ?? 0) + Number(t.overtime_hours ?? 0), 0);
+      // Weekly revenue
       const revenueWeek = tsWeek.reduce((s, t: any) => {
         const clientRate = Number((t.placements as any)?.client_hourly_rate ?? (t.placements as any)?.hourly_rate ?? t.hourly_rate ?? 0) * 1.25;
         const hrs = Number(t.hours ?? 0) + Number(t.overtime_hours ?? 0);
@@ -110,7 +109,6 @@ const KpiDashboard = () => {
       const maintenanceCars = vehicles.filter((v: any) => v.status === 'onderhoud').length;
 
       return {
-        totalHoursWeek: Math.round(totalHoursWeek * 100) / 100,
         revenueWeek: Math.round(revenueWeek),
         costWeek: Math.round(costWeek),
         marginWeek: Math.round(marginWeek),
@@ -141,7 +139,7 @@ const KpiDashboard = () => {
   });
 
   const k = kpis ?? {
-    totalHoursWeek: 0, revenueWeek: 0, costWeek: 0, marginWeek: 0, marginPctWeek: 0,
+    revenueWeek: 0, costWeek: 0, marginWeek: 0, marginPctWeek: 0,
     activePlacements: 0, activeClients: 0, activeEmployees: 0,
     totalCapacity: 0, totalOccupied: 0, availableRooms: 0, occupancyPct: 0,
     availableCars: 0, inUseCars: 0, maintenanceCars: 0, totalCars: 0,
@@ -153,9 +151,8 @@ const KpiDashboard = () => {
   const cards = [
     { icon: DollarSign, label: 'Omzet deze week', value: fmt(k.revenueWeek), sub: `Kosten: ${fmt(k.costWeek)}`, color: 'text-stat-green', bg: 'bg-stat-green/10', to: '/facturatie' },
     { icon: TrendingUp, label: 'Brutomarge', value: fmt(k.marginWeek), sub: `${k.marginPctWeek}% marge`, color: 'text-stat-blue', bg: 'bg-stat-blue/10', to: '/facturatie' },
-    { icon: Clock, label: 'Uren deze week', value: k.totalHoursWeek.toFixed(0), sub: `${k.activePlacements} actieve plaatsingen`, color: 'text-stat-purple', bg: 'bg-stat-purple/10', to: '/uren' },
     { icon: Building2, label: 'Actieve opdrachtgevers', value: k.activeClients, sub: `${k.activePlacements} actieve plaatsingen`, color: 'text-stat-orange', bg: 'bg-stat-orange/10', to: '/opdrachtgevers' },
-    { icon: Home, label: 'Kamerbezetting', value: `${k.occupancyPct}%`, sub: `${k.availableRooms} van ${k.totalCapacity} vrij`, color: 'text-stat-green', bg: 'bg-stat-green/10', to: '/huisvesting' },
+    { icon: Home, label: 'Huisvestingsbezetting', value: `${k.occupancyPct}%`, sub: `${k.availableRooms} van ${k.totalCapacity} vrij`, color: 'text-stat-green', bg: 'bg-stat-green/10', to: '/huisvesting' },
     { icon: Car, label: "Wagenpark", value: `${k.availableCars} vrij`, sub: `${k.totalCars} totaal`, color: 'text-stat-orange', bg: 'bg-stat-orange/10', to: '/transport' },
   ];
 
@@ -170,7 +167,7 @@ const KpiDashboard = () => {
       </div>
 
       {/* KPI cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
         {cards.map((c) => (
           <Link
             key={c.label}
@@ -237,7 +234,7 @@ const KpiDashboard = () => {
         <div className="space-y-4">
           {/* Housing donut */}
           <div className="bg-card border rounded-lg p-4">
-            <h3 className="text-xs font-semibold text-muted-foreground mb-2">Kamerbezetting</h3>
+            <h3 className="text-xs font-semibold text-muted-foreground mb-2">Huisvestingsbezetting</h3>
             {k.totalCapacity === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-4">Geen kamers</p>
             ) : (

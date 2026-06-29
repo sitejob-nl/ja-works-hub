@@ -8,12 +8,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
-import { Send, Loader2, Eye, Pencil } from 'lucide-react';
+import { Send, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { sanitizeHtml } from '@/lib/sanitize-html';
+import { plaintextToHtml } from '@/lib/email-signature';
 
 interface EmailSendDialogProps {
   open: boolean;
@@ -21,8 +20,12 @@ interface EmailSendDialogProps {
   candidateId?: string;
   candidateEmail?: string;
   candidateData?: Record<string, any>;
+  companyId?: string;
+  companyContactId?: string;
   templateCategory?: string;
   extraVariables?: Record<string, string>;
+  initialSubject?: string;
+  initialBodyHtml?: string;
 }
 
 function buildVariableMap(candidate: Record<string, any> | undefined, orgName: string, extra?: Record<string, string>): Record<string, string> {
@@ -55,8 +58,28 @@ function replaceVars(text: string, vars: Record<string, string>): string {
   return result;
 }
 
+function htmlToEditableText(html: string): string {
+  const withBreaks = html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<\/div>/gi, '\n')
+    .replace(/<\/li>/gi, '\n');
+  const doc = new DOMParser().parseFromString(withBreaks, 'text/html');
+  return (doc.body.textContent ?? '')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .trim();
+}
+
+function plaintextEmailToHtml(text: string): string {
+  return plaintextToHtml(text.trimEnd()).replace(
+    /(https?:\/\/[^\s<]+)/g,
+    (url) => `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`,
+  );
+}
+
 const EmailSendDialog = ({
-  open, onOpenChange, candidateId, candidateEmail, candidateData, templateCategory, extraVariables,
+  open, onOpenChange, candidateId, candidateEmail, candidateData, companyId, companyContactId, templateCategory, extraVariables, initialSubject, initialBodyHtml,
 }: EmailSendDialogProps) => {
   const callOutlook = useOutlookInvoke();
   const { profile } = useAuth();
@@ -66,8 +89,8 @@ const EmailSendDialog = ({
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
   const [toEmail, setToEmail] = useState(candidateEmail || '');
   const [subject, setSubject] = useState('');
-  const [bodyHtml, setBodyHtml] = useState('');
-  const [showPreview, setShowPreview] = useState(false);
+  const [bodyText, setBodyText] = useState('');
+  const previewHtml = useMemo(() => plaintextEmailToHtml(bodyText || 'Nog geen berichttekst.'), [bodyText]);
 
   // Fetch candidate if ID provided
   const { data: candidate } = useQuery({
@@ -120,13 +143,19 @@ const EmailSendDialog = ({
     }
   }, [candidateRecord, toEmail]);
 
+  useEffect(() => {
+    if (!open || selectedTemplateId) return;
+    if (initialSubject) setSubject(initialSubject);
+    if (initialBodyHtml) setBodyText(htmlToEditableText(initialBodyHtml));
+  }, [initialBodyHtml, initialSubject, open, selectedTemplateId]);
+
   // When template selected, fill subject + body
   useEffect(() => {
     if (!selectedTemplateId) return;
     const tmpl = templates.find((t: any) => t.id === selectedTemplateId);
     if (tmpl) {
       setSubject(replaceVars(tmpl.subject, variableMap));
-      setBodyHtml(replaceVars(tmpl.body_html, variableMap));
+      setBodyText(htmlToEditableText(replaceVars(tmpl.body_html, variableMap)));
     }
   }, [selectedTemplateId, templates, variableMap]);
 
@@ -138,8 +167,10 @@ const EmailSendDialog = ({
       return callOutlook('outlook-send-mail', {
         to: [toEmail.trim()],
         subject,
-        html: bodyHtml,
+        html: plaintextEmailToHtml(bodyText),
         candidate_id: candidateId,
+        company_id: companyId,
+        company_contact_id: companyContactId,
       });
     },
     onSuccess: () => {
@@ -154,7 +185,7 @@ const EmailSendDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col">
+      <DialogContent className="sm:max-w-4xl max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>E-mail versturen</DialogTitle>
         </DialogHeader>
@@ -187,29 +218,24 @@ const EmailSendDialog = ({
             <Input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Onderwerp" />
           </div>
 
-          {/* Preview / Edit toggle */}
-          <div className="flex items-center gap-2">
-            <Button variant={!showPreview ? 'default' : 'ghost'} size="sm" onClick={() => setShowPreview(false)} className="gap-1">
-              <Pencil className="h-3 w-3" /> Bewerken
-            </Button>
-            <Button variant={showPreview ? 'default' : 'ghost'} size="sm" onClick={() => setShowPreview(true)} className="gap-1">
-              <Eye className="h-3 w-3" /> Preview
-            </Button>
-          </div>
-
-          {showPreview ? (
-            <div className="border rounded-md p-4 bg-white dark:bg-zinc-950 min-h-[200px]">
-              <div className="prose prose-sm dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: sanitizeHtml(bodyHtml) }} />
+          <div className="grid gap-3 lg:grid-cols-2">
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Bericht</Label>
+              <textarea
+                value={bodyText}
+                onChange={e => setBodyText(e.target.value)}
+                rows={12}
+                className="h-[300px] w-full resize-none rounded-md border p-3 text-sm focus:ring-2 focus:ring-ring"
+                placeholder="Typ de mailtekst..."
+              />
             </div>
-          ) : (
-            <textarea
-              value={bodyHtml}
-              onChange={e => setBodyHtml(e.target.value)}
-              rows={10}
-              className="w-full border rounded-md p-3 text-sm font-mono resize-none focus:ring-2 focus:ring-ring"
-              placeholder="HTML content..."
-            />
-          )}
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Preview</Label>
+              <div className="h-[300px] overflow-auto rounded-md border bg-white p-4 dark:bg-zinc-950">
+                <div className="prose prose-sm dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: sanitizeHtml(previewHtml) }} />
+              </div>
+            </div>
+          </div>
 
           <p className="text-xs text-muted-foreground">
             De ingestelde Outlook-handtekening van de afzender wordt automatisch toegevoegd bij verzenden.

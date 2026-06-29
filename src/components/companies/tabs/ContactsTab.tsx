@@ -45,11 +45,10 @@ interface FormState {
   role: ContactRole;
   phone: string;
   email: string;
-  linkedin_url: string;
   notes: string;
 }
 
-const emptyForm: FormState = { full_name: '', first_name: '', last_name: '', function_title: '', role: 'overig', phone: '', email: '', linkedin_url: '', notes: '' };
+const emptyForm: FormState = { full_name: '', first_name: '', last_name: '', function_title: '', role: 'overig', phone: '', email: '', notes: '' };
 
 const ContactsTab = ({ companyId }: { companyId: string }) => {
   const orgId = useOrganizationId();
@@ -57,7 +56,6 @@ const ContactsTab = ({ companyId }: { companyId: string }) => {
   const [adding, setAdding] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
-  const [showExtra, setShowExtra] = useState(false);
   const [portalContact, setPortalContact] = useState<any>(null);
 
   const { data: contacts = [] } = useQuery({
@@ -81,7 +79,6 @@ const ContactsTab = ({ companyId }: { companyId: string }) => {
       role: form.role || 'overig',
       phone: form.phone || null,
       email: form.email || null,
-      linkedin_url: form.linkedin_url || null,
       notes: form.notes || null,
     };
   };
@@ -96,7 +93,6 @@ const ContactsTab = ({ companyId }: { companyId: string }) => {
       qc.invalidateQueries({ queryKey: ['contacts', companyId] });
       setAdding(false);
       setForm(emptyForm);
-      setShowExtra(false);
       toast.success('Contact toegevoegd');
     },
     onError: (e: any) => toast.error(e.message),
@@ -112,7 +108,6 @@ const ContactsTab = ({ companyId }: { companyId: string }) => {
       qc.invalidateQueries({ queryKey: ['contacts', companyId] });
       qc.invalidateQueries({ queryKey: ['all-contacts'] });
       setEditId(null);
-      setShowExtra(false);
       toast.success('Contact bijgewerkt');
     },
     onError: (e: any) => toast.error(e.message),
@@ -145,10 +140,8 @@ const ContactsTab = ({ companyId }: { companyId: string }) => {
       role: c.role === 'admin' ? 'administratie' : c.role ?? 'overig',
       phone: c.phone ?? '',
       email: c.email ?? '',
-      linkedin_url: c.linkedin_url ?? '',
       notes: c.notes ?? '',
     });
-    setShowExtra(!!(c.linkedin_url || c.notes));
   };
 
   const hasName = form.first_name || form.last_name || form.full_name;
@@ -179,7 +172,6 @@ const ContactsTab = ({ companyId }: { companyId: string }) => {
             onClick={() => {
               if (isInline) setEditId(null);
               else setAdding(false);
-              setShowExtra(false);
             }}
           >
             <X className="h-3.5 w-3.5" />
@@ -192,19 +184,12 @@ const ContactsTab = ({ companyId }: { companyId: string }) => {
   const renderExtraFields = () => (
     <TableRow>
       <TableCell colSpan={8} className="pt-0 pb-3" onClick={(e) => e.stopPropagation()}>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl pl-2">
-          <div className="space-y-1">
-            <label className="text-xs text-muted-foreground">LinkedIn</label>
-            <Input value={form.linkedin_url} onChange={(e) => set('linkedin_url', e.target.value)} placeholder="https://linkedin.com/in/..." className="h-8" />
-          </div>
+        <div className="grid grid-cols-1 gap-3 max-w-xl pl-2">
           <div className="space-y-1">
             <label className="text-xs text-muted-foreground">Notities</label>
             <Textarea value={form.notes} onChange={(e) => set('notes', e.target.value)} rows={2} className="min-h-[2rem]" />
           </div>
         </div>
-        {!showExtra && (
-          <button className="text-xs text-stat-blue mt-1 ml-2 hover:underline" onClick={() => setShowExtra(true)}>+ LinkedIn &amp; notities</button>
-        )}
       </TableCell>
     </TableRow>
   );
@@ -213,7 +198,7 @@ const ContactsTab = ({ companyId }: { companyId: string }) => {
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h3 className="font-medium">Contactpersonen</h3>
-        <Button size="sm" variant="outline" onClick={() => { setAdding(true); setForm(emptyForm); setShowExtra(false); }} className="gap-1"><Plus className="h-3.5 w-3.5" />Nieuw contact</Button>
+        <Button size="sm" variant="outline" onClick={() => { setAdding(true); setForm(emptyForm); }} className="gap-1"><Plus className="h-3.5 w-3.5" />Nieuw contact</Button>
       </div>
       <div className="bg-card rounded-lg border">
         <Table>

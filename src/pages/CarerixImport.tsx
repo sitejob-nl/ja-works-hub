@@ -104,6 +104,7 @@ interface CarerixJob {
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
+  modified_since: string | null;
   mode: 'dry_run' | 'live';
   status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
   only_entities: string[] | null;
@@ -405,6 +406,7 @@ function ImportTab() {
   const queryClient = useQueryClient();
   const [only, setOnly] = useState<EntityName[]>([...SUPPORTED_ENTITIES]);
   const [dryRun, setDryRun] = useState(false);
+  const [modifiedSince, setModifiedSince] = useState('');
 
   const { data: activeJob } = useQuery({
     queryKey: ['carerix-active-job', orgId],
@@ -425,9 +427,13 @@ function ImportTab() {
 
   const startMut = useMutation({
     mutationFn: async () => {
+      const modifiedSinceIso = modifiedSince
+        ? new Date(`${modifiedSince}T00:00:00.000Z`).toISOString()
+        : null;
       const body = {
         mode: dryRun ? 'dry_run' : 'live',
         only: only.length < ENTITIES.length ? only : null,
+        modified_since: modifiedSinceIso,
       };
       const { data, error } = await supabase.functions.invoke('carerix-sync-start', { body });
       if (error) throw new Error(error.message);
@@ -466,6 +472,7 @@ function ImportTab() {
             <CardDescription>
               Job {activeJob.id.slice(0, 8)} — gestart{' '}
               {activeJob.started_at ? new Date(activeJob.started_at).toLocaleTimeString('nl-NL') : '—'}
+              {activeJob.modified_since ? ` — delta vanaf ${new Date(activeJob.modified_since).toLocaleDateString('nl-NL')}` : ''}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -524,6 +531,19 @@ function ImportTab() {
         <div className="flex items-center gap-2">
           <Switch id="dry-run" checked={dryRun} onCheckedChange={setDryRun} />
           <Label htmlFor="dry-run">Dry-run (niets wegschrijven)</Label>
+        </div>
+
+        <div className="max-w-xs space-y-2">
+          <Label htmlFor="modified_since">Delta vanaf (optioneel)</Label>
+          <Input
+            id="modified_since"
+            type="date"
+            value={modifiedSince}
+            onChange={(e) => setModifiedSince(e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">
+            Laat leeg voor een volledige sync. Gebruik dit voor een gecontroleerde resync na de vorige Carerix-import.
+          </p>
         </div>
 
         <Button onClick={() => startMut.mutate()} disabled={startMut.isPending || only.length === 0}>

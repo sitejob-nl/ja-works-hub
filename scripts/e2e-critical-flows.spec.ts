@@ -7,6 +7,7 @@
 
 import { test, expect, Page } from "@playwright/test";
 import { ensureLoggedIn } from "./e2e-helpers";
+import { MATCH_STATUS_STEPS } from "../src/lib/match-status";
 
 function collectNetworkErrors(page: Page): { url: string; status: number; body: string }[] {
   const errors: { url: string; status: number; body: string }[] = [];
@@ -55,8 +56,9 @@ test.describe("Kritieke flow 1 — Kandidaat → Match → Plaatsing", () => {
     // Verwacht: de vacancy matchworkspace met statusfilters en shortlist.
     await expect(page.getByRole("heading", { name: /match-pipeline/i })).toBeVisible();
     await expect(page.getByRole("heading", { name: /Beste kandidaten uit eigen database/i })).toBeVisible();
-    const statusFilterCount = await page.locator("button").filter({ hasText: /Nieuwe match|Gescreend|Bij klant|In gesprek|Afgewezen/i }).count();
-    expect(statusFilterCount, "Matchworkspace moet meerdere statusfilters tonen").toBeGreaterThanOrEqual(5);
+    for (const status of MATCH_STATUS_STEPS) {
+      await expect(page.locator("button").filter({ hasText: status.label }).first(), `Statusfilter ${status.label}`).toBeVisible();
+    }
   });
 
   test("Match pipeline pagina laadt zonder edge function errors", async ({ page }) => {

@@ -39,6 +39,26 @@ const STATUS_MAP: Record<Decision, string> = {
   afwijzen: "afgewezen",
 };
 
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    : [];
+}
+
+function isPdfPath(value: string | null): boolean {
+  return Boolean(value && /\.pdf(?:$|[?#])/i.test(value));
+}
+
+function noteValue(notes: string | null | undefined, label: string): string | null {
+  if (!notes) return null;
+  const prefix = `${label}:`;
+  const line = notes
+    .split(/\r?\n/)
+    .find((entry) => entry.trim().toLowerCase().startsWith(prefix.toLowerCase()));
+  const value = line?.slice(prefix.length).trim();
+  return value || null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
 
@@ -71,7 +91,7 @@ Deno.serve(async (req) => {
     const { data: tok } = await service
       .from("match_proposal_tokens")
       .select(
-        "id, match_id, response, used_at, expires_at, matches!match_proposal_tokens_match_id_fkey(status, organization_id, candidate_id, vacancy_id, candidates!matches_candidate_id_fkey(first_name, last_name, ai_summary, ai_positive_signals, ai_risk_factors, cv_file_url), vacancies!matches_vacancy_id_fkey(title, created_by, companies:company_id(name)))",
+        "id, match_id, response, used_at, expires_at, matches!match_proposal_tokens_match_id_fkey(status, organization_id, candidate_id, vacancy_id, candidates!matches_candidate_id_fkey(id, first_name, last_name, address_city, ai_summary, ai_function_group, ai_classification, ai_positive_signals, ai_risk_factors, ai_target_functions, ai_interview_questions, skills, certifications, languages, available_from, available_until, arrival_date, availability_notes, most_recent_role, most_recent_role_year, has_drivers_license, cv_file_url), vacancies!matches_vacancy_id_fkey(title, created_by, companies:company_id(name)))",
       )
       .eq("token", token)
       .maybeSingle();
@@ -95,7 +115,7 @@ Deno.serve(async (req) => {
 
       // Volledige (maar geminimaliseerde) payload: logo, rapport zonder score/AI-label,
       // korte-TTL CV-link, afwijsredenen, accountmanager-contact voor "vraag stellen".
-      const [orgRes, mgrRes, reasonsRes] = await Promise.all([
+      const [orgRes, mgrRes, reasonsRes, placementsRes, employmentRes, cvDocRes] = await Promise.all([
         service.from("organizations").select("logo_url, name, email, phone").eq("id", orgId).maybeSingle(),
         vacancy?.created_by
           ? service.from("profiles").select("full_name, email, phone").eq("id", vacancy.created_by).maybeSingle()
@@ -103,16 +123,68 @@ Deno.serve(async (req) => {
         service.from("match_feedback_reasons").select("id, reason")
           .eq("organization_id", orgId).eq("applies_to", "afgewezen").eq("is_active", true)
           .order("sort_order", { ascending: true }),
+        candidate?.id
+          ? service.from("placements")
+            .select("id, function_name, start_date, end_date, status, work_location, companies:company_id(name)")
+            .eq("organization_id", orgId).eq("candidate_id", candidate.id)
+            .order("start_date", { ascending: false })
+            .limit(4)
+          : Promise.resolve({ data: [] }),
+        candidate?.id
+          ? service.from("candidate_employment")
+            .select("id, contract_type, start_date, end_date, is_current, notes")
+            .eq("organization_id", orgId).eq("candidate_id", candidate.id)
+            .order("start_date", { ascending: false })
+            .limit(4)
+          : Promise.resolve({ data: [] }),
+        candidate?.id
+          ? service.from("documents")
+            .select("name, file_path, type, created_at")
+            .eq("organization_id", orgId).eq("candidate_id", candidate.id)
+            .eq("type", "cv").not("file_path", "is", null)
+            .order("created_at", { ascending: false })
+            .limit(1)
+          : Promise.resolve({ data: [] }),
       ]);
       const org = (orgRes as any).data;
       const mgr = (mgrRes as any).data;
 
       let cvUrl: string | null = null;
-      const cvPath = storagePathFromCvValue(candidate?.cv_file_url);
+      let cvFileName: string | null = null;
+      let cvPath = storagePathFromCvValue(candidate?.cv_file_url);
+      const cvDoc = Array.isArray((cvDocRes as any).data) ? (cvDocRes as any).data[0] : null;
+      if (!cvPath && cvDoc?.file_path) {
+        cvPath = storagePathFromCvValue(cvDoc.file_path);
+        cvFileName = cvDoc.name ?? null;
+      }
       if (cvPath) {
         const { data: signed } = await service.storage.from("documents").createSignedUrl(cvPath, CV_SIGNED_TTL);
         cvUrl = signed?.signedUrl ?? null;
       }
+      const placements = Array.isArray((placementsRes as any).data) ? (placementsRes as any).data : [];
+      const employments = Array.isArray((employmentRes as any).data) ? (employmentRes as any).data : [];
+      const history = [
+        ...placements.map((placement: any) => ({
+          id: placement.id,
+          role: placement.function_name ?? null,
+          company_name: placement.companies?.name ?? null,
+          start_date: placement.start_date ?? null,
+          end_date: placement.end_date ?? null,
+          status: placement.status ?? null,
+          location: placement.work_location ?? null,
+        })),
+        ...employments.map((employment: any) => ({
+          id: `employment-${employment.id}`,
+          role: noteValue(employment.notes, "Functie") ?? employment.contract_type ?? null,
+          company_name: noteValue(employment.notes, "Werkgever"),
+          start_date: employment.start_date ?? null,
+          end_date: employment.end_date ?? null,
+          status: employment.is_current ? "actief" : "beeindigd",
+          location: null,
+        })),
+      ]
+        .sort((a, b) => new Date(b.start_date ?? 0).getTime() - new Date(a.start_date ?? 0).getTime())
+        .slice(0, 6);
 
       return json({
         status: "ok",
@@ -121,14 +193,40 @@ Deno.serve(async (req) => {
         candidate: view.candidate,
         vacancy: view.vacancy,
         company: company ? { name: company.name } : null,
+        profile: candidate
+          ? {
+            summary: candidate.ai_summary ?? null,
+            function_group: candidate.ai_function_group ?? null,
+            classification: candidate.ai_classification ?? null,
+            target_functions: stringArray(candidate.ai_target_functions),
+            interview_questions: stringArray(candidate.ai_interview_questions),
+            skills: stringArray(candidate.skills),
+            certifications: stringArray(candidate.certifications),
+            languages: stringArray(candidate.languages),
+            city: candidate.address_city ?? null,
+            available_from: candidate.available_from ?? null,
+            available_until: candidate.available_until ?? null,
+            arrival_date: candidate.arrival_date ?? null,
+            availability_notes: candidate.availability_notes ?? null,
+            most_recent_role: candidate.most_recent_role ?? null,
+            most_recent_role_year: candidate.most_recent_role_year ?? null,
+            has_drivers_license: candidate.has_drivers_license === true,
+          }
+          : null,
+        history,
         report: candidate
           ? {
             summary: candidate.ai_summary ?? null,
-            strong_signals: Array.isArray(candidate.ai_positive_signals) ? candidate.ai_positive_signals : [],
-            attention_points: Array.isArray(candidate.ai_risk_factors) ? candidate.ai_risk_factors : [],
+            strong_signals: stringArray(candidate.ai_positive_signals),
+            attention_points: stringArray(candidate.ai_risk_factors),
           }
           : null,
         cv_url: cvUrl,
+        cv: cvUrl ? {
+          url: cvUrl,
+          file_name: cvFileName ?? "CV",
+          is_pdf: isPdfPath(cvPath),
+        } : null,
         rejection_reasons: (reasonsRes as any).data ?? [],
         contact: {
           manager_email: mgr?.email ?? org?.email ?? null,
@@ -153,17 +251,30 @@ Deno.serve(async (req) => {
       if (!reason) return json({ error: "Ongeldige reden" }, 400);
     }
 
-    // Atomair single-use: alleen bijwerken als nog niet gebruikt (TOCTOU-safe).
-    const { data: updated, error: updErr } = await service
-      .from("match_proposal_tokens")
-      .update({ response: decision, used_at: new Date().toISOString() })
-      .eq("id", tok.id)
-      .is("used_at", null)
-      .select("id");
-
-    if (updErr) return json({ error: "Kon reactie niet verwerken" }, 500);
-    if (!updated || updated.length === 0) {
+    if (tok.used_at) {
       return json({ status: "used", response: tok.response, ...view });
+    }
+
+    if (decision === "op_gesprek") {
+      const { error: scheduleErr } = await service
+        .from("match_proposal_tokens")
+        .update({ response: decision })
+        .eq("id", tok.id)
+        .is("used_at", null);
+      if (scheduleErr) return json({ error: "Kon reactie niet verwerken" }, 500);
+    } else {
+      // Finale reactie is single-use: goedkeuren/direct starten of afwijzen sluit de link af.
+      const { data: updated, error: updErr } = await service
+        .from("match_proposal_tokens")
+        .update({ response: decision, used_at: new Date().toISOString() })
+        .eq("id", tok.id)
+        .is("used_at", null)
+        .select("id");
+
+      if (updErr) return json({ error: "Kon reactie niet verwerken" }, 500);
+      if (!updated || updated.length === 0) {
+        return json({ status: "used", response: tok.response, ...view });
+      }
     }
 
     const newStatus = STATUS_MAP[decision];
@@ -183,18 +294,22 @@ Deno.serve(async (req) => {
       created_by: null,
     });
 
-    // Bij acceptatie/gesprek: interne opvolg-taak (de publieke pagina kan geen popup openen).
+    // Bij acceptatie/gesprek: interne opvolg-taak. Een gesprek is nog géén plaatsing;
+    // pas na klantakkoord/direct starten opent intern de plaatsingspopup.
     if (decision !== "afwijzen") {
       const candName = candidate ? `${candidate.first_name ?? ""} ${candidate.last_name ?? ""}`.trim() : "kandidaat";
-      const label = decision === "direct_starten" ? "wil direct starten" : "wil op gesprek";
+      const isDirectStart = decision === "direct_starten";
+      const label = isDirectStart ? "wil direct starten" : "heeft een gesprek gepland";
       await service.from("recruiter_tasks").insert({
         organization_id: orgId,
         assigned_to: vacancy?.created_by ?? null,
-        title: `Klant accepteerde voorstel — plan plaatsing (${candName})`,
+        title: isDirectStart
+          ? `Klant keurde kandidaat goed — plaatsing voorbereiden (${candName})`
+          : `Klant plant gesprek met kandidaat (${candName})`,
         description: `De opdrachtgever ${label} voor "${vacancy?.title ?? ""}".${note ? ` Opmerking: ${note}` : ""}`,
         priority: "high",
         status: "open",
-        category: "plaatsing",
+        category: isDirectStart ? "plaatsing" : "matching",
         related_entity_type: "match",
         related_entity_id: tok.match_id,
       });

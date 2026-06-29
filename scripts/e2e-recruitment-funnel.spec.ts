@@ -62,11 +62,11 @@ function imagePayload(name = "qa-proof.png") {
   };
 }
 
-function pdfPayload(name = "qa-cv.pdf") {
+function textCvPayload(name: string, lines: string[]) {
   return {
     name,
-    mimeType: "application/pdf",
-    buffer: Buffer.from("%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n"),
+    mimeType: "text/plain",
+    buffer: Buffer.from(lines.join("\n")),
   };
 }
 
@@ -125,12 +125,24 @@ async function waitForRestRows<T>(
   throw new Error(`Timeout wachtend op ${table}: ${JSON.stringify(lastRows).slice(0, 500)}`);
 }
 
+async function setScreeningAnswer(page: Page, key: string, value: string): Promise<void> {
+  const answer = page.getByTestId(`screening-answer-${key}`);
+  await expect(answer).toBeVisible({ timeout: 20_000 });
+  await answer.fill(value);
+}
+
 async function loginPortal(page: Page, email: string): Promise<void> {
   await page.goto("/portaal/login", { waitUntil: "domcontentloaded" });
   await page.getByLabel("E-mailadres").fill(email);
   await page.getByLabel("Wachtwoord").fill(portalPassword);
   await page.getByRole("button", { name: /^Inloggen$/ }).click();
   await expect(page).toHaveURL(/\/portaal\/?$/, { timeout: 20_000 });
+}
+
+async function firstEditableTimesheetDay(page: Page): Promise<Locator> {
+  const emptyDay = page.locator("div.cursor-pointer").filter({ hasText: "—" }).first();
+  await expect(emptyDay).toBeVisible({ timeout: 10_000 });
+  return emptyDay;
 }
 
 function watchFailures(page: Page) {
@@ -170,6 +182,7 @@ test("Recruiterfunnel: kandidaat komt binnen, CV analyse, match, plaatsing, port
   test.setTimeout(720_000);
 
   const failures = watchFailures(page);
+  let portalFailures: string[] = [];
   const findings: string[] = [];
   const suffix = `${runId}-${Date.now().toString().slice(-5)}`;
   const candidateFirst = "E2E";
@@ -182,13 +195,16 @@ test("Recruiterfunnel: kandidaat komt binnen, CV analyse, match, plaatsing, port
   const unitName = `Kamer ${suffix.slice(-4)}`;
   const licensePlate = `FL-${suffix.slice(-4)}`;
 
-  const cvText = `
-    ${candidateFullName}
-    Ervaren MIG-MAG lasser en productiemedewerker met heftruckervaring.
-    Heeft VCA, rijbewijs B, Nederlands en Engels, ervaring met metaalbewerking,
-    assemblage, kwaliteitscontrole en werken in ploegendienst.
-    Beschikbaar per direct in regio Eindhoven voor fulltime werk.
-  `.replace(/\s+/g, " ").trim();
+  const cvLines = [
+    candidateFullName,
+    `E-mail: ${candidateEmail}`,
+    "Telefoon: 0612345678",
+    "Nationaliteit: Nederlands",
+    "Ervaren MIG-MAG lasser en productiemedewerker met heftruckervaring.",
+    "Heeft VCA, rijbewijs B, Nederlands en Engels.",
+    "Ervaring met metaalbewerking, assemblage, kwaliteitscontrole en ploegendienst.",
+    "Beschikbaar per direct in regio Eindhoven voor fulltime werk.",
+  ];
 
   await ensureLoggedIn(page);
 
@@ -238,6 +254,10 @@ test("Recruiterfunnel: kandidaat komt binnen, CV analyse, match, plaatsing, port
   await expect(page.getByRole("heading", { name: licensePlate })).toBeVisible();
 
   await page.goto("/kandidaten/new", { waitUntil: "domcontentloaded" });
+  await page.locator('input[type="file"]').first().setInputFiles(
+    textCvPayload(`cv-aanmaak-${suffix}.txt`, cvLines),
+  );
+  await expect(page.getByText(/wordt bewaard en geanalyseerd na het aanmaken|automatisch ingevuld|controleer ze/i).first()).toBeVisible({ timeout: 180_000 });
   await fillInputAfterLabel(page, "Voornaam", candidateFirst);
   await fillInputAfterLabel(page, "Achternaam", candidateLast);
   await fillInputAfterLabel(page, "Geboortedatum", "1991-03-04");
@@ -249,12 +269,9 @@ test("Recruiterfunnel: kandidaat komt binnen, CV analyse, match, plaatsing, port
   await fillInputAfterLabel(page, "Stad", "Eindhoven");
   await page.locator("#dl").check();
   await fillInputAfterLabel(page, "Verloopdatum rijbewijs", "2028-12-31");
-  await fillTagAfterLabel(page, "Vaardigheden", "MIG-MAG lassen");
-  await fillTagAfterLabel(page, "Vaardigheden", "Heftruck");
-  await fillTagAfterLabel(page, "Talen", "Nederlands");
   await fillTextareaAfterLabel(page, "Notities", `E2E volledige recruiterfunnel ${suffix}`);
   await page.getByRole("button", { name: /Kandidaat aanmaken/i }).click();
-  await expect(page.getByRole("heading", { name: /Profiellink versturen/i })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole("heading", { name: /Links versturen/i })).toBeVisible({ timeout: 20_000 });
 
   const profileUrl = await page.locator("input[readonly]").evaluateAll((inputs) => {
     const match = inputs
@@ -267,51 +284,86 @@ test("Recruiterfunnel: kandidaat komt binnen, CV analyse, match, plaatsing, port
   await expect(page).toHaveURL(/\/kandidaten\/[0-9a-f-]{36}/, { timeout: 20_000 });
   const candidateId = idFromUrl(page.url(), "/kandidaten");
   await expect(page.getByRole("heading", { name: new RegExp(`${candidateFirst}.*${escapeRegExp(candidateLast)}`) })).toBeVisible();
+  await restPatch(page, "candidates", `id=eq.${candidateId}`, {
+    skills: ["MIG-MAG lassen", "Heftruck"],
+    languages: ["Nederlands"],
+    certifications: ["VCA"],
+    available_from: today,
+    availability_notes: "Per direct fulltime beschikbaar voor ploegendienst.",
+  });
+
+  await waitForRestRows<{ cv_file_url: string | null; cv_raw_text: string | null }>(
+    page,
+    "candidates",
+    `select=cv_file_url,cv_raw_text&id=eq.${candidateId}&limit=1`,
+    (rows) => Boolean(rows[0]?.cv_file_url) && Boolean(rows[0]?.cv_raw_text?.includes("MIG-MAG")),
+    30_000,
+  );
+
+  await page.goto(`/kandidaten/${candidateId}?tab=screening`, { waitUntil: "domcontentloaded" });
+  await page.getByRole("tab", { name: /Screening/i }).click();
+  const startCall = page.getByTestId("screening-start-call");
+  if (await startCall.isVisible().catch(() => false)) await startCall.click();
+  await setScreeningAnswer(page, "prep_cv_check", "CV uit aanmaak gecontroleerd: MIG-MAG, VCA, heftruck en beschikbaarheid bevestigd.");
+  await page.getByRole("button", { name: /2\s+Contact & identiteit/i }).click();
+  await setScreeningAnswer(page, "identity_work_right", "Nederlandse nationaliteit en werkrecht bevestigd.");
+  await page.getByRole("button", { name: /3\s+Mobiliteit/i }).click();
+  await setScreeningAnswer(page, "drivers_license_type", "Rijbewijs B geldig tot 2028 bevestigd.");
+  await page.getByRole("button", { name: /4\s+Werkprofiel/i }).click();
+  await setScreeningAnswer(page, "experience_summary", "MIG-MAG lassen, heftruck en productie-ervaring bevestigd.");
+  await page.getByRole("button", { name: /5\s+Beschikbaarheid/i }).click();
+  await setScreeningAnswer(page, "availability_date", "Per direct fulltime beschikbaar voor ploegendienst.");
+  await page.getByRole("button", { name: /6\s+Persoonlijk/i }).click();
+  await setScreeningAnswer(page, "motivation_future", "Wil langdurig via JA Werkt werken en doorgroeien.");
+  await page.getByRole("button", { name: /7\s+Besluit/i }).click();
+  await setScreeningAnswer(page, "critical_unknowns", "Geen blokkades; referentie later controleren.");
+  await setScreeningAnswer(page, "next_action", "Matchen op MIG-MAG vacature en voorstellen aan opdrachtgever.");
+  await selectAfterLabel(page, "Eindresultaat", /Goedgekeurd/i);
+  await page.getByTestId("screening-summary").fill("Goedgekeurde kandidaat op basis van CV en belscreening.");
+  await page.getByTestId("screening-complete-reanalyze").click();
+  await waitForRestRows<{ screened_at: string | null; screening_data: unknown | null }>(
+    page,
+    "candidates",
+    `select=screened_at,screening_data&id=eq.${candidateId}&limit=1`,
+    (rows) => Boolean(rows[0]?.screened_at) && Boolean(rows[0]?.screening_data),
+    30_000,
+  );
+
+  const aiRows = await waitForRestRows<{
+    ai_status: string | null;
+    ai_analysis: unknown | null;
+    cv_pseudonymized_at: string | null;
+    screened_at: string | null;
+  }>(
+    page,
+    "candidates",
+    `select=ai_status,ai_analysis,cv_pseudonymized_at,screened_at&id=eq.${candidateId}&limit=1`,
+    (rows) =>
+      rows[0]?.ai_status === "completed" &&
+      Boolean(rows[0]?.ai_analysis) &&
+      Boolean(rows[0]?.screened_at) &&
+      Boolean(rows[0]?.cv_pseudonymized_at) &&
+      Date.parse(rows[0]!.cv_pseudonymized_at!) >= Date.parse(rows[0]!.screened_at!),
+    180_000,
+  ).catch(() => []);
+  if (aiRows.length === 0) {
+    findings.push("CV is opgeslagen en screening is afgerond, maar AI-heranalyse na screening was niet voltooid binnen 180s");
+  }
 
   const publicContext = await browser.newContext({
     baseURL: testInfo.project.use.baseURL as string,
     viewport: { width: 1400, height: 900 },
+    storageState: { cookies: [], origins: [] },
   });
   const publicPage = await publicContext.newPage();
   try {
     await publicPage.goto(profileUrl, { waitUntil: "domcontentloaded" });
     await expect(publicPage.getByRole("heading", { name: new RegExp(`Hoi ${candidateFirst}`) })).toBeVisible({ timeout: 20_000 });
-    await fillTextareaAfterLabel(publicPage, "Beschikbaarheid", "Per direct fulltime beschikbaar voor ploegendienst.");
-    await fillTagAfterLabel(publicPage, "Certificaten", "VCA");
-    await publicPage.locator('input[accept=".pdf,.doc,.docx,image/*"]').setInputFiles(pdfPayload(`cv-${suffix}.pdf`));
+    await fillTextareaAfterLabel(publicPage, "Extra beschikbaarheidsnotities", "Later via profiel-link aangevuld na eerste screening.");
     await publicPage.getByRole("button", { name: /Profiel opslaan/i }).click();
     await expect(publicPage.getByText(/Je profiel is aangevuld/i)).toBeVisible({ timeout: 30_000 });
   } finally {
     await publicContext.close();
-  }
-
-  await ensureLoggedIn(page);
-  await page.goto(`/kandidaten/${candidateId}`, { waitUntil: "domcontentloaded" });
-  await page.getByRole("tab", { name: /AI Analyse/i }).click();
-  await page.getByPlaceholder(/Plak hier de CV-tekst/i).fill(cvText);
-  await page.getByRole("button", { name: /AI Analyse starten/i }).click();
-  await page.getByRole("menuitem", { name: /Cloud/i }).click();
-  const cvCompleted = await page
-    .getByText(/Analyse voltooid/i)
-    .waitFor({ state: "visible", timeout: 180_000 })
-    .then(() => true)
-    .catch(() => false);
-  if (!cvCompleted) {
-    const cvRows = await waitForRestRows<{ ai_status: string | null; ai_analysis: unknown | null }>(
-      page,
-      "candidates",
-      `select=ai_status,ai_analysis&id=eq.${candidateId}&limit=1`,
-      (rows) => rows[0]?.ai_status === "completed" && Boolean(rows[0]?.ai_analysis),
-      30_000,
-    ).catch(() => []);
-    if (cvRows.length === 0) {
-      const stillAnalyzing = await page
-        .getByText(/CV wordt geanalyseerd|Analyse gestart/i)
-        .first()
-        .isVisible()
-        .catch(() => false);
-      findings.push(stillAnalyzing ? "CV analyse gestart maar niet voltooid binnen 210s" : "CV analyse niet succesvol gestart/afgerond");
-    }
   }
 
   await page.goto("/vacatures/new", { waitUntil: "domcontentloaded" });
@@ -322,20 +374,22 @@ test("Recruiterfunnel: kandidaat komt binnen, CV analyse, match, plaatsing, port
   await fillInputAfterLabel(page, "Locatie", "Eindhoven");
   await page.locator('input[type="date"]').first().fill(today);
   await fillInputAfterLabel(page, "Uurtarief", "24.50");
-  await fillTagAfterLabel(page, "Vereiste vaardigheden", "MIG-MAG lassen");
-  await fillTagAfterLabel(page, "Vereiste vaardigheden", "Heftruck");
-  await fillTagAfterLabel(page, "Vereiste certificaten", "VCA");
   await page.locator("#dl").check();
   await page.getByRole("button", { name: /Vacature aanmaken/i }).click();
   await expect(page).toHaveURL(/\/vacatures\/[0-9a-f-]{36}/, { timeout: 20_000 });
   const vacancyId = idFromUrl(page.url(), "/vacatures");
   await expect(page.getByRole("heading", { name: vacancyTitle })).toBeVisible();
+  await restPatch(page, "vacancies", `id=eq.${vacancyId}`, {
+    required_skills: ["MIG-MAG lassen", "Heftruck"],
+    required_certifications: ["VCA"],
+    requires_drivers_license: true,
+  });
 
   await page.getByRole("tab", { name: /Matches/i }).click();
   await page.getByPlaceholder("Zoek kandidaat...").fill(candidateLast);
   await expect(page.getByText(candidateFullName).first()).toBeVisible({ timeout: 20_000 });
-  await page.getByRole("button", { name: /Nieuwe match/i }).first().click();
-  await expect(page.getByText(/Nieuwe match aangemaakt/i).first()).toBeVisible({ timeout: 20_000 });
+  await page.getByRole("button", { name: /Match maken/i }).first().click();
+  await expect(page.getByText(/Match gemaakt/i).first()).toBeVisible({ timeout: 20_000 });
 
   const matchRows = await waitForRestRows<{ id: string; match_score: number | null; match_reasoning: string | null }>(
     page,
@@ -399,57 +453,68 @@ test("Recruiterfunnel: kandidaat komt binnen, CV analyse, match, plaatsing, port
   await page.getByRole("button", { name: /^Toewijzen$/i }).click();
   await expect(page.getByText(/Voertuig toegewezen/i).first()).toBeVisible({ timeout: 20_000 });
 
-  await page.goto(`/portaal/activeren/${portalToken}`, { waitUntil: "domcontentloaded" });
-  await expect(page.getByRole("heading", { name: /Portaal activeren/i })).toBeVisible({ timeout: 20_000 });
-  await expect(page.locator("#email")).toHaveValue(candidateEmail);
-  await page.locator("#password").fill(portalPassword);
-  await page.locator("#confirm").fill(portalPassword);
-  await page.getByRole("button", { name: /Account aanmaken/i }).click();
-  await expect(page.getByRole("heading", { name: /Je account is aangemaakt/i })).toBeVisible({ timeout: 30_000 });
+  const portalContext = await browser.newContext({
+    baseURL: testInfo.project.use.baseURL as string,
+    viewport: { width: 1280, height: 720 },
+    storageState: { cookies: [], origins: [] },
+  });
+  const portalPage = await portalContext.newPage();
+  portalFailures = watchFailures(portalPage);
+  try {
+    await portalPage.goto(`/portaal/activeren/${portalToken}`, { waitUntil: "domcontentloaded" });
+    await expect(portalPage.getByRole("heading", { name: /Portaal activeren/i })).toBeVisible({ timeout: 20_000 });
+    await expect(portalPage.locator("#email")).toHaveValue(candidateEmail);
+    await portalPage.locator("#password").fill(portalPassword);
+    await portalPage.locator("#confirm").fill(portalPassword);
+    await portalPage.getByRole("button", { name: /Account aanmaken/i }).click();
+    await expect(portalPage.getByRole("heading", { name: /Je account is aangemaakt/i })).toBeVisible({ timeout: 30_000 });
 
-  await loginPortal(page, candidateEmail);
-  await expect(page.getByText(candidateFirst).first()).toBeVisible({ timeout: 20_000 });
+    await loginPortal(portalPage, candidateEmail);
+    await expect(portalPage.getByText(candidateFirst).first()).toBeVisible({ timeout: 20_000 });
 
-  await page.goto("/portaal/huisvesting", { waitUntil: "domcontentloaded" });
-  await expect(page.getByText(propertyName).first()).toBeVisible({ timeout: 20_000 });
-  await page.getByRole("button", { name: /Onderhoud melden/i }).click();
-  await page.locator("textarea").first().fill(`E2E onderhoud vanuit volledige funnel ${suffix}`);
-  await page.locator('input[type="file"]').first().setInputFiles(imagePayload("housing-maintenance.png"));
-  await page.getByRole("button", { name: /Melding indienen/i }).click();
-  await expect(page.getByText(/Klacht ingediend/i).first()).toBeVisible({ timeout: 20_000 });
+    await portalPage.goto("/portaal/huisvesting", { waitUntil: "domcontentloaded" });
+    await expect(portalPage.getByText(propertyName).first()).toBeVisible({ timeout: 20_000 });
+    await portalPage.getByRole("button", { name: /Onderhoud melden/i }).click();
+    await portalPage.locator("textarea").first().fill(`E2E onderhoud vanuit volledige funnel ${suffix}`);
+    await portalPage.locator('input[type="file"]').first().setInputFiles(imagePayload("housing-maintenance.png"));
+    await portalPage.getByRole("button", { name: /Melding indienen/i }).click();
+    await expect(portalPage.getByText(/Klacht ingediend/i).first()).toBeVisible({ timeout: 20_000 });
 
-  await page.goto("/portaal/voertuig", { waitUntil: "domcontentloaded" });
-  await expect(page.getByText(licensePlate).first()).toBeVisible({ timeout: 20_000 });
-  await page.getByRole("button", { name: /Schade melden/i }).click();
-  await expect(page.getByRole("button", { name: /Schademelding indienen/i })).toBeDisabled();
-  await page.locator("textarea").first().fill(`E2E lekke band volledige funnel ${suffix}`);
-  await page.locator('input[type="file"]').first().setInputFiles(imagePayload("vehicle-damage.png"));
-  await expect(page.getByRole("button", { name: /Schademelding indienen/i })).toBeEnabled();
-  await page.getByRole("button", { name: /Schademelding indienen/i }).click();
-  await expect(page.getByText(/Schademelding ingediend/i).first()).toBeVisible({ timeout: 30_000 });
+    await portalPage.goto("/portaal/voertuig", { waitUntil: "domcontentloaded" });
+    await expect(portalPage.getByText(licensePlate).first()).toBeVisible({ timeout: 20_000 });
+    await portalPage.getByRole("button", { name: /Schade melden/i }).click();
+    await expect(portalPage.getByRole("button", { name: /Schademelding indienen/i })).toBeDisabled();
+    await portalPage.locator("textarea").first().fill(`E2E lekke band volledige funnel ${suffix}`);
+    await portalPage.locator('input[type="file"]').first().setInputFiles(imagePayload("vehicle-damage.png"));
+    await expect(portalPage.getByRole("button", { name: /Schademelding indienen/i })).toBeEnabled();
+    await portalPage.getByRole("button", { name: /Schademelding indienen/i }).click();
+    await expect(portalPage.getByText(/Schademelding ingediend/i).first()).toBeVisible({ timeout: 30_000 });
 
-  await page.goto("/portaal/ziekmelding", { waitUntil: "domcontentloaded" });
-  await page.locator('input[type="date"]').first().fill(tomorrow);
-  await page.getByRole("button", { name: /Ziekmelding indienen/i }).click();
-  await expect(page.getByText(/Ziekmelding ingediend/i).first()).toBeVisible({ timeout: 30_000 });
+    await portalPage.goto("/portaal/ziekmelding", { waitUntil: "domcontentloaded" });
+    await portalPage.locator('input[type="date"]').first().fill(tomorrow);
+    await portalPage.getByRole("button", { name: /Ziekmelding indienen/i }).click();
+    await expect(portalPage.getByText(/Ziekmelding ingediend/i).first()).toBeVisible({ timeout: 30_000 });
 
-  await page.goto("/portaal/uren", { waitUntil: "domcontentloaded" });
-  await expect(page.getByText(/Week \d+/)).toBeVisible({ timeout: 20_000 });
-  const emptyDay = page.getByRole("button", { name: /—/ }).first();
-  if (await emptyDay.waitFor({ state: "visible", timeout: 5_000 }).then(() => true).catch(() => false)) {
-    await emptyDay.click();
-    const hoursInput = page.locator('input[type="number"]').first();
-    if (await hoursInput.waitFor({ state: "visible", timeout: 5_000 }).then(() => true).catch(() => false)) {
-      await hoursInput.fill("7.5");
-      await page.locator("textarea").first().fill(`E2E uren volledige funnel ${suffix}`);
-      await page.getByRole("button", { name: /Uren opslaan/i }).click();
-      await expect(page.getByText(/Uren opgeslagen|7\.5u|7,5u/i).first()).toBeVisible({ timeout: 20_000 });
+    await portalPage.goto("/portaal/uren", { waitUntil: "domcontentloaded" });
+    await expect(portalPage.getByText(/Week \d+/)).toBeVisible({ timeout: 20_000 });
+    const emptyDay = await firstEditableTimesheetDay(portalPage).catch(() => null);
+    if (emptyDay) {
+      await emptyDay.click();
+      const hoursInput = portalPage.locator('input[type="number"]').first();
+      if (await hoursInput.waitFor({ state: "visible", timeout: 5_000 }).then(() => true).catch(() => false)) {
+        await hoursInput.fill("7.5");
+        await portalPage.locator("textarea").first().fill(`E2E uren volledige funnel ${suffix}`);
+        await portalPage.getByRole("button", { name: /Uren opslaan/i }).click();
+        await expect(portalPage.getByText(/Uren opgeslagen|7\.5u|7,5u/i).first()).toBeVisible({ timeout: 20_000 });
+      }
     }
+    const submitWeek = portalPage.getByRole("button", { name: /Week indienen/i });
+    await expect(submitWeek).toBeVisible({ timeout: 20_000 });
+    await submitWeek.click();
+    await expect(portalPage.getByText(/Uren ingediend|Ingediend/i).first()).toBeVisible({ timeout: 20_000 });
+  } finally {
+    await portalContext.close();
   }
-  const submitWeek = page.getByRole("button", { name: /Week indienen/i });
-  await expect(submitWeek).toBeVisible({ timeout: 20_000 });
-  await submitWeek.click();
-  await expect(page.getByText(/Uren ingediend|Ingediend/i).first()).toBeVisible({ timeout: 20_000 });
 
   await waitForRestRows(
     page,
@@ -466,10 +531,10 @@ test("Recruiterfunnel: kandidaat komt binnen, CV analyse, match, plaatsing, port
   await waitForRestRows(
     page,
     "sick_reports",
-    `select=id&candidate_id=eq.${candidateId}&notes=ilike.*${encodeURIComponent(suffix)}*&limit=1`,
+    `select=id&candidate_id=eq.${candidateId}&expected_return_date=eq.${tomorrow}&limit=1`,
     (rows) => rows.length === 1,
   );
 
-  expect.soft(blockingFailures(failures)).toEqual([]);
+  expect.soft(blockingFailures([...failures, ...portalFailures])).toEqual([]);
   expect(findings).toEqual([]);
 });

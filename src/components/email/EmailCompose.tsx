@@ -64,6 +64,9 @@ const EmailCompose = ({ open, onOpenChange, replyTo, defaultTo, defaultSubject, 
   );
   const [body, setBody] = useState('');
   const [showCc, setShowCc] = useState(!!cc);
+  const previewHtml = `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#334155;font-size:14px;line-height:1.6;padding:20px;">${
+    plaintextToHtml(body.trimEnd()) || '<span style="color:#94a3b8;">Nog geen berichttekst.</span>'
+  }<p style="margin-top:20px;color:#94a3b8;font-size:12px;">De ingestelde Outlook-handtekening wordt bij verzenden toegevoegd.</p></div>`;
 
   const sendMutation = useMutation({
     mutationFn: async () => {
@@ -97,7 +100,7 @@ const EmailCompose = ({ open, onOpenChange, replyTo, defaultTo, defaultSubject, 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col">
+      <DialogContent className="sm:max-w-4xl max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>
             {isForward ? 'Doorsturen' : isReply ? 'Beantwoorden' : 'Nieuw bericht'}
@@ -183,13 +186,27 @@ const EmailCompose = ({ open, onOpenChange, replyTo, defaultTo, defaultSubject, 
             </div>
           )}
 
-          <Textarea
-            value={body}
-            onChange={e => setBody(e.target.value)}
-            placeholder="Typ je bericht..."
-            rows={10}
-            className="resize-none"
-          />
+          <div className="grid gap-3 lg:grid-cols-2">
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Bericht</Label>
+              <Textarea
+                value={body}
+                onChange={e => setBody(e.target.value)}
+                placeholder="Typ je bericht..."
+                rows={12}
+                className="resize-none"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Preview</Label>
+              <iframe
+                title="email-compose-preview"
+                srcDoc={previewHtml}
+                sandbox=""
+                className="h-[302px] w-full rounded-md border bg-white"
+              />
+            </div>
+          </div>
 
           <p className="text-xs text-muted-foreground">
             De ingestelde Outlook-handtekening van de afzender wordt automatisch toegevoegd bij verzenden.
