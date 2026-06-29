@@ -712,9 +712,9 @@ const CandidateScreeningTab = ({
       await persistDraft({ complete: true, manual: true });
       const { error } = await supabase.functions.invoke('analyze-cv', { body: { candidate_id: candidate.id } });
       if (error) throw error;
-      toast.success('Screening opgeslagen — AI heranalyseert met de screening (1-3 min)');
-    } catch (e: any) {
-      toast.error(e?.message || 'Heranalyse kon niet starten');
+      toast.success('Screening opgeslagen — Gemini heranalyseert met de screening');
+    } catch (e) {
+      toast.error(await extractFunctionErrorMessage(e, 'Heranalyse kon niet starten'));
     } finally {
       setReanalyzing(false);
     }

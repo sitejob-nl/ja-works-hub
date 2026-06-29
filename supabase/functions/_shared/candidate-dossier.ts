@@ -554,12 +554,6 @@ export async function buildCandidateDossier(
     }
   }
 
-  const [notes, communications, workContext] = await Promise.all([
-    loadNotes(admin, candidate),
-    loadCommunications(admin, candidate),
-    loadWorkContext(admin, candidate),
-  ]);
-
   // VISION-fallback: als de tekst-extractie (nagenoeg) niets opleverde, zoek een CV dat
   // als AFBEELDING/PDF naar Gemini kan. STRIKT alleen CV's (type 'cv' of CV-naam). Let op:
   // pure afbeeldingen (jpg/png) scoren onder de tekst-selectiedrempel en worden daar
@@ -569,6 +563,21 @@ export async function buildCandidateDossier(
   const visionFile = documentResult.cvText.trim().length < VISION_MIN_TEXT_CHARS
     ? await resolveCvVisionFile(admin, candidate)
     : null;
+
+  const storedCvText = cleanText(candidate.cv_raw_text);
+  if (!visionFile && documentResult.cvText.trim().length < VISION_MIN_TEXT_CHARS && storedCvText.length >= VISION_MIN_TEXT_CHARS) {
+    documentResult = {
+      ...documentResult,
+      cvText: truncate(storedCvText, MAX_CV_CHARS, "CV"),
+      warnings: [...documentResult.warnings, "Geen leesbare CV-documenttekst gevonden; opgeslagen cv_raw_text gebruikt"],
+    };
+  }
+
+  const [notes, communications, workContext] = await Promise.all([
+    loadNotes(admin, candidate),
+    loadCommunications(admin, candidate),
+    loadWorkContext(admin, candidate),
+  ]);
 
   const noteText = truncate([...notes, ...communications, ...workContext].join("\n\n"), MAX_NOTES_CHARS, "notities/context");
   const sections = [
