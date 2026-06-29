@@ -184,6 +184,9 @@ verify_jwt = false
 [functions.domain-management]
 verify_jwt = false
 
+[functions.upload-organization-logo]
+verify_jwt = false
+
 [functions.candidate-profile]
 verify_jwt = false
 

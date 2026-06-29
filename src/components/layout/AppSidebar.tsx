@@ -177,8 +177,6 @@ const AppSidebar = ({ onNavigate }: AppSidebarProps) => {
     applyBranding(s as BrandingSettings);
   }, [org]);
 
-  const orgInitials = (org?.name ?? 'JA').slice(0, 2).toUpperCase();
-
   const handleNavClick = () => {
     onNavigate?.();
   };
@@ -191,15 +189,27 @@ const AppSidebar = ({ onNavigate }: AppSidebarProps) => {
       )}
     >
       {/* Logo */}
-      <div className="flex items-center gap-2 px-4 h-14 border-b border-sidebar-border">
-        <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center shrink-0 overflow-hidden">
-          {org?.logo_url ? (
-            <img src={org.logo_url} alt="Logo" className="h-full w-full object-contain" />
-          ) : (
-            <span className="text-primary-foreground font-bold text-xs">{orgInitials}</span>
-          )}
-        </div>
-        {!collapsed && <span className="text-sidebar-active font-semibold text-sm">{org?.name ?? 'SiteJob'}</span>}
+      <div className={cn(
+        'flex items-center border-b border-sidebar-border',
+        collapsed ? 'h-16 justify-center px-2' : 'h-20 px-5'
+      )}>
+        {org?.logo_url ? (
+          <img
+            src={org.logo_url}
+            alt={org?.name ? `${org.name} logo` : 'Logo'}
+            className={cn(
+              'object-contain',
+              collapsed ? 'max-h-10 max-w-10' : 'max-h-14 w-full object-left'
+            )}
+          />
+        ) : (
+          <span className={cn(
+            'font-semibold text-sidebar-active truncate',
+            collapsed ? 'text-sm' : 'text-xl'
+          )}>
+            {collapsed ? (org?.name ?? 'JA').slice(0, 2).toUpperCase() : (org?.name ?? 'SiteJob')}
+          </span>
+        )}
       </div>
 
       {/* Nav */}
