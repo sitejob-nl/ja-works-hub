@@ -121,6 +121,9 @@ verify_jwt = false
 [functions.send-match-proposal]
 verify_jwt = false
 
+[functions.confirm-match-interview]
+verify_jwt = false
+
 [functions.send-timesheet-approval]
 verify_jwt = false
 

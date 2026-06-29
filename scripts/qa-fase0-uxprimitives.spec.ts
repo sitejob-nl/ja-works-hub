@@ -80,7 +80,7 @@ test.describe("Fase 0 — Dashboard KPI-tegels zijn klikbare deep-links", () => 
     { label: /actieve medewerkers/i, expect: /\/(medewerkers|kandidaten)/, note: "/medewerkers (redirect -> /kandidaten?tab=in-dienst)" },
     { label: /open vacatures/i, expect: /\/vacatures(\?|$|\/)/, note: "/vacatures" },
     { label: /bezetting/i, expect: /\/huisvesting(\?|$|\/)/, note: "/huisvesting" },
-    { label: /uren deze week/i, expect: /\/uren(\?|$|\/)/, note: "/uren" },
+    { label: /uren deze week|gewerkte uren wk/i, expect: /\/uren(\?|$|\/)/, note: "/uren" },
   ];
 
   for (const tile of tiles) {

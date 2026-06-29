@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
-import { Brain, BriefcaseBusiness, Database, FileText, Globe2, Link2, Settings as SettingsIcon, Upload, Palette, Building2, User, LogOut, Trash2, FileSpreadsheet, RotateCcw } from 'lucide-react';
+import { Brain, BriefcaseBusiness, Database, FileText, Globe2, Link2, Settings as SettingsIcon, Upload, Palette, Building2, User, LogOut, Trash2, FileSpreadsheet, RotateCcw, ShieldCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import WhatsAppSettings from '@/components/settings/WhatsAppSettings';
 import WhatsAppAutomationSettings from '@/components/settings/WhatsAppAutomationSettings';
@@ -28,10 +28,12 @@ import PropertyOwnersSettings from '@/components/settings/PropertyOwnersSettings
 import AiCvProviderSettings from '@/components/settings/AiCvProviderSettings';
 import EngagementSettings from '@/components/settings/EngagementSettings';
 import SkillCatalogSettings from '@/components/settings/SkillCatalogSettings';
+import MatchPipelineSettings from '@/components/settings/MatchPipelineSettings';
 import MatchFeedbackReasonsSettings from '@/components/settings/MatchFeedbackReasonsSettings';
 import DomainSettings from '@/components/settings/DomainSettings';
 import OutboundPauseSettings from '@/components/settings/OutboundPauseSettings';
 import TriageRoutingSettings from '@/components/settings/TriageRoutingSettings';
+import RolePermissionsSettings from '@/components/settings/RolePermissionsSettings';
 import { applyBranding, BRANDING_DEFAULTS, type BrandingSettings } from '@/lib/branding';
 import AddressAutocomplete from '@/components/shared/AddressAutocomplete';
 import { resolveAddressCoordinates } from '@/lib/pdok';
@@ -391,6 +393,9 @@ const Settings = () => {
                 <TabsTrigger value="hr" className="gap-2 px-3 py-2">
                   <FileText className="h-4 w-4" /> HR & documenten
                 </TabsTrigger>
+                <TabsTrigger value="rechten" className="gap-2 px-3 py-2">
+                  <ShieldCheck className="h-4 w-4" /> Rechten
+                </TabsTrigger>
                 <TabsTrigger value="data" className="gap-2 px-3 py-2">
                   <Database className="h-4 w-4" /> Data
                 </TabsTrigger>
@@ -547,6 +552,7 @@ const Settings = () => {
 
             <TabsContent value="matching" className="mt-0 space-y-5">
               <SkillCatalogSettings />
+              <MatchPipelineSettings />
               <MatchFeedbackReasonsSettings />
               <EngagementSettings />
             </TabsContent>
@@ -558,6 +564,10 @@ const Settings = () => {
               <OnboardingFormSettings />
               <TerminationReasonsSettings />
               <PropertyOwnersSettings />
+            </TabsContent>
+
+            <TabsContent value="rechten" className="mt-0 space-y-5">
+              <RolePermissionsSettings />
             </TabsContent>
 
             <TabsContent value="data" className="mt-0 space-y-5">

@@ -34,7 +34,7 @@ const DECISIONS = ["op_gesprek", "direct_starten", "afwijzen"] as const;
 type Decision = typeof DECISIONS[number];
 const LEGACY_MAP: Record<string, Decision> = { interesse: "direct_starten", geen_interesse: "afwijzen" };
 const STATUS_MAP: Record<Decision, string> = {
-  op_gesprek: "afspraak_op_kantoor",
+  op_gesprek: "afspraak_voorgesteld",
   direct_starten: "geaccepteerd",
   afwijzen: "afgewezen",
 };
@@ -43,6 +43,10 @@ function stringArray(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
     : [];
+}
+
+function asRecord(value: unknown): Record<string, any> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, any> : {};
 }
 
 function isPdfPath(value: string | null): boolean {
@@ -91,7 +95,7 @@ Deno.serve(async (req) => {
     const { data: tok } = await service
       .from("match_proposal_tokens")
       .select(
-        "id, match_id, response, used_at, expires_at, matches!match_proposal_tokens_match_id_fkey(status, organization_id, candidate_id, vacancy_id, candidates!matches_candidate_id_fkey(id, first_name, last_name, address_city, ai_summary, ai_function_group, ai_classification, ai_positive_signals, ai_risk_factors, ai_target_functions, ai_interview_questions, skills, certifications, languages, available_from, available_until, arrival_date, availability_notes, most_recent_role, most_recent_role_year, has_drivers_license, cv_file_url), vacancies!matches_vacancy_id_fkey(title, created_by, companies:company_id(name)))",
+        "id, match_id, response, used_at, expires_at, content_snapshot, matches!match_proposal_tokens_match_id_fkey(status, organization_id, candidate_id, vacancy_id, candidates!matches_candidate_id_fkey(id, first_name, last_name, address_city, ai_summary, ai_function_group, ai_classification, ai_positive_signals, ai_risk_factors, ai_target_functions, ai_interview_questions, skills, certifications, languages, available_from, available_until, arrival_date, availability_notes, most_recent_role, most_recent_role_year, has_drivers_license, cv_file_url), vacancies!matches_vacancy_id_fkey(title, created_by, companies:company_id(name)))",
       )
       .eq("token", token)
       .maybeSingle();
@@ -104,9 +108,17 @@ Deno.serve(async (req) => {
     const candidate = matchRow?.candidates ?? null;
     const vacancy = matchRow?.vacancies ?? null;
     const company = vacancy?.companies ?? null;
+    const snapshot = asRecord((tok as any).content_snapshot);
+    const snapCandidate = asRecord(snapshot.candidate);
+    const snapVacancy = asRecord(snapshot.vacancy);
+    const snapCompany = asRecord(snapshot.company);
+    const snapReport = asRecord(snapshot.report);
     const view = {
-      candidate: candidate ? { first_name: candidate.first_name, last_name: candidate.last_name } : null,
-      vacancy: vacancy ? { title: vacancy.title } : null,
+      candidate: (candidate || snapCandidate.name) ? {
+        first_name: snapCandidate.first_name ?? candidate?.first_name ?? "",
+        last_name: snapCandidate.last_name ?? candidate?.last_name ?? "",
+      } : null,
+      vacancy: (vacancy || snapVacancy.title) ? { title: snapVacancy.title ?? vacancy?.title } : null,
     };
 
     if (action === "get") {
@@ -151,7 +163,7 @@ Deno.serve(async (req) => {
 
       let cvUrl: string | null = null;
       let cvFileName: string | null = null;
-      let cvPath = storagePathFromCvValue(candidate?.cv_file_url);
+      let cvPath = storagePathFromCvValue(snapCandidate.cv_file_url ?? candidate?.cv_file_url);
       const cvDoc = Array.isArray((cvDocRes as any).data) ? (cvDocRes as any).data[0] : null;
       if (!cvPath && cvDoc?.file_path) {
         cvPath = storagePathFromCvValue(cvDoc.file_path);
@@ -192,33 +204,34 @@ Deno.serve(async (req) => {
         org_name: org?.name ?? null,
         candidate: view.candidate,
         vacancy: view.vacancy,
-        company: company ? { name: company.name } : null,
+        company: (company || snapCompany.name) ? { name: snapCompany.name ?? company?.name } : null,
+        sections: asRecord(snapshot.sections),
         profile: candidate
           ? {
-            summary: candidate.ai_summary ?? null,
-            function_group: candidate.ai_function_group ?? null,
-            classification: candidate.ai_classification ?? null,
-            target_functions: stringArray(candidate.ai_target_functions),
-            interview_questions: stringArray(candidate.ai_interview_questions),
-            skills: stringArray(candidate.skills),
-            certifications: stringArray(candidate.certifications),
-            languages: stringArray(candidate.languages),
-            city: candidate.address_city ?? null,
-            available_from: candidate.available_from ?? null,
+            summary: snapReport.summary ?? candidate.ai_summary ?? null,
+            function_group: snapReport.function_group ?? candidate.ai_function_group ?? null,
+            classification: snapReport.classification ?? candidate.ai_classification ?? null,
+            target_functions: stringArray(snapReport.target_functions).length ? stringArray(snapReport.target_functions) : stringArray(candidate.ai_target_functions),
+            interview_questions: stringArray(snapReport.interview_questions).length ? stringArray(snapReport.interview_questions) : stringArray(candidate.ai_interview_questions),
+            skills: stringArray(snapReport.skills).length ? stringArray(snapReport.skills) : stringArray(candidate.skills),
+            certifications: stringArray(snapReport.certifications).length ? stringArray(snapReport.certifications) : stringArray(candidate.certifications),
+            languages: stringArray(snapReport.languages).length ? stringArray(snapReport.languages) : stringArray(candidate.languages),
+            city: snapCandidate.address_city ?? candidate.address_city ?? null,
+            available_from: snapCandidate.available_from ?? candidate.available_from ?? null,
             available_until: candidate.available_until ?? null,
-            arrival_date: candidate.arrival_date ?? null,
-            availability_notes: candidate.availability_notes ?? null,
+            arrival_date: snapCandidate.arrival_date ?? candidate.arrival_date ?? null,
+            availability_notes: snapCandidate.availability_notes ?? candidate.availability_notes ?? null,
             most_recent_role: candidate.most_recent_role ?? null,
             most_recent_role_year: candidate.most_recent_role_year ?? null,
-            has_drivers_license: candidate.has_drivers_license === true,
+            has_drivers_license: snapCandidate.has_drivers_license ?? candidate.has_drivers_license === true,
           }
           : null,
         history,
         report: candidate
           ? {
-            summary: candidate.ai_summary ?? null,
-            strong_signals: stringArray(candidate.ai_positive_signals),
-            attention_points: stringArray(candidate.ai_risk_factors),
+            summary: snapReport.summary ?? candidate.ai_summary ?? null,
+            strong_signals: stringArray(snapReport.positive_signals).length ? stringArray(snapReport.positive_signals) : stringArray(candidate.ai_positive_signals),
+            attention_points: stringArray(snapReport.risk_factors).length ? stringArray(snapReport.risk_factors) : stringArray(candidate.ai_risk_factors),
           }
           : null,
         cv_url: cvUrl,
@@ -279,7 +292,11 @@ Deno.serve(async (req) => {
 
     const newStatus = STATUS_MAP[decision];
     const matchUpdate: Record<string, unknown> = { status: newStatus, status_changed_at: new Date().toISOString() };
-    if (decision === "op_gesprek" && typeof body.interview_date === "string") matchUpdate.interview_date = body.interview_date;
+    const proposedAt = typeof body.interview_proposed_at === "string" ? body.interview_proposed_at : body.interview_date;
+    if (decision === "op_gesprek" && typeof proposedAt === "string") {
+      matchUpdate.interview_proposed_at = proposedAt;
+      matchUpdate.interview_proposed_note = note;
+    }
     if (decision === "direct_starten" && typeof body.desired_start_date === "string") matchUpdate.desired_start_date = body.desired_start_date;
     await service.from("matches").update(matchUpdate).eq("id", tok.match_id);
 
@@ -299,13 +316,13 @@ Deno.serve(async (req) => {
     if (decision !== "afwijzen") {
       const candName = candidate ? `${candidate.first_name ?? ""} ${candidate.last_name ?? ""}`.trim() : "kandidaat";
       const isDirectStart = decision === "direct_starten";
-      const label = isDirectStart ? "wil direct starten" : "heeft een gesprek gepland";
+      const label = isDirectStart ? "wil direct starten" : "stelde een gesprek voor";
       await service.from("recruiter_tasks").insert({
         organization_id: orgId,
         assigned_to: vacancy?.created_by ?? null,
         title: isDirectStart
           ? `Klant keurde kandidaat goed — plaatsing voorbereiden (${candName})`
-          : `Klant plant gesprek met kandidaat (${candName})`,
+          : `Klant stelt gesprek voor met kandidaat (${candName})`,
         description: `De opdrachtgever ${label} voor "${vacancy?.title ?? ""}".${note ? ` Opmerking: ${note}` : ""}`,
         priority: "high",
         status: "open",

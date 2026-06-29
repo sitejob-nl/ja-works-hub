@@ -38,6 +38,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useModuleEnabled } from '@/hooks/useModuleEnabled';
+import { mergeCandidatePhoneFields } from '@/lib/phone';
 
 type ScreeningStatus = 'niet_gestart' | 'in_gesprek' | 'concept_opgeslagen' | 'afgerond' | 'afgekeurd';
 
@@ -333,6 +334,43 @@ const askedCount = (data: ScreeningData) =>
 
 const buildSnapshot = (data: ScreeningData, profile: ProfileDraft) => JSON.stringify({ data, profile });
 
+const uniqueStrings = (values: unknown[]): string[] => [
+  ...new Set(values.map((value) => typeof value === 'string' ? value.trim() : '').filter(Boolean)),
+];
+
+const aiLanguageLabel = (item: any): string => {
+  if (typeof item === 'string') return item.trim();
+  const taal = String(item?.taal ?? '').trim();
+  if (!taal) return '';
+  const niveau = item?.niveau && item.niveau !== 'onbekend' ? ` - ${item.niveau}` : '';
+  return `${taal}${niveau}`;
+};
+
+const getAiProfileSuggestions = (candidate: any): Pick<ProfileDraft, 'skills' | 'languages' | 'certifications'> => {
+  const analysis = candidate.ai_analysis as any;
+  const hardSkills = (analysis?.competenties?.hard_skills ?? []).map((item: any) =>
+    typeof item === 'string' ? item : item?.vaardigheid,
+  );
+  const softSkills = (analysis?.competenties?.soft_skills ?? []).map((item: any) =>
+    typeof item === 'string' ? item : item?.vaardigheid,
+  );
+  const certifications = (analysis?.competenties?.certificaten ?? []).map((item: any) =>
+    typeof item === 'string' ? item : item?.naam,
+  );
+  const languages = (analysis?.competenties?.talen ?? []).map(aiLanguageLabel);
+  return {
+    skills: uniqueStrings([...hardSkills, ...softSkills]),
+    languages: uniqueStrings(languages),
+    certifications: uniqueStrings(certifications),
+  };
+};
+
+const hasArrayDiff = (current: string[], suggested: string[]) => {
+  if (suggested.length === 0) return false;
+  const currentSet = new Set(current.map((v) => v.trim().toLowerCase()));
+  return suggested.some((value) => !currentSet.has(value.trim().toLowerCase()));
+};
+
 // Bouwt de tekst voor de "Screening voltooid"-notitie: resultaat + samenvatting,
 // gevolgd door alle vragen met hun antwoorden, plus de eindbeoordeling.
 const buildScreeningNoteContent = (data: ScreeningData): string => {
@@ -462,6 +500,12 @@ const CandidateScreeningTab = ({
   const riskFactors: string[] = candidate.ai_risk_factors ?? [];
   const positiveSignals: string[] = candidate.ai_positive_signals ?? [];
   const targetFunctions: string[] = candidate.ai_target_functions ?? [];
+  const aiProfileSuggestions = useMemo(() => getAiProfileSuggestions(candidate), [candidate]);
+  const aiProfileDiffs = useMemo(() => ([
+    { key: 'skills' as const, label: 'Vaardigheden', current: profileDraft.skills, suggested: aiProfileSuggestions.skills },
+    { key: 'certifications' as const, label: 'Certificaten', current: profileDraft.certifications, suggested: aiProfileSuggestions.certifications },
+    { key: 'languages' as const, label: 'Talen', current: profileDraft.languages, suggested: aiProfileSuggestions.languages },
+  ].filter((field) => hasArrayDiff(field.current, field.suggested))), [aiProfileSuggestions, profileDraft.certifications, profileDraft.languages, profileDraft.skills]);
   const dirty = buildSnapshot(data, profileDraft) !== lastSavedSnapshot;
   const statusMeta = STATUS_META[data.status] ?? STATUS_META.niet_gestart;
 
@@ -479,25 +523,28 @@ const CandidateScreeningTab = ({
     return () => window.removeEventListener('beforeunload', handler);
   }, [dirty]);
 
-  const profilePayload = useCallback((draft: ProfileDraft, availability: ScreeningData['availability']) => ({
-    phone: draft.phone.trim() || null,
-    phone_nl: draft.phone_nl.trim() || null,
-    email: draft.email.trim() || null,
-    date_of_birth: draft.date_of_birth || null,
-    nationality: draft.nationality.trim() || null,
-    address_street: draft.address_street.trim() || null,
-    address_postal: draft.address_postal.trim() || null,
-    address_city: draft.address_city.trim() || null,
-    has_drivers_license: draft.has_drivers_license,
-    drivers_license_expiry: draft.has_drivers_license && draft.drivers_license_expiry ? draft.drivers_license_expiry : null,
-    skills: draft.skills,
-    languages: draft.languages,
-    certifications: draft.certifications,
-    available_from: availability.available_from || null,
-    available_until: availability.available_until || null,
-    arrival_date: availability.arrival_date || null,
-    availability_notes: buildAvailabilityNotes(availability, draft.availability_notes) || null,
-  }), []);
+  const profilePayload = useCallback((draft: ProfileDraft, availability: ScreeningData['availability']) => {
+    const phones = mergeCandidatePhoneFields({ phone: draft.phone, phone_nl: draft.phone_nl });
+    return {
+      phone: phones.phone || null,
+      phone_nl: phones.phone_nl || null,
+      email: draft.email.trim() || null,
+      date_of_birth: draft.date_of_birth || null,
+      nationality: draft.nationality.trim() || null,
+      address_street: draft.address_street.trim() || null,
+      address_postal: draft.address_postal.trim() || null,
+      address_city: draft.address_city.trim() || null,
+      has_drivers_license: draft.has_drivers_license,
+      drivers_license_expiry: draft.has_drivers_license && draft.drivers_license_expiry ? draft.drivers_license_expiry : null,
+      skills: draft.skills,
+      languages: draft.languages,
+      certifications: draft.certifications,
+      available_from: availability.available_from || null,
+      available_until: availability.available_until || null,
+      arrival_date: availability.arrival_date || null,
+      availability_notes: buildAvailabilityNotes(availability, draft.availability_notes) || null,
+    };
+  }, []);
 
   const persistDraft = useCallback(async ({
     nextData,
@@ -703,6 +750,11 @@ const CandidateScreeningTab = ({
     await persistDraft({ complete: true, manual: true });
   };
 
+  const takeAiSuggestion = (key: 'skills' | 'languages' | 'certifications', values: string[]) => {
+    setProfileDraft((current) => ({ ...current, [key]: values }));
+    toast.success('AI-suggestie overgenomen in het concept');
+  };
+
   // Afronden + de AI opnieuw laten analyseren mét de screening erin (NS1, meeting 17-06):
   // de recruiter-screening weegt zwaarder dan het CV; het profiel wordt herzien.
   const handleCompleteAndReanalyze = async () => {
@@ -742,6 +794,9 @@ const CandidateScreeningTab = ({
       };
 
       await startAnalysis();
+      await qc.invalidateQueries({ queryKey: ['candidate', candidate.id] });
+      await qc.invalidateQueries({ queryKey: ['candidates'] });
+      onUpdate();
       toast.success('Screening opgeslagen — AI heranalyseert met de screening (1-3 min)');
     } catch (e: any) {
       toast.error(e?.message || 'Heranalyse kon niet starten');
@@ -982,6 +1037,42 @@ const CandidateScreeningTab = ({
                   </div>
                 </div>
               )}
+            </Card>
+          )}
+
+          {aiProfileDiffs.length > 0 && (
+            <Card className="p-4 space-y-3 border-l-4 border-l-amber-500">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-amber-600" />
+                <h3 className="font-semibold text-sm">AI-feiten om te controleren</h3>
+              </div>
+              <div className="space-y-3">
+                {aiProfileDiffs.map((field) => (
+                  <div key={field.key} className="rounded-md border bg-background p-3 space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <Label>{field.label}</Label>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => takeAiSuggestion(field.key, field.suggested)}
+                      >
+                        Overnemen
+                      </Button>
+                    </div>
+                    <div className="grid gap-2 md:grid-cols-2 text-sm">
+                      <div>
+                        <p className="text-xs text-muted-foreground mb-1">Profiel</p>
+                        <p>{field.current.length > 0 ? field.current.join(', ') : 'Nog leeg'}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground mb-1">AI</p>
+                        <p>{field.suggested.join(', ')}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </Card>
           )}
 

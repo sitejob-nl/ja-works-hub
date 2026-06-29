@@ -72,7 +72,7 @@ test.describe("Demo readiness QA", () => {
     });
 
     await page.goto("/kandidaten", { waitUntil: "domcontentloaded" });
-    await page.getByPlaceholder(/Zoek op naam, stad of email/i).fill("Milan");
+    await page.getByPlaceholder(/Zoek op naam, stad, e-mail of telefoon|Zoek op naam, stad of e-?mail/i).fill("Milan");
     await expectText(page, /Milan\s+Kowalski/i, "demo kandidaat zichtbaar");
 
     await page.goto("/vacatures", { waitUntil: "domcontentloaded" });

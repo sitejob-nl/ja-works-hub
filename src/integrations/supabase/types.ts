@@ -656,6 +656,9 @@ export type Database = {
           id: string
           last_accessed_at: string | null
           organization_id: string
+          sent_at: string | null
+          sent_by: string | null
+          sent_channel: string | null
           token: string
           used_at: string | null
         }
@@ -666,6 +669,9 @@ export type Database = {
           id?: string
           last_accessed_at?: string | null
           organization_id: string
+          sent_at?: string | null
+          sent_by?: string | null
+          sent_channel?: string | null
           token?: string
           used_at?: string | null
         }
@@ -676,6 +682,9 @@ export type Database = {
           id?: string
           last_accessed_at?: string | null
           organization_id?: string
+          sent_at?: string | null
+          sent_by?: string | null
+          sent_channel?: string | null
           token?: string
           used_at?: string | null
         }
@@ -692,6 +701,13 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "candidate_profile_tokens_sent_by_fkey"
+            columns: ["sent_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -874,6 +890,10 @@ export type Database = {
           employee_status: string | null
           external_id: string | null
           first_name: string
+          foreign_address_city: string | null
+          foreign_address_country: string | null
+          foreign_address_postal: string | null
+          foreign_address_street: string | null
           gender: string | null
           has_drivers_license: boolean | null
           has_dutch_address: boolean
@@ -960,6 +980,10 @@ export type Database = {
           employee_status?: string | null
           external_id?: string | null
           first_name: string
+          foreign_address_city?: string | null
+          foreign_address_country?: string | null
+          foreign_address_postal?: string | null
+          foreign_address_street?: string | null
           gender?: string | null
           has_drivers_license?: boolean | null
           has_dutch_address?: boolean
@@ -1046,6 +1070,10 @@ export type Database = {
           employee_status?: string | null
           external_id?: string | null
           first_name?: string
+          foreign_address_city?: string | null
+          foreign_address_country?: string | null
+          foreign_address_postal?: string | null
+          foreign_address_street?: string | null
           gender?: string | null
           has_drivers_license?: boolean | null
           has_dutch_address?: boolean
@@ -1495,6 +1523,7 @@ export type Database = {
           email_message_id: string | null
           email_to: string[] | null
           id: string
+          match_id: string | null
           media_id: string | null
           message_type: string | null
           organization_id: string
@@ -1525,6 +1554,7 @@ export type Database = {
           email_message_id?: string | null
           email_to?: string[] | null
           id?: string
+          match_id?: string | null
           media_id?: string | null
           message_type?: string | null
           organization_id: string
@@ -1555,6 +1585,7 @@ export type Database = {
           email_message_id?: string | null
           email_to?: string[] | null
           id?: string
+          match_id?: string | null
           media_id?: string | null
           message_type?: string | null
           organization_id?: string
@@ -1588,6 +1619,13 @@ export type Database = {
             columns: ["company_id"]
             isOneToOne: false
             referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "communications_match_id_fkey"
+            columns: ["match_id"]
+            isOneToOne: false
+            referencedRelation: "matches"
             referencedColumns: ["id"]
           },
           {
@@ -5188,6 +5226,7 @@ export type Database = {
       match_proposal_tokens: {
         Row: {
           contact_email: string | null
+          content_snapshot: Json
           created_at: string | null
           expires_at: string
           id: string
@@ -5199,6 +5238,7 @@ export type Database = {
         }
         Insert: {
           contact_email?: string | null
+          content_snapshot?: Json
           created_at?: string | null
           expires_at?: string
           id?: string
@@ -5210,6 +5250,7 @@ export type Database = {
         }
         Update: {
           contact_email?: string | null
+          content_snapshot?: Json
           created_at?: string | null
           expires_at?: string
           id?: string
@@ -5338,7 +5379,13 @@ export type Database = {
           distance_km: number | null
           duration_min: number | null
           id: string
+          interview_confirmed_at: string | null
+          interview_confirmed_by: string | null
           interview_date: string | null
+          interview_location: string | null
+          interview_proposed_at: string | null
+          interview_proposed_note: string | null
+          interview_type: string | null
           match_breakdown: Json | null
           match_reasoning: string | null
           match_score: number | null
@@ -5361,7 +5408,13 @@ export type Database = {
           distance_km?: number | null
           duration_min?: number | null
           id?: string
+          interview_confirmed_at?: string | null
+          interview_confirmed_by?: string | null
           interview_date?: string | null
+          interview_location?: string | null
+          interview_proposed_at?: string | null
+          interview_proposed_note?: string | null
+          interview_type?: string | null
           match_breakdown?: Json | null
           match_reasoning?: string | null
           match_score?: number | null
@@ -5384,7 +5437,13 @@ export type Database = {
           distance_km?: number | null
           duration_min?: number | null
           id?: string
+          interview_confirmed_at?: string | null
+          interview_confirmed_by?: string | null
           interview_date?: string | null
+          interview_location?: string | null
+          interview_proposed_at?: string | null
+          interview_proposed_note?: string | null
+          interview_type?: string | null
           match_breakdown?: Json | null
           match_reasoning?: string | null
           match_score?: number | null
@@ -5406,6 +5465,13 @@ export type Database = {
             columns: ["candidate_id"]
             isOneToOne: false
             referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "matches_interview_confirmed_by_fkey"
+            columns: ["interview_confirmed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
@@ -9583,6 +9649,10 @@ export type Database = {
         Args: { new_plan_id: string; org_uuid: string }
         Returns: undefined
       }
+      seed_default_termination_reasons_for_org: {
+        Args: { p_org_id: string }
+        Returns: undefined
+      }
       sync_unit_status_from_assignments: {
         Args: { p_unit_id: string }
         Returns: undefined
@@ -9673,6 +9743,7 @@ export type Database = {
         | "afgewezen"
         | "geplaatst"
         | "voorgesteld_bij_klant"
+        | "afspraak_voorgesteld"
         | "afspraak_op_kantoor"
       payroller_type: "flexpedia" | "brioworks" | "bromida" | "retiva"
       placement_status:
@@ -9920,6 +9991,7 @@ export const Constants = {
         "afgewezen",
         "geplaatst",
         "voorgesteld_bij_klant",
+        "afspraak_voorgesteld",
         "afspraak_op_kantoor",
       ],
       payroller_type: ["flexpedia", "brioworks", "bromida", "retiva"],

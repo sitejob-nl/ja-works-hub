@@ -1,0 +1,312 @@
+import { useEffect, useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { CalendarCheck, Mail, MessageSquare, Phone, Star, UserRound } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
+import MatchInspectorDialog from '@/components/matches/MatchInspectorDialog';
+import { formatDate } from '@/lib/format';
+import { getMatchStatusMeta } from '@/lib/match-status';
+import type { MatchBreakdown } from '@/lib/matching';
+import { toast } from 'sonner';
+
+type MatchDetailDialogProps = {
+  open: boolean;
+  match: any | null;
+  onOpenChange: (open: boolean) => void;
+  onChanged?: () => void;
+  canConfirmInterview?: boolean;
+};
+
+const toLocalInputValue = (value?: string | null) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const offset = date.getTimezoneOffset();
+  const local = new Date(date.getTime() - offset * 60_000);
+  return local.toISOString().slice(0, 16);
+};
+
+const formatDateTime = (value?: string | null) => value ? new Date(value).toLocaleString('nl-NL', {
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+}) : '—';
+
+const fullName = (candidate: any) =>
+  [candidate?.first_name, candidate?.last_name].filter(Boolean).join(' ') || 'Kandidaat onbekend';
+
+const MatchDetailDialog = ({ open, match, onOpenChange, onChanged, canConfirmInterview = true }: MatchDetailDialogProps) => {
+  const qc = useQueryClient();
+  const [whyOpen, setWhyOpen] = useState(false);
+  const [confirmedAt, setConfirmedAt] = useState('');
+  const [location, setLocation] = useState('');
+  const [interviewType, setInterviewType] = useState('op_kantoor');
+  const [note, setNote] = useState('');
+  const [notifyCandidate, setNotifyCandidate] = useState(true);
+  const [notifyCompany, setNotifyCompany] = useState(true);
+
+  useEffect(() => {
+    if (!open || !match) return;
+    setConfirmedAt(toLocalInputValue(match.interview_confirmed_at ?? match.interview_proposed_at ?? match.interview_date));
+    setLocation(match.interview_location ?? '');
+    setInterviewType(match.interview_type ?? 'op_kantoor');
+    setNote(match.interview_proposed_note ?? '');
+    setNotifyCandidate(true);
+    setNotifyCompany(true);
+  }, [match, open]);
+
+  const { data: events = [] } = useQuery({
+    queryKey: ['match-feedback-events', match?.id],
+    enabled: open && !!match?.id,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('match_feedback_events')
+        .select('id, from_status, to_status, notes, created_at, match_feedback_reasons(reason)')
+        .eq('match_id', match.id)
+        .order('created_at', { ascending: false })
+        .limit(12);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const { data: communications = [] } = useQuery({
+    queryKey: ['match-communications', match?.id],
+    enabled: open && !!match?.id,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('communications')
+        .select('id, channel, direction, message_type, subject, email_to, sent_at, created_at')
+        .eq('match_id', match.id)
+        .order('sent_at', { ascending: false })
+        .limit(12);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const { data: tasks = [] } = useQuery({
+    queryKey: ['match-tasks', match?.id],
+    enabled: open && !!match?.id,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('recruiter_tasks')
+        .select('id, title, status, priority, due_date, created_at')
+        .eq('related_entity_type', 'match')
+        .eq('related_entity_id', match.id)
+        .order('created_at', { ascending: false })
+        .limit(10);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const confirmMutation = useMutation({
+    mutationFn: async () => {
+      if (!canConfirmInterview) throw new Error('Je rol mag afspraken niet definitief maken');
+      if (!match?.id) throw new Error('Geen match geselecteerd');
+      if (!confirmedAt) throw new Error('Kies een definitieve datum en tijd');
+      if (!location.trim()) throw new Error('Vul locatie/type in');
+      const { data, error } = await supabase.functions.invoke('confirm-match-interview', {
+        body: {
+          match_id: match.id,
+          interview_confirmed_at: new Date(confirmedAt).toISOString(),
+          interview_location: location.trim(),
+          interview_type: interviewType,
+          note: note || undefined,
+          notify_candidate: notifyCandidate,
+          notify_company: notifyCompany,
+        },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      return data;
+    },
+    onSuccess: () => {
+      toast.success('Afspraak definitief gemaakt');
+      qc.invalidateQueries({ queryKey: ['match-communications', match?.id] });
+      qc.invalidateQueries({ queryKey: ['match-feedback-events', match?.id] });
+      onChanged?.();
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const candidate = match?.candidates;
+  const vacancy = match?.vacancies;
+  const company = vacancy?.companies;
+  const statusMeta = getMatchStatusMeta(match?.status);
+  const score = (match?.match_breakdown as MatchBreakdown | null)?.matchPercent ?? match?.match_score;
+  const contactLines = useMemo(() => [
+    candidate?.phone_nl || candidate?.phone ? { icon: Phone, value: candidate.phone_nl || candidate.phone } : null,
+    candidate?.email ? { icon: Mail, value: candidate.email } : null,
+  ].filter(Boolean) as Array<{ icon: typeof Phone; value: string }>, [candidate]);
+
+  if (!match) return null;
+
+  return (
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex flex-wrap items-center gap-2">
+              Matchdetail
+              <Badge className={statusMeta.badgeClass}>{statusMeta.label}</Badge>
+              {typeof score === 'number' && <Badge variant="outline" className="gap-1"><Star className="h-3 w-3" /> {Math.round(score)}%</Badge>}
+            </DialogTitle>
+            <DialogDescription>
+              {fullName(candidate)} voor {vacancy?.title ?? 'vacature'}{company?.name ? ` bij ${company.name}` : ''}.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
+            <div className="space-y-4">
+              <section className="rounded-md border p-4">
+                <div className="mb-3 flex items-center gap-2 font-medium"><UserRound className="h-4 w-4" /> Kandidaat & contact</div>
+                <div className="space-y-1 text-sm">
+                  <div className="font-medium">{fullName(candidate)}</div>
+                  <div className="text-muted-foreground">{candidate?.address_city || 'Regio onbekend'}</div>
+                  {contactLines.map(({ icon: Icon, value }) => (
+                    <div key={value} className="flex items-center gap-2 text-muted-foreground"><Icon className="h-3.5 w-3.5" /> {value}</div>
+                  ))}
+                </div>
+              </section>
+
+              <section className="rounded-md border p-4">
+                <div className="mb-3 flex items-center gap-2 font-medium"><MessageSquare className="h-4 w-4" /> Statuslog</div>
+                <div className="space-y-2">
+                  {events.length > 0 ? events.map((event: any) => (
+                    <div key={event.id} className="rounded-md bg-muted/40 p-2 text-sm">
+                      <div className="font-medium">{getMatchStatusMeta(event.from_status).label} {'->'} {getMatchStatusMeta(event.to_status).label}</div>
+                      <div className="text-xs text-muted-foreground">{formatDateTime(event.created_at)}</div>
+                      {event.match_feedback_reasons?.reason && <div className="mt-1 text-xs">{event.match_feedback_reasons.reason}</div>}
+                      {event.notes && <div className="mt-1 whitespace-pre-line text-xs text-muted-foreground">{event.notes}</div>}
+                    </div>
+                  )) : <p className="text-sm text-muted-foreground">Nog geen statuslog.</p>}
+                </div>
+              </section>
+
+              <section className="rounded-md border p-4">
+                <div className="mb-3 flex items-center gap-2 font-medium"><Mail className="h-4 w-4" /> Communicatie</div>
+                <div className="space-y-2">
+                  {communications.length > 0 ? communications.map((item: any) => (
+                    <div key={item.id} className="rounded-md bg-muted/40 p-2 text-sm">
+                      <div className="font-medium">{item.subject || '(zonder onderwerp)'}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {item.channel} · {item.message_type || item.direction} · {formatDateTime(item.sent_at ?? item.created_at)}
+                      </div>
+                    </div>
+                  )) : <p className="text-sm text-muted-foreground">Nog geen matchcommunicatie.</p>}
+                </div>
+              </section>
+            </div>
+
+            <div className="space-y-4">
+              <section className="rounded-md border p-4">
+                <div className="mb-3 flex items-center gap-2 font-medium"><CalendarCheck className="h-4 w-4" /> Afspraak</div>
+                {!canConfirmInterview && (
+                  <Alert className="mb-3">
+                    <CalendarCheck className="h-4 w-4" />
+                    <AlertTitle>Alleen lezen</AlertTitle>
+                    <AlertDescription>Je rol mag afspraakgegevens bekijken, maar niet definitief maken of afspraakmails sturen.</AlertDescription>
+                  </Alert>
+                )}
+                {match.interview_proposed_at && (
+                  <p className="mb-3 rounded-md bg-amber-50 p-2 text-sm text-amber-800">
+                    Voorgesteld: {formatDateTime(match.interview_proposed_at)}
+                    {match.interview_proposed_note ? ` - ${match.interview_proposed_note}` : ''}
+                  </p>
+                )}
+                {match.interview_confirmed_at && (
+                  <p className="mb-3 rounded-md bg-emerald-50 p-2 text-sm text-emerald-800">
+                    Definitief: {formatDateTime(match.interview_confirmed_at)}
+                  </p>
+                )}
+                <div className="space-y-3">
+                  <div>
+                    <Label>Definitieve datum & tijd</Label>
+                    <Input type="datetime-local" step={900} value={confirmedAt} onChange={(event) => setConfirmedAt(event.target.value)} disabled={!canConfirmInterview} />
+                  </div>
+                  <div>
+                    <Label>Locatie/type</Label>
+                    <Input value={location} onChange={(event) => setLocation(event.target.value)} placeholder="Kantoor Tilburg / Teams / telefoon" disabled={!canConfirmInterview} />
+                  </div>
+                  <div>
+                    <Label>Afspraaktype</Label>
+                    <Select value={interviewType} onValueChange={setInterviewType} disabled={!canConfirmInterview}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="op_kantoor">Op kantoor</SelectItem>
+                        <SelectItem value="facetime">FaceTime/video</SelectItem>
+                        <SelectItem value="telefonisch">Telefonisch</SelectItem>
+                        <SelectItem value="anders">Anders</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Notitie</Label>
+                    <Textarea rows={3} value={note} onChange={(event) => setNote(event.target.value)} disabled={!canConfirmInterview} />
+                  </div>
+                  <label className="flex items-center gap-2 text-sm">
+                    <Checkbox checked={notifyCandidate} onCheckedChange={(value) => setNotifyCandidate(value === true)} disabled={!canConfirmInterview} />
+                    Mail kandidaat met ICS
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <Checkbox checked={notifyCompany} onCheckedChange={(value) => setNotifyCompany(value === true)} disabled={!canConfirmInterview} />
+                    Mail opdrachtgever met ICS
+                  </label>
+                  <Button className="w-full" onClick={() => confirmMutation.mutate()} disabled={!canConfirmInterview || confirmMutation.isPending}>
+                    {confirmMutation.isPending ? 'Bevestigen...' : 'Afspraak definitief maken'}
+                  </Button>
+                </div>
+              </section>
+
+              <section className="rounded-md border p-4">
+                <div className="mb-3 font-medium">Taken</div>
+                <div className="space-y-2">
+                  {tasks.length > 0 ? tasks.map((task: any) => (
+                    <div key={task.id} className="rounded-md bg-muted/40 p-2 text-sm">
+                      <div className="font-medium">{task.title}</div>
+                      <div className="text-xs text-muted-foreground">{task.status} · {task.priority}{task.due_date ? ` · ${formatDate(task.due_date)}` : ''}</div>
+                    </div>
+                  )) : <p className="text-sm text-muted-foreground">Geen open taken gevonden.</p>}
+                </div>
+              </section>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setWhyOpen(true)}>Score-uitleg</Button>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>Sluiten</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <MatchInspectorDialog
+        open={whyOpen}
+        onOpenChange={setWhyOpen}
+        title="Score-uitleg"
+        description={`${fullName(candidate)} - ${vacancy?.title ?? 'vacature'}`}
+        breakdown={match.match_breakdown ?? null}
+        candidateQuality={match.match_breakdown?.candidateQuality ?? null}
+        candidate={candidate}
+        vacancyContext={[
+          { label: 'Vacature', value: vacancy?.title },
+          { label: 'Opdrachtgever', value: company?.name },
+          { label: 'Status', value: statusMeta.label },
+        ]}
+      />
+    </>
+  );
+};
+
+export default MatchDetailDialog;

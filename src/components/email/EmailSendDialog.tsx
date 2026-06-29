@@ -26,6 +26,7 @@ interface EmailSendDialogProps {
   extraVariables?: Record<string, string>;
   initialSubject?: string;
   initialBodyHtml?: string;
+  onSent?: () => void | Promise<void>;
 }
 
 function buildVariableMap(candidate: Record<string, any> | undefined, orgName: string, extra?: Record<string, string>): Record<string, string> {
@@ -79,7 +80,7 @@ function plaintextEmailToHtml(text: string): string {
 }
 
 const EmailSendDialog = ({
-  open, onOpenChange, candidateId, candidateEmail, candidateData, companyId, companyContactId, templateCategory, extraVariables, initialSubject, initialBodyHtml,
+  open, onOpenChange, candidateId, candidateEmail, candidateData, companyId, companyContactId, templateCategory, extraVariables, initialSubject, initialBodyHtml, onSent,
 }: EmailSendDialogProps) => {
   const callOutlook = useOutlookInvoke();
   const { profile } = useAuth();
@@ -173,7 +174,8 @@ const EmailSendDialog = ({
         company_contact_id: companyContactId,
       });
     },
-    onSuccess: () => {
+    onSuccess: async () => {
+      await onSent?.();
       toast.success('E-mail verzonden');
       qc.invalidateQueries({ queryKey: ['outlook-emails'] });
       onOpenChange(false);

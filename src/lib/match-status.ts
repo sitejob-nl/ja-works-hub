@@ -1,8 +1,9 @@
 export const MATCH_STATUS_STEPS = [
   { key: 'nieuwe_match', label: 'Nieuwe match', color: 'bg-amber-500', badgeClass: 'bg-amber-100 text-amber-800 border-0' },
   { key: 'gescreend', label: 'Gescreend', color: 'bg-cyan-500', badgeClass: 'bg-cyan-100 text-cyan-800 border-0' },
-  { key: 'voorgesteld', label: 'Voorgesteld', color: 'bg-slate-400', badgeClass: 'bg-slate-100 text-slate-700 border-0' },
-  { key: 'voorgesteld_bij_klant', label: 'Bij klant', color: 'bg-indigo-500', badgeClass: 'bg-indigo-100 text-indigo-700 border-0' },
+  { key: 'voorgesteld', label: 'Voorstel klaar', color: 'bg-slate-400', badgeClass: 'bg-slate-100 text-slate-700 border-0' },
+  { key: 'voorgesteld_bij_klant', label: 'Voorgesteld', color: 'bg-indigo-500', badgeClass: 'bg-indigo-100 text-indigo-700 border-0' },
+  { key: 'afspraak_voorgesteld', label: 'Afspraak voorgesteld', color: 'bg-violet-500', badgeClass: 'bg-violet-100 text-violet-700 border-0' },
   { key: 'afspraak_op_kantoor', label: 'Gesprek gepland', color: 'bg-blue-500', badgeClass: 'bg-blue-100 text-blue-700 border-0' },
   { key: 'geaccepteerd', label: 'Geaccepteerd', color: 'bg-emerald-500', badgeClass: 'bg-emerald-100 text-emerald-700 border-0' },
   { key: 'afgewezen', label: 'Afgewezen', color: 'bg-red-500', badgeClass: 'bg-red-100 text-red-700 border-0' },
@@ -26,7 +27,8 @@ export const NEXT_MATCH_STATUS: Record<string, string> = {
   nieuwe_match: 'gescreend',
   gescreend: 'voorgesteld',
   voorgesteld: 'voorgesteld_bij_klant',
-  voorgesteld_bij_klant: 'afspraak_op_kantoor',
+  voorgesteld_bij_klant: 'afspraak_voorgesteld',
+  afspraak_voorgesteld: 'afspraak_op_kantoor',
   afspraak_op_kantoor: 'geaccepteerd',
   // dormant: bestaande 'in_gesprek'-rijen kunnen nog doorschuiven (verdwenen uit de flow).
   in_gesprek: 'geaccepteerd',

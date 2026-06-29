@@ -47,6 +47,7 @@ interface ConceptRow {
   candidateId?: string | null;
   companyId?: string | null;
   companyContactId?: string | null;
+  matchId?: string | null;
   placementId?: string | null;
   sentBy?: string | null;
 }
@@ -72,6 +73,7 @@ export async function logConceptCommunication(admin: Admin, row: ConceptRow): Pr
       candidate_id: row.candidateId ?? null,
       company_id: row.companyId ?? null,
       company_contact_id: row.companyContactId ?? null,
+      match_id: row.matchId ?? null,
       placement_id: row.placementId ?? null,
       channel: row.channel,
       direction: "outbound",
