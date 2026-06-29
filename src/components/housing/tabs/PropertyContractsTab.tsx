@@ -108,8 +108,8 @@ export default function PropertyContractsTab({ property }: { property: any }) {
             </Select>
           </div>
           <div className="space-y-1.5 md:col-span-2">
-            <Label>Bestand</Label>
-            <Input type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+            <Label>Bestand *</Label>
+            <Input type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" required onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
           </div>
           <div className="space-y-1.5">
             <Label>Begindatum</Label>

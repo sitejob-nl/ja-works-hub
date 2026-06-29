@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
 import AddressAutocomplete from '@/components/shared/AddressAutocomplete';
 import { resolveAddressCoordinates } from '@/lib/pdok';
+import { noFileDropInputProps } from '@/lib/file-input';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -342,7 +343,7 @@ const Onboarding = () => {
               <span className="text-sm text-muted-foreground">
                 {files[field.id] ? files[field.id].name : 'Bestand kiezen...'}
               </span>
-              <input type="file" accept="image/*,.pdf" className="hidden" onChange={e => {
+              <input type="file" accept="image/*,.pdf" className="hidden" {...noFileDropInputProps} onChange={e => {
                 const file = e.target.files?.[0];
                 if (file) {
                   if (file.size > 10 * 1024 * 1024) {

@@ -26,6 +26,7 @@ import SkillMultiSelect from '@/components/shared/SkillMultiSelect';
 import HousingRoomPicker, { type HousingSelection } from '@/components/housing/HousingRoomPicker';
 import { COUNTRIES, NATIONALITIES, LANGUAGES, normalizeNationality, normalizeLanguages } from '@/lib/candidate-options';
 import { resolveEmployeeId } from '@/lib/assignments';
+import { noFileDropInputProps } from '@/lib/file-input';
 
 // Leest de JSON-foutmelding uit een mislukte supabase.functions.invoke (bv. 402-saldo).
 // FunctionsHttpError verbergt de body achter context (een Response).
@@ -588,6 +589,7 @@ const CandidateNew = () => {
             type="file"
             accept={CV_ACCEPT}
             className="hidden"
+            {...noFileDropInputProps}
             onChange={handleCvUpload}
           />
           <Button

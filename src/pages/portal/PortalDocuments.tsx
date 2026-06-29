@@ -80,7 +80,8 @@ const PortalDocuments = () => {
 
   const uploadMutation = useMutation({
     mutationFn: async () => {
-      if (!file || !candidateId || !orgId) throw new Error('Vul alle velden in');
+      if (!file) throw new Error('Kies eerst een bestand');
+      if (!candidateId || !orgId) throw new Error('Kandidaatgegevens ontbreken');
 
       let filePath: string | null = null;
       const ext = file.name.split('.').pop();
@@ -150,8 +151,8 @@ const PortalDocuments = () => {
                 <Input value={docName} onChange={(e) => setDocName(e.target.value)} placeholder="Bijv. Paspoort" />
               </div>
               <div className="space-y-2">
-                <Label>Bestand</Label>
-                <Input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+                <Label>Bestand *</Label>
+                <Input type="file" required onChange={(e) => setFile(e.target.files?.[0] || null)} />
               </div>
               <div className="space-y-2">
                 <Label>Vervaldatum (optioneel)</Label>

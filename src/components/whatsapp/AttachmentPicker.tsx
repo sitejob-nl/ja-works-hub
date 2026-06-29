@@ -3,6 +3,7 @@ import { useRef } from 'react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { Paperclip, Image, Video, FileText, Mic } from 'lucide-react';
+import { noFileDropInputProps } from '@/lib/file-input';
 
 interface AttachmentPickerProps {
   onFileSelect: (file: File, type: 'image' | 'video' | 'audio' | 'document') => void;
@@ -46,10 +47,10 @@ export function AttachmentPicker({ onFileSelect, disabled }: AttachmentPickerPro
           </Button>
         </div>
 
-        <input ref={imageRef} type="file" accept="image/*" className="hidden" onChange={handleFile('image')} />
-        <input ref={videoRef} type="file" accept="video/*" className="hidden" onChange={handleFile('video')} />
-        <input ref={audioRef} type="file" accept="audio/*" className="hidden" onChange={handleFile('audio')} />
-        <input ref={docRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt" className="hidden" onChange={handleFile('document')} />
+        <input ref={imageRef} type="file" accept="image/*" className="hidden" {...noFileDropInputProps} onChange={handleFile('image')} />
+        <input ref={videoRef} type="file" accept="video/*" className="hidden" {...noFileDropInputProps} onChange={handleFile('video')} />
+        <input ref={audioRef} type="file" accept="audio/*" className="hidden" {...noFileDropInputProps} onChange={handleFile('audio')} />
+        <input ref={docRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt" className="hidden" {...noFileDropInputProps} onChange={handleFile('document')} />
       </PopoverContent>
     </Popover>
   );

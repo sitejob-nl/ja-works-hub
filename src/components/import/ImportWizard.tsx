@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
 import { logAudit } from '@/lib/audit';
+import { noFileDropInputProps } from '@/lib/file-input';
 
 type TargetTable = 'candidates' | 'companies';
 
@@ -268,7 +269,7 @@ const ImportWizard = ({ open, onOpenChange, target, preset }: Props) => {
             <Upload className="h-10 w-10 text-muted-foreground mb-4" />
             <p className="text-sm text-muted-foreground mb-4">Upload een CSV-bestand met {targetLabel}</p>
             <label className="cursor-pointer">
-              <input type="file" accept=".csv,.txt" onChange={handleFile} className="hidden" />
+              <input type="file" accept=".csv,.txt" {...noFileDropInputProps} onChange={handleFile} className="hidden" />
               <Button variant="outline" asChild><span>Bestand kiezen</span></Button>
             </label>
           </div>

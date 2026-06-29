@@ -15,6 +15,7 @@ import { resolveAddressCoordinates } from '@/lib/pdok';
 import NationalitySelect from '@/components/shared/NationalitySelect';
 import LanguageMultiSelect from '@/components/shared/LanguageMultiSelect';
 import { normalizeNationality, normalizeLanguages } from '@/lib/candidate-options';
+import { noFileDropInputProps } from '@/lib/file-input';
 
 type PageState = 'loading' | 'invalid' | 'expired' | 'used' | 'form' | 'success';
 
@@ -456,6 +457,7 @@ const CandidateProfile = () => {
                 accept="image/*"
                 capture="user"
                 className="hidden"
+                {...noFileDropInputProps}
                 onChange={handlePhotoChange}
               />
             </div>
@@ -480,6 +482,7 @@ const CandidateProfile = () => {
               type="file"
               accept=".pdf,.doc,.docx,image/*"
               className="hidden"
+              {...noFileDropInputProps}
               onChange={(e) => setCvFile(e.target.files?.[0] ?? null)}
             />
           </div>
