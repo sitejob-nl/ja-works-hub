@@ -67,6 +67,9 @@ verify_jwt = false
 [functions.exact-api]
 verify_jwt = false
 
+[functions.exact-list-glaccounts]
+verify_jwt = false
+
 [functions.exact-sync-invoice]
 verify_jwt = false
 
