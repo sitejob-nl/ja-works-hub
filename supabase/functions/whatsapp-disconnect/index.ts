@@ -36,20 +36,17 @@ Deno.serve(async (req) => {
     });
     if (decryptError || !webhookSecret) return jsonError("Webhook secret kan niet worden gelezen", 500);
 
-    const connectApiKey = Deno.env.get("CONNECT_API_KEY");
-    if (!connectApiKey) return jsonError("CONNECT_API_KEY not configured", 500);
-
     const response = await fetch(CONNECT_DISCONNECT_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-API-Key": connectApiKey,
-        "Authorization": `Bearer ${connectApiKey}`,
+        "X-Webhook-Secret": webhookSecret,
       },
       body: JSON.stringify({
         tenant_id: config.tenant_id,
-        webhook_secret: webhookSecret,
         integration: "whatsapp",
+        secret: webhookSecret,
+        webhook_secret: webhookSecret,
       }),
     });
 

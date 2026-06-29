@@ -42,8 +42,9 @@ Deno.serve(async (req) => {
       .eq("organization_id", orgId)
       .maybeSingle();
 
-    // If already registered, return setup URL (idempotent)
-    if (existing?.tenant_id) {
+    // If already connected, return setup URL. Inactive legacy rows are
+    // re-registered below so they get the current per-org webhook URL.
+    if (existing?.tenant_id && existing.is_active && existing.phone_number_id) {
       return jsonOk({
         tenant_id: existing.tenant_id,
         setup_url: `${SETUP_BASE_URL}?tenant_id=${existing.tenant_id}`,
@@ -59,7 +60,7 @@ Deno.serve(async (req) => {
       .eq("id", orgId)
       .single();
 
-    const webhookUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/whatsapp-webhook`;
+    const webhookUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/whatsapp-webhook?organization_id=${encodeURIComponent(orgId)}`;
     const connectApiKey = Deno.env.get("CONNECT_API_KEY");
     if (!connectApiKey) {
       return jsonError("CONNECT_API_KEY not configured", 500);
@@ -109,7 +110,16 @@ Deno.serve(async (req) => {
     const { error: upsertError } = await serviceClient
       .from("whatsapp_config")
       .upsert(
-        { organization_id: orgId, tenant_id, webhook_secret: encryptedSecret, is_active: false },
+        {
+          organization_id: orgId,
+          tenant_id,
+          webhook_secret: encryptedSecret,
+          phone_number_id: null,
+          access_token: null,
+          display_phone: null,
+          waba_id: null,
+          is_active: false,
+        },
         { onConflict: "organization_id" }
       );
 

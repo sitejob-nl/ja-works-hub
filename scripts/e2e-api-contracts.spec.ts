@@ -26,6 +26,7 @@ const EDGE_FUNCTIONS = [
   "outlook-send-mail",
   "outlook-calendar",
   "exact-api",
+  "exact-disconnect",
   "exact-sync-account",
   "exact-sync-invoice",
   "email-campaign-processor",
