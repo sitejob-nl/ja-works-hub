@@ -6,8 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Brain, Wallet, Cloud, Server, Save, RotateCcw } from 'lucide-react';
+import { Brain, Wallet, Save, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 
 const formatEuro = (cents: number) =>
@@ -64,7 +63,6 @@ const AiCvProviderSettings = () => {
   });
 
   const settings = (org?.settings as Record<string, unknown> | null) ?? {};
-  const provider = (settings.cv_ai_provider === 'cloud' ? 'cloud' : 'vps') as 'vps' | 'cloud';
   const savedAddendum = typeof settings.candidate_analysis_prompt === 'string'
     ? settings.candidate_analysis_prompt
     : typeof settings.cv_prompt_addendum === 'string'
@@ -79,22 +77,6 @@ const AiCvProviderSettings = () => {
   const overLimit = addendum.length > ORG_PROMPT_MAX_LENGTH;
   const dirty = addendum !== savedAddendum;
   const hasIssues = forbiddenHits.length > 0 || overLimit;
-
-  const setProvider = useMutation({
-    mutationFn: async (next: 'vps' | 'cloud') => {
-      const newSettings = { ...settings, cv_ai_provider: next };
-      const { error } = await supabase
-        .from('organizations')
-        .update({ settings: newSettings })
-        .eq('id', orgId);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['organization-ai-settings', orgId] });
-      toast.success('AI-provider opgeslagen');
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
 
   const saveAddendum = useMutation({
     mutationFn: async (next: string) => {
@@ -123,56 +105,22 @@ const AiCvProviderSettings = () => {
           <Brain className="h-4 w-4" /> AI kandidaatdossier-analyse
         </CardTitle>
         <CardDescription>
-          Analyseer CV, documenten en interne notities via VPS of Cloud.
+          Analyseer CV, documenten en interne notities via Gemini.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        <RadioGroup
-          value={provider}
-          onValueChange={(v) => setProvider.mutate(v as 'vps' | 'cloud')}
-          className="grid grid-cols-1 sm:grid-cols-2 gap-3"
-        >
-          <Label
-            htmlFor="provider-vps"
-            className={`flex flex-col gap-2 rounded-lg border p-4 cursor-pointer transition ${
-              provider === 'vps' ? 'border-primary bg-primary/5' : 'border-border hover:bg-accent'
-            }`}
-          >
-            <div className="flex items-center gap-2">
-              <RadioGroupItem value="vps" id="provider-vps" />
-              <Server className="h-4 w-4" />
-              <span className="font-medium">VPS</span>
-              <span className="ml-auto text-xs text-muted-foreground">gratis</span>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Eigen Hetzner-server met Qwen3-14B. Gebruikt dezelfde systeem-prompt en verwerkt asynchroon.
-            </p>
-          </Label>
-
-          <Label
-            htmlFor="provider-cloud"
-            className={`flex flex-col gap-2 rounded-lg border p-4 cursor-pointer transition ${
-              provider === 'cloud'
-                ? 'border-primary bg-primary/5'
-                : 'border-border hover:bg-accent'
-            }`}
-          >
-            <div className="flex items-center gap-2">
-              <RadioGroupItem value="cloud" id="provider-cloud" />
-              <Cloud className="h-4 w-4" />
-              <span className="font-medium">Cloud</span>
-              <span className="ml-auto text-xs text-muted-foreground">betaald</span>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Anthropic Claude Haiku 4.5. Resultaat na ~10 seconden. Trekt credits.
-            </p>
-          </Label>
-        </RadioGroup>
+        <div className="rounded-lg border border-border bg-card p-4">
+          <div className="flex items-center gap-2">
+            <Brain className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-medium">Provider</span>
+            <span className="ml-auto text-sm font-medium">Gemini</span>
+          </div>
+        </div>
 
         <div className="rounded-lg border border-border bg-card p-4">
           <div className="flex items-center gap-2 mb-3">
             <Wallet className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium">Cloud-saldo</span>
+            <span className="text-sm font-medium">AI-saldo</span>
           </div>
           {creditsLoading ? (
             <p className="text-sm text-muted-foreground">Laden...</p>
@@ -193,25 +141,20 @@ const AiCvProviderSettings = () => {
               </p>
               {lowBalance && (
                 <p className="text-xs text-orange-600 mt-2">
-                  Saldo loopt op zijn eind. Neem contact op met info@sitejob.nl voor bijvullen.
+                  Saldo loopt op zijn eind. Neem contact op met SiteJob voor bijvullen.
                 </p>
               )}
             </div>
           )}
         </div>
 
-        <p className="text-xs text-muted-foreground leading-relaxed">
-          Bij saldo €0 is de Cloud-knop uitgeschakeld. Intercedenten kunnen dan nog steeds VPS
-          gebruiken. Bijvullen gaat via SiteJob.
-        </p>
-
-        {/* Prompt-addendum voor Cloud en VPS */}
+        {/* Prompt-addendum voor Gemini */}
         <div className="border-t border-border pt-6 space-y-3">
           <div>
             <Label className="text-sm font-medium">Eigen analyseprompt</Label>
             <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
               Deze tekst wordt als organisatie-context aan de standaard analyseprompt toegevoegd
-              en gaat mee naar zowel Cloud als de VPS-worker.
+              en gaat mee naar Gemini.
               Handig voor sector-specifieke focus, voorkeursfuncties of klant-specifieke nuances.
               <br />
               <span className="font-medium">Veiligheid:</span> de kerninstructies en het JSON-schema

@@ -376,7 +376,7 @@ const CandidateNew = () => {
         toast.error(`Kamer reserveren mislukt: ${data.housingError}`);
       }
 
-      // Start de dossieranalyse (org-default provider) als er een CV is geüpload.
+      // Start de Gemini-dossieranalyse als er een CV is geüpload.
       // Fire-and-forget: het resultaat verschijnt op het kandidaatdossier.
       if (data.hadCv) {
         supabase.functions
