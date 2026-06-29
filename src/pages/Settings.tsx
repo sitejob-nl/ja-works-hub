@@ -184,6 +184,7 @@ const Settings = () => {
   const { profile, signOut } = useAuth();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [logoUploading, setLogoUploading] = useState(false);
 
   const { data: org, isLoading } = useQuery({
     queryKey: ['organization', orgId],
@@ -278,8 +279,11 @@ const Settings = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!file.type.startsWith('image/')) {
-      toast.error('Selecteer een afbeelding');
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    const ext = file.name.split('.').pop()?.toLowerCase();
+    const allowedExts = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+    if (!allowedTypes.includes(file.type) && !allowedExts.includes(ext ?? '')) {
+      toast.error('Selecteer een JPG, PNG, WebP of GIF afbeelding');
       return;
     }
     if (file.size > 2 * 1024 * 1024) {
@@ -287,22 +291,36 @@ const Settings = () => {
       return;
     }
 
-    const ext = file.name.split('.').pop();
-    const path = `${orgId}/logo.${ext}`;
+    setLogoUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
 
-    const { error: uploadError } = await supabase.storage
-      .from('organization-logos')
-      .upload(path, file, { upsert: true });
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error('Je sessie is verlopen. Log opnieuw in.');
 
-    if (uploadError) {
-      toast.error('Upload mislukt: ' + uploadError.message);
-      return;
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-organization-logo`, {
+        method: 'POST',
+        headers: {
+          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: formData,
+      });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(result?.error ?? 'Upload mislukt');
+
+      queryClient.setQueryData(['organization', orgId], (current: typeof org | undefined) =>
+        current ? { ...current, logo_url: result.logo_url } : current
+      );
+      queryClient.invalidateQueries({ queryKey: ['organization', orgId] });
+      toast.success('Logo bijgewerkt');
+    } catch (err: any) {
+      toast.error(err?.message ?? 'Upload mislukt');
+    } finally {
+      setLogoUploading(false);
+      e.target.value = '';
     }
-
-    const { data: urlData } = supabase.storage.from('organization-logos').getPublicUrl(path);
-
-    const logoUrl = urlData.publicUrl + '?t=' + Date.now();
-    updateOrg.mutate({ logo_url: logoUrl });
   };
 
   const handleRemoveLogo = () => {
@@ -591,12 +609,12 @@ const Settings = () => {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*"
+                accept="image/jpeg,image/png,image/webp,image/gif"
                 className="hidden"
                 onChange={handleLogoUpload}
               />
               <div className="flex gap-2">
-                <Button size="sm" variant="outline" onClick={() => fileInputRef.current?.click()}>
+                <Button size="sm" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={logoUploading}>
                   <Upload className="h-3.5 w-3.5 mr-1.5" /> Uploaden
                 </Button>
                 {org?.logo_url && (
