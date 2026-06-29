@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders, getExactToken } from "../_shared/exact-helpers.ts";
+import { corsHeaders, getExactToken, verifyExactWebhookSecret } from "../_shared/exact-helpers.ts";
 
 // Invoice status progression order (higher = later in lifecycle)
 const STATUS_ORDER: Record<string, number> = {
@@ -36,36 +36,18 @@ Deno.serve(async (req) => {
     });
 
     const serviceClient = createClient<any>(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-
-    // Get all active exact configs and decrypt to find match
-    const { data: configs } = await serviceClient
-      .from("exact_config")
-      .select("id, organization_id, tenant_id, is_active")
-      .eq("is_active", true);
-
-    if (!configs || configs.length === 0) {
-      console.error("No active exact configs found");
-      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+    const verified = await verifyExactWebhookSecret(req, serviceClient, { requireActive: true });
+    if (!verified?.config.tenant_id) {
+      console.error("No active Exact config found for webhook");
+      return new Response("Unauthorized", { status: 401, headers: corsHeaders });
     }
 
-    // Decrypt webhook_secret for each config and find match
-    let matchedConfig: { id: string; organization_id: string; tenant_id: string } | null = null;
-    let decryptedSecret: string | null = null;
-    for (const c of configs) {
-      const { data: decrypted } = await serviceClient.rpc("get_exact_token", {
-        p_org_id: c.organization_id,
-      });
-      if (decrypted?.[0]?.decrypted_webhook_secret === webhookSecret) {
-        matchedConfig = { id: c.id, organization_id: c.organization_id, tenant_id: c.tenant_id };
-        decryptedSecret = decrypted[0].decrypted_webhook_secret;
-        break;
-      }
-    }
-
-    if (!matchedConfig) {
-      console.error("No config found for webhook secret");
-      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
-    }
+    const matchedConfig = {
+      id: verified.config.id,
+      organization_id: verified.config.organization_id,
+      tenant_id: verified.config.tenant_id,
+    };
+    const decryptedSecret = verified.webhookSecret;
 
     // Log the webhook event in audit_log for traceability
     await serviceClient.from("audit_log").insert({

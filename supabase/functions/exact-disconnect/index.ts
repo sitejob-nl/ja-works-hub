@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders, jsonError, jsonOk } from "../_shared/exact-helpers.ts";
+import { clearExactTokenCache, corsHeaders, jsonError, jsonOk } from "../_shared/exact-helpers.ts";
 
 const CONNECT_DISCONNECT_URL = "https://xeshjkznwdrxjjhbpisn.supabase.co/functions/v1/tenant-disconnect";
 
@@ -60,6 +60,7 @@ Deno.serve(async (req) => {
 
     const webhookSecret = await getWebhookSecret(serviceClient, config.webhook_secret);
     if (!webhookSecret) return jsonError("Webhook secret kan niet worden gelezen", 500);
+    clearExactTokenCache(config.tenant_id, webhookSecret);
 
     const response = await fetch(CONNECT_DISCONNECT_URL, {
       method: "POST",

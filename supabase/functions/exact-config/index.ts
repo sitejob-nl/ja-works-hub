@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders, getExactToken, registerExactWebhookSubscriptions } from "../_shared/exact-helpers.ts";
+import { clearExactTokenCache, corsHeaders, getExactToken, registerExactWebhookSubscriptions } from "../_shared/exact-helpers.ts";
 
 const regionBaseUrls: Record<string, string> = {
   nl: "https://start.exactonline.nl",
@@ -77,6 +77,9 @@ Deno.serve(async (req) => {
     // suspended-push doorvallen naar de config-update hieronder en de koppeling
     // ten onrechte als actief laten staan.
     if (body.action === "disconnect" || body.action === "suspended") {
+      if (config.tenant_id && decryptedWebhookSecret) {
+        clearExactTokenCache(config.tenant_id, decryptedWebhookSecret);
+      }
       await serviceClient
         .from("exact_config")
         .update({

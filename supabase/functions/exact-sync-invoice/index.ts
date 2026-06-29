@@ -1,5 +1,12 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders, getExactToken, jsonError, jsonOk } from "../_shared/exact-helpers.ts";
+import {
+  classifyExactProviderError,
+  corsHeaders,
+  getExactToken,
+  jsonError,
+  jsonOk,
+  sanitizeExactErrorDetail,
+} from "../_shared/exact-helpers.ts";
 
 function odataString(value: unknown): string {
   return String(value ?? "").replace(/'/g, "''");
@@ -157,7 +164,7 @@ Deno.serve(async (req) => {
         );
 
         if (!createAccountRes.ok) {
-          const errBody = await createAccountRes.text();
+          const errBody = sanitizeExactErrorDetail(await createAccountRes.text());
           console.error("Create account failed:", errBody);
           await serviceClient.from("invoices").update({ exact_sync_error: `Account aanmaken mislukt: ${errBody}` }).eq("id", invoice_id);
           return jsonError("Kon account niet aanmaken in Exact", 502, { details: errBody });
@@ -265,7 +272,7 @@ Deno.serve(async (req) => {
     );
 
     if (!createInvoiceRes.ok) {
-      const errBody = await createInvoiceRes.text();
+      const errBody = sanitizeExactErrorDetail(await createInvoiceRes.text());
       console.error("Create invoice failed:", errBody);
       await serviceClient.from("invoices").update({ exact_sync_error: `Factuur aanmaken mislukt: ${errBody}` }).eq("id", invoice_id);
       return jsonError("Kon factuur niet aanmaken in Exact", 502, { details: errBody });
@@ -291,6 +298,10 @@ Deno.serve(async (req) => {
 
   } catch (err) {
     console.error("Exact sync error:", err);
-    return jsonError((err as Error).message || "Internal server error", 500);
+    const classified = classifyExactProviderError(err);
+    return jsonError(classified.publicCode, classified.httpStatus, {
+      provider_status: classified.providerStatus,
+      detail: classified.detail,
+    });
   }
 });
