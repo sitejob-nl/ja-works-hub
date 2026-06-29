@@ -17,7 +17,6 @@ import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { sanitizeHtml } from '@/lib/sanitize-html';
 import { cn } from '@/lib/utils';
-import { noFileDropInputProps } from '@/lib/file-input';
 
 const SIGNATURE_VARIABLES = [
   { label: 'Afzendernaam', value: '{{afzender_naam}}' },
@@ -204,7 +203,6 @@ const EmailSignatureEditor = ({
               type="file"
               accept="image/png,image/jpeg,image/webp,image/gif"
               className="hidden"
-              {...noFileDropInputProps}
               onChange={(event) => {
                 const file = event.target.files?.[0];
                 if (file) void handleImageUpload(file);

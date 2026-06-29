@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type DragEvent } from 'react';
 import { useParams } from 'react-router-dom';
 import { AlertTriangle, Briefcase, CheckCircle2, FileUp, Loader2, Send } from 'lucide-react';
 import { toast } from 'sonner';
@@ -11,6 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { allowFileDrop, getDroppedFiles } from '@/lib/file-input';
 
 type LinkState = 'loading' | 'invalid' | 'expired' | 'full' | 'form' | 'success';
 
@@ -88,6 +89,11 @@ const PublicCandidateSignup = () => {
 
   const organizationName = config?.organization.name || 'JA Werkt';
   const sourceLabel = useMemo(() => config?.link.source_tag?.replace(/[_-]/g, ' ') ?? null, [config]);
+
+  const handleCvDrop = (event: DragEvent<HTMLLabelElement>) => {
+    const [droppedFile] = getDroppedFiles(event);
+    if (droppedFile) setCvFile(droppedFile);
+  };
   const vacancyLabel = config?.vacancy
     ? `${config.vacancy.title}${config.vacancy.company_name ? ` bij ${config.vacancy.company_name}` : ''}`
     : null;
@@ -399,10 +405,14 @@ const PublicCandidateSignup = () => {
 
             <div className="space-y-2">
               <Label htmlFor="cv">CV uploaden *</Label>
-              <label className="flex min-h-28 cursor-pointer flex-col items-center justify-center rounded-md border border-dashed bg-background px-4 py-6 text-center transition-colors hover:border-primary">
+              <label
+                className="flex min-h-28 cursor-pointer flex-col items-center justify-center rounded-md border border-dashed bg-background px-4 py-6 text-center transition-colors hover:border-primary"
+                onDragOver={allowFileDrop}
+                onDrop={handleCvDrop}
+              >
                 <FileUp className="mb-2 h-7 w-7 text-muted-foreground" />
                 <span className="text-sm font-medium">
-                  {cvFile ? cvFile.name : 'Kies je CV-bestand'}
+                  {cvFile ? cvFile.name : 'Sleep je CV hierheen of kies een bestand'}
                 </span>
                 <span className="mt-1 text-xs text-muted-foreground">PDF, DOC, DOCX, TXT, JPG, PNG of ODT, maximaal 15 MB</span>
                 <Input

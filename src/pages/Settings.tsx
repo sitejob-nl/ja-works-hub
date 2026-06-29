@@ -35,7 +35,6 @@ import TriageRoutingSettings from '@/components/settings/TriageRoutingSettings';
 import { applyBranding, BRANDING_DEFAULTS, type BrandingSettings } from '@/lib/branding';
 import AddressAutocomplete from '@/components/shared/AddressAutocomplete';
 import { resolveAddressCoordinates } from '@/lib/pdok';
-import { noFileDropInputProps } from '@/lib/file-input';
 
 /* ---- Color conversion helpers ---- */
 function hexToHsl(hex: string): string {
@@ -594,7 +593,6 @@ const Settings = () => {
                 type="file"
                 accept="image/*"
                 className="hidden"
-                {...noFileDropInputProps}
                 onChange={handleLogoUpload}
               />
               <div className="flex gap-2">
