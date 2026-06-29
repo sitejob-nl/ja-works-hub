@@ -161,7 +161,7 @@ Deno.serve(async (req) => {
     if (body.action === "diagnostics") {
       const checks = await Promise.all([
         diagnosticCheck(tokenData, "Exact token en administratie", "crm/Accounts?$select=ID,Name&$top=1"),
-        diagnosticCheck(tokenData, "Grootboekrekeningen lezen", "financial/GLAccounts?$filter=Type eq 20&$select=ID,Code,Description&$top=1"),
+        diagnosticCheck(tokenData, "Omzet-grootboekrekeningen lezen", "financial/GLAccounts?$filter=Type eq 110&$select=ID,Code,Description,Type&$top=1"),
       ]);
       return jsonOk({
         ok: checks.every((check) => check.ok),

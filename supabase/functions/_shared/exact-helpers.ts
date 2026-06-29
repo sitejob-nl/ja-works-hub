@@ -288,6 +288,90 @@ export function clearExactTokenCache(tenantId: string, webhookSecret: string): v
   tokenCache.delete(`${tenantId}:${webhookSecret}`);
 }
 
+export type GLAccountRow = {
+  ID: string;
+  Code: string;
+  Description?: string | null;
+  Type?: number | string | null;
+  IsBlocked?: boolean | null;
+};
+
+async function exactApi<T = unknown>(
+  token: ExactTokenResponse,
+  path: string,
+  init?: { method?: string; body?: unknown; query?: Record<string, string> },
+): Promise<T> {
+  const method = init?.method ?? "GET";
+  const url = new URL(`${token.base_url}/api/v1/${token.division}/${path}`);
+  if (init?.query) {
+    for (const [key, value] of Object.entries(init.query)) {
+      url.searchParams.set(key, value);
+    }
+  }
+
+  const res = await fetch(url.toString(), {
+    method,
+    headers: {
+      Authorization: `Bearer ${token.access_token}`,
+      Accept: "application/json",
+      ...(init?.body ? { "Content-Type": "application/json" } : {}),
+    },
+    body: init?.body ? JSON.stringify(init.body) : undefined,
+  });
+
+  const text = await res.text();
+  if (!res.ok) {
+    let detail = text;
+    try {
+      const parsed = JSON.parse(text);
+      detail = parsed?.error?.message?.value ?? parsed?.error?.message ?? text;
+    } catch {
+      // keep raw text
+    }
+    throw new ExactApiError({ method, path, status: res.status, detail });
+  }
+
+  if (!text) return undefined as T;
+  return JSON.parse(text) as T;
+}
+
+export async function listGLAccountCandidates(
+  token: ExactTokenResponse,
+  preferredTypes: number[],
+  codePrefix: string,
+): Promise<GLAccountRow[]> {
+  type GLResp = { d?: { results?: GLAccountRow[] } | GLAccountRow[] };
+  const response = await exactApi<GLResp>(token, "financial/GLAccounts", {
+    query: { $select: "ID,Code,Description,Type,IsBlocked", $top: "1000" },
+  });
+  const rows = Array.isArray(response.d) ? response.d : (response.d?.results ?? []);
+  const active = rows.filter((account) => account.IsBlocked !== true);
+  const sortByCode = (a: GLAccountRow, b: GLAccountRow) =>
+    (a.Code ?? "").trim().localeCompare((b.Code ?? "").trim());
+
+  const candidates: GLAccountRow[] = [];
+  const seen = new Set<string>();
+  const push = (account: GLAccountRow) => {
+    if (!account.ID || seen.has(account.ID)) return;
+    seen.add(account.ID);
+    candidates.push(account);
+  };
+
+  for (const type of preferredTypes) {
+    active
+      .filter((account) => Number(account.Type) === type)
+      .sort(sortByCode)
+      .forEach(push);
+  }
+
+  active
+    .filter((account) => (account.Code ?? "").trim().startsWith(codePrefix))
+    .sort(sortByCode)
+    .forEach(push);
+
+  return candidates;
+}
+
 /** Register webhook subscriptions in Exact Online for the topics JA Werkt syncs back. */
 export async function registerExactWebhookSubscriptions(
   baseUrl: string,

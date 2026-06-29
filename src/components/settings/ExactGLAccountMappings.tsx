@@ -11,14 +11,13 @@ import { useExactActive } from '@/hooks/useExactActive';
 import { toast } from 'sonner';
 import { Save, BookOpen, RefreshCw } from 'lucide-react';
 
-// Helper to call exact-api proxy with org ID
-async function exactApiWithOrg(endpoint: string, orgId: string) {
-  const { data, error } = await supabase.functions.invoke('exact-api', {
-    body: { endpoint, method: 'GET', organization_id: orgId },
+async function fetchRevenueGLAccounts() {
+  const { data, error } = await supabase.functions.invoke('exact-list-glaccounts', {
+    body: { kind: 'revenue' },
   });
   if (error) throw new Error(error.message);
   if (data?.error) throw new Error(data.error);
-  return data;
+  return data as { accounts?: GLAccount[] };
 }
 
 const HOUR_TYPES = [
@@ -32,9 +31,10 @@ const HOUR_TYPES = [
 ];
 
 interface GLAccount {
-  ID: string;
-  Code: string;
-  Description: string;
+  id: string;
+  code: string;
+  description: string | null;
+  label: string;
 }
 
 export default function ExactGLAccountMappings() {
@@ -57,19 +57,13 @@ export default function ExactGLAccountMappings() {
     },
   });
 
-  // Fetch GLAccounts from Exact (Type 20 = Revenue)
-  const { data: glAccountsRaw, isLoading: glLoading, refetch: refetchGL } = useQuery({
-    queryKey: ['exact-glaccounts'],
-    queryFn: () => exactApiWithOrg("financial/GLAccounts?$filter=Type eq 20&$select=ID,Code,Description&$top=200&$orderby=Code", orgId),
+  // Fetch revenue GLAccounts from Exact using the same type/prefix logic as BestOps.
+  const { data: glAccountsData, isLoading: glLoading, refetch: refetchGL } = useQuery({
+    queryKey: ['exact-glaccounts', orgId, 'revenue'],
+    queryFn: fetchRevenueGLAccounts,
   });
 
-  const glAccounts: GLAccount[] = (() => {
-    if (!glAccountsRaw) return [];
-    const d = glAccountsRaw.d;
-    if (!d) return [];
-    const results = d.results;
-    return Array.isArray(results) ? results : [];
-  })();
+  const glAccounts = glAccountsData?.accounts ?? [];
 
   // Initialize local state from DB
   useEffect(() => {
@@ -89,15 +83,15 @@ export default function ExactGLAccountMappings() {
       for (const ht of HOUR_TYPES) {
         const mapping = mappings[ht.code];
         if (mapping?.gl_account_id) {
-          const glAccount = glAccounts.find(g => g.ID === mapping.gl_account_id);
+          const glAccount = glAccounts.find(g => g.id === mapping.gl_account_id);
           const { error } = await supabase
             .from('exact_glaccount_mappings')
             .upsert({
               organization_id: orgId,
               hour_type_code: ht.code,
               gl_account_id: mapping.gl_account_id,
-              gl_account_code: glAccount?.Code || mapping.gl_account_code || null,
-              description: glAccount?.Description || null,
+              gl_account_code: glAccount?.code || mapping.gl_account_code || null,
+              description: glAccount?.description || null,
               updated_at: new Date().toISOString(),
             }, { onConflict: 'organization_id,hour_type_code' });
           if (error) throw error;
@@ -147,7 +141,7 @@ export default function ExactGLAccountMappings() {
           </div>
         ) : glAccounts.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            Geen grootboekrekeningen gevonden in Exact Online. Controleer of er omzetrekeningen (Type 20) bestaan.
+            Geen omzetrekeningen gevonden in Exact Online. Controleer of er actieve omzetrekeningen (Type 110 of 8xxx) bestaan.
           </p>
         ) : (
           <div className="space-y-4">
@@ -160,11 +154,11 @@ export default function ExactGLAccountMappings() {
                   <Select
                     value={mappings[ht.code]?.gl_account_id || ''}
                     onValueChange={(value) => {
-                      const gl = glAccounts.find(g => g.ID === value);
+                      const gl = glAccounts.find(g => g.id === value);
                       setMappings(prev => ({
                         ...prev,
                         [ht.code]: value
-                          ? { gl_account_id: value, gl_account_code: gl?.Code || '' }
+                          ? { gl_account_id: value, gl_account_code: gl?.code || '' }
                           : undefined as any,
                       }));
                     }}
@@ -174,8 +168,8 @@ export default function ExactGLAccountMappings() {
                     </SelectTrigger>
                     <SelectContent>
                       {glAccounts.map((gl) => (
-                        <SelectItem key={gl.ID} value={gl.ID}>
-                          {gl.Code} — {gl.Description}
+                        <SelectItem key={gl.id} value={gl.id}>
+                          {gl.label}
                         </SelectItem>
                       ))}
                     </SelectContent>
