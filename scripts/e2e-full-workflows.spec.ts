@@ -195,6 +195,12 @@ async function activatePortalAccount(page: Page, url: string, email: string, pas
     .catch(() => undefined);
 }
 
+async function firstEditableTimesheetDay(page: Page): Promise<Locator> {
+  const emptyDay = page.locator("div.cursor-pointer").filter({ hasText: "—" }).first();
+  await expect(emptyDay).toBeVisible({ timeout: 10_000 });
+  return emptyDay;
+}
+
 function watchFailures(page: Page) {
   const failures: string[] = [];
   page.on("console", (msg) => {
@@ -408,7 +414,7 @@ test("Medewerkerportaal activeert account en doorloopt uren, huisvesting, voertu
     .then(() => true)
     .catch(() => false);
   if (!hasDraftWeek) {
-    await page.getByRole("button", { name: /—/ }).first().click();
+    await (await firstEditableTimesheetDay(page)).click();
     await expect(page.getByRole("button", { name: /Uren opslaan/i })).toBeVisible();
     await page.locator('input[type="number"]').first().fill("7.5");
     await page.locator("textarea").first().fill(`E2E uren medewerkerportaal ${runId}`);

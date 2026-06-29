@@ -29,6 +29,12 @@ function renderText(value: string | null | undefined): string {
   return escapeHtml(value ?? "").replace(/\n/g, "<br>");
 }
 
+function cleanEditableText(value: unknown, fallback: string, maxLength = 4000): string {
+  if (typeof value !== "string") return fallback;
+  const cleaned = value.replace(/\r\n/g, "\n").trim();
+  return cleaned ? cleaned.slice(0, maxLength) : fallback;
+}
+
 function renderList(items: unknown, color = "#1e3a5f"): string {
   if (!Array.isArray(items) || items.length === 0) return "";
   const safeItems = items
@@ -38,6 +44,22 @@ function renderList(items: unknown, color = "#1e3a5f"): string {
   return `<ul style="margin:8px 0 0;padding-left:18px;color:${color};font-size:14px;line-height:1.5;">${
     safeItems.map((item) => `<li>${escapeHtml(item)}</li>`).join("")
   }</ul>`;
+}
+
+function renderFactList(items: Array<string | null | undefined>, color = "#1e3a5f"): string {
+  return renderList(items.filter((item): item is string => typeof item === "string" && item.trim().length > 0), color);
+}
+
+function formatDateNl(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleDateString("nl-NL", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
+function formatReliabilityScore(value: number | null | undefined): string | null {
+  if (value == null) return null;
+  return value <= 10 ? `${Math.round(value)}/10` : `${Math.round(value)}%`;
 }
 
 function renderReportRow(label: string, content: string): string {
@@ -56,10 +78,20 @@ function buildProposalEmailHtml(data: {
   candidateName: string;
   vacancyTitle: string;
   companyName: string;
+  introText: string;
+  closingText: string;
   summary: string | null;
   functionGroup: string | null;
   classification: string | null;
   reliabilityScore: number | null;
+  skills: string[] | null;
+  certifications: string[] | null;
+  languages: string[] | null;
+  availableFrom: string | null;
+  arrivalDate: string | null;
+  availabilityNotes: string | null;
+  hasDriversLicense: boolean | null;
+  addressCity: string | null;
   positiveSignals: string[] | null;
   riskFactors: string[] | null;
   targetFunctions: string[] | null;
@@ -68,21 +100,45 @@ function buildProposalEmailHtml(data: {
   responseUrl: string;
   hideReport?: boolean;
   hideReliability?: boolean;
+  includeSummary?: boolean;
+  includeProfile?: boolean;
+  includeSkills?: boolean;
+  includeCertifications?: boolean;
+  includeLanguages?: boolean;
+  includeAvailability?: boolean;
+  includePositiveSignals?: boolean;
+  includeRiskFactors?: boolean;
+  includeTargetFunctions?: boolean;
+  includeInterviewQuestions?: boolean;
+  includeMatchReasoning?: boolean;
+  includeReliability?: boolean;
 }): string {
   const { theme } = data;
+  const includeReliability = data.includeReliability === true && data.reliabilityScore != null;
   const profileBadges = [
-    data.functionGroup ? `<span style="display:inline-block;margin:8px 6px 0 0;padding:4px 8px;border-radius:999px;background:#f1f5f9;color:${theme.navyHex};font-size:12px;">${escapeHtml(data.functionGroup)}</span>` : "",
-    data.classification ? `<span style="display:inline-block;margin:8px 6px 0 0;padding:4px 8px;border-radius:999px;background:#f8fafc;color:#334155;font-size:12px;">${escapeHtml(data.classification)}</span>` : "",
-    (!data.hideReliability && data.reliabilityScore != null) ? `<span style="display:inline-block;margin:8px 6px 0 0;padding:4px 8px;border-radius:999px;background:#ecfdf5;color:#047857;font-size:12px;">Betrouwbaarheid ${Math.round(data.reliabilityScore)}%</span>` : "",
+    data.includeProfile !== false && data.functionGroup ? `<span style="display:inline-block;margin:8px 6px 0 0;padding:4px 8px;border-radius:999px;background:#f1f5f9;color:${theme.navyHex};font-size:12px;">${escapeHtml(data.functionGroup)}</span>` : "",
+    data.includeProfile !== false && data.classification ? `<span style="display:inline-block;margin:8px 6px 0 0;padding:4px 8px;border-radius:999px;background:#f8fafc;color:#334155;font-size:12px;">${escapeHtml(data.classification)}</span>` : "",
+    includeReliability ? `<span style="display:inline-block;margin:8px 6px 0 0;padding:4px 8px;border-radius:999px;background:#ecfdf5;color:#047857;font-size:12px;">Betrouwbaarheid ${escapeHtml(formatReliabilityScore(data.reliabilityScore) ?? "")}</span>` : "",
   ].join("");
+  const availabilityContent = renderFactList([
+    data.availableFrom ? `Beschikbaar vanaf ${formatDateNl(data.availableFrom) ?? data.availableFrom}` : null,
+    data.arrivalDate ? `Aankomst/check-in ${formatDateNl(data.arrivalDate) ?? data.arrivalDate}` : null,
+    data.addressCity ? `Woonplaats/regio: ${data.addressCity}` : null,
+    data.hasDriversLicense ? "Rijbewijs aanwezig" : null,
+    data.availabilityNotes,
+  ], "#334155");
   const reportRows = data.hideReport ? "" : [
-    renderReportRow("Samenvatting", data.summary ? `<span style="color:${theme.navyHex};font-size:14px;line-height:1.5;">${renderText(data.summary)}</span>` : ""),
+    data.includeSummary !== false ? renderReportRow("Samenvatting", data.summary ? `<span style="color:${theme.navyHex};font-size:14px;line-height:1.5;">${renderText(data.summary)}</span>` : "") : "",
     renderReportRow("Profiel", profileBadges),
-    renderReportRow("Sterke signalen", renderList(data.positiveSignals, "#064e3b")),
-    renderReportRow("Aandachtspunten", renderList(data.riskFactors, "#92400e")),
-    renderReportRow("Passende functies", renderList(data.targetFunctions, theme.navyHex)),
-    renderReportRow("Vragen voor vervolggesprek", renderList(data.interviewQuestions, "#334155")),
-    renderReportRow("Matchnotitie", data.matchReasoning ? `<span style="color:#475569;font-size:13px;line-height:1.5;">${renderText(data.matchReasoning)}</span>` : ""),
+    data.includeSkills !== false ? renderReportRow("Vaardigheden", renderList(data.skills, theme.navyHex)) : "",
+    data.includeCertifications !== false ? renderReportRow("Certificaten", renderList(data.certifications, theme.navyHex)) : "",
+    data.includeLanguages !== false ? renderReportRow("Talen", renderList(data.languages, "#334155")) : "",
+    data.includeAvailability !== false ? renderReportRow("Beschikbaarheid", availabilityContent) : "",
+    data.includePositiveSignals !== false ? renderReportRow("Sterke signalen", renderList(data.positiveSignals, "#064e3b")) : "",
+    data.includeRiskFactors !== false ? renderReportRow("Aandachtspunten", renderList(data.riskFactors, "#92400e")) : "",
+    data.includeTargetFunctions !== false ? renderReportRow("Passende functies", renderList(data.targetFunctions, theme.navyHex)) : "",
+    data.includeInterviewQuestions === true ? renderReportRow("Vragen voor vervolggesprek", renderList(data.interviewQuestions, "#334155")) : "",
+    data.includeMatchReasoning !== false ? renderReportRow("Matchnotitie", data.matchReasoning ? `<span style="color:#475569;font-size:13px;line-height:1.5;">${renderText(data.matchReasoning)}</span>` : "") : "",
   ].join("");
   const hasReport = reportRows.trim().length > 0;
   const contactLine = [data.orgEmail, data.orgPhone]
@@ -93,10 +149,7 @@ function buildProposalEmailHtml(data: {
   const content = `<h2 style="margin:0 0 8px;color:${theme.navyHex};font-size:18px;">Kandidaatvoorstel</h2>
           <p style="margin:0 0 24px;color:#64748b;font-size:14px;">Wij hebben een geschikte kandidaat gevonden voor ${escapeHtml(data.companyName)}: ${escapeHtml(data.vacancyTitle)}</p>
 
-          <p style="margin:0 0 16px;color:${theme.textHex};font-size:14px;">Beste ${escapeHtml(data.contactName)},</p>
-          <p style="margin:0 0 24px;color:${theme.textHex};font-size:14px;">
-            Graag stellen wij de volgende kandidaat aan u voor:
-          </p>
+          <p style="margin:0 0 24px;color:${theme.textHex};font-size:14px;line-height:1.6;">${renderText(data.introText)}</p>
 
           <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:6px;border:1px solid #e2e8f0;margin-bottom:24px;">
             <tr><td style="padding:16px 20px;border-bottom:1px solid #e2e8f0;">
@@ -120,9 +173,7 @@ function buildProposalEmailHtml(data: {
             ${reportRows}
           </table>` : ""}
 
-          <p style="margin:0 0 16px;color:${theme.textHex};font-size:14px;">
-            Klik op onderstaande knop om aan te geven of u interesse heeft in deze kandidaat:
-          </p>
+          <p style="margin:0 0 16px;color:${theme.textHex};font-size:14px;line-height:1.6;">${renderText(data.closingText)}</p>
 
           <table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 24px;"><tr><td style="border-radius:6px;background:${theme.accentHex};">
             <a href="${escapeHtml(data.responseUrl)}" style="display:inline-block;padding:12px 32px;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;border-radius:6px;">Reageer op dit voorstel</a>
@@ -164,9 +215,12 @@ Deno.serve(async (req) => {
       bcc,
       subject: subjectOverride,
       html: htmlOverride,
+      intro_text,
+      closing_text,
       hide_ai_report,
       hide_reliability,
       include_cv,
+      include_sections,
     } = body;
 
     if (!match_id) {
@@ -177,7 +231,7 @@ Deno.serve(async (req) => {
       .from("matches")
       .select(`
         *,
-        candidates:candidate_id(id, first_name, last_name, email, phone, cv_file_url, ai_summary, ai_function_group, ai_classification, ai_reliability_score, ai_positive_signals, ai_risk_factors, ai_target_functions, ai_interview_questions),
+        candidates:candidate_id(id, first_name, last_name, email, phone, cv_file_url, skills, certifications, languages, available_from, arrival_date, availability_notes, has_drivers_license, address_city, ai_summary, ai_function_group, ai_classification, ai_reliability_score, ai_positive_signals, ai_risk_factors, ai_target_functions, ai_interview_questions),
         vacancies:vacancy_id(id, title, companies:company_id(id, name, email))
       `)
       .eq("id", match_id)
@@ -230,10 +284,17 @@ Deno.serve(async (req) => {
     const subject = (typeof subjectOverride === "string" && subjectOverride.trim())
       ? subjectOverride.trim()
       : `Kandidaatvoorstel: ${candidateName} voor ${vacancy.title}`;
+    const defaultIntroText = `Beste ${defaultName},\n\nGraag stellen wij ${candidateName} aan u voor voor de functie ${vacancy.title}. Hieronder vindt u de belangrijkste gegevens en onze toelichting.`;
+    const defaultClosingText = "Via onderstaande knop kunt u aangeven of u de kandidaat direct wilt laten starten, eerst op gesprek wilt uitnodigen of wilt afwijzen.";
+    const introText = cleanEditableText(intro_text, defaultIntroText);
+    const closingText = cleanEditableText(closing_text, defaultClosingText);
 
     // Standaard verbergen we de betrouwbaarheidsscore richting klant; het volledige rapport blijft tenzij uitgezet.
     const hideReliability = hide_reliability !== false;
     const hideReport = hide_ai_report === true;
+    const rawSections = include_sections && typeof include_sections === "object" ? include_sections as Record<string, unknown> : {};
+    const sectionEnabled = (key: string, defaultValue = true) =>
+      Object.prototype.hasOwnProperty.call(rawSections, key) ? rawSections[key] !== false : defaultValue;
 
     const emailData = {
       theme: brandTheme,
@@ -243,10 +304,20 @@ Deno.serve(async (req) => {
       candidateName,
       vacancyTitle: vacancy.title,
       companyName: company.name,
+      introText,
+      closingText,
       summary: candidate.ai_summary ?? match.match_reasoning ?? null,
       functionGroup: candidate.ai_function_group ?? null,
       classification: candidate.ai_classification ?? null,
       reliabilityScore: candidate.ai_reliability_score ?? null,
+      skills: candidate.skills ?? null,
+      certifications: candidate.certifications ?? null,
+      languages: candidate.languages ?? null,
+      availableFrom: candidate.available_from ?? null,
+      arrivalDate: candidate.arrival_date ?? null,
+      availabilityNotes: candidate.availability_notes ?? null,
+      hasDriversLicense: candidate.has_drivers_license ?? null,
+      addressCity: candidate.address_city ?? null,
       positiveSignals: candidate.ai_positive_signals ?? null,
       riskFactors: candidate.ai_risk_factors ?? null,
       targetFunctions: candidate.ai_target_functions ?? null,
@@ -254,6 +325,18 @@ Deno.serve(async (req) => {
       matchReasoning: match.match_reasoning ?? null,
       hideReport,
       hideReliability,
+      includeSummary: !hideReport && sectionEnabled("summary"),
+      includeProfile: !hideReport && sectionEnabled("profile"),
+      includeSkills: !hideReport && sectionEnabled("skills"),
+      includeCertifications: !hideReport && sectionEnabled("certifications"),
+      includeLanguages: !hideReport && sectionEnabled("languages"),
+      includeAvailability: !hideReport && sectionEnabled("availability"),
+      includePositiveSignals: !hideReport && sectionEnabled("positiveSignals"),
+      includeRiskFactors: !hideReport && sectionEnabled("riskFactors"),
+      includeTargetFunctions: !hideReport && sectionEnabled("targetFunctions"),
+      includeInterviewQuestions: !hideReport && sectionEnabled("interviewQuestions", false),
+      includeMatchReasoning: !hideReport && sectionEnabled("matchReasoning"),
+      includeReliability: !hideReport && sectionEnabled("reliability", !hideReliability),
     };
 
     if (preview) {
@@ -264,6 +347,8 @@ Deno.serve(async (req) => {
         to: defaultEmail,
         contact_name: defaultName,
         subject,
+        intro_text: introText,
+        closing_text: closingText,
         html,
         recipients: recipientOptions,
         has_cv: !!candidate.cv_file_url,

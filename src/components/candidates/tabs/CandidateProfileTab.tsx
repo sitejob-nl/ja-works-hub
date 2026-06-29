@@ -9,12 +9,13 @@ import { Copy, Check, MessageCircle, Mail, Link2, RefreshCw, Loader2 } from 'luc
 import { toast } from 'sonner';
 import { useDecryptedCandidate } from '@/hooks/useDecryptedCandidate';
 import { usePublicUrl } from '@/hooks/usePublicUrl';
-import { useOutlookAccounts, useOutlookInvoke } from '@/hooks/useOutlookAccounts';
+import { useOutlookAccounts } from '@/hooks/useOutlookAccounts';
 import { logAudit } from '@/lib/audit';
 import CustomFieldsSection from '@/components/shared/CustomFieldsSection';
 import UnsavedChangesGuard from '@/components/shared/UnsavedChangesGuard';
 import { InlineTextField, InlineSensitiveField, InlineBooleanField, InlineTagsField, InlineSkillsField, InlineLanguagesField, InlineNationalityField } from '@/components/shared/InlineFields';
 import { CandidatePreferencesTab } from '@/components/candidates/tabs/CandidatePreferencesTab';
+import EmailSendDialog from '@/components/email/EmailSendDialog';
 
 const asObject = (value: unknown): Record<string, any> =>
   value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, any> : {};
@@ -39,9 +40,9 @@ const buildAvailabilityNotes = (
 const CandidateProfileTab = ({ candidate }: { candidate: any }) => {
   const qc = useQueryClient();
   const [copied, setCopied] = useState(false);
+  const [profileEmailOpen, setProfileEmailOpen] = useState(false);
   const [dirtyEditors, setDirtyEditors] = useState<Record<string, boolean>>({});
   const { buildUrl } = usePublicUrl();
-  const callOutlook = useOutlookInvoke();
   const { hasUsableAccounts } = useOutlookAccounts('mail_send');
   const { data: sensitive, isLoading: sensitiveLoading } = useDecryptedCandidate(candidate.id);
   const address = [candidate.address_street, candidate.address_postal, candidate.address_city].filter(Boolean).join(', ') || null;
@@ -157,34 +158,22 @@ const CandidateProfileTab = ({ candidate }: { candidate: any }) => {
       toast.error('Geen verbonden e-mailaccount gevonden. Koppel eerst Outlook via Instellingen.');
       return;
     }
-    sendProfileLinkMutation.mutate();
+    setProfileEmailOpen(true);
   };
 
-  const sendProfileLinkMutation = useMutation({
-    mutationFn: async () => {
-      if (!candidate.email) throw new Error('Geen e-mailadres bekend');
-      const html = `
-        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:600px;margin:0 auto;color:#334155;">
-          <p>Hoi ${candidate.first_name},</p>
-          <p>Vul je profiel aan via onderstaande link:</p>
-          <p>
-            <a href="${profileUrl}" style="display:inline-block;background:#1e293b;color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:6px;font-weight:600;">
-              Profiel aanvullen
-            </a>
-          </p>
-          <p style="color:#64748b;font-size:13px;">Lukt de knop niet? Gebruik dan deze link:<br>${profileUrl}</p>
-        </div>
-      `;
-      return callOutlook('outlook-send-mail', {
-        to: [candidate.email],
-        subject: 'Vul je profiel aan',
-        html,
-        candidate_id: candidate.id,
-      });
-    },
-    onSuccess: () => toast.success('Uitnodiging verstuurd via het verbonden e-mailaccount'),
-    onError: (error: Error) => toast.error(`E-mail versturen mislukt: ${error.message}`),
-  });
+  const profileEmailSubject = 'Vul je profiel aan';
+  const profileEmailHtml = `
+    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:600px;margin:0 auto;color:#334155;">
+      <p>Hoi ${candidate.first_name ?? ''},</p>
+      <p>Vul je profiel aan via onderstaande link:</p>
+      <p>
+        <a href="${profileUrl}" style="display:inline-block;background:#1e293b;color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:6px;font-weight:600;">
+          Profiel aanvullen
+        </a>
+      </p>
+      <p style="color:#64748b;font-size:13px;">Lukt de knop niet? Gebruik dan deze link:<br>${profileUrl}</p>
+    </div>
+  `;
 
   const getTokenStatusBadge = () => {
     if (!activeToken) return null;
@@ -352,8 +341,8 @@ const CandidateProfileTab = ({ candidate }: { candidate: any }) => {
                 </Button>
               )}
               {candidate.email && (
-                <Button variant="outline" size="sm" onClick={handleEmail} disabled={sendProfileLinkMutation.isPending} className="gap-2">
-                  <Mail className="h-3.5 w-3.5" /> {sendProfileLinkMutation.isPending ? 'Versturen...' : 'Verstuur opnieuw via email'}
+                <Button variant="outline" size="sm" onClick={handleEmail} className="gap-2">
+                  <Mail className="h-3.5 w-3.5" /> Verstuur opnieuw via email
                 </Button>
               )}
               <Button variant="outline" size="sm" onClick={() => generateToken.mutate()} disabled={generateToken.isPending} className="gap-2">
@@ -373,6 +362,15 @@ const CandidateProfileTab = ({ candidate }: { candidate: any }) => {
 
       {/* Custom fields */}
       <CustomFieldsSection entityType="candidate" entityId={candidate.id} />
+      <EmailSendDialog
+        open={profileEmailOpen}
+        onOpenChange={setProfileEmailOpen}
+        candidateId={candidate.id}
+        candidateEmail={candidate.email ?? undefined}
+        candidateData={candidate}
+        initialSubject={profileEmailSubject}
+        initialBodyHtml={profileEmailHtml}
+      />
     </div>
   );
 };

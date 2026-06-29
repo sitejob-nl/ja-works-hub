@@ -260,7 +260,7 @@ const CandidateVacancyMatchesTab = ({ candidateId, candidate }: { candidateId: s
         })() : []}
         action={detail ? (
           <Button onClick={() => { proposeMutation.mutate(detail); setDetail(null); }} disabled={proposeMutation.isPending}>
-            <UserPlus className="h-3 w-3 mr-1" /> Voorstellen
+            <UserPlus className="h-3 w-3 mr-1" /> Match maken
           </Button>
         ) : null}
       />

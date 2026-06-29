@@ -2,29 +2,159 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
+import { formatDate } from '@/lib/format';
 import {
-  CheckCircle2, XCircle, Loader2, CalendarClock, Play, ThumbsDown, FileText, Mail, MessageCircle,
+  Award,
+  BriefcaseBusiness,
+  CalendarClock,
+  CalendarDays,
+  CheckCircle2,
+  Download,
+  FileText,
+  Languages,
+  Loader2,
+  Mail,
+  MapPin,
+  MessageCircle,
+  Play,
+  ShieldCheck,
+  Sparkles,
+  ThumbsDown,
+  UserRound,
+  XCircle,
 } from 'lucide-react';
 
 type Report = { summary: string | null; strong_signals: string[]; attention_points: string[] };
+type CandidateProfile = {
+  summary: string | null;
+  function_group: string | null;
+  classification: string | null;
+  target_functions: string[];
+  interview_questions: string[];
+  skills: string[];
+  certifications: string[];
+  languages: string[];
+  city: string | null;
+  available_from: string | null;
+  available_until: string | null;
+  arrival_date: string | null;
+  availability_notes: string | null;
+  most_recent_role: string | null;
+  most_recent_role_year: number | null;
+  has_drivers_license: boolean;
+};
+type HistoryItem = {
+  id: string;
+  role: string | null;
+  company_name: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  status: string | null;
+  location: string | null;
+};
+type CvInfo = { url: string; file_name: string | null; is_pdf: boolean };
 type ProposalData = {
   org_logo_url: string | null;
   org_name: string | null;
   candidate: { first_name: string; last_name: string } | null;
   vacancy: { title: string } | null;
   company: { name: string } | null;
+  profile: CandidateProfile | null;
+  history: HistoryItem[];
   report: Report | null;
   cv_url: string | null;
+  cv: CvInfo | null;
   rejection_reasons: { id: string; reason: string }[];
   contact: { manager_email: string | null; manager_phone: string | null };
 };
 
 type Mode = 'op_gesprek' | 'direct_starten' | 'afwijzen' | null;
+
+const compact = (items: Array<string | null | undefined>) => items.filter((item): item is string => Boolean(item));
+
+const initialsFor = (name: string) => {
+  const parts = name.split(/\s+/).filter(Boolean);
+  return parts.slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || 'K';
+};
+
+const dateRange = (start: string | null, end: string | null) => {
+  if (!start && !end) return 'Periode onbekend';
+  if (start && !end) return `${formatDate(start)} - heden`;
+  if (!start && end) return `Tot ${formatDate(end)}`;
+  return `${formatDate(start)} - ${formatDate(end)}`;
+};
+
+const statusLabel = (status: string | null) => {
+  const labels: Record<string, string> = {
+    actief: 'Actief',
+    beeindigd: 'Beeindigd',
+    concept: 'Concept',
+    ingepland: 'Ingepland',
+  };
+  return status ? labels[status] ?? status.replaceAll('_', ' ') : null;
+};
+
+const joinDutch = (items: string[]) => {
+  if (items.length <= 1) return items[0] ?? '';
+  if (items.length === 2) return `${items[0]} en ${items[1]}`;
+  return `${items.slice(0, -1).join(', ')} en ${items[items.length - 1]}`;
+};
+
+const buildSummary = (name: string, profile: CandidateProfile | null | undefined) => {
+  if (profile?.summary) return profile.summary;
+
+  const firstName = name.split(/\s+/)[0] || 'Deze kandidaat';
+  const sentences: string[] = [];
+  const role = profile?.most_recent_role || profile?.function_group || profile?.classification;
+  const skills = profile?.skills?.slice(0, 4) ?? [];
+  const certs = profile?.certifications?.slice(0, 3) ?? [];
+  const languages = profile?.languages?.slice(0, 3) ?? [];
+
+  if (role && skills.length > 0) {
+    sentences.push(`${firstName} is een ${role}-profiel met ervaring in ${joinDutch(skills)}.`);
+  } else if (role) {
+    sentences.push(`${firstName} past binnen het profiel ${role}.`);
+  } else if (skills.length > 0) {
+    sentences.push(`${firstName} heeft relevante ervaring met ${joinDutch(skills)}.`);
+  }
+
+  if (certs.length > 0) sentences.push(`Bekende certificaten: ${joinDutch(certs)}.`);
+  if (languages.length > 0) sentences.push(`Talen: ${joinDutch(languages)}.`);
+  if (profile?.city || profile?.has_drivers_license) {
+    sentences.push(compact([
+      profile.city ? `regio ${profile.city}` : null,
+      profile.has_drivers_license ? 'rijbewijs aanwezig' : null,
+    ]).join('; ') + '.');
+  }
+  if (profile?.availability_notes) {
+    sentences.push(profile.availability_notes.endsWith('.') ? profile.availability_notes : `${profile.availability_notes}.`);
+  } else if (profile?.available_from) {
+    sentences.push(`Beschikbaar vanaf ${formatDate(profile.available_from)}.`);
+  }
+
+  return sentences.join(' ');
+};
+
+const TagList = ({ items, empty }: { items: string[]; empty: string }) => {
+  if (!items.length) return <p className="text-sm text-muted-foreground">{empty}</p>;
+  return (
+    <div className="flex flex-wrap gap-2">
+      {items.slice(0, 10).map((item) => (
+        <Badge key={item} variant="secondary" className="rounded-md px-2 py-1 text-xs font-medium">
+          {item}
+        </Badge>
+      ))}
+      {items.length > 10 && <Badge variant="outline" className="rounded-md px-2 py-1 text-xs">+{items.length - 10}</Badge>}
+    </div>
+  );
+};
 
 const MatchResponse = () => {
   const { token } = useParams<{ token: string }>();
@@ -109,6 +239,13 @@ const MatchResponse = () => {
 
   if (done) {
     const positive = done === 'op_gesprek' || done === 'direct_starten' || done === 'interesse';
+    const doneText = done === 'op_gesprek'
+      ? 'Het gesprek is vastgelegd. Na het gesprek kan de kandidaat alsnog worden goedgekeurd of afgewezen; wij volgen dit intern op.'
+      : done === 'direct_starten'
+        ? 'Uw akkoord is verwerkt. Wij zetten de plaatsing intern klaar en nemen contact op over de definitieve start.'
+        : positive
+          ? 'Wij nemen zo spoedig mogelijk contact met u op om de volgende stappen te bespreken.'
+          : 'Uw reactie is verwerkt. Wij houden u op de hoogte van andere kandidaten.';
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
         <Card className="max-w-md w-full">
@@ -116,9 +253,7 @@ const MatchResponse = () => {
             <CheckCircle2 className="h-12 w-12 text-emerald-500 mx-auto mb-4" />
             <h2 className="text-lg font-semibold mb-2">Bedankt voor uw reactie!</h2>
             <p className="text-muted-foreground">
-              {positive
-                ? 'Wij nemen zo spoedig mogelijk contact met u op om de volgende stappen te bespreken.'
-                : 'Uw reactie is verwerkt. Wij houden u op de hoogte van andere kandidaten.'}
+              {doneText}
             </p>
           </CardContent>
         </Card>
@@ -129,163 +264,371 @@ const MatchResponse = () => {
   const candidate = data?.candidate;
   const vacancy = data?.vacancy;
   const report = data?.report;
+  const profile = data?.profile;
+  const history = data?.history ?? [];
+  const cv = data?.cv ?? (data?.cv_url ? { url: data.cv_url, file_name: 'CV', is_pdf: true } : null);
   const candidateName = `${candidate?.first_name ?? ''} ${candidate?.last_name ?? ''}`.trim();
   const managerEmail = data?.contact?.manager_email;
   const managerPhone = data?.contact?.manager_phone;
   const waPhone = managerPhone ? managerPhone.replace(/[^0-9]/g, '') : null;
+  const summary = report?.summary || buildSummary(candidateName, profile);
+  const orgName = data?.org_name || 'JA Werkt';
+  const hasReportContent = Boolean(
+    (report?.strong_signals?.length ?? 0) > 0 ||
+    (report?.attention_points?.length ?? 0) > 0
+  );
+  const quickFacts = compact([
+    profile?.city ? `Regio ${profile.city}` : null,
+    profile?.function_group ?? profile?.classification,
+    profile?.has_drivers_license ? 'Rijbewijs' : null,
+    profile?.available_from ? `Beschikbaar vanaf ${formatDate(profile.available_from)}` : null,
+  ]);
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4">
-      <div className="max-w-2xl mx-auto space-y-4">
-        {data?.org_logo_url && (
-          <div className="flex justify-center">
-            <img src={data.org_logo_url} alt={data.org_name ?? ''} className="max-h-12 object-contain" />
+    <div className="min-h-screen bg-slate-50">
+      <header className="border-b bg-white">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-5">
+          <div className="flex min-w-0 items-center gap-3">
+            {data?.org_logo_url ? (
+              <img src={data.org_logo_url} alt={orgName} className="max-h-12 max-w-44 object-contain" />
+            ) : (
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-slate-900 text-sm font-semibold text-white">
+                {initialsFor(orgName)}
+              </div>
+            )}
+            <div className="min-w-0">
+              <div className="truncate text-sm font-medium text-slate-900">{orgName}</div>
+              <div className="truncate text-xs text-muted-foreground">Kandidaatvoorstel</div>
+            </div>
           </div>
-        )}
+          {data?.company?.name && (
+            <div className="hidden text-right text-sm sm:block">
+              <div className="text-muted-foreground">Voor opdrachtgever</div>
+              <div className="font-medium text-slate-900">{data.company.name}</div>
+            </div>
+          )}
+        </div>
+      </header>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Kandidaatvoorstel</CardTitle>
-            <CardDescription>
-              {data?.company?.name ? `Voor ${data.company.name}` : 'Wij stellen de volgende kandidaat aan u voor'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="bg-muted rounded-lg p-4">
-              <div className="text-sm text-muted-foreground">Kandidaat</div>
-              <div className="text-lg font-semibold">{candidateName}</div>
+      <main className="mx-auto max-w-5xl px-4 py-6 sm:py-8">
+        <Card className="overflow-hidden">
+          <CardHeader className="border-b bg-white">
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+              <div className="min-w-0">
+                <CardTitle className="text-2xl">Kandidaatvoorstel</CardTitle>
+                <CardDescription className="mt-1">
+                  {data?.company?.name ? `Voor ${data.company.name}` : 'Wij stellen de volgende kandidaat aan u voor'}
+                </CardDescription>
+              </div>
               {vacancy && (
-                <>
-                  <div className="text-sm text-muted-foreground mt-3">Voor de functie</div>
-                  <div className="font-medium">{vacancy.title}</div>
-                </>
+                <div className="rounded-md border bg-slate-50 px-3 py-2 text-sm lg:max-w-xs">
+                  <div className="text-xs text-muted-foreground">Functie</div>
+                  <div className="font-medium text-slate-900">{vacancy.title}</div>
+                </div>
               )}
             </div>
+          </CardHeader>
 
-            {report && (report.summary || report.strong_signals.length || report.attention_points.length) && (
-              <div className="space-y-4">
-                {report.summary && (
-                  <div>
-                    <div className="text-sm font-semibold mb-1">Samenvatting</div>
-                    <p className="text-sm text-muted-foreground whitespace-pre-line">{report.summary}</p>
+          <CardContent className="p-0">
+            <div className="grid gap-0 lg:grid-cols-[1fr_320px]">
+              <div className="space-y-8 p-5 sm:p-6">
+                <section className="rounded-md border bg-slate-50 p-4 sm:p-5">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                    <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-md bg-white text-xl font-semibold text-slate-900 shadow-sm ring-1 ring-slate-200">
+                      {initialsFor(candidateName)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm text-muted-foreground">Kandidaat</div>
+                      <h1 className="break-words text-2xl font-semibold text-slate-950">{candidateName}</h1>
+                      {profile?.most_recent_role && (
+                        <div className="mt-1 text-sm text-muted-foreground">
+                          Meest recente rol: {profile.most_recent_role}
+                          {profile.most_recent_role_year ? ` (${profile.most_recent_role_year})` : ''}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                )}
-                {report.strong_signals.length > 0 && (
-                  <div>
-                    <div className="text-sm font-semibold mb-1">Sterke punten</div>
-                    <ul className="list-disc pl-5 text-sm text-muted-foreground space-y-1">
-                      {report.strong_signals.map((s, i) => <li key={i}>{s}</li>)}
-                    </ul>
-                  </div>
-                )}
-                {report.attention_points.length > 0 && (
-                  <div>
-                    <div className="text-sm font-semibold mb-1">Aandachtspunten</div>
-                    <ul className="list-disc pl-5 text-sm text-muted-foreground space-y-1">
-                      {report.attention_points.map((s, i) => <li key={i}>{s}</li>)}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            )}
 
-            {data?.cv_url && (
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-sm font-semibold flex items-center gap-2"><FileText className="h-4 w-4" /> CV</div>
-                  <a href={data.cv_url} target="_blank" rel="noopener noreferrer">
-                    <Button variant="outline" size="sm">Downloaden</Button>
-                  </a>
-                </div>
-                <embed src={data.cv_url} type="application/pdf" className="w-full h-80 rounded border" />
-              </div>
-            )}
-
-            {/* Acties */}
-            {mode === null && (
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <Button className="h-14 bg-emerald-600 hover:bg-emerald-700" onClick={() => setMode('direct_starten')} disabled={submitting}>
-                  <Play className="h-5 w-5 mr-2" /> Direct starten
-                </Button>
-                <Button variant="outline" className="h-14" onClick={() => setMode('op_gesprek')} disabled={submitting}>
-                  <CalendarClock className="h-5 w-5 mr-2" /> Op gesprek
-                </Button>
-                <Button variant="outline" className="h-14 border-red-200 hover:bg-red-50 hover:text-red-700" onClick={() => setMode('afwijzen')} disabled={submitting}>
-                  <ThumbsDown className="h-5 w-5 mr-2" /> Afwijzen
-                </Button>
-              </div>
-            )}
-
-            {mode === 'direct_starten' && (
-              <div className="space-y-3 border rounded-lg p-4">
-                <Label htmlFor="startDate">Gewenste startdatum</Label>
-                <Input id="startDate" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-                <Textarea placeholder="Opmerking (optioneel)" value={note} onChange={(e) => setNote(e.target.value)} />
-                <div className="flex gap-2">
-                  <Button variant="ghost" onClick={() => setMode(null)} disabled={submitting}>Terug</Button>
-                  <Button className="flex-1 bg-emerald-600 hover:bg-emerald-700" onClick={() => submit('direct_starten')} disabled={submitting || !startDate}>
-                    {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Bevestig — direct starten'}
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {mode === 'op_gesprek' && (
-              <div className="space-y-3 border rounded-lg p-4">
-                <Label htmlFor="interviewDate">Datum &amp; tijd gesprek</Label>
-                <Input id="interviewDate" type="datetime-local" value={interviewDate} onChange={(e) => setInterviewDate(e.target.value)} />
-                <Textarea placeholder="Opmerking (optioneel)" value={note} onChange={(e) => setNote(e.target.value)} />
-                <div className="flex gap-2">
-                  <Button variant="ghost" onClick={() => setMode(null)} disabled={submitting}>Terug</Button>
-                  <Button className="flex-1" onClick={() => submit('op_gesprek')} disabled={submitting || !interviewDate}>
-                    {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Bevestig — op gesprek'}
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {mode === 'afwijzen' && (
-              <div className="space-y-3 border rounded-lg p-4">
-                <Label>Reden van afwijzing</Label>
-                <Select value={reasonId} onValueChange={setReasonId}>
-                  <SelectTrigger><SelectValue placeholder="Kies een reden" /></SelectTrigger>
-                  <SelectContent>
-                    {(data?.rejection_reasons ?? []).map((r) => (
-                      <SelectItem key={r.id} value={r.id}>{r.reason}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Textarea placeholder="Toelichting (optioneel)" value={note} onChange={(e) => setNote(e.target.value)} />
-                <div className="flex gap-2">
-                  <Button variant="ghost" onClick={() => setMode(null)} disabled={submitting}>Terug</Button>
-                  <Button variant="destructive" className="flex-1" onClick={() => submit('afwijzen')} disabled={submitting || !reasonId}>
-                    {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Afwijzen'}
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {/* Vraag stellen */}
-            {(managerEmail || waPhone) && (
-              <div className="border-t pt-4">
-                <div className="text-sm text-muted-foreground mb-2">Een vraag over deze kandidaat?</div>
-                <div className="flex gap-2">
-                  {managerEmail && (
-                    <a href={`mailto:${managerEmail}?subject=${encodeURIComponent(`Vraag over voorstel: ${candidateName}`)}`}>
-                      <Button variant="outline" size="sm"><Mail className="h-4 w-4 mr-2" /> Mail</Button>
-                    </a>
+                  {quickFacts.length > 0 && (
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {quickFacts.map((fact) => (
+                        <Badge key={fact} variant="outline" className="rounded-md bg-white px-2.5 py-1 text-xs">
+                          {fact}
+                        </Badge>
+                      ))}
+                    </div>
                   )}
-                  {waPhone && (
-                    <a href={`https://wa.me/${waPhone}?text=${encodeURIComponent(`Vraag over voorstel: ${candidateName}`)}`} target="_blank" rel="noopener noreferrer">
-                      <Button variant="outline" size="sm"><MessageCircle className="h-4 w-4 mr-2" /> WhatsApp</Button>
-                    </a>
+                </section>
+
+                <section className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-slate-500" />
+                    <h2 className="text-base font-semibold">Samenvatting</h2>
+                  </div>
+                  {summary ? (
+                    <p className="whitespace-pre-line text-sm leading-6 text-slate-700">{summary}</p>
+                  ) : (
+                    <p className="text-sm leading-6 text-muted-foreground">
+                      Er is nog geen uitgebreide samenvatting beschikbaar. Bekijk de profielgegevens en werkhistorie hieronder.
+                    </p>
+                  )}
+                </section>
+
+                <section className="grid gap-5 sm:grid-cols-2">
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <BriefcaseBusiness className="h-4 w-4 text-slate-500" />
+                      <h2 className="text-base font-semibold">Vaardigheden</h2>
+                    </div>
+                    <TagList items={profile?.skills ?? []} empty="Nog geen vaardigheden vastgelegd." />
+                  </div>
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Award className="h-4 w-4 text-slate-500" />
+                      <h2 className="text-base font-semibold">Certificaten</h2>
+                    </div>
+                    <TagList items={profile?.certifications ?? []} empty="Nog geen certificaten vastgelegd." />
+                  </div>
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Languages className="h-4 w-4 text-slate-500" />
+                      <h2 className="text-base font-semibold">Talen</h2>
+                    </div>
+                    <TagList items={profile?.languages ?? []} empty="Nog geen talen vastgelegd." />
+                  </div>
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <UserRound className="h-4 w-4 text-slate-500" />
+                      <h2 className="text-base font-semibold">Passende functies</h2>
+                    </div>
+                    <TagList items={profile?.target_functions ?? []} empty="Nog geen passende functies vastgelegd." />
+                  </div>
+                </section>
+
+                {(profile?.availability_notes || profile?.available_from || profile?.available_until || profile?.arrival_date || profile?.city) && (
+                  <section className="rounded-md border p-4">
+                    <div className="mb-3 flex items-center gap-2">
+                      <CalendarDays className="h-4 w-4 text-slate-500" />
+                      <h2 className="text-base font-semibold">Beschikbaarheid</h2>
+                    </div>
+                    <div className="grid gap-3 text-sm sm:grid-cols-2">
+                      {profile?.city && (
+                        <div className="flex items-start gap-2">
+                          <MapPin className="mt-0.5 h-4 w-4 text-muted-foreground" />
+                          <div>
+                            <div className="text-muted-foreground">Regio</div>
+                            <div className="font-medium">{profile.city}</div>
+                          </div>
+                        </div>
+                      )}
+                      {profile?.available_from && (
+                        <div>
+                          <div className="text-muted-foreground">Beschikbaar vanaf</div>
+                          <div className="font-medium">{formatDate(profile.available_from)}</div>
+                        </div>
+                      )}
+                      {profile?.available_until && (
+                        <div>
+                          <div className="text-muted-foreground">Beschikbaar tot</div>
+                          <div className="font-medium">{formatDate(profile.available_until)}</div>
+                        </div>
+                      )}
+                      {profile?.arrival_date && (
+                        <div>
+                          <div className="text-muted-foreground">Aankomst/check-in</div>
+                          <div className="font-medium">{formatDate(profile.arrival_date)}</div>
+                        </div>
+                      )}
+                    </div>
+                    {profile?.availability_notes && (
+                      <p className="mt-3 whitespace-pre-line text-sm leading-6 text-slate-700">{profile.availability_notes}</p>
+                    )}
+                  </section>
+                )}
+
+                {hasReportContent && (
+                  <section className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <ShieldCheck className="h-4 w-4 text-slate-500" />
+                      <h2 className="text-base font-semibold">Beoordeling</h2>
+                    </div>
+                    {report?.strong_signals && report.strong_signals.length > 0 && (
+                      <div>
+                        <div className="mb-1 text-sm font-semibold">Sterke punten</div>
+                        <ul className="list-disc space-y-1 pl-5 text-sm text-slate-700">
+                          {report.strong_signals.map((s, i) => <li key={i}>{s}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                    {report?.attention_points && report.attention_points.length > 0 && (
+                      <div>
+                        <div className="mb-1 text-sm font-semibold">Aandachtspunten</div>
+                        <ul className="list-disc space-y-1 pl-5 text-sm text-slate-700">
+                          {report.attention_points.map((s, i) => <li key={i}>{s}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                  </section>
+                )}
+
+                <section className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <BriefcaseBusiness className="h-4 w-4 text-slate-500" />
+                    <h2 className="text-base font-semibold">Historie</h2>
+                  </div>
+                  {history.length > 0 ? (
+                    <div className="divide-y rounded-md border">
+                      {history.map((item) => (
+                        <div key={item.id} className="p-4">
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                              <div className="font-medium text-slate-900">{item.role || 'Functie onbekend'}</div>
+                              <div className="text-sm text-muted-foreground">
+                                {compact([item.company_name, item.location]).join(' · ') || 'Opdrachtgever onbekend'}
+                              </div>
+                            </div>
+                            <div className="text-sm text-muted-foreground sm:text-right">
+                              <div>{dateRange(item.start_date, item.end_date)}</div>
+                              {statusLabel(item.status) && <div>{statusLabel(item.status)}</div>}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : profile?.most_recent_role ? (
+                    <div className="rounded-md border p-4 text-sm">
+                      <div className="font-medium">{profile.most_recent_role}</div>
+                      {profile.most_recent_role_year && <div className="text-muted-foreground">{profile.most_recent_role_year}</div>}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Er is nog geen werkhistorie beschikbaar.</p>
+                  )}
+                </section>
+
+                <section className="space-y-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-slate-500" />
+                      <h2 className="text-base font-semibold">CV</h2>
+                    </div>
+                    {cv?.url && (
+                      <a href={cv.url} target="_blank" rel="noopener noreferrer">
+                        <Button variant="outline" size="sm" className="gap-2">
+                          <Download className="h-4 w-4" /> Downloaden
+                        </Button>
+                      </a>
+                    )}
+                  </div>
+                  {cv?.url ? (
+                    cv.is_pdf ? (
+                      <embed src={cv.url} type="application/pdf" className="h-[560px] w-full rounded-md border bg-white" />
+                    ) : (
+                      <div className="rounded-md border p-4 text-sm text-muted-foreground">
+                        Het CV is beschikbaar als download, maar kan niet inline worden getoond omdat het geen PDF is.
+                      </div>
+                    )
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Er is geen openbaar CV-bestand beschikbaar voor dit voorstel.</p>
+                  )}
+                </section>
+              </div>
+
+              <aside className="border-t bg-white p-5 sm:p-6 lg:border-l lg:border-t-0">
+                <div className="lg:sticky lg:top-6">
+                  <div className="mb-4">
+                    <div className="text-sm font-semibold text-slate-900">Reactie opdrachtgever</div>
+                    <p className="mt-1 text-sm text-muted-foreground">Kies de gewenste vervolgstap voor deze kandidaat.</p>
+                  </div>
+
+                  {mode === null && (
+                    <div className="grid grid-cols-1 gap-3">
+                      <Button className="h-12 bg-emerald-600 hover:bg-emerald-700" onClick={() => setMode('direct_starten')} disabled={submitting}>
+                        <Play className="h-5 w-5 mr-2" /> Goedkeuren / direct starten
+                      </Button>
+                      <Button variant="outline" className="h-12" onClick={() => setMode('op_gesprek')} disabled={submitting}>
+                        <CalendarClock className="h-5 w-5 mr-2" /> Gesprek plannen
+                      </Button>
+                      <Button variant="outline" className="h-12 border-red-200 hover:bg-red-50 hover:text-red-700" onClick={() => setMode('afwijzen')} disabled={submitting}>
+                        <ThumbsDown className="h-5 w-5 mr-2" /> Afwijzen
+                      </Button>
+                    </div>
+                  )}
+
+                  {mode === 'direct_starten' && (
+                    <div className="space-y-3 rounded-md border p-4">
+                      <Label htmlFor="startDate">Gewenste startdatum</Label>
+                      <Input id="startDate" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+                      <Textarea placeholder="Opmerking (optioneel)" value={note} onChange={(e) => setNote(e.target.value)} />
+                      <div className="flex gap-2">
+                        <Button variant="ghost" onClick={() => setMode(null)} disabled={submitting}>Terug</Button>
+                        <Button className="flex-1 bg-emerald-600 hover:bg-emerald-700" onClick={() => submit('direct_starten')} disabled={submitting || !startDate}>
+                          {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Bevestig'}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {mode === 'op_gesprek' && (
+                    <div className="space-y-3 rounded-md border p-4">
+                      <Label htmlFor="interviewDate">Datum &amp; tijd gesprek</Label>
+                      <Input id="interviewDate" type="datetime-local" value={interviewDate} onChange={(e) => setInterviewDate(e.target.value)} />
+                      <Textarea placeholder="Opmerking (optioneel)" value={note} onChange={(e) => setNote(e.target.value)} />
+                      <div className="flex gap-2">
+                        <Button variant="ghost" onClick={() => setMode(null)} disabled={submitting}>Terug</Button>
+                        <Button className="flex-1" onClick={() => submit('op_gesprek')} disabled={submitting || !interviewDate}>
+                          {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Bevestig'}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {mode === 'afwijzen' && (
+                    <div className="space-y-3 rounded-md border p-4">
+                      <Label>Reden van afwijzing</Label>
+                      <Select value={reasonId} onValueChange={setReasonId}>
+                        <SelectTrigger><SelectValue placeholder="Kies een reden" /></SelectTrigger>
+                        <SelectContent>
+                          {(data?.rejection_reasons ?? []).map((r) => (
+                            <SelectItem key={r.id} value={r.id}>{r.reason}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Textarea placeholder="Toelichting (optioneel)" value={note} onChange={(e) => setNote(e.target.value)} />
+                      <div className="flex gap-2">
+                        <Button variant="ghost" onClick={() => setMode(null)} disabled={submitting}>Terug</Button>
+                        <Button variant="destructive" className="flex-1" onClick={() => submit('afwijzen')} disabled={submitting || !reasonId}>
+                          {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Afwijzen'}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {(managerEmail || waPhone) && (
+                    <>
+                      <Separator className="my-5" />
+                      <div>
+                        <div className="mb-2 text-sm text-muted-foreground">Een vraag over deze kandidaat?</div>
+                        <div className="flex flex-wrap gap-2">
+                          {managerEmail && (
+                            <a href={`mailto:${managerEmail}?subject=${encodeURIComponent(`Vraag over voorstel: ${candidateName}`)}`}>
+                              <Button variant="outline" size="sm"><Mail className="h-4 w-4 mr-2" /> Mail</Button>
+                            </a>
+                          )}
+                          {waPhone && (
+                            <a href={`https://wa.me/${waPhone}?text=${encodeURIComponent(`Vraag over voorstel: ${candidateName}`)}`} target="_blank" rel="noopener noreferrer">
+                              <Button variant="outline" size="sm"><MessageCircle className="h-4 w-4 mr-2" /> WhatsApp</Button>
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    </>
                   )}
                 </div>
-              </div>
-            )}
+              </aside>
+            </div>
           </CardContent>
         </Card>
-      </div>
+      </main>
     </div>
   );
 };

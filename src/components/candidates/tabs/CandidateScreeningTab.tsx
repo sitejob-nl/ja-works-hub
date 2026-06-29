@@ -710,11 +710,41 @@ const CandidateScreeningTab = ({
     setReanalyzing(true);
     try {
       await persistDraft({ complete: true, manual: true });
-      const { error } = await supabase.functions.invoke('analyze-cv', { body: { candidate_id: candidate.id } });
-      if (error) throw error;
-      toast.success('Screening opgeslagen — Gemini heranalyseert met de screening');
-    } catch (e) {
-      toast.error(await extractFunctionErrorMessage(e, 'Heranalyse kon niet starten'));
+      const waitForCurrentAnalysis = async () => {
+        const deadline = Date.now() + 180_000;
+        while (Date.now() < deadline) {
+          const { data: current, error } = await supabase
+            .from('candidates')
+            .select('ai_status')
+            .eq('id', candidate.id)
+            .single();
+          if (error) throw error;
+          if (current?.ai_status !== 'analyzing') return;
+          await new Promise((resolve) => window.setTimeout(resolve, 3_000));
+        }
+        throw new Error('Er loopt nog een AI-analyse. Probeer over enkele minuten opnieuw.');
+      };
+
+      const startAnalysis = async (): Promise<void> => {
+        await waitForCurrentAnalysis();
+        const { error } = await supabase.functions.invoke('analyze-cv', { body: { candidate_id: candidate.id } });
+        if (!error) return;
+
+        const message = await extractFunctionErrorMessage(error, 'Heranalyse kon niet starten');
+        if (message.toLowerCase().includes('analyse loopt al')) {
+          await waitForCurrentAnalysis();
+          const { error: retryError } = await supabase.functions.invoke('analyze-cv', { body: { candidate_id: candidate.id } });
+          if (!retryError) return;
+          throw new Error(await extractFunctionErrorMessage(retryError, 'Heranalyse kon niet starten'));
+        }
+
+        throw new Error(message);
+      };
+
+      await startAnalysis();
+      toast.success('Screening opgeslagen — AI heranalyseert met de screening (1-3 min)');
+    } catch (e: any) {
+      toast.error(e?.message || 'Heranalyse kon niet starten');
     } finally {
       setReanalyzing(false);
     }

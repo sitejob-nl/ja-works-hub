@@ -88,7 +88,7 @@ test.describe("Demo readiness QA", () => {
     await page.goto(`/vacatures/${vacancies[0].id}?tab=matches`, { waitUntil: "domcontentloaded" });
     await expect(page, "vacaturetab blijft op matches").toHaveURL(/tab=matches/);
     await expectText(page, /Beste kandidaten uit eigen database|Gefilterd op vacature-eisen/i, "matchlijst zichtbaar");
-    await expectText(page, /Milan\s+Kowalski|Nieuwe match|match/i, "matchflow zichtbaar");
+    await expectText(page, /Milan\s+Kowalski|Match maken|match/i, "matchflow zichtbaar");
 
     await page.goto("/instellingen", { waitUntil: "domcontentloaded" });
     await page.getByRole("tab", { name: /Matching/i }).click();
