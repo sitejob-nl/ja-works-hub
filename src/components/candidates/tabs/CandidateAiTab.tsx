@@ -30,6 +30,7 @@ const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => 
   const qc = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [cvText, setCvText] = useState(initialCandidate.cv_raw_text || '');
+  const [cvTextEdited, setCvTextEdited] = useState(false);
   const [candidate, setCandidate] = useState(initialCandidate);
   const [extracting, setExtracting] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
@@ -111,6 +112,7 @@ const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => 
       if (text.length > 100) {
         const cleaned = text.replace(/\n{3,}/g, '\n\n').trim();
         setCvText(cleaned);
+        setCvTextEdited(true);
         toast.success(`Tekst uit ${file.name} geëxtraheerd (${cleaned.length} tekens)`);
       } else {
         toast.info('Bestand bevat te weinig herkenbare tekst. Controleer het bestand of plak de tekst hieronder.');
@@ -127,14 +129,17 @@ const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => 
   // Trigger AI analysis. The edge function is Gemini-only; provider selection was removed.
   const analyzeMutation = useMutation({
     mutationFn: async () => {
-      if (!cvText || cvText.trim().length < 50) {
+      const cleanedCvText = cvText.trim();
+      if (cvTextEdited && cleanedCvText.length > 0 && cleanedCvText.length < 50) {
         throw new Error('CV tekst is te kort (minimaal 50 tekens)');
       }
 
-      const body = {
-        cv_text: cvText,
+      const body: { candidate_id: string; cv_text?: string } = {
         candidate_id: candidate.id,
       };
+      if (cvTextEdited && cleanedCvText.length >= 50) {
+        body.cv_text = cleanedCvText;
+      }
 
       const { data, error } = await supabase.functions.invoke('analyze-cv', { body });
 
@@ -174,6 +179,7 @@ const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => 
   const isAnalyzing = candidate.ai_status === 'analyzing' || analyzeMutation.isPending;
   const hasAnalysis = candidate.ai_status === 'completed' && candidate.ai_analysis;
   const hasFailed = candidate.ai_status === 'failed';
+  const editedTextTooShort = cvTextEdited && cvText.trim().length > 0 && cvText.trim().length < 50;
 
   return (
     <div className="space-y-6">
@@ -253,7 +259,7 @@ const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => 
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <FileText className="h-4 w-4 text-muted-foreground" />
-            <h3 className="font-medium text-sm">CV Tekst / dossierinput</h3>
+            <h3 className="font-medium text-sm">Extra CV-tekst / dossierinput</h3>
           </div>
           <div className="flex items-center gap-2">
             <input
@@ -278,19 +284,23 @@ const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => 
 
         <Textarea
           value={cvText}
-          onChange={(e) => setCvText(e.target.value)}
-          placeholder="Plak hier de CV-tekst van de kandidaat, of upload een PDF, Word-document of afbeelding hierboven. Interne notities worden server-side automatisch toegevoegd."
+          onChange={(e) => {
+            setCvText(e.target.value);
+            setCvTextEdited(true);
+          }}
+          placeholder="Optioneel: plak hier CV-tekst of upload een bestand. Laat dit leeg om CV-documenten uit het Documenten-tabblad automatisch te gebruiken. Interne notities worden server-side meegenomen."
           className="min-h-[200px] font-mono text-xs leading-relaxed"
           disabled={isAnalyzing}
         />
 
         <div className="flex items-center justify-between">
           <p className="text-xs text-muted-foreground">
-            {cvText.length > 0 ? `${cvText.length} tekens` : 'Nog geen tekst'}
-            {cvText.length > 0 && cvText.length < 50 && ' — minimaal 50 tekens nodig'}
+            {cvText.length > 0
+              ? `${cvText.length} tekens${editedTextTooShort ? ' — minimaal 50 tekens voor handmatige tekst' : ''}`
+              : 'Geen handmatige tekst; CV-documenten worden automatisch gebruikt'}
           </p>
           <Button
-            disabled={isAnalyzing || cvText.trim().length < 50}
+            disabled={isAnalyzing || editedTextTooShort}
             onClick={() => analyzeMutation.mutate()}
             className="gap-2"
           >
