@@ -22,6 +22,7 @@ import AiAnalysisShareDialog from '@/components/candidates/AiAnalysisShareDialog
 import { logAudit } from '@/lib/audit';
 import { CV_ACCEPT, extractCvTextFromFile } from '@/lib/cvText';
 import { extractFunctionErrorMessage } from '@/lib/functionError';
+import { noFileDropInputProps } from '@/lib/file-input';
 
 const formatEuro = (cents: number) =>
   (cents / 100).toLocaleString('nl-NL', { style: 'currency', currency: 'EUR' });
@@ -267,6 +268,7 @@ const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => 
               type="file"
               accept={CV_ACCEPT}
               className="hidden"
+              {...noFileDropInputProps}
               onChange={handleFileUpload}
             />
             <Button

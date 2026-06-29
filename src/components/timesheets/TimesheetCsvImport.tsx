@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Upload, FileText } from 'lucide-react';
+import { noFileDropInputProps } from '@/lib/file-input';
 import { toast } from 'sonner';
 
 interface Props {
@@ -132,7 +133,7 @@ const TimesheetCsvImport = ({ open, onOpenChange }: Props) => {
           <div>
             <Label>Bestand selecteren</Label>
             <div className="mt-2">
-              <input ref={fileRef} type="file" accept=".csv,.txt" onChange={handleFile} className="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-primary file:text-primary-foreground hover:file:bg-primary/90" />
+              <input ref={fileRef} type="file" accept=".csv,.txt" {...noFileDropInputProps} onChange={handleFile} className="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-primary file:text-primary-foreground hover:file:bg-primary/90" />
             </div>
           </div>
 

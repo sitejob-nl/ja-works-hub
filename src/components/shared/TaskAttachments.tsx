@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Paperclip, FileText, Image as ImageIcon, Download, Trash2, X } from 'lucide-react';
 import { formatDate } from '@/lib/format';
 import { uploadTaskFiles } from '@/lib/taskAttachments';
+import { noFileDropInputProps } from '@/lib/file-input';
 import { toast } from 'sonner';
 
 const IMAGE_EXT = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'heic'];
@@ -106,7 +107,7 @@ const TaskAttachments = ({ taskId, staged, setStaged }: TaskAttachmentsProps) =>
         <Button type="button" variant="outline" size="sm" onClick={() => fileRef.current?.click()} disabled={uploadNow.isPending}>
           {uploadNow.isPending ? 'Uploaden…' : 'Bestand toevoegen'}
         </Button>
-        <input ref={fileRef} type="file" multiple className="hidden" onChange={onPick} />
+        <input ref={fileRef} type="file" multiple className="hidden" {...noFileDropInputProps} onChange={onPick} />
       </div>
 
       {/* Persisted bijlagen (bewerken) */}

@@ -14,6 +14,7 @@ import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { MessageSquare, ExternalLink, Loader2, CheckCircle2, XCircle, RefreshCw, Unlink, RefreshCcw, User } from 'lucide-react';
 import WhatsAppAutomationSettings from './WhatsAppAutomationSettings';
+import { noFileDropInputProps } from '@/lib/file-input';
 
 const VERTICAL_OPTIONS = [
   { value: 'UNDEFINED', label: 'Niet opgegeven' },
@@ -205,6 +206,7 @@ function BusinessProfileSection() {
                   accept="image/jpeg,image/png"
                   className="hidden"
                   id="wp-profile-photo"
+                  {...noFileDropInputProps}
                   onChange={async (e) => {
                     const file = e.target.files?.[0];
                     if (!file) return;
