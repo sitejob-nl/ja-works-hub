@@ -81,6 +81,7 @@ async function fetchPasswordSession(page: Page, email: string, password: string)
 export async function ensureLoggedIn(page: Page): Promise<void> {
   const email = process.env.TEST_EMAIL;
   const password = process.env.TEST_PASSWORD;
+  const vercelShareUrl = process.env.E2E_VERCEL_SHARE_URL;
 
   if (!email || !password) {
     await page.goto("/", { waitUntil: "domcontentloaded" });
@@ -101,6 +102,11 @@ export async function ensureLoggedIn(page: Page): Promise<void> {
     },
     { key: AUTH_KEY, value: JSON.stringify(session) },
   );
+
+  if (vercelShareUrl) {
+    await page.goto(vercelShareUrl, { waitUntil: "domcontentloaded" });
+    await page.waitForLoadState("networkidle").catch(() => {});
+  }
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
   // Geef de app-client even om de sessie te lezen; niet hard falen op trage redirects.

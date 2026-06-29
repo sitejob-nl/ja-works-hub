@@ -171,6 +171,13 @@ async function gotoDomContentLoaded(page: Page, url: string): Promise<void> {
   }
 }
 
+async function unlockVercelPreview(page: Page): Promise<void> {
+  const shareUrl = process.env.E2E_VERCEL_SHARE_URL;
+  if (!shareUrl) return;
+  await page.goto(shareUrl, { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle").catch(() => {});
+}
+
 async function matchCardForCandidate(page: Page, candidateFullName: string) {
   const candidateLink = page.getByRole("link", { name: new RegExp(escapeRegExp(candidateFullName)) }).first();
   await expect(candidateLink).toBeVisible({ timeout: 30_000 });
@@ -205,6 +212,8 @@ function blockingFailures(failures: string[]): string[] {
       !failure.includes("send-portal-invite") &&
       !failure.includes("whatsapp-send") &&
       !failure.includes("kvk-lookup") &&
+      !failure.includes("Blocked script execution in 'about:srcdoc'") &&
+      !failure.includes("Framing 'https://vercel.live/' violates") &&
       !(failure.includes("Error fetching profile") && failure.includes("Failed to fetch")) &&
       !(failure.startsWith("console: TypeError: Failed to fetch") && failure.includes("_refreshAccessToken")),
   );
@@ -250,13 +259,10 @@ test("Headed QA: kandidaat + CV + screening-callflow + match + voorstelreactie +
   await page.getByRole("button", { name: /Kandidaat aanmaken/i }).click();
   await expect(page.getByRole("heading", { name: /Links versturen/i })).toBeVisible({ timeout: 20_000 });
 
-  const profileUrl = await page.locator("input[readonly]").evaluateAll((inputs) => {
-    const match = inputs
-      .map((input) => (input as HTMLInputElement).value)
-      .find((value) => value.includes("/profiel/"));
-    if (!match) throw new Error("Geen profiellink gevonden");
-    return match;
-  });
+  const profileUrl = await page
+    .locator(`xpath=//label[normalize-space()='Profiel aanvullen']/following::input[1]`)
+    .inputValue();
+  expect(profileUrl, "Geen publieke profiellink gevonden").toContain("/profiel/");
   await page.getByRole("button", { name: /Naar kandidaat/i }).click();
   await expect(page).toHaveURL(/\/kandidaten\/[0-9a-f-]{36}/, { timeout: 20_000 });
   const candidateId = idFromUrl(page.url(), "/kandidaten");
@@ -267,6 +273,7 @@ test("Headed QA: kandidaat + CV + screening-callflow + match + voorstelreactie +
   });
   const publicProfile = await publicContext.newPage();
   try {
+    await unlockVercelPreview(publicProfile);
     await gotoDomContentLoaded(publicProfile, profileUrl);
     await expect(publicProfile.getByRole("heading", { name: new RegExp(`Hoi ${candidateFirst}`) })).toBeVisible({ timeout: 20_000 });
     await fillTextareaAfterLabel(publicProfile, "Extra beschikbaarheidsnotities", "Per direct fulltime beschikbaar voor twee- en drieploegendienst.");
@@ -382,7 +389,7 @@ test("Headed QA: kandidaat + CV + screening-callflow + match + voorstelreactie +
   await matchRow.getByRole("button", { name: /Gescreend/i }).click();
   await expect(page.getByText(/Status bijgewerkt/i).first()).toBeVisible({ timeout: 20_000 });
   const screenedRow = await matchCardForCandidate(page, candidateFullName);
-  await screenedRow.getByRole("button", { name: /Voorgesteld/i }).click();
+  await screenedRow.getByRole("button", { name: /Voorstel klaar/i }).click();
   await expect(page.getByText(/Status bijgewerkt/i).first()).toBeVisible({ timeout: 20_000 });
 
   const proposedRow = await matchCardForCandidate(page, candidateFullName);
@@ -408,6 +415,7 @@ test("Headed QA: kandidaat + CV + screening-callflow + match + voorstelreactie +
 
   const publicResponse = await browser.newPage({ baseURL: testInfo.project.use.baseURL as string, viewport: { width: 1400, height: 1000 } });
   try {
+    await unlockVercelPreview(publicResponse);
     await gotoDomContentLoaded(publicResponse, `/match-response/${token}`);
     await expect(publicResponse.getByRole("heading", { name: candidateFullName })).toBeVisible({ timeout: 30_000 });
     await expect(publicResponse.getByText("E2E Lasbedrijf Brabant").first()).toBeVisible({ timeout: 20_000 });
