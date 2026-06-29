@@ -2,7 +2,6 @@ import { sendViaOutlookAccount } from "../_shared/outlook-send.ts";
 import { createAdminClient, requireInternalProfile } from "../_shared/auth.ts";
 import { buildOrganizationPublicUrl } from "../_shared/public-url.ts";
 import { sanitizeEmailHtml } from "../_shared/outlook-signature.ts";
-import { storagePathFromCvValue } from "../_shared/candidate-dossier.ts";
 import { type BrandTheme, renderBrandedEmail, resolveBrandTheme } from "../_shared/email-layout.ts";
 
 // 14 dagen — gelijk aan de DB-default op match_proposal_tokens.expires_at; expliciet
@@ -68,6 +67,78 @@ function renderReportRow(label: string, content: string): string {
     <span style="color:#0C4D78;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">${escapeHtml(label)}</span><br>
     ${content}
   </td></tr>`;
+}
+
+function buildContentSnapshot(input: {
+  match: any;
+  candidate: any;
+  vacancy: any;
+  company: any;
+  subject: string;
+  introText: string;
+  closingText: string;
+  emailData: Record<string, unknown>;
+  responseUrl: string;
+}) {
+  return {
+    version: 1,
+    generated_at: new Date().toISOString(),
+    subject: input.subject,
+    intro_text: input.introText,
+    closing_text: input.closingText,
+    response_url: input.responseUrl,
+    candidate: {
+      id: input.candidate.id,
+      first_name: input.candidate.first_name ?? null,
+      last_name: input.candidate.last_name ?? null,
+      name: `${input.candidate.first_name ?? ""} ${input.candidate.last_name ?? ""}`.trim(),
+      cv_file_url: input.candidate.cv_file_url ?? null,
+      available_from: input.candidate.available_from ?? null,
+      arrival_date: input.candidate.arrival_date ?? null,
+      availability_notes: input.candidate.availability_notes ?? null,
+      address_city: input.candidate.address_city ?? null,
+      has_drivers_license: input.candidate.has_drivers_license ?? null,
+    },
+    vacancy: {
+      id: input.vacancy.id,
+      title: input.vacancy.title ?? null,
+    },
+    company: {
+      id: input.company.id,
+      name: input.company.name ?? null,
+    },
+    report: {
+      summary: input.emailData.summary ?? null,
+      function_group: input.emailData.functionGroup ?? null,
+      classification: input.emailData.classification ?? null,
+      reliability_score: input.emailData.reliabilityScore ?? null,
+      skills: input.emailData.skills ?? [],
+      certifications: input.emailData.certifications ?? [],
+      languages: input.emailData.languages ?? [],
+      positive_signals: input.emailData.positiveSignals ?? [],
+      risk_factors: input.emailData.riskFactors ?? [],
+      target_functions: input.emailData.targetFunctions ?? [],
+      interview_questions: input.emailData.interviewQuestions ?? [],
+      match_reasoning: input.match.match_reasoning ?? null,
+      score: input.match.score ?? null,
+      breakdown: input.match.match_breakdown ?? null,
+    },
+    sections: {
+      summary: input.emailData.includeSummary !== false,
+      profile: input.emailData.includeProfile !== false,
+      skills: input.emailData.includeSkills !== false,
+      certifications: input.emailData.includeCertifications !== false,
+      languages: input.emailData.includeLanguages !== false,
+      availability: input.emailData.includeAvailability !== false,
+      positiveSignals: input.emailData.includePositiveSignals !== false,
+      riskFactors: input.emailData.includeRiskFactors !== false,
+      targetFunctions: input.emailData.includeTargetFunctions !== false,
+      interviewQuestions: input.emailData.includeInterviewQuestions === true,
+      matchReasoning: input.emailData.includeMatchReasoning !== false,
+      reliability: input.emailData.includeReliability === true,
+      hideReport: input.emailData.hideReport === true,
+    },
+  };
 }
 
 async function ensureProposalToken(
@@ -251,7 +322,7 @@ function buildProposalEmailHtml(data: {
           <p style="margin:0 0 16px;color:${theme.textHex};font-size:14px;line-height:1.6;">${renderText(data.closingText)}</p>
 
           <table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 24px;"><tr><td style="border-radius:6px;background:${theme.accentHex};">
-            <a href="${escapeHtml(data.responseUrl)}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:12px 32px;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;border-radius:6px;">Reageer op dit voorstel</a>
+            <a href="${escapeHtml(data.responseUrl)}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:12px 32px;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;border-radius:6px;">Bekijk CV en reageer op dit voorstel</a>
           </td></tr></table>
 
           <p style="margin:8px 0 0;color:${theme.textHex};font-size:14px;">
@@ -295,7 +366,6 @@ Deno.serve(async (req) => {
       closing_text,
       hide_ai_report,
       hide_reliability,
-      include_cv,
       include_sections,
     } = body;
 
@@ -429,6 +499,17 @@ Deno.serve(async (req) => {
 
     if (preview) {
       const html = buildProposalEmailHtml({ ...emailData, responseUrl: previewResponseUrl });
+      const contentSnapshot = buildContentSnapshot({
+        match,
+        candidate,
+        vacancy,
+        company,
+        subject,
+        introText,
+        closingText,
+        emailData,
+        responseUrl: previewResponseUrl,
+      });
       return json({
         preview: true,
         to: defaultEmail,
@@ -439,6 +520,7 @@ Deno.serve(async (req) => {
         html,
         proposal_token_id: previewToken.id,
         response_url: previewResponseUrl,
+        content_snapshot: contentSnapshot,
         recipients: recipientOptions,
         has_cv: !!candidate.cv_file_url,
       });
@@ -450,27 +532,6 @@ Deno.serve(async (req) => {
       : defaultEmail;
     const matchedContact = contactRows.find((c) => c.email === finalRecipient) ?? null;
     const finalContactId = company_contact_id ?? matchedContact?.id ?? primaryContact?.id ?? null;
-
-    // CV als bijlage (optioneel).
-    let cvAttachment: { name: string; content_type: string; content_base64: string } | undefined;
-    if (include_cv && candidate.cv_file_url) {
-      const cvPath = storagePathFromCvValue(candidate.cv_file_url);
-      if (cvPath) {
-        const { data: file, error: dlErr } = await serviceClient.storage.from("documents").download(cvPath);
-        if (!dlErr && file) {
-          const bytes = new Uint8Array(await file.arrayBuffer());
-          let binary = "";
-          const chunk = 0x8000;
-          for (let i = 0; i < bytes.length; i += chunk) {
-            binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
-          }
-          const ext = cvPath.split(".").pop()?.toLowerCase() ?? "";
-          const contentType = ext === "pdf" ? "application/pdf"
-            : (ext === "doc" || ext === "docx") ? "application/msword" : "application/octet-stream";
-          cvAttachment = { name: `CV ${candidateName}.${ext || "pdf"}`, content_type: contentType, content_base64: btoa(binary) };
-        }
-      }
-    }
 
     const token = await ensureProposalToken(serviceClient, {
       orgId,
@@ -487,6 +548,24 @@ Deno.serve(async (req) => {
     const html = (typeof htmlOverride === "string" && htmlOverride.trim())
       ? sanitizeEmailHtml(htmlOverride).replaceAll("{{RESPONSE_URL}}", responseUrl)
       : buildProposalEmailHtml({ ...emailData, responseUrl });
+    const contentSnapshot = buildContentSnapshot({
+      match,
+      candidate,
+      vacancy,
+      company,
+      subject,
+      introText,
+      closingText,
+      emailData,
+      responseUrl,
+    });
+
+    await serviceClient
+      .from("match_proposal_tokens")
+      .update({ content_snapshot: contentSnapshot })
+      .eq("id", token.id)
+      .eq("organization_id", orgId)
+      .eq("match_id", match.id);
 
     const outlookResult = await sendViaOutlookAccount({
       orgId,
@@ -495,11 +574,12 @@ Deno.serve(async (req) => {
       bcc: Array.isArray(bcc) ? bcc : undefined,
       subject,
       htmlBody: html,
-      attachments: cvAttachment ? [cvAttachment] : undefined,
       accountId: account_id ?? undefined,
       sentBy: userId,
+      candidateId: candidate.id,
       companyId: company.id,
       companyContactId: finalContactId ?? undefined,
+      matchId: match.id,
     });
 
     if (!outlookResult.success) {

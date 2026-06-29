@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Copy, ExternalLink, FileText, Loader2, Mail, RefreshCw } from 'lucide-react';
+import { AlertTriangle, Copy, ExternalLink, Loader2, Mail, RefreshCw } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { useOutboundPause } from '@/hooks/useOutboundPause';
 import { useOutlookAccounts } from '@/hooks/useOutlookAccounts';
+import { useRolePermission } from '@/hooks/usePermissions';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -79,6 +80,7 @@ const MatchProposalEmailDialog = ({ open, matchId, onOpenChange, onSent }: Match
   const orgId = useOrganizationId();
   const qc = useQueryClient();
   const { data: outboundPaused } = useOutboundPause(orgId);
+  const canSendProposal = useRolePermission('matching.proposal.send');
   const { usableAccounts, defaultAccountId } = useOutlookAccounts('mail_send');
   const personalAccounts = usableAccounts.filter((account) => account.scope === 'personal');
   const orgAccounts = usableAccounts.filter((account) => account.scope === 'organization');
@@ -94,8 +96,6 @@ const MatchProposalEmailDialog = ({ open, matchId, onOpenChange, onSent }: Match
   const [proposalResponseUrl, setProposalResponseUrl] = useState('');
   const [proposalTokenId, setProposalTokenId] = useState<string | null>(null);
   const [mailRecipients, setMailRecipients] = useState<RecipientOption[]>([]);
-  const [mailHasCv, setMailHasCv] = useState(false);
-  const [mailIncludeCv, setMailIncludeCv] = useState(false);
   const [sections, setSections] = useState<ProposalSections>(DEFAULT_PROPOSAL_SECTIONS);
   const [previewLoading, setPreviewLoading] = useState(false);
 
@@ -116,8 +116,6 @@ const MatchProposalEmailDialog = ({ open, matchId, onOpenChange, onSent }: Match
     setProposalResponseUrl('');
     setProposalTokenId(null);
     setMailRecipients([]);
-    setMailHasCv(false);
-    setMailIncludeCv(false);
     setSections(DEFAULT_PROPOSAL_SECTIONS);
     setPreviewLoading(false);
   }, [defaultAccountId]);
@@ -150,7 +148,6 @@ const MatchProposalEmailDialog = ({ open, matchId, onOpenChange, onSent }: Match
       setProposalResponseUrl(json.response_url ?? '');
       setProposalTokenId(json.proposal_token_id ?? null);
       setMailRecipients(json.recipients ?? []);
-      setMailHasCv(Boolean(json.has_cv));
       if (opts.syncText !== false) {
         setIntroText(json.intro_text ?? '');
         setClosingText(json.closing_text ?? '');
@@ -169,7 +166,6 @@ const MatchProposalEmailDialog = ({ open, matchId, onOpenChange, onSent }: Match
     setMailAccountId(defaultAccountId);
     setMailCc('');
     setMailBcc('');
-    setMailIncludeCv(false);
     setSections(DEFAULT_PROPOSAL_SECTIONS);
     void loadPreview(matchId, DEFAULT_PROPOSAL_SECTIONS, { resetTo: true });
   }, [defaultAccountId, loadPreview, matchId, open]);
@@ -203,6 +199,7 @@ const MatchProposalEmailDialog = ({ open, matchId, onOpenChange, onSent }: Match
 
   const sendMutation = useMutation({
     mutationFn: async () => {
+      if (!canSendProposal) throw new Error('Je rol mag geen voorstelmails versturen');
       if (!matchId) throw new Error('Geen match geselecteerd');
       if (!mailTo.trim()) throw new Error('Vul een ontvanger in');
       if (!mailSubject.trim()) throw new Error('Vul een onderwerp in');
@@ -222,7 +219,6 @@ const MatchProposalEmailDialog = ({ open, matchId, onOpenChange, onSent }: Match
           proposal_token_id: proposalTokenId,
           intro_text: introText,
           closing_text: closingText,
-          include_cv: mailIncludeCv,
           include_sections: sections,
         }),
       });
@@ -258,6 +254,14 @@ const MatchProposalEmailDialog = ({ open, matchId, onOpenChange, onSent }: Match
             <AlertTriangle className="h-4 w-4" />
             <AlertTitle>E-mail staat op pauze</AlertTitle>
             <AlertDescription>Je kunt de voorbereiding controleren, maar versturen is geblokkeerd door de outbound kill-switch.</AlertDescription>
+          </Alert>
+        )}
+
+        {!canSendProposal && (
+          <Alert>
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Geen verzendrecht</AlertTitle>
+            <AlertDescription>Je kunt de preview controleren, maar jouw rol mag geen voorstelmail naar opdrachtgevers versturen.</AlertDescription>
           </Alert>
         )}
 
@@ -343,12 +347,6 @@ const MatchProposalEmailDialog = ({ open, matchId, onOpenChange, onSent }: Match
                     {option.label}
                   </label>
                 ))}
-                {mailHasCv && (
-                  <label className="flex items-center gap-2 text-sm leading-none cursor-pointer">
-                    <Checkbox checked={mailIncludeCv} onCheckedChange={(value) => setMailIncludeCv(value === true)} />
-                    <FileText className="h-3.5 w-3.5" /> CV meesturen als bijlage
-                  </label>
-                )}
               </div>
             </div>
 
@@ -415,11 +413,11 @@ const MatchProposalEmailDialog = ({ open, matchId, onOpenChange, onSent }: Match
           <Button variant="outline" onClick={() => handleDialogOpenChange(false)}>Annuleren</Button>
           <Button
             onClick={() => sendMutation.mutate()}
-            disabled={!introText.trim() || !mailTo || sendMutation.isPending || outboundPaused?.email === true}
+            disabled={!canSendProposal || !introText.trim() || !mailTo || sendMutation.isPending || outboundPaused?.email === true}
             className="gap-2"
           >
             {sendMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
-            {outboundPaused?.email === true ? 'E-mail gepauzeerd' : sendMutation.isPending ? 'Versturen...' : 'Versturen naar opdrachtgever'}
+            {!canSendProposal ? 'Geen verzendrecht' : outboundPaused?.email === true ? 'E-mail gepauzeerd' : sendMutation.isPending ? 'Versturen...' : 'Versturen naar opdrachtgever'}
           </Button>
         </DialogFooter>
       </DialogContent>

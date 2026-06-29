@@ -82,6 +82,7 @@ Deno.serve(async (req) => {
       candidateId: body.candidate_id ?? null,
       companyId: body.company_id ?? null,
       companyContactId: body.company_contact_id ?? null,
+      matchId: body.match_id ?? null,
       sentBy: auth.userId,
     });
     return json({ paused: true, message: "Uitgaande e-mail staat op pauze — bericht is als concept opgeslagen, niet verzonden." }, 200, corsHeaders);
@@ -136,6 +137,7 @@ Deno.serve(async (req) => {
       candidate_id: body.candidate_id ?? null,
       company_id: body.company_id ?? null,
       company_contact_id: body.company_contact_id ?? null,
+      match_id: body.match_id ?? null,
       channel: "email",
       direction: "outbound",
       subject,

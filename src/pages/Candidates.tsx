@@ -113,10 +113,11 @@ const toInServiceCandidates = (placements: any[]) => {
 
 const getProfileLinkStatus = (candidate: any, tokens: any[]) => {
   const token = tokens.find((t) => t.candidate_id === candidate.id);
-  if (!token) return { label: 'Niet verstuurd', className: 'bg-muted text-muted-foreground border-0' };
+  if (!token) return { label: 'Geen link', className: 'bg-muted text-muted-foreground border-0' };
   if (token.used_at) return { label: 'Profiel compleet', className: 'bg-stat-green/10 text-stat-green border-0' };
+  if (token.sent_at) return { label: 'Link verstuurd', className: 'bg-blue-100 text-blue-700 border-0' };
   if (token.last_accessed_at) return { label: 'Bezig met invullen', className: 'bg-orange-100 text-orange-700 border-0' };
-  return { label: 'Link verstuurd', className: 'bg-yellow-100 text-yellow-700 border-0' };
+  return { label: 'Link aangemaakt', className: 'bg-yellow-100 text-yellow-700 border-0' };
 };
 
 const candidateName = (candidate: any) => `${candidate.last_name ?? ''} ${candidate.first_name ?? ''}`.trim().toLowerCase();
@@ -336,9 +337,9 @@ const Candidates = () => {
     queryKey: ['candidate-profile-tokens-list', candidateIds],
     queryFn: async () => {
       if (candidateIds.length === 0) return [];
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('candidate_profile_tokens')
-        .select('candidate_id, used_at, last_accessed_at, expires_at')
+        .select('candidate_id, used_at, last_accessed_at, sent_at, expires_at')
         .in('candidate_id', candidateIds)
         .order('created_at', { ascending: false });
       if (error) throw error;

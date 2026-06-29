@@ -104,7 +104,7 @@ export function sampleContentForFlow(flowId: string, brand: PreviewBrand): strin
       return h("Kandidaatvoorstel") +
         p("Wij hebben een geschikte kandidaat gevonden voor uw vacature. Hieronder vindt u een kort profiel.") +
         `<table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:6px;border:1px solid #e2e8f0;margin:0 0 16px;"><tr><td style="padding:14px 18px;"><span style="color:${navy};font-size:12px;text-transform:uppercase;">Kandidaat</span><br><strong style="color:${navy};">Jan de Vries</strong></td></tr></table>` +
-        ctaButton("Reageer op dit voorstel", brand.accentHex) + sign;
+        ctaButton("Bekijk CV en reageer op dit voorstel", brand.accentHex) + sign;
     case "placement-client":
       return h("Plaatsingsbevestiging") + p("Hierbij bevestigen wij de plaatsing van een nieuwe medewerker bij uw bedrijf.") + sign;
     case "placement-employee":

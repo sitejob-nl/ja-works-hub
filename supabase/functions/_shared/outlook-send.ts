@@ -38,6 +38,7 @@ interface SendViaOutlookAccountParams {
   candidateId?: string;
   companyId?: string;
   companyContactId?: string;
+  matchId?: string;
   sentBy?: string;
   senderName?: string | null;
   logCommunication?: boolean;
@@ -118,6 +119,7 @@ export async function sendViaOutlookAccount(params: SendViaOutlookAccountParams)
         candidateId: params.candidateId ?? null,
         companyId: params.companyId ?? null,
         companyContactId: params.companyContactId ?? null,
+        matchId: params.matchId ?? null,
         sentBy: params.sentBy ?? null,
       });
     }
@@ -171,6 +173,7 @@ export async function sendViaOutlookAccount(params: SendViaOutlookAccountParams)
         candidate_id: params.candidateId ?? null,
         company_id: params.companyId ?? null,
         company_contact_id: params.companyContactId ?? null,
+        match_id: params.matchId ?? null,
         channel: "email",
         direction: "outbound",
         subject: params.subject,

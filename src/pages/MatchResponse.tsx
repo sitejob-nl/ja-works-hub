@@ -71,6 +71,7 @@ type ProposalData = {
   report: Report | null;
   cv_url: string | null;
   cv: CvInfo | null;
+  sections?: Record<string, boolean>;
   rejection_reasons: { id: string; reason: string }[];
   contact: { manager_email: string | null; manager_phone: string | null };
 };
@@ -199,7 +200,7 @@ const MatchResponse = () => {
           token,
           action: 'respond',
           decision,
-          interview_date: decision === 'op_gesprek' ? new Date(interviewDate).toISOString() : undefined,
+          interview_proposed_at: decision === 'op_gesprek' ? new Date(interviewDate).toISOString() : undefined,
           desired_start_date: decision === 'direct_starten' ? startDate : undefined,
           rejection_reason_id: decision === 'afwijzen' ? reasonId : undefined,
           note: note || undefined,
@@ -240,7 +241,7 @@ const MatchResponse = () => {
   if (done) {
     const positive = done === 'op_gesprek' || done === 'direct_starten' || done === 'interesse';
     const doneText = done === 'op_gesprek'
-      ? 'Het gesprek is vastgelegd. Na het gesprek kan de kandidaat alsnog worden goedgekeurd of afgewezen; wij volgen dit intern op.'
+      ? 'Uw afspraakvoorstel is ontvangen. De recruiter bevestigt datum, tijd en locatie persoonlijk; de afspraak is nog niet definitief.'
       : done === 'direct_starten'
         ? 'Uw akkoord is verwerkt. Wij zetten de plaatsing intern klaar en nemen contact op over de definitieve start.'
         : positive
@@ -272,10 +273,12 @@ const MatchResponse = () => {
   const managerPhone = data?.contact?.manager_phone;
   const waPhone = managerPhone ? managerPhone.replace(/[^0-9]/g, '') : null;
   const summary = report?.summary || buildSummary(candidateName, profile);
+  const sections = data?.sections ?? {};
+  const showSection = (key: string, defaultValue = true) => sections[key] !== false && sections.hideReport !== true && defaultValue;
   const orgName = data?.org_name || 'JA Werkt';
   const hasReportContent = Boolean(
-    (report?.strong_signals?.length ?? 0) > 0 ||
-    (report?.attention_points?.length ?? 0) > 0
+    (showSection('positiveSignals') && (report?.strong_signals?.length ?? 0) > 0) ||
+    (showSection('riskFactors') && (report?.attention_points?.length ?? 0) > 0)
   );
   const quickFacts = compact([
     profile?.city ? `Regio ${profile.city}` : null,
@@ -360,6 +363,7 @@ const MatchResponse = () => {
                   )}
                 </section>
 
+                {showSection('summary') && (
                 <section className="space-y-3">
                   <div className="flex items-center gap-2">
                     <Sparkles className="h-4 w-4 text-slate-500" />
@@ -373,39 +377,40 @@ const MatchResponse = () => {
                     </p>
                   )}
                 </section>
+                )}
 
                 <section className="grid gap-5 sm:grid-cols-2">
-                  <div className="space-y-3">
+                  {showSection('skills') && <div className="space-y-3">
                     <div className="flex items-center gap-2">
                       <BriefcaseBusiness className="h-4 w-4 text-slate-500" />
                       <h2 className="text-base font-semibold">Vaardigheden</h2>
                     </div>
                     <TagList items={profile?.skills ?? []} empty="Nog geen vaardigheden vastgelegd." />
-                  </div>
-                  <div className="space-y-3">
+                  </div>}
+                  {showSection('certifications') && <div className="space-y-3">
                     <div className="flex items-center gap-2">
                       <Award className="h-4 w-4 text-slate-500" />
                       <h2 className="text-base font-semibold">Certificaten</h2>
                     </div>
                     <TagList items={profile?.certifications ?? []} empty="Nog geen certificaten vastgelegd." />
-                  </div>
-                  <div className="space-y-3">
+                  </div>}
+                  {showSection('languages') && <div className="space-y-3">
                     <div className="flex items-center gap-2">
                       <Languages className="h-4 w-4 text-slate-500" />
                       <h2 className="text-base font-semibold">Talen</h2>
                     </div>
                     <TagList items={profile?.languages ?? []} empty="Nog geen talen vastgelegd." />
-                  </div>
-                  <div className="space-y-3">
+                  </div>}
+                  {showSection('targetFunctions') && <div className="space-y-3">
                     <div className="flex items-center gap-2">
                       <UserRound className="h-4 w-4 text-slate-500" />
                       <h2 className="text-base font-semibold">Passende functies</h2>
                     </div>
                     <TagList items={profile?.target_functions ?? []} empty="Nog geen passende functies vastgelegd." />
-                  </div>
+                  </div>}
                 </section>
 
-                {(profile?.availability_notes || profile?.available_from || profile?.available_until || profile?.arrival_date || profile?.city) && (
+                {showSection('availability') && (profile?.availability_notes || profile?.available_from || profile?.available_until || profile?.arrival_date || profile?.city) && (
                   <section className="rounded-md border p-4">
                     <div className="mb-3 flex items-center gap-2">
                       <CalendarDays className="h-4 w-4 text-slate-500" />
@@ -452,7 +457,7 @@ const MatchResponse = () => {
                       <ShieldCheck className="h-4 w-4 text-slate-500" />
                       <h2 className="text-base font-semibold">Beoordeling</h2>
                     </div>
-                    {report?.strong_signals && report.strong_signals.length > 0 && (
+                    {showSection('positiveSignals') && report?.strong_signals && report.strong_signals.length > 0 && (
                       <div>
                         <div className="mb-1 text-sm font-semibold">Sterke punten</div>
                         <ul className="list-disc space-y-1 pl-5 text-sm text-slate-700">
@@ -460,7 +465,7 @@ const MatchResponse = () => {
                         </ul>
                       </div>
                     )}
-                    {report?.attention_points && report.attention_points.length > 0 && (
+                    {showSection('riskFactors') && report?.attention_points && report.attention_points.length > 0 && (
                       <div>
                         <div className="mb-1 text-sm font-semibold">Aandachtspunten</div>
                         <ul className="list-disc space-y-1 pl-5 text-sm text-slate-700">
@@ -546,7 +551,7 @@ const MatchResponse = () => {
                         <Play className="h-5 w-5 mr-2" /> Goedkeuren / direct starten
                       </Button>
                       <Button variant="outline" className="h-12" onClick={() => setMode('op_gesprek')} disabled={submitting}>
-                        <CalendarClock className="h-5 w-5 mr-2" /> Gesprek plannen
+                        <CalendarClock className="h-5 w-5 mr-2" /> Afspraak voorstellen
                       </Button>
                       <Button variant="outline" className="h-12 border-red-200 hover:bg-red-50 hover:text-red-700" onClick={() => setMode('afwijzen')} disabled={submitting}>
                         <ThumbsDown className="h-5 w-5 mr-2" /> Afwijzen
@@ -570,13 +575,16 @@ const MatchResponse = () => {
 
                   {mode === 'op_gesprek' && (
                     <div className="space-y-3 rounded-md border p-4">
-                      <Label htmlFor="interviewDate">Datum &amp; tijd gesprek</Label>
-                      <Input id="interviewDate" type="datetime-local" value={interviewDate} onChange={(e) => setInterviewDate(e.target.value)} />
-                      <Textarea placeholder="Opmerking (optioneel)" value={note} onChange={(e) => setNote(e.target.value)} />
+                      <div>
+                        <Label htmlFor="interviewDate">Voorgestelde datum &amp; tijd</Label>
+                        <Input id="interviewDate" type="datetime-local" step={900} value={interviewDate} onChange={(e) => setInterviewDate(e.target.value)} />
+                        <p className="mt-1 text-xs text-muted-foreground">Dit is een voorstel. De recruiter bevestigt de definitieve afspraak met u en de kandidaat.</p>
+                      </div>
+                      <Textarea placeholder="Opmerking of voorkeurslocatie (optioneel)" value={note} onChange={(e) => setNote(e.target.value)} />
                       <div className="flex gap-2">
                         <Button variant="ghost" onClick={() => setMode(null)} disabled={submitting}>Terug</Button>
                         <Button className="flex-1" onClick={() => submit('op_gesprek')} disabled={submitting || !interviewDate}>
-                          {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Bevestig'}
+                          {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Datum voorstellen'}
                         </Button>
                       </div>
                     </div>

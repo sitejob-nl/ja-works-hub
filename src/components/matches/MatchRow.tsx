@@ -9,6 +9,7 @@ import MatchStatusSelect from '@/components/matches/MatchStatusSelect';
 import type { MatchBreakdown } from '@/lib/matching';
 import { cn } from '@/lib/utils';
 import { getMatchStatusMeta, getStatusAgeLabel } from '@/lib/match-status';
+import { getMatchFollowupState } from '@/lib/match-followup';
 import { getMatchNextActionLabel, getPrimaryMatchIssue, scoreBadgeClass, toScorePercent } from '@/lib/match-presenters';
 
 type MatchRowProps = {
@@ -34,6 +35,9 @@ type MatchRowProps = {
   durationMin?: number | null;
   statusChangedAt?: string | null;
   createdAt?: string | null;
+  interviewProposedAt?: string | null;
+  interviewConfirmedAt?: string | null;
+  followupDays?: number | null;
   selected?: boolean;
   onSelectChange?: (checked: boolean) => void;
   onStatusChange?: (status: string) => void;
@@ -64,6 +68,9 @@ const MatchRow = ({
   durationMin,
   statusChangedAt,
   createdAt,
+  interviewProposedAt,
+  interviewConfirmedAt,
+  followupDays,
   selected = false,
   onSelectChange,
   onStatusChange,
@@ -80,6 +87,14 @@ const MatchRow = ({
     ?? (typeof scorePercent === 'number' && scorePercent >= 72 ? 'groen' : typeof scorePercent === 'number' && scorePercent >= 45 ? 'oranje' : 'rood');
   const issue = getPrimaryMatchIssue(breakdown);
   const statusAge = getStatusAgeLabel(statusChangedAt, createdAt);
+  const followup = getMatchFollowupState({
+    status,
+    statusChangedAt,
+    createdAt,
+    interviewProposedAt,
+    interviewConfirmedAt,
+    followupDays,
+  });
   const nextAction = getMatchNextActionLabel(status, breakdown);
   const km = distanceKm ?? breakdown?.distance?.km ?? null;
   const mins = durationMin ?? breakdown?.distance?.durationMin ?? null;
@@ -132,6 +147,11 @@ const MatchRow = ({
             <Badge className={cn('gap-1 text-[11px]', statusMeta.badgeClass)}>
               <span className={cn('h-1.5 w-1.5 rounded-full', statusMeta.color)} /> {statusMeta.label}
             </Badge>
+            {followup.level === 'warning' && (
+              <Badge className="gap-1 border-0 bg-amber-100 text-amber-800 text-[11px]">
+                <AlertTriangle className="h-3 w-3" /> {followup.label}
+              </Badge>
+            )}
             {sourceLabel && <Badge variant="outline" className="text-[10px]">{sourceLabel}</Badge>}
           </div>
 
@@ -184,7 +204,7 @@ const MatchRow = ({
             </Badge>
             {onInspect && (
               <Button type="button" size="sm" variant="ghost" className="h-8 gap-1.5 text-xs" onClick={onInspect}>
-                <MessageSquare className="h-3.5 w-3.5" /> Waarom?
+                <MessageSquare className="h-3.5 w-3.5" /> Detail
               </Button>
             )}
             {secondaryActions}

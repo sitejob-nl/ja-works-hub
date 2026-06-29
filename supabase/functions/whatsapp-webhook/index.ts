@@ -161,7 +161,7 @@ async function handleMatchInterest(supabase: any, orgId: string, replyId: string
     .maybeSingle();
   // Niet terugzetten als de match al verder of terminaal is.
   if (!match || ["geaccepteerd", "geplaatst", "afgewezen"].includes(match.status)) return;
-  const newStatus = isYes ? "afspraak_op_kantoor" : "afgewezen";
+  const newStatus = isYes ? "afspraak_voorgesteld" : "afgewezen";
   await supabase
     .from("matches")
     .update({ status: newStatus, status_changed_at: new Date().toISOString() })
@@ -172,7 +172,7 @@ async function handleMatchInterest(supabase: any, orgId: string, replyId: string
     from_status: match.status,
     to_status: newStatus,
     notes: isYes
-      ? "Kandidaat reageerde 'Ja, interesse' via WhatsApp"
+      ? "Kandidaat reageerde 'Ja, interesse' via WhatsApp — afspraakvoorstel opvolgen"
       : "Kandidaat reageerde 'Nee, bedankt' via WhatsApp",
   });
 }

@@ -17,22 +17,14 @@ import { resolveAddressCoordinates } from '@/lib/pdok';
 import NationalitySelect from '@/components/shared/NationalitySelect';
 import SkillMultiSelect from '@/components/shared/SkillMultiSelect';
 import LanguageMultiSelect from '@/components/shared/LanguageMultiSelect';
+import { CANDIDATE_SOURCES, includeCurrentOption, normalizeCandidateSource } from '@/lib/candidate-options';
+import { mergeCandidatePhoneFields } from '@/lib/phone';
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   candidate?: any;
 }
-
-const sources = [
-  { value: 'website', label: 'Website' },
-  { value: 'whatsapp', label: 'WhatsApp' },
-  { value: 'indeed', label: 'Indeed' },
-  { value: 'linkedin', label: 'LinkedIn' },
-  { value: 'referral', label: 'Referral' },
-  { value: 'recruitment_partner', label: 'Recruitmentpartner' },
-  { value: 'overig', label: 'Overig' },
-];
 
 const emptyForm = {
   first_name: '', last_name: '', date_of_birth: '', nationality: '',
@@ -92,18 +84,19 @@ const CandidateSlideOver = ({ open, onOpenChange, candidate }: Props) => {
         lat: form.address_lat,
         lng: form.address_lng,
       });
+      const phones = mergeCandidatePhoneFields({ phone: form.phone, phone_nl: form.phone_nl });
       const payload = {
         ...form,
         date_of_birth: form.date_of_birth || null,
         drivers_license_expiry: form.has_drivers_license && form.drivers_license_expiry ? form.drivers_license_expiry : null,
-        source: form.source || null,
+        source: normalizeCandidateSource(form.source) || null,
         notes: form.notes || null,
         bsn: form.bsn || null,
         iban: form.iban || null,
         nationality: form.nationality || null,
         email: form.email || null,
-        phone: form.phone || null,
-        phone_nl: form.phone_nl || null,
+        phone: phones.phone || null,
+        phone_nl: phones.phone_nl || null,
         emergency_contact_name: form.emergency_contact_name || null,
         emergency_contact_phone: form.emergency_contact_phone || null,
         address_street: form.address_street || null,
@@ -192,7 +185,7 @@ const CandidateSlideOver = ({ open, onOpenChange, candidate }: Props) => {
             <Select value={form.source} onValueChange={(v) => set('source', v)}>
               <SelectTrigger><SelectValue placeholder="Selecteer bron" /></SelectTrigger>
               <SelectContent>
-                {sources.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
+                {includeCurrentOption(CANDIDATE_SOURCES, form.source).map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>

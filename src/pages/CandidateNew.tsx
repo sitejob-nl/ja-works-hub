@@ -23,9 +23,17 @@ import { CV_ACCEPT, extractCvTextFromFile } from '@/lib/cvText';
 import NationalitySelect from '@/components/shared/NationalitySelect';
 import LanguageMultiSelect from '@/components/shared/LanguageMultiSelect';
 import SkillMultiSelect from '@/components/shared/SkillMultiSelect';
-import HousingRoomPicker, { type HousingSelection } from '@/components/housing/HousingRoomPicker';
-import { COUNTRIES, NATIONALITIES, LANGUAGES, normalizeNationality, normalizeLanguages } from '@/lib/candidate-options';
-import { resolveEmployeeId } from '@/lib/assignments';
+import {
+  CANDIDATE_SOURCES,
+  COUNTRIES,
+  NATIONALITIES,
+  LANGUAGES,
+  normalizeNationality,
+  normalizeLanguages,
+  normalizeCountry,
+  normalizeCandidateSource,
+} from '@/lib/candidate-options';
+import { mergeCandidatePhoneFields, normalizeCandidatePhone } from '@/lib/phone';
 import { allowFileDrop, getDroppedFiles } from '@/lib/file-input';
 
 // Leest de JSON-foutmelding uit een mislukte supabase.functions.invoke (bv. 402-saldo).
@@ -51,15 +59,6 @@ type SkillOption = {
   name: string;
 };
 
-const sources = [
-  { value: 'website', label: 'Website' },
-  { value: 'whatsapp', label: 'WhatsApp' },
-  { value: 'indeed', label: 'Indeed' },
-  { value: 'linkedin', label: 'LinkedIn' },
-  { value: 'referral', label: 'Referral' },
-  { value: 'overig', label: 'Overig' },
-];
-
 const CandidateNew = () => {
   const orgId = useOrganizationId();
   const { buildUrl } = usePublicUrl();
@@ -75,17 +74,6 @@ const CandidateNew = () => {
   const [copied, setCopied] = useState(false);
   const [portalCopied, setPortalCopied] = useState(false);
 
-  // Adres-modus (Nederlands / buitenlands) + huisvestingskeuze bij NL zonder eigen adres.
-  const [addressMode, setAddressMode] = useState<'nl' | 'foreign'>('nl');
-  const [nlHousing, setNlHousing] = useState<'own' | 'agency'>('own');
-  const [housing, setHousing] = useState<HousingSelection>({
-    unitId: null,
-    propertyId: null,
-    checkInDate: new Date().toISOString().slice(0, 10),
-    unitName: null,
-    propertyAddress: null,
-  });
-
   // CV-upload: bewaar het bestand + de geëxtraheerde tekst zodat we ze ná het aanmaken
   // kunnen opslaan en de AI-analyse kunnen starten.
   const cvInputRef = useRef<HTMLInputElement>(null);
@@ -95,8 +83,9 @@ const CandidateNew = () => {
 
   const [form, setForm] = useState({
     first_name: '', last_name: '', date_of_birth: '', nationality: '',
-    email: '', phone: '', address_street: '', address_postal: '', address_city: '',
+    email: '', phone: '', phone_nl: '', address_street: '', address_postal: '', address_city: '',
     address_country: '', address_lat: null as number | null, address_lng: null as number | null,
+    foreign_address_street: '', foreign_address_postal: '', foreign_address_city: '', foreign_address_country: '',
     bsn: '', iban: '', has_drivers_license: false, drivers_license_expiry: '',
     skills: [] as string[], languages: [] as string[], source: '', notes: '',
   });
@@ -104,7 +93,7 @@ const CandidateNew = () => {
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
 
   // Bewaar invoer tegen per ongeluk weg-navigeren / refresh; stoppen + wissen zodra de
-  // kandidaat is aangemaakt (step 'link'). CV-bestand en huisvesting blijven buiten het concept.
+  // kandidaat is aangemaakt (step 'link'). CV-bestand blijft buiten het concept.
   const { clearDraft } = useFormDraft('draft:candidate-new', form, setForm, { enabled: step === 'form' });
 
   // Vult lege formuliervelden met de uit het CV geëxtraheerde waarden. Overschrijft nooit
@@ -124,10 +113,19 @@ const CandidateNew = () => {
     // Nationaliteit naar canonieke dropdownwaarde mappen (bv. "Dutch" → "Nederlandse").
     setIfEmpty('nationality', normalizeNationality(fields.nationality));
     setIfEmpty('email', fields.email);
-    setIfEmpty('phone', fields.phone);
-    setIfEmpty('address_street', fields.address_street);
-    setIfEmpty('address_postal', fields.address_postal);
-    setIfEmpty('address_city', fields.address_city);
+    const phoneFields = mergeCandidatePhoneFields({
+      phone: fields.phone,
+      phone_nl: fields.phone_nl,
+    });
+    setIfEmpty('phone_nl', phoneFields.phone_nl);
+    setIfEmpty('phone', phoneFields.phone);
+    setIfEmpty('address_street', fields.dutch_address_street ?? fields.address_street);
+    setIfEmpty('address_postal', fields.dutch_address_postal ?? fields.address_postal);
+    setIfEmpty('address_city', fields.dutch_address_city ?? fields.address_city);
+    setIfEmpty('foreign_address_street', fields.foreign_address_street);
+    setIfEmpty('foreign_address_postal', fields.foreign_address_postal);
+    setIfEmpty('foreign_address_city', fields.foreign_address_city);
+    setIfEmpty('foreign_address_country', normalizeCountry(fields.foreign_address_country));
 
     // Geboortedatum alleen overnemen als het exact YYYY-MM-DD is (de date-input eist dat).
     if (typeof fields.date_of_birth === 'string'
@@ -189,6 +187,7 @@ const CandidateNew = () => {
           cv_text: cleaned,
           nationality_options: NATIONALITIES.map((n) => n.value),
           language_options: LANGUAGES,
+          country_options: COUNTRIES.map((c) => c.value),
         },
       });
 
@@ -234,6 +233,16 @@ const CandidateNew = () => {
     if (droppedFile) await processCvFile(droppedFile);
   };
 
+  const normalizePhoneField = (field: 'phone' | 'phone_nl') => {
+    const normalized = normalizeCandidatePhone(form[field]);
+    if (!normalized.phone && !normalized.phone_nl) return;
+    setForm((f) => ({
+      ...f,
+      phone_nl: normalized.phone_nl || (field === 'phone_nl' && normalized.phone ? '' : f.phone_nl),
+      phone: normalized.phone || (field === 'phone' && normalized.phone_nl ? '' : f.phone),
+    }));
+  };
+
   // Catalogus voor het filteren van uit-CV-geëxtraheerde skills. Deelt de cache-key
   // met SkillMultiSelect zodat er niet dubbel wordt gefetcht.
   const { data: skillOptions = [] } = useQuery({
@@ -253,61 +262,51 @@ const CandidateNew = () => {
 
   const { data: duplicates = [] } = useDeduplication({
     email: form.email,
-    phone: form.phone,
+    phone: form.phone_nl || form.phone,
     date_of_birth: form.date_of_birth,
     last_name: form.last_name,
   });
 
   const mutation = useMutation({
     mutationFn: async () => {
-      const isForeign = addressMode === 'foreign';
-      const isAgency = addressMode === 'nl' && nlHousing === 'agency';
-
-      // Bepaal adres + vlaggen op basis van de gekozen modus.
-      let addr: { street: string; postal: string; city: string; lat: number | null; lng: number | null };
-      let country: string | null;
-      if (isAgency) {
-        if (!housing.unitId || !housing.propertyAddress) {
-          throw new Error('Kies een woning en kamer, of kies een ander adrestype');
-        }
-        addr = { ...housing.propertyAddress };
-        country = 'Nederland';
-      } else if (isForeign) {
-        addr = { street: form.address_street, postal: form.address_postal, city: form.address_city, lat: null, lng: null };
-        country = form.address_country || null;
-      } else {
-        const resolved = await resolveAddressCoordinates({
+      const normalizedPhones = mergeCandidatePhoneFields({ phone: form.phone, phone_nl: form.phone_nl });
+      const hasDutchAddress = Boolean(form.address_street.trim() || form.address_postal.trim() || form.address_city.trim());
+      const resolved = hasDutchAddress
+        ? await resolveAddressCoordinates({
           street: form.address_street,
           postal: form.address_postal,
           city: form.address_city,
           lat: form.address_lat,
           lng: form.address_lng,
-        });
-        addr = { street: form.address_street, postal: form.address_postal, city: form.address_city, lat: resolved.lat, lng: resolved.lng };
-        country = 'Nederland';
-      }
+        })
+        : { lat: null, lng: null };
 
       const payload = {
         ...form,
         organization_id: orgId,
         date_of_birth: form.date_of_birth || null,
         drivers_license_expiry: form.has_drivers_license && form.drivers_license_expiry ? form.drivers_license_expiry : null,
-        source: form.source || null,
+        source: normalizeCandidateSource(form.source) || null,
         notes: form.notes || null,
         bsn: form.bsn || null,
         iban: form.iban || null,
         nationality: form.nationality || null,
         email: form.email || null,
-        phone: form.phone || null,
-        address_street: addr.street || null,
-        address_postal: addr.postal || null,
-        address_city: addr.city || null,
-        address_country: country,
-        address_lat: addr.lat,
-        address_lng: addr.lng,
-        has_dutch_address: !isForeign,
+        phone: normalizedPhones.phone || null,
+        phone_nl: normalizedPhones.phone_nl || null,
+        address_street: form.address_street || null,
+        address_postal: form.address_postal || null,
+        address_city: form.address_city || null,
+        address_country: hasDutchAddress ? 'Nederland' : null,
+        address_lat: resolved.lat,
+        address_lng: resolved.lng,
+        has_dutch_address: hasDutchAddress,
+        foreign_address_street: form.foreign_address_street || null,
+        foreign_address_postal: form.foreign_address_postal || null,
+        foreign_address_city: form.foreign_address_city || null,
+        foreign_address_country: normalizeCountry(form.foreign_address_country) || null,
       };
-      const { data, error } = await supabase.from('candidates').insert(payload as any).select('id, first_name, phone, email, employee_status').single();
+      const { data, error } = await supabase.from('candidates').insert(payload as any).select('id, first_name, phone, phone_nl, email, employee_status').single();
       if (error) throw error;
 
       // Generate profile token
@@ -344,46 +343,13 @@ const CandidateNew = () => {
         }
       }
 
-      // Huisvesting reserveren (NL-adres zonder eigen woning). Non-kritisch: een
-      // fout mag het aanmaken niet terugdraaien — we melden 'm in onSuccess.
-      let housingReserved = false;
-      let housingError: string | null = null;
-      if (isAgency && housing.unitId) {
-        try {
-          const employeeId = await resolveEmployeeId(
-            { id: data.id, employee_status: (data as any).employee_status ?? null },
-            orgId,
-            housing.checkInDate,
-          );
-          const { error: haError } = await supabase.from('housing_assignments').insert({
-            organization_id: orgId,
-            unit_id: housing.unitId,
-            employee_id: employeeId,
-            candidate_id: data.id,
-            check_in_date: housing.checkInDate,
-            status: 'gereserveerd',
-          } as any);
-          if (haError) throw haError;
-          housingReserved = true;
-        } catch (e) {
-          housingError = (e as Error).message;
-          console.warn('Huisvesting reserveren mislukt (non-kritisch):', e);
-        }
-      }
-
-      return { ...data, token: tokenData.token, hadCv: !!cvFile, housingReserved, housingError };
+      return { ...data, token: tokenData.token, hadCv: !!cvFile };
     },
     onSuccess: (data) => {
       clearDraft();
       qc.invalidateQueries({ queryKey: ['candidates'] });
       logAudit({ action: 'create', tableName: 'candidates', recordId: data.id, newValues: form });
       toast.success('Kandidaat aangemaakt');
-
-      if (data.housingReserved) {
-        toast.success('Kamer gereserveerd — stel inhouding/borg in op de huisvesting-tab');
-      } else if (data.housingError) {
-        toast.error(`Kamer reserveren mislukt: ${data.housingError}`);
-      }
 
       // Start de Gemini-dossieranalyse als er een CV is geüpload.
       // Fire-and-forget: het resultaat verschijnt op het kandidaatdossier.
@@ -395,7 +361,7 @@ const CandidateNew = () => {
         toast.success('CV-analyse gestart — verschijnt op het kandidaatdossier');
       }
 
-      setCreatedCandidate({ id: data.id, first_name: data.first_name, phone: data.phone, email: data.email });
+      setCreatedCandidate({ id: data.id, first_name: data.first_name, phone: data.phone_nl || data.phone, email: data.email });
       setProfileToken(data.token);
       setStep('link');
     },
@@ -632,60 +598,70 @@ const CandidateNew = () => {
             <div className="space-y-1.5"><Label>Geboortedatum</Label><Input type="date" value={form.date_of_birth} onChange={(e) => set('date_of_birth', e.target.value)} /></div>
             <div className="space-y-1.5"><Label>Nationaliteit</Label><NationalitySelect value={form.nationality} onChange={(v) => set('nationality', v)} /></div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5"><Label>E-mail</Label><Input value={form.email} onChange={(e) => set('email', e.target.value)} /></div>
-            <div className="space-y-1.5"><Label>Telefoon</Label><Input value={form.phone} onChange={(e) => set('phone', e.target.value)} /></div>
-          </div>
-          <div className="space-y-3">
             <div className="space-y-1.5">
-              <Label>Adres</Label>
-              <div className="flex gap-2">
-                <Button type="button" size="sm" variant={addressMode === 'nl' ? 'default' : 'outline'} onClick={() => setAddressMode('nl')}>Nederlands adres</Button>
-                <Button type="button" size="sm" variant={addressMode === 'foreign' ? 'default' : 'outline'} onClick={() => setAddressMode('foreign')}>Buitenlands adres</Button>
-              </div>
+              <Label>Telefoon (NL mobiel)</Label>
+              <Input
+                value={form.phone_nl}
+                onChange={(e) => set('phone_nl', e.target.value)}
+                onBlur={() => normalizePhoneField('phone_nl')}
+                placeholder="06... / +31 6..."
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label>Telefoon (EU / buitenland)</Label>
+              <Input
+                value={form.phone}
+                onChange={(e) => set('phone', e.target.value)}
+                onBlur={() => normalizePhoneField('phone')}
+                placeholder="+48... / +40..."
+              />
+            </div>
+          </div>
+          <div className="space-y-5 rounded-md border bg-muted/20 p-4">
+            <div className="space-y-1.5">
+              <Label>Nederlands verblijfsadres</Label>
+              <AddressAutocomplete
+                value={{ street: form.address_street, postal: form.address_postal, city: form.address_city, lat: form.address_lat, lng: form.address_lng }}
+                onChange={(address) => setForm((f) => ({
+                  ...f,
+                  address_street: address.street,
+                  address_postal: address.postal,
+                  address_city: address.city,
+                  address_lat: address.lat ?? null,
+                  address_lng: address.lng ?? null,
+                }))}
+                gridClassName="grid-cols-1 sm:grid-cols-3 gap-4"
+                streetLabel="Straat"
+              />
             </div>
 
-            {addressMode === 'foreign' ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1.5 sm:col-span-2"><Label>Straat + huisnr</Label><Input value={form.address_street} onChange={(e) => set('address_street', e.target.value)} /></div>
-                <div className="space-y-1.5"><Label>Postcode</Label><Input value={form.address_postal} onChange={(e) => set('address_postal', e.target.value)} /></div>
-                <div className="space-y-1.5"><Label>Plaats</Label><Input value={form.address_city} onChange={(e) => set('address_city', e.target.value)} /></div>
-                <div className="space-y-1.5 sm:col-span-2">
-                  <Label>Land</Label>
-                  <Select value={form.address_country} onValueChange={(v) => set('address_country', v)}>
-                    <SelectTrigger><SelectValue placeholder="Kies land" /></SelectTrigger>
-                    <SelectContent>
-                      {COUNTRIES.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t pt-4">
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label>Buitenlands adres</Label>
+                <Input value={form.foreign_address_street} onChange={(e) => set('foreign_address_street', e.target.value)} placeholder="Straat + huisnr" />
               </div>
-            ) : (
-              <div className="space-y-3">
-                <div className="flex gap-2">
-                  <Button type="button" size="sm" variant={nlHousing === 'own' ? 'secondary' : 'outline'} onClick={() => setNlHousing('own')}>Eigen adres</Button>
-                  <Button type="button" size="sm" variant={nlHousing === 'agency' ? 'secondary' : 'outline'} onClick={() => setNlHousing('agency')}>Nog geen huisvesting — kies woning</Button>
-                </div>
-
-                {nlHousing === 'own' ? (
-                  <AddressAutocomplete
-                    value={{ street: form.address_street, postal: form.address_postal, city: form.address_city, lat: form.address_lat, lng: form.address_lng }}
-                    onChange={(address) => setForm((f) => ({
-                      ...f,
-                      address_street: address.street,
-                      address_postal: address.postal,
-                      address_city: address.city,
-                      address_lat: address.lat ?? null,
-                      address_lng: address.lng ?? null,
-                    }))}
-                    gridClassName="grid-cols-1 sm:grid-cols-3 gap-4"
-                    streetLabel="Straat"
-                  />
-                ) : (
-                  <HousingRoomPicker value={housing} onChange={setHousing} />
-                )}
+              <div className="space-y-1.5">
+                <Label>Postcode</Label>
+                <Input value={form.foreign_address_postal} onChange={(e) => set('foreign_address_postal', e.target.value)} />
               </div>
-            )}
+              <div className="space-y-1.5">
+                <Label>Plaats</Label>
+                <Input value={form.foreign_address_city} onChange={(e) => set('foreign_address_city', e.target.value)} />
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label>Land</Label>
+                <Select value={form.foreign_address_country} onValueChange={(v) => set('foreign_address_country', v)}>
+                  <SelectTrigger><SelectValue placeholder="Kies land" /></SelectTrigger>
+                  <SelectContent>
+                    {COUNTRIES.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5"><Label>BSN</Label><Input value={form.bsn} onChange={(e) => set('bsn', e.target.value)} /></div>
@@ -710,7 +686,7 @@ const CandidateNew = () => {
             <Select value={form.source} onValueChange={(v) => set('source', v)}>
               <SelectTrigger className="max-w-xs"><SelectValue placeholder="Selecteer bron" /></SelectTrigger>
               <SelectContent>
-                {sources.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
+                {CANDIDATE_SOURCES.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>

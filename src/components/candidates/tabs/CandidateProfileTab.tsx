@@ -4,13 +4,17 @@ import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { formatDate } from '@/lib/format';
 import { Copy, Check, MessageCircle, Mail, Link2, RefreshCw, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useDecryptedCandidate } from '@/hooks/useDecryptedCandidate';
 import { usePublicUrl } from '@/hooks/usePublicUrl';
 import { useOutlookAccounts } from '@/hooks/useOutlookAccounts';
+import { useAuth } from '@/contexts/AuthContext';
 import { logAudit } from '@/lib/audit';
+import { CANDIDATE_SOURCES, includeCurrentOption, normalizeCandidateSource } from '@/lib/candidate-options';
+import { normalizeCandidatePhone } from '@/lib/phone';
 import CustomFieldsSection from '@/components/shared/CustomFieldsSection';
 import UnsavedChangesGuard from '@/components/shared/UnsavedChangesGuard';
 import { InlineTextField, InlineSensitiveField, InlineBooleanField, InlineTagsField, InlineSkillsField, InlineLanguagesField, InlineNationalityField } from '@/components/shared/InlineFields';
@@ -39,6 +43,7 @@ const buildAvailabilityNotes = (
 
 const CandidateProfileTab = ({ candidate }: { candidate: any }) => {
   const qc = useQueryClient();
+  const { user } = useAuth();
   const [copied, setCopied] = useState(false);
   const [profileEmailOpen, setProfileEmailOpen] = useState(false);
   const [dirtyEditors, setDirtyEditors] = useState<Record<string, boolean>>({});
@@ -54,6 +59,7 @@ const CandidateProfileTab = ({ candidate }: { candidate: any }) => {
     arrival_date: String(candidate.arrival_date ?? screeningAvailability.arrival_date ?? ''),
   };
   const availabilityNotes = stripGeneratedAvailabilityNotes(candidate.availability_notes);
+  const sourceOptions = includeCurrentOption(CANDIDATE_SOURCES, candidate.source);
   const hasDirtyEditor = Object.values(dirtyEditors).some(Boolean);
   const setEditorDirty = (id: string, dirty: boolean) => {
     setDirtyEditors((current) => ({ ...current, [id]: dirty }));
@@ -102,6 +108,20 @@ const CandidateProfileTab = ({ candidate }: { candidate: any }) => {
       availability_notes: buildAvailabilityNotes(availability, value) || null,
     });
 
+  const savePhoneField = (label: string, field: 'phone' | 'phone_nl', value: string | null) => {
+    const normalized = normalizeCandidatePhone(value);
+    if (normalized.phone_nl) {
+      return saveField(label, {
+        phone_nl: normalized.phone_nl,
+        ...(field === 'phone' ? { phone: null } : {}),
+      });
+    }
+    return saveField(label, {
+      phone: normalized.phone || null,
+      ...(field === 'phone_nl' ? { phone_nl: null } : {}),
+    });
+  };
+
   // Fetch active profile token
   const { data: activeToken, isLoading: tokenLoading } = useQuery({
     queryKey: ['candidate-profile-token', candidate.id],
@@ -147,7 +167,7 @@ const CandidateProfileTab = ({ candidate }: { candidate: any }) => {
   };
 
   const handleWhatsApp = () => {
-    const phone = candidate.phone?.replace(/[^0-9+]/g, '') ?? '';
+    const phone = (candidate.phone_nl || candidate.phone)?.replace(/[^0-9+]/g, '') ?? '';
     const text = `Hoi ${candidate.first_name}, vul je profiel aan via deze link: ${profileUrl}`;
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
   };
@@ -175,15 +195,33 @@ const CandidateProfileTab = ({ candidate }: { candidate: any }) => {
     </div>
   `;
 
+  const markProfileTokenSent = async () => {
+    if (!activeToken?.id) return;
+    const { error } = await (supabase as any)
+      .from('candidate_profile_tokens')
+      .update({
+        sent_at: new Date().toISOString(),
+        sent_channel: 'email',
+        sent_by: user?.id ?? null,
+      })
+      .eq('id', activeToken.id);
+    if (error) throw error;
+    qc.invalidateQueries({ queryKey: ['candidate-profile-token', candidate.id] });
+    qc.invalidateQueries({ queryKey: ['candidate-profile-tokens-list'] });
+  };
+
   const getTokenStatusBadge = () => {
     if (!activeToken) return null;
     if (activeToken.used_at) {
       return <Badge className="bg-stat-green/10 text-stat-green border-0">Profiel aangevuld</Badge>;
     }
+    if ((activeToken as any).sent_at) {
+      return <Badge className="bg-blue-100 text-blue-700 border-0">Link verstuurd</Badge>;
+    }
     if (activeToken.last_accessed_at) {
       return <Badge className="bg-orange-100 text-orange-700 border-0">Link geopend, nog niet afgerond</Badge>;
     }
-    return <Badge className="bg-blue-100 text-blue-700 border-0">Link verstuurd</Badge>;
+    return <Badge className="bg-slate-100 text-slate-700 border-0">Link aangemaakt</Badge>;
   };
 
   return (
@@ -219,8 +257,8 @@ const CandidateProfileTab = ({ candidate }: { candidate: any }) => {
       <div className="bg-card rounded-lg border p-6 space-y-4">
         <h3 className="font-medium">Contactgegevens</h3>
         <InlineTextField id="email" label="E-mail" value={candidate.email} type="email" onSave={(value) => saveField('E-mail', { email: value })} onDirtyChange={setEditorDirty} />
-        <InlineTextField id="phone" label="Telefoon (EU / buitenland)" value={candidate.phone} onSave={(value) => saveField('Telefoon', { phone: value })} onDirtyChange={setEditorDirty} />
-        <InlineTextField id="phone_nl" label="Telefoon (NL)" value={candidate.phone_nl} onSave={(value) => saveField('Telefoon NL', { phone_nl: value })} onDirtyChange={setEditorDirty} />
+        <InlineTextField id="phone" label="Telefoon (EU / buitenland)" value={candidate.phone} onSave={(value) => savePhoneField('Telefoon', 'phone', value)} onDirtyChange={setEditorDirty} />
+        <InlineTextField id="phone_nl" label="Telefoon (NL)" value={candidate.phone_nl} onSave={(value) => savePhoneField('Telefoon NL', 'phone_nl', value)} onDirtyChange={setEditorDirty} />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <InlineTextField id="emergency_contact_name" label="ICE naam" value={candidate.emergency_contact_name} onSave={(value) => saveField('Noodcontact naam', { emergency_contact_name: value })} onDirtyChange={setEditorDirty} />
           <InlineTextField id="emergency_contact_phone" label="ICE telefoon" value={candidate.emergency_contact_phone} onSave={(value) => saveField('Noodcontact telefoon', { emergency_contact_phone: value })} onDirtyChange={setEditorDirty} />
@@ -235,6 +273,15 @@ const CandidateProfileTab = ({ candidate }: { candidate: any }) => {
           </div>
         </div>
         <InlineBooleanField label="Nederlands adres bekend" value={candidate.has_dutch_address} onSave={(value) => saveField('Nederlands adres', { has_dutch_address: value })} />
+        <div className="border-t pt-4">
+          <p className="text-xs text-muted-foreground mb-2">Buitenlands adres</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <InlineTextField id="foreign_address_street" label="Straat" value={candidate.foreign_address_street} onSave={(value) => saveField('Buitenlands adres', { foreign_address_street: value })} onDirtyChange={setEditorDirty} />
+            <InlineTextField id="foreign_address_postal" label="Postcode" value={candidate.foreign_address_postal} onSave={(value) => saveField('Buitenlands adres', { foreign_address_postal: value })} onDirtyChange={setEditorDirty} />
+            <InlineTextField id="foreign_address_city" label="Plaats" value={candidate.foreign_address_city} onSave={(value) => saveField('Buitenlands adres', { foreign_address_city: value })} onDirtyChange={setEditorDirty} />
+            <InlineTextField id="foreign_address_country" label="Land" value={candidate.foreign_address_country} onSave={(value) => saveField('Buitenlands adres', { foreign_address_country: value })} onDirtyChange={setEditorDirty} />
+          </div>
+        </div>
       </div>
 
       <div className="bg-card rounded-lg border p-6 space-y-4">
@@ -280,7 +327,17 @@ const CandidateProfileTab = ({ candidate }: { candidate: any }) => {
         {candidate.has_drivers_license && (
           <InlineTextField id="drivers_license_expiry" label="Verloopdatum rijbewijs" value={candidate.drivers_license_expiry} displayValue={formatDate(candidate.drivers_license_expiry)} type="date" onSave={(value) => saveField('Verloopdatum rijbewijs', { drivers_license_expiry: value })} onDirtyChange={setEditorDirty} />
         )}
-        <InlineTextField id="source" label="Bron" value={candidate.source} onSave={(value) => saveField('Bron', { source: value })} onDirtyChange={setEditorDirty} />
+        <div className="space-y-1.5">
+          <p className="text-xs text-muted-foreground">Bron</p>
+          <Select value={candidate.source ?? ''} onValueChange={(value) => saveField('Bron', { source: normalizeCandidateSource(value) || null })}>
+            <SelectTrigger className="max-w-xs"><SelectValue placeholder="Selecteer bron" /></SelectTrigger>
+            <SelectContent>
+              {sourceOptions.map((source) => (
+                <SelectItem key={source.value} value={source.value}>{source.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         <div className="pt-2 border-t">
           <InlineTextField id="notes" label="Notities" value={candidate.notes} multiline onSave={(value) => saveField('Notities', { notes: value })} onDirtyChange={setEditorDirty} />
         </div>
@@ -315,7 +372,7 @@ const CandidateProfileTab = ({ candidate }: { candidate: any }) => {
               </Button>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
               <div>
                 <p className="text-xs text-muted-foreground">Aangemaakt</p>
                 <p className="mt-0.5">{formatDate(activeToken.created_at)}</p>
@@ -329,13 +386,17 @@ const CandidateProfileTab = ({ candidate }: { candidate: any }) => {
                 <p className="mt-0.5">{activeToken.last_accessed_at ? formatDate(activeToken.last_accessed_at) : '—'}</p>
               </div>
               <div>
+                <p className="text-xs text-muted-foreground">Verstuurd</p>
+                <p className="mt-0.5">{(activeToken as any).sent_at ? formatDate((activeToken as any).sent_at) : '—'}</p>
+              </div>
+              <div>
                 <p className="text-xs text-muted-foreground">Ingevuld op</p>
                 <p className="mt-0.5">{activeToken.used_at ? formatDate(activeToken.used_at) : '—'}</p>
               </div>
             </div>
 
             <div className="flex gap-2 flex-wrap">
-              {candidate.phone && (
+              {(candidate.phone || candidate.phone_nl) && (
                 <Button variant="outline" size="sm" onClick={handleWhatsApp} className="gap-2">
                   <MessageCircle className="h-3.5 w-3.5" /> Verstuur opnieuw via WhatsApp
                 </Button>
@@ -370,6 +431,7 @@ const CandidateProfileTab = ({ candidate }: { candidate: any }) => {
         candidateData={candidate}
         initialSubject={profileEmailSubject}
         initialBodyHtml={profileEmailHtml}
+        onSent={markProfileTokenSent}
       />
     </div>
   );

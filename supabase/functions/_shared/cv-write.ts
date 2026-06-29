@@ -184,11 +184,11 @@ export async function writeCvAnalysisToCandidate(
     ai_languages: analysis?.competenties?.talen ?? [],
   };
 
-  if (allSkills.length > 0) update.skills = allSkills;
-  if (certifications.length > 0) update.certifications = certifications;
-  if (languages.length > 0) update.languages = languages;
-  // Niet clobberen met een lege lijst (rijbewijs vaak 'onbekend' op het CV): alleen schrijven
-  // als de analyse daadwerkelijk klassen vond — net als skills/certs/talen hierboven.
+  // Meeting 29-06: AI-feiten mogen kernprofielvelden niet blind overschrijven.
+  // Skills/certificaten/talen blijven in ai_analysis beschikbaar; de recruiter
+  // neemt ze per veld over vanuit de screeningtab.
+  // Rijbewijsklassen zijn een apart matching-signaal; schrijf ze alleen als de analyse
+  // daadwerkelijk klassen vond, dus nooit clobberen met een lege lijst.
   if (licenseCategories.length > 0) update.drivers_license_categories = licenseCategories;
   // Alleen schrijven als er werkhistorie is (niet clobberen bij een analyse zonder werkgevers).
   if (recentRole) {

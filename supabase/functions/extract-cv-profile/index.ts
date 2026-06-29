@@ -64,10 +64,11 @@ Deno.serve(async (req) => {
     const orgId = profile.organization_id as string;
 
     const body = await req.json();
-    const { cv_text, nationality_options, language_options } = body as {
+    const { cv_text, nationality_options, language_options, country_options } = body as {
       cv_text?: string;
       nationality_options?: string[];
       language_options?: string[];
+      country_options?: string[];
     };
 
     if (!cv_text || cv_text.trim().length < 50) {
@@ -79,6 +80,9 @@ Deno.serve(async (req) => {
       : [];
     const languageCatalog = Array.isArray(language_options)
       ? language_options.filter((s) => typeof s === "string").slice(0, 200)
+      : [];
+    const countryCatalog = Array.isArray(country_options)
+      ? country_options.filter((s) => typeof s === "string").slice(0, 300)
       : [];
 
     const apiKey = Deno.env.get("GEMINI_API_KEY");
@@ -137,7 +141,13 @@ Deno.serve(async (req) => {
     // Gemini-call (synchroon)
     let result;
     try {
-      result = await extractCvProfile(cv_text, apiKey, { model, skillCatalog, nationalityCatalog, languageCatalog });
+      result = await extractCvProfile(cv_text, apiKey, {
+        model,
+        skillCatalog,
+        nationalityCatalog,
+        languageCatalog,
+        countryCatalog,
+      });
     } catch (e) {
       const msg = (e as Error).message;
       console.error("[extract-cv-profile] Gemini-call mislukt:", msg);

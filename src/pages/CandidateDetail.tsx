@@ -43,6 +43,7 @@ import { useTrackPageVisit } from '@/hooks/useTrackPageVisit';
 import { useTabSearchParam } from '@/hooks/useTabSearchParam';
 import { usePublicUrl } from '@/hooks/usePublicUrl';
 import { useOutlookAccounts } from '@/hooks/useOutlookAccounts';
+import { useAuth } from '@/contexts/AuthContext';
 import type { Database } from '@/integrations/supabase/types';
 
 type CandidateStatus = Database['public']['Enums']['candidate_status'];
@@ -102,6 +103,7 @@ const CandidateDetail = () => {
   const [tabGuardOpen, setTabGuardOpen] = useState(false);
   const { buildUrl } = usePublicUrl();
   const { hasUsableAccounts } = useOutlookAccounts('mail_send');
+  const { user } = useAuth();
 
   const { data: candidate, isLoading } = useQuery({
     queryKey: ['candidate', id],
@@ -197,7 +199,7 @@ const CandidateDetail = () => {
   };
 
   const handleWhatsApp = () => {
-    const phone = candidate?.phone?.replace(/[^0-9+]/g, '') ?? '';
+    const phone = (candidate?.phone_nl || candidate?.phone)?.replace(/[^0-9+]/g, '') ?? '';
     const text = `Hoi ${candidate?.first_name}, vul je profiel aan via deze link: ${profileUrl}`;
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
   };
@@ -224,6 +226,22 @@ const CandidateDetail = () => {
       <p style="color:#64748b;font-size:13px;">Lukt de knop niet? Gebruik dan deze link:<br>${profileUrl}</p>
     </div>
   `;
+
+  const markProfileTokenSent = async () => {
+    if (!activeToken?.id) return;
+    const { error } = await (supabase as any)
+      .from('candidate_profile_tokens')
+      .update({
+        sent_at: new Date().toISOString(),
+        sent_channel: 'email',
+        sent_by: user?.id ?? null,
+      })
+      .eq('id', activeToken.id);
+    if (error) throw error;
+    await refetchToken();
+    qc.invalidateQueries({ queryKey: ['candidate-profile-token', id] });
+    qc.invalidateQueries({ queryKey: ['candidate-profile-tokens-list'] });
+  };
 
   const isEmployee = candidate?.employee_status != null;
   const employments = ((candidate as any)?.candidate_employment ?? [])
@@ -390,7 +408,7 @@ const CandidateDetail = () => {
               </Button>
             </div>
             <div className="flex gap-3">
-              {candidate.phone && (
+              {(candidate.phone || candidate.phone_nl) && (
                 <Button onClick={handleWhatsApp} className="gap-2 bg-[#25D366] hover:bg-[#1da851] text-white">
                   <MessageCircle className="h-4 w-4" /> WhatsApp
                 </Button>
@@ -415,6 +433,7 @@ const CandidateDetail = () => {
         candidateData={candidate}
         initialSubject={profileEmailSubject}
         initialBodyHtml={profileEmailHtml}
+        onSent={markProfileTokenSent}
       />
 
       <CandidateReadinessStrip candidate={candidate} onTabChange={requestTabChange} />

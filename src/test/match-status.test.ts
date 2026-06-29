@@ -12,7 +12,9 @@ import {
 describe('getMatchStatusMeta', () => {
   it('geeft de meta van een bekende stap terug', () => {
     expect(getMatchStatusMeta('nieuwe_match').label).toBe('Nieuwe match');
-    expect(getMatchStatusMeta('voorgesteld_bij_klant').label).toBe('Bij klant');
+    expect(getMatchStatusMeta('voorgesteld').label).toBe('Voorstel klaar');
+    expect(getMatchStatusMeta('voorgesteld_bij_klant').label).toBe('Voorgesteld');
+    expect(getMatchStatusMeta('afspraak_voorgesteld').label).toBe('Afspraak voorgesteld');
   });
 
   it('kent de plaatsings-status', () => {
@@ -63,6 +65,8 @@ describe('shouldUsePlacementFlow', () => {
 describe('getNextMatchStatus', () => {
   it('schuift de flow op', () => {
     expect(getNextMatchStatus('nieuwe_match')).toBe('gescreend');
+    expect(getNextMatchStatus('voorgesteld_bij_klant')).toBe('afspraak_voorgesteld');
+    expect(getNextMatchStatus('afspraak_voorgesteld')).toBe('afspraak_op_kantoor');
     expect(getNextMatchStatus('afspraak_op_kantoor')).toBe('geaccepteerd');
   });
 

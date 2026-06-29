@@ -6,8 +6,8 @@ test.describe.configure({ mode: "serial" });
 const ALLOWED_OUTBOUND_RECIPIENTS = new Set([
   "kas@sitejob.nl",
   "info@sitejob.nl",
-  "kasvdmeulengraaf@sitejob.nl",
   "kasvdmeulengraaf@gmail.com",
+  "kas@worldofdeals.nl",
 ]);
 
 const runId = process.env.E2E_RUN_ID ?? `${Date.now()}`;
