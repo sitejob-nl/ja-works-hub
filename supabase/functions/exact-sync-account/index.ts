@@ -1,5 +1,12 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders, getExactToken, jsonError, jsonOk } from "../_shared/exact-helpers.ts";
+import {
+  classifyExactProviderError,
+  corsHeaders,
+  getExactToken,
+  jsonError,
+  jsonOk,
+  sanitizeExactErrorDetail,
+} from "../_shared/exact-helpers.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -108,7 +115,7 @@ Deno.serve(async (req) => {
       );
 
       if (!updateRes.ok) {
-        const errBody = await updateRes.text();
+        const errBody = sanitizeExactErrorDetail(await updateRes.text());
         console.error("Update account failed:", errBody);
         return jsonError("Kon account niet bijwerken in Exact", 502, { details: errBody });
       }
@@ -132,7 +139,7 @@ Deno.serve(async (req) => {
     );
 
     if (!createRes.ok) {
-      const errBody = await createRes.text();
+      const errBody = sanitizeExactErrorDetail(await createRes.text());
       console.error("Create account failed:", errBody);
       return jsonError("Kon account niet aanmaken in Exact", 502, { details: errBody });
     }
@@ -154,6 +161,10 @@ Deno.serve(async (req) => {
 
   } catch (err) {
     console.error("Exact sync account error:", err);
-    return jsonError((err as Error).message || "Internal server error", 500);
+    const classified = classifyExactProviderError(err);
+    return jsonError(classified.publicCode, classified.httpStatus, {
+      provider_status: classified.providerStatus,
+      detail: classified.detail,
+    });
   }
 });

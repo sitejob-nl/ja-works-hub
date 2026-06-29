@@ -1,5 +1,13 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders, getExactToken, jsonError, jsonOk, registerExactWebhookSubscriptions } from "../_shared/exact-helpers.ts";
+import {
+  classifyExactProviderError,
+  corsHeaders,
+  getExactToken,
+  jsonError,
+  jsonOk,
+  registerExactWebhookSubscriptions,
+  sanitizeExactErrorDetail,
+} from "../_shared/exact-helpers.ts";
 
 type ExactMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
@@ -48,7 +56,22 @@ async function callExact(tokenData: { base_url: string; division: number; access
     parsed = { raw: text };
   }
 
-  return { ok: res.ok, status: res.status, body: parsed };
+  if (!res.ok) {
+    const detail = typeof parsed === "object" && parsed !== null
+      ? JSON.stringify(parsed)
+      : text;
+    return {
+      ok: false,
+      status: res.status,
+      body: {
+        error: "exact_provider_error",
+        provider_status: res.status,
+        detail: sanitizeExactErrorDetail(detail),
+      },
+    };
+  }
+
+  return { ok: true, status: res.status, body: parsed };
 }
 
 async function diagnosticCheck(tokenData: { base_url: string; division: number; access_token: string }, name: string, endpoint: string) {
@@ -168,6 +191,12 @@ Deno.serve(async (req) => {
     console.error("Exact API proxy error:", err);
     const message = (err as Error).message || "Internal server error";
     const clientErrors = new Set(["endpoint is required", "endpoint_invalid", "external_exact_url_not_allowed"]);
-    return jsonError(clientErrors.has(message) ? message : "Internal server error", clientErrors.has(message) ? 400 : 500);
+    if (clientErrors.has(message)) return jsonError(message, 400);
+
+    const classified = classifyExactProviderError(err);
+    return jsonError(classified.publicCode, classified.httpStatus, {
+      provider_status: classified.providerStatus,
+      detail: classified.detail,
+    });
   }
 });
