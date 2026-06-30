@@ -67,6 +67,17 @@ const FLOW_DEFINITIONS: MailFlowDefinition[] = [
     note: 'Nog niet gekoppeld aan email_templates.',
   },
   {
+    id: 'internal-user-invite',
+    name: 'Interne gebruiker uitnodiging',
+    trigger: 'Admin nodigt personeel uit via Instellingen > Gebruikers',
+    sender: 'Outlook Graph via sendViaOutlookAccount',
+    source: 'generated_html',
+    status: 'gegenereerd',
+    templateSource: 'Merk-wrapper met vaste accountactivatie-inhoud',
+    codePath: 'supabase/functions/internal-user-invites/index.ts',
+    note: 'Gebruikt de gekozen of standaard Outlook mailbox met mail_send recht.',
+  },
+  {
     id: 'birthday-loyalty',
     name: 'Verjaardagsmail en bonus',
     trigger: 'Dagelijkse birthday-loyalty-cron rond 07:00 lokale tijd',

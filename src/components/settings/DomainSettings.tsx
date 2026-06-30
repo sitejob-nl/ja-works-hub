@@ -178,6 +178,14 @@ export default function DomainSettings() {
           </Alert>
         )}
 
+        {addDomain.error && (
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Domein koppelen lukt nog niet</AlertTitle>
+            <AlertDescription>{addDomain.error.message}</AlertDescription>
+          </Alert>
+        )}
+
         <Separator />
 
         <div className="space-y-3">
