@@ -5373,6 +5373,7 @@ export type Database = {
       }
       matches: {
         Row: {
+          assigned_to: string | null
           candidate_id: string
           created_at: string
           desired_start_date: string | null
@@ -5402,6 +5403,7 @@ export type Database = {
           vacancy_id: string
         }
         Insert: {
+          assigned_to?: string | null
           candidate_id: string
           created_at?: string
           desired_start_date?: string | null
@@ -5431,6 +5433,7 @@ export type Database = {
           vacancy_id: string
         }
         Update: {
+          assigned_to?: string | null
           candidate_id?: string
           created_at?: string
           desired_start_date?: string | null
@@ -5460,6 +5463,13 @@ export type Database = {
           vacancy_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "matches_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "matches_candidate_id_fkey"
             columns: ["candidate_id"]
@@ -9536,6 +9546,7 @@ export type Database = {
           waba_id: string
         }[]
       }
+      has_role_permission: { Args: { p_permission: string }; Returns: boolean }
       is_employee_user: { Args: never; Returns: boolean }
       is_internal_user: { Args: never; Returns: boolean }
       is_superadmin: { Args: never; Returns: boolean }
@@ -9577,6 +9588,7 @@ export type Database = {
           primary_hostname: string
         }[]
       }
+      role_permission_admin_defaults: { Args: never; Returns: Json }
       sa_get_audit_log: {
         Args: { p_limit?: number; p_offset?: number }
         Returns: {
@@ -9660,6 +9672,10 @@ export type Database = {
       topup_ai_credits: {
         Args: { p_amount_cents: number; p_note?: string; p_org_id: string }
         Returns: number
+      }
+      update_role_permissions: {
+        Args: { p_role_permissions: Json }
+        Returns: undefined
       }
       upsert_skill_for_org: {
         Args: { p_name: string; p_organization_id: string }
