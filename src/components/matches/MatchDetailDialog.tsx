@@ -13,9 +13,13 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import MatchInspectorDialog from '@/components/matches/MatchInspectorDialog';
+import TaskEditorSheet from '@/components/shared/TaskEditorSheet';
+import { logAudit } from '@/lib/audit';
 import { formatDate } from '@/lib/format';
 import { getMatchStatusMeta } from '@/lib/match-status';
+import { priorityConfig } from '@/lib/tasks';
 import type { MatchBreakdown } from '@/lib/matching';
+import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 type MatchDetailDialogProps = {
@@ -51,6 +55,17 @@ const UNASSIGNED = 'unassigned';
 const profileName = (profile?: { full_name?: string | null; email?: string | null } | null) =>
   profile?.full_name || profile?.email || 'Onbekend';
 
+const summarizeAudit = (entry: any) => {
+  const oldValues = entry?.old_values ?? {};
+  const newValues = entry?.new_values ?? {};
+  if ('assigned_to' in newValues) return 'Match-eigenaar gewijzigd';
+  if ('status' in newValues) {
+    return `${getMatchStatusMeta(oldValues.status).label} -> ${getMatchStatusMeta(newValues.status).label}`;
+  }
+  if ('interview_confirmed_at' in newValues || 'interview_location' in newValues) return 'Afspraakgegevens bijgewerkt';
+  return entry?.reason || 'Match bijgewerkt';
+};
+
 const MatchDetailDialog = ({ open, match, onOpenChange, onChanged, canConfirmInterview = true }: MatchDetailDialogProps) => {
   const qc = useQueryClient();
   const { user } = useAuth();
@@ -61,6 +76,8 @@ const MatchDetailDialog = ({ open, match, onOpenChange, onChanged, canConfirmInt
   const [note, setNote] = useState('');
   const [assignedTo, setAssignedTo] = useState(UNASSIGNED);
   const [newNote, setNewNote] = useState('');
+  const [taskEditorOpen, setTaskEditorOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState<any | null>(null);
   const [notifyCandidate, setNotifyCandidate] = useState(true);
   const [notifyCompany, setNotifyCompany] = useState(true);
 
@@ -72,6 +89,8 @@ const MatchDetailDialog = ({ open, match, onOpenChange, onChanged, canConfirmInt
     setNote(match.interview_proposed_note ?? '');
     setAssignedTo(match.assigned_to ?? UNASSIGNED);
     setNewNote('');
+    setTaskEditorOpen(false);
+    setEditingTask(null);
     setNotifyCandidate(true);
     setNotifyCompany(true);
   }, [match, open]);
@@ -100,6 +119,23 @@ const MatchDetailDialog = ({ open, match, onOpenChange, onChanged, canConfirmInt
         .select('id, channel, direction, message_type, subject, email_to, sent_at, created_at')
         .eq('match_id', match.id)
         .order('sent_at', { ascending: false })
+        .limit(12);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const { data: auditLogs = [] } = useQuery({
+    queryKey: ['match-audit-log', match?.id],
+    enabled: open && !!match?.id && !!match?.organization_id,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('audit_log')
+        .select('id, action, table_name, record_id, old_values, new_values, reason, created_at, profiles:user_id(full_name,email)')
+        .eq('organization_id', match.organization_id)
+        .eq('table_name', 'matches')
+        .eq('record_id', match.id)
+        .order('created_at', { ascending: false })
         .limit(12);
       if (error) throw error;
       return data ?? [];
@@ -205,9 +241,18 @@ const MatchDetailDialog = ({ open, match, onOpenChange, onChanged, canConfirmInt
       return nextAssignee;
     },
     onSuccess: async (nextAssignee) => {
+      await logAudit({
+        action: 'update',
+        tableName: 'matches',
+        recordId: match.id,
+        oldValues: { assigned_to: match.assigned_to ?? null },
+        newValues: { assigned_to: nextAssignee },
+        reason: 'Match-eigenaar gewijzigd vanuit matchdetail',
+      });
       setAssignedTo(nextAssignee ?? UNASSIGNED);
       qc.invalidateQueries({ queryKey: ['match-pipeline'] });
       qc.invalidateQueries({ queryKey: ['match-notes', match?.id] });
+      qc.invalidateQueries({ queryKey: ['match-audit-log', match?.id] });
       onChanged?.();
       toast.success('Matchtoewijzing bijgewerkt');
     },
@@ -236,6 +281,16 @@ const MatchDetailDialog = ({ open, match, onOpenChange, onChanged, canConfirmInt
     },
     onError: (error: Error) => toast.error(error.message),
   });
+
+  const openNewTask = () => {
+    setEditingTask(null);
+    setTaskEditorOpen(true);
+  };
+
+  const openEditTask = (task: any) => {
+    setEditingTask(task);
+    setTaskEditorOpen(true);
+  };
 
   const candidate = match?.candidates;
   const vacancy = match?.vacancies;
@@ -271,7 +326,7 @@ const MatchDetailDialog = ({ open, match, onOpenChange, onChanged, canConfirmInt
         at: task.created_at,
         icon: CheckCircle2,
         title: task.title,
-        meta: `Taak · ${task.status} · ${profileName(task.profiles)}`,
+        meta: `Taak · ${task.status} · toegewezen aan ${profileName(task.profiles)}`,
         body: task.due_date ? `Deadline: ${formatDate(task.due_date)}` : '',
       })),
       ...notes.map((note: any) => ({
@@ -282,16 +337,24 @@ const MatchDetailDialog = ({ open, match, onOpenChange, onChanged, canConfirmInt
         meta: profileName(note.profiles),
         body: note.body,
       })),
+      ...auditLogs.map((entry: any) => ({
+        id: `audit-${entry.id}`,
+        at: entry.created_at,
+        icon: History,
+        title: summarizeAudit(entry),
+        meta: `Audit · ${profileName(entry.profiles)}`,
+        body: entry.reason ?? '',
+      })),
     ];
     return rows.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime()).slice(0, 20);
-  }, [communications, events, notes, tasks]);
+  }, [auditLogs, communications, events, notes, tasks]);
 
   if (!match) return null;
 
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-h-[90vh] max-w-6xl overflow-y-auto">
+        <DialogContent className="max-h-[92vh] max-w-[min(1400px,96vw)] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex flex-wrap items-center gap-2">
               Matchdetail
@@ -303,7 +366,7 @@ const MatchDetailDialog = ({ open, match, onOpenChange, onChanged, canConfirmInt
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-3 md:grid-cols-3">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <section className="rounded-md border p-3">
               <div className="mb-2 flex items-center gap-2 text-sm font-medium"><UserRound className="h-4 w-4" /> Kandidaat</div>
               <div className="space-y-1 text-sm">
@@ -331,9 +394,26 @@ const MatchDetailDialog = ({ open, match, onOpenChange, onChanged, canConfirmInt
                 </div>
               </div>
             </section>
+            <section className="rounded-md border p-3">
+              <div className="mb-2 flex items-center gap-2 text-sm font-medium"><Clock3 className="h-4 w-4" /> Opvolging</div>
+              <div className="grid grid-cols-3 gap-2 text-center text-sm">
+                <div className="rounded bg-muted/40 px-2 py-2">
+                  <div className="font-semibold">{tasks.filter((task: any) => task.status !== 'done' && task.status !== 'dismissed').length}</div>
+                  <div className="text-[11px] text-muted-foreground">open taken</div>
+                </div>
+                <div className="rounded bg-muted/40 px-2 py-2">
+                  <div className="font-semibold">{notes.length}</div>
+                  <div className="text-[11px] text-muted-foreground">notities</div>
+                </div>
+                <div className="rounded bg-muted/40 px-2 py-2">
+                  <div className="font-semibold">{communications.length}</div>
+                  <div className="text-[11px] text-muted-foreground">berichten</div>
+                </div>
+              </div>
+            </section>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_390px]">
             <div className="space-y-4">
               <section className="rounded-md border p-4">
                 <div className="mb-3 flex items-center gap-2 font-medium"><History className="h-4 w-4" /> Tijdlijn</div>
@@ -356,6 +436,27 @@ const MatchDetailDialog = ({ open, match, onOpenChange, onChanged, canConfirmInt
                       </div>
                     );
                   }) : <p className="text-sm text-muted-foreground">Nog geen tijdlijn voor deze match.</p>}
+                </div>
+              </section>
+
+              <section className="rounded-md border p-4">
+                <div className="mb-3 flex items-center gap-2 font-medium"><CheckCircle2 className="h-4 w-4" /> Statuslog</div>
+                <div className="space-y-2">
+                  {events.length > 0 ? events.map((event: any) => (
+                    <div key={event.id} className="rounded-md bg-muted/35 p-3 text-sm">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant="outline">{getMatchStatusMeta(event.from_status).label}</Badge>
+                        <span className="text-xs text-muted-foreground">naar</span>
+                        <Badge className={getMatchStatusMeta(event.to_status).badgeClass}>{getMatchStatusMeta(event.to_status).label}</Badge>
+                        <span className="text-xs text-muted-foreground">{formatDateTime(event.created_at)}</span>
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        Door {profileName(event.profiles)}
+                        {event.match_feedback_reasons?.reason ? ` · ${event.match_feedback_reasons.reason}` : ''}
+                      </div>
+                      {event.notes && <p className="mt-1 whitespace-pre-line text-xs">{event.notes}</p>}
+                    </div>
+                  )) : <p className="text-sm text-muted-foreground">Nog geen statuswijzigingen met feedback.</p>}
                 </div>
               </section>
 
@@ -464,6 +565,19 @@ const MatchDetailDialog = ({ open, match, onOpenChange, onChanged, canConfirmInt
               <section className="rounded-md border p-4">
                 <div className="mb-3 flex items-center gap-2 font-medium"><MessageSquare className="h-4 w-4" /> Notitie toevoegen</div>
                 <div className="space-y-3">
+                  {notes.length > 0 && (
+                    <div className="max-h-44 space-y-2 overflow-y-auto pr-1">
+                      {notes.slice(0, 6).map((item: any) => (
+                        <div key={item.id} className="rounded-md bg-muted/35 p-2 text-sm">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-medium">{profileName(item.profiles)}</span>
+                            <span className="text-[11px] text-muted-foreground">{formatDateTime(item.created_at)}</span>
+                          </div>
+                          <p className="mt-1 whitespace-pre-line text-xs">{item.body}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   <Textarea
                     rows={3}
                     value={newNote}
@@ -484,16 +598,45 @@ const MatchDetailDialog = ({ open, match, onOpenChange, onChanged, canConfirmInt
               </section>
 
               <section className="rounded-md border p-4">
-                <div className="mb-3 flex items-center gap-2 font-medium"><Clock3 className="h-4 w-4" /> Taken</div>
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 font-medium"><Clock3 className="h-4 w-4" /> Taken</div>
+                  <Button type="button" size="sm" variant="outline" className="h-8 gap-1.5" onClick={openNewTask}>
+                    <Plus className="h-3.5 w-3.5" /> Taak
+                  </Button>
+                </div>
                 <div className="space-y-2">
-                  {tasks.length > 0 ? tasks.map((task: any) => (
-                    <div key={task.id} className="rounded-md bg-muted/40 p-2 text-sm">
-                      <div className="font-medium">{task.title}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {task.status} · {task.priority}{task.due_date ? ` · ${formatDate(task.due_date)}` : ''}{task.profiles ? ` · ${profileName(task.profiles)}` : ''}
+                  {tasks.length > 0 ? tasks.map((task: any) => {
+                    const prio = priorityConfig[task.priority] ?? priorityConfig.medium;
+                    return (
+                      <button
+                        key={task.id}
+                        type="button"
+                        className="w-full rounded-md bg-muted/40 p-2 text-left text-sm transition-colors hover:bg-muted"
+                        onClick={() => openEditTask(task)}
+                      >
+                        <div className="font-medium">{task.title}</div>
+                        {task.description && <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{task.description}</p>}
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                          <Badge variant="secondary" className={cn('text-[10px]', prio.color)}>{prio.label}</Badge>
+                          <span>{task.status}</span>
+                          {task.due_date && <span>Deadline: {formatDate(task.due_date)}</span>}
+                          <span>{profileName(task.profiles)}</span>
+                        </div>
+                      </button>
+                    );
+                  }) : <p className="text-sm text-muted-foreground">Geen open taken gevonden.</p>}
+                </div>
+              </section>
+
+              <section className="rounded-md border p-4">
+                <div className="mb-3 flex items-center gap-2 font-medium"><History className="h-4 w-4" /> Laatste audit</div>
+                <div className="space-y-2">
+                  {auditLogs.length > 0 ? auditLogs.slice(0, 5).map((entry: any) => (
+                    <div key={entry.id} className="rounded-md bg-muted/35 p-2 text-xs">
+                      <div className="font-medium">{summarizeAudit(entry)}</div>
+                      <div className="text-muted-foreground">{formatDateTime(entry.created_at)} · {profileName(entry.profiles)}</div>
                       </div>
-                    </div>
-                  )) : <p className="text-sm text-muted-foreground">Geen open taken gevonden.</p>}
+                  )) : <p className="text-sm text-muted-foreground">Nog geen auditregels voor deze match.</p>}
                 </div>
               </section>
             </div>
@@ -505,6 +648,17 @@ const MatchDetailDialog = ({ open, match, onOpenChange, onChanged, canConfirmInt
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <TaskEditorSheet
+        open={taskEditorOpen}
+        onOpenChange={setTaskEditorOpen}
+        task={editingTask ?? undefined}
+        lockedEntity={{ type: 'match', id: match.id }}
+        onSaved={() => {
+          qc.invalidateQueries({ queryKey: ['match-tasks', match?.id] });
+          qc.invalidateQueries({ queryKey: ['match-audit-log', match?.id] });
+        }}
+      />
 
       <MatchInspectorDialog
         open={whyOpen}

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { AlertTriangle, ArrowRight, Briefcase, CalendarClock, CheckCircle2, MapPin, MessageSquare, Star, User } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Briefcase, CalendarClock, CheckCircle2, MapPin, MessageSquare, Star, User, UserCheck } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -27,6 +27,7 @@ type MatchRowProps = {
     company_name?: string | null;
     company_id?: string | null;
   } & Record<string, any>) | null;
+  assignee?: { full_name?: string | null; email?: string | null } | null;
   sourceLabel?: string | null;
   score?: number | null;
   breakdown?: MatchBreakdown | null;
@@ -61,6 +62,7 @@ const MatchRow = ({
   status,
   candidate,
   vacancy,
+  assignee,
   sourceLabel,
   score,
   breakdown,
@@ -109,7 +111,7 @@ const MatchRow = ({
         data-testid="match-kanban-card"
         className={cn('p-3 transition-colors hover:border-stat-blue/30 hover:bg-background', selected && 'ring-1 ring-primary', className)}
       >
-        <div className="space-y-3">
+        <div className="space-y-2.5">
           <div className="flex items-start gap-2">
           {onSelectChange && (
             <Checkbox
@@ -128,13 +130,18 @@ const MatchRow = ({
             onKeyDown={onInspect ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onInspect(); } } : undefined}
             className={cn('min-w-0 flex-1 text-left', onInspect && 'cursor-pointer')}
           >
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <div className="line-clamp-2 break-words text-sm font-semibold leading-5 text-foreground">{fullName(candidate)}</div>
+            <div className="flex items-start gap-2">
+              <div className="min-w-0 flex-1">
+                <div className="break-words text-[15px] font-semibold leading-5 text-foreground">{fullName(candidate)}</div>
                 {!hideVacancy && (
-                  <div className="mt-0.5 line-clamp-2 break-words text-xs leading-4 text-muted-foreground">
-                    <Briefcase className="mr-1 inline h-3 w-3 align-[-2px]" />
-                    {vacancy?.title ?? 'Vacature onbekend'}{vacancy?.company_name ? ` · ${vacancy.company_name}` : ''}
+                  <div className="mt-1 space-y-0.5 text-xs leading-4 text-muted-foreground">
+                    <div className="flex items-start gap-1.5">
+                      <Briefcase className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      <span className="line-clamp-2 break-words">{vacancy?.title ?? 'Vacature onbekend'}</span>
+                    </div>
+                    {vacancy?.company_name && (
+                      <div className="line-clamp-1 pl-5 font-medium text-foreground/75">{vacancy.company_name}</div>
+                    )}
                   </div>
                 )}
               </div>
@@ -151,43 +158,36 @@ const MatchRow = ({
                   <AlertTriangle className="h-3 w-3" /> {followup.label}
                 </Badge>
               )}
-              {statusAge && (
-                <Badge variant="outline" className="gap-1 text-[10px] text-muted-foreground">
-                  <CalendarClock className="h-3 w-3" /> {statusAge}
-                </Badge>
-              )}
               {(km != null || mins != null) && (
                 <Badge variant="outline" className="gap-1 text-[10px] text-muted-foreground">
                   <MapPin className="h-3 w-3" />
                   {mins != null ? `${Math.round(mins)} min` : 'reistijd ?'}{km != null ? ` · ${Math.round(km)} km` : ''}
                 </Badge>
               )}
-              {sourceLabel && <Badge variant="outline" className="text-[10px]">{sourceLabel}</Badge>}
+              {assignee && (
+                <Badge variant="outline" className="gap-1 text-[10px] text-muted-foreground">
+                  <UserCheck className="h-3 w-3" /> {assignee.full_name || assignee.email}
+                </Badge>
+              )}
             </div>
 
-            {issue && (
+            {issue && issue.tone !== 'green' && (
               <p className={cn('mt-2 flex items-start gap-1.5 text-xs leading-4',
                 issue.tone === 'red' && 'text-red-700',
-                issue.tone === 'amber' && 'text-amber-700',
-                issue.tone === 'green' && 'text-emerald-700')}
+                issue.tone === 'amber' && 'text-amber-700')}
               >
-                {issue.tone === 'green' ? <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" /> : <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />}
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                 <span className="line-clamp-2">{issue.label}</span>
               </p>
             )}
           </div>
           </div>
 
-          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2" onClick={stop}>
-            {onStatusChange && (
-              <MatchStatusSelect
-                value={status}
-                onChange={onStatusChange}
-                disabled={statusDisabled}
-                ariaLabel={`Status wijzigen voor ${fullName(candidate)}`}
-                compact
-              />
-            )}
+          <div className="flex items-center justify-between gap-2 border-t pt-2 text-[11px] text-muted-foreground" onClick={stop}>
+            <span className="inline-flex min-w-0 items-center gap-1">
+              <CalendarClock className="h-3 w-3 shrink-0" />
+              <span className="truncate">{statusAge || 'vandaag gewijzigd'}</span>
+            </span>
             {onInspect && (
               <Button type="button" size="sm" variant="ghost" className="h-8 px-2 text-xs" onClick={onInspect}>
                 Detail
