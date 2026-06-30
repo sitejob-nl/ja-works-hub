@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Briefcase, MapPin, Building2, Search, Clock, CheckCircle2 } from 'lucide-react';
 import { formatDate } from '@/lib/format';
 import { toast } from 'sonner';
+import { createMatch } from '@/lib/match-lifecycle';
 
 const PortalJobMarket = () => {
   const { employee, candidate } = usePortal();
@@ -56,16 +57,14 @@ const PortalJobMarket = () => {
 
   const applyMutation = useMutation({
     mutationFn: async ({ vacancyId }: { vacancyId: string }) => {
-      const { error } = await supabase.from('matches').insert({
-        candidate_id: employee!.id,
-        vacancy_id: vacancyId,
-        organization_id: orgId,
-        status: 'nieuwe_match' as any,
+      await createMatch(supabase as any, {
+        candidateId: employee!.id,
+        vacancyId,
+        orgId: orgId!,
         source: 'sollicitatie',
         notes: motivation || null,
-        proposed_at: new Date().toISOString().split('T')[0],
+        proposedAt: new Date().toISOString().split('T')[0],
       });
-      if (error) throw error;
     },
     onSuccess: () => {
       toast.success('Sollicitatie verstuurd!');

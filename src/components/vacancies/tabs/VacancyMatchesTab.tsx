@@ -25,6 +25,7 @@ import MatchRow from '@/components/matches/MatchRow';
 import { type MatchBreakdown } from '@/lib/matching';
 import { MATCH_STATUS_STEPS, getMatchStatusMeta, getNextMatchStatus, isTerminalMatchStatus, matchStatusNeedsFeedbackDialog } from '@/lib/match-status';
 import { scoreBadgeClass } from '@/lib/match-presenters';
+import { advanceMatchStatus, createMatch } from '@/lib/match-lifecycle';
 
 const COLUMNS = MATCH_STATUS_STEPS;
 
@@ -192,19 +193,14 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
 
   const insertMatch = async (candidate: any) => {
     const score = candidate._vacancyScore;
-    const { data: match, error } = await (supabase as any).from('matches').insert({
-      organization_id: orgId,
-      vacancy_id: vacancy.id,
-      candidate_id: candidate.id,
-      proposed_by: user?.id ?? null,
-      status: 'nieuwe_match' as any,
+    const match = await createMatch(supabase as any, {
+      orgId,
+      vacancyId: vacancy.id,
+      candidateId: candidate.id,
+      proposedBy: user?.id ?? null,
       source: 'eigen_match',
-      match_score: score?.matchPercent ?? null,
-      match_reasoning: score?.reasoning ?? null,
-      match_breakdown: (score ?? null) as any,
-      distance_km: score?.distance?.km ?? null,
-    }).select('id').single();
-    if (error) throw error;
+      score: score ?? null,
+    });
     try {
       await supabase.functions.invoke('calculate-match', {
         body: { match_id: match.id, candidate_id: candidate.id, vacancy_id: vacancy.id },
@@ -264,25 +260,15 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
   const statusMutation = useMutation({
     mutationFn: async ({ matchId, status, reasonId, notes }: { matchId: string; status: string; reasonId?: string | null; notes?: string | null }) => {
       const current = (matches ?? []).find((m: any) => m.id === matchId) as any;
-      if (status === 'afgewezen' && !reasonId) throw new Error('Kies een feedbackreden voor afwijzen');
-
-      const { error } = await supabase.from('matches').update({ status, status_changed_at: new Date().toISOString() } as any).eq('id', matchId);
-      if (error) throw error;
-
-      if (reasonId || notes || isTerminalMatchStatus(status)) {
-        const { error: feedbackError } = await (supabase as any).from('match_feedback_events').insert({
-          organization_id: orgId,
-          match_id: matchId,
-          from_status: current?.status ?? null,
-          to_status: status,
-          reason_id: reasonId ?? null,
-          notes: notes?.trim() || null,
-          created_by: user?.id ?? null,
-          match_score_snapshot: current?.match_score ?? null,
-          match_breakdown_snapshot: current?.match_breakdown ?? null,
-        });
-        if (feedbackError) throw feedbackError;
-      }
+      await advanceMatchStatus(supabase as any, {
+        orgId,
+        matchId,
+        toStatus: status,
+        currentMatch: current,
+        reasonId: reasonId ?? null,
+        notes: notes ?? null,
+        actorId: user?.id ?? null,
+      });
     },
     onMutate: async ({ matchId, status }) => {
       await qc.cancelQueries({ queryKey: ['vacancy-matches', vacancy.id] });

@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { createMatch } from "../_shared/match-lifecycle.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -294,6 +295,7 @@ Deno.serve(async (req) => {
       if (insertErr) throw insertErr;
       candidateId = inserted.id;
     }
+    if (!candidateId) throw new Error("Candidate could not be saved");
 
     const storagePath = `${link.organization_id}/candidate-signups/${candidateId}/${crypto.randomUUID()}-${cleanFileName(cv.name)}`;
     const { error: uploadErr } = await admin.storage
@@ -350,19 +352,13 @@ Deno.serve(async (req) => {
       if (existingMatch?.id) {
         matchId = existingMatch.id;
       } else {
-        const { data: insertedMatch, error: matchErr } = await admin
-          .from("matches")
-          .insert({
-            organization_id: link.organization_id,
-            vacancy_id: link.vacancy_id,
-            candidate_id: candidateId,
-            status: "nieuwe_match",
-            source: "website_sollicitatie",
-            notes: `Website-sollicitatie via ${link.title}${vacancyLabel ? ` voor ${vacancyLabel}` : ""}.`,
-          })
-          .select("id")
-          .single();
-        if (matchErr) throw matchErr;
+        const insertedMatch = await createMatch(admin, {
+          orgId: link.organization_id,
+          vacancyId: link.vacancy_id,
+          candidateId,
+          source: "website_sollicitatie",
+          notes: `Website-sollicitatie via ${link.title}${vacancyLabel ? ` voor ${vacancyLabel}` : ""}.`,
+        });
         matchId = insertedMatch.id;
       }
     }

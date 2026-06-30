@@ -4,6 +4,7 @@ import { getWhatsAppCredentials, META_API_BASE, normalizePhone } from "../_share
 import { cascadeSickReport } from "../_shared/sick-report-handler.ts";
 import { getWhatsAppAutomationSettings } from "../_shared/whatsapp-automation-settings.ts";
 import { isOutboundPaused, logConceptCommunication } from "../_shared/outbound-pause.ts";
+import { advanceMatchStatus } from "../_shared/match-lifecycle.ts";
 
 const OPT_OUT_KEYWORDS = ["stop", "afmelden", "uitschrijven", "stoppen", "unsubscribe"];
 // Substring match — any of these anywhere in the message triggers sick flow.
@@ -155,22 +156,20 @@ async function handleMatchInterest(supabase: any, orgId: string, replyId: string
   if (!matchId) return;
   const { data: match } = await supabase
     .from("matches")
-    .select("id, status")
+    .select("id, status, match_score, match_breakdown")
     .eq("id", matchId)
     .eq("organization_id", orgId)
     .maybeSingle();
   // Niet terugzetten als de match al verder of terminaal is.
   if (!match || ["geaccepteerd", "geplaatst", "afgewezen"].includes(match.status)) return;
   const newStatus = isYes ? "afspraak_voorgesteld" : "afgewezen";
-  await supabase
-    .from("matches")
-    .update({ status: newStatus, status_changed_at: new Date().toISOString() })
-    .eq("id", matchId);
-  await supabase.from("match_feedback_events").insert({
-    organization_id: orgId,
-    match_id: matchId,
-    from_status: match.status,
-    to_status: newStatus,
+  await advanceMatchStatus(supabase, {
+    orgId,
+    matchId,
+    toStatus: newStatus,
+    currentMatch: { ...match, organization_id: orgId },
+    requireReason: false,
+    eventMode: "always",
     notes: isYes
       ? "Kandidaat reageerde 'Ja, interesse' via WhatsApp — afspraakvoorstel opvolgen"
       : "Kandidaat reageerde 'Nee, bedankt' via WhatsApp",

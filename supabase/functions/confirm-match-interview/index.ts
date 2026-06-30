@@ -2,6 +2,7 @@ import { createAdminClient, requireInternalProfile } from "../_shared/auth.ts";
 import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
 import { sendViaOutlookAccount } from "../_shared/outlook-send.ts";
 import { buildIcsEvent } from "../_shared/ics.ts";
+import { advanceMatchStatus } from "../_shared/match-lifecycle.ts";
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -66,7 +67,7 @@ Deno.serve(async (req) => {
     const { data: match, error: matchError } = await admin
       .from("matches")
       .select(`
-        id, organization_id, status, candidate_id, vacancy_id,
+        id, organization_id, status, match_score, match_breakdown, candidate_id, vacancy_id,
         candidates:candidate_id(id, first_name, last_name, email),
         vacancies:vacancy_id(id, title, created_by, companies:company_id(id, name, email))
       `)
@@ -113,29 +114,22 @@ Deno.serve(async (req) => {
     };
 
     const update = {
-      status: "afspraak_op_kantoor",
-      status_changed_at: new Date().toISOString(),
       interview_date: confirmedAt,
       interview_confirmed_at: confirmedAt,
       interview_location: location,
       interview_type: interviewType,
       interview_confirmed_by: auth.userId,
     };
-    const { error: updateError } = await admin
-      .from("matches")
-      .update(update)
-      .eq("id", match.id)
-      .eq("organization_id", auth.organizationId);
-    if (updateError) return json({ error: updateError.message }, 500);
-
-    await admin.from("match_feedback_events").insert({
-      organization_id: auth.organizationId,
-      match_id: match.id,
-      from_status: match.status ?? null,
-      to_status: "afspraak_op_kantoor",
+    await advanceMatchStatus(admin, {
+      orgId: auth.organizationId,
+      matchId: match.id,
+      toStatus: "afspraak_op_kantoor",
+      currentMatch: match,
+      actorId: auth.userId,
+      patch: update,
       notes: `Afspraak definitief gemaakt: ${dateLabel} (${location})${note ? `\n${note}` : ""}`,
-      created_by: auth.userId,
-    } as any);
+      eventMode: "always",
+    });
 
     const sent: Record<string, unknown> = {};
     if (notifyCandidate && candidate?.email) {

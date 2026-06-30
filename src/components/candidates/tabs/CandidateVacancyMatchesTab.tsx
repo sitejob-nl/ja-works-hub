@@ -19,6 +19,7 @@ import { cn } from '@/lib/utils';
 import { formatDate, formatEUR } from '@/lib/format';
 import { toast } from 'sonner';
 import { type MatchBreakdown } from '@/lib/matching';
+import { createMatch } from '@/lib/match-lifecycle';
 
 const scoreBadgeClass: Record<MatchBreakdown['label'], string> = {
   groen: 'bg-stat-green/10 text-stat-green border-0',
@@ -99,19 +100,14 @@ const CandidateVacancyMatchesTab = ({ candidateId, candidate }: { candidateId: s
 
   const proposeMutation = useMutation({
     mutationFn: async (r: any) => {
-      const { data: match, error } = await (supabase as any).from('matches').insert({
-        organization_id: orgId,
-        vacancy_id: r.vacancy.id,
-        candidate_id: candidateId,
-        proposed_by: user?.id ?? null,
-        status: 'nieuwe_match' as any,
+      const match = await createMatch(supabase as any, {
+        orgId,
+        vacancyId: r.vacancy.id,
+        candidateId,
+        proposedBy: user?.id ?? null,
         source: 'eigen_match',
-        match_score: r.score ?? null,
-        match_reasoning: r.breakdown?.reasoning ?? null,
-        match_breakdown: (r.breakdown ?? null) as any,
-        distance_km: r.breakdown?.distance?.km ?? null,
-      }).select('id').single();
-      if (error) throw error;
+        score: r.breakdown ?? null,
+      });
       try {
         await supabase.functions.invoke('calculate-match', {
           body: { match_id: match.id, candidate_id: candidateId, vacancy_id: r.vacancy.id },
