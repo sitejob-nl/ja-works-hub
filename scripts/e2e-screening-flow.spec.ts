@@ -33,9 +33,43 @@ async function openCandidateWithFreshScreening(page: import("@playwright/test").
   await page.goto(`/kandidaten/${candidateId}`, { waitUntil: "domcontentloaded" });
 }
 
+async function openCandidateWithAiAnalysis(page: import("@playwright/test").Page) {
+  const orgId = process.env.DEMO_ORG_ID;
+  if (!orgId) {
+    test.skip(true, "DEMO_ORG_ID ontbreekt; kan geen kandidaat met AI-analyse kiezen");
+    return;
+  }
+
+  const res = await page.request.get(
+    `${SUPABASE_URL}/rest/v1/candidates?select=id&organization_id=eq.${orgId}&ai_analysis=not.is.null&order=updated_at.desc&limit=1`,
+    { headers: await authHeaders(page) },
+  );
+  expect(res.ok(), `AI-kandidaatselectie faalde: ${await res.text()}`).toBeTruthy();
+  const rows = (await res.json()) as Array<{ id: string }>;
+  const candidateId = rows[0]?.id;
+  if (!candidateId) {
+    test.skip(true, "Geen kandidaat met AI-analyse in deze QA dataset");
+    return;
+  }
+
+  await page.goto(`/kandidaten/${candidateId}`, { waitUntil: "domcontentloaded" });
+}
+
 test.describe("Screening callflow", () => {
   test.beforeEach(async ({ page }) => {
     await ensureLoggedIn(page);
+  });
+
+  test("toont de meeting-screening UI als gescheiden cockpit", async ({ page }) => {
+    await openCandidateWithAiAnalysis(page);
+
+    await page.getByRole("tab", { name: /Screening/i }).click();
+    await expect(page.getByRole("heading", { name: "Screening-cockpit" })).toBeVisible();
+    await expect(page.getByTestId("screening-key-profile")).toContainText("Kernprofiel");
+    await expect(page.getByRole("heading", { name: "AI-feiten controleren" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "AI-beredenering" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Belmenu / callflow" })).toBeVisible();
+    await expect(page.getByTestId("screening-key-profile")).toContainText(/Functies \/ ervaring|Nog navragen/);
   });
 
   test("waarschuwt bij onopgeslagen screeninginput en behoudt de callflow-state", async ({ page }) => {

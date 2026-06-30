@@ -27,7 +27,7 @@ import { allowFileDrop, getDroppedFiles } from '@/lib/file-input';
 const formatEuro = (cents: number) =>
   (cents / 100).toLocaleString('nl-NL', { style: 'currency', currency: 'EUR' });
 
-const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => {
+const CandidateAiTab = ({ candidate: initialCandidate, compact = false }: { candidate: any; compact?: boolean }) => {
   const qc = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [cvText, setCvText] = useState(initialCandidate.cv_raw_text || '');
@@ -191,7 +191,7 @@ const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => 
   const editedTextTooShort = cvTextEdited && cvText.trim().length > 0 && cvText.trim().length < 50;
 
   return (
-    <div className="space-y-6">
+    <div className={compact ? 'space-y-3' : 'space-y-6'}>
       {/* Status bar */}
       {isAnalyzing && (
         <Card className="p-4 border-l-4 border-l-blue-500 bg-blue-50/50">
@@ -265,7 +265,7 @@ const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => 
 
       {/* CV Input section */}
       <Card
-        className="p-5 space-y-4 border-dashed"
+        className={compact ? 'p-4 space-y-3 border-dashed' : 'p-5 space-y-4 border-dashed'}
         onDragOver={allowFileDrop}
         onDrop={handleFileDrop}
       >
@@ -305,7 +305,7 @@ const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => 
             setCvTextEdited(true);
           }}
           placeholder="Optioneel: plak hier CV-tekst of upload een bestand. Laat dit leeg om CV-documenten uit het Documenten-tabblad automatisch te gebruiken. Interne notities worden server-side meegenomen."
-          className="min-h-[200px] font-mono text-xs leading-relaxed"
+          className={compact ? 'min-h-[88px] font-mono text-xs leading-relaxed' : 'min-h-[200px] font-mono text-xs leading-relaxed'}
           disabled={isAnalyzing}
         />
 
@@ -336,7 +336,7 @@ const CandidateAiTab = ({ candidate: initialCandidate }: { candidate: any }) => 
       </Card>
 
       {/* Analysis results */}
-      {hasAnalysis && (
+      {!compact && hasAnalysis && (
         <>
           <AiAnalysisCard analysis={candidate.ai_analysis} />
           <Card className="p-4 flex items-center justify-between">

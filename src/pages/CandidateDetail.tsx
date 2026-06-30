@@ -467,7 +467,7 @@ const CandidateDetail = () => {
             {/* AI-analyse als sectie bovenaan Screening (meeting-besluit 05-27): CV-upload
                 (alle formaten) + volledige dossieranalyse met feiten/aannames/onbekend,
                 CEFR-taalniveau en bronverwijzingen. De losse AI-tab is vervallen. */}
-            <CandidateAiTab candidate={candidate} />
+            <CandidateAiTab candidate={candidate} compact />
             <CandidateScreeningTab
               candidate={candidate}
               vacancyId={screeningVacancyId}

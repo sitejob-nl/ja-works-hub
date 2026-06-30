@@ -22,6 +22,7 @@ import LanguageMultiSelect from '@/components/shared/LanguageMultiSelect';
 import { cn } from '@/lib/utils';
 import {
   AlertTriangle,
+  ArrowDownToLine,
   Briefcase,
   CalendarClock,
   Car,
@@ -30,11 +31,17 @@ import {
   ChevronRight,
   ClipboardCheck,
   Clock3,
+  FileText,
   HeartHandshake,
+  Info,
+  MapPin,
   PhoneCall,
   Save,
   ShieldQuestion,
   Sparkles,
+  Target,
+  TrendingUp,
+  UserRound,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useModuleEnabled } from '@/hooks/useModuleEnabled';
@@ -371,6 +378,81 @@ const hasArrayDiff = (current: string[], suggested: string[]) => {
   return suggested.some((value) => !currentSet.has(value.trim().toLowerCase()));
 };
 
+const clean = (value: unknown) => (typeof value === 'string' ? value.trim() : '');
+
+const normalizeCompare = (value: unknown) =>
+  clean(value).toLowerCase().replace(/\s+/g, ' ');
+
+const displayList = (values: string[]) => values.length > 0 ? values.join(', ') : 'Nog leeg';
+
+const aiSkillLabel = (item: any): string => {
+  if (typeof item === 'string') return item.trim();
+  return clean(item?.vaardigheid ?? item?.naam ?? item?.label);
+};
+
+const aiCertLabel = (item: any): string => {
+  if (typeof item === 'string') return item.trim();
+  return clean(item?.naam);
+};
+
+const uniqueCleanStrings = (values: unknown[]): string[] => [
+  ...new Set(values.map(clean).filter(Boolean)),
+];
+
+type ProfileSuggestion =
+  | { kind: 'text'; key: keyof ProfileDraft; label: string; current: string; suggested: string }
+  | { kind: 'list'; key: 'skills' | 'languages' | 'certifications'; label: string; current: string[]; suggested: string[] };
+
+const isDutchMobileCandidate = (value: string) => /^(?:\+31|0031|0)\s*6/.test(value.replace(/[()\-.]/g, ' ').trim());
+
+const getAiProfileDiffs = (candidate: any, draft: ProfileDraft): ProfileSuggestion[] => {
+  const analysis = candidate.ai_analysis as any;
+  const personalia = analysis?.personalia ?? {};
+  const suggestions = getAiProfileSuggestions(candidate);
+  const diffs: ProfileSuggestion[] = [];
+
+  const addText = (key: keyof ProfileDraft, label: string, suggestedRaw: unknown) => {
+    const suggested = clean(suggestedRaw);
+    if (!suggested) return;
+    const current = clean(draft[key]);
+    if (normalizeCompare(current) === normalizeCompare(suggested)) return;
+    diffs.push({ kind: 'text', key, label, current, suggested });
+  };
+
+  const addList = (key: 'skills' | 'languages' | 'certifications', label: string, suggestedRaw: string[]) => {
+    const suggested = uniqueCleanStrings(suggestedRaw);
+    if (!hasArrayDiff(draft[key], suggested)) return;
+    diffs.push({ kind: 'list', key, label, current: draft[key], suggested });
+  };
+
+  const foundPhone = clean(personalia.telefoon_gevonden);
+  if (foundPhone) {
+    addText(isDutchMobileCandidate(foundPhone) ? 'phone_nl' : 'phone', isDutchMobileCandidate(foundPhone) ? 'Telefoon NL' : 'Telefoon EU/buitenland', foundPhone);
+  }
+  addText('email', 'E-mailadres', personalia.email_gevonden);
+  addText('nationality', 'Nationaliteit', personalia.nationaliteit);
+  addText('address_city', 'Woonplaats', personalia.woonplaats);
+  addList('skills', 'Vaardigheden', suggestions.skills);
+  addList('certifications', 'Certificaten', suggestions.certifications);
+  addList('languages', 'Talen', suggestions.languages);
+
+  return diffs;
+};
+
+const aiWorkFunctions = (analysis: any): string[] => uniqueCleanStrings([
+  ...(analysis?.doelgroep?.functies ?? []),
+  ...(analysis?.werkhistorie?.werkgevers ?? []).map((w: any) => w?.functie),
+]).slice(0, 8);
+
+const aiHardSkillLabels = (analysis: any): string[] =>
+  uniqueCleanStrings((analysis?.competenties?.hard_skills ?? []).map(aiSkillLabel)).slice(0, 12);
+
+const aiLanguageLabels = (analysis: any): string[] =>
+  uniqueCleanStrings((analysis?.competenties?.talen ?? []).map(aiLanguageLabel)).slice(0, 8);
+
+const aiCertLabels = (analysis: any): string[] =>
+  uniqueCleanStrings((analysis?.competenties?.certificaten ?? []).map(aiCertLabel)).slice(0, 8);
+
 // Bouwt de tekst voor de "Screening voltooid"-notitie: resultaat + samenvatting,
 // gevolgd door alle vragen met hun antwoorden, plus de eindbeoordeling.
 const buildScreeningNoteContent = (data: ScreeningData): string => {
@@ -500,12 +582,15 @@ const CandidateScreeningTab = ({
   const riskFactors: string[] = candidate.ai_risk_factors ?? [];
   const positiveSignals: string[] = candidate.ai_positive_signals ?? [];
   const targetFunctions: string[] = candidate.ai_target_functions ?? [];
-  const aiProfileSuggestions = useMemo(() => getAiProfileSuggestions(candidate), [candidate]);
-  const aiProfileDiffs = useMemo(() => ([
-    { key: 'skills' as const, label: 'Vaardigheden', current: profileDraft.skills, suggested: aiProfileSuggestions.skills },
-    { key: 'certifications' as const, label: 'Certificaten', current: profileDraft.certifications, suggested: aiProfileSuggestions.certifications },
-    { key: 'languages' as const, label: 'Talen', current: profileDraft.languages, suggested: aiProfileSuggestions.languages },
-  ].filter((field) => hasArrayDiff(field.current, field.suggested))), [aiProfileSuggestions, profileDraft.certifications, profileDraft.languages, profileDraft.skills]);
+  const analysis = candidate.ai_analysis as any;
+  const aiProfileDiffs = useMemo(() => getAiProfileDiffs(candidate, profileDraft), [candidate, profileDraft]);
+  const aiFacts = Array.isArray(analysis?.datakwaliteit?.feiten) ? analysis.datakwaliteit.feiten : [];
+  const aiUnknowns = Array.isArray(analysis?.datakwaliteit?.onbekend) ? analysis.datakwaliteit.onbekend : [];
+  const aiAssumptions = Array.isArray(analysis?.datakwaliteit?.aannames) ? analysis.datakwaliteit.aannames : [];
+  const aiFunctions = aiWorkFunctions(analysis);
+  const aiHardSkills = aiHardSkillLabels(analysis);
+  const aiLanguages = aiLanguageLabels(analysis);
+  const aiCerts = aiCertLabels(analysis);
   const dirty = buildSnapshot(data, profileDraft) !== lastSavedSnapshot;
   const statusMeta = STATUS_META[data.status] ?? STATUS_META.niet_gestart;
 
@@ -750,8 +835,11 @@ const CandidateScreeningTab = ({
     await persistDraft({ complete: true, manual: true });
   };
 
-  const takeAiSuggestion = (key: 'skills' | 'languages' | 'certifications', values: string[]) => {
-    setProfileDraft((current) => ({ ...current, [key]: values }));
+  const takeAiSuggestion = (suggestion: ProfileSuggestion) => {
+    setProfileDraft((current) => ({
+      ...current,
+      [suggestion.key]: suggestion.kind === 'list' ? suggestion.suggested : suggestion.suggested,
+    }));
     toast.success('AI-suggestie overgenomen in het concept');
   };
 
@@ -921,21 +1009,273 @@ const CandidateScreeningTab = ({
     return null;
   };
 
+  const chipList = (values: string[], empty = 'Nog niet bekend') => (
+    <div className="flex flex-wrap gap-1.5">
+      {values.length > 0
+        ? values.map((value) => <Badge key={value} variant="outline" className="max-w-full truncate text-[11px]">{value}</Badge>)
+        : <span className="text-xs text-muted-foreground">{empty}</span>}
+    </div>
+  );
+
+  const renderKeywordSidebar = () => {
+    const address = [profileDraft.address_street, profileDraft.address_postal, profileDraft.address_city].filter(Boolean).join(', ');
+    const phone = profileDraft.phone_nl || profileDraft.phone || 'Geen telefoon';
+    const availability = [
+      data.availability.available_from ? `Vanaf ${data.availability.available_from}` : null,
+      data.availability.available_until ? `tot ${data.availability.available_until}` : null,
+      data.availability.arrival_date ? `aankomst ${data.availability.arrival_date}` : null,
+    ].filter(Boolean).join(' · ');
+    const missing = importantMissingFields(profileDraft, data.availability);
+
+    return (
+      <Card className="h-fit p-4 xl:sticky xl:top-4" data-testid="screening-key-profile">
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <Info className="h-4 w-4 text-muted-foreground" />
+            Kernprofiel
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <UserRound className="h-4 w-4 text-muted-foreground" />
+              <div className="min-w-0">
+                <h3 className="truncate font-semibold">{candidate.first_name} {candidate.last_name}</h3>
+                <p className="truncate text-xs text-muted-foreground">{profileDraft.nationality || 'Nationaliteit onbekend'}</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              <Badge className={statusMeta.className}>{statusMeta.label}</Badge>
+              {analysis?.samenvatting?.plaatsbaarheid_score != null && (
+                <Badge variant="outline">Plaatsbaarheid {analysis.samenvatting.plaatsbaarheid_score}/10</Badge>
+              )}
+              {candidate.ai_classification && <Badge variant="secondary">{candidate.ai_classification}</Badge>}
+            </div>
+            {data.status === 'concept_opgeslagen' && (
+              <p className="rounded-md bg-amber-50 px-2.5 py-2 text-xs text-amber-800">
+                Concept: belnotities zijn opgeslagen, maar de screening is nog niet afgerond.
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-2 text-xs">
+            <div className="flex items-start gap-2 text-muted-foreground">
+              <PhoneCall className="mt-0.5 h-3.5 w-3.5" />
+              <span className="break-all">{phone}</span>
+            </div>
+            <div className="flex items-start gap-2 text-muted-foreground">
+              <MapPin className="mt-0.5 h-3.5 w-3.5" />
+              <span>{address || 'Adres/verblijfplaats onbekend'}</span>
+            </div>
+            <div className="flex items-start gap-2 text-muted-foreground">
+              <CalendarClock className="mt-0.5 h-3.5 w-3.5" />
+              <span>{availability || 'Beschikbaarheid nog controleren'}</span>
+            </div>
+          </div>
+
+          <div className="border-t pt-3 space-y-3">
+            <div>
+              <p className="mb-1.5 text-xs font-medium uppercase text-muted-foreground">Functies / ervaring</p>
+              {chipList(aiFunctions, 'Nog geen AI-functies')}
+            </div>
+            <div>
+              <p className="mb-1.5 text-xs font-medium uppercase text-muted-foreground">Competenties</p>
+              {chipList(profileDraft.skills.length ? profileDraft.skills.slice(0, 10) : aiHardSkills.slice(0, 10))}
+            </div>
+            <div>
+              <p className="mb-1.5 text-xs font-medium uppercase text-muted-foreground">Talen</p>
+              {chipList(profileDraft.languages.length ? profileDraft.languages.slice(0, 8) : aiLanguages)}
+            </div>
+            {aiCerts.length > 0 && (
+              <div>
+                <p className="mb-1.5 text-xs font-medium uppercase text-muted-foreground">Certificaten</p>
+                {chipList(aiCerts)}
+              </div>
+            )}
+          </div>
+
+          <div className="border-t pt-3">
+            <p className="mb-1.5 text-xs font-medium uppercase text-muted-foreground">Nog navragen</p>
+            <div className="space-y-1.5">
+              {missing.slice(0, 5).map((item) => (
+                <div key={item} className="rounded bg-amber-50 px-2 py-1 text-xs text-amber-800">{item}</div>
+              ))}
+              {aiUnknowns.slice(0, 3).map((item: any, index: number) => (
+                <div key={`${item?.veld ?? 'onbekend'}-${index}`} className="rounded bg-red-50 px-2 py-1 text-xs text-red-700">
+                  {item?.veld ?? 'Onbekend'}{item?.vervolgvraag ? `: ${item.vervolgvraag}` : ''}
+                </div>
+              ))}
+              {missing.length === 0 && aiUnknowns.length === 0 && (
+                <p className="text-xs text-muted-foreground">Geen kritieke open punten.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      </Card>
+    );
+  };
+
+  const renderAiReviewPanel = () => (
+    <Card className="p-4 space-y-4 border-l-4 border-l-amber-500">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-amber-600" />
+          <div>
+            <h3 className="font-semibold text-sm">AI-feiten controleren</h3>
+            <p className="text-xs text-muted-foreground">AI past profieldata niet direct aan; overnemen blijft recruiterkeuze.</p>
+          </div>
+        </div>
+        <Badge variant="outline">{aiProfileDiffs.length} verschil{aiProfileDiffs.length === 1 ? '' : 'len'}</Badge>
+      </div>
+
+      {aiProfileDiffs.length > 0 ? (
+        <div className="grid gap-3 md:grid-cols-2">
+          {aiProfileDiffs.map((field) => (
+            <div key={`${field.key}-${field.label}`} className="rounded-md border bg-background p-3 space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <Label>{field.label}</Label>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-8 gap-1.5"
+                  onClick={() => takeAiSuggestion(field)}
+                >
+                  <ArrowDownToLine className="h-3.5 w-3.5" /> Overnemen
+                </Button>
+              </div>
+              <div className="grid gap-2 text-sm sm:grid-cols-2">
+                <div>
+                  <p className="mb-1 text-xs text-muted-foreground">Profiel</p>
+                  <p className="break-words">{field.kind === 'list' ? displayList(field.current) : field.current || 'Nog leeg'}</p>
+                </div>
+                <div>
+                  <p className="mb-1 text-xs text-muted-foreground">AI / screening</p>
+                  <p className="break-words">{field.kind === 'list' ? displayList(field.suggested) : field.suggested}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-muted-foreground">Geen concrete profielverschillen gevonden in de AI-analyse.</p>
+      )}
+
+      {(aiFacts.length > 0 || aiAssumptions.length > 0) && (
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="rounded-md bg-stat-green/5 p-3">
+            <p className="mb-2 text-xs font-medium text-stat-green">Harde feiten</p>
+            <div className="space-y-1.5">
+              {aiFacts.slice(0, 5).map((item: any, index: number) => (
+                <p key={`${item?.veld ?? 'feit'}-${index}`} className="text-xs">
+                  <span className="font-medium">{item?.veld}</span>{item?.waarde ? `: ${item.waarde}` : ''}
+                </p>
+              ))}
+              {aiFacts.length === 0 && <p className="text-xs text-muted-foreground">Geen harde feiten gemarkeerd.</p>}
+            </div>
+          </div>
+          <div className="rounded-md bg-orange-50 p-3">
+            <p className="mb-2 text-xs font-medium text-orange-700">Aannames</p>
+            <div className="space-y-1.5">
+              {aiAssumptions.slice(0, 5).map((item: any, index: number) => (
+                <p key={`${item?.veld ?? 'aanname'}-${index}`} className="text-xs">
+                  <span className="font-medium">{item?.veld}</span>{item?.aanname ? `: ${item.aanname}` : ''}
+                </p>
+              ))}
+              {aiAssumptions.length === 0 && <p className="text-xs text-muted-foreground">Geen aannames gemarkeerd.</p>}
+            </div>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+
+  const renderAiNarrativePanel = () => {
+    if (!analysis) return null;
+    const employers = Array.isArray(analysis?.werkhistorie?.werkgevers) ? analysis.werkhistorie.werkgevers : [];
+    const gaps = Array.isArray(analysis?.werkhistorie?.gaten) ? analysis.werkhistorie.gaten : [];
+
+    return (
+      <Card className="p-4 space-y-4 border-l-4 border-l-blue-500">
+        <div className="flex items-center gap-2">
+          <FileText className="h-4 w-4 text-blue-600" />
+          <div>
+            <h3 className="font-semibold text-sm">AI-beredenering</h3>
+            <p className="text-xs text-muted-foreground">Langere analyse blijft beschikbaar, los van het belmenu.</p>
+          </div>
+        </div>
+
+        {analysis?.samenvatting?.profiel && (
+          <div className="rounded-md bg-muted/40 p-3">
+            <p className="mb-1 text-xs font-medium uppercase text-muted-foreground">Profielschets</p>
+            <p className="text-sm leading-relaxed">{analysis.samenvatting.profiel}</p>
+          </div>
+        )}
+
+        <div className="grid gap-3 md:grid-cols-2">
+          {analysis?.samenvatting?.topkwaliteit && (
+            <div className="rounded-md bg-stat-green/5 p-3">
+              <p className="mb-1 text-xs font-medium text-stat-green">Sterkste signaal</p>
+              <p className="text-sm">{analysis.samenvatting.topkwaliteit}</p>
+            </div>
+          )}
+          {analysis?.samenvatting?.aandachtspunt && (
+            <div className="rounded-md bg-orange-50 p-3">
+              <p className="mb-1 text-xs font-medium text-orange-700">Aandachtspunt</p>
+              <p className="text-sm">{analysis.samenvatting.aandachtspunt}</p>
+            </div>
+          )}
+        </div>
+
+        {analysis?.plaatsingsadvies?.onderbouwing && (
+          <div className="rounded-md border p-3">
+            <div className="mb-1.5 flex items-center gap-2 text-sm font-medium"><Target className="h-3.5 w-3.5" /> Plaatsingsadvies</div>
+            <p className="text-sm text-muted-foreground">{analysis.plaatsingsadvies.onderbouwing}</p>
+          </div>
+        )}
+
+        {analysis?.eigenschappen?.toelichting && (
+          <div className="rounded-md border p-3">
+            <div className="mb-1.5 flex items-center gap-2 text-sm font-medium"><TrendingUp className="h-3.5 w-3.5" /> Stabiliteit en profieltype</div>
+            <p className="text-sm text-muted-foreground">{analysis.eigenschappen.toelichting}</p>
+          </div>
+        )}
+
+        {(employers.length > 0 || gaps.length > 0) && (
+          <div className="rounded-md border p-3">
+            <div className="mb-2 flex items-center gap-2 text-sm font-medium"><Briefcase className="h-3.5 w-3.5" /> Werkervaring</div>
+            <div className="space-y-2">
+              {employers.slice(0, 4).map((job: any, index: number) => (
+                <div key={`${job?.bedrijf ?? 'werk'}-${index}`} className="border-l-2 border-muted pl-3 text-sm">
+                  <p className="font-medium">{job?.functie || 'Functie onbekend'}</p>
+                  <p className="text-xs text-muted-foreground">{[job?.bedrijf, job?.periode].filter(Boolean).join(' · ')}</p>
+                </div>
+              ))}
+              {gaps.slice(0, 3).map((gap: any, index: number) => (
+                <div key={`${gap?.periode ?? 'gat'}-${index}`} className="rounded bg-orange-50 px-2 py-1 text-xs text-orange-700">
+                  Gat: {gap?.periode}{gap?.duur_maanden ? ` (${gap.duur_maanden} mnd)` : ''}{gap?.mogelijke_verklaring ? ` · ${gap.mogelijke_verklaring}` : ''}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </Card>
+    );
+  };
+
   return (
     <div className="space-y-5">
       <Card className="p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-2">
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex flex-wrap items-center gap-2">
               <Badge className={statusMeta.className}>{statusMeta.label}</Badge>
               <Badge variant="outline">{askedCount(data)}/{Object.values(QUESTION_BANK).flat().length} punten vastgelegd</Badge>
               {saving && <Badge variant="outline" className="gap-1"><Clock3 className="h-3 w-3 animate-pulse" /> Autosave</Badge>}
-              {dirty && !saving && <Badge variant="outline" className="text-amber-700 border-amber-200">Onopgeslagen wijzigingen</Badge>}
+              {dirty && !saving && <Badge variant="outline" className="border-amber-200 text-amber-700">Onopgeslagen wijzigingen</Badge>}
             </div>
             <div>
-              <h3 className="font-semibold">Screening-callflow</h3>
+              <h3 className="font-semibold">Screening-cockpit</h3>
               <p className="text-sm text-muted-foreground">
-                {candidate.first_name} {candidate.last_name} · recruiter-belscript en matchdata in één verloop.
+                Harde kerngegevens, AI-beredenering en belmenu gescheiden op één werkvlak.
               </p>
             </div>
             {lastSavedAt && (
@@ -944,14 +1284,14 @@ const CandidateScreeningTab = ({
               </p>
             )}
           </div>
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex flex-wrap gap-2">
             {data.status === 'niet_gestart' && (
               <Button onClick={startCall} className="gap-2" data-testid="screening-start-call">
                 <PhoneCall className="h-4 w-4" /> Start gesprek
               </Button>
             )}
             <Button variant="outline" onClick={() => persistDraft({ manual: true })} disabled={manualSaving || data.status === 'niet_gestart'} className="gap-2" data-testid="screening-save-draft">
-              <Save className="h-4 w-4" /> {manualSaving ? 'Opslaan...' : 'Tussentijds opslaan'}
+              <Save className="h-4 w-4" /> {manualSaving ? 'Opslaan...' : 'Concept opslaan'}
             </Button>
             <Button variant="outline" onClick={handleCreateFollowupTask} disabled={creatingTask} className="gap-2">
               <AlertTriangle className="h-4 w-4" /> {creatingTask ? 'Aanmaken...' : 'Maak taak'}
@@ -960,155 +1300,45 @@ const CandidateScreeningTab = ({
         </div>
       </Card>
 
-      <div className="grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)]">
-        {/* Stappen-overzicht: scrollt mee in de 2-koloms-weergave (sticky), zodat je
-            tijdens het invullen van een lange stap altijd de stappen ziet. self-start
-            voorkomt dat de kaart de rij vult zodat sticky ruimte heeft om te bewegen. */}
-        <Card className="p-3 h-fit xl:sticky xl:top-4 xl:self-start">
-          <div className="space-y-1">
-            {SCREENING_STEPS.map((step, index) => {
-              const Icon = step.icon;
-              const active = step.id === currentStep.id;
-              const stepQuestions = QUESTION_BANK[step.id] ?? [];
-              const done = stepQuestions.length > 0 && stepQuestions.every((q) => data.answers[q.key]?.asked || data.answers[q.key]?.notes?.trim());
-              return (
-                <button
-                  key={step.id}
-                  type="button"
-                  onClick={() => goToStep(step.id)}
-                  className={cn(
-                    'w-full rounded-md px-3 py-2 text-left text-sm flex items-center gap-2 transition-colors',
-                    active ? 'bg-primary text-primary-foreground' : 'hover:bg-muted',
-                  )}
-                >
-                  <span className={cn('h-6 w-6 rounded-full flex items-center justify-center text-xs', active ? 'bg-primary-foreground/20' : 'bg-muted')}>
-                    {done ? <CheckCircle2 className="h-3.5 w-3.5" /> : index + 1}
-                  </span>
-                  <Icon className="h-4 w-4 flex-shrink-0" />
-                  <span className="truncate">{step.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        </Card>
+      <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
+        {renderKeywordSidebar()}
 
-        <div className="space-y-4 min-w-0">
-          {aiEnabled && (
-            <Card className="p-4 space-y-3 border-l-4 border-l-blue-500">
-              <div className="flex items-center gap-2">
-                <ShieldQuestion className="h-4 w-4 text-blue-600" />
-                <h3 className="font-semibold text-sm">AI-context voor gesprek</h3>
-              </div>
-              <div className="grid gap-3 md:grid-cols-3">
-                <div className="space-y-2">
-                  <Label className="text-xs text-muted-foreground uppercase tracking-wide">Feiten/signalen</Label>
-                  <div className="flex gap-1.5 flex-wrap">
-                    {candidate.ai_classification && <Badge variant="secondary">{candidate.ai_classification}</Badge>}
-                    {candidate.ai_function_group && <Badge variant="outline">{candidate.ai_function_group}</Badge>}
-                    {positiveSignals.slice(0, 4).map((signal) => <Badge key={signal} variant="outline">{signal}</Badge>)}
-                    {!candidate.ai_classification && !candidate.ai_function_group && positiveSignals.length === 0 && <span className="text-sm text-muted-foreground">Geen AI-signalen</span>}
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-xs text-muted-foreground uppercase tracking-wide">Onbekend/aandacht</Label>
-                  <div className="flex gap-1.5 flex-wrap">
-                    {missingProfileFields.slice(0, 5).map((field) => <Badge key={field.label} className="bg-amber-100 text-amber-800 border-0">{field.label}</Badge>)}
-                    {riskFactors.slice(0, 3).map((risk) => <Badge key={risk} className="bg-red-100 text-red-700 border-0">{risk}</Badge>)}
-                    {missingProfileFields.length === 0 && riskFactors.length === 0 && <span className="text-sm text-muted-foreground">Geen open AI-punten</span>}
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-xs text-muted-foreground uppercase tracking-wide">Passende functies</Label>
-                  <div className="flex gap-1.5 flex-wrap">
-                    {targetFunctions.slice(0, 5).map((target) => <Badge key={target} variant="outline">{target}</Badge>)}
-                    {targetFunctions.length === 0 && <span className="text-sm text-muted-foreground">Nog niet bepaald</span>}
-                  </div>
-                </div>
-              </div>
-              {interviewQuestions.length > 0 && (
-                <div className="space-y-2">
-                  <Label className="text-xs text-muted-foreground uppercase tracking-wide">AI-belvragen</Label>
-                  <div className="grid gap-2 md:grid-cols-2">
-                    {interviewQuestions.slice(0, 4).map((question, i) => (
-                      <div key={`${question}-${i}`} className="rounded-md border bg-background px-3 py-2 text-sm">
-                        {question}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </Card>
-          )}
-
-          {aiProfileDiffs.length > 0 && (
-            <Card className="p-4 space-y-3 border-l-4 border-l-amber-500">
-              <div className="flex items-center gap-2">
-                <Sparkles className="h-4 w-4 text-amber-600" />
-                <h3 className="font-semibold text-sm">AI-feiten om te controleren</h3>
-              </div>
-              <div className="space-y-3">
-                {aiProfileDiffs.map((field) => (
-                  <div key={field.key} className="rounded-md border bg-background p-3 space-y-2">
-                    <div className="flex items-center justify-between gap-3">
-                      <Label>{field.label}</Label>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => takeAiSuggestion(field.key, field.suggested)}
-                      >
-                        Overnemen
-                      </Button>
-                    </div>
-                    <div className="grid gap-2 md:grid-cols-2 text-sm">
-                      <div>
-                        <p className="text-xs text-muted-foreground mb-1">Profiel</p>
-                        <p>{field.current.length > 0 ? field.current.join(', ') : 'Nog leeg'}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground mb-1">AI</p>
-                        <p>{field.suggested.join(', ')}</p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          )}
+        <div className="min-w-0 space-y-4">
+          {aiEnabled && renderAiReviewPanel()}
+          {renderAiNarrativePanel()}
 
           {vacancyId && (
             <Card className="p-4 space-y-3 border-l-4 border-l-green-500">
-              <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <Briefcase className="h-4 w-4 text-green-600" />
                   <h3 className="font-semibold text-sm">
-                    Vakinhoudelijke vragen{screeningVacancy?.title ? ` — ${screeningVacancy.title}` : ''}
+                    Matchvragen{screeningVacancy?.title ? ` — ${screeningVacancy.title}` : ''}
                   </h3>
                 </div>
                 {aiEnabled && (
                   <Button size="sm" variant="outline" onClick={generateAiCallQuestions} disabled={aiCallLoading}>
-                    <Sparkles className="h-3.5 w-3.5 mr-1" /> {aiCallLoading ? 'AI bezig…' : 'AI-vragen genereren'}
+                    <Sparkles className="mr-1 h-3.5 w-3.5" /> {aiCallLoading ? 'AI bezig...' : 'AI-vragen genereren'}
                   </Button>
                 )}
               </div>
               {deterministicCallQuestions.length > 0 ? (
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground uppercase tracking-wide">Op basis van de match</Label>
+                <div className="grid gap-2 md:grid-cols-2">
                   {deterministicCallQuestions.map((q, i) => (
                     <div key={`det-${i}`} className="rounded-md border bg-background px-3 py-2 text-sm">{q}</div>
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">
-                  Geen openstaande gaten uit de match — gebruik de AI-knop voor extra vakinhoudelijke vragen.
-                </p>
+                <p className="text-sm text-muted-foreground">Geen openstaande gaten uit de match.</p>
               )}
               {aiCallQuestions.length > 0 && (
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground uppercase tracking-wide">AI-gegenereerd</Label>
-                  {aiCallQuestions.map((q, i) => (
-                    <div key={`ai-${i}`} className="rounded-md border bg-background px-3 py-2 text-sm">{q}</div>
-                  ))}
+                  <Label className="text-xs uppercase text-muted-foreground">AI-gegenereerd</Label>
+                  <div className="grid gap-2 md:grid-cols-2">
+                    {aiCallQuestions.map((q, i) => (
+                      <div key={`ai-${i}`} className="rounded-md border bg-background px-3 py-2 text-sm">{q}</div>
+                    ))}
+                  </div>
                   {aiCallMeta && (
                     <p className="text-[11px] text-muted-foreground">
                       Kosten: {(aiCallMeta.cost / 100).toLocaleString('nl-NL', { style: 'currency', currency: 'EUR' })} · resterend budget: {(aiCallMeta.balance / 100).toLocaleString('nl-NL', { style: 'currency', currency: 'EUR' })}
@@ -1119,136 +1349,168 @@ const CandidateScreeningTab = ({
             </Card>
           )}
 
-          {missingProfileFields.length > 0 && (
-            <Card className="p-4 border-l-4 border-l-amber-500 bg-amber-50/40">
-              <div className="flex gap-2 flex-wrap">
-                {missingProfileFields.map((field) => (
-                  <Badge key={field.label} className="bg-amber-100 text-amber-800 border-0">
-                    {field.label}
-                  </Badge>
-                ))}
+          <Card className="overflow-hidden border-l-4 border-l-primary">
+            <div className="border-b bg-muted/30 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <PhoneCall className="h-4 w-4 text-primary" />
+                  <div>
+                    <h3 className="font-semibold text-sm">Belmenu / callflow</h3>
+                    <p className="text-xs text-muted-foreground">Vinkje = recruiter heeft dit besproken of bewust gecontroleerd.</p>
+                  </div>
+                </div>
+                <Badge variant="outline">{currentStepIndex + 1}/{SCREENING_STEPS.length}</Badge>
               </div>
-            </Card>
-          )}
-
-          <Card className="p-5 space-y-5">
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-              <div className="flex items-center gap-2">
-                <CurrentStepIcon className="h-4 w-4 text-muted-foreground" />
-                <h3 className="font-semibold">{currentStep.label}</h3>
-              </div>
-              <Badge variant="outline">{currentStepIndex + 1}/{SCREENING_STEPS.length}</Badge>
-            </div>
-
-            {renderProfileFields()}
-
-            {questions.length > 0 && (
-              <div className="space-y-3">
-                {questions.map((question) => {
-                  const answer = data.answers[question.key] ?? { asked: false, notes: '' };
+              <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+                {SCREENING_STEPS.map((step, index) => {
+                  const Icon = step.icon;
+                  const active = step.id === currentStep.id;
+                  const stepQuestions = QUESTION_BANK[step.id] ?? [];
+                  const done = stepQuestions.length > 0 && stepQuestions.every((q) => data.answers[q.key]?.asked || data.answers[q.key]?.notes?.trim());
                   return (
-                    <div key={question.key} className="rounded-md border bg-background p-3 space-y-2">
-                      <label className="flex items-start gap-2 cursor-pointer">
-                        <Checkbox checked={answer.asked} onCheckedChange={(checked) => setAnswer(question.key, { asked: checked === true })} className="mt-0.5" />
-                        <span className="font-medium text-sm">{question.label}</span>
-                      </label>
-                      <Textarea
-                        value={answer.notes}
-                        onChange={(e) => setAnswer(question.key, { notes: e.target.value })}
-                        placeholder={question.placeholder ?? 'Antwoord of checkpunt...'}
-                        className="min-h-[72px]"
-                        data-testid={`screening-answer-${question.key}`}
-                      />
-                    </div>
+                    <button
+                      key={step.id}
+                      type="button"
+                      onClick={() => goToStep(step.id)}
+                      className={cn(
+                        'flex h-10 shrink-0 items-center gap-2 rounded-md border bg-background px-3 text-sm transition-colors',
+                        active && 'border-primary bg-primary text-primary-foreground',
+                      )}
+                    >
+                      <span className={cn('flex h-5 w-5 items-center justify-center rounded-full text-[11px]', active ? 'bg-primary-foreground/20' : 'bg-muted')}>
+                        {done ? <CheckCircle2 className="h-3.5 w-3.5" /> : index + 1}
+                      </span>
+                      <Icon className="h-3.5 w-3.5" />
+                      <span>{step.label}</span>
+                    </button>
                   );
                 })}
               </div>
-            )}
+            </div>
 
-            {currentStep.id === 'werkprofiel' && (
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label>Professionele beoordeling</Label>
-                  <Select value={data.professional.rating} onValueChange={(value) => setProfessional({ rating: value })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>{PROFESSIONAL_RATINGS.map((rating) => <SelectItem key={rating.value} value={rating.value}>{rating.label}</SelectItem>)}</SelectContent>
-                  </Select>
+            <div className="space-y-5 p-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <CurrentStepIcon className="h-4 w-4 text-muted-foreground" />
+                  <h3 className="font-semibold">{currentStep.label}</h3>
                 </div>
-                <div className="space-y-1.5">
-                  <Label>Notities vakinhoudelijk</Label>
-                  <Textarea value={data.professional.notes} onChange={(e) => setProfessional({ notes: e.target.value })} rows={3} />
-                </div>
-              </div>
-            )}
-
-            {currentStep.id === 'persoonlijk' && (
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label>Risiconiveau</Label>
-                  <Select value={data.personal.risk_level} onValueChange={(value) => setPersonal({ risk_level: value })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>{RISK_LEVELS.map((risk) => <SelectItem key={risk.value} value={risk.value}>{risk.label}</SelectItem>)}</SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Notities persoonlijk</Label>
-                  <Textarea value={data.personal.notes} onChange={(e) => setPersonal({ notes: e.target.value })} rows={3} />
-                </div>
-              </div>
-            )}
-
-            {currentStep.id === 'besluit' && (
-              <div className="space-y-4 border-t pt-4">
-                <div className="space-y-1.5">
-                  <Label>Eindresultaat</Label>
-                  <Select value={data.result} onValueChange={(value) => setData((current) => ({ ...current, result: value }))}>
-                    <SelectTrigger className="w-full sm:w-64"><SelectValue /></SelectTrigger>
-                    <SelectContent>{RESULT_OPTIONS.map((result) => <SelectItem key={result.value} value={result.value}>{result.label}</SelectItem>)}</SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Samenvatting</Label>
-                  <Textarea
-                    value={data.summary}
-                    onChange={(e) => setData((current) => ({ ...current, summary: e.target.value }))}
-                    placeholder="Korte recruiter-samenvatting en besluit..."
-                    className="min-h-[110px]"
-                    data-testid="screening-summary"
-                  />
-                </div>
-                {importantMissingFields(profileDraft, data.availability).length > 0 && (
-                  <p className="text-xs text-amber-700">
-                    Kritieke velden ontbreken nog: {importantMissingFields(profileDraft, data.availability).join(', ')}. Leg bij “Kritieke onbekenden” vast waarom dit akkoord is.
-                  </p>
+                {data.status === 'concept_opgeslagen' && (
+                  <Badge className="bg-amber-100 text-amber-800 border-0 gap-1">
+                    <Info className="h-3 w-3" /> Concept belnotities
+                  </Badge>
                 )}
-                <div className="flex flex-wrap gap-2">
-                  <Button onClick={handleComplete} disabled={manualSaving || reanalyzing} className="gap-2" data-testid="screening-complete">
-                    <ClipboardCheck className="h-4 w-4" /> {manualSaving ? 'Afronden...' : 'Screening afronden'}
-                  </Button>
-                  <Button variant="secondary" onClick={handleCompleteAndReanalyze} disabled={manualSaving || reanalyzing} className="gap-2" data-testid="screening-complete-reanalyze">
-                    <Sparkles className="h-4 w-4" /> {reanalyzing ? 'Bezig...' : 'Afronden + opnieuw analyseren'}
-                  </Button>
-                </div>
               </div>
-            )}
 
-            <div className="flex items-center justify-between gap-3 border-t pt-4">
-              <Button
-                variant="outline"
-                onClick={() => goToStep(SCREENING_STEPS[Math.max(0, currentStepIndex - 1)].id)}
-                disabled={currentStepIndex === 0}
-                className="gap-2"
-              >
-                <ChevronLeft className="h-4 w-4" /> Vorige
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => goToStep(SCREENING_STEPS[Math.min(SCREENING_STEPS.length - 1, currentStepIndex + 1)].id)}
-                disabled={currentStepIndex === SCREENING_STEPS.length - 1}
-                className="gap-2"
-              >
-                Volgende <ChevronRight className="h-4 w-4" />
-              </Button>
+              {renderProfileFields()}
+
+              {questions.length > 0 && (
+                <div className="grid gap-3">
+                  {questions.map((question) => {
+                    const answer = data.answers[question.key] ?? { asked: false, notes: '' };
+                    return (
+                      <div key={question.key} className="rounded-md border bg-background p-3 space-y-2">
+                        <label className="flex cursor-pointer items-start gap-2">
+                          <Checkbox checked={answer.asked} onCheckedChange={(checked) => setAnswer(question.key, { asked: checked === true })} className="mt-0.5" />
+                          <span className="font-medium text-sm">{question.label}</span>
+                        </label>
+                        <Textarea
+                          value={answer.notes}
+                          onChange={(e) => setAnswer(question.key, { notes: e.target.value })}
+                          placeholder={question.placeholder ?? 'Antwoord of checkpunt...'}
+                          className="min-h-[72px]"
+                          data-testid={`screening-answer-${question.key}`}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {currentStep.id === 'werkprofiel' && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label>Professionele beoordeling</Label>
+                    <Select value={data.professional.rating} onValueChange={(value) => setProfessional({ rating: value })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>{PROFESSIONAL_RATINGS.map((rating) => <SelectItem key={rating.value} value={rating.value}>{rating.label}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Notities vakinhoudelijk</Label>
+                    <Textarea value={data.professional.notes} onChange={(e) => setProfessional({ notes: e.target.value })} rows={3} />
+                  </div>
+                </div>
+              )}
+
+              {currentStep.id === 'persoonlijk' && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label>Risiconiveau</Label>
+                    <Select value={data.personal.risk_level} onValueChange={(value) => setPersonal({ risk_level: value })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>{RISK_LEVELS.map((risk) => <SelectItem key={risk.value} value={risk.value}>{risk.label}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Notities persoonlijk</Label>
+                    <Textarea value={data.personal.notes} onChange={(e) => setPersonal({ notes: e.target.value })} rows={3} />
+                  </div>
+                </div>
+              )}
+
+              {currentStep.id === 'besluit' && (
+                <div className="space-y-4 border-t pt-4">
+                  <div className="space-y-1.5">
+                    <Label>Eindresultaat</Label>
+                    <Select value={data.result} onValueChange={(value) => setData((current) => ({ ...current, result: value }))}>
+                      <SelectTrigger className="w-full sm:w-64"><SelectValue /></SelectTrigger>
+                      <SelectContent>{RESULT_OPTIONS.map((result) => <SelectItem key={result.value} value={result.value}>{result.label}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Samenvatting</Label>
+                    <Textarea
+                      value={data.summary}
+                      onChange={(e) => setData((current) => ({ ...current, summary: e.target.value }))}
+                      placeholder="Korte recruiter-samenvatting en besluit..."
+                      className="min-h-[110px]"
+                      data-testid="screening-summary"
+                    />
+                  </div>
+                  {importantMissingFields(profileDraft, data.availability).length > 0 && (
+                    <p className="text-xs text-amber-700">
+                      Kritieke velden ontbreken nog: {importantMissingFields(profileDraft, data.availability).join(', ')}. Leg bij “Kritieke onbekenden” vast waarom dit akkoord is.
+                    </p>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    <Button onClick={handleComplete} disabled={manualSaving || reanalyzing} className="gap-2" data-testid="screening-complete">
+                      <ClipboardCheck className="h-4 w-4" /> {manualSaving ? 'Afronden...' : 'Screening afronden'}
+                    </Button>
+                    <Button variant="secondary" onClick={handleCompleteAndReanalyze} disabled={manualSaving || reanalyzing} className="gap-2" data-testid="screening-complete-reanalyze">
+                      <Sparkles className="h-4 w-4" /> {reanalyzing ? 'Bezig...' : 'Afronden + opnieuw analyseren'}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between gap-3 border-t pt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => goToStep(SCREENING_STEPS[Math.max(0, currentStepIndex - 1)].id)}
+                  disabled={currentStepIndex === 0}
+                  className="gap-2"
+                >
+                  <ChevronLeft className="h-4 w-4" /> Vorige
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => goToStep(SCREENING_STEPS[Math.min(SCREENING_STEPS.length - 1, currentStepIndex + 1)].id)}
+                  disabled={currentStepIndex === SCREENING_STEPS.length - 1}
+                  className="gap-2"
+                >
+                  Volgende <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           </Card>
         </div>

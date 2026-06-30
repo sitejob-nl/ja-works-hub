@@ -46,6 +46,7 @@ type MatchRowProps = {
   primaryAction?: ReactNode;
   secondaryActions?: ReactNode;
   hideVacancy?: boolean;
+  compact?: boolean;
   className?: string;
 };
 
@@ -79,6 +80,7 @@ const MatchRow = ({
   primaryAction,
   secondaryActions,
   hideVacancy = false,
+  compact = false,
   className,
 }: MatchRowProps) => {
   const statusMeta = getMatchStatusMeta(status);
@@ -100,6 +102,76 @@ const MatchRow = ({
   const mins = durationMin ?? breakdown?.distance?.durationMin ?? null;
   const skills = (breakdown?.skillMatches ?? []).slice(0, 4);
   const certs = (breakdown?.certificationMatches ?? []).slice(0, 2);
+
+  if (compact) {
+    return (
+      <Card className={cn('p-2.5 transition-colors hover:bg-muted/25', selected && 'ring-1 ring-primary', className)}>
+        <div className="flex items-start gap-2">
+          {onSelectChange && (
+            <Checkbox
+              className="mt-1 shrink-0"
+              checked={selected}
+              onClick={stop}
+              onCheckedChange={(checked) => onSelectChange(checked === true)}
+              aria-label={`Selecteer match ${fullName(candidate)}`}
+            />
+          )}
+
+          <div
+            role={onInspect ? 'button' : undefined}
+            tabIndex={onInspect ? 0 : undefined}
+            onClick={onInspect}
+            onKeyDown={onInspect ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onInspect(); } } : undefined}
+            className={cn('min-w-0 flex-1 space-y-2 text-left', onInspect && 'cursor-pointer')}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="truncate text-sm font-medium">{fullName(candidate)}</div>
+                {!hideVacancy && (
+                  <div className="truncate text-xs text-muted-foreground">
+                    {vacancy?.title ?? 'Vacature onbekend'}{vacancy?.company_name ? ` · ${vacancy.company_name}` : ''}
+                  </div>
+                )}
+              </div>
+              {typeof scorePercent === 'number' && (
+                <Badge className={cn('shrink-0 border-0 text-[11px]', scoreBadgeClass[scoreLabel as MatchBreakdown['label']])}>
+                  {Math.round(scorePercent)}%
+                </Badge>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Badge className={cn('gap-1 text-[10px]', statusMeta.badgeClass)}>
+                <span className={cn('h-1.5 w-1.5 rounded-full', statusMeta.color)} /> {statusMeta.label}
+              </Badge>
+              {followup.level === 'warning' && (
+                <Badge className="gap-1 border-0 bg-amber-100 text-amber-800 text-[10px]">
+                  <AlertTriangle className="h-3 w-3" /> {followup.label}
+                </Badge>
+              )}
+              {statusAge && <span className="text-[11px] text-muted-foreground">{statusAge}</span>}
+            </div>
+          </div>
+
+          <div className="flex shrink-0 flex-col items-end gap-1" onClick={stop}>
+            {onStatusChange && (
+              <MatchStatusSelect
+                value={status}
+                onChange={onStatusChange}
+                disabled={statusDisabled}
+                ariaLabel={`Status wijzigen voor ${fullName(candidate)}`}
+              />
+            )}
+            {onInspect && (
+              <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={onInspect}>
+                Detail
+              </Button>
+            )}
+          </div>
+        </div>
+      </Card>
+    );
+  }
 
   return (
     <Card className={cn('p-3 transition-colors', selected && 'ring-1 ring-primary', className)}>

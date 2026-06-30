@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarCheck, Mail, MessageSquare, Phone, Star, UserRound } from 'lucide-react';
+import { Briefcase, CalendarCheck, CheckCircle2, Clock3, History, Mail, MessageSquare, Phone, Plus, Star, UserCheck, UserRound } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -45,13 +46,21 @@ const formatDateTime = (value?: string | null) => value ? new Date(value).toLoca
 const fullName = (candidate: any) =>
   [candidate?.first_name, candidate?.last_name].filter(Boolean).join(' ') || 'Kandidaat onbekend';
 
+const UNASSIGNED = 'unassigned';
+
+const profileName = (profile?: { full_name?: string | null; email?: string | null } | null) =>
+  profile?.full_name || profile?.email || 'Onbekend';
+
 const MatchDetailDialog = ({ open, match, onOpenChange, onChanged, canConfirmInterview = true }: MatchDetailDialogProps) => {
   const qc = useQueryClient();
+  const { user } = useAuth();
   const [whyOpen, setWhyOpen] = useState(false);
   const [confirmedAt, setConfirmedAt] = useState('');
   const [location, setLocation] = useState('');
   const [interviewType, setInterviewType] = useState('op_kantoor');
   const [note, setNote] = useState('');
+  const [assignedTo, setAssignedTo] = useState(UNASSIGNED);
+  const [newNote, setNewNote] = useState('');
   const [notifyCandidate, setNotifyCandidate] = useState(true);
   const [notifyCompany, setNotifyCompany] = useState(true);
 
@@ -61,6 +70,8 @@ const MatchDetailDialog = ({ open, match, onOpenChange, onChanged, canConfirmInt
     setLocation(match.interview_location ?? '');
     setInterviewType(match.interview_type ?? 'op_kantoor');
     setNote(match.interview_proposed_note ?? '');
+    setAssignedTo(match.assigned_to ?? UNASSIGNED);
+    setNewNote('');
     setNotifyCandidate(true);
     setNotifyCompany(true);
   }, [match, open]);
@@ -71,7 +82,7 @@ const MatchDetailDialog = ({ open, match, onOpenChange, onChanged, canConfirmInt
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('match_feedback_events')
-        .select('id, from_status, to_status, notes, created_at, match_feedback_reasons(reason)')
+        .select('id, from_status, to_status, notes, created_at, match_feedback_reasons(reason), profiles:created_by(full_name,email)')
         .eq('match_id', match.id)
         .order('created_at', { ascending: false })
         .limit(12);
@@ -101,11 +112,51 @@ const MatchDetailDialog = ({ open, match, onOpenChange, onChanged, canConfirmInt
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('recruiter_tasks')
-        .select('id, title, status, priority, due_date, created_at')
+        .select('id, title, status, priority, due_date, created_at, assigned_to, created_by, profiles:assigned_to(full_name,email), creator:profiles!recruiter_tasks_created_by_fkey(full_name,email)')
         .eq('related_entity_type', 'match')
         .eq('related_entity_id', match.id)
         .order('created_at', { ascending: false })
         .limit(10);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const { data: notes = [] } = useQuery({
+    queryKey: ['match-notes', match?.id],
+    enabled: open && !!match?.id,
+    queryFn: async () => {
+      const { data: rawNotes, error } = await (supabase as any)
+        .from('notes')
+        .select('id, body, is_internal, created_at, created_by')
+        .eq('related_entity_type', 'match')
+        .eq('related_entity_id', match.id)
+        .order('created_at', { ascending: false })
+        .limit(12);
+      if (error) throw error;
+
+      const profileIds = Array.from(new Set((rawNotes ?? []).map((n: any) => n.created_by).filter(Boolean)));
+      if (profileIds.length === 0) return rawNotes ?? [];
+
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, full_name, email')
+        .in('id', profileIds as string[]);
+      const byId = Object.fromEntries((profiles ?? []).map((p: any) => [p.id, p]));
+      return (rawNotes ?? []).map((n: any) => ({ ...n, profiles: byId[n.created_by] ?? null }));
+    },
+  });
+
+  const { data: assignees = [] } = useQuery({
+    queryKey: ['match-assignees', match?.organization_id],
+    enabled: open && !!match?.organization_id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, full_name, email')
+        .eq('organization_id', match.organization_id)
+        .eq('is_active', true)
+        .order('full_name');
       if (error) throw error;
       return data ?? [];
     },
@@ -141,22 +192,106 @@ const MatchDetailDialog = ({ open, match, onOpenChange, onChanged, canConfirmInt
     onError: (error: Error) => toast.error(error.message),
   });
 
+  const assignMutation = useMutation({
+    mutationFn: async (value: string) => {
+      if (!match?.id) throw new Error('Geen match geselecteerd');
+      const nextAssignee = value === UNASSIGNED ? null : value;
+      const { error } = await (supabase as any)
+        .from('matches')
+        .update({ assigned_to: nextAssignee })
+        .eq('id', match.id)
+        .eq('organization_id', match.organization_id);
+      if (error) throw error;
+      return nextAssignee;
+    },
+    onSuccess: async (nextAssignee) => {
+      setAssignedTo(nextAssignee ?? UNASSIGNED);
+      qc.invalidateQueries({ queryKey: ['match-pipeline'] });
+      qc.invalidateQueries({ queryKey: ['match-notes', match?.id] });
+      onChanged?.();
+      toast.success('Matchtoewijzing bijgewerkt');
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const addNoteMutation = useMutation({
+    mutationFn: async () => {
+      if (!match?.id) throw new Error('Geen match geselecteerd');
+      if (!user?.id) throw new Error('Je sessie is verlopen');
+      if (!newNote.trim()) throw new Error('Schrijf eerst een notitie');
+      const { error } = await (supabase as any).from('notes').insert({
+        body: newNote.trim(),
+        is_internal: true,
+        related_entity_id: match.id,
+        related_entity_type: 'match',
+        created_by: user?.id,
+        organization_id: match.organization_id,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      setNewNote('');
+      qc.invalidateQueries({ queryKey: ['match-notes', match?.id] });
+      toast.success('Notitie toegevoegd');
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
   const candidate = match?.candidates;
   const vacancy = match?.vacancies;
   const company = vacancy?.companies;
   const statusMeta = getMatchStatusMeta(match?.status);
   const score = (match?.match_breakdown as MatchBreakdown | null)?.matchPercent ?? match?.match_score;
+  const assignee = assignees.find((profile: any) => profile.id === assignedTo) ?? match?.assignee ?? null;
   const contactLines = useMemo(() => [
     candidate?.phone_nl || candidate?.phone ? { icon: Phone, value: candidate.phone_nl || candidate.phone } : null,
     candidate?.email ? { icon: Mail, value: candidate.email } : null,
   ].filter(Boolean) as Array<{ icon: typeof Phone; value: string }>, [candidate]);
+
+  const timeline = useMemo(() => {
+    const rows = [
+      ...events.map((event: any) => ({
+        id: `event-${event.id}`,
+        at: event.created_at,
+        icon: History,
+        title: `${getMatchStatusMeta(event.from_status).label} -> ${getMatchStatusMeta(event.to_status).label}`,
+        meta: profileName(event.profiles),
+        body: [event.match_feedback_reasons?.reason, event.notes].filter(Boolean).join('\n'),
+      })),
+      ...communications.map((item: any) => ({
+        id: `comm-${item.id}`,
+        at: item.sent_at ?? item.created_at,
+        icon: Mail,
+        title: item.subject || '(zonder onderwerp)',
+        meta: `${item.channel} · ${item.message_type || item.direction}`,
+        body: Array.isArray(item.email_to) ? item.email_to.join(', ') : item.email_to,
+      })),
+      ...tasks.map((task: any) => ({
+        id: `task-${task.id}`,
+        at: task.created_at,
+        icon: CheckCircle2,
+        title: task.title,
+        meta: `Taak · ${task.status} · ${profileName(task.profiles)}`,
+        body: task.due_date ? `Deadline: ${formatDate(task.due_date)}` : '',
+      })),
+      ...notes.map((note: any) => ({
+        id: `note-${note.id}`,
+        at: note.created_at,
+        icon: MessageSquare,
+        title: 'Notitie',
+        meta: profileName(note.profiles),
+        body: note.body,
+      })),
+    ];
+    return rows.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime()).slice(0, 20);
+  }, [communications, events, notes, tasks]);
 
   if (!match) return null;
 
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+        <DialogContent className="max-h-[90vh] max-w-6xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex flex-wrap items-center gap-2">
               Matchdetail
@@ -168,35 +303,64 @@ const MatchDetailDialog = ({ open, match, onOpenChange, onChanged, canConfirmInt
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
+          <div className="grid gap-3 md:grid-cols-3">
+            <section className="rounded-md border p-3">
+              <div className="mb-2 flex items-center gap-2 text-sm font-medium"><UserRound className="h-4 w-4" /> Kandidaat</div>
+              <div className="space-y-1 text-sm">
+                <div className="font-medium">{fullName(candidate)}</div>
+                <div className="text-muted-foreground">{candidate?.address_city || 'Regio onbekend'}</div>
+                {contactLines.map(({ icon: Icon, value }) => (
+                  <div key={value} className="flex items-center gap-2 text-muted-foreground"><Icon className="h-3.5 w-3.5" /> {value}</div>
+                ))}
+              </div>
+            </section>
+            <section className="rounded-md border p-3">
+              <div className="mb-2 flex items-center gap-2 text-sm font-medium"><Briefcase className="h-4 w-4" /> Vacature</div>
+              <div className="space-y-1 text-sm">
+                <div className="font-medium">{vacancy?.title ?? 'Vacature onbekend'}</div>
+                <div className="text-muted-foreground">{company?.name ?? 'Opdrachtgever onbekend'}</div>
+                {company?.email && <div className="flex items-center gap-2 text-muted-foreground"><Mail className="h-3.5 w-3.5" /> {company.email}</div>}
+              </div>
+            </section>
+            <section className="rounded-md border p-3">
+              <div className="mb-2 flex items-center gap-2 text-sm font-medium"><UserCheck className="h-4 w-4" /> Match-eigenaar</div>
+              <div className="space-y-1 text-sm">
+                <div className="font-medium">{assignee ? profileName(assignee) : 'Nog niet toegewezen'}</div>
+                <div className="text-muted-foreground">
+                  Status sinds {formatDateTime(match.status_changed_at ?? match.created_at)}
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
             <div className="space-y-4">
               <section className="rounded-md border p-4">
-                <div className="mb-3 flex items-center gap-2 font-medium"><UserRound className="h-4 w-4" /> Kandidaat & contact</div>
-                <div className="space-y-1 text-sm">
-                  <div className="font-medium">{fullName(candidate)}</div>
-                  <div className="text-muted-foreground">{candidate?.address_city || 'Regio onbekend'}</div>
-                  {contactLines.map(({ icon: Icon, value }) => (
-                    <div key={value} className="flex items-center gap-2 text-muted-foreground"><Icon className="h-3.5 w-3.5" /> {value}</div>
-                  ))}
+                <div className="mb-3 flex items-center gap-2 font-medium"><History className="h-4 w-4" /> Tijdlijn</div>
+                <div className="space-y-3">
+                  {timeline.length > 0 ? timeline.map((item: any) => {
+                    const Icon = item.icon;
+                    return (
+                      <div key={item.id} className="flex gap-3 rounded-md bg-muted/35 p-3 text-sm">
+                        <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-background">
+                          <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                            <span className="font-medium">{item.title}</span>
+                            <span className="text-xs text-muted-foreground">{formatDateTime(item.at)}</span>
+                          </div>
+                          <div className="text-xs text-muted-foreground">{item.meta}</div>
+                          {item.body && <p className="mt-1 whitespace-pre-line text-xs">{item.body}</p>}
+                        </div>
+                      </div>
+                    );
+                  }) : <p className="text-sm text-muted-foreground">Nog geen tijdlijn voor deze match.</p>}
                 </div>
               </section>
 
               <section className="rounded-md border p-4">
-                <div className="mb-3 flex items-center gap-2 font-medium"><MessageSquare className="h-4 w-4" /> Statuslog</div>
-                <div className="space-y-2">
-                  {events.length > 0 ? events.map((event: any) => (
-                    <div key={event.id} className="rounded-md bg-muted/40 p-2 text-sm">
-                      <div className="font-medium">{getMatchStatusMeta(event.from_status).label} {'->'} {getMatchStatusMeta(event.to_status).label}</div>
-                      <div className="text-xs text-muted-foreground">{formatDateTime(event.created_at)}</div>
-                      {event.match_feedback_reasons?.reason && <div className="mt-1 text-xs">{event.match_feedback_reasons.reason}</div>}
-                      {event.notes && <div className="mt-1 whitespace-pre-line text-xs text-muted-foreground">{event.notes}</div>}
-                    </div>
-                  )) : <p className="text-sm text-muted-foreground">Nog geen statuslog.</p>}
-                </div>
-              </section>
-
-              <section className="rounded-md border p-4">
-                <div className="mb-3 flex items-center gap-2 font-medium"><Mail className="h-4 w-4" /> Communicatie</div>
+                <div className="mb-3 flex items-center gap-2 font-medium"><Mail className="h-4 w-4" /> Voorstelmail & communicatie</div>
                 <div className="space-y-2">
                   {communications.length > 0 ? communications.map((item: any) => (
                     <div key={item.id} className="rounded-md bg-muted/40 p-2 text-sm">
@@ -204,6 +368,7 @@ const MatchDetailDialog = ({ open, match, onOpenChange, onChanged, canConfirmInt
                       <div className="text-xs text-muted-foreground">
                         {item.channel} · {item.message_type || item.direction} · {formatDateTime(item.sent_at ?? item.created_at)}
                       </div>
+                      {item.email_to && <div className="mt-1 text-xs text-muted-foreground">Aan: {Array.isArray(item.email_to) ? item.email_to.join(', ') : item.email_to}</div>}
                     </div>
                   )) : <p className="text-sm text-muted-foreground">Nog geen matchcommunicatie.</p>}
                 </div>
@@ -211,6 +376,32 @@ const MatchDetailDialog = ({ open, match, onOpenChange, onChanged, canConfirmInt
             </div>
 
             <div className="space-y-4">
+              <section className="rounded-md border p-4">
+                <div className="mb-3 flex items-center gap-2 font-medium"><UserCheck className="h-4 w-4" /> Toewijzing</div>
+                <div className="space-y-2">
+                  <Label>Match-eigenaar</Label>
+                  <Select
+                    value={assignedTo}
+                    onValueChange={(value) => {
+                      setAssignedTo(value);
+                      assignMutation.mutate(value);
+                    }}
+                    disabled={assignMutation.isPending}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Niet toegewezen" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={UNASSIGNED}>Niet toegewezen</SelectItem>
+                      {assignees.map((profile: any) => (
+                        <SelectItem key={profile.id} value={profile.id}>
+                          {profileName(profile)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {assignee && <p className="text-xs text-muted-foreground">Deze persoon is operationeel verantwoordelijk voor opvolging.</p>}
+                </div>
+              </section>
+
               <section className="rounded-md border p-4">
                 <div className="mb-3 flex items-center gap-2 font-medium"><CalendarCheck className="h-4 w-4" /> Afspraak</div>
                 {!canConfirmInterview && (
@@ -271,12 +462,36 @@ const MatchDetailDialog = ({ open, match, onOpenChange, onChanged, canConfirmInt
               </section>
 
               <section className="rounded-md border p-4">
-                <div className="mb-3 font-medium">Taken</div>
+                <div className="mb-3 flex items-center gap-2 font-medium"><MessageSquare className="h-4 w-4" /> Notitie toevoegen</div>
+                <div className="space-y-3">
+                  <Textarea
+                    rows={3}
+                    value={newNote}
+                    onChange={(event) => setNewNote(event.target.value)}
+                    placeholder="Interne matchnotitie..."
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="w-full gap-1.5"
+                    onClick={() => addNoteMutation.mutate()}
+                    disabled={!newNote.trim() || addNoteMutation.isPending}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    {addNoteMutation.isPending ? 'Opslaan...' : 'Notitie opslaan'}
+                  </Button>
+                </div>
+              </section>
+
+              <section className="rounded-md border p-4">
+                <div className="mb-3 flex items-center gap-2 font-medium"><Clock3 className="h-4 w-4" /> Taken</div>
                 <div className="space-y-2">
                   {tasks.length > 0 ? tasks.map((task: any) => (
                     <div key={task.id} className="rounded-md bg-muted/40 p-2 text-sm">
                       <div className="font-medium">{task.title}</div>
-                      <div className="text-xs text-muted-foreground">{task.status} · {task.priority}{task.due_date ? ` · ${formatDate(task.due_date)}` : ''}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {task.status} · {task.priority}{task.due_date ? ` · ${formatDate(task.due_date)}` : ''}{task.profiles ? ` · ${profileName(task.profiles)}` : ''}
+                      </div>
                     </div>
                   )) : <p className="text-sm text-muted-foreground">Geen open taken gevonden.</p>}
                 </div>
