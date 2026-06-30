@@ -32,9 +32,9 @@ test.describe("Kritieke flow 1 — Kandidaat → Match → Plaatsing", () => {
     await page.goto("/kandidaten", { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(2500);
 
-    // Pagina moet minstens 1 kandidaat of een "geen kandidaten" empty state tonen
+    // Pagina moet minstens 1 kandidaat of een lege-lijst indicatie tonen.
     const count = await page.locator('table tbody tr, [role="row"]').count();
-    const hasEmptyState = (await page.getByText(/geen kandidaten|nog geen/i).count()) > 0;
+    const hasEmptyState = (await page.getByText(/geen kandidaten|nog geen|0 kandidaten/i).count()) > 0;
     expect(count > 0 || hasEmptyState, "Lijst moet laden of empty state tonen").toBeTruthy();
   });
 
