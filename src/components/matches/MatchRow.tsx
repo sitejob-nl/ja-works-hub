@@ -105,8 +105,12 @@ const MatchRow = ({
 
   if (compact) {
     return (
-      <Card className={cn('p-2.5 transition-colors hover:bg-muted/25', selected && 'ring-1 ring-primary', className)}>
-        <div className="flex items-start gap-2">
+      <Card
+        data-testid="match-kanban-card"
+        className={cn('p-3 transition-colors hover:border-stat-blue/30 hover:bg-background', selected && 'ring-1 ring-primary', className)}
+      >
+        <div className="space-y-3">
+          <div className="flex items-start gap-2">
           {onSelectChange && (
             <Checkbox
               className="mt-1 shrink-0"
@@ -122,13 +126,14 @@ const MatchRow = ({
             tabIndex={onInspect ? 0 : undefined}
             onClick={onInspect}
             onKeyDown={onInspect ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onInspect(); } } : undefined}
-            className={cn('min-w-0 flex-1 space-y-2 text-left', onInspect && 'cursor-pointer')}
+            className={cn('min-w-0 flex-1 text-left', onInspect && 'cursor-pointer')}
           >
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
-                <div className="truncate text-sm font-medium">{fullName(candidate)}</div>
+                <div className="line-clamp-2 break-words text-sm font-semibold leading-5 text-foreground">{fullName(candidate)}</div>
                 {!hideVacancy && (
-                  <div className="truncate text-xs text-muted-foreground">
+                  <div className="mt-0.5 line-clamp-2 break-words text-xs leading-4 text-muted-foreground">
+                    <Briefcase className="mr-1 inline h-3 w-3 align-[-2px]" />
                     {vacancy?.title ?? 'Vacature onbekend'}{vacancy?.company_name ? ` · ${vacancy.company_name}` : ''}
                   </div>
                 )}
@@ -140,30 +145,51 @@ const MatchRow = ({
               )}
             </div>
 
-            <div className="flex flex-wrap items-center gap-1.5">
-              <Badge className={cn('gap-1 text-[10px]', statusMeta.badgeClass)}>
-                <span className={cn('h-1.5 w-1.5 rounded-full', statusMeta.color)} /> {statusMeta.label}
-              </Badge>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
               {followup.level === 'warning' && (
                 <Badge className="gap-1 border-0 bg-amber-100 text-amber-800 text-[10px]">
                   <AlertTriangle className="h-3 w-3" /> {followup.label}
                 </Badge>
               )}
-              {statusAge && <span className="text-[11px] text-muted-foreground">{statusAge}</span>}
+              {statusAge && (
+                <Badge variant="outline" className="gap-1 text-[10px] text-muted-foreground">
+                  <CalendarClock className="h-3 w-3" /> {statusAge}
+                </Badge>
+              )}
+              {(km != null || mins != null) && (
+                <Badge variant="outline" className="gap-1 text-[10px] text-muted-foreground">
+                  <MapPin className="h-3 w-3" />
+                  {mins != null ? `${Math.round(mins)} min` : 'reistijd ?'}{km != null ? ` · ${Math.round(km)} km` : ''}
+                </Badge>
+              )}
+              {sourceLabel && <Badge variant="outline" className="text-[10px]">{sourceLabel}</Badge>}
             </div>
+
+            {issue && (
+              <p className={cn('mt-2 flex items-start gap-1.5 text-xs leading-4',
+                issue.tone === 'red' && 'text-red-700',
+                issue.tone === 'amber' && 'text-amber-700',
+                issue.tone === 'green' && 'text-emerald-700')}
+              >
+                {issue.tone === 'green' ? <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" /> : <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />}
+                <span className="line-clamp-2">{issue.label}</span>
+              </p>
+            )}
+          </div>
           </div>
 
-          <div className="flex shrink-0 flex-col items-end gap-1" onClick={stop}>
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2" onClick={stop}>
             {onStatusChange && (
               <MatchStatusSelect
                 value={status}
                 onChange={onStatusChange}
                 disabled={statusDisabled}
                 ariaLabel={`Status wijzigen voor ${fullName(candidate)}`}
+                compact
               />
             )}
             {onInspect && (
-              <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={onInspect}>
+              <Button type="button" size="sm" variant="ghost" className="h-8 px-2 text-xs" onClick={onInspect}>
                 Detail
               </Button>
             )}

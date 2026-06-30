@@ -552,7 +552,7 @@ const MatchPipeline = () => {
           {viewMode === 'kanban' ? (
             <>
               <DragDropContext onDragEnd={onDragEnd}>
-                <div className="flex gap-3 overflow-x-auto pb-4">
+                <div className="flex gap-3 overflow-x-auto pb-4" data-testid="match-kanban-board">
                   {COLUMNS.map((col) => {
                     const columnMatches = grouped[col.key] ?? [];
                     return (
@@ -562,7 +562,7 @@ const MatchPipeline = () => {
                             ref={provided.innerRef}
                             {...provided.droppableProps}
                             className={cn(
-                              'flex min-h-[360px] w-[340px] flex-shrink-0 flex-col rounded-lg border bg-muted/35 p-2 transition-colors',
+                              'flex min-h-[360px] w-[370px] flex-shrink-0 flex-col rounded-lg border bg-muted/35 p-2 transition-colors',
                               snapshot.isDraggingOver && 'border-primary bg-primary/5'
                             )}
                           >
@@ -581,19 +581,21 @@ const MatchPipeline = () => {
                                     <div
                                       ref={dragProvided.innerRef}
                                       {...dragProvided.draggableProps}
-                                      className={cn('space-y-1', dragSnapshot.isDragging && 'opacity-95')}
+                                      className={cn('flex items-stretch gap-1.5', dragSnapshot.isDragging && 'opacity-95')}
                                     >
                                       <div
                                         {...dragProvided.dragHandleProps}
                                         className={cn(
-                                          'flex h-7 items-center justify-between rounded-md border bg-background px-2 text-[11px] text-muted-foreground',
+                                          'flex w-7 shrink-0 items-center justify-center rounded-md border bg-background text-muted-foreground',
                                           canDragDrop ? 'cursor-grab active:cursor-grabbing' : 'cursor-not-allowed opacity-60'
                                         )}
+                                        aria-label={`Sleep match ${m.candidates?.first_name ?? ''} ${m.candidates?.last_name ?? ''}`.trim() || 'Sleep match'}
                                       >
-                                        <span className="inline-flex items-center gap-1"><GripVertical className="h-3.5 w-3.5" /> Sleep kaart</span>
-                                        <span>{col.label}</span>
+                                        <GripVertical className="h-4 w-4" />
                                       </div>
-                                      {renderMatchRow(m, true)}
+                                      <div className="min-w-0 flex-1">
+                                        {renderMatchRow(m, true)}
+                                      </div>
                                     </div>
                                   )}
                                 </Draggable>

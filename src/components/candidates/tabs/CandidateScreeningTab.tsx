@@ -19,6 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import NationalitySelect from '@/components/shared/NationalitySelect';
 import SkillMultiSelect from '@/components/shared/SkillMultiSelect';
 import LanguageMultiSelect from '@/components/shared/LanguageMultiSelect';
+import WorkHistoryTimeline from '@/components/candidates/WorkHistoryTimeline';
 import { cn } from '@/lib/utils';
 import {
   AlertTriangle,
@@ -452,6 +453,36 @@ const aiLanguageLabels = (analysis: any): string[] =>
 
 const aiCertLabels = (analysis: any): string[] =>
   uniqueCleanStrings((analysis?.competenties?.certificaten ?? []).map(aiCertLabel)).slice(0, 8);
+
+const workDurationMonths = (entry: any): number | null => {
+  const raw = Number(entry?.duur_maanden);
+  return Number.isFinite(raw) && raw > 0 ? Math.round(raw) : null;
+};
+
+const formatWorkDuration = (months: number | null) => {
+  if (!months) return 'Duur onbekend';
+  if (months < 12) return `${months} mnd`;
+  const years = Math.floor(months / 12);
+  const rest = months % 12;
+  if (rest === 0) return `${years} jaar`;
+  return `${years}j ${rest}m`;
+};
+
+const durationToneClass = (months: number | null) => {
+  if (!months) return 'bg-muted text-muted-foreground border-0';
+  if (months >= 24) return 'bg-stat-green/10 text-stat-green border-0';
+  if (months >= 12) return 'bg-blue-100 text-blue-700 border-0';
+  if (months >= 6) return 'bg-amber-100 text-amber-800 border-0';
+  return 'bg-red-100 text-red-700 border-0';
+};
+
+const durationRailClass = (months: number | null) => {
+  if (!months) return 'bg-muted-foreground/30';
+  if (months >= 24) return 'bg-stat-green';
+  if (months >= 12) return 'bg-blue-500';
+  if (months >= 6) return 'bg-amber-500';
+  return 'bg-red-500';
+};
 
 // Bouwt de tekst voor de "Screening voltooid"-notitie: resultaat + samenvatting,
 // gevolgd door alle vragen met hun antwoorden, plus de eindbeoordeling.
@@ -1192,6 +1223,9 @@ const CandidateScreeningTab = ({
     if (!analysis) return null;
     const employers = Array.isArray(analysis?.werkhistorie?.werkgevers) ? analysis.werkhistorie.werkgevers : [];
     const gaps = Array.isArray(analysis?.werkhistorie?.gaten) ? analysis.werkhistorie.gaten : [];
+    const totalYears = typeof analysis?.werkhistorie?.totale_werkervaring_jaren === 'number'
+      ? analysis.werkhistorie.totale_werkervaring_jaren
+      : undefined;
 
     return (
       <Card className="p-4 space-y-4 border-l-4 border-l-blue-500">
@@ -1241,14 +1275,58 @@ const CandidateScreeningTab = ({
 
         {(employers.length > 0 || gaps.length > 0) && (
           <div className="rounded-md border p-3">
-            <div className="mb-2 flex items-center gap-2 text-sm font-medium"><Briefcase className="h-3.5 w-3.5" /> Werkervaring</div>
-            <div className="space-y-2">
-              {employers.slice(0, 4).map((job: any, index: number) => (
-                <div key={`${job?.bedrijf ?? 'werk'}-${index}`} className="border-l-2 border-muted pl-3 text-sm">
-                  <p className="font-medium">{job?.functie || 'Functie onbekend'}</p>
-                  <p className="text-xs text-muted-foreground">{[job?.bedrijf, job?.periode].filter(Boolean).join(' · ')}</p>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-sm font-medium"><Briefcase className="h-3.5 w-3.5" /> Werkervaring</div>
+              {typeof totalYears === 'number' && (
+                <Badge variant="secondary" className="text-xs">{totalYears} jaar totaal</Badge>
+              )}
+            </div>
+
+            {employers.length > 0 && (
+              <WorkHistoryTimeline
+                werkgevers={employers}
+                gaten={gaps}
+                totaleJaren={totalYears}
+                className="mb-3 rounded-md bg-muted/25 p-3"
+              />
+            )}
+
+            <div className="grid gap-2 md:grid-cols-2">
+              {employers.slice(0, 6).map((job: any, index: number) => {
+                const months = workDurationMonths(job);
+                const activities = Array.isArray(job?.kernactiviteiten) ? job.kernactiviteiten.slice(0, 3) : [];
+                return (
+                  <div key={`${job?.bedrijf ?? 'werk'}-${index}`} className="relative overflow-hidden rounded-md border bg-background p-3 text-sm">
+                    <span className={cn('absolute inset-y-0 left-0 w-1', durationRailClass(months))} />
+                    <div className="flex items-start justify-between gap-2 pl-2">
+                      <div className="min-w-0">
+                        <p className="line-clamp-2 font-medium leading-5">{job?.functie || 'Functie onbekend'}</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">{[job?.bedrijf, job?.periode].filter(Boolean).join(' · ') || 'Werkgever/periode onbekend'}</p>
+                      </div>
+                      <Badge className={cn('shrink-0 text-[11px]', durationToneClass(months))}>
+                        {formatWorkDuration(months)}
+                      </Badge>
+                    </div>
+                    {activities.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1 pl-2">
+                        {activities.map((activity: string) => (
+                          <span key={`${job?.bedrijf ?? 'werk'}-${activity}`} className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                            {activity}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {employers.length > 6 && (
+                <div className="rounded-md border border-dashed bg-muted/20 p-3 text-xs text-muted-foreground">
+                  +{employers.length - 6} eerdere werkgever{employers.length - 6 === 1 ? '' : 's'} in de AI-analyse.
                 </div>
-              ))}
+              )}
+            </div>
+
+            <div className="mt-2 space-y-1.5">
               {gaps.slice(0, 3).map((gap: any, index: number) => (
                 <div key={`${gap?.periode ?? 'gat'}-${index}`} className="rounded bg-orange-50 px-2 py-1 text-xs text-orange-700">
                   Gat: {gap?.periode}{gap?.duur_maanden ? ` (${gap.duur_maanden} mnd)` : ''}{gap?.mogelijke_verklaring ? ` · ${gap.mogelijke_verklaring}` : ''}
