@@ -21,6 +21,7 @@ const Tasks = () => {
   const qc = useQueryClient();
   const [viewMode, setViewMode] = useState<'mine' | 'created' | 'all'>('mine');
   const [assigneeFilter, setAssigneeFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('open');
   const [priorityFilter, setPriorityFilter] = useState('all');
   const [deadlineFilter, setDeadlineFilter] = useState('all');
   const [editorOpen, setEditorOpen] = useState(false);
@@ -103,10 +104,18 @@ const Tasks = () => {
   const weekFromNow = new Date(now.getTime() + 7 * 86400000).toISOString().split('T')[0];
 
   const activeTasks = tasks.filter((t: any) => t.status !== 'done' && t.status !== 'dismissed');
-  const completedTasks = tasks.filter((t: any) => t.status === 'done');
 
   const applyFilters = (list: any[]) => {
     let filtered = list;
+    if (statusFilter === 'open') {
+      filtered = filtered.filter((t: any) => t.status !== 'done' && t.status !== 'dismissed');
+    } else if (statusFilter === 'done') {
+      filtered = filtered.filter((t: any) => t.status === 'done');
+    } else if (statusFilter === 'dismissed') {
+      filtered = filtered.filter((t: any) => t.status === 'dismissed');
+    } else if (statusFilter === 'overdue') {
+      filtered = filtered.filter((t: any) => t.status !== 'done' && t.status !== 'dismissed' && t.due_date && t.due_date < todayStr);
+    }
     if (priorityFilter !== 'all') {
       filtered = filtered.filter((t: any) => t.priority === priorityFilter);
     }
@@ -120,12 +129,24 @@ const Tasks = () => {
     return filtered;
   };
 
-  const filteredActive = applyFilters(activeTasks).sort((a: any, b: any) => {
+  const filteredTasks = applyFilters(tasks);
+  const filteredActive = filteredTasks.filter((t: any) => t.status !== 'done' && t.status !== 'dismissed').sort((a: any, b: any) => {
     const pa = priorityConfig[a.priority]?.order ?? 99;
     const pb = priorityConfig[b.priority]?.order ?? 99;
     if (pa !== pb) return pa - pb;
     return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
   });
+  const filteredClosed = filteredTasks
+    .filter((t: any) => t.status === 'done' || t.status === 'dismissed')
+    .sort((a: any, b: any) => new Date(b.completed_at ?? b.created_at).getTime() - new Date(a.completed_at ?? a.created_at).getTime());
+
+  const workload = assignees.map((assignee) => ({
+    assignee,
+    count: activeTasks.filter((task: any) => task.assigned_to === assignee.id).length,
+    overdue: activeTasks.filter((task: any) => task.assigned_to === assignee.id && task.due_date && task.due_date < todayStr).length,
+  })).filter((item) => item.count > 0 || item.overdue > 0);
+  const unassignedCount = activeTasks.filter((task: any) => !task.assigned_to).length;
+  const unassignedOverdue = activeTasks.filter((task: any) => !task.assigned_to && task.due_date && task.due_date < todayStr).length;
 
   const isOverdue = (date: string | null) => date && date < todayStr;
 
@@ -135,7 +156,7 @@ const Tasks = () => {
         <div>
           <h1 className="text-xl sm:text-2xl font-semibold">Taken</h1>
           <p className="text-sm text-muted-foreground">
-            {filteredActive.length} openstaand{completedTasks.length > 0 && `, ${completedTasks.length} afgerond`}
+            {filteredActive.length} openstaand{filteredClosed.length > 0 && `, ${filteredClosed.length} gesloten in filter`}
           </p>
         </div>
         <Button size="sm" onClick={openNew} className="gap-1.5">
@@ -175,6 +196,16 @@ const Tasks = () => {
             </SelectContent>
           </Select>
         )}
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger aria-label="Filter op status" className="w-[150px] h-8 text-sm"><SelectValue placeholder="Status" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="open">Openstaand</SelectItem>
+            <SelectItem value="overdue">Achterstallig</SelectItem>
+            <SelectItem value="done">Afgerond</SelectItem>
+            <SelectItem value="dismissed">Genegeerd</SelectItem>
+            <SelectItem value="all">Alle statussen</SelectItem>
+          </SelectContent>
+        </Select>
         <Select value={priorityFilter} onValueChange={setPriorityFilter}>
           <SelectTrigger className="w-[140px] h-8 text-sm"><SelectValue placeholder="Prioriteit" /></SelectTrigger>
           <SelectContent>
@@ -199,6 +230,40 @@ const Tasks = () => {
           </Badge>
         )}
       </div>
+
+      {canFilterAssignee && viewMode === 'all' && assigneeFilter === 'all' && (
+        <div className="rounded-lg border bg-card p-3">
+          <div className="mb-2 text-xs font-medium uppercase text-muted-foreground">Werkvoorraad per medewerker</div>
+          <div className="flex flex-wrap gap-2">
+            {workload.map(({ assignee, count, overdue }) => (
+              <button
+                key={assignee.id}
+                type="button"
+                onClick={() => setAssigneeFilter(assignee.id)}
+                className="rounded-md border px-2.5 py-1.5 text-left text-xs transition-colors hover:bg-muted"
+              >
+                <span className="font-medium">{assignee.full_name || assignee.email || 'Onbekend'}</span>
+                <span className="ml-2 text-muted-foreground">{count} open</span>
+                {overdue > 0 && <span className="ml-2 font-medium text-destructive">{overdue} achterstallig</span>}
+              </button>
+            ))}
+            {(unassignedCount > 0 || unassignedOverdue > 0) && (
+              <button
+                type="button"
+                onClick={() => setAssigneeFilter('unassigned')}
+                className="rounded-md border px-2.5 py-1.5 text-left text-xs transition-colors hover:bg-muted"
+              >
+                <span className="font-medium">Niet toegewezen</span>
+                <span className="ml-2 text-muted-foreground">{unassignedCount} open</span>
+                {unassignedOverdue > 0 && <span className="ml-2 font-medium text-destructive">{unassignedOverdue} achterstallig</span>}
+              </button>
+            )}
+            {workload.length === 0 && unassignedCount === 0 && (
+              <span className="text-sm text-muted-foreground">Geen open taken in deze selectie.</span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Active tasks */}
       {isLoading ? (
@@ -254,13 +319,13 @@ const Tasks = () => {
       )}
 
       {/* Completed */}
-      {completedTasks.length > 0 && (
+      {filteredClosed.length > 0 && (
         <div className="space-y-2">
-          <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Afgerond ({completedTasks.length})</p>
-          {completedTasks.slice(0, 10).map((task: any) => (
+          <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Gesloten ({filteredClosed.length})</p>
+          {filteredClosed.slice(0, 10).map((task: any) => (
             <div key={task.id} className="flex items-start gap-3 bg-card rounded-lg border p-3 opacity-60">
               <Checkbox
-                checked={true}
+                checked={task.status === 'done'}
                 onCheckedChange={() => handleReopen(task.id)}
                 className="mt-0.5"
               />

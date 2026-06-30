@@ -395,6 +395,7 @@ const MatchPipeline = () => {
         company_id: (m.vacancies?.companies as any)?.id,
         company_name: (m.vacancies?.companies as any)?.name,
       }}
+      assignee={m.assignee}
       sourceLabel={sourceLabel[m.source] ?? m.source}
       score={m.match_score}
       breakdown={m.match_breakdown}
@@ -562,7 +563,7 @@ const MatchPipeline = () => {
                             ref={provided.innerRef}
                             {...provided.droppableProps}
                             className={cn(
-                              'flex min-h-[360px] w-[370px] flex-shrink-0 flex-col rounded-lg border bg-muted/35 p-2 transition-colors',
+                              'flex min-h-[360px] w-[340px] flex-shrink-0 flex-col rounded-lg border bg-muted/25 p-2 transition-colors',
                               snapshot.isDraggingOver && 'border-primary bg-primary/5'
                             )}
                           >
@@ -581,12 +582,12 @@ const MatchPipeline = () => {
                                     <div
                                       ref={dragProvided.innerRef}
                                       {...dragProvided.draggableProps}
-                                      className={cn('flex items-stretch gap-1.5', dragSnapshot.isDragging && 'opacity-95')}
+                                      className={cn('flex items-stretch gap-1', dragSnapshot.isDragging && 'opacity-95')}
                                     >
                                       <div
                                         {...dragProvided.dragHandleProps}
                                         className={cn(
-                                          'flex w-7 shrink-0 items-center justify-center rounded-md border bg-background text-muted-foreground',
+                                          'flex w-6 shrink-0 items-center justify-center rounded-md border bg-background text-muted-foreground',
                                           canDragDrop ? 'cursor-grab active:cursor-grabbing' : 'cursor-not-allowed opacity-60'
                                         )}
                                         aria-label={`Sleep match ${m.candidates?.first_name ?? ''} ${m.candidates?.last_name ?? ''}`.trim() || 'Sleep match'}

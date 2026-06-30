@@ -21,6 +21,7 @@ export const entityLinks: Record<string, (id: string) => string> = {
   vehicle: (id) => `/transport/${id}`,
   contactpersoon: (id) => `/contacten/${id}`,
   talentpool: (id) => `/talentpools/${id}`,
+  match: () => '/match-pipeline',
 };
 
 export const entityTypeLabels: Record<string, string> = {
@@ -37,6 +38,7 @@ export const entityTypeLabels: Record<string, string> = {
   vacancy: 'Vacature',
   property: 'Huisvesting',
   vehicle: 'Voertuig',
+  match: 'Match',
 };
 
 /**
@@ -52,7 +54,8 @@ export type TaskEntityType =
   | 'huis'
   | 'auto'
   | 'contactpersoon'
-  | 'talentpool';
+  | 'talentpool'
+  | 'match';
 
 export interface TaskEntityConfig {
   value: TaskEntityType;
@@ -143,6 +146,19 @@ export const TASK_ENTITY_TYPES: TaskEntityConfig[] = [
     select: 'id, name',
     searchColumns: ['name'],
     getLabel: (r) => r.name || 'Talentpool',
+  },
+  {
+    value: 'match',
+    label: 'Match',
+    table: 'matches',
+    select: 'id, created_at, candidates!matches_candidate_id_fkey(first_name, last_name), vacancies!matches_vacancy_id_fkey(title, companies!vacancies_company_id_fkey(name))',
+    searchColumns: ['id'],
+    getLabel: (r) => {
+      const cand = fullName(r.candidates?.first_name, r.candidates?.last_name);
+      const vacancy = r.vacancies?.title;
+      const company = r.vacancies?.companies?.name;
+      return [cand, vacancy, company].filter(Boolean).join(' · ') || 'Match';
+    },
   },
 ];
 
