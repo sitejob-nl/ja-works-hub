@@ -1,4 +1,5 @@
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { isOutboundPaused, logConceptCommunication } from "./outbound-pause.ts";
 
 export const META_API_BASE = "https://graph.facebook.com/v25.0";
 
@@ -144,4 +145,480 @@ export async function getAuthenticatedOrg(
   }
 
   return { orgId: profile.organization_id, userId: user.id };
+}
+
+export type WhatsAppLifecycleClient = {
+  from: (table: string) => any;
+  rpc?: (fn: string, args?: Record<string, unknown>) => any;
+};
+
+export type WhatsAppMessageKind =
+  | "text"
+  | "template"
+  | "image"
+  | "video"
+  | "audio"
+  | "document"
+  | "reaction"
+  | "interactive";
+
+export type WhatsAppProviderSendInput = {
+  credentials: WhatsAppCredentials;
+  payload: Record<string, unknown>;
+};
+
+export type WhatsAppProviderSendResult = {
+  messageId?: string | null;
+  raw?: unknown;
+};
+
+export type WhatsAppProviderAdapter = {
+  sendMessage: (input: WhatsAppProviderSendInput) => Promise<WhatsAppProviderSendResult>;
+  markMessageRead?: (input: {
+    credentials: WhatsAppCredentials;
+    messageId: string;
+  }) => Promise<unknown>;
+};
+
+export class WhatsAppProviderError extends Error {
+  providerStatus: number;
+  providerCode?: string | number | null;
+  providerBody?: unknown;
+
+  constructor(message: string, options: {
+    providerStatus: number;
+    providerCode?: string | number | null;
+    providerBody?: unknown;
+  }) {
+    super(message);
+    this.name = "WhatsAppProviderError";
+    this.providerStatus = options.providerStatus;
+    this.providerCode = options.providerCode ?? null;
+    this.providerBody = options.providerBody;
+  }
+}
+
+async function readProviderBody(res: Response): Promise<unknown> {
+  const text = await res.text();
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+function providerErrorMessage(body: unknown): string {
+  if (body && typeof body === "object" && "error" in body) {
+    const err = (body as any).error;
+    return err?.message ?? err?.error_user_msg ?? "WhatsApp-providerfout";
+  }
+  if (typeof body === "string" && body.trim()) return body.slice(0, 500);
+  return "WhatsApp-providerfout";
+}
+
+function providerErrorCode(body: unknown): string | number | null {
+  if (body && typeof body === "object" && "error" in body) {
+    const err = (body as any).error;
+    return err?.code ?? err?.type ?? null;
+  }
+  return null;
+}
+
+export const metaGraphWhatsAppAdapter: WhatsAppProviderAdapter = {
+  async sendMessage({ credentials, payload }) {
+    const res = await fetch(`${META_API_BASE}/${credentials.phone_number_id}/messages`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${credentials.access_token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    const body = await readProviderBody(res);
+    if (!res.ok) {
+      throw new WhatsAppProviderError(providerErrorMessage(body), {
+        providerStatus: res.status,
+        providerCode: providerErrorCode(body),
+        providerBody: body,
+      });
+    }
+    return {
+      messageId: (body as any)?.messages?.[0]?.id ?? null,
+      raw: body,
+    };
+  },
+
+  async markMessageRead({ credentials, messageId }) {
+    const res = await fetch(`${META_API_BASE}/${credentials.phone_number_id}/messages`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${credentials.access_token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        status: "read",
+        message_id: messageId,
+      }),
+    });
+    const body = await readProviderBody(res);
+    if (!res.ok) {
+      throw new WhatsAppProviderError(providerErrorMessage(body), {
+        providerStatus: res.status,
+        providerCode: providerErrorCode(body),
+        providerBody: body,
+      });
+    }
+    return body;
+  },
+};
+
+export type BuildWhatsAppPayloadInput = {
+  to: string;
+  type: WhatsAppMessageKind | string;
+  text?: { body?: string | null; preview_url?: boolean | null } | null;
+  template?: { name?: string | null; language?: string | null; components?: unknown[] | null } | null;
+  image?: Record<string, unknown> | null;
+  video?: Record<string, unknown> | null;
+  audio?: Record<string, unknown> | null;
+  document?: Record<string, unknown> | null;
+  reaction?: { emoji?: string | null; [key: string]: unknown } | null;
+  interactive?: any;
+  context?: { message_id?: string | null } | null;
+};
+
+export type BuiltWhatsAppPayload = {
+  normalizedTo: string;
+  messageType: string;
+  messageBody: string;
+  payload: Record<string, unknown>;
+};
+
+export function buildWhatsAppProviderPayload(input: BuildWhatsAppPayloadInput): BuiltWhatsAppPayload {
+  const normalizedTo = normalizePhone(input.to);
+  const payload: Record<string, unknown> = {
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to: normalizedTo.replace("+", ""),
+  };
+  let messageBody = "";
+
+  switch (input.type) {
+    case "text":
+      payload.type = "text";
+      payload.text = {
+        body: input.text?.body ?? "",
+        preview_url: input.text?.preview_url ?? false,
+      };
+      messageBody = input.text?.body ?? "";
+      break;
+
+    case "template":
+      payload.type = "template";
+      payload.template = {
+        name: input.template?.name,
+        language: { code: input.template?.language ?? "nl" },
+        components: input.template?.components ?? [],
+      };
+      messageBody = `[Template: ${input.template?.name ?? "onbekend"}]`;
+      break;
+
+    case "image":
+      payload.type = "image";
+      payload.image = input.image ?? {};
+      messageBody = (input.image?.caption as string | undefined) ?? "[Afbeelding]";
+      break;
+
+    case "video":
+      payload.type = "video";
+      payload.video = input.video ?? {};
+      messageBody = (input.video?.caption as string | undefined) ?? "[Video]";
+      break;
+
+    case "audio":
+      payload.type = "audio";
+      payload.audio = input.audio ?? {};
+      messageBody = "[Audio]";
+      break;
+
+    case "document":
+      payload.type = "document";
+      payload.document = input.document ?? {};
+      messageBody = (input.document?.caption as string | undefined)
+        ?? `[Document: ${(input.document?.filename as string | undefined) ?? "bestand"}]`;
+      break;
+
+    case "reaction":
+      payload.type = "reaction";
+      payload.reaction = input.reaction ?? {};
+      messageBody = `[Reactie: ${input.reaction?.emoji ?? ""}]`;
+      break;
+
+    case "interactive":
+      payload.type = "interactive";
+      payload.interactive = input.interactive ?? {};
+      if (input.interactive?.type === "button") {
+        messageBody = `[Knoppen: ${input.interactive?.body?.text ?? ""}]`;
+      } else if (input.interactive?.type === "list") {
+        messageBody = `[Lijst: ${input.interactive?.body?.text ?? ""}]`;
+      } else {
+        messageBody = "[Interactief bericht]";
+      }
+      break;
+
+    default:
+      throw new Error(`Onbekend berichttype: ${input.type}`);
+  }
+
+  if (input.context?.message_id) {
+    payload.context = { message_id: input.context.message_id };
+  }
+
+  return {
+    normalizedTo,
+    messageType: input.type,
+    messageBody,
+    payload,
+  };
+}
+
+export type SendOutboundWhatsAppInput = BuildWhatsAppPayloadInput & {
+  orgId: string;
+  candidateId?: string | null;
+  companyId?: string | null;
+  companyContactId?: string | null;
+  matchId?: string | null;
+  placementId?: string | null;
+  sentBy?: string | null;
+  subject?: string | null;
+  communicationBody?: string | null;
+  messageType?: string | null;
+  logCommunication?: boolean;
+  provider?: WhatsAppProviderAdapter;
+};
+
+export type SendOutboundWhatsAppResult = {
+  success: boolean;
+  paused?: boolean;
+  reason?: "paused" | "not_configured" | "provider_error" | "invalid_request" | "log_error";
+  error?: string;
+  httpStatus?: number;
+  providerStatus?: number | null;
+  providerCode?: string | number | null;
+  messageId?: string | null;
+  communicationId?: string | null;
+  normalizedTo?: string;
+  messageBody?: string;
+};
+
+function providerStatusToHttp(status: number | null | undefined): number {
+  if (status === 400 || status === 401 || status === 403 || status === 404) return status;
+  if (status === 429) return 429;
+  return 502;
+}
+
+export async function sendOutboundWhatsApp(
+  client: WhatsAppLifecycleClient,
+  input: SendOutboundWhatsAppInput,
+): Promise<SendOutboundWhatsAppResult> {
+  let built: BuiltWhatsAppPayload;
+  try {
+    built = buildWhatsAppProviderPayload(input);
+  } catch (err) {
+    return {
+      success: false,
+      reason: "invalid_request",
+      error: (err as Error).message,
+      httpStatus: 400,
+    };
+  }
+
+  const subject = input.subject ?? `WhatsApp naar ${built.normalizedTo}`;
+  const communicationBody = input.communicationBody ?? built.messageBody;
+
+  if (await isOutboundPaused(client as any, input.orgId, "whatsapp")) {
+    await logConceptCommunication(client as any, {
+      orgId: input.orgId,
+      channel: "whatsapp",
+      subject,
+      body: communicationBody,
+      candidateId: input.candidateId ?? null,
+      companyId: input.companyId ?? null,
+      companyContactId: input.companyContactId ?? null,
+      matchId: input.matchId ?? null,
+      placementId: input.placementId ?? null,
+      sentBy: input.sentBy ?? null,
+    });
+    return {
+      success: false,
+      paused: true,
+      reason: "paused",
+      error: "WhatsApp staat op pauze (kill-switch). Bericht is als concept opgeslagen.",
+      httpStatus: 200,
+      normalizedTo: built.normalizedTo,
+      messageBody: communicationBody,
+    };
+  }
+
+  const credentials = await getWhatsAppCredentials(client as any, input.orgId);
+  if (!credentials) {
+    return {
+      success: false,
+      reason: "not_configured",
+      error: "WhatsApp niet geconfigureerd",
+      httpStatus: 400,
+      normalizedTo: built.normalizedTo,
+      messageBody: communicationBody,
+    };
+  }
+
+  try {
+    const provider = input.provider ?? metaGraphWhatsAppAdapter;
+    const providerResult = await provider.sendMessage({
+      credentials,
+      payload: built.payload,
+    });
+    let communicationId: string | null = null;
+
+    if (input.logCommunication !== false) {
+      const { data, error } = await client
+        .from("communications")
+        .insert({
+          organization_id: input.orgId,
+          channel: "whatsapp",
+          direction: "outbound",
+          subject,
+          body: communicationBody,
+          candidate_id: input.candidateId ?? null,
+          company_id: input.companyId ?? null,
+          company_contact_id: input.companyContactId ?? null,
+          match_id: input.matchId ?? null,
+          placement_id: input.placementId ?? null,
+          sent_by: input.sentBy ?? null,
+          sent_at: new Date().toISOString(),
+          whatsapp_message_id: providerResult.messageId ?? null,
+          whatsapp_status: providerResult.messageId ? "pending" : null,
+          message_type: input.messageType ?? built.messageType,
+        } as any)
+        .select("id")
+        .maybeSingle();
+
+      if (error) {
+        console.error("WhatsApp communication log failed:", error);
+      } else {
+        communicationId = data?.id ?? null;
+      }
+    }
+
+    return {
+      success: true,
+      messageId: providerResult.messageId ?? null,
+      communicationId,
+      normalizedTo: built.normalizedTo,
+      messageBody: communicationBody,
+    };
+  } catch (err) {
+    if (err instanceof WhatsAppProviderError) {
+      console.error("WhatsApp provider error:", err.providerStatus, err.providerBody);
+      return {
+        success: false,
+        reason: "provider_error",
+        error: err.message,
+        httpStatus: providerStatusToHttp(err.providerStatus),
+        providerStatus: err.providerStatus,
+        providerCode: err.providerCode ?? null,
+        normalizedTo: built.normalizedTo,
+        messageBody: communicationBody,
+      };
+    }
+
+    console.error("WhatsApp send error:", err);
+    return {
+      success: false,
+      reason: "provider_error",
+      error: (err as Error)?.message ?? "Bericht versturen mislukt",
+      httpStatus: 502,
+      normalizedTo: built.normalizedTo,
+      messageBody: communicationBody,
+    };
+  }
+}
+
+export async function sendOutboundWhatsAppText(
+  client: WhatsAppLifecycleClient,
+  input: Omit<SendOutboundWhatsAppInput, "type" | "text"> & { text: string },
+): Promise<SendOutboundWhatsAppResult> {
+  return sendOutboundWhatsApp(client, {
+    ...input,
+    type: "text",
+    text: { body: input.text },
+  });
+}
+
+export async function isOutboundWhatsAppConfigured(
+  client: WhatsAppLifecycleClient,
+  orgId: string,
+): Promise<boolean> {
+  return Boolean(await getWhatsAppCredentials(client as any, orgId));
+}
+
+export async function isOutboundWhatsAppPaused(
+  client: WhatsAppLifecycleClient,
+  orgId: string,
+): Promise<boolean> {
+  return isOutboundPaused(client as any, orgId, "whatsapp");
+}
+
+export async function markWhatsAppMessageRead(
+  client: WhatsAppLifecycleClient,
+  input: {
+    orgId: string;
+    messageId: string;
+    provider?: WhatsAppProviderAdapter;
+  },
+): Promise<SendOutboundWhatsAppResult> {
+  const credentials = await getWhatsAppCredentials(client as any, input.orgId);
+  if (!credentials) {
+    return {
+      success: false,
+      reason: "not_configured",
+      error: "WhatsApp niet geconfigureerd",
+      httpStatus: 400,
+    };
+  }
+
+  try {
+    const provider = input.provider ?? metaGraphWhatsAppAdapter;
+    if (!provider.markMessageRead) {
+      return {
+        success: false,
+        reason: "provider_error",
+        error: "WhatsApp-provider ondersteunt geen leesbevestigingen",
+        httpStatus: 502,
+      };
+    }
+    await provider.markMessageRead({
+      credentials,
+      messageId: input.messageId,
+    });
+    return { success: true };
+  } catch (err) {
+    if (err instanceof WhatsAppProviderError) {
+      return {
+        success: false,
+        reason: "provider_error",
+        error: err.message,
+        httpStatus: providerStatusToHttp(err.providerStatus),
+        providerStatus: err.providerStatus,
+        providerCode: err.providerCode ?? null,
+      };
+    }
+    return {
+      success: false,
+      reason: "provider_error",
+      error: (err as Error)?.message ?? "Leesbevestiging versturen mislukt",
+      httpStatus: 502,
+    };
+  }
 }

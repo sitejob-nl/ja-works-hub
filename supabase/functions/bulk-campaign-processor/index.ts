@@ -4,12 +4,12 @@ import {
   jsonOk,
   jsonError,
   getAuthenticatedOrg,
+  isOutboundWhatsAppConfigured,
+  isOutboundWhatsAppPaused,
   normalizePhone,
-  getWhatsAppCredentials,
-  META_API_BASE,
+  sendOutboundWhatsApp,
 } from "../_shared/whatsapp-utils.ts";
 import { getWhatsAppAutomationSettings } from "../_shared/whatsapp-automation-settings.ts";
-import { isOutboundPaused } from "../_shared/outbound-pause.ts";
 
 const MAX_RETRIES = 3;
 const RETRY_DELAYS = [60, 300, 900]; // 1min, 5min, 15min in seconds
@@ -83,9 +83,17 @@ Deno.serve(async (req) => {
     }
 
     // Kill-switch: globale WhatsApp-pauze blokkeert de hele campagne (geen bulk-blast).
-    if (await isOutboundPaused(serviceClient, orgId, "whatsapp")) {
+    if (await isOutboundWhatsAppPaused(serviceClient, orgId)) {
       await serviceClient.from("bulk_campaigns").update({ status: "paused" }).eq("id", campaign_id);
       return jsonOk({ paused: true, message: "WhatsApp staat op pauze (kill-switch). Campagne niet verwerkt." });
+    }
+
+    if (!await isOutboundWhatsAppConfigured(serviceClient, orgId)) {
+      await serviceClient
+        .from("bulk_campaigns")
+        .update({ status: "cancelled" })
+        .eq("id", campaign_id);
+      return jsonError("WhatsApp niet geconfigureerd voor deze organisatie", 400);
     }
 
     // Set status to running with timestamp
@@ -98,16 +106,6 @@ Deno.serve(async (req) => {
         rate_limit_per_hour: rateLimitPerHour,
       })
       .eq("id", campaign_id);
-
-    // Get WhatsApp credentials
-    const creds = await getWhatsAppCredentials(serviceClient, orgId);
-    if (!creds) {
-      await serviceClient
-        .from("bulk_campaigns")
-        .update({ status: "cancelled" })
-        .eq("id", campaign_id);
-      return jsonError("WhatsApp niet geconfigureerd voor deze organisatie", 400);
-    }
 
     await ensureRecipients(serviceClient, campaign, orgId);
 
@@ -196,61 +194,32 @@ Deno.serve(async (req) => {
               return { recipientId: recipient.id, success: false, retryable: true, error: "Rate limit bereikt" };
             }
 
-            // Send directly to Meta API — avoids double rate limiting via whatsapp-send
-            const metaResponse = await fetch(
-              `${META_API_BASE}/${creds.phone_number_id}/messages`,
-              {
-                method: "POST",
-                headers: {
-                  Authorization: `Bearer ${creds.access_token}`,
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  messaging_product: "whatsapp",
-                  recipient_type: "individual",
-                  to: phone.replace("+", ""),
-                  type: "text",
-                  text: { body: messageBody },
-                }),
-              }
-            );
+            const result = await sendOutboundWhatsApp(serviceClient, {
+              orgId,
+              to: candidate.phone,
+              type: "text",
+              text: { body: messageBody },
+              candidateId: recipient.candidate_id,
+              sentBy: userId,
+              subject: `WhatsApp campagne naar ${phone}`,
+            });
 
-            const result = await metaResponse.json();
-
-            if (metaResponse.ok) {
-              const waMessageId = result.messages?.[0]?.id;
-
-              // Log communication record on success
-              const { data: comm } = await serviceClient
-                .from("communications")
-                .insert({
-                  organization_id: orgId,
-                  channel: "whatsapp",
-                  direction: "outbound",
-                  subject: `WhatsApp campagne naar ${phone}`,
-                  body: messageBody,
-                  candidate_id: recipient.candidate_id,
-                  sent_by: userId,
-                  sent_at: new Date().toISOString(),
-                  whatsapp_message_id: waMessageId,
-                  whatsapp_status: "pending",
-                  message_type: "text",
-                })
-                .select("id")
-                .single();
-
+            if (result.success) {
               return {
                 recipientId: recipient.id,
                 success: true,
-                communicationId: comm?.id,
-              };
-            } else {
-              return {
-                recipientId: recipient.id,
-                success: false,
-                error: result?.error?.message ?? "Meta API error",
+                communicationId: result.communicationId,
               };
             }
+
+            return {
+              recipientId: recipient.id,
+              success: false,
+              paused: result.paused,
+              reason: result.reason,
+              retryable: result.reason === "provider_error" && result.httpStatus !== 400,
+              error: result.error ?? "WhatsApp versturen mislukt",
+            };
           } catch (err) {
             return { recipientId: recipient.id, success: false, error: String(err) };
           }
@@ -273,6 +242,8 @@ Deno.serve(async (req) => {
               communication_id: result.communicationId,
             })
             .eq("id", result.recipientId);
+        } else if ((result as any).paused) {
+          await serviceClient.from("bulk_campaigns").update({ status: "paused" }).eq("id", campaign_id);
         } else {
           failedCount++;
           const recipient = batch.find((r: any) => r.id === result.recipientId);

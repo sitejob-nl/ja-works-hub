@@ -1,9 +1,8 @@
 // supabase/functions/whatsapp-webhook/index.ts
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { getWhatsAppCredentials, META_API_BASE, normalizePhone } from "../_shared/whatsapp-utils.ts";
+import { normalizePhone, sendOutboundWhatsAppText } from "../_shared/whatsapp-utils.ts";
 import { cascadeSickReport } from "../_shared/sick-report-handler.ts";
 import { getWhatsAppAutomationSettings } from "../_shared/whatsapp-automation-settings.ts";
-import { isOutboundPaused, logConceptCommunication } from "../_shared/outbound-pause.ts";
 import { advanceMatchStatus } from "../_shared/match-lifecycle.ts";
 
 const OPT_OUT_KEYWORDS = ["stop", "afmelden", "uitschrijven", "stoppen", "unsubscribe"];
@@ -377,35 +376,14 @@ async function processInboundMessage(
 }
 
 async function sendWhatsAppDirect(supabase: any, orgId: string, to: string, text: string, candidateId?: string | null) {
-  if (await isOutboundPaused(supabase, orgId, "whatsapp")) {
-    await logConceptCommunication(supabase, {
-      orgId,
-      channel: "whatsapp",
-      body: text,
-      candidateId: candidateId ?? null,
-    });
-    return { ok: false, error: "Uitgaande WhatsApp staat op pauze" };
-  }
-
-  const creds = await getWhatsAppCredentials(supabase, orgId);
-  if (!creds) return { ok: false, error: "WhatsApp niet geconfigureerd" };
-
-  const res = await fetch(`${META_API_BASE}/${creds.phone_number_id}/messages`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${creds.access_token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      messaging_product: "whatsapp",
-      to: normalizePhone(to).replace("+", ""),
-      type: "text",
-      text: { body: text },
-    }),
+  const result = await sendOutboundWhatsAppText(supabase, {
+    orgId,
+    to,
+    text,
+    candidateId: candidateId ?? null,
+    subject: `WhatsApp naar ${normalizePhone(to)}`,
   });
-
-  if (!res.ok) return { ok: false, error: await res.text() };
-  return { ok: true };
+  return { ok: result.success, error: result.error };
 }
 
 function amsterdamHHMM(iso: string): string {
