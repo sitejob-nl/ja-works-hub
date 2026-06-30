@@ -80,6 +80,7 @@ const CandidateProfile = lazyRoute(() => import("@/pages/CandidateProfile"));
 const PublicCandidateSignup = lazyRoute(() => import("@/pages/PublicCandidateSignup"));
 const Register = lazyRoute(() => import("@/pages/Register"));
 const PortalActivate = lazyRoute(() => import("@/pages/PortalActivate"));
+const InternalUserActivate = lazyRoute(() => import("@/pages/InternalUserActivate"));
 const FuelCardAnalysis = lazyRoute(() => import("@/pages/FuelCardAnalysis"));
 const FiscalMileageAnalysis = lazyRoute(() => import("@/pages/FiscalMileageAnalysis"));
 const InvoicesPage = lazyRoute(() => import("@/pages/Invoices"));
@@ -233,6 +234,7 @@ const App = () => (
               <Route path="/match/reageer/:token" element={<MatchResponse />} />
               <Route path="/profiel/:token" element={<CandidateProfile />} />
               <Route path="/solliciteren/:slug" element={<PublicCandidateSignup />} />
+              <Route path="/gebruikers/activeren/:token" element={<InternalUserActivate />} />
               <Route path="/portaal/activeren/:token" element={<TranslationProvider enableRuntimeTranslation={false}><PortalActivate /></TranslationProvider>} />
               <Route path="/portaal/login" element={<TranslationProvider enableRuntimeTranslation={false}><PortalLogin /></TranslationProvider>} />
               {/* Client portal (opdrachtgever) public routes */}

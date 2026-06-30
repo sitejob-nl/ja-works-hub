@@ -115,6 +115,8 @@ export function sampleContentForFlow(flowId: string, brand: PreviewBrand): strin
       return h("Welkom bij " + brand.orgName) + p("Je hebt nu toegang tot het medewerkersportaal. Activeer je account met onderstaande knop.") + ctaButton("Account activeren", brand.accentHex) + sign;
     case "client-portal-invite":
       return h("Toegang tot uw klantportaal") + p("U heeft toegang gekregen tot het opdrachtgeverportaal. Activeer uw account met onderstaande knop.") + ctaButton("Account activeren", brand.accentHex) + sign;
+    case "internal-user-invite":
+      return h("Je bent uitgenodigd voor " + brand.orgName) + p("Er is een account voor je klaargezet. Stel je wachtwoord in om toegang te krijgen.") + ctaButton("Account activeren", brand.accentHex) + sign;
     case "ai-analysis":
       return h("Kandidaatprofiel") + p("Bijgaand een profiel van de kandidaat, inclusief samenvatting en aandachtspunten.") + sign;
     case "campaigns":

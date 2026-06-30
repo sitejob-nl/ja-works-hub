@@ -187,6 +187,12 @@ verify_jwt = false
 [functions.domain-management]
 verify_jwt = false
 
+[functions.internal-user-invites]
+verify_jwt = false
+
+[functions.internal-user-activate]
+verify_jwt = false
+
 [functions.upload-organization-logo]
 verify_jwt = false
 

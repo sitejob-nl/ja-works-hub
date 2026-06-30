@@ -339,6 +339,13 @@ Deno.serve(async (req) => {
     return json({ error: "Onbekende actie" }, 400);
   } catch (err) {
     console.error("domain-management error:", err);
-    return json({ error: (err as Error).message || "Onbekende fout" }, 500);
+    const message = (err as Error).message || "Onbekende fout";
+    if (/^VERCEL_(TOKEN|PROJECT_ID|TEAM_ID)?/.test(message) || message.includes("VERCEL_TOKEN") || message.includes("VERCEL_PROJECT_ID")) {
+      return json({
+        error: "Vercel-koppeling is nog niet geconfigureerd in Supabase secrets. Zet VERCEL_TOKEN en VERCEL_PROJECT_ID voordat je domeinen koppelt.",
+        code: "vercel_config_missing",
+      }, 503);
+    }
+    return json({ error: message }, 500);
   }
 });
