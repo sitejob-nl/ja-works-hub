@@ -7,6 +7,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { scoreMatch, type DistanceInfo, type MatchCriteriaOptions } from "../_shared/matching-core.ts";
 import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
+import { buildMatchScorePatch } from "../_shared/match-lifecycle.ts";
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -163,13 +164,7 @@ Deno.serve(async (req) => {
       // i.p.v. een ongeautoriseerde write (de service-role omzeilt anders RLS).
       const { error: updErr } = await serviceClient
         .from("matches")
-        .update({
-          match_score: breakdown.matchPercent,
-          match_reasoning: breakdown.reasoning,
-          match_breakdown: breakdown,
-          distance_km: breakdown.distance.km,
-          duration_min: breakdown.distance.durationMin,
-        })
+        .update(buildMatchScorePatch(breakdown))
         .eq("id", match_id)
         .eq("organization_id", candidate.organization_id);
       if (updErr) throw updErr;

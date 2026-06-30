@@ -8,6 +8,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
 import { storagePathFromCvValue } from "../_shared/candidate-dossier.ts";
+import { advanceMatchStatus, createMatchFollowUpTask, recordMatchProposalTokenResponse } from "../_shared/match-lifecycle.ts";
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -95,7 +96,7 @@ Deno.serve(async (req) => {
     const { data: tok } = await service
       .from("match_proposal_tokens")
       .select(
-        "id, match_id, response, used_at, expires_at, content_snapshot, matches!match_proposal_tokens_match_id_fkey(status, organization_id, candidate_id, vacancy_id, candidates!matches_candidate_id_fkey(id, first_name, last_name, address_city, ai_summary, ai_function_group, ai_classification, ai_positive_signals, ai_risk_factors, ai_target_functions, ai_interview_questions, skills, certifications, languages, available_from, available_until, arrival_date, availability_notes, most_recent_role, most_recent_role_year, has_drivers_license, cv_file_url), vacancies!matches_vacancy_id_fkey(title, created_by, companies:company_id(name)))",
+        "id, match_id, response, used_at, expires_at, content_snapshot, matches!match_proposal_tokens_match_id_fkey(status, match_score, match_breakdown, organization_id, candidate_id, vacancy_id, candidates!matches_candidate_id_fkey(id, first_name, last_name, address_city, ai_summary, ai_function_group, ai_classification, ai_positive_signals, ai_risk_factors, ai_target_functions, ai_interview_questions, skills, certifications, languages, available_from, available_until, arrival_date, availability_notes, most_recent_role, most_recent_role_year, has_drivers_license, cv_file_url), vacancies!matches_vacancy_id_fkey(title, created_by, companies:company_id(name)))",
       )
       .eq("token", token)
       .maybeSingle();
@@ -268,47 +269,41 @@ Deno.serve(async (req) => {
       return json({ status: "used", response: tok.response, ...view });
     }
 
-    if (decision === "op_gesprek") {
-      const { error: scheduleErr } = await service
-        .from("match_proposal_tokens")
-        .update({ response: decision })
-        .eq("id", tok.id)
-        .is("used_at", null);
-      if (scheduleErr) return json({ error: "Kon reactie niet verwerken" }, 500);
-    } else {
-      // Finale reactie is single-use: goedkeuren/direct starten of afwijzen sluit de link af.
-      const { data: updated, error: updErr } = await service
-        .from("match_proposal_tokens")
-        .update({ response: decision, used_at: new Date().toISOString() })
-        .eq("id", tok.id)
-        .is("used_at", null)
-        .select("id");
-
-      if (updErr) return json({ error: "Kon reactie niet verwerken" }, 500);
-      if (!updated || updated.length === 0) {
-        return json({ status: "used", response: tok.response, ...view });
-      }
+    try {
+      const tokenResponse = await recordMatchProposalTokenResponse(service, {
+        tokenId: tok.id,
+        response: decision,
+        consume: decision !== "op_gesprek",
+      });
+      if (!tokenResponse.accepted) return json({ status: "used", response: tok.response, ...view });
+    } catch (_err) {
+      return json({ error: "Kon reactie niet verwerken" }, 500);
     }
 
     const newStatus = STATUS_MAP[decision];
-    const matchUpdate: Record<string, unknown> = { status: newStatus, status_changed_at: new Date().toISOString() };
+    const matchPatch: Record<string, unknown> = {};
     const proposedAt = typeof body.interview_proposed_at === "string" ? body.interview_proposed_at : body.interview_date;
     if (decision === "op_gesprek" && typeof proposedAt === "string") {
-      matchUpdate.interview_proposed_at = proposedAt;
-      matchUpdate.interview_proposed_note = note;
+      matchPatch.interview_proposed_at = proposedAt;
+      matchPatch.interview_proposed_note = note;
     }
-    if (decision === "direct_starten" && typeof body.desired_start_date === "string") matchUpdate.desired_start_date = body.desired_start_date;
-    await service.from("matches").update(matchUpdate).eq("id", tok.match_id);
-
-    // Business-event vastleggen (publiek → created_by NULL).
-    await service.from("match_feedback_events").insert({
-      organization_id: orgId,
-      match_id: tok.match_id,
-      from_status: matchRow?.status ?? null,
-      to_status: newStatus,
-      reason_id: rejectionReasonId,
+    if (decision === "direct_starten" && typeof body.desired_start_date === "string") matchPatch.desired_start_date = body.desired_start_date;
+    await advanceMatchStatus(service, {
+      orgId,
+      matchId: tok.match_id,
+      toStatus: newStatus as any,
+      currentMatch: {
+        id: tok.match_id,
+        organization_id: orgId,
+        status: matchRow?.status ?? null,
+        match_score: matchRow?.match_score ?? null,
+        match_breakdown: matchRow?.match_breakdown ?? null,
+      },
+      reasonId: rejectionReasonId,
       notes: note,
-      created_by: null,
+      actorId: null,
+      patch: matchPatch,
+      eventMode: "always",
     });
 
     // Bij acceptatie/gesprek: interne opvolg-taak. Een gesprek is nog géén plaatsing;
@@ -317,18 +312,16 @@ Deno.serve(async (req) => {
       const candName = candidate ? `${candidate.first_name ?? ""} ${candidate.last_name ?? ""}`.trim() : "kandidaat";
       const isDirectStart = decision === "direct_starten";
       const label = isDirectStart ? "wil direct starten" : "stelde een gesprek voor";
-      await service.from("recruiter_tasks").insert({
-        organization_id: orgId,
-        assigned_to: vacancy?.created_by ?? null,
+      await createMatchFollowUpTask(service, {
+        orgId,
+        matchId: tok.match_id,
+        assignedTo: vacancy?.created_by ?? null,
         title: isDirectStart
           ? `Klant keurde kandidaat goed — plaatsing voorbereiden (${candName})`
           : `Klant stelt gesprek voor met kandidaat (${candName})`,
         description: `De opdrachtgever ${label} voor "${vacancy?.title ?? ""}".${note ? ` Opmerking: ${note}` : ""}`,
         priority: "high",
-        status: "open",
         category: isDirectStart ? "plaatsing" : "matching",
-        related_entity_type: "match",
-        related_entity_id: tok.match_id,
       });
     }
 

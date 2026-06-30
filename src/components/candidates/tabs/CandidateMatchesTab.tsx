@@ -13,6 +13,7 @@ import MatchProposalEmailDialog from '@/components/matches/MatchProposalEmailDia
 import { matchStatusNeedsFeedbackDialog } from '@/lib/match-status';
 import { toast } from 'sonner';
 import type { MatchBreakdown } from '@/lib/matching';
+import { advanceMatchStatus } from '@/lib/match-lifecycle';
 
 const CandidateMatchesTab = ({ candidateId, candidate }: { candidateId: string; candidate?: any }) => {
   const orgId = useOrganizationId();
@@ -55,28 +56,15 @@ const CandidateMatchesTab = ({ candidateId, candidate }: { candidateId: string; 
   const statusMutation = useMutation({
     mutationFn: async ({ matchId, status, reasonId, notes }: { matchId: string; status: string; reasonId?: string | null; notes?: string | null }) => {
       const current = (matches as any[]).find((m) => m.id === matchId);
-      if (status === 'afgewezen' && !reasonId) throw new Error('Kies een feedbackreden voor afwijzen');
-
-      const { error } = await supabase.from('matches')
-        .update({ status, status_changed_at: new Date().toISOString() } as any)
-        .eq('organization_id', orgId)
-        .eq('id', matchId);
-      if (error) throw error;
-
-      if (reasonId || notes || ['afgewezen', 'geaccepteerd', 'geplaatst'].includes(status)) {
-        const { error: feedbackError } = await (supabase as any).from('match_feedback_events').insert({
-          organization_id: orgId,
-          match_id: matchId,
-          from_status: current?.status ?? null,
-          to_status: status,
-          reason_id: reasonId ?? null,
-          notes: notes?.trim() || null,
-          created_by: user?.id ?? null,
-          match_score_snapshot: current?.match_score ?? null,
-          match_breakdown_snapshot: current?.match_breakdown ?? null,
-        });
-        if (feedbackError) throw feedbackError;
-      }
+      await advanceMatchStatus(supabase as any, {
+        orgId,
+        matchId,
+        toStatus: status,
+        currentMatch: current,
+        reasonId: reasonId ?? null,
+        notes: notes ?? null,
+        actorId: user?.id ?? null,
+      });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['candidate-matches', orgId, candidateId] });

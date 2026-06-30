@@ -12,6 +12,7 @@ import { Progress } from '@/components/ui/progress';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Search, Sparkles, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
+import { createMatch } from '@/lib/match-lifecycle';
 
 interface MatchResult {
   candidateId: string;
@@ -116,19 +117,13 @@ export default function VacancyMatchSheet({ open, onOpenChange, members }: Vacan
           } else {
             // Create match if needed
             if (!matchId) {
-              const { data: newMatch, error } = await supabase
-                .from('matches')
-                .insert({
-                  organization_id: orgId,
-                  vacancy_id: vacancy.id,
-                  candidate_id: result.candidateId,
-                  proposed_by: user?.id ?? null,
-                  status: 'nieuwe_match' as any,
-                  source: 'eigen_match',
-                })
-                .select('id')
-                .single();
-              if (error) throw error;
+              const newMatch = await createMatch(supabase as any, {
+                orgId,
+                vacancyId: vacancy.id,
+                candidateId: result.candidateId,
+                proposedBy: user?.id ?? null,
+                source: 'eigen_match',
+              });
               matchId = newMatch.id;
             }
 

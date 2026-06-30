@@ -19,6 +19,7 @@ import { unwrap } from '@/lib/db';
 import { MATCH_STATUS_STEPS, isTerminalMatchStatus, matchStatusNeedsFeedbackDialog } from '@/lib/match-status';
 import { normalizeMatchPipelineFollowupDays } from '@/lib/match-followup';
 import { roleHasPermission } from '@/lib/permissions';
+import { advanceMatchStatus } from '@/lib/match-lifecycle';
 
 const COLUMNS = MATCH_STATUS_STEPS;
 
@@ -165,27 +166,16 @@ const MatchPipeline = () => {
     if ((reasonId || notes || matchStatusNeedsFeedbackDialog(status) || isTerminalMatchStatus(status)) && !canWriteFeedback) {
       throw new Error('Je rol mag geen matchfeedback vastleggen');
     }
-    if (status === 'afgewezen' && !reasonId) throw new Error('Kies een feedbackreden voor afwijzen');
     const current = (matches as any[]).find((match) => match.id === matchId);
-    await unwrap(supabase
-      .from('matches')
-      .update({ status: status as any, status_changed_at: new Date().toISOString() })
-      .eq('organization_id', orgId)
-      .eq('id', matchId));
-
-    if (reasonId || notes || isTerminalMatchStatus(status)) {
-      await unwrap((supabase as any).from('match_feedback_events').insert({
-        organization_id: orgId,
-        match_id: matchId,
-        from_status: current?.status ?? null,
-        to_status: status,
-        reason_id: reasonId ?? null,
-        notes: notes?.trim() || null,
-        created_by: user?.id ?? null,
-        match_score_snapshot: current?.match_score ?? null,
-        match_breakdown_snapshot: current?.match_breakdown ?? null,
-      }));
-    }
+    await advanceMatchStatus(supabase as any, {
+      orgId,
+      matchId,
+      toStatus: status,
+      currentMatch: current,
+      reasonId: reasonId ?? null,
+      notes: notes ?? null,
+      actorId: user?.id ?? null,
+    });
   };
 
   const statusMutation = useMutation({

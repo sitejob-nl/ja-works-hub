@@ -3,10 +3,7 @@ import { createAdminClient, requireInternalProfile } from "../_shared/auth.ts";
 import { buildOrganizationPublicUrl } from "../_shared/public-url.ts";
 import { sanitizeEmailHtml } from "../_shared/outlook-signature.ts";
 import { type BrandTheme, renderBrandedEmail, resolveBrandTheme } from "../_shared/email-layout.ts";
-
-// 14 dagen — gelijk aan de DB-default op match_proposal_tokens.expires_at; expliciet
-// gezet zodat de TTL in code zichtbaar is.
-const TOKEN_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+import { advanceMatchStatus, ensureMatchProposalToken } from "../_shared/match-lifecycle.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -139,81 +136,6 @@ function buildContentSnapshot(input: {
       hideReport: input.emailData.hideReport === true,
     },
   };
-}
-
-async function ensureProposalToken(
-  serviceClient: ReturnType<typeof createAdminClient>,
-  params: {
-    orgId: string;
-    matchId: string;
-    contactEmail?: string | null;
-    tokenId?: string | null;
-  },
-): Promise<{ id: string; token: string }> {
-  const now = new Date().toISOString();
-  const expiresAt = new Date(Date.now() + TOKEN_TTL_MS).toISOString();
-  const selectCols = "id, token, expires_at, used_at, response, contact_email";
-
-  const updateContactEmail = async (id: string) => {
-    if (!params.contactEmail) return;
-    await serviceClient
-      .from("match_proposal_tokens")
-      .update({ contact_email: params.contactEmail })
-      .eq("id", id)
-      .eq("organization_id", params.orgId)
-      .eq("match_id", params.matchId);
-  };
-
-  if (params.tokenId) {
-    const { data: existing } = await serviceClient
-      .from("match_proposal_tokens")
-      .select(selectCols)
-      .eq("id", params.tokenId)
-      .eq("organization_id", params.orgId)
-      .eq("match_id", params.matchId)
-      .maybeSingle();
-
-    if (
-      existing &&
-      !existing.used_at &&
-      !existing.response &&
-      new Date(existing.expires_at).getTime() > Date.now()
-    ) {
-      await updateContactEmail(existing.id);
-      return { id: existing.id, token: existing.token };
-    }
-  }
-
-  const { data: reusable } = await serviceClient
-    .from("match_proposal_tokens")
-    .select(selectCols)
-    .eq("organization_id", params.orgId)
-    .eq("match_id", params.matchId)
-    .is("used_at", null)
-    .is("response", null)
-    .gt("expires_at", now)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (reusable) {
-    await updateContactEmail(reusable.id);
-    return { id: reusable.id, token: reusable.token };
-  }
-
-  const { data: created, error } = await serviceClient
-    .from("match_proposal_tokens")
-    .insert({
-      match_id: params.matchId,
-      organization_id: params.orgId,
-      contact_email: params.contactEmail ?? null,
-      expires_at: expiresAt,
-    })
-    .select("id, token")
-    .single();
-
-  if (error || !created) throw new Error("Failed to create proposal token");
-  return { id: created.id, token: created.token };
 }
 
 function buildProposalEmailHtml(data: {
@@ -489,7 +411,7 @@ Deno.serve(async (req) => {
     const previewRecipient = (typeof recipient_email === "string" && recipient_email.trim())
       ? recipient_email.trim()
       : defaultEmail;
-    const previewToken = await ensureProposalToken(serviceClient, {
+    const previewToken = await ensureMatchProposalToken(serviceClient, {
       orgId,
       matchId: match.id,
       contactEmail: previewRecipient ?? null,
@@ -533,7 +455,7 @@ Deno.serve(async (req) => {
     const matchedContact = contactRows.find((c) => c.email === finalRecipient) ?? null;
     const finalContactId = company_contact_id ?? matchedContact?.id ?? primaryContact?.id ?? null;
 
-    const token = await ensureProposalToken(serviceClient, {
+    const token = await ensureMatchProposalToken(serviceClient, {
       orgId,
       matchId: match.id,
       contactEmail: finalRecipient,
@@ -593,14 +515,15 @@ Deno.serve(async (req) => {
       }, outlookResult.communicationPaused ? 409 : 502);
     }
 
-    await serviceClient
-      .from("matches")
-      .update({
-        status: "voorgesteld_bij_klant",
-        status_changed_at: new Date().toISOString(),
-      })
-      .eq("id", match_id)
-      .eq("organization_id", orgId);
+    await advanceMatchStatus(serviceClient, {
+      orgId,
+      matchId: match.id,
+      toStatus: "voorgesteld_bij_klant",
+      actorId: userId,
+      currentMatch: match,
+      notes: `Voorstelmail verstuurd naar ${finalRecipient}`,
+      eventMode: "always",
+    });
 
     return json({
       success: true,
