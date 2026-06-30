@@ -42,6 +42,7 @@ export function getMatchFollowupState(input: {
     if (proposedDays != null && proposedDays >= 1) {
       return { level: 'warning', label: 'Afspraakvoorstel opvolgen' };
     }
+    return { level: 'warning', label: 'Afspraakvoorstel doorzetten' };
   }
 
   if (status === 'afspraak_op_kantoor' && input.interviewConfirmedAt) {

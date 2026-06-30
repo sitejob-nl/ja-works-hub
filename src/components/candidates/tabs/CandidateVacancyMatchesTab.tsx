@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { Briefcase, CalendarDays, Euro, MapPin, Search, Sparkles, UserPlus, Users } from 'lucide-react';
+import { Briefcase, CalendarDays, Euro, MapPin, Search, SlidersHorizontal, Sparkles, UserPlus, Users } from 'lucide-react';
 import EntityLink from '@/components/ui/entity-link';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
@@ -151,19 +151,25 @@ const CandidateVacancyMatchesTab = ({ candidateId, candidate }: { candidateId: s
         <Input placeholder="Zoek op vacaturetitel of locatie..." value={vacancySearch} onChange={(e) => setVacancySearch(e.target.value)} className="pl-9" />
       </div>
 
-      <div className="flex flex-wrap gap-3 rounded-md border bg-muted/30 px-3 py-2 text-xs">
-        <label className="flex items-center gap-2">
-          <Checkbox checked={!includeHardBlocks} onCheckedChange={(checked) => setIncludeHardBlocks(!checked)} />
-          Zonder harde blokkades
-        </label>
-        <label className="flex items-center gap-2">
-          <Checkbox checked={requireSkillSignal} onCheckedChange={(checked) => setRequireSkillSignal(checked === true)} />
-          Skill/cert-match vereist
-        </label>
-        <label className="flex items-center gap-2">
-          <Checkbox checked={requireKnownDistance} onCheckedChange={(checked) => setRequireKnownDistance(checked === true)} />
-          Afstand bekend
-        </label>
+      <div className="rounded-md border bg-muted/30 px-3 py-2">
+        <div className="mb-2 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <SlidersHorizontal className="h-3.5 w-3.5" />
+          Filters
+        </div>
+        <div className="flex flex-wrap gap-3 text-xs">
+          <label className="flex items-center gap-2">
+            <Checkbox checked={!includeHardBlocks} onCheckedChange={(checked) => setIncludeHardBlocks(!checked)} />
+            Zonder harde blokkades
+          </label>
+          <label className="flex items-center gap-2">
+            <Checkbox checked={requireSkillSignal} onCheckedChange={(checked) => setRequireSkillSignal(checked === true)} />
+            Skill/certificaatmatch vereist
+          </label>
+          <label className="flex items-center gap-2">
+            <Checkbox checked={requireKnownDistance} onCheckedChange={(checked) => setRequireKnownDistance(checked === true)} />
+            Alleen met bekende afstand/reistijd
+          </label>
+        </div>
       </div>
 
       <CandidateMatchContext candidate={candidate} compact />
