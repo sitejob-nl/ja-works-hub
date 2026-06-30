@@ -72,6 +72,13 @@ const statusLabel: Record<string, string> = {
 
 const allStatuses: CandidateStatus[] = ['lead', 'nieuw', 'werkzoekend', 'in_screening', 'afgewezen', 'geplaatst', 'niet_beschikbaar', 'uitgeschreven'];
 
+const stripGeneratedAvailabilityNotes = (notes?: string | null) =>
+  String(notes ?? '')
+    .split('\n')
+    .filter((line) => !/^\s*(Beschikbaar vanaf|Beschikbaar tot|Aankomst\/check-in):/i.test(line))
+    .join('\n')
+    .trim();
+
 // HR/dienstverband-tabs worden onder één "Dienstverband"-tab met sub-navigatie gegroepeerd,
 // zodat het kandidaatdetail niet 22 losse tabs toont. De eerste sub-tab heet 'dienstverband',
 // zodat de hoofdtab-trigger (value 'dienstverband') ook de groep opent en ?tab=<subtab> blijft werken.
@@ -253,6 +260,26 @@ const CandidateDetail = () => {
 
   if (isLoading) return <div className="p-8 text-muted-foreground">Laden...</div>;
   if (!candidate) return <div className="p-8 text-muted-foreground">Niet gevonden</div>;
+
+  const pinnedCandidateNotes: Array<{ id: string; title: string; body: string; sourceLabel: string }> = [];
+  const profileNotes = candidate.notes?.trim();
+  const availabilityNotes = stripGeneratedAvailabilityNotes(candidate.availability_notes);
+  if (profileNotes) {
+    pinnedCandidateNotes.push({
+      id: 'candidate-profile-notes',
+      title: 'Profielnotities',
+      body: profileNotes,
+      sourceLabel: 'Profiel',
+    });
+  }
+  if (availabilityNotes) {
+    pinnedCandidateNotes.push({
+      id: 'candidate-availability-notes',
+      title: 'Beschikbaarheidsnotities',
+      body: availabilityNotes,
+      sourceLabel: 'Beschikbaarheid',
+    });
+  }
 
   const requestTabChange = (nextTab: string) => {
     if (nextTab === activeTab) return;
@@ -476,7 +503,7 @@ const CandidateDetail = () => {
             />
           </div>
         </TabsContent>
-        <TabsContent value="notities"><NotesSection entityId={id!} entityType="kandidaat" /></TabsContent>
+        <TabsContent value="notities"><NotesSection entityId={id!} entityType="kandidaat" pinnedNotes={pinnedCandidateNotes} /></TabsContent>
         <TabsContent value="huisvesting"><EmployeeHousingTab candidateId={id!} /></TabsContent>
         <TabsContent value="transport"><EmployeeTransportTab candidateId={id!} /></TabsContent>
         <TabsContent value="taken"><TasksSection entityId={id!} entityType="kandidaat" /></TabsContent>

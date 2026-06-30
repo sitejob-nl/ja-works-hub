@@ -12,32 +12,49 @@ import { Link } from 'react-router-dom';
 import { formatDate } from '@/lib/format';
 import { priorityConfig, entityLinks, entityTypeLabels } from '@/lib/tasks';
 import { cn } from '@/lib/utils';
+import { unwrapList } from '@/lib/db';
 import TaskEditorSheet from '@/components/shared/TaskEditorSheet';
 
 const Tasks = () => {
-  const { user } = useAuth();
+  const { user, role } = useAuth();
   const orgId = useOrganizationId();
   const qc = useQueryClient();
   const [viewMode, setViewMode] = useState<'mine' | 'created' | 'all'>('mine');
+  const [assigneeFilter, setAssigneeFilter] = useState('all');
   const [priorityFilter, setPriorityFilter] = useState('all');
   const [deadlineFilter, setDeadlineFilter] = useState('all');
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<any>(null);
+  const canFilterAssignee = role === 'admin' || role === 'intercedent' || role === 'backoffice';
+
+  const { data: assignees = [] } = useQuery({
+    queryKey: ['task-assignees-filter', orgId],
+    queryFn: () => unwrapList<{ id: string; full_name: string | null; email: string | null }>(
+      supabase
+        .from('profiles')
+        .select('id, full_name, email')
+        .eq('organization_id', orgId)
+        .eq('is_active', true)
+        .order('full_name'),
+    ),
+    enabled: !!orgId && canFilterAssignee,
+  });
 
   const { data: tasks = [], isLoading } = useQuery({
-    queryKey: ['tasks-overview', orgId, viewMode, user?.id],
+    queryKey: ['tasks-overview', orgId, viewMode, user?.id, assigneeFilter],
     queryFn: async () => {
       let q = supabase
         .from('recruiter_tasks' as any)
-        .select('*, profiles:assigned_to(full_name)')
+        .select('*, profiles:assigned_to(full_name, email)')
         .eq('organization_id', orgId)
         .order('created_at', { ascending: false });
       if (viewMode === 'mine') q = q.eq('assigned_to', user!.id);
       else if (viewMode === 'created') q = q.eq('created_by', user!.id);
-      const { data, error } = await q;
-      if (error) throw error;
-      return (data as any[]) ?? [];
+      else if (canFilterAssignee && assigneeFilter === 'unassigned') q = q.is('assigned_to', null);
+      else if (canFilterAssignee && assigneeFilter !== 'all') q = q.eq('assigned_to', assigneeFilter);
+      return unwrapList<any>(q);
     },
+    enabled: !!orgId && !!user,
   });
 
   const updateTask = useMutation({
@@ -55,6 +72,18 @@ const Tasks = () => {
 
   const openNew = () => { setEditingTask(null); setEditorOpen(true); };
   const openEdit = (task: any) => { setEditingTask(task); setEditorOpen(true); };
+
+  const changeViewMode = (mode: 'mine' | 'created' | 'all') => {
+    setViewMode(mode);
+    if (mode !== 'all') setAssigneeFilter('all');
+  };
+
+  const activeAssigneeLabel = (() => {
+    if (assigneeFilter === 'all') return null;
+    if (assigneeFilter === 'unassigned') return 'Nog niet toegewezen';
+    const assignee = assignees.find((profile) => profile.id === assigneeFilter);
+    return assignee?.full_name || assignee?.email || null;
+  })();
 
   const handleComplete = (id: string) => {
     updateTask.mutate({ id, updates: { status: 'done', completed_at: new Date().toISOString() } });
@@ -119,17 +148,33 @@ const Tasks = () => {
         <div className="flex rounded-md border overflow-hidden">
           <button
             className={cn('px-3 py-1.5 text-sm transition-colors border-r', viewMode === 'mine' ? 'bg-primary text-primary-foreground' : 'bg-background hover:bg-muted')}
-            onClick={() => setViewMode('mine')}
+            onClick={() => changeViewMode('mine')}
           >Aan mij toegewezen</button>
           <button
             className={cn('px-3 py-1.5 text-sm transition-colors border-r', viewMode === 'created' ? 'bg-primary text-primary-foreground' : 'bg-background hover:bg-muted')}
-            onClick={() => setViewMode('created')}
+            onClick={() => changeViewMode('created')}
           >Door mij gemaakt</button>
           <button
             className={cn('px-3 py-1.5 text-sm transition-colors', viewMode === 'all' ? 'bg-primary text-primary-foreground' : 'bg-background hover:bg-muted')}
-            onClick={() => setViewMode('all')}
+            onClick={() => changeViewMode('all')}
           >Alle taken</button>
         </div>
+        {canFilterAssignee && viewMode === 'all' && (
+          <Select value={assigneeFilter} onValueChange={setAssigneeFilter}>
+            <SelectTrigger aria-label="Filter op toegewezene" className="w-[190px] h-8 text-sm">
+              <SelectValue placeholder="Toegewezen aan" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Alle toegewezenen</SelectItem>
+              <SelectItem value="unassigned">Nog niet toegewezen</SelectItem>
+              {assignees.map((assignee) => (
+                <SelectItem key={assignee.id} value={assignee.id}>
+                  {assignee.full_name || assignee.email || 'Onbekende gebruiker'}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         <Select value={priorityFilter} onValueChange={setPriorityFilter}>
           <SelectTrigger className="w-[140px] h-8 text-sm"><SelectValue placeholder="Prioriteit" /></SelectTrigger>
           <SelectContent>
@@ -148,6 +193,11 @@ const Tasks = () => {
             <SelectItem value="week">Deze week</SelectItem>
           </SelectContent>
         </Select>
+        {viewMode === 'all' && activeAssigneeLabel && (
+          <Badge variant="secondary" className="h-8 px-2.5">
+            Toegewezen aan: {activeAssigneeLabel}
+          </Badge>
+        )}
       </div>
 
       {/* Active tasks */}
@@ -175,8 +225,10 @@ const Tasks = () => {
                         Deadline: {formatDate(task.due_date)}
                       </span>
                     )}
-                    {task.profiles?.full_name && (
-                      <span className="text-[10px] text-muted-foreground">→ {task.profiles.full_name}</span>
+                    {viewMode === 'all' && (
+                      <span className="text-[10px] text-muted-foreground">
+                        → {task.profiles?.full_name || task.profiles?.email || 'Nog niet toegewezen'}
+                      </span>
                     )}
                     {linkFn && task.related_entity_type && (
                       <Link

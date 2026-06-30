@@ -17,9 +17,15 @@ type EntityType = 'kandidaat' | 'opdrachtgever' | 'vacature' | 'plaatsing';
 interface NotesSectionProps {
   entityId: string;
   entityType: EntityType;
+  pinnedNotes?: Array<{
+    id: string;
+    title: string;
+    body: string;
+    sourceLabel?: string;
+  }>;
 }
 
-const NotesSection = ({ entityId, entityType }: NotesSectionProps) => {
+const NotesSection = ({ entityId, entityType, pinnedNotes = [] }: NotesSectionProps) => {
   const orgId = useOrganizationId();
   const { user } = useAuth();
   const qc = useQueryClient();
@@ -168,6 +174,17 @@ const NotesSection = ({ entityId, entityType }: NotesSectionProps) => {
       )}
 
       <div className="space-y-3">
+        {pinnedNotes.map((note) => (
+          <div key={note.id} className="bg-muted/30 rounded-lg border p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-sm font-medium">{note.title}</span>
+              <Badge variant="secondary" className="text-[10px]">
+                {note.sourceLabel ?? 'Profiel'}
+              </Badge>
+            </div>
+            <p className="text-sm text-muted-foreground whitespace-pre-wrap">{note.body}</p>
+          </div>
+        ))}
         {notes.map((note: any) => {
           const isOwn = note.created_by === user?.id;
 
@@ -212,7 +229,7 @@ const NotesSection = ({ entityId, entityType }: NotesSectionProps) => {
             </div>
           );
         })}
-        {notes.length === 0 && !adding && (
+        {notes.length === 0 && pinnedNotes.length === 0 && !adding && (
           <p className="text-center text-muted-foreground py-8">Nog geen notities</p>
         )}
       </div>

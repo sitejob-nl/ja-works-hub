@@ -34,6 +34,14 @@ describe('getMatchFollowupState', () => {
     }).label).toBe('Afspraakvoorstel opvolgen');
   });
 
+  it('toont een direct actiepunt bij nieuw afspraakvoorstel', () => {
+    expect(getMatchFollowupState({
+      status: 'afspraak_voorgesteld',
+      interviewProposedAt: '2026-06-29T11:30:00Z',
+      now,
+    })).toEqual({ level: 'warning', label: 'Afspraakvoorstel doorzetten' });
+  });
+
   it('waarschuwt bij verlopen bevestigde afspraak', () => {
     expect(getMatchFollowupState({
       status: 'afspraak_op_kantoor',
