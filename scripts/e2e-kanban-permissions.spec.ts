@@ -13,7 +13,11 @@ test.describe("Kanban en rechtenmodel", () => {
     await expect(page.getByRole("button", { name: /kanban/i })).toBeVisible();
     await expect(page.getByRole("button", { name: /lijst/i })).toBeVisible();
     await expect(page.getByText(/Nieuwe match/i).first()).toBeVisible();
-    await expect(page.getByText(/Sleep kaart|Geen matches/i).first()).toBeVisible();
+    const board = page.getByTestId("match-kanban-board");
+    await expect(board).toBeVisible();
+    const visibleCards = await board.getByTestId("match-kanban-card").count();
+    const emptyColumns = await board.getByText("Geen matches").count();
+    expect(visibleCards + emptyColumns).toBeGreaterThan(0);
   });
 
   test("instellingen toont configureerbare rollen en rechten", async ({ page }) => {
