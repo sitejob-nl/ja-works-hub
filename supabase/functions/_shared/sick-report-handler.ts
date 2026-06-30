@@ -1,8 +1,7 @@
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendViaOutlookAccount } from "./outlook-send.ts";
-import { getWhatsAppCredentials, normalizePhone, META_API_BASE } from "./whatsapp-utils.ts";
+import { sendOutboundWhatsAppText } from "./whatsapp-utils.ts";
 import { getWhatsAppAutomationSettings, mergeTemplate } from "./whatsapp-automation-settings.ts";
-import { isOutboundPaused, logConceptCommunication } from "./outbound-pause.ts";
 
 export interface SickReportCascadeResult {
   task_created: boolean;
@@ -29,38 +28,14 @@ async function sendWhatsAppDirect(
   text: string,
   candidateId?: string | null,
 ): Promise<{ ok: boolean; error?: string }> {
-  if (await isOutboundPaused(service, orgId, "whatsapp")) {
-    await logConceptCommunication(service, {
-      orgId,
-      channel: "whatsapp",
-      body: text,
-      candidateId: candidateId ?? null,
-    });
-    return { ok: false, error: "Uitgaande WhatsApp staat op pauze (kill-switch actief)." };
-  }
-
-  const creds = await getWhatsAppCredentials(service, orgId);
-  if (!creds) return { ok: false, error: "WhatsApp niet geconfigureerd" };
-
-  const res = await fetch(`${META_API_BASE}/${creds.phone_number_id}/messages`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${creds.access_token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      messaging_product: "whatsapp",
-      to: normalizePhone(to).replace("+", ""),
-      type: "text",
-      text: { body: text },
-    }),
+  const result = await sendOutboundWhatsAppText(service as any, {
+    orgId,
+    to,
+    text,
+    candidateId: candidateId ?? null,
+    subject: "WhatsApp bevestiging ziekmelding",
   });
-
-  if (!res.ok) {
-    const body = await res.text();
-    return { ok: false, error: `Meta API ${res.status}: ${body.slice(0, 200)}` };
-  }
-  return { ok: true };
+  return { ok: result.success, error: result.error };
 }
 
 /**

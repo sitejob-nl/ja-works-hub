@@ -1,7 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { getWhatsAppCredentials, normalizePhone, META_API_BASE } from "../_shared/whatsapp-utils.ts";
+import { sendOutboundWhatsApp } from "../_shared/whatsapp-utils.ts";
 import { getWhatsAppAutomationSettings, mergeTemplate } from "../_shared/whatsapp-automation-settings.ts";
-import { isOutboundPaused } from "../_shared/outbound-pause.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -21,30 +20,6 @@ function daysUntil(expiryDate: string): number {
   const expiry = new Date(`${expiryDate}T00:00:00.000Z`);
   const expiryUtc = Date.UTC(expiry.getUTCFullYear(), expiry.getUTCMonth(), expiry.getUTCDate());
   return Math.round((expiryUtc - todayUtc) / DAY_MS);
-}
-
-async function sendWhatsApp(service: any, orgId: string, to: string, text: string) {
-  if (await isOutboundPaused(service, orgId, "whatsapp")) return { ok: false, error: "Uitgaande WhatsApp staat op pauze" };
-  const creds = await getWhatsAppCredentials(service, orgId);
-  if (!creds) return { ok: false, error: "WhatsApp niet geconfigureerd" };
-
-  const res = await fetch(`${META_API_BASE}/${creds.phone_number_id}/messages`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${creds.access_token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      messaging_product: "whatsapp",
-      to: normalizePhone(to).replace("+", ""),
-      type: "text",
-      text: { body: text },
-    }),
-  });
-
-  if (!res.ok) return { ok: false, error: await res.text() };
-  const body = await res.json();
-  return { ok: true, message_id: body.messages?.[0]?.id };
 }
 
 async function sendDocumentExpiryWhatsApps(adminClient: any, docs: any[], kind: "expired" | "warning") {
@@ -102,6 +77,7 @@ async function sendDocumentExpiryWhatsApps(adminClient: any, docs: any[], kind: 
       .select("id")
       .eq("candidate_id", doc.candidate_id)
       .like("body", `%${marker}%`)
+      .not("sent_at", "is", null)
       .limit(1);
     if (existing?.length) {
       skipped++;
@@ -119,25 +95,24 @@ async function sendDocumentExpiryWhatsApps(adminClient: any, docs: any[], kind: 
       expiry_text: expiryText,
     });
 
-    const result = await sendWhatsApp(adminClient, doc.organization_id, candidate.phone, message);
-    if (result.ok) {
+    const subject = kind === "expired" ? "Document verlopen" : "Document verloopt binnenkort";
+    const result = await sendOutboundWhatsApp(adminClient, {
+      orgId: doc.organization_id,
+      to: candidate.phone,
+      type: "text",
+      text: { body: message },
+      candidateId: doc.candidate_id,
+      subject,
+      communicationBody: `${marker} ${message}`,
+    });
+    if (result.success) {
       sent++;
-      await adminClient.from("communications").insert({
-        organization_id: doc.organization_id,
-        candidate_id: doc.candidate_id,
-        channel: "whatsapp",
-        direction: "outbound",
-        subject: kind === "expired" ? "Document verlopen" : "Document verloopt binnenkort",
-        body: `${marker} ${message}`,
-        sent_at: new Date().toISOString(),
-        whatsapp_message_id: result.message_id ?? null,
-        whatsapp_status: result.message_id ? "pending" : null,
-        message_type: "text",
-      });
       await adminClient.rpc("record_rate_limit", {
         p_org_id: doc.organization_id,
         p_channel: "whatsapp",
       });
+    } else if (result.paused) {
+      skipped++;
     } else {
       errors.push(`${doc.id}: ${String(result.error).slice(0, 160)}`);
     }

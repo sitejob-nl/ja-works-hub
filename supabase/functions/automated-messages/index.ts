@@ -8,9 +8,8 @@
 //
 // Authenticatie: header X-Cron-Secret moet overeenkomen met CRON_SECRET env var.
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { getWhatsAppCredentials, normalizePhone, META_API_BASE } from "../_shared/whatsapp-utils.ts";
+import { sendOutboundWhatsApp } from "../_shared/whatsapp-utils.ts";
 import { getWhatsAppAutomationSettings, mergeTemplate } from "../_shared/whatsapp-automation-settings.ts";
-import { isOutboundPaused } from "../_shared/outbound-pause.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -22,37 +21,6 @@ const json = (body: unknown, status = 200) =>
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
-
-async function sendWhatsApp(
-  service: SupabaseClient,
-  orgId: string,
-  to: string,
-  text: string
-): Promise<{ ok: boolean; error?: string }> {
-  if (await isOutboundPaused(service, orgId, "whatsapp")) return { ok: false, error: "Uitgaande WhatsApp staat op pauze" };
-  const creds = await getWhatsAppCredentials(service, orgId);
-  if (!creds) return { ok: false, error: "WhatsApp niet geconfigureerd" };
-
-  const res = await fetch(`${META_API_BASE}/${creds.phone_number_id}/messages`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${creds.access_token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      messaging_product: "whatsapp",
-      to: normalizePhone(to).replace("+", ""),
-      type: "text",
-      text: { body: text },
-    }),
-  });
-
-  if (!res.ok) {
-    const body = await res.text();
-    return { ok: false, error: `Meta ${res.status}: ${body.slice(0, 200)}` };
-  }
-  return { ok: true };
-}
 
 /**
  * Onboarding reminder: voor elke onboarding_token die op dag 1, 3 of 7
@@ -72,15 +40,6 @@ async function runOnboardingReminders(service: SupabaseClient) {
   const results: Record<string, { sent: number; skipped: number; errors: string[] }> = {};
 
   for (const org of (orgs ?? []) as any[]) {
-    if (await isOutboundPaused(service, org.id, "whatsapp")) {
-      results[`${org.id}:paused`] = {
-        sent: 0,
-        skipped: 0,
-        errors: ["Uitgaande WhatsApp staat op pauze"],
-      };
-      continue;
-    }
-
     const settings = await getWhatsAppAutomationSettings(service, org.id);
     if (!settings.onboarding_reminders_enabled) continue;
 
@@ -117,6 +76,7 @@ async function runOnboardingReminders(service: SupabaseClient) {
           .select("id")
           .eq("candidate_id", t.candidate_id)
           .like("body", `%${marker}%`)
+          .not("sent_at", "is", null)
           .limit(1);
 
         if (existing && existing.length > 0) {
@@ -148,19 +108,20 @@ async function runOnboardingReminders(service: SupabaseClient) {
           organization: org.name ?? "JA Werkt",
         });
 
-        const result = await sendWhatsApp(service, t.organization_id, cand.phone, message);
+        const result = await sendOutboundWhatsApp(service, {
+          orgId: t.organization_id,
+          to: cand.phone,
+          type: "text",
+          text: { body: message },
+          candidateId: t.candidate_id,
+          subject: `Onboarding reminder (dag ${day})`,
+          communicationBody: `${marker} ${message}`,
+        });
 
-        if (result.ok) {
+        if (result.success) {
           results[key].sent++;
-          await service.from("communications").insert({
-            organization_id: t.organization_id,
-            candidate_id: t.candidate_id,
-            channel: "whatsapp",
-            direction: "outbound",
-            subject: `Onboarding reminder (dag ${day})`,
-            body: `${marker} ${message}`,
-            sent_at: new Date().toISOString(),
-          });
+        } else if (result.paused) {
+          results[key].skipped++;
         } else {
           results[key].errors.push(`${t.candidate_id}: ${result.error}`);
         }
