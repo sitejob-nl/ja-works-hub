@@ -1,4 +1,5 @@
-import { useState, useCallback, useEffect } from "react";
+import { useMemo } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -6,6 +7,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useOrganizationId } from "@/hooks/useOrganizationId";
 import { toast } from "sonner";
 import { MessageSquare, Mail, Phone } from "lucide-react";
+import ErrorState from "@/components/shared/ErrorState";
+import { unwrap, unwrapList } from "@/lib/db";
 
 interface CandidatePreferencesTabProps {
   candidateId: string;
@@ -13,8 +16,8 @@ interface CandidatePreferencesTabProps {
 
 export function CandidatePreferencesTab({ candidateId }: CandidatePreferencesTabProps) {
   const organizationId = useOrganizationId();
-  const [preferences, setPreferences] = useState<Record<string, boolean>>({});
-  const [loading, setLoading] = useState(true);
+  const qc = useQueryClient();
+  const queryKey = ["candidate-communication-preferences", organizationId, candidateId] as const;
 
   const channels = [
     { id: "whatsapp", label: "WhatsApp", icon: MessageSquare },
@@ -22,63 +25,71 @@ export function CandidatePreferencesTab({ candidateId }: CandidatePreferencesTab
     { id: "sms", label: "SMS", icon: Phone },
   ];
 
-  const loadPreferences = useCallback(async () => {
-    if (!organizationId || !candidateId) {
-      setLoading(false);
-      return;
-    }
+  const preferencesQuery = useQuery({
+    queryKey,
+    enabled: !!organizationId && !!candidateId,
+    retry: 1,
+    queryFn: async () => unwrapList(
+      supabase
+        .from("communication_preferences")
+        .select("channel, opted_out")
+        .eq("organization_id", organizationId!)
+        .eq("candidate_id", candidateId)
+    ),
+  });
 
-    setLoading(true);
-    const { data, error } = await supabase
-      .from("communication_preferences")
-      .select("*")
-      .eq("organization_id", organizationId)
-      .eq("candidate_id", candidateId);
+  const preferences = useMemo(() => {
+    const prefs: Record<string, boolean> = {};
+    preferencesQuery.data?.forEach((pref) => {
+      prefs[pref.channel] = pref.opted_out === true;
+    });
+    return prefs;
+  }, [preferencesQuery.data]);
 
-    if (error) {
-      console.error(error);
-    } else {
-      const prefs: Record<string, boolean> = {};
-      data?.forEach((pref) => {
-        prefs[pref.channel] = pref.opted_out;
+  const savePreference = useMutation({
+    mutationFn: async ({ channel, optedOut }: { channel: string; optedOut: boolean }) => {
+      if (!organizationId || !candidateId) throw new Error("Kandidaat of organisatie ontbreekt");
+      await unwrap(
+        supabase.from("communication_preferences").upsert(
+          {
+            organization_id: organizationId,
+            candidate_id: candidateId,
+            channel: channel as any,
+            opted_out: optedOut,
+            opted_out_at: optedOut ? new Date().toISOString() : null,
+            opted_out_reason: optedOut ? "Manual opt-out" : null,
+          },
+          {
+            onConflict: "organization_id,candidate_id,channel",
+          }
+        )
+      );
+      return { channel, optedOut };
+    },
+    onSuccess: ({ channel, optedOut }) => {
+      qc.setQueryData(queryKey, (current: Array<{ channel: string; opted_out: boolean }> | undefined) => {
+        const rows = current ?? [];
+        const exists = rows.some((row) => row.channel === channel);
+        if (!exists) return [...rows, { channel, opted_out: optedOut }];
+        return rows.map((row) => row.channel === channel ? { ...row, opted_out: optedOut } : row);
       });
-      setPreferences(prefs);
-    }
-    setLoading(false);
-  }, [candidateId, organizationId]);
-
-  useEffect(() => {
-    loadPreferences();
-  }, [loadPreferences]);
-
-  const togglePreference = async (channel: string, optedOut: boolean) => {
-    if (!organizationId || !candidateId) return;
-
-    const { error } = await supabase.from("communication_preferences").upsert(
-      {
-        organization_id: organizationId,
-        candidate_id: candidateId,
-        channel: channel as any,
-        opted_out: optedOut,
-        opted_out_at: optedOut ? new Date().toISOString() : null,
-        opted_out_reason: optedOut ? "Manual opt-out" : null,
-      },
-      {
-        onConflict: "organization_id,candidate_id,channel",
-      }
-    );
-
-    if (error) {
-      toast.error("Fout bij opslaan voorkeur");
-      console.error(error);
-    } else {
       toast.success("Voorkeur opgeslagen");
-      setPreferences({ ...preferences, [channel]: optedOut });
-    }
-  };
+    },
+    onError: () => toast.error("Fout bij opslaan voorkeur"),
+  });
 
-  if (loading) {
+  if (preferencesQuery.isLoading || !organizationId) {
     return <div>Laden...</div>;
+  }
+
+  if (preferencesQuery.isError) {
+    return (
+      <ErrorState
+        title="Communicatievoorkeuren niet geladen"
+        error={preferencesQuery.error}
+        onRetry={() => preferencesQuery.refetch()}
+      />
+    );
   }
 
   return (
@@ -113,7 +124,8 @@ export function CandidatePreferencesTab({ candidateId }: CandidatePreferencesTab
                 <Switch
                   id={channel.id}
                   checked={!isOptedOut}
-                  onCheckedChange={(checked) => togglePreference(channel.id, !checked)}
+                  disabled={savePreference.isPending}
+                  onCheckedChange={(checked) => savePreference.mutate({ channel: channel.id, optedOut: !checked })}
                 />
               </div>
             );
