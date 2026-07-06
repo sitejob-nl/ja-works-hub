@@ -31,6 +31,13 @@ function formatDate(iso: string | null | undefined): string {
   });
 }
 
+function formatAmount(value: number | string | null | undefined): string {
+  if (value == null || value === "") return "";
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return "";
+  return new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR" }).format(amount);
+}
+
 function formatWorkDays(days: string[] | null): string {
   if (!days || days.length === 0) return "Nader te bepalen";
   return days.join(", ");
@@ -45,11 +52,20 @@ function generalTermsSection(terms: { name: string; content: string } | null): s
           </div>`;
 }
 
+function extractTemplateVariables(content: string): string[] {
+  const matches = Array.from(content.matchAll(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g), (match) => match[1]);
+  return Array.from(new Set(matches));
+}
+
+function unknownTemplateVariables(content: string, vars: Record<string, unknown>): string[] {
+  return extractTemplateVariables(content).filter((key) => !(key in vars));
+}
+
 function mergeTemplate(content: string, vars: Record<string, string | null | undefined>): string {
-  return Object.entries(vars).reduce(
-    (text, [key, value]) => text.replaceAll(`{{${key}}}`, escapeHtml(String(value ?? ""))),
-    content,
-  );
+  return content.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (token, key: string) => {
+    if (!(key in vars)) return token;
+    return escapeHtml(String(vars[key] ?? ""));
+  });
 }
 
 async function sendWhatsAppDirect(service: any, input: {
@@ -340,11 +356,21 @@ Deno.serve(async (req) => {
 
     const templateVars = {
       first_name: candidate.first_name,
+      last_name: candidate.last_name,
       employee_name: candidateName,
       employee_number: candidate.employee_number,
       start_date: formatDate(startDate),
+      end_date: formatDate(placement.end_date),
+      expected_end_date: formatDate(placement.expected_end_date),
       function_name: functionName,
+      hourly_rate: formatAmount(placement.hourly_rate),
+      client_hourly_rate: formatAmount(placement.client_hourly_rate),
+      overtime_rate: formatAmount(placement.overtime_rate),
+      contract_hours: placement.cao_hours?.toString() ?? "",
+      contract_type: "",
       company_name: companyName,
+      company_phone: company?.phone,
+      company_email: company?.email,
       organization_name: brandTheme.orgName,
       work_location: workLocation ?? "Nader te bepalen",
       work_days: formatWorkDays(workDays),
@@ -363,6 +389,32 @@ Deno.serve(async (req) => {
 
     const primaryContact = contacts?.find((c: any) => c.is_primary) ?? contacts?.[0] ?? null;
     const whatsappResults: any = {};
+    const clientTemplateVars = { ...templateVars, contact_name: primaryContact?.full_name ?? companyName };
+    const employeeTemplateVars = {
+      ...templateVars,
+      contact_person_name: primaryContact?.full_name ?? "",
+      contact_person_phone: primaryContact?.phone ?? "",
+      contact_person_email: primaryContact?.email ?? "",
+    };
+    const templateErrors: string[] = [];
+    if (clientTemplate) {
+      const unknown = unknownTemplateVariables((clientTemplate as any).content, clientTemplateVars);
+      if (unknown.length > 0) templateErrors.push(`plaatsingsbevestiging opdrachtgever: ${unknown.join(", ")}`);
+    }
+    if (employeeTemplate) {
+      const unknown = unknownTemplateVariables((employeeTemplate as any).content, employeeTemplateVars);
+      if (unknown.length > 0) templateErrors.push(`plaatsingsbevestiging medewerker: ${unknown.join(", ")}`);
+    }
+    if (generalTerms) {
+      const unknown = unknownTemplateVariables((generalTerms as any).content, templateVars);
+      if (unknown.length > 0) templateErrors.push(`algemene voorwaarden: ${unknown.join(", ")}`);
+    }
+    if (templateErrors.length > 0) {
+      return json({
+        error: `Actieve template bevat onbekende variabele(n): ${templateErrors.join("; ")}`,
+        warnings,
+      }, 400);
+    }
 
     // ── Client email ──
     if (send_to_client) {
@@ -464,12 +516,7 @@ Deno.serve(async (req) => {
     if (send_to_employee) {
       const subject = `Plaatsingsbevestiging - ${functionName} bij ${companyName}`;
       const employeeContent = employeeTemplate
-        ? templateToEmailContent(employeeTemplate as any, {
-          ...templateVars,
-          contact_person_name: primaryContact?.full_name ?? "",
-          contact_person_phone: primaryContact?.phone ?? "",
-          contact_person_email: primaryContact?.email ?? "",
-        }, brandTheme)
+        ? templateToEmailContent(employeeTemplate as any, employeeTemplateVars, brandTheme)
         : buildEmployeeEmailContent({
         candidateName,
         functionName,

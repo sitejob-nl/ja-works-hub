@@ -56,7 +56,7 @@ Project-management state from client meetings — moved out of CLAUDE.md because
 - Flexpedia API integration
 - Google Calendar sync (internal `Agenda.tsx` exists, no sync)
 - SEPA XML export
-- Contract template engine with variables
+- Final legal content acceptance for active contract templates
 - Digital signatures
 - Transport GPS live tracking
 - Extended employee dossier (pension, vacation rights)
