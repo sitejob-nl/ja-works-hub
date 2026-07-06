@@ -1,8 +1,10 @@
 import { useClientPortal } from '@/contexts/ClientPortalContext';
+import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { formatDate } from '@/lib/format';
 
 const statusBadge: Record<string, string> = {
@@ -50,6 +52,7 @@ const ClientPortalPlacements = () => {
                 <TableHead>Startdatum</TableHead>
                 <TableHead>Einddatum</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead className="text-right">Acties</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -65,6 +68,11 @@ const ClientPortalPlacements = () => {
                     <Badge variant="secondary" className={`text-xs ${statusBadge[p.status] ?? ''}`}>
                       {statusLabel[p.status] ?? p.status}
                     </Badge>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button asChild size="sm" variant="outline">
+                      <Link to={`/klantportaal/uren?placement_id=${p.id}`}>Uren</Link>
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))}

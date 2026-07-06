@@ -49,6 +49,7 @@ const Timesheets = () => {
   const qc = useQueryClient();
   const [weekRef, setWeekRef] = useState(new Date());
   const [statusFilter, setStatusFilter] = useSearchParamState<string>('status', 'all');
+  const [placementFilter, setPlacementFilter] = useSearchParamState<string>('placement_id', 'all');
   const [employeeFilter, setEmployeeFilter] = useState('all');
   const [page, setPage] = useState(0);
   const [entryOpen, setEntryOpen] = useState(false);
@@ -70,7 +71,7 @@ const Timesheets = () => {
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ['timesheets', weekStart, weekEnd, statusFilter, employeeFilter, page],
+    queryKey: ['timesheets', weekStart, weekEnd, statusFilter, employeeFilter, placementFilter, page],
     queryFn: async () => {
       let query = supabase.from('timesheets').select(`
         *,
@@ -87,6 +88,7 @@ const Timesheets = () => {
 
       if (statusFilter !== 'all') query = query.eq('status', statusFilter as any);
       if (employeeFilter !== 'all') query = query.eq('candidate_id', employeeFilter);
+      if (placementFilter !== 'all') query = query.eq('placement_id', placementFilter);
 
       query = query.order('work_date', { ascending: false }).range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
 
@@ -305,6 +307,19 @@ const Timesheets = () => {
             ))}
           </SelectContent>
         </Select>
+        {placementFilter !== 'all' && (
+          <Badge variant="secondary" className="gap-2 py-1.5">
+            Plaatsingfilter actief
+            <button
+              type="button"
+              className="rounded-sm px-1 hover:bg-background/80"
+              onClick={() => { setPlacementFilter('all'); setPage(0); }}
+              aria-label="Plaatsingfilter wissen"
+            >
+              ×
+            </button>
+          </Badge>
+        )}
         <span className="text-sm text-muted-foreground">{total} registraties</span>
       </div>
 

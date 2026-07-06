@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { Database } from '@/integrations/supabase/types';
@@ -11,19 +11,21 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
-import { Separator } from '@/components/ui/separator';
-import { Save, Building2, User, FileText, XCircle, ExternalLink, Briefcase } from 'lucide-react';
+import { Save, Building2, User, XCircle, ExternalLink, Briefcase, Mail, Clock3 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import { toast } from 'sonner';
-import { formatDate, formatEUR } from '@/lib/format';
+import { formatDate } from '@/lib/format';
 import { logAudit } from '@/lib/audit';
 import { payrollerLabel } from '@/lib/payroller';
 import PlacementHourTypesTab from '@/components/placements/tabs/PlacementHourTypesTab';
 import PlacementTravelTypesTab from '@/components/placements/tabs/PlacementTravelTypesTab';
 import PlacementAllowancesTab from '@/components/placements/tabs/PlacementAllowancesTab';
 import PlacementCommunicationTab from '@/components/placements/tabs/PlacementCommunicationTab';
+import PlacementTimesheetsTab from '@/components/placements/tabs/PlacementTimesheetsTab';
+import PlacementWorkOrderTab from '@/components/placements/tabs/PlacementWorkOrderTab';
+import PlacementConfirmationDialog from '@/components/placement/PlacementConfirmationDialog';
 import { useTrackPageVisit } from '@/hooks/useTrackPageVisit';
 import NotesSection from '@/components/shared/NotesSection';
 import TasksSection from '@/components/shared/TasksSection';
@@ -39,10 +41,6 @@ const statusBadge: Record<string, string> = {
 const statusLabel: Record<string, string> = {
   gepland: 'Gepland', actief: 'Actief', afgerond: 'Afgerond', voortijdig_beeindigd: 'Voortijdig beëindigd',
 };
-const housingPaymentLabel: Record<string, string> = {
-  betaald: 'Betaald door medewerker', inhouding: 'Inhouding via payroller', gratis: 'Gratis huisvesting',
-};
-
 const DAYS = ['ma', 'di', 'wo', 'do', 'vr', 'za', 'zo'];
 
 const asSingle = <T,>(value: T | T[] | null | undefined): T | null => {
@@ -54,14 +52,16 @@ const PlacementDetail = () => {
   const { id } = useParams<{ id: string }>();
   const orgId = useOrganizationId();
   const qc = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [editing, setEditing] = useState(false);
   const [showTerminate, setShowTerminate] = useState(false);
+  const [showConfirmation, setShowConfirmation] = useState(false);
 
   const { data: placement, isLoading } = useQuery({
     queryKey: ['placement', id],
     queryFn: async () => {
       const { data, error } = await supabase.from('placements')
-        .select('*, companies!placements_company_id_fkey(id, name), candidates!placements_candidate_id_fkey(id, first_name, last_name), employees!placements_employee_id_fkey(id, candidates!employees_candidate_id_fkey(first_name, last_name))')
+        .select('*, companies!placements_company_id_fkey(id, name, email, phone, address_city), candidates!placements_candidate_id_fkey(id, first_name, last_name, email, phone, portal_enabled), employees!placements_employee_id_fkey(id, candidates!employees_candidate_id_fkey(id, first_name, last_name, email, phone, portal_enabled))')
         .eq('id', id!)
         .single();
       if (error) throw error;
@@ -116,6 +116,7 @@ const PlacementDetail = () => {
       work_days: placement.work_days ?? [],
       work_location: placement.work_location ?? '',
       hourly_rate: placement.hourly_rate,
+      client_hourly_rate: placement.client_hourly_rate ?? '',
       overtime_rate: placement.overtime_rate ?? '',
       function_name: placement.function_name,
       start_date: placement.start_date,
@@ -137,6 +138,7 @@ const PlacementDetail = () => {
         work_days: form.work_days.length > 0 ? form.work_days : null,
         work_location: form.work_location || null,
         hourly_rate: parseFloat(form.hourly_rate),
+        client_hourly_rate: form.client_hourly_rate ? parseFloat(form.client_hourly_rate) : null,
         overtime_rate: form.overtime_rate ? parseFloat(form.overtime_rate) : null,
         function_name: form.function_name,
         start_date: form.start_date,
@@ -170,6 +172,13 @@ const PlacementDetail = () => {
   const cand = asSingle((placement as any).candidates) ?? asSingle((emp as any)?.candidates);
   const company = placement.companies as any;
   const canTerminate = placement.status === 'actief' || placement.status === 'gepland';
+  const activeTab = searchParams.get('tab') || 'werkorder';
+  const setActiveTab = (value: string) => {
+    const next = new URLSearchParams(searchParams);
+    if (value === 'werkorder') next.delete('tab');
+    else next.set('tab', value);
+    setSearchParams(next, { replace: true });
+  };
 
   return (
     <div className="space-y-4 sm:space-y-6 min-w-0">
@@ -177,6 +186,14 @@ const PlacementDetail = () => {
         breadcrumbs={[{ label: 'Plaatsingen', to: '/plaatsingen' }, { label: placement.function_name }]}
         title={placement.function_name}
         actions={<>
+          <Button asChild variant="outline" size="sm" className="gap-1.5">
+            <Link to={`/uren?placement_id=${placement.id}`}>
+              <Clock3 className="h-3.5 w-3.5" /> Uren
+            </Link>
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setShowConfirmation(true)} className="gap-1.5">
+            <Mail className="h-3.5 w-3.5" /> Bevestiging
+          </Button>
           {canTerminate && (
             <Button variant="destructive" size="sm" onClick={() => setShowTerminate(true)} className="gap-1">
               <XCircle className="h-3.5 w-3.5" /> Beëindigen
@@ -216,8 +233,7 @@ const PlacementDetail = () => {
         </div>
       )}
 
-      {/* Main placement info */}
-      {editing ? (
+      {editing && (
         <div className="bg-card border rounded-lg p-4 space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <div><Label>Functienaam</Label><Input value={form.function_name} onChange={e => setForm((f: any) => ({ ...f, function_name: e.target.value }))} /></div>
@@ -225,6 +241,7 @@ const PlacementDetail = () => {
             <div><Label>Einddatum</Label><Input type="date" value={form.end_date} onChange={e => setForm((f: any) => ({ ...f, end_date: e.target.value }))} /></div>
             <div><Label>Verwachte einddatum</Label><Input type="date" value={form.expected_end_date} onChange={e => setForm((f: any) => ({ ...f, expected_end_date: e.target.value }))} /></div>
             <div><Label>Uurtarief (€)</Label><Input type="number" step="0.01" value={form.hourly_rate} onChange={e => setForm((f: any) => ({ ...f, hourly_rate: e.target.value }))} /></div>
+            <div><Label>Factuurtarief klant (€)</Label><Input type="number" step="0.01" value={form.client_hourly_rate} onChange={e => setForm((f: any) => ({ ...f, client_hourly_rate: e.target.value }))} /></div>
             <div><Label>Overwerktarief (€)</Label><Input type="number" step="0.01" value={form.overtime_rate} onChange={e => setForm((f: any) => ({ ...f, overtime_rate: e.target.value }))} /></div>
             <div><Label>CAO-uren per week</Label><Input type="number" step="0.5" value={form.cao_hours} onChange={e => setForm((f: any) => ({ ...f, cao_hours: e.target.value }))} /></div>
             <div><Label>Werklocatie</Label><Input value={form.work_location} onChange={e => setForm((f: any) => ({ ...f, work_location: e.target.value }))} /></div>
@@ -273,27 +290,6 @@ const PlacementDetail = () => {
             </div>
           </div>
         </div>
-      ) : (
-        <div className="bg-card border rounded-lg p-4">
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 text-sm">
-            <div><span className="text-muted-foreground">Uurtarief</span><p className="font-medium">{formatEUR(placement.hourly_rate)}</p></div>
-            <div><span className="text-muted-foreground">Overwerktarief</span><p className="font-medium">{formatEUR(placement.overtime_rate)}</p></div>
-            <div><span className="text-muted-foreground">CAO-uren/week</span><p className="font-medium">{placement.cao_hours ?? '—'}</p></div>
-            <div><span className="text-muted-foreground">Werklocatie</span><p className="font-medium">{placement.work_location ?? '—'}</p></div>
-            <div><span className="text-muted-foreground">Payroller</span><p className="font-medium">{placement.payroller ? payrollerLabel[placement.payroller] ?? placement.payroller : '—'}</p></div>
-            <div><span className="text-muted-foreground">Verwachte einddatum</span><p className="font-medium">{formatDate(placement.expected_end_date) || '—'}</p></div>
-            <div><span className="text-muted-foreground">Huisvesting</span><p className="font-medium">{placement.housing_payment_type ? housingPaymentLabel[placement.housing_payment_type] : '—'}</p></div>
-            <div><span className="text-muted-foreground">Salarisindicatie</span><p className="font-medium">{placement.salary_indication ? `€ ${placement.salary_indication}` : '—'}</p></div>
-            <div><span className="text-muted-foreground">Seizoenswerk</span><p className="font-medium">{placement.is_seasonal ? 'Ja' : 'Nee'}</p></div>
-            <div><span className="text-muted-foreground">Tijd-voor-tijd</span><p className="font-medium">{placement.is_time_for_time ? 'Ja' : 'Nee'}</p></div>
-            <div><span className="text-muted-foreground">Werkdagen</span>
-              <div className="flex gap-1 mt-0.5">
-                {(placement.work_days ?? []).map((d: string) => <Badge key={d} variant="secondary" className="text-xs">{d}</Badge>)}
-                {(!placement.work_days || placement.work_days.length === 0) && <span className="text-muted-foreground">—</span>}
-              </div>
-            </div>
-          </div>
-        </div>
       )}
 
       {carerixMapping && (
@@ -315,9 +311,11 @@ const PlacementDetail = () => {
         </div>
       )}
 
-      <Tabs defaultValue="uurtypes">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">
           <TabsList className="w-max sm:w-auto">
+            <TabsTrigger value="werkorder">Werkorder</TabsTrigger>
+            <TabsTrigger value="uren">Uren & facturatie</TabsTrigger>
             <TabsTrigger value="uurtypes">Uurtypes</TabsTrigger>
             <TabsTrigger value="reistypes">Reistypes</TabsTrigger>
             <TabsTrigger value="vergoedingen">Vergoedingen</TabsTrigger>
@@ -326,6 +324,10 @@ const PlacementDetail = () => {
             <TabsTrigger value="taken">Taken</TabsTrigger>
           </TabsList>
         </div>
+        <TabsContent value="werkorder">
+          <PlacementWorkOrderTab placement={placement} candidate={cand} company={company} onEdit={startEdit} />
+        </TabsContent>
+        <TabsContent value="uren"><PlacementTimesheetsTab placementId={id!} /></TabsContent>
         <TabsContent value="uurtypes"><PlacementHourTypesTab placementId={id!} organizationId={placement.organization_id} /></TabsContent>
         <TabsContent value="reistypes"><PlacementTravelTypesTab placementId={id!} organizationId={placement.organization_id} /></TabsContent>
         <TabsContent value="vergoedingen"><PlacementAllowancesTab placementId={id!} organizationId={placement.organization_id} /></TabsContent>
@@ -353,6 +355,20 @@ const PlacementDetail = () => {
           qc.invalidateQueries({ queryKey: ['placement', id] });
           setShowTerminate(false);
         }}
+      />
+
+      <PlacementConfirmationDialog
+        open={showConfirmation}
+        onOpenChange={setShowConfirmation}
+        placementId={id!}
+        candidateId={placement.candidate_id ?? undefined}
+        candidateName={`${cand?.first_name ?? ''} ${cand?.last_name ?? ''}`.trim() || 'Medewerker'}
+        candidateEmail={cand?.email ?? null}
+        candidatePhone={cand?.phone ?? null}
+        companyId={placement.company_id}
+        companyName={company?.name ?? 'Opdrachtgever'}
+        functionName={placement.function_name}
+        startDate={placement.start_date}
       />
     </div>
   );

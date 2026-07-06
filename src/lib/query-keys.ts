@@ -26,6 +26,8 @@ export const qk = {
   },
   placements: {
     forEmployee: (employeeId: string) => ['placements-for-employee', employeeId] as const,
+    workOrderOps: (placementId: string) => ['placement-workorder-ops', placementId] as const,
+    timesheets: (placementId: string) => ['placement-timesheets', placementId] as const,
     hourTypes: (placementId: string) => ['placement-hour-types', placementId] as const,
     travelTypes: (placementId: string) => ['placement-travel-types', placementId] as const,
     allowances: (placementId: string) => ['placement-allowances', placementId] as const,

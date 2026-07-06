@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { Database } from '@/integrations/supabase/types';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
+import { useAuth } from '@/contexts/AuthContext';
 import { useSearchParamState } from '@/hooks/useSearchParamState';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -13,12 +14,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
-import { Search, Users, CalendarClock, TrendingUp } from 'lucide-react';
+import { Search, Users, CalendarClock, TrendingUp, Plus } from 'lucide-react';
 import { formatDate, formatEUR } from '@/lib/format';
 import { payrollerLabel } from '@/lib/payroller';
 import { getPaginationRange } from '@/lib/pagination';
 import { EntityLink } from '@/components/ui/entity-link';
 import ErrorState from '@/components/shared/ErrorState';
+import NewPlacementSheet from '@/components/placement/NewPlacementSheet';
 
 type PlacementStatus = Database['public']['Enums']['placement_status'];
 type PayrollerType = Database['public']['Enums']['payroller_type'];
@@ -43,10 +45,12 @@ const getPlacementCandidate = (placement: any) =>
 export default function PlacementsPage() {
   const navigate = useNavigate();
   const orgId = useOrganizationId();
+  const { user } = useAuth();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useSearchParamState<PlacementStatus | 'all'>('status', 'all');
   const [payrollerFilter, setPayrollerFilter] = useState<PayrollerType | 'all'>('all');
   const [page, setPage] = useState(0);
+  const [newPlacementOpen, setNewPlacementOpen] = useState(false);
 
   const { data: placements, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['placements-list', orgId, statusFilter, payrollerFilter],
@@ -94,6 +98,10 @@ export default function PlacementsPage() {
           <h1 className="text-2xl font-semibold mb-1">Plaatsingen</h1>
           <p className="text-sm text-muted-foreground">Overzicht van alle plaatsingen</p>
         </div>
+        <Button onClick={() => setNewPlacementOpen(true)} className="gap-1.5">
+          <Plus className="h-4 w-4" />
+          Nieuwe plaatsing
+        </Button>
       </div>
 
       {/* KPI's */}
@@ -236,6 +244,13 @@ export default function PlacementsPage() {
           )}
         </div>
       )}
+
+      <NewPlacementSheet
+        open={newPlacementOpen}
+        onClose={() => setNewPlacementOpen(false)}
+        orgId={orgId}
+        userId={user?.id}
+      />
     </div>
   );
 }
