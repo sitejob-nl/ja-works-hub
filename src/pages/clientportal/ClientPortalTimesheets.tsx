@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useClientPortal } from '@/contexts/ClientPortalContext';
+import { useSearchParamState } from '@/hooks/useSearchParamState';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -31,6 +32,7 @@ const ClientPortalTimesheets = () => {
   const [rejectNotes, setRejectNotes] = useState('');
   const [entryOpen, setEntryOpen] = useState(false);
   const [entryForm, setEntryForm] = useState({ placement_id: '', work_date: '', hours: '8', overtime_hours: '0', notes: '' });
+  const [placementFilter, setPlacementFilter] = useSearchParamState<string>('placement_id', 'all');
 
   const entryFlow = company?.timesheet_entry_flow ?? 'medewerker';
   const canClientEnter = entryFlow === 'opdrachtgever' || entryFlow === 'kloksysteem';
@@ -53,7 +55,7 @@ const ClientPortalTimesheets = () => {
   const weekLabel = `${weekStart.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })} - ${weekEnd.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' })}`;
 
   const { data: timesheets = [], isLoading } = useQuery({
-    queryKey: ['client-portal-timesheets', company?.id, weekOffset, tab, entryFlow],
+    queryKey: ['client-portal-timesheets', company?.id, weekOffset, tab, entryFlow, placementFilter],
     queryFn: async () => {
       let query = supabase
         .from('timesheets')
@@ -75,6 +77,7 @@ const ClientPortalTimesheets = () => {
       } else {
         query = query.not('client_approved', 'is', null);
       }
+      if (placementFilter !== 'all') query = query.eq('placement_id', placementFilter);
 
       const { data, error } = await query;
       if (error) throw error;
@@ -241,6 +244,20 @@ const ClientPortalTimesheets = () => {
           <ChevronRight className="h-4 w-4" />
         </Button>
       </div>
+
+      {placementFilter !== 'all' && (
+        <Badge variant="secondary" className="w-fit gap-2 py-1.5">
+          Gefilterd op plaatsing
+          <button
+            type="button"
+            className="rounded-sm px-1 hover:bg-background/80"
+            onClick={() => setPlacementFilter('all')}
+            aria-label="Plaatsingfilter wissen"
+          >
+            ×
+          </button>
+        </Badge>
+      )}
 
       {/* Bulk actions */}
       {!canClientEnter && isPending && selected.size > 0 && (

@@ -1,11 +1,12 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { usePortal } from '@/contexts/PortalContext';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { MapPin, ChevronDown, ChevronUp } from 'lucide-react';
+import { Clock, Mail, MapPin, Phone, ChevronDown, ChevronUp } from 'lucide-react';
 import { formatDate, formatEUR } from '@/lib/format';
 
 const statusColors: Record<string, string> = {
@@ -122,15 +123,30 @@ const PortalPlacements = () => {
             {p.companies?.phone && (
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Telefoon</span>
-                <span className="font-medium">{p.companies.phone}</span>
+                <a className="font-medium hover:underline" href={`tel:${p.companies.phone}`}>{p.companies.phone}</a>
               </div>
             )}
             {p.companies?.email && (
               <div className="flex justify-between">
                 <span className="text-muted-foreground">E-mail</span>
-                <span className="font-medium">{p.companies.email}</span>
+                <a className="font-medium hover:underline" href={`mailto:${p.companies.email}`}>{p.companies.email}</a>
               </div>
             )}
+            <div className="flex flex-wrap gap-2 pt-2">
+              <Button asChild size="sm" variant="outline" className="gap-1.5">
+                <Link to="/portaal/uren"><Clock className="h-3.5 w-3.5" /> Uren</Link>
+              </Button>
+              {p.companies?.phone && (
+                <Button asChild size="sm" variant="outline" className="gap-1.5">
+                  <a href={`tel:${p.companies.phone}`}><Phone className="h-3.5 w-3.5" /> Bel</a>
+                </Button>
+              )}
+              {p.companies?.email && (
+                <Button asChild size="sm" variant="outline" className="gap-1.5">
+                  <a href={`mailto:${p.companies.email}`}><Mail className="h-3.5 w-3.5" /> Mail</a>
+                </Button>
+              )}
+            </div>
           </CardContent>
         </Card>
       ))}
