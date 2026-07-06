@@ -15,9 +15,15 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Plus, Eye, Send, FileText, Link2, ShieldCheck } from 'lucide-react';
-import { formatDate } from '@/lib/format';
+import { formatDate, formatEUR } from '@/lib/format';
 import { toast } from 'sonner';
 import { logAudit } from '@/lib/audit';
+import {
+  contractTemplateVariableLabel,
+  extractContractTemplateVariables,
+  renderContractTemplate,
+  type ContractTemplateRenderValues,
+} from '@/lib/contract-templates';
 
 const statusColors: Record<string, string> = {
   concept: 'bg-muted text-muted-foreground border-0',
@@ -48,6 +54,7 @@ const EmployeeContractsTab = ({ candidateId, candidate, employment }: { candidat
   const [contractContent, setContractContent] = useState('');
   const [contractTitle, setContractTitle] = useState('');
   const [viewContract, setViewContract] = useState<any>(null);
+  const [templateIssues, setTemplateIssues] = useState<{ missingVariables: string[]; unknownVariables: string[] }>({ missingVariables: [], unknownVariables: [] });
 
   const { data: contracts = [] } = useQuery({
     queryKey: qk.employees.contracts(candidateId),
@@ -88,7 +95,7 @@ const EmployeeContractsTab = ({ candidateId, candidate, employment }: { candidat
     queryFn: async () => {
       const { data } = await supabase
         .from('placements')
-        .select('*, companies(name)')
+        .select('*, companies(name, phone, email, address_city)')
         .eq('candidate_id', candidateId)
         .eq('status', 'actief')
         .limit(1)
@@ -97,20 +104,34 @@ const EmployeeContractsTab = ({ candidateId, candidate, employment }: { candidat
     },
   });
 
-  const applyMergeFields = (template: string) => {
-    const today = new Date().toISOString().split('T')[0];
-    return template
-      .replace(/\{\{employee_name\}\}/g, `${candidate?.first_name ?? ''} ${candidate?.last_name ?? ''}`.trim())
-      .replace(/\{\{employee_number\}\}/g, candidate?.employee_number ?? '')
-      .replace(/\{\{start_date\}\}/g, employment?.start_date ?? '')
-      .replace(/\{\{end_date\}\}/g, employment?.end_date ?? '')
-      .replace(/\{\{function_name\}\}/g, placement?.function_name ?? '')
-      .replace(/\{\{hourly_rate\}\}/g, placement?.hourly_rate?.toString() ?? '')
-      .replace(/\{\{contract_hours\}\}/g, employment?.contract_hours?.toString() ?? '')
-      .replace(/\{\{contract_type\}\}/g, employment?.contract_type ?? '')
-      .replace(/\{\{company_name\}\}/g, (placement?.companies as any)?.name ?? '')
-      .replace(/\{\{organization_name\}\}/g, org?.name ?? '')
-      .replace(/\{\{today\}\}/g, today);
+  const buildTemplateValues = (): ContractTemplateRenderValues => {
+    const company = placement?.companies as any;
+    const workDays = Array.isArray(placement?.work_days) ? placement.work_days.join(', ') : '';
+    const dateValue = (value: string | null | undefined) => value ? formatDate(value) : '';
+    return {
+      first_name: candidate?.first_name ?? '',
+      last_name: candidate?.last_name ?? '',
+      employee_name: `${candidate?.first_name ?? ''} ${candidate?.last_name ?? ''}`.trim(),
+      employee_number: candidate?.employee_number ?? '',
+      candidate_phone: candidate?.phone ?? '',
+      candidate_email: candidate?.email ?? '',
+      start_date: dateValue(employment?.start_date ?? placement?.start_date),
+      end_date: dateValue(employment?.end_date ?? placement?.end_date),
+      expected_end_date: dateValue(placement?.expected_end_date),
+      function_name: placement?.function_name ?? '',
+      hourly_rate: placement?.hourly_rate != null ? formatEUR(placement.hourly_rate) : '',
+      client_hourly_rate: placement?.client_hourly_rate != null ? formatEUR(placement.client_hourly_rate) : '',
+      overtime_rate: placement?.overtime_rate != null ? formatEUR(placement.overtime_rate) : '',
+      contract_hours: employment?.contract_hours?.toString() ?? placement?.cao_hours?.toString() ?? '',
+      contract_type: employment?.contract_type ?? '',
+      company_name: company?.name ?? '',
+      company_phone: company?.phone ?? '',
+      company_email: company?.email ?? '',
+      work_location: placement?.work_location ?? company?.address_city ?? '',
+      work_days: workDays,
+      organization_name: org?.name ?? '',
+      today: formatDate(new Date().toISOString()),
+    };
   };
 
   const handleSelectTemplate = (templateId: string) => {
@@ -118,12 +139,23 @@ const EmployeeContractsTab = ({ candidateId, candidate, employment }: { candidat
     const tpl = templates.find((t: any) => t.id === templateId);
     if (tpl) {
       setContractTitle(tpl.name);
-      setContractContent(applyMergeFields(tpl.content));
+      const rendered = renderContractTemplate(tpl.content, buildTemplateValues());
+      setTemplateIssues({
+        missingVariables: rendered.missingVariables,
+        unknownVariables: rendered.unknownVariables,
+      });
+      setContractContent(rendered.content);
     }
   };
 
+  const remainingMergeFields = extractContractTemplateVariables(contractContent);
+  const hasMissingMarkers = contractContent.includes('[ontbreekt:');
+
   const createContract = useMutation({
     mutationFn: async () => {
+      if (remainingMergeFields.length > 0 || hasMissingMarkers) {
+        throw new Error('Contract bevat nog oningevulde templatevelden');
+      }
       const token = crypto.randomUUID();
       const employeeId = await resolveEmployeeId(candidateId);
       await unwrap(supabase.from('contracts').insert({
@@ -148,6 +180,7 @@ const EmployeeContractsTab = ({ candidateId, candidate, employment }: { candidat
       setContractContent('');
       setContractTitle('');
       setSelectedTemplate('');
+      setTemplateIssues({ missingVariables: [], unknownVariables: [] });
       toast.success('Contract aangemaakt');
     },
     onError: (e: any) => toast.error(e.message),
@@ -230,10 +263,21 @@ const EmployeeContractsTab = ({ candidateId, candidate, employment }: { candidat
               rows={12}
               className="font-mono text-xs"
             />
+            {(remainingMergeFields.length > 0 || hasMissingMarkers) && (
+              <div className="mt-2 rounded-md border border-amber-200 bg-amber-50/60 px-3 py-2 text-xs text-amber-900">
+                {hasMissingMarkers && templateIssues.missingVariables.length > 0 && (
+                  <p>Ontbrekende waarden: {templateIssues.missingVariables.map(contractTemplateVariableLabel).join(', ')}.</p>
+                )}
+                {remainingMergeFields.length > 0 && (
+                  <p>Resterende merge-velden: {remainingMergeFields.map(contractTemplateVariableLabel).join(', ')}.</p>
+                )}
+                <p>Vul de gemarkeerde waarden in en verwijder alle resterende merge-velden voordat het contract wordt aangemaakt.</p>
+              </div>
+            )}
           </div>
           <div className="flex gap-2 justify-end">
             <Button variant="ghost" size="sm" onClick={() => setCreating(false)}>Annuleren</Button>
-            <Button size="sm" onClick={() => createContract.mutate()} disabled={!contractTitle || !contractContent || createContract.isPending}>
+            <Button size="sm" onClick={() => createContract.mutate()} disabled={!contractTitle || !contractContent || remainingMergeFields.length > 0 || hasMissingMarkers || createContract.isPending}>
               {createContract.isPending ? 'Aanmaken...' : 'Contract aanmaken'}
             </Button>
           </div>

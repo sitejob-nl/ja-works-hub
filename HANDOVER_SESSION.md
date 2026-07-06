@@ -21,7 +21,7 @@ projectsamenvatting.
 - Supabase project: `noaupcteygfvlyymqtew`.
 - Edge functions + DB-migrations worden **handmatig** gedeployed (geen edge/migratie-CI). Frontend gaat via GitHub/Vercel.
 - Verdict laatste readiness-ronde (2026-06-25): **opleverbaar**; kernflow staat op `main`. Resterende blockers zijn
-  klant/acceptatie-werk (browser-QA + contracttemplates), geen code-blockers.
+  klant/acceptatie-werk (browser-QA + definitieve juridische template-inhoud), geen code-blockers.
 
 ## Wat er sinds de vorige handover (2026-06-17) is geland
 
@@ -81,5 +81,5 @@ QA/demo-toegang via env-keys: `DEMO_ORG_*` (interne admin in demo-org `6dedabe4-
 1. **`git fetch origin main` + branch/worktree vanaf `origin/main`** — niet vanaf deze stale branch.
 2. **Open PR #125** (dode index + `cv_fts`-fix) reviewen/mergen; daarna advisors opnieuw draaien.
 3. Bij AI-werk: lees de huidige `analyze-cv` op `main` (Gemini-only, #116); werk CLAUDE.md's AI-sectie bij als je daar toch zit.
-4. Klant-/acceptatieblockers oppakken: browser-QA kernflow + contracttemplates.
+4. Klant-/acceptatieblockers oppakken: browser-QA kernflow + juridische goedkeuring van actieve contracttemplates.
 5. Na elke DDL: live toegepaste migration ook in `supabase/migrations/` zetten + `get_advisors` opnieuw draaien.

@@ -16,12 +16,14 @@ import { Switch } from '@/components/ui/switch';
 import { AlertTriangle, CheckCircle2, FileText, Plus, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDate } from '@/lib/format';
-
-const MERGE_FIELDS = [
-  '{{employee_name}}', '{{employee_number}}', '{{start_date}}', '{{end_date}}',
-  '{{function_name}}', '{{hourly_rate}}', '{{contract_hours}}', '{{contract_type}}',
-  '{{company_name}}', '{{organization_name}}', '{{today}}',
-];
+import {
+  CONTRACT_TEMPLATE_SAMPLE_VALUES,
+  CONTRACT_TEMPLATE_VARIABLES,
+  contractTemplateVariableLabel,
+  contractTemplateVariableToken,
+  renderContractTemplate,
+  validateContractTemplateDefinition,
+} from '@/lib/contract-templates';
 
 const TEMPLATE_TYPES = [
   { value: 'employment_contract', label: 'Arbeidsovereenkomst' },
@@ -55,6 +57,12 @@ const ContractTemplatesSettings = () => {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [form, setForm] = useState({ name: '', template_type: 'employment_contract', template_status: 'concept', is_placeholder: false, content: '' });
+  const formValidation = validateContractTemplateDefinition(form.content);
+  const preview = renderContractTemplate(form.content, CONTRACT_TEMPLATE_SAMPLE_VALUES);
+  const activeTemplateBlocked = form.template_status === 'actief' && (
+    form.is_placeholder ||
+    !formValidation.canActivate
+  );
 
   const { data: templates = [] } = useQuery<any[]>({
     queryKey: ['contract-templates', orgId],
@@ -81,6 +89,9 @@ const ContractTemplatesSettings = () => {
 
   const save = useMutation({
     mutationFn: async () => {
+      if (form.template_status === 'actief' && activeTemplateBlocked) {
+        throw new Error('Template kan pas actief worden zonder placeholders en onbekende variabelen');
+      }
       if (editing) {
         const { error } = await supabase.from('contract_templates' as any)
           .update({
@@ -123,6 +134,12 @@ const ContractTemplatesSettings = () => {
     mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
       const template = templates.find((t: any) => t.id === id);
       if (is_active && template?.is_placeholder) throw new Error('Placeholder-template kan niet actief worden');
+      if (is_active) {
+        const validation = validateContractTemplateDefinition(template?.content ?? '');
+        if (!validation.canActivate) {
+          throw new Error('Template bevat nog placeholders of onbekende variabelen');
+        }
+      }
       const { error } = await supabase.from('contract_templates' as any).update({
         is_active,
         template_status: is_active ? 'actief' : 'concept',
@@ -221,7 +238,17 @@ const ContractTemplatesSettings = () => {
                 <TableRow key={t.id}>
                   <TableCell className="font-medium">{t.name}</TableCell>
                   <TableCell><Badge variant="secondary">{templateTypeLabel(t.template_type)}</Badge></TableCell>
-                  <TableCell><Badge variant={t.template_status === 'actief' ? 'default' : 'outline'}>{t.template_status ?? (t.is_active ? 'actief' : 'concept')}</Badge></TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap gap-1">
+                      <Badge variant={t.template_status === 'actief' ? 'default' : 'outline'}>{t.template_status ?? (t.is_active ? 'actief' : 'concept')}</Badge>
+                      {validateContractTemplateDefinition(t.content).unknownVariables.length > 0 && (
+                        <Badge variant="outline" className="border-amber-300 text-amber-700">Variabelen</Badge>
+                      )}
+                      {validateContractTemplateDefinition(t.content).hasPlaceholderContent && (
+                        <Badge variant="outline" className="border-amber-300 text-amber-700">Placeholder</Badge>
+                      )}
+                    </div>
+                  </TableCell>
                   <TableCell>
                     <Switch checked={t.is_active && t.template_status === 'actief' && !t.is_placeholder} onCheckedChange={(v) => toggleActive.mutate({ id: t.id, is_active: v })} />
                   </TableCell>
@@ -280,9 +307,16 @@ const ContractTemplatesSettings = () => {
             <div>
               <Label>Merge fields</Label>
               <div className="flex flex-wrap gap-1.5 mt-1">
-                {MERGE_FIELDS.map(f => (
-                  <Button key={f} size="sm" variant="outline" className="text-xs h-7" onClick={() => insertField(f)}>
-                    {f}
+                {CONTRACT_TEMPLATE_VARIABLES.map(variable => (
+                  <Button
+                    key={variable.key}
+                    size="sm"
+                    variant="outline"
+                    className="text-xs h-7"
+                    title={variable.label}
+                    onClick={() => insertField(contractTemplateVariableToken(variable.key))}
+                  >
+                    {contractTemplateVariableToken(variable.key)}
                   </Button>
                 ))}
               </div>
@@ -296,10 +330,28 @@ const ContractTemplatesSettings = () => {
                 className="font-mono text-xs"
                 placeholder="UITZENDOVEREENKOMST&#10;&#10;Ondergetekenden:&#10;{{organization_name}}, hierna te noemen 'werkgever'&#10;en&#10;{{employee_name}}, hierna te noemen 'werknemer'&#10;&#10;zijn het volgende overeengekomen:&#10;..."
               />
+              {(formValidation.unknownVariables.length > 0 || formValidation.hasPlaceholderContent) && (
+                <div className="mt-2 rounded-md border border-amber-200 bg-amber-50/60 px-3 py-2 text-xs text-amber-900">
+                  {formValidation.unknownVariables.length > 0 && (
+                    <p>
+                      Onbekende variabelen: {formValidation.unknownVariables.map(contractTemplateVariableLabel).join(', ')}.
+                    </p>
+                  )}
+                  {formValidation.hasPlaceholderContent && (
+                    <p>De inhoud bevat nog placeholdertekst zoals TODO, TBD, lorem ipsum of [invullen].</p>
+                  )}
+                </div>
+              )}
+            </div>
+            <div>
+              <Label>Voorbeeld</Label>
+              <div className="mt-1 max-h-48 overflow-y-auto rounded-md border bg-muted/30 p-3 text-xs whitespace-pre-wrap">
+                {preview.content || 'Nog geen inhoud'}
+              </div>
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="ghost" onClick={() => setOpen(false)}>Annuleren</Button>
-              <Button onClick={() => save.mutate()} disabled={!form.name || !form.content || (form.is_placeholder && form.template_status === 'actief') || save.isPending}>
+              <Button onClick={() => save.mutate()} disabled={!form.name || !form.content || activeTemplateBlocked || save.isPending}>
                 {save.isPending ? 'Opslaan...' : 'Opslaan'}
               </Button>
             </div>
