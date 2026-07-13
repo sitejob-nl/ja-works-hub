@@ -309,6 +309,20 @@ const AppSidebar = ({ onNavigate }: AppSidebarProps) => {
 
       {/* Bottom */}
       <div className="border-t border-sidebar-border px-2 py-3 space-y-0.5">
+        <NavLink
+          to="/mijn-outlook"
+          onClick={handleNavClick}
+          className={cn(
+            'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors',
+            location.pathname === '/mijn-outlook'
+              ? 'bg-sidebar-hover text-sidebar-active'
+              : 'text-sidebar-foreground hover:bg-sidebar-hover hover:text-sidebar-active'
+          )}
+        >
+          <Mail className="h-4 w-4 shrink-0" />
+          {!collapsed && <span>Mijn Outlook</span>}
+        </NavLink>
+
         {isPermissionAllowed('settings.manage') && (
           <NavLink
             to="/instellingen"

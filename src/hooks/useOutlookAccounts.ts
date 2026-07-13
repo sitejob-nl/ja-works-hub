@@ -76,6 +76,7 @@ export async function invokeOutlookFunction<T = any>(functionName: string, body:
 
 export function useOutlookInvoke() {
   const navigate = useNavigate();
+  const { profile } = useAuth();
 
   return useCallback(async <T = any,>(functionName: string, body: Record<string, unknown>) => {
     try {
@@ -84,13 +85,13 @@ export function useOutlookInvoke() {
       const message = error instanceof Error ? error.message : 'Outlook actie mislukt';
       if (/consent|AADSTS65001|reconnect|expired|verlopen|needs_reconnect/i.test(message)) {
         toast.error(/consent|AADSTS65001/i.test(message)
-          ? 'Microsoft admin consent ontbreekt. Geef toestemming via Instellingen > Outlook.'
-          : 'Outlook koppeling verlopen. Koppel opnieuw via Instellingen.');
-        navigate('/instellingen');
+          ? 'Microsoft admin consent ontbreekt. Vraag je beheerder dit voor de organisatie in te stellen.'
+          : 'Outlook koppeling verlopen. Herkoppel je persoonlijke Outlook of vraag je beheerder om hulp.');
+        navigate(profile?.role === 'admin' ? '/instellingen' : '/mijn-outlook');
       }
       throw error;
     }
-  }, [navigate]);
+  }, [navigate, profile?.role]);
 }
 
 export function useOutlookAccounts(capability: OutlookCapability = 'any') {

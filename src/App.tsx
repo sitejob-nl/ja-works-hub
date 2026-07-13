@@ -37,6 +37,7 @@ const SuperAdminCvBackfill = lazyRoute(() => import("@/pages/superadmin/SuperAdm
 const Dashboard = lazyRoute(() => import("@/pages/Dashboard"));
 const NotFound = lazyRoute(() => import("./pages/NotFound"));
 const SettingsPage = lazyRoute(() => import("@/pages/Settings"));
+const PersonalOutlook = lazyRoute(() => import("@/pages/PersonalOutlook"));
 const Planning = lazyRoute(() => import("@/pages/Planning"));
 const Companies = lazyRoute(() => import("@/pages/Companies"));
 const CompanyNew = lazyRoute(() => import("@/pages/CompanyNew"));
@@ -216,6 +217,7 @@ const App = () => (
                 <Route path="/email" element={<Email />} />
                 <Route path="/email/templates" element={<EmailTemplates />} />
                 <Route path="/agenda" element={<Agenda />} />
+                <Route path="/mijn-outlook" element={<PersonalOutlook />} />
                 <Route path="/whatsapp" element={<WhatsAppPage />} />
                 <Route path="/bulk-campaigns" element={<BulkCampaigns />} />
                 <Route path="/bulk-campaigns/:id" element={<BulkCampaignDetail />} />
