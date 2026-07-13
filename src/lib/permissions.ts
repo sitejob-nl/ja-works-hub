@@ -24,6 +24,8 @@ export type PermissionKey =
   | 'settings.permissions.manage';
 
 export type RolePermissionMatrix = Record<UserRole, Record<PermissionKey, boolean>>;
+export type UserPermissionOverrides = Partial<Record<PermissionKey, boolean>>;
+export type PermissionSource = 'admin' | 'user_allow' | 'user_deny' | 'role';
 
 export type PermissionDefinition = {
   key: PermissionKey;
@@ -65,7 +67,8 @@ export const PERMISSIONS: PermissionDefinition[] = [
   { key: 'settings.permissions.manage', label: 'Rechten beheren', description: 'Rolrechten aanpassen voor de organisatie.', group: 'Instellingen' },
 ];
 
-const ALL_PERMISSION_KEYS = PERMISSIONS.map((permission) => permission.key);
+export const ALL_PERMISSION_KEYS = PERMISSIONS.map((permission) => permission.key);
+export const INDIVIDUALLY_CONFIGURABLE_ROLES: UserRole[] = ['intercedent', 'backoffice', 'finance'];
 
 const defaults = (enabled: PermissionKey[]): Record<PermissionKey, boolean> => {
   const set = new Set(enabled);
@@ -151,6 +154,63 @@ export function roleHasPermission(role: UserRole | string | null | undefined, pe
   if (!role || !isRole(role)) return false;
   if (role === 'admin') return true;
   return normalizeRolePermissions(raw)[role][permission] === true;
+}
+
+export function normalizeUserPermissionOverrides(raw: unknown): UserPermissionOverrides {
+  const normalized: UserPermissionOverrides = {};
+
+  if (Array.isArray(raw)) {
+    for (const row of raw) {
+      if (!row || typeof row !== 'object') continue;
+      const permission = (row as Record<string, unknown>).permission_key;
+      const allowed = (row as Record<string, unknown>).allowed;
+      if (typeof permission === 'string' && isPermission(permission) && typeof allowed === 'boolean') {
+        normalized[permission] = allowed;
+      }
+    }
+    return normalized;
+  }
+
+  if (!raw || typeof raw !== 'object') return normalized;
+  for (const [permission, allowed] of Object.entries(raw as Record<string, unknown>)) {
+    if (isPermission(permission) && typeof allowed === 'boolean') normalized[permission] = allowed;
+  }
+  return normalized;
+}
+
+export function effectivePermissionDecision(
+  role: UserRole | string | null | undefined,
+  permission: PermissionKey,
+  rolePermissions?: unknown,
+  userOverrides?: unknown,
+): { allowed: boolean; source: PermissionSource } {
+  if (role === 'admin') return { allowed: true, source: 'admin' };
+
+  if (role && INDIVIDUALLY_CONFIGURABLE_ROLES.includes(role as UserRole)) {
+    const overrides = normalizeUserPermissionOverrides(userOverrides);
+    if (Object.prototype.hasOwnProperty.call(overrides, permission)) {
+      const allowed = overrides[permission] === true;
+      return { allowed, source: allowed ? 'user_allow' : 'user_deny' };
+    }
+  }
+
+  return {
+    allowed: roleHasPermission(role, permission, rolePermissions),
+    source: 'role',
+  };
+}
+
+export function userHasPermission(
+  role: UserRole | string | null | undefined,
+  permission: PermissionKey,
+  rolePermissions?: unknown,
+  userOverrides?: unknown,
+): boolean {
+  return effectivePermissionDecision(role, permission, rolePermissions, userOverrides).allowed;
+}
+
+export function serializeUserPermissionOverrides(raw: unknown): UserPermissionOverrides {
+  return normalizeUserPermissionOverrides(raw);
 }
 
 export function serializeRolePermissions(matrix: RolePermissionMatrix): Record<UserRole, Record<PermissionKey, boolean>> {

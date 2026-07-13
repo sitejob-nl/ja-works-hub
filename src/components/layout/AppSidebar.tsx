@@ -10,7 +10,8 @@ import {
   ChevronLeft, ChevronRight, Search, UserSearch, Calculator, ClipboardList, Fuel, FileText, BarChart3, CheckSquare, BarChart2, FolderHeart, GitCompareArrows, Database, TrendingUp,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { roleHasPermission, type PermissionKey } from '@/lib/permissions';
+import type { PermissionKey } from '@/lib/permissions';
+import { useEffectivePermissions } from '@/hooks/usePermissions';
 import { useEffect } from 'react';
 
 interface AppSidebarProps {
@@ -95,6 +96,7 @@ const navGroups: NavGroup[] = [
 const AppSidebar = ({ onNavigate }: AppSidebarProps) => {
   const [collapsed, setCollapsed] = useState(false);
   const { profile } = useAuth();
+  const { hasPermission } = useEffectivePermissions();
   const location = useLocation();
 
   const firstName = profile?.full_name?.split(' ')[0] ?? '';
@@ -173,7 +175,7 @@ const AppSidebar = ({ onNavigate }: AppSidebarProps) => {
 
   const isPermissionAllowed = (permission?: PermissionKey): boolean => {
     if (!permission) return true;
-    return roleHasPermission(userRole, permission, (org?.settings as any)?.role_permissions);
+    return hasPermission(permission);
   };
 
   const filteredGroups = navGroups

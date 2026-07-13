@@ -1,4 +1,10 @@
-import { createAdminClient, jsonResponse, requireInternalProfile } from "../_shared/auth.ts";
+import {
+  createAdminClient,
+  EDGE_PERMISSION_KEYS,
+  jsonResponse,
+  requireInternalProfile,
+  type EdgePermissionKey,
+} from "../_shared/auth.ts";
 import { type BrandTheme, brandButton, escapeHtml, renderBrandedEmail, resolveBrandTheme } from "../_shared/email-layout.ts";
 import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
 import { sendViaOutlookAccount } from "../_shared/outlook-send.ts";
@@ -7,6 +13,7 @@ import { buildOrganizationPublicUrl } from "../_shared/public-url.ts";
 type InternalRole = "admin" | "intercedent" | "backoffice" | "finance";
 
 const INTERNAL_ROLES: InternalRole[] = ["admin", "intercedent", "backoffice", "finance"];
+const PERMISSION_KEY_SET = new Set<EdgePermissionKey>(EDGE_PERMISSION_KEYS);
 const ROLE_LABELS: Record<InternalRole, string> = {
   admin: "Admin",
   intercedent: "Intercedent",
@@ -22,6 +29,25 @@ function normalizeEmail(value: unknown): string {
 
 function cleanName(value: unknown): string {
   return String(value ?? "").trim().replace(/\s+/g, " ");
+}
+
+function assertPermissionOverrides(value: unknown): Partial<Record<EdgePermissionKey, boolean>> {
+  if (value === undefined || value === null) return {};
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Individuele rechten moeten als object worden aangeleverd");
+  }
+
+  const overrides: Partial<Record<EdgePermissionKey, boolean>> = {};
+  for (const [permission, allowed] of Object.entries(value as Record<string, unknown>)) {
+    if (!PERMISSION_KEY_SET.has(permission as EdgePermissionKey)) {
+      throw new Error(`Onbekend recht: ${permission}`);
+    }
+    if (typeof allowed !== "boolean") {
+      throw new Error(`Recht ${permission} moet true of false zijn`);
+    }
+    overrides[permission as EdgePermissionKey] = allowed;
+  }
+  return overrides;
 }
 
 function assertInternalRole(value: unknown): InternalRole {
@@ -145,7 +171,11 @@ async function sendInvite(admin: ReturnType<typeof createAdminClient>, invite: a
 }
 
 async function listUsersAndInvites(admin: ReturnType<typeof createAdminClient>, orgId: string) {
-  const [{ data: users, error: usersError }, { data: invites, error: invitesError }] = await Promise.all([
+  const [
+    { data: users, error: usersError },
+    { data: invites, error: invitesError },
+    { data: permissionOverrides, error: permissionOverridesError },
+  ] = await Promise.all([
     admin
       .from("profiles")
       .select("id, email, full_name, role, is_active, created_at, updated_at")
@@ -158,13 +188,34 @@ async function listUsersAndInvites(admin: ReturnType<typeof createAdminClient>, 
       .eq("organization_id", orgId)
       .order("created_at", { ascending: false })
       .limit(100),
+    admin
+      .from("user_permission_overrides")
+      .select("user_id, permission_key, allowed")
+      .eq("organization_id", orgId),
   ]);
 
   if (usersError) throw usersError;
   if (invitesError) throw invitesError;
+  if (permissionOverridesError) throw permissionOverridesError;
+
+  const overridesByUser = new Map<string, Partial<Record<EdgePermissionKey, boolean>>>();
+  for (const row of permissionOverrides ?? []) {
+    const current = overridesByUser.get(row.user_id) ?? {};
+    if (PERMISSION_KEY_SET.has(row.permission_key as EdgePermissionKey) && typeof row.allowed === "boolean") {
+      current[row.permission_key as EdgePermissionKey] = row.allowed;
+    }
+    overridesByUser.set(row.user_id, current);
+  }
 
   return {
-    users: users ?? [],
+    users: (users ?? []).map((user) => {
+      const overrides = overridesByUser.get(user.id) ?? {};
+      return {
+        ...user,
+        permission_overrides: overrides,
+        permission_override_count: Object.keys(overrides).length,
+      };
+    }),
     invites: (invites ?? []).map((invite) => ({ ...invite, status: inviteStatus(invite) })),
   };
 }
@@ -215,6 +266,43 @@ Deno.serve(async (req) => {
 
     if (action === "list") {
       return json(await listUsersAndInvites(admin, auth.organizationId));
+    }
+
+    if (action === "update_permissions") {
+      const profileId = String(body.profile_id ?? "");
+      const overrides = assertPermissionOverrides(body.permission_overrides);
+
+      const { data: target, error: targetError } = await admin
+        .from("profiles")
+        .select("id, role")
+        .eq("id", profileId)
+        .eq("organization_id", auth.organizationId)
+        .maybeSingle();
+      if (targetError) throw targetError;
+      if (!target) return json({ error: "Gebruiker niet gevonden" }, 404);
+      if (target.role === "admin") {
+        return json({ error: "Adminrechten kunnen niet individueel worden aangepast" }, 400);
+      }
+      if (!["intercedent", "backoffice", "finance"].includes(target.role)) {
+        return json({ error: "Alleen interne gebruikers ondersteunen individuele rechten" }, 400);
+      }
+
+      const { data: savedOverrides, error: saveError } = await admin.rpc(
+        "replace_user_permission_overrides",
+        {
+          p_organization_id: auth.organizationId,
+          p_user_id: profileId,
+          p_actor_id: auth.userId,
+          p_overrides: overrides,
+        },
+      );
+      if (saveError) throw saveError;
+
+      return json({
+        profile_id: profileId,
+        permission_overrides: savedOverrides ?? {},
+        permission_override_count: Object.keys(savedOverrides ?? {}).length,
+      });
     }
 
     if (action === "create") {

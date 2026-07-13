@@ -16,6 +16,10 @@
  * This is intentionally partial: extend per domain as call sites are migrated.
  */
 export const qk = {
+  permissions: {
+    roleMatrix: (orgId: string) => ['role-permissions', orgId] as const,
+    userOverrides: (orgId: string, userId: string) => ['user-permission-overrides', orgId, userId] as const,
+  },
   candidates: {
     all: (orgId: string) => ['candidates', orgId] as const,
     list: (orgId: string, filters: Record<string, unknown> = {}) =>
