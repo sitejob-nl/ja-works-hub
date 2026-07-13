@@ -4044,6 +4044,105 @@ export type Database = {
           },
         ]
       }
+      internal_user_invites: {
+        Row: {
+          accepted_user_id: string | null
+          created_at: string
+          email: string
+          expires_at: string
+          full_name: string
+          id: string
+          invited_by: string | null
+          last_error: string | null
+          organization_id: string
+          revoked_at: string | null
+          revoked_by: string | null
+          role: Database["public"]["Enums"]["user_role"]
+          sent_at: string | null
+          sent_by: string | null
+          sent_channel: string | null
+          token: string
+          updated_at: string
+          used_at: string | null
+        }
+        Insert: {
+          accepted_user_id?: string | null
+          created_at?: string
+          email: string
+          expires_at?: string
+          full_name: string
+          id?: string
+          invited_by?: string | null
+          last_error?: string | null
+          organization_id: string
+          revoked_at?: string | null
+          revoked_by?: string | null
+          role: Database["public"]["Enums"]["user_role"]
+          sent_at?: string | null
+          sent_by?: string | null
+          sent_channel?: string | null
+          token?: string
+          updated_at?: string
+          used_at?: string | null
+        }
+        Update: {
+          accepted_user_id?: string | null
+          created_at?: string
+          email?: string
+          expires_at?: string
+          full_name?: string
+          id?: string
+          invited_by?: string | null
+          last_error?: string | null
+          organization_id?: string
+          revoked_at?: string | null
+          revoked_by?: string | null
+          role?: Database["public"]["Enums"]["user_role"]
+          sent_at?: string | null
+          sent_by?: string | null
+          sent_channel?: string | null
+          token?: string
+          updated_at?: string
+          used_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "internal_user_invites_accepted_user_id_fkey"
+            columns: ["accepted_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "internal_user_invites_invited_by_fkey"
+            columns: ["invited_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "internal_user_invites_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "internal_user_invites_revoked_by_fkey"
+            columns: ["revoked_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "internal_user_invites_sent_by_fkey"
+            columns: ["sent_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invoice_lines: {
         Row: {
           allowances_amount: number
@@ -8437,6 +8536,58 @@ export type Database = {
           },
         ]
       }
+      user_permission_overrides: {
+        Row: {
+          allowed: boolean
+          created_at: string
+          organization_id: string
+          permission_key: string
+          updated_at: string
+          updated_by: string | null
+          user_id: string
+        }
+        Insert: {
+          allowed: boolean
+          created_at?: string
+          organization_id: string
+          permission_key: string
+          updated_at?: string
+          updated_by?: string | null
+          user_id: string
+        }
+        Update: {
+          allowed?: boolean
+          created_at?: string
+          organization_id?: string
+          permission_key?: string
+          updated_at?: string
+          updated_by?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_permission_overrides_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_permission_overrides_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_permission_overrides_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       vacancies: {
         Row: {
           company_id: string
@@ -9578,6 +9729,15 @@ export type Database = {
         Args: { p_mail_account_id: string }
         Returns: undefined
       }
+      replace_user_permission_overrides: {
+        Args: {
+          p_actor_id: string
+          p_organization_id: string
+          p_overrides: Json
+          p_user_id: string
+        }
+        Returns: Json
+      }
       resolve_organization_domain: {
         Args: { p_host: string }
         Returns: {
@@ -9589,6 +9749,7 @@ export type Database = {
         }[]
       }
       role_permission_admin_defaults: { Args: never; Returns: Json }
+      role_permission_defaults: { Args: { p_role: string }; Returns: Json }
       sa_get_audit_log: {
         Args: { p_limit?: number; p_offset?: number }
         Returns: {

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeRolePermissions, roleHasPermission } from '@/lib/permissions';
+import {
+  effectivePermissionDecision,
+  normalizeRolePermissions,
+  normalizeUserPermissionOverrides,
+  roleHasPermission,
+  userHasPermission,
+} from '@/lib/permissions';
 
 describe('role permissions', () => {
   it('geeft admin standaard alle rechten en finance geen matchmutaties', () => {
@@ -52,5 +58,53 @@ describe('role permissions', () => {
     expect(matrix.backoffice['matching.pipeline.view']).toBe(true);
     expect(matrix.backoffice['matching.status.update']).toBe(true);
     expect(matrix.backoffice['matching.drag_drop']).toBe(false);
+  });
+
+  it('laat een individuele toestemming voorgaan op de rol', () => {
+    const decision = effectivePermissionDecision(
+      'backoffice',
+      'vacancies.edit',
+      undefined,
+      { 'vacancies.edit': true },
+    );
+
+    expect(decision).toEqual({ allowed: true, source: 'user_allow' });
+    expect(userHasPermission('backoffice', 'vacancies.edit', undefined, { 'vacancies.edit': true })).toBe(true);
+  });
+
+  it('laat een individuele blokkade voorgaan op een toegestaan rolrecht', () => {
+    const decision = effectivePermissionDecision(
+      'intercedent',
+      'candidates.screening.manage',
+      undefined,
+      { 'candidates.screening.manage': false },
+    );
+
+    expect(decision).toEqual({ allowed: false, source: 'user_deny' });
+    expect(userHasPermission('intercedent', 'candidates.screening.manage', undefined, { 'candidates.screening.manage': false })).toBe(false);
+  });
+
+  it('kan adminrechten niet via een gebruikersuitzondering beperken', () => {
+    expect(userHasPermission('admin', 'settings.manage', undefined, { 'settings.manage': false })).toBe(true);
+    expect(effectivePermissionDecision('admin', 'settings.manage', undefined, { 'settings.manage': false }).source).toBe('admin');
+  });
+
+  it('negeert individuele uitzonderingen voor portalrollen en onbekende waarden', () => {
+    expect(userHasPermission('medewerker', 'finance.view', undefined, { 'finance.view': true })).toBe(false);
+    expect(normalizeUserPermissionOverrides({
+      'vacancies.edit': true,
+      'unknown.permission': true,
+      'finance.manage': 'yes',
+    })).toEqual({ 'vacancies.edit': true });
+  });
+
+  it('houdt kandidaten bewerken en finance beheren uitsluitend op rolniveau', () => {
+    expect(normalizeUserPermissionOverrides({
+      'candidates.edit': false,
+      'finance.manage': true,
+      'vacancies.edit': true,
+    })).toEqual({ 'vacancies.edit': true });
+    expect(userHasPermission('intercedent', 'candidates.edit', undefined, { 'candidates.edit': false })).toBe(true);
+    expect(userHasPermission('backoffice', 'finance.manage', undefined, { 'finance.manage': true })).toBe(false);
   });
 });

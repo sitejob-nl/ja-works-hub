@@ -3,9 +3,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/contexts/AuthContext';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
-import { useRolePermissionMatrix } from '@/hooks/usePermissions';
+import { useRolePermission, useRolePermissionMatrix } from '@/hooks/usePermissions';
 import { unwrap } from '@/lib/db';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -16,7 +15,6 @@ import {
   DEFAULT_ROLE_PERMISSIONS,
   ROLE_LABELS,
   permissionGroups,
-  roleHasPermission,
   serializeRolePermissions,
   type PermissionKey,
   type RolePermissionMatrix,
@@ -25,11 +23,10 @@ import {
 
 const RolePermissionsSettings = () => {
   const orgId = useOrganizationId();
-  const { role } = useAuth();
   const queryClient = useQueryClient();
   const { data, isLoading } = useRolePermissionMatrix();
   const groups = useMemo(() => permissionGroups(), []);
-  const canManage = role === 'admin' || roleHasPermission(role, 'settings.permissions.manage', (data?.settings as any)?.role_permissions);
+  const canManage = useRolePermission('settings.permissions.manage');
   const matrix = data?.matrix ?? DEFAULT_ROLE_PERMISSIONS;
 
   const saveMutation = useMutation({

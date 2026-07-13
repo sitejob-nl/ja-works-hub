@@ -1,9 +1,22 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Ban, Clipboard, Mail, RefreshCw, ShieldAlert, UserPlus, Users } from 'lucide-react';
+import { Ban, Clipboard, Mail, RefreshCw, ShieldAlert, ShieldCheck, UserPlus, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import OutlookAccountPicker from '@/components/email/OutlookAccountPicker';
+import UserPermissionOverridesDialog, {
+  type PermissionManagedUser,
+} from '@/components/settings/UserPermissionOverridesDialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,15 +29,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useAuth } from '@/contexts/AuthContext';
 import { useOutlookAccounts } from '@/hooks/useOutlookAccounts';
 import { supabase } from '@/integrations/supabase/client';
-import { ROLE_LABELS, type UserRole } from '@/lib/permissions';
+import { ROLE_LABELS, type UserPermissionOverrides, type UserRole } from '@/lib/permissions';
 
 type InternalRole = 'admin' | 'intercedent' | 'backoffice' | 'finance';
 
-type InternalUser = {
-  id: string;
-  email: string;
-  full_name: string;
-  role: InternalRole;
+type InternalUser = PermissionManagedUser & {
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -112,6 +121,8 @@ const UserManagementSettings = () => {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<InternalRole>('intercedent');
   const [lastActivationUrl, setLastActivationUrl] = useState<string | null>(null);
+  const [permissionUser, setPermissionUser] = useState<InternalUser | null>(null);
+  const [pendingRoleChange, setPendingRoleChange] = useState<{ user: InternalUser; role: InternalRole } | null>(null);
 
   const canManage = profile?.role === 'admin';
 
@@ -186,6 +197,33 @@ const UserManagementSettings = () => {
     },
     onError: (error: Error) => toast.error(error.message),
   });
+
+  const updatePermissionsMutation = useMutation({
+    mutationFn: (payload: { profile_id: string; permission_overrides: UserPermissionOverrides }) =>
+      invokeInternalUsers({ action: 'update_permissions', ...payload }),
+    onSuccess: () => {
+      refresh();
+      queryClient.invalidateQueries({ queryKey: ['user-permission-overrides'] });
+      toast.success('Individuele rechten bijgewerkt');
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const savePermissions = async (user: PermissionManagedUser, permissionOverrides: UserPermissionOverrides) => {
+    await updatePermissionsMutation.mutateAsync({
+      profile_id: user.id,
+      permission_overrides: permissionOverrides,
+    });
+  };
+
+  const requestRoleChange = (user: InternalUser, nextRole: InternalRole) => {
+    if (nextRole === user.role) return;
+    if (user.permission_override_count > 0) {
+      setPendingRoleChange({ user, role: nextRole });
+      return;
+    }
+    updateUserMutation.mutate({ profile_id: user.id, role: nextRole });
+  };
 
   const copyActivationUrl = async (url?: string | null) => {
     if (!url) return;
@@ -307,17 +345,18 @@ const UserManagementSettings = () => {
                   <TableHead>Gebruiker</TableHead>
                   <TableHead>Rol</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Individuele rechten</TableHead>
                   <TableHead>Laatst gewijzigd</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {query.isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="py-8 text-center text-sm text-muted-foreground">Gebruikers laden...</TableCell>
+                    <TableCell colSpan={5} className="py-8 text-center text-sm text-muted-foreground">Gebruikers laden...</TableCell>
                   </TableRow>
                 ) : users.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="py-8 text-center text-sm text-muted-foreground">Geen interne gebruikers gevonden.</TableCell>
+                    <TableCell colSpan={5} className="py-8 text-center text-sm text-muted-foreground">Geen interne gebruikers gevonden.</TableCell>
                   </TableRow>
                 ) : (
                   users.map((user) => (
@@ -329,7 +368,7 @@ const UserManagementSettings = () => {
                       <TableCell>
                         <Select
                           value={user.role}
-                          onValueChange={(value) => updateUserMutation.mutate({ profile_id: user.id, role: value as InternalRole })}
+                          onValueChange={(value) => requestRoleChange(user, value as InternalRole)}
                           disabled={updateUserMutation.isPending}
                         >
                           <SelectTrigger className="w-[180px]">
@@ -352,6 +391,23 @@ const UserManagementSettings = () => {
                           />
                           <span className="text-sm">{user.is_active ? 'Actief' : 'Uitgeschakeld'}</span>
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        {user.role === 'admin' ? (
+                          <Badge variant="secondary">Altijd volledig</Badge>
+                        ) : (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setPermissionUser(user)}
+                          >
+                            <ShieldCheck className="mr-2 h-3.5 w-3.5" />
+                            {user.permission_override_count > 0
+                              ? `${user.permission_override_count} uitzondering${user.permission_override_count === 1 ? '' : 'en'}`
+                              : 'Rolstandaard'}
+                          </Button>
+                        )}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">{formatDate(user.updated_at)}</TableCell>
                     </TableRow>
@@ -440,6 +496,42 @@ const UserManagementSettings = () => {
           </div>
         </CardContent>
       </Card>
+
+      <UserPermissionOverridesDialog
+        user={permissionUser}
+        open={!!permissionUser}
+        onOpenChange={(open) => !open && setPermissionUser(null)}
+        onSave={savePermissions}
+      />
+
+      <AlertDialog open={!!pendingRoleChange} onOpenChange={(open) => !open && setPendingRoleChange(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Rol wijzigen en uitzonderingen verwijderen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingRoleChange?.user.full_name} heeft {pendingRoleChange?.user.permission_override_count ?? 0}
+              {' '}individuele rechten. Bij de wijziging naar{' '}
+              {pendingRoleChange ? roleLabel(pendingRoleChange.role) : 'de nieuwe rol'} worden deze veilig gereset.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuleren</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (pendingRoleChange) {
+                  updateUserMutation.mutate({
+                    profile_id: pendingRoleChange.user.id,
+                    role: pendingRoleChange.role,
+                  });
+                }
+                setPendingRoleChange(null);
+              }}
+            >
+              Rol wijzigen en resetten
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

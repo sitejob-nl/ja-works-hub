@@ -18,7 +18,7 @@ import { toast } from 'sonner';
 import { unwrap } from '@/lib/db';
 import { MATCH_STATUS_STEPS, isTerminalMatchStatus, matchStatusNeedsFeedbackDialog } from '@/lib/match-status';
 import { normalizeMatchPipelineFollowupDays } from '@/lib/match-followup';
-import { roleHasPermission } from '@/lib/permissions';
+import { useEffectivePermissions } from '@/hooks/usePermissions';
 import { advanceMatchStatus } from '@/lib/match-lifecycle';
 
 const COLUMNS = MATCH_STATUS_STEPS;
@@ -98,7 +98,8 @@ async function fetchAllMatchPipelineRows(orgId: string | null | undefined, pipel
 
 const MatchPipeline = () => {
   const orgId = useOrganizationId();
-  const { user, role, loading: authLoading } = useAuth();
+  const { user, loading: authLoading } = useAuth();
+  const { hasPermission, isLoading: permissionsLoading } = useEffectivePermissions();
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [vacancyFilter, setVacancyFilter] = useState('all');
@@ -126,14 +127,13 @@ const MatchPipeline = () => {
     enabled: !!orgId,
   });
   const followupDays = normalizeMatchPipelineFollowupDays((pipelineSettings as any)?.match_pipeline_followup_days);
-  const rolePermissionSettings = (pipelineSettings as any)?.role_permissions;
-  const canViewPipeline = roleHasPermission(role, 'matching.pipeline.view', rolePermissionSettings);
-  const canUpdateStatus = roleHasPermission(role, 'matching.status.update', rolePermissionSettings);
-  const canBulkUpdateStatus = roleHasPermission(role, 'matching.status.bulk_update', rolePermissionSettings);
-  const canDragDrop = canUpdateStatus && roleHasPermission(role, 'matching.drag_drop', rolePermissionSettings);
-  const canWriteFeedback = roleHasPermission(role, 'matching.feedback.write', rolePermissionSettings);
-  const canNotifyCandidates = roleHasPermission(role, 'matching.notify_candidates', rolePermissionSettings);
-  const canConfirmInterview = roleHasPermission(role, 'matching.interview.confirm', rolePermissionSettings);
+  const canViewPipeline = hasPermission('matching.pipeline.view');
+  const canUpdateStatus = hasPermission('matching.status.update');
+  const canBulkUpdateStatus = hasPermission('matching.status.bulk_update');
+  const canDragDrop = canUpdateStatus && hasPermission('matching.drag_drop');
+  const canWriteFeedback = hasPermission('matching.feedback.write');
+  const canNotifyCandidates = hasPermission('matching.notify_candidates');
+  const canConfirmInterview = hasPermission('matching.interview.confirm');
   const canUseBulkActions = canBulkUpdateStatus || canNotifyCandidates;
 
   const { data: feedbackReasons = [] } = useQuery({
@@ -407,7 +407,7 @@ const MatchPipeline = () => {
     />
   );
 
-  if (authLoading || settingsLoading) {
+  if (authLoading || settingsLoading || permissionsLoading) {
     return <div className="text-muted-foreground text-center py-12">Laden...</div>;
   }
 

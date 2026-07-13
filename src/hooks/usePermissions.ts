@@ -3,30 +3,85 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { unwrap } from '@/lib/db';
-import { normalizeRolePermissions, roleHasPermission, type PermissionKey } from '@/lib/permissions';
+import {
+  INDIVIDUALLY_CONFIGURABLE_ROLES,
+  normalizeRolePermissions,
+  normalizeUserPermissionOverrides,
+  userHasPermission,
+  type PermissionKey,
+  type UserRole,
+} from '@/lib/permissions';
+import { qk } from '@/lib/query-keys';
+
+async function fetchRolePermissionState(orgId: string) {
+  const data = await unwrap(supabase.from('organizations').select('settings').eq('id', orgId).single());
+  const settings = (data?.settings as Record<string, unknown> | null) ?? {};
+  return {
+    settings,
+    matrix: normalizeRolePermissions((settings as any)?.role_permissions),
+  };
+}
 
 export function useRolePermission(permission: PermissionKey) {
   return useRolePermissionAccess(permission).allowed;
 }
 
-export function useRolePermissionAccess(permission: PermissionKey) {
+export function useEffectivePermissions() {
   const orgId = useOrganizationId();
-  const { role } = useAuth();
+  const { profile, role } = useAuth();
 
-  const query = useQuery({
-    queryKey: ['role-permissions', orgId],
-    queryFn: async () => {
-      const data = await unwrap(supabase.from('organizations').select('settings').eq('id', orgId!).single());
-      return data?.settings as Record<string, unknown> | null;
-    },
+  const roleQuery = useQuery({
+    queryKey: qk.permissions.roleMatrix(orgId),
+    queryFn: () => fetchRolePermissionState(orgId),
     enabled: !!orgId,
     staleTime: 30_000,
   });
 
+  const supportsOverrides = !!role && INDIVIDUALLY_CONFIGURABLE_ROLES.includes(role as UserRole);
+  const overrideQuery = useQuery({
+    queryKey: qk.permissions.userOverrides(orgId, profile?.id ?? ''),
+    queryFn: async () => {
+      const rows = await unwrap(
+        supabase
+          .from('user_permission_overrides')
+          .select('permission_key, allowed')
+          .eq('organization_id', orgId)
+          .eq('user_id', profile!.id),
+      );
+      return normalizeUserPermissionOverrides(rows ?? []);
+    },
+    enabled: !!orgId && !!profile?.id && supportsOverrides,
+    staleTime: 0,
+    refetchInterval: supportsOverrides ? 30_000 : false,
+  });
+
+  const isAdmin = role === 'admin';
+  const isLoading = isAdmin ? false : roleQuery.isLoading || (supportsOverrides && overrideQuery.isLoading);
+  const error = isAdmin ? null : roleQuery.error || (supportsOverrides ? overrideQuery.error : null);
+  const rolePermissions = roleQuery.data?.matrix;
+  const userOverrides = overrideQuery.data ?? {};
+
+  const hasPermission = (permission: PermissionKey): boolean => {
+    if (isAdmin) return true;
+    if (isLoading || error || !role) return false;
+    return userHasPermission(role, permission, rolePermissions, userOverrides);
+  };
+
   return {
-    allowed: roleHasPermission(role, permission, (query.data as any)?.role_permissions),
-    isLoading: query.isLoading,
-    error: query.error,
+    hasPermission,
+    rolePermissions,
+    userOverrides,
+    isLoading,
+    error,
+  };
+}
+
+export function useRolePermissionAccess(permission: PermissionKey) {
+  const access = useEffectivePermissions();
+  return {
+    allowed: access.hasPermission(permission),
+    isLoading: access.isLoading,
+    error: access.error,
   };
 }
 
@@ -34,14 +89,8 @@ export function useRolePermissionMatrix() {
   const orgId = useOrganizationId();
 
   return useQuery({
-    queryKey: ['role-permissions', orgId],
-    queryFn: async () => {
-      const data = await unwrap(supabase.from('organizations').select('settings').eq('id', orgId!).single());
-      return {
-        settings: (data?.settings as Record<string, unknown> | null) ?? {},
-        matrix: normalizeRolePermissions((data?.settings as any)?.role_permissions),
-      };
-    },
+    queryKey: qk.permissions.roleMatrix(orgId),
+    queryFn: () => fetchRolePermissionState(orgId),
     enabled: !!orgId,
     staleTime: 30_000,
   });

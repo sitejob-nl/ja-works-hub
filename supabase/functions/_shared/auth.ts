@@ -22,6 +22,28 @@ export type EdgePermissionKey =
   | 'settings.manage'
   | 'settings.permissions.manage';
 
+export const EDGE_PERMISSION_KEYS: readonly EdgePermissionKey[] = [
+  'candidates.view',
+  'candidates.edit',
+  'candidates.screening.manage',
+  'vacancies.view',
+  'vacancies.edit',
+  'matching.pipeline.view',
+  'matching.status.update',
+  'matching.status.bulk_update',
+  'matching.drag_drop',
+  'matching.feedback.write',
+  'matching.notify_candidates',
+  'matching.proposal.send',
+  'matching.interview.confirm',
+  'placements.view',
+  'placements.edit',
+  'finance.view',
+  'finance.manage',
+  'settings.manage',
+  'settings.permissions.manage',
+];
+
 export interface AuthenticatedProfile {
   user: User;
   userId: string;
@@ -160,6 +182,16 @@ export async function profileHasRolePermission(
 ): Promise<boolean> {
   if (auth.role === 'admin') return true;
   if (!isInternalRole(auth.role)) return false;
+
+  const { data: override, error: overrideError } = await admin
+    .from('user_permission_overrides')
+    .select('allowed')
+    .eq('organization_id', auth.organizationId)
+    .eq('user_id', auth.userId)
+    .eq('permission_key', permission)
+    .maybeSingle();
+  if (overrideError) return false;
+  if (typeof override?.allowed === 'boolean') return override.allowed;
 
   const { data, error } = await admin
     .from('organizations')
