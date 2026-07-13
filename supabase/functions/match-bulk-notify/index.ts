@@ -1,4 +1,4 @@
-import { createAdminClient, jsonResponse, requireInternalProfile } from "../_shared/auth.ts";
+import { createAdminClient, jsonResponse, requireRolePermission } from "../_shared/auth.ts";
 import { isOutboundPaused } from "../_shared/outbound-pause.ts";
 
 import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
@@ -47,7 +47,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405, corsHeaders);
 
-  const auth = await requireInternalProfile(req, corsHeaders);
+  const auth = await requireRolePermission(req, "matching.notify_candidates", corsHeaders);
   if (auth instanceof Response) return auth;
 
   const body = await req.json().catch(() => ({}));

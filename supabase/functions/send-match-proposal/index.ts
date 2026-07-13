@@ -1,5 +1,5 @@
 import { sendViaOutlookAccount } from "../_shared/outlook-send.ts";
-import { createAdminClient, requireInternalProfile } from "../_shared/auth.ts";
+import { createAdminClient, requireRolePermission } from "../_shared/auth.ts";
 import { buildOrganizationPublicUrl } from "../_shared/public-url.ts";
 import { sanitizeEmailHtml } from "../_shared/outlook-signature.ts";
 import { type BrandTheme, renderBrandedEmail, resolveBrandTheme } from "../_shared/email-layout.ts";
@@ -265,7 +265,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const auth = await requireInternalProfile(req, corsHeaders);
+    const auth = await requireRolePermission(req, "matching.proposal.send", corsHeaders);
     if (auth instanceof Response) return auth;
 
     const orgId = auth.organizationId;

@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders, jsonOk, jsonError, getAuthenticatedOrg } from "../_shared/whatsapp-utils.ts";
+import { requireRolePermission } from "../_shared/auth.ts";
+import { corsHeaders, jsonOk, jsonError } from "../_shared/whatsapp-utils.ts";
 
 const CONNECT_REGISTER_URL = "https://xeshjkznwdrxjjhbpisn.supabase.co/functions/v1/whatsapp-register-tenant";
 const SETUP_BASE_URL = "https://connect.sitejob.nl/whatsapp-setup";
@@ -25,15 +26,16 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const auth = await requireRolePermission(req, "settings.manage", corsHeaders);
+    if (auth instanceof Response) return auth;
+
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
       { global: { headers: { Authorization: req.headers.get("Authorization")! } } }
     );
 
-    const auth = await getAuthenticatedOrg(req, supabase);
-    if (auth instanceof Response) return auth;
-    const { orgId } = auth;
+    const orgId = auth.organizationId;
 
     // Check existing config
     const { data: existing } = await supabase

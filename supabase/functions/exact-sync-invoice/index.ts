@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireRolePermission } from "../_shared/auth.ts";
 import {
   classifyExactProviderError,
   corsHeaders,
@@ -24,32 +25,9 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return jsonError("Unauthorized", 401);
-    }
-
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
-
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) {
-      return jsonError("Unauthorized", 401);
-    }
-
-    const { data: profile } = await supabase.from("profiles").select("organization_id, role").eq("id", user.id).single();
-    if (!profile) {
-      return jsonError("Profile not found", 404);
-    }
-    // Financiële actie: alleen admin/backoffice/finance mogen naar Exact pushen (consistent met exact-api).
-    if (!["admin", "backoffice", "finance"].includes(profile.role)) {
-      return jsonError("Geen toegang tot Exact-synchronisatie", 403);
-    }
-
-    const orgId = profile.organization_id;
+    const auth = await requireRolePermission(req, "finance.manage", corsHeaders);
+    if (auth instanceof Response) return auth;
+    const orgId = auth.organizationId;
     const serviceClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
     const body = await req.json();

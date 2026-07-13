@@ -7,6 +7,9 @@ describe('role permissions', () => {
     expect(roleHasPermission('admin', 'settings.permissions.manage')).toBe(true);
     expect(roleHasPermission('finance', 'matching.pipeline.view')).toBe(true);
     expect(roleHasPermission('finance', 'matching.status.update')).toBe(false);
+    expect(roleHasPermission('backoffice', 'settings.manage')).toBe(false);
+    expect(roleHasPermission('backoffice', 'finance.manage')).toBe(false);
+    expect(roleHasPermission('backoffice', 'vacancies.edit')).toBe(false);
   });
 
   it('kan rechten per rol overschrijven vanuit organization settings', () => {

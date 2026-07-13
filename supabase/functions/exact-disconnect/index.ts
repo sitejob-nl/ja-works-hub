@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireRolePermission } from "../_shared/auth.ts";
 import { clearExactTokenCache, corsHeaders, jsonError, jsonOk } from "../_shared/exact-helpers.ts";
 
 const CONNECT_DISCONNECT_URL = "https://xeshjkznwdrxjjhbpisn.supabase.co/functions/v1/tenant-disconnect";
@@ -19,29 +20,8 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return jsonError("Unauthorized", 401);
-    }
-
-    const authClient = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } },
-    );
-
-    const token = authHeader.replace("Bearer ", "");
-    const { data: { user }, error: userError } = await authClient.auth.getUser(token);
-    if (userError || !user) return jsonError("Unauthorized", 401);
-
-    const { data: profile, error: profileError } = await authClient
-      .from("profiles")
-      .select("organization_id, role")
-      .eq("id", user.id)
-      .single();
-
-    if (profileError || !profile?.organization_id) return jsonError("Missing organization", 400);
-    if (profile.role !== "admin") return jsonError("Forbidden — admin only", 403);
+    const auth = await requireRolePermission(req, "settings.manage", corsHeaders);
+    if (auth instanceof Response) return auth;
 
     const serviceClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -51,7 +31,7 @@ Deno.serve(async (req) => {
     const { data: config } = await serviceClient
       .from("exact_config")
       .select("id, tenant_id, webhook_secret")
-      .eq("organization_id", profile.organization_id)
+      .eq("organization_id", auth.organizationId)
       .maybeSingle();
 
     if (!config?.tenant_id || !config?.webhook_secret) {

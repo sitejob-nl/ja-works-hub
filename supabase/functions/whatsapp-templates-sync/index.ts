@@ -1,11 +1,11 @@
 // supabase/functions/whatsapp-templates-sync/index.ts
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireRolePermission } from "../_shared/auth.ts";
 import {
   corsHeaders,
   jsonOk,
   jsonError,
   getWhatsAppCredentials,
-  getAuthenticatedOrg,
   META_API_BASE,
 } from "../_shared/whatsapp-utils.ts";
 
@@ -15,16 +15,10 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Anon client for auth resolution (respects RLS)
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: req.headers.get("Authorization")! } } }
-    );
-
-    const auth = await getAuthenticatedOrg(req, supabase);
+    const auth = await requireRolePermission(req, "settings.manage", corsHeaders);
     if (auth instanceof Response) return auth;
-    const { orgId } = auth;
+
+    const orgId = auth.organizationId;
 
     // Service client needed for Vault decryption and upsert (bypasses RLS)
     const serviceClient = createClient(

@@ -7,6 +7,7 @@
 // kwalitatieve dossieranalyse (analyze-cv) blijft wél gepseudonimiseerd.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireRolePermission } from "../_shared/auth.ts";
 import { extractCvProfile } from "../_shared/cv-extract.ts";
 import { calculateCostCents } from "../_shared/anthropic-cv.ts";
 import { GEMINI_DEFAULT_MODEL, geminiPricingForModel } from "../_shared/gemini-cv.ts";
@@ -34,34 +35,10 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // --- Auth (self-auth: verify_jwt = false in config.toml) ---
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return jsonResponse({ error: "Niet geautoriseerd" }, 401);
-    }
-
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } },
-    );
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return jsonResponse({ error: "Ongeldige sessie" }, 401);
-    }
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("organization_id")
-      .eq("id", user.id)
-      .single();
-
-    if (!profile?.organization_id) {
-      return jsonResponse({ error: "Geen organisatie" }, 403);
-    }
-
-    const orgId = profile.organization_id as string;
+    const auth = await requireRolePermission(req, "candidates.edit", corsHeaders);
+    if (auth instanceof Response) return auth;
+    const user = auth.user;
+    const orgId = auth.organizationId;
 
     const body = await req.json();
     const { cv_text, nationality_options, language_options, country_options } = body as {

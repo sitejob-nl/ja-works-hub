@@ -29,6 +29,7 @@ import PlacementConfirmationDialog from '@/components/placement/PlacementConfirm
 import { useTrackPageVisit } from '@/hooks/useTrackPageVisit';
 import NotesSection from '@/components/shared/NotesSection';
 import TasksSection from '@/components/shared/TasksSection';
+import { useRolePermission } from '@/hooks/usePermissions';
 
 type TerminatedByType = Database['public']['Enums']['terminated_by_type'];
 
@@ -51,6 +52,8 @@ const asSingle = <T,>(value: T | T[] | null | undefined): T | null => {
 const PlacementDetail = () => {
   const { id } = useParams<{ id: string }>();
   const orgId = useOrganizationId();
+  const canEditPlacements = useRolePermission('placements.edit');
+  const canViewFinance = useRolePermission('finance.view');
   const qc = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [editing, setEditing] = useState(false);
@@ -186,20 +189,20 @@ const PlacementDetail = () => {
         breadcrumbs={[{ label: 'Plaatsingen', to: '/plaatsingen' }, { label: placement.function_name }]}
         title={placement.function_name}
         actions={<>
-          <Button asChild variant="outline" size="sm" className="gap-1.5">
+          {canViewFinance && <Button asChild variant="outline" size="sm" className="gap-1.5">
             <Link to={`/uren?placement_id=${placement.id}`}>
               <Clock3 className="h-3.5 w-3.5" /> Uren
             </Link>
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setShowConfirmation(true)} className="gap-1.5">
+          </Button>}
+          {canEditPlacements && <Button variant="outline" size="sm" onClick={() => setShowConfirmation(true)} className="gap-1.5">
             <Mail className="h-3.5 w-3.5" /> Bevestiging
-          </Button>
-          {canTerminate && (
+          </Button>}
+          {canEditPlacements && canTerminate && (
             <Button variant="destructive" size="sm" onClick={() => setShowTerminate(true)} className="gap-1">
               <XCircle className="h-3.5 w-3.5" /> Beëindigen
             </Button>
           )}
-          {!editing ? (
+          {canEditPlacements && (!editing ? (
             <Button variant="outline" size="sm" onClick={startEdit}>Bewerken</Button>
           ) : (
             <>
@@ -208,7 +211,7 @@ const PlacementDetail = () => {
                 <Save className="h-3.5 w-3.5" /> Opslaan
               </Button>
             </>
-          )}
+          ))}
         </>}
       >
         <div className="flex items-center gap-2 flex-wrap mt-2">
@@ -315,22 +318,22 @@ const PlacementDetail = () => {
         <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">
           <TabsList className="w-max sm:w-auto">
             <TabsTrigger value="werkorder">Werkorder</TabsTrigger>
-            <TabsTrigger value="uren">Uren & facturatie</TabsTrigger>
-            <TabsTrigger value="uurtypes">Uurtypes</TabsTrigger>
-            <TabsTrigger value="reistypes">Reistypes</TabsTrigger>
-            <TabsTrigger value="vergoedingen">Vergoedingen</TabsTrigger>
+            {canViewFinance && <TabsTrigger value="uren">Uren & facturatie</TabsTrigger>}
+            {canEditPlacements && <TabsTrigger value="uurtypes">Uurtypes</TabsTrigger>}
+            {canEditPlacements && <TabsTrigger value="reistypes">Reistypes</TabsTrigger>}
+            {canEditPlacements && <TabsTrigger value="vergoedingen">Vergoedingen</TabsTrigger>}
             <TabsTrigger value="communicatie">Communicatie</TabsTrigger>
             <TabsTrigger value="notities">Notities</TabsTrigger>
             <TabsTrigger value="taken">Taken</TabsTrigger>
           </TabsList>
         </div>
         <TabsContent value="werkorder">
-          <PlacementWorkOrderTab placement={placement} candidate={cand} company={company} onEdit={startEdit} />
+          <PlacementWorkOrderTab placement={placement} candidate={cand} company={company} onEdit={canEditPlacements ? startEdit : undefined} showFinanceActions={canViewFinance} />
         </TabsContent>
-        <TabsContent value="uren"><PlacementTimesheetsTab placementId={id!} /></TabsContent>
-        <TabsContent value="uurtypes"><PlacementHourTypesTab placementId={id!} organizationId={placement.organization_id} /></TabsContent>
-        <TabsContent value="reistypes"><PlacementTravelTypesTab placementId={id!} organizationId={placement.organization_id} /></TabsContent>
-        <TabsContent value="vergoedingen"><PlacementAllowancesTab placementId={id!} organizationId={placement.organization_id} /></TabsContent>
+        {canViewFinance && <TabsContent value="uren"><PlacementTimesheetsTab placementId={id!} /></TabsContent>}
+        {canEditPlacements && <TabsContent value="uurtypes"><PlacementHourTypesTab placementId={id!} organizationId={placement.organization_id} /></TabsContent>}
+        {canEditPlacements && <TabsContent value="reistypes"><PlacementTravelTypesTab placementId={id!} organizationId={placement.organization_id} /></TabsContent>}
+        {canEditPlacements && <TabsContent value="vergoedingen"><PlacementAllowancesTab placementId={id!} organizationId={placement.organization_id} /></TabsContent>}
         <TabsContent value="communicatie">
           <PlacementCommunicationTab
             placementId={id!}
@@ -344,7 +347,7 @@ const PlacementDetail = () => {
       </Tabs>
 
       {/* Termination Dialog */}
-      <TerminationDialog
+      {canEditPlacements && <TerminationDialog
         open={showTerminate}
         onOpenChange={setShowTerminate}
         placementId={id!}
@@ -355,9 +358,9 @@ const PlacementDetail = () => {
           qc.invalidateQueries({ queryKey: ['placement', id] });
           setShowTerminate(false);
         }}
-      />
+      />}
 
-      <PlacementConfirmationDialog
+      {canEditPlacements && <PlacementConfirmationDialog
         open={showConfirmation}
         onOpenChange={setShowConfirmation}
         placementId={id!}
@@ -369,7 +372,7 @@ const PlacementDetail = () => {
         companyName={company?.name ?? 'Opdrachtgever'}
         functionName={placement.function_name}
         startDate={placement.start_date}
-      />
+      />}
     </div>
   );
 };

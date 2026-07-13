@@ -93,7 +93,7 @@ type PendingDecision = {
 const candidateDisplayName = (candidate: any) =>
   `${candidate.first_name ?? ''} ${candidate.last_name ?? ''}`.trim() || 'Onbekende kandidaat';
 
-const LeadFunnelBoard = () => {
+const LeadFunnelBoard = ({ readOnly = false }: { readOnly?: boolean }) => {
   const orgId = useOrganizationId();
   const { user } = useAuth();
   const qc = useQueryClient();
@@ -198,6 +198,7 @@ const LeadFunnelBoard = () => {
   });
 
   const onDragEnd = (result: DropResult) => {
+    if (readOnly) return;
     const { destination, draggableId, source } = result;
     if (!destination || destination.droppableId === source.droppableId) return;
     const destinationColumn = FUNNEL_COLUMNS.find((column) => column.key === destination.droppableId);
@@ -235,7 +236,9 @@ const LeadFunnelBoard = () => {
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-lg font-semibold">Instroomfunnel</h2>
-          <p className="text-sm text-muted-foreground">Beoordeel nieuwe leads en zet alleen geschikte profielen door naar kandidaat.</p>
+          <p className="text-sm text-muted-foreground">
+            {readOnly ? 'Bekijk de actuele instroomstatus.' : 'Beoordeel nieuwe leads en zet alleen geschikte profielen door naar kandidaat.'}
+          </p>
         </div>
         <Badge variant="secondary" className="w-fit">{candidates.length} actieve instroomkaarten</Badge>
       </div>
@@ -270,7 +273,7 @@ const LeadFunnelBoard = () => {
                       </div>
                       <div className="min-h-[180px] space-y-2">
                         {columnCandidates.map((candidate: any, index: number) => (
-                          <Draggable key={candidate.id} draggableId={candidate.id} index={index}>
+                          <Draggable key={candidate.id} draggableId={candidate.id} index={index} isDragDisabled={readOnly}>
                             {(dragProvided, dragSnapshot) => (
                               <div
                                 ref={dragProvided.innerRef}
@@ -278,7 +281,7 @@ const LeadFunnelBoard = () => {
                                 {...dragProvided.dragHandleProps}
                                 className={cn(dragSnapshot.isDragging && 'opacity-90')}
                               >
-                                <CandidateCard candidate={candidate} />
+                                <CandidateCard candidate={candidate} readOnly={readOnly} />
                               </div>
                             )}
                           </Draggable>
@@ -329,14 +332,14 @@ const LeadFunnelBoard = () => {
   );
 };
 
-function CandidateCard({ candidate }: { candidate: any }) {
+function CandidateCard({ candidate, readOnly = false }: { candidate: any; readOnly?: boolean }) {
   const hasCv = Boolean(candidate.cv_file_url || candidate.cv_raw_text);
   const source = candidate.source ? sourceLabel[candidate.source] ?? candidate.source.replace(/[_-]/g, ' ') : null;
   const score = typeof candidate.ai_reliability_score === 'number' ? Math.round(candidate.ai_reliability_score) : null;
   const skills = Array.isArray(candidate.skills) ? candidate.skills : [];
 
   return (
-    <Card className="cursor-grab transition-shadow hover:shadow-md active:cursor-grabbing">
+    <Card className={cn(!readOnly && 'cursor-grab active:cursor-grabbing', 'transition-shadow hover:shadow-md')}>
       <CardContent className="space-y-3 p-3">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">

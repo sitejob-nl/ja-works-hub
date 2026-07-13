@@ -22,6 +22,7 @@ import { useTrackPageVisit } from '@/hooks/useTrackPageVisit';
 import { useTabSearchParam } from '@/hooks/useTabSearchParam';
 import NotesSection from '@/components/shared/NotesSection';
 import TasksSection from '@/components/shared/TasksSection';
+import { useRolePermission } from '@/hooks/usePermissions';
 
 const statusBadge: Record<string, string> = {
   open: 'bg-stat-green/10 text-stat-green border-0',
@@ -42,6 +43,7 @@ const VacancyDetail = () => {
   const navigate = useNavigate();
   const { profile } = useAuth();
   const isAdmin = profile?.role === 'admin';
+  const canEditVacancies = useRolePermission('vacancies.edit');
   const [activeTab, setActiveTab] = useTabSearchParam('details');
   const [deleteOpen, setDeleteOpen] = useState(false);
 
@@ -159,11 +161,11 @@ const VacancyDetail = () => {
         breadcrumbs={[{ label: 'Vacatures', to: '/vacatures' }, { label: vacancy.title }]}
         title={vacancy.title}
         actions={<>
-          <Button size="sm" onClick={handlePrimaryAction} disabled={!hasRequirements && enrichMutation.isPending} className="gap-1">
+          {(hasRequirements || canEditVacancies) && <Button size="sm" onClick={handlePrimaryAction} disabled={!hasRequirements && enrichMutation.isPending} className="gap-1">
             <UserSearch className="h-4 w-4" />
             <span>{!hasRequirements && enrichMutation.isPending ? 'AI bezig...' : primaryActionLabel}</span>
-          </Button>
-          <VacancySignupLinkButton vacancy={vacancy} />
+          </Button>}
+          {canEditVacancies && <VacancySignupLinkButton vacancy={vacancy} />}
           <Button
             size="sm"
             className="gap-1"
@@ -178,13 +180,13 @@ const VacancyDetail = () => {
           >
             <UserSearch className="h-4 w-4" /> <span className="hidden sm:inline">Breed zoeken</span><span className="sm:hidden">Breed</span>
           </Button>
-          <Button variant="outline" size="sm" onClick={() => enrichMutation.mutate()} disabled={enrichMutation.isPending} className="gap-1" title="Vaardigheden uit de vacaturetekst halen met AI">
+          {canEditVacancies && <Button variant="outline" size="sm" onClick={() => enrichMutation.mutate()} disabled={enrichMutation.isPending} className="gap-1" title="Vaardigheden uit de vacaturetekst halen met AI">
             <Sparkles className="h-4 w-4" /> <span className="hidden sm:inline">{enrichMutation.isPending ? 'AI bezig…' : 'AI-skills'}</span>
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => navigate(`/vacatures/${id}/bewerken`)} className="gap-1">
+          </Button>}
+          {canEditVacancies && <Button variant="outline" size="sm" onClick={() => navigate(`/vacatures/${id}/bewerken`)} className="gap-1">
             <Edit className="h-4 w-4" /> <span className="hidden sm:inline">Bewerken</span>
-          </Button>
-          <DropdownMenu>
+          </Button>}
+          {canEditVacancies && <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm">Status</Button>
             </DropdownMenuTrigger>
@@ -193,7 +195,7 @@ const VacancyDetail = () => {
                 <DropdownMenuItem key={k} onClick={() => statusMutation.mutate(k)}>{v}</DropdownMenuItem>
               ))}
             </DropdownMenuContent>
-          </DropdownMenu>
+          </DropdownMenu>}
           {isAdmin && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

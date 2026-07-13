@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireRolePermission } from "../_shared/auth.ts";
 import { sendViaOutlookAccount } from "../_shared/outlook-send.ts";
 import { sendOutboundWhatsApp } from "../_shared/whatsapp-utils.ts";
 import { getWhatsAppAutomationSettings, mergeTemplate as mergeWhatsAppTemplate } from "../_shared/whatsapp-automation-settings.ts";
@@ -222,11 +223,9 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // ── Auth ──
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return json({ error: "Unauthorized" }, 401);
-    }
+    const authHeader = req.headers.get("Authorization")!;
+    const auth = await requireRolePermission(req, "placements.edit", corsHeaders);
+    if (auth instanceof Response) return auth;
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -234,24 +233,8 @@ Deno.serve(async (req) => {
       { global: { headers: { Authorization: authHeader } } }
     );
 
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) {
-      return json({ error: "Unauthorized" }, 401);
-    }
-
-    const userId = user.id;
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("organization_id")
-      .eq("id", userId)
-      .single();
-
-    if (!profile) {
-      return json({ error: "Profile not found" }, 404);
-    }
-
-    const orgId = profile.organization_id;
+    const userId = auth.userId;
+    const orgId = auth.organizationId;
 
     // Service client for inserting communications
     const serviceClient = createClient(

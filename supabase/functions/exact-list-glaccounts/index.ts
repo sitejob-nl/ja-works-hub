@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireRolePermission } from "../_shared/auth.ts";
 import {
   classifyExactProviderError,
   corsHeaders,
@@ -40,30 +41,8 @@ Deno.serve(async (req) => {
       return jsonError("method_not_allowed", 405);
     }
 
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return jsonError("Unauthorized", 401);
-    }
-
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } },
-    );
-
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) return jsonError("Unauthorized", 401);
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("organization_id, role")
-      .eq("id", user.id)
-      .single();
-
-    if (!profile?.organization_id) return jsonError("Profile not found", 404);
-    if (!["admin", "backoffice", "finance"].includes(profile.role)) {
-      return jsonError("Forbidden", 403);
-    }
+    const auth = await requireRolePermission(req, "finance.view", corsHeaders);
+    if (auth instanceof Response) return auth;
 
     const body = req.method === "POST" ? await req.json().catch(() => ({})) : {};
     const urlKind = new URL(req.url).searchParams.get("kind");
@@ -76,7 +55,7 @@ Deno.serve(async (req) => {
     );
 
     const { data: exactConfig, error: configError } = await serviceClient.rpc("get_exact_token", {
-      p_org_id: profile.organization_id,
+      p_org_id: auth.organizationId,
     });
     if (configError || !exactConfig?.length) {
       return jsonError("Exact Online niet geconfigureerd", 400);

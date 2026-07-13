@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, jsonResponse, jsonError, callVoysApi } from "../_shared/voys-helpers.ts";
+import { requireRolePermission } from "../_shared/auth.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -7,32 +8,9 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return jsonError("Unauthorized", 401);
-    }
-
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
-
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) {
-      return jsonError("Unauthorized", 401);
-    }
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("organization_id")
-      .eq("id", user.id)
-      .single();
-    if (!profile) {
-      return jsonError("Profile not found", 404);
-    }
-
-    const orgId = profile.organization_id;
+    const auth = await requireRolePermission(req, "settings.manage", corsHeaders);
+    if (auth instanceof Response) return auth;
+    const orgId = auth.organizationId;
 
     // Get decrypted Voys token
     const serviceClient = createClient(

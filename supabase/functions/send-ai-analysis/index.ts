@@ -10,6 +10,7 @@
 // aanroepende UI bepaalt of het rapport echte naam of pseudonimisering laat zien.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireRolePermission } from "../_shared/auth.ts";
 import { sendViaOutlookAccount } from "../_shared/outlook-send.ts";
 
 import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
@@ -145,25 +146,11 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    // Self-auth pattern (config has verify_jwt = false, see CLAUDE.md note about ES256 keys)
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) return json({ error: "Unauthorized" }, 401);
-
-    const anon = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const { data: userData, error: userErr } = await anon.auth.getUser();
-    if (userErr || !userData?.user) return json({ error: "Unauthorized" }, 401);
-    const userId = userData.user.id;
-
+    const auth = await requireRolePermission(req, "candidates.screening.manage", corsHeaders);
+    if (auth instanceof Response) return auth;
+    const userId = auth.userId;
+    const orgId = auth.organizationId;
     const admin = createClient(supabaseUrl, serviceKey);
-    const { data: profile } = await admin
-      .from("profiles")
-      .select("organization_id")
-      .eq("id", userId)
-      .single();
-    const orgId = profile?.organization_id;
-    if (!orgId) return json({ error: "No organization" }, 403);
 
     const body = await req.json().catch(() => ({} as any));
     const {

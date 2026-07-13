@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireRolePermission } from "../_shared/auth.ts";
 import { getExactConnectUrl } from "../_shared/exact-helpers.ts";
 
 import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
@@ -16,48 +17,11 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // ── Self-auth: verify Bearer token, derive org_id from profile ──
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const authClient = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
-
-    const token = authHeader.replace("Bearer ", "");
-    const { data: { user }, error: userError } = await authClient.auth.getUser(token);
-    if (userError || !user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const { data: profile, error: profileError } = await authClient
-      .from("profiles")
-      .select("organization_id, role")
-      .eq("id", user.id)
-      .single();
-
-    if (profileError || !profile?.organization_id) {
-      return new Response(JSON.stringify({ error: "Missing organization" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    if (profile.role !== "admin") {
-      return new Response(JSON.stringify({ error: "Forbidden — admin only" }), {
-        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    const auth = await requireRolePermission(req, "settings.manage", corsHeaders);
+    if (auth instanceof Response) return auth;
 
     // Derive org_id from the authenticated user; ignore any body.organization_id.
-    const organization_id = profile.organization_id;
+    const organization_id = auth.organizationId;
     const serviceClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
     const { data: existing } = await serviceClient

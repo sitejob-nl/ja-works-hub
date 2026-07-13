@@ -1,4 +1,4 @@
-import { requireInternalProfile, createAdminClient } from "../_shared/auth.ts";
+import { requireRolePermission, createAdminClient } from "../_shared/auth.ts";
 import { sendViaOutlookAccount } from "../_shared/outlook-send.ts";
 import { buildOrganizationPublicUrl } from "../_shared/public-url.ts";
 import { type BrandTheme, brandButton, escapeHtml, renderBrandedEmail, resolveBrandTheme } from "../_shared/email-layout.ts";
@@ -50,7 +50,7 @@ Deno.serve(async (req) => {
   try {
     // Only internal staff may dispatch portal invites. requireInternalProfile
     // rejects anonymous, service-role and portal (medewerker/opdrachtgever) callers.
-    const auth = await requireInternalProfile(req, corsHeaders);
+    const auth = await requireRolePermission(req, "candidates.edit", corsHeaders);
     if (auth instanceof Response) return auth;
 
     const service = createAdminClient();
