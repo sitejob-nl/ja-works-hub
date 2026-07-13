@@ -36,10 +36,15 @@ function redirectUri() {
   return `${Deno.env.get("SUPABASE_URL")}/functions/v1/outlook-callback`;
 }
 
-async function safeReturnTo(admin: ReturnType<typeof createAdminClient>, organizationId: string, input: unknown) {
+async function safeReturnTo(
+  admin: ReturnType<typeof createAdminClient>,
+  organizationId: string,
+  input: unknown,
+  fallbackPath = "/instellingen",
+) {
   const fallback = await getOrganizationPublicBaseUrl(admin, organizationId).catch(() => defaultPublicBaseUrl());
-  const fallbackSettings = `${fallback}/instellingen`;
-  if (!input) return fallbackSettings;
+  const fallbackUrl = `${fallback}${fallbackPath}`;
+  if (!input) return fallbackUrl;
 
   try {
     const url = new URL(String(input));
@@ -49,9 +54,9 @@ async function safeReturnTo(admin: ReturnType<typeof createAdminClient>, organiz
       "http://localhost:8080",
       "http://127.0.0.1:8080",
     ];
-    return allowed.includes(url.origin) ? url.toString() : fallbackSettings;
+    return allowed.includes(url.origin) ? url.toString() : fallbackUrl;
   } catch {
-    return fallbackSettings;
+    return fallbackUrl;
   }
 }
 
@@ -94,7 +99,12 @@ Deno.serve(async (req) => {
     target_user_id: targetUserId,
     scope,
     consent_flow: consentFlow,
-    return_to: await safeReturnTo(admin, auth.organizationId, body.return_to),
+    return_to: await safeReturnTo(
+      admin,
+      auth.organizationId,
+      body.return_to,
+      scope === "personal" ? "/mijn-outlook" : "/instellingen",
+    ),
     nonce,
     iat: Math.floor(Date.now() / 1000),
   };
