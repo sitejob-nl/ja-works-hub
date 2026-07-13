@@ -1,4 +1,4 @@
-import { createAdminClient, jsonResponse, requireInternalProfile } from "../_shared/auth.ts";
+import { createAdminClient, jsonResponse, requireRolePermission } from "../_shared/auth.ts";
 
 import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
 
@@ -197,9 +197,8 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
 
   try {
-    const auth = await requireInternalProfile(req, corsHeaders);
+    const auth = await requireRolePermission(req, "settings.manage", corsHeaders);
     if (auth instanceof Response) return auth;
-    if (auth.role !== "admin") return json({ error: "Alleen organisatie-admins kunnen domeinen beheren" }, 403);
 
     const admin = createAdminClient();
     const body = await req.json().catch(() => ({}));

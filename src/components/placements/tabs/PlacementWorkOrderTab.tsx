@@ -16,7 +16,8 @@ type PlacementWorkOrderTabProps = {
   placement: any;
   candidate: any;
   company: any;
-  onEdit: () => void;
+  onEdit?: () => void;
+  showFinanceActions?: boolean;
 };
 
 const statusLabel: Record<string, string> = {
@@ -61,7 +62,7 @@ function Fact({ icon, label, value }: { icon: ElementType; label: string; value:
   );
 }
 
-export default function PlacementWorkOrderTab({ placement, candidate, company, onEdit }: PlacementWorkOrderTabProps) {
+export default function PlacementWorkOrderTab({ placement, candidate, company, onEdit, showFinanceActions = false }: PlacementWorkOrderTabProps) {
   const { data: operations } = useQuery({
     queryKey: qk.placements.workOrderOps(placement.id),
     queryFn: async () => {
@@ -221,20 +222,22 @@ export default function PlacementWorkOrderTab({ placement, candidate, company, o
           <CardTitle className="text-base">Vervolgacties</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2">
-          <Button asChild variant="outline" size="sm">
+          {showFinanceActions && <Button asChild variant="outline" size="sm">
             <Link to={`/uren?placement_id=${placement.id}`}>Bekijk uren</Link>
-          </Button>
-          <Button asChild variant="outline" size="sm">
+          </Button>}
+          {showFinanceActions && <Button asChild variant="outline" size="sm">
             <Link to={`/facturatie?placement_id=${placement.id}`}>Naar facturatie</Link>
-          </Button>
+          </Button>}
           {placement.vacancy_id && (
             <Button asChild variant="outline" size="sm">
               <Link to={`/vacatures/${placement.vacancy_id}`}>Vacature</Link>
             </Button>
           )}
-          <Button variant="outline" size="sm" onClick={onEdit}>
-            Werkorder bijwerken
-          </Button>
+          {onEdit && (
+            <Button variant="outline" size="sm" onClick={onEdit}>
+              Werkorder bijwerken
+            </Button>
+          )}
           <Button asChild variant="ghost" size="sm">
             <Link to={`/plaatsingen/${placement.id}?tab=taken`}>
               <FileText className="mr-1.5 h-3.5 w-3.5" />

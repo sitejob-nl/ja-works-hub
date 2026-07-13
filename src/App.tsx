@@ -14,6 +14,7 @@ import { PortalProvider } from "@/contexts/PortalContext";
 import { ClientPortalProvider } from "@/contexts/ClientPortalContext";
 import { TranslationProvider } from "@/contexts/TranslationContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import PermissionRoute from "@/components/PermissionRoute";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import TenantHostGuard from "@/components/TenantHostGuard";
 import AppLayout from "@/components/layout/AppLayout";
@@ -178,37 +179,37 @@ const App = () => (
                 <Route path="/opdrachtgevers/new" element={<CompanyNew />} />
                 <Route path="/opdrachtgevers/:id" element={<CompanyDetail />} />
                 <Route path="/opdrachtgevers/:id/bewerken" element={<CompanyEdit />} />
-                <Route path="/kandidaten" element={<Candidates />} />
-                <Route path="/kandidaten/new" element={<CandidateNew />} />
-                <Route path="/kandidaten/duplicaten" element={<DuplicateCandidates />} />
-                <Route path="/kandidaten/:id" element={<CandidateDetail />} />
-                <Route path="/kandidaten/:id/bewerken" element={<CandidateEditRedirect />} />
-                <Route path="/medewerkers" element={<Navigate to="/kandidaten?tab=in-dienst" replace />} />
-                <Route path="/medewerkers/new" element={<EmployeeNew />} />
-                <Route path="/medewerkers/:id" element={<EmployeeDetail />} />
+                <Route path="/kandidaten" element={<PermissionRoute permission="candidates.view"><Candidates /></PermissionRoute>} />
+                <Route path="/kandidaten/new" element={<PermissionRoute permission="candidates.edit"><CandidateNew /></PermissionRoute>} />
+                <Route path="/kandidaten/duplicaten" element={<PermissionRoute permission="candidates.edit"><DuplicateCandidates /></PermissionRoute>} />
+                <Route path="/kandidaten/:id" element={<PermissionRoute permission="candidates.view"><CandidateDetail /></PermissionRoute>} />
+                <Route path="/kandidaten/:id/bewerken" element={<PermissionRoute permission="candidates.edit"><CandidateEditRedirect /></PermissionRoute>} />
+                <Route path="/medewerkers" element={<PermissionRoute permission="candidates.view"><Navigate to="/kandidaten?tab=in-dienst" replace /></PermissionRoute>} />
+                <Route path="/medewerkers/new" element={<PermissionRoute permission="candidates.edit"><EmployeeNew /></PermissionRoute>} />
+                <Route path="/medewerkers/:id" element={<PermissionRoute permission="candidates.view"><EmployeeDetail /></PermissionRoute>} />
                 <Route path="/contacten" element={<Contacts />} />
                 <Route path="/contacten/:id" element={<ContactDetail />} />
                 <Route path="/talentpools" element={<Talentpools />} />
                 <Route path="/talentpools/:id" element={<TalentpoolDetail />} />
                 <Route path="/huisvesting" element={<Housing />} />
                 <Route path="/huisvesting/:id" element={<PropertyDetail />} />
-                <Route path="/vacatures" element={<Vacancies />} />
-                <Route path="/vacatures/new" element={<VacancyNew />} />
-                <Route path="/vacatures/:id" element={<VacancyDetail />} />
-                <Route path="/vacatures/:id/bewerken" element={<VacancyEdit />} />
-                <Route path="/match-pipeline" element={<MatchPipeline />} />
+                <Route path="/vacatures" element={<PermissionRoute permission="vacancies.view"><Vacancies /></PermissionRoute>} />
+                <Route path="/vacatures/new" element={<PermissionRoute permission="vacancies.edit"><VacancyNew /></PermissionRoute>} />
+                <Route path="/vacatures/:id" element={<PermissionRoute permission="vacancies.view"><VacancyDetail /></PermissionRoute>} />
+                <Route path="/vacatures/:id/bewerken" element={<PermissionRoute permission="vacancies.edit"><VacancyEdit /></PermissionRoute>} />
+                <Route path="/match-pipeline" element={<PermissionRoute permission="matching.pipeline.view"><MatchPipeline /></PermissionRoute>} />
                 <Route path="/planning" element={<Planning />} />
-                <Route path="/plaatsingen" element={<PlacementsPage />} />
-                <Route path="/plaatsingen/:id" element={<PlacementDetail />} />
-                <Route path="/uren" element={<Timesheets />} />
-                <Route path="/facturatie" element={<InvoicesPage />} />
+                <Route path="/plaatsingen" element={<PermissionRoute permission="placements.view"><PlacementsPage /></PermissionRoute>} />
+                <Route path="/plaatsingen/:id" element={<PermissionRoute permission="placements.view"><PlacementDetail /></PermissionRoute>} />
+                <Route path="/uren" element={<PermissionRoute permission="finance.view"><Timesheets /></PermissionRoute>} />
+                <Route path="/facturatie" element={<PermissionRoute permission="finance.view"><InvoicesPage /></PermissionRoute>} />
                 <Route path="/uitstroom-analyse" element={<UitstroomAnalyse />} />
                 <Route path="/transport" element={<Transport />} />
                 <Route path="/transport/new" element={<VehicleNew />} />
                 <Route path="/transport/:id" element={<VehicleDetail />} />
                 <Route path="/transport/:id/bewerken" element={<VehicleEdit />} />
-                <Route path="/tankpas-analyse" element={<FuelCardAnalysis />} />
-                <Route path="/kilometeranalyse" element={<FiscalMileageAnalysis />} />
+                <Route path="/tankpas-analyse" element={<PermissionRoute permission="finance.view"><FuelCardAnalysis /></PermissionRoute>} />
+                <Route path="/kilometeranalyse" element={<PermissionRoute permission="finance.view"><FiscalMileageAnalysis /></PermissionRoute>} />
                 <Route path="/vacaturebank" element={<Vacaturebank />} />
                 <Route path="/kandidaten-zoeken" element={<KandidatenZoeken />} />
                 <Route path="/communicatie" element={<Communications />} />
@@ -219,13 +220,13 @@ const App = () => (
                 <Route path="/bulk-campaigns" element={<BulkCampaigns />} />
                 <Route path="/bulk-campaigns/:id" element={<BulkCampaignDetail />} />
                 <Route path="/kennisbank" element={<KnowledgeBasePage />} />
-                <Route path="/exact-online" element={<ExactOnlinePage />} />
-                <Route path="/omzet" element={<OmzetPage />} />
-                <Route path="/cv-tool/:candidateId" element={<CvTool />} />
-                <Route path="/importeren" element={<ImportData />} />
+                <Route path="/exact-online" element={<PermissionRoute permission="finance.view"><ExactOnlinePage /></PermissionRoute>} />
+                <Route path="/omzet" element={<PermissionRoute permission="finance.view"><OmzetPage /></PermissionRoute>} />
+                <Route path="/cv-tool/:candidateId" element={<PermissionRoute permission="candidates.screening.manage"><CvTool /></PermissionRoute>} />
+                <Route path="/importeren" element={<PermissionRoute permission="candidates.edit"><ImportData /></PermissionRoute>} />
                 <Route path="/carerix-import" element={<CarerixImport />} />
                 <Route path="/dashboards" element={<Dashboards />} />
-                <Route path="/instellingen" element={<SettingsPage />} />
+                <Route path="/instellingen" element={<PermissionRoute permission="settings.manage"><SettingsPage /></PermissionRoute>} />
               </Route>
               {/* Public routes */}
               <Route path="/onboarding/:token" element={<Onboarding />} />

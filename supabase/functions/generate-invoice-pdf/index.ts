@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireRolePermission } from "../_shared/auth.ts";
 
 import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
 
@@ -116,28 +117,9 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
-
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-
-    const { data: profile } = await supabase.from("profiles").select("organization_id").eq("id", user.id).single();
-    if (!profile) {
-      return new Response(JSON.stringify({ error: "Profile not found" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-
-    const orgId = profile.organization_id;
+    const auth = await requireRolePermission(req, "finance.view", corsHeaders);
+    if (auth instanceof Response) return auth;
+    const orgId = auth.organizationId;
     const body = await req.json();
     const { invoice_id } = body;
 

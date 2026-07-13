@@ -38,6 +38,7 @@ import UserManagementSettings from '@/components/settings/UserManagementSettings
 import { applyBranding, BRANDING_DEFAULTS, type BrandingSettings } from '@/lib/branding';
 import AddressAutocomplete from '@/components/shared/AddressAutocomplete';
 import { resolveAddressCoordinates } from '@/lib/pdok';
+import { useRolePermission } from '@/hooks/usePermissions';
 
 /* ---- Color conversion helpers ---- */
 function hexToHsl(hex: string): string {
@@ -185,6 +186,8 @@ const BG_PRESETS = [
 const Settings = () => {
   const orgId = useOrganizationId();
   const { profile, signOut } = useAuth();
+  const canManagePermissions = useRolePermission('settings.permissions.manage');
+  const canEditCandidates = useRolePermission('candidates.edit');
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [logoUploading, setLogoUploading] = useState(false);
@@ -394,12 +397,12 @@ const Settings = () => {
                 <TabsTrigger value="hr" className="gap-2 px-3 py-2">
                   <FileText className="h-4 w-4" /> HR & documenten
                 </TabsTrigger>
-                <TabsTrigger value="gebruikers" className="gap-2 px-3 py-2">
+                {profile?.role === 'admin' && <TabsTrigger value="gebruikers" className="gap-2 px-3 py-2">
                   <Users className="h-4 w-4" /> Gebruikers
-                </TabsTrigger>
-                <TabsTrigger value="rechten" className="gap-2 px-3 py-2">
+                </TabsTrigger>}
+                {canManagePermissions && <TabsTrigger value="rechten" className="gap-2 px-3 py-2">
                   <ShieldCheck className="h-4 w-4" /> Rechten
-                </TabsTrigger>
+                </TabsTrigger>}
                 <TabsTrigger value="data" className="gap-2 px-3 py-2">
                   <Database className="h-4 w-4" /> Data
                 </TabsTrigger>
@@ -570,13 +573,13 @@ const Settings = () => {
               <PropertyOwnersSettings />
             </TabsContent>
 
-            <TabsContent value="gebruikers" className="mt-0 space-y-5">
+            {profile?.role === 'admin' && <TabsContent value="gebruikers" className="mt-0 space-y-5">
               <UserManagementSettings />
-            </TabsContent>
+            </TabsContent>}
 
-            <TabsContent value="rechten" className="mt-0 space-y-5">
+            {canManagePermissions && <TabsContent value="rechten" className="mt-0 space-y-5">
               <RolePermissionsSettings />
-            </TabsContent>
+            </TabsContent>}
 
             <TabsContent value="data" className="mt-0 space-y-5">
               <DataExport />
@@ -599,9 +602,9 @@ const Settings = () => {
                   <CardDescription>Importeer kandidaten en opdrachtgevers vanuit Excel of CSV</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <Button asChild>
+                  {canEditCandidates && <Button asChild>
                     <Link to="/importeren">Naar import wizard</Link>
-                  </Button>
+                  </Button>}
                 </CardContent>
               </Card>
             </TabsContent>

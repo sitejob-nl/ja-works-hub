@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createAdminClient, requireInternalProfile } from "../_shared/auth.ts";
+import { createAdminClient, requireRolePermission } from "../_shared/auth.ts";
 import { pseudonymizeCv } from "../_shared/cv-pseudonymize.ts";
 
 const corsHeaders = {
@@ -11,7 +11,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const auth = await requireInternalProfile(req, corsHeaders);
+    const auth = await requireRolePermission(req, "candidates.screening.manage", corsHeaders);
     if (auth instanceof Response) return auth;
 
     const body = await req.json();

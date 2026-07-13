@@ -23,6 +23,7 @@ import { MailButton } from '@/components/ui/mail-button';
 import { formatDate } from '@/lib/format';
 import ErrorState from '@/components/shared/ErrorState';
 import { getPaginationRange } from '@/lib/pagination';
+import { useRolePermission } from '@/hooks/usePermissions';
 
 const PAGE_SIZE = 10;
 
@@ -128,6 +129,7 @@ type CandidateTab = 'alle' | 'instroom' | 'in-dienst';
 
 const Candidates = () => {
   const navigate = useNavigate();
+  const canEditCandidates = useRolePermission('candidates.edit');
   const [searchParams, setSearchParams] = useSearchParams();
   const initialTab: CandidateTab = searchParams.get('tab') === 'in-dienst'
     ? 'in-dienst'
@@ -395,7 +397,7 @@ const Candidates = () => {
           <p className="text-muted-foreground text-sm mt-1 hidden sm:block">Overzicht van alle kandidaten</p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          {activeTab === 'alle' && (
+          {activeTab === 'alle' && canEditCandidates && (
             <>
               <Button variant="outline" size="sm" onClick={() => { setImportPreset(null); setImportOpen(true); }} className="gap-1.5">
                 <Upload className="h-4 w-4" /> <span className="hidden sm:inline">Importeren</span><span className="sm:hidden">Import</span>
@@ -411,7 +413,7 @@ const Candidates = () => {
               </Button>
             </>
           )}
-          {activeTab === 'in-dienst' && (
+          {activeTab === 'in-dienst' && canEditCandidates && (
             <Button size="sm" onClick={() => navigate('/medewerkers/new')} className="gap-1.5">
               <UserPlus className="h-4 w-4" /> In dienst nemen
             </Button>
@@ -587,7 +589,7 @@ const Candidates = () => {
       )}
 
       {/* Bulk action bar */}
-      {activeTab === 'alle' && selected.size > 0 && (
+      {activeTab === 'alle' && canEditCandidates && selected.size > 0 && (
         <div className="bg-primary/5 border border-primary/20 rounded-lg px-4 py-2.5 flex items-center justify-between gap-3">
           <span className="text-sm font-medium">{selected.size} geselecteerd</span>
           <div className="flex gap-2">
@@ -601,7 +603,7 @@ const Candidates = () => {
         </div>
       )}
 
-      {activeTab === 'instroom' && <LeadFunnelBoard />}
+      {activeTab === 'instroom' && <LeadFunnelBoard readOnly={!canEditCandidates} />}
 
       {/* ===== ALLE KANDIDATEN TAB ===== */}
       {activeTab === 'alle' && (
@@ -616,9 +618,11 @@ const Candidates = () => {
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <Users className="h-12 w-12 text-muted-foreground/40 mb-4" />
               <p className="text-lg font-medium text-muted-foreground">Nog geen kandidaten</p>
-              <Button onClick={() => navigate('/kandidaten/new')} variant="outline" className="mt-4 gap-2">
-                <Plus className="h-4 w-4" /> Voeg je eerste kandidaat toe
-              </Button>
+              {canEditCandidates && (
+                <Button onClick={() => navigate('/kandidaten/new')} variant="outline" className="mt-4 gap-2">
+                  <Plus className="h-4 w-4" /> Voeg je eerste kandidaat toe
+                </Button>
+              )}
             </div>
           ) : (
             <>
@@ -626,13 +630,13 @@ const Candidates = () => {
                 <Table className="min-w-[820px]">
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-10">
+                      {canEditCandidates && <TableHead className="w-10">
                         <Checkbox
                           checked={allOnPageSelected}
                           onCheckedChange={toggleAll}
                           aria-label={allOnPageSelected ? 'Deselecteer alle kandidaten op deze pagina' : 'Selecteer alle kandidaten op deze pagina'}
                         />
-                      </TableHead>
+                      </TableHead>}
                       <TableHead>
                         <Button type="button" variant="ghost" size="sm" className="-ml-3 gap-1.5" onClick={toggleNameSort}>
                           Naam
@@ -646,7 +650,7 @@ const Candidates = () => {
                       <TableHead>E-mail</TableHead>
                       <TableHead>Vaardigheden</TableHead>
                       <TableHead>Compliance</TableHead>
-                      <TableHead className="text-right">Acties</TableHead>
+                      {canEditCandidates && <TableHead className="text-right">Acties</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -656,13 +660,13 @@ const Candidates = () => {
                       const candidateName = `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || 'onbekende kandidaat';
                       return (
                         <TableRow key={c.id} className={i % 2 === 1 ? 'bg-background' : ''}>
-                          <TableCell onClick={(e) => e.stopPropagation()}>
+                          {canEditCandidates && <TableCell onClick={(e) => e.stopPropagation()}>
                             <Checkbox
                               checked={selected.has(c.id)}
                               onCheckedChange={() => toggleCandidate(c.id)}
                               aria-label={`Selecteer kandidaat ${candidateName}`}
                             />
-                          </TableCell>
+                          </TableCell>}
                           <TableCell>
                             <div className="flex items-center gap-1.5">
                               {c.screened_at && (c.screening_data as any)?.result && (c.screening_data as any)?.result !== 'niet_gescreend' ? (
@@ -706,7 +710,7 @@ const Candidates = () => {
                               {c.compliance_status}
                             </Badge>
                           </TableCell>
-                          <TableCell className="text-right">
+                          {canEditCandidates && <TableCell className="text-right">
                             <Button
                               variant="outline"
                               size="sm"
@@ -717,7 +721,7 @@ const Candidates = () => {
                               <KeyRound className="h-3.5 w-3.5" />
                               Portaal
                             </Button>
-                          </TableCell>
+                          </TableCell>}
                         </TableRow>
                       );
                     })}
@@ -762,9 +766,11 @@ const Candidates = () => {
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <Users className="h-12 w-12 text-muted-foreground/40 mb-4" />
               <p className="text-lg font-medium text-muted-foreground">Nog geen kandidaten in dienst</p>
-              <Button onClick={() => navigate('/medewerkers/new')} variant="outline" className="mt-4 gap-2">
-                <UserPlus className="h-4 w-4" /> Kandidaat in dienst nemen
-              </Button>
+              {canEditCandidates && (
+                <Button onClick={() => navigate('/medewerkers/new')} variant="outline" className="mt-4 gap-2">
+                  <UserPlus className="h-4 w-4" /> Kandidaat in dienst nemen
+                </Button>
+              )}
             </div>
           ) : (
             <>
@@ -786,7 +792,7 @@ const Candidates = () => {
                       <TableHead>Huisvesting</TableHead>
                       <TableHead>Portaal</TableHead>
                       <TableHead>Actieve plaatsing</TableHead>
-                      <TableHead className="text-right">Acties</TableHead>
+                      {canEditCandidates && <TableHead className="text-right">Acties</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -832,7 +838,7 @@ const Candidates = () => {
                               </div>
                             ) : '—'}
                           </TableCell>
-                          <TableCell className="text-right">
+                          {canEditCandidates && <TableCell className="text-right">
                             <Button
                               variant="outline"
                               size="sm"
@@ -843,7 +849,7 @@ const Candidates = () => {
                               <KeyRound className="h-3.5 w-3.5" />
                               {c.portal_enabled ? 'Opnieuw' : 'Uitnodigen'}
                             </Button>
-                          </TableCell>
+                          </TableCell>}
                         </TableRow>
                       );
                     })}
@@ -877,14 +883,16 @@ const Candidates = () => {
         </>
       )}
 
-      <ImportWizard open={importOpen} onOpenChange={setImportOpen} target="candidates" preset={importPreset} />
-      <AddToPoolSheet
-        open={poolSheetOpen}
-        onOpenChange={setPoolSheetOpen}
-        candidateIds={Array.from(selected)}
-        onDone={() => setSelected(new Set())}
-      />
-      {portalCandidate && (
+      {canEditCandidates && <ImportWizard open={importOpen} onOpenChange={setImportOpen} target="candidates" preset={importPreset} />}
+      {canEditCandidates && (
+        <AddToPoolSheet
+          open={poolSheetOpen}
+          onOpenChange={setPoolSheetOpen}
+          candidateIds={Array.from(selected)}
+          onDone={() => setSelected(new Set())}
+        />
+      )}
+      {canEditCandidates && portalCandidate && (
         <PortalActivateSheet
           open={!!portalCandidate}
           onOpenChange={(open) => { if (!open) setPortalCandidate(null); }}

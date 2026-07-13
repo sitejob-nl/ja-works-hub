@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireRolePermission } from "../_shared/auth.ts";
 import {
   classifyExactProviderError,
   corsHeaders,
@@ -99,35 +100,20 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return jsonError("Unauthorized", 401);
-    }
-
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
-
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) {
-      return jsonError("Unauthorized", 401);
-    }
-
-    const { data: profile } = await supabase.from("profiles").select("organization_id, role").eq("id", user.id).single();
-    if (!profile) {
-      return jsonError("Profile not found", 404);
-    }
-    if (!["admin", "backoffice", "finance"].includes(profile.role)) {
-      return jsonError("Forbidden", 403);
-    }
+    const body = await req.json();
+    const method = String(body.method ?? "GET").toUpperCase() as ExactMethod;
+    if (!ALLOWED_METHODS.has(method)) return jsonError("method_not_allowed", 405);
+    const requiredPermission = method === "GET" && body.action !== "reactivate_webhooks"
+      ? "finance.view"
+      : "finance.manage";
+    const auth = await requireRolePermission(req, requiredPermission, corsHeaders);
+    if (auth instanceof Response) return auth;
 
     const serviceClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
     // Use RPC to get decrypted credentials
     const { data: exactTokenData, error: rpcError } = await serviceClient.rpc('get_exact_token', {
-      p_org_id: profile.organization_id,
+      p_org_id: auth.organizationId,
     });
 
     if (rpcError || !exactTokenData || exactTokenData.length === 0) {
@@ -139,10 +125,7 @@ Deno.serve(async (req) => {
       return jsonError("Exact Online niet geconfigureerd", 400);
     }
 
-    const body = await req.json();
     const { endpoint, payload } = body;
-    const method = String(body.method ?? "GET").toUpperCase() as ExactMethod;
-    if (!ALLOWED_METHODS.has(method)) return jsonError("method_not_allowed", 405);
 
     // Get fresh token using decrypted webhook secret
     let tokenData;

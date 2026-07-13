@@ -1,4 +1,4 @@
-import { createAdminClient, requireInternalProfile } from "../_shared/auth.ts";
+import { createAdminClient, requireRolePermission } from "../_shared/auth.ts";
 import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
 import { sendViaOutlookAccount } from "../_shared/outlook-send.ts";
 import { buildIcsEvent } from "../_shared/ics.ts";
@@ -45,7 +45,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
 
-  const auth = await requireInternalProfile(req, corsHeaders);
+  const auth = await requireRolePermission(req, "matching.interview.confirm", corsHeaders);
   if (auth instanceof Response) return auth;
 
   try {

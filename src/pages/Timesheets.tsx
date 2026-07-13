@@ -19,6 +19,7 @@ import { formatDate } from '@/lib/format';
 import TimesheetEntrySheet from '@/components/timesheets/TimesheetEntrySheet';
 import TimesheetCsvImport from '@/components/timesheets/TimesheetCsvImport';
 import { EntityLink } from '@/components/ui/entity-link';
+import { useRolePermission } from '@/hooks/usePermissions';
 
 const PAGE_SIZE = 25;
 
@@ -46,6 +47,7 @@ const sourceLabel: Record<string, string> = {
 
 const Timesheets = () => {
   const { user } = useAuth();
+  const canManageFinance = useRolePermission('finance.manage');
   const qc = useQueryClient();
   const [weekRef, setWeekRef] = useState(new Date());
   const [statusFilter, setStatusFilter] = useSearchParamState<string>('status', 'all');
@@ -252,7 +254,7 @@ const Timesheets = () => {
           <h1 className="text-xl sm:text-2xl font-semibold">Uren</h1>
           <p className="text-muted-foreground text-sm mt-1 hidden sm:block">Urenregistratie en goedkeuring</p>
         </div>
-        <div className="flex gap-2 flex-wrap">
+        {canManageFinance && <div className="flex gap-2 flex-wrap">
           {employeeFilter !== 'all' && timesheets.length > 0 && (
             <Button variant="outline" size="sm" onClick={() => generateHourLetter.mutate()} disabled={generateHourLetter.isPending} className="gap-1.5">
               <FileText className="h-4 w-4" /> <span className="hidden sm:inline">{generateHourLetter.isPending ? 'Genereren...' : 'Urenbrief'}</span><span className="sm:hidden">Brief</span>
@@ -267,7 +269,7 @@ const Timesheets = () => {
           <Button size="sm" onClick={() => setEntryOpen(true)} className="gap-1.5">
             <Plus className="h-4 w-4" /> <span className="hidden sm:inline">Uren invoeren</span><span className="sm:hidden">Nieuw</span>
           </Button>
-        </div>
+        </div>}
       </div>
 
       {/* Week selector + filters */}
@@ -341,7 +343,7 @@ const Timesheets = () => {
       </div>
 
       {/* Bulk actions */}
-      {selected.size > 0 && (
+      {canManageFinance && selected.size > 0 && (
         <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
           <span className="text-sm font-medium">{selected.size} geselecteerd</span>
           <Button size="sm" onClick={() => statusMutation.mutate({ ids: Array.from(selected), status: 'goedgekeurd' })} className="bg-stat-green hover:bg-stat-green/90 text-white">
@@ -357,9 +359,11 @@ const Timesheets = () => {
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <Clock className="h-12 w-12 text-muted-foreground/40 mb-4" />
           <p className="text-lg font-medium text-muted-foreground">Nog geen uren geregistreerd</p>
-          <Button onClick={() => setEntryOpen(true)} variant="outline" className="mt-4 gap-2">
-            <Plus className="h-4 w-4" /> Voer je eerste uren in
-          </Button>
+          {canManageFinance && (
+            <Button onClick={() => setEntryOpen(true)} variant="outline" className="mt-4 gap-2">
+              <Plus className="h-4 w-4" /> Voer je eerste uren in
+            </Button>
+          )}
         </div>
       ) : (
         <>
@@ -367,13 +371,13 @@ const Timesheets = () => {
             <Table className="min-w-[700px]">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-10">
+                  {canManageFinance && <TableHead className="w-10">
                     <Checkbox
                       checked={selected.size === timesheets.length && timesheets.length > 0}
                       onCheckedChange={toggleAll}
                       aria-label={selected.size === timesheets.length && timesheets.length > 0 ? 'Deselecteer alle urenregistraties' : 'Selecteer alle urenregistraties'}
                     />
-                  </TableHead>
+                  </TableHead>}
                   <TableHead>Medewerker</TableHead>
                   <TableHead>Opdrachtgever</TableHead>
                   <TableHead>Datum</TableHead>
@@ -382,7 +386,7 @@ const Timesheets = () => {
                   <TableHead>Bron</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Klant</TableHead>
-                  <TableHead>Acties</TableHead>
+                  {canManageFinance && <TableHead>Acties</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -393,13 +397,13 @@ const Timesheets = () => {
                   const name = cand ? `${cand.first_name} ${cand.last_name}` : '—';
                   return (
                     <TableRow key={t.id} className={i % 2 === 1 ? 'bg-background' : ''}>
-                      <TableCell>
+                      {canManageFinance && <TableCell>
                         <Checkbox
                           checked={selected.has(t.id)}
                           onCheckedChange={() => toggleSelect(t.id)}
                           aria-label={`Selecteer urenregistratie van ${name} op ${formatDate(t.work_date)}`}
                         />
-                      </TableCell>
+                      </TableCell>}
                       <TableCell className="font-medium">
                         <EntityLink type="candidate" id={cand?.id}>{name}</EntityLink>
                       </TableCell>
@@ -432,7 +436,7 @@ const Timesheets = () => {
                           <span className="text-[10px] text-muted-foreground">—</span>
                         )}
                       </TableCell>
-                      <TableCell>
+                      {canManageFinance && <TableCell>
                         <div className="flex gap-1">
                           {t.status === 'concept' && <Button size="sm" variant="outline" onClick={() => handleAction(t.id, 'ingediend')}>Indienen</Button>}
                           {['ingediend', 'groen', 'oranje'].includes(t.status) && (
@@ -449,7 +453,7 @@ const Timesheets = () => {
                           )}
                           {t.status === 'afgekeurd' && <Button size="sm" variant="outline" onClick={() => handleAction(t.id, 'concept')}>Heropen</Button>}
                         </div>
-                      </TableCell>
+                      </TableCell>}
                     </TableRow>
                   );
                 })}
@@ -487,8 +491,8 @@ const Timesheets = () => {
         </>
       )}
 
-      <TimesheetEntrySheet open={entryOpen} onOpenChange={setEntryOpen} />
-      <TimesheetCsvImport open={csvOpen} onOpenChange={setCsvOpen} />
+      {canManageFinance && <TimesheetEntrySheet open={entryOpen} onOpenChange={setEntryOpen} />}
+      {canManageFinance && <TimesheetCsvImport open={csvOpen} onOpenChange={setCsvOpen} />}
     </div>
   );
 };

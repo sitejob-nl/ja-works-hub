@@ -1,4 +1,4 @@
-import { createAdminClient, jsonResponse, requireInternalProfile } from "../_shared/auth.ts";
+import { createAdminClient, jsonResponse, requireRolePermission } from "../_shared/auth.ts";
 import { CORS_HEADERS, serveEdge } from "../_shared/http.ts";
 
 const BUCKET = "organization-logos";
@@ -61,9 +61,8 @@ function logoPathFromPublicUrl(urlValue: unknown, organizationId: string): strin
 Deno.serve(serveEdge(async (req) => {
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
-  const auth = await requireInternalProfile(req, CORS_HEADERS);
+  const auth = await requireRolePermission(req, "settings.manage", CORS_HEADERS);
   if (auth instanceof Response) return auth;
-  if (auth.role !== "admin") return json({ error: "Alleen admins mogen het organisatielogo wijzigen" }, 403);
 
   const form = await req.formData().catch(() => null);
   const file = form?.get("file");

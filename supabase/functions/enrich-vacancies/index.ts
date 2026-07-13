@@ -20,7 +20,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { calculateCostCents } from "../_shared/anthropic-cv.ts";
 import { GEMINI_DEFAULT_MODEL, geminiPricingForModel } from "../_shared/gemini-cv.ts";
 import { extractVacancySkills } from "../_shared/gemini-vacancy.ts";
-import { internalFunctionHeaders, isServiceRoleRequest } from "../_shared/auth.ts";
+import { internalFunctionHeaders, isServiceRoleRequest, requireRolePermission } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -190,13 +190,14 @@ Deno.serve(async (req) => {
         const { data } = await admin.from("vacancies").select("id, organization_id, title, description").eq("id", singleVacancyId).maybeSingle();
         vac = data as VacRow | null;
       } else {
-        const authHeader = req.headers.get("Authorization");
-        if (!authHeader?.startsWith("Bearer ")) return json({ error: "Niet geautoriseerd" }, 401);
-        const userClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: authHeader } } });
-        const { data: { user }, error: authErr } = await userClient.auth.getUser();
-        if (authErr || !user) return json({ error: "Ongeldige sessie" }, 401);
-        uid = user.id;
-        const { data } = await userClient.from("vacancies").select("id, organization_id, title, description").eq("id", singleVacancyId).maybeSingle();
+        const auth = await requireRolePermission(req, "vacancies.edit", corsHeaders);
+        if (auth instanceof Response) return auth;
+        uid = auth.userId;
+        const { data } = await admin.from("vacancies")
+          .select("id, organization_id, title, description")
+          .eq("id", singleVacancyId)
+          .eq("organization_id", auth.organizationId)
+          .maybeSingle();
         vac = data as VacRow | null;
       }
       if (!vac) return json({ error: "Vacature niet gevonden of geen toegang" }, 404);

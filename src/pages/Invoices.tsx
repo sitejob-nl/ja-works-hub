@@ -21,6 +21,7 @@ import { EntityLink } from '@/components/ui/entity-link';
 import { logAudit } from '@/lib/audit';
 import { extractFunctionErrorMessage } from '@/lib/functionError';
 import { payrollerLabel, payrollerBadgeClass, JA_WERKT_PAYROLLERS } from '@/lib/payroller';
+import { useRolePermission } from '@/hooks/usePermissions';
 
 type PayrollerType = Database['public']['Enums']['payroller_type'];
 type PayrollerFilter = PayrollerType | 'all';
@@ -38,6 +39,7 @@ const statusBadge: Record<string, { class: string; label: string }> = {
 
 export default function InvoicesPage() {
   const orgId = useOrganizationId();
+  const canManageFinance = useRolePermission('finance.manage');
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -146,9 +148,11 @@ export default function InvoicesPage() {
           <h1 className="text-2xl font-semibold mb-1">Facturatie</h1>
           <p className="text-sm text-muted-foreground">Beheer facturen naar opdrachtgevers</p>
         </div>
-        <Button onClick={() => setShowCreate(true)} className="gap-1">
-          <Plus className="h-4 w-4" /> Nieuwe factuur
-        </Button>
+        {canManageFinance && (
+          <Button onClick={() => setShowCreate(true)} className="gap-1">
+            <Plus className="h-4 w-4" /> Nieuwe factuur
+          </Button>
+        )}
       </div>
 
       {/* KPI cards */}
@@ -314,7 +318,7 @@ export default function InvoicesPage() {
       </Tabs>
 
       {/* Create Invoice Sheet */}
-      <CreateInvoiceSheet open={showCreate} onOpenChange={setShowCreate} orgId={orgId} onSuccess={() => { qc.invalidateQueries({ queryKey: ['invoices'] }); setShowCreate(false); }} />
+      {canManageFinance && <CreateInvoiceSheet open={showCreate} onOpenChange={setShowCreate} orgId={orgId} onSuccess={() => { qc.invalidateQueries({ queryKey: ['invoices'] }); setShowCreate(false); }} />}
 
       {/* Invoice Detail Sheet */}
       {selectedInvoice && (
@@ -322,6 +326,7 @@ export default function InvoicesPage() {
           invoice={selectedInvoice}
           lines={invoiceLines ?? []}
           open={!!selectedInvoice}
+          canManage={canManageFinance}
           onOpenChange={(o) => { if (!o) setSelectedInvoice(null); }}
           onUpdate={() => { qc.invalidateQueries({ queryKey: ['invoices'] }); qc.invalidateQueries({ queryKey: ['invoice-lines'] }); }}
         />
@@ -631,8 +636,8 @@ function CreateInvoiceSheet({ open, onOpenChange, orgId, onSuccess }: { open: bo
 }
 
 // ─── Invoice Detail Sheet ───
-function InvoiceDetailSheet({ invoice, lines, open, onOpenChange, onUpdate }: {
-  invoice: any; lines: any[]; open: boolean; onOpenChange: (o: boolean) => void; onUpdate: () => void;
+function InvoiceDetailSheet({ invoice, lines, open, onOpenChange, onUpdate, canManage }: {
+  invoice: any; lines: any[]; open: boolean; canManage: boolean; onOpenChange: (o: boolean) => void; onUpdate: () => void;
 }) {
   const st = statusBadge[invoice.status] || statusBadge.concept;
 
@@ -747,17 +752,17 @@ function InvoiceDetailSheet({ invoice, lines, open, onOpenChange, onUpdate }: {
           <Separator />
           <div className="flex flex-wrap gap-2">
             {/* Status flow */}
-            {invoice.status === 'concept' && (
+            {canManage && invoice.status === 'concept' && (
               <Button variant="outline" onClick={() => markAs.mutate('definitief')} disabled={markAs.isPending}>
                 <CheckCircle2 className="h-4 w-4 mr-1" /> Definitief maken
               </Button>
             )}
-            {invoice.status === 'definitief' && (
+            {canManage && invoice.status === 'definitief' && (
               <Button onClick={() => markAs.mutate('verzonden')} disabled={markAs.isPending}>
                 <Send className="h-4 w-4 mr-1" /> Markeer als verzonden
               </Button>
             )}
-            {invoice.status === 'verzonden' && (
+            {canManage && invoice.status === 'verzonden' && (
               <Button variant="default" onClick={() => markAs.mutate('betaald')} disabled={markAs.isPending}>
                 <Euro className="h-4 w-4 mr-1" /> Markeer als betaald
               </Button>
@@ -769,7 +774,7 @@ function InvoiceDetailSheet({ invoice, lines, open, onOpenChange, onUpdate }: {
             </Button>
 
             {/* Exact sync */}
-            {!invoice.exact_invoice_id && invoice.status !== 'concept' && (
+            {canManage && !invoice.exact_invoice_id && invoice.status !== 'concept' && (
               <Button variant="outline" onClick={() => syncExact.mutate()} disabled={syncExact.isPending}>
                 <RefreshCw className={`h-4 w-4 mr-1 ${syncExact.isPending ? 'animate-spin' : ''}`} />
                 {syncExact.isPending ? 'Synchroniseren...' : 'Naar Exact'}

@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireRolePermission } from "../_shared/auth.ts";
 import { sendViaOutlookAccount } from "../_shared/outlook-send.ts";
 import { type BrandTheme, escapeHtml, loadBrandTheme, renderBrandedEmail } from "../_shared/email-layout.ts";
 
@@ -94,25 +95,9 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) return json({ error: "Unauthorized" }, 401);
-
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
-
-    const { data: { user }, error: userErr } = await supabase.auth.getUser();
-    if (userErr || !user) return json({ error: "Unauthorized" }, 401);
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("organization_id")
-      .eq("id", user.id)
-      .single();
-    if (!profile) return json({ error: "Profile not found" }, 404);
-    const orgId = profile.organization_id;
+    const auth = await requireRolePermission(req, "finance.manage", corsHeaders);
+    if (auth instanceof Response) return auth;
+    const orgId = auth.organizationId;
 
     const serviceClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -183,7 +168,7 @@ Deno.serve(async (req) => {
         subject,
         htmlBody: html,
         candidateId,
-        sentBy: user.id,
+        sentBy: auth.userId,
         senderName: null,
       });
 
@@ -198,7 +183,7 @@ Deno.serve(async (req) => {
           subject,
           body: `Urenbevestiging ${period} — ${items.length} regels, ${formatHours(totalHours)} uur`,
           sent_at: new Date().toISOString(),
-          sent_by: user.id,
+          sent_by: auth.userId,
           email_to: [candidate.email],
         });
       } else {

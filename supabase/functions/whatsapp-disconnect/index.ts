@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders, getAuthenticatedOrg, jsonError, jsonOk } from "../_shared/whatsapp-utils.ts";
+import { requireRolePermission } from "../_shared/auth.ts";
+import { corsHeaders, jsonError, jsonOk } from "../_shared/whatsapp-utils.ts";
 
 const CONNECT_DISCONNECT_URL = "https://xeshjkznwdrxjjhbpisn.supabase.co/functions/v1/tenant-disconnect";
 
@@ -7,13 +8,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: req.headers.get("Authorization")! } } },
-    );
-
-    const auth = await getAuthenticatedOrg(req, supabase);
+    const auth = await requireRolePermission(req, "settings.manage", corsHeaders);
     if (auth instanceof Response) return auth;
 
     const service = createClient(
@@ -24,7 +19,7 @@ Deno.serve(async (req) => {
     const { data: config } = await service
       .from("whatsapp_config")
       .select("id, tenant_id, webhook_secret")
-      .eq("organization_id", auth.orgId)
+      .eq("organization_id", auth.organizationId)
       .maybeSingle();
 
     if (!config?.tenant_id || !config?.webhook_secret) {

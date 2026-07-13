@@ -6,10 +6,14 @@ import { unwrap } from '@/lib/db';
 import { normalizeRolePermissions, roleHasPermission, type PermissionKey } from '@/lib/permissions';
 
 export function useRolePermission(permission: PermissionKey) {
+  return useRolePermissionAccess(permission).allowed;
+}
+
+export function useRolePermissionAccess(permission: PermissionKey) {
   const orgId = useOrganizationId();
   const { role } = useAuth();
 
-  const { data: settings } = useQuery({
+  const query = useQuery({
     queryKey: ['role-permissions', orgId],
     queryFn: async () => {
       const data = await unwrap(supabase.from('organizations').select('settings').eq('id', orgId!).single());
@@ -19,7 +23,11 @@ export function useRolePermission(permission: PermissionKey) {
     staleTime: 30_000,
   });
 
-  return roleHasPermission(role, permission, (settings as any)?.role_permissions);
+  return {
+    allowed: roleHasPermission(role, permission, (query.data as any)?.role_permissions),
+    isLoading: query.isLoading,
+    error: query.error,
+  };
 }
 
 export function useRolePermissionMatrix() {

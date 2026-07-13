@@ -1,5 +1,5 @@
 import { corsHeaders, jsonResponse, jsonError, callVoysApi, isSafeVoysEndpoint } from "../_shared/voys-helpers.ts";
-import { getAuthenticatedProfile, isInternalRole, createAdminClient } from "../_shared/auth.ts";
+import { createAdminClient, requireRolePermission } from "../_shared/auth.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -10,11 +10,8 @@ Deno.serve(async (req) => {
     // Authenticate on EVERY path — the proxy forwards a Bearer credential and can
     // reach external hosts, so it must never run anonymously. An internal role is
     // required; medewerker/opdrachtgever portal users have no business calling Voys.
-    const auth = await getAuthenticatedProfile(req, corsHeaders);
+    const auth = await requireRolePermission(req, "settings.manage", corsHeaders);
     if (auth instanceof Response) return auth;
-    if (!isInternalRole(auth.role)) {
-      return jsonError("Onvoldoende rechten", 403);
-    }
 
     const body = await req.json();
     const { endpoint, method = "GET", payload, api_token: directToken } = body;

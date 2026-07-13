@@ -16,6 +16,7 @@ import { getPaginationRange } from '@/lib/pagination';
 import { toast } from 'sonner';
 import ErrorState from '@/components/shared/ErrorState';
 import { toFriendlyError } from '@/lib/errorMessages';
+import { useRolePermission } from '@/hooks/usePermissions';
 
 const PAGE_SIZE = 10;
 
@@ -49,6 +50,7 @@ const renderSalary = (v: any): string => {
 
 const Vacancies = () => {
   const navigate = useNavigate();
+  const canEditVacancies = useRolePermission('vacancies.edit');
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -119,9 +121,11 @@ const Vacancies = () => {
           <h1 className="text-2xl font-semibold">Vacatures</h1>
           <p className="text-muted-foreground text-sm mt-1">Openstaande en vervulde vacatures</p>
         </div>
-        <Button onClick={() => navigate('/vacatures/new')} className="gap-2">
-          <Plus className="h-4 w-4" /> Nieuwe vacature
-        </Button>
+        {canEditVacancies && (
+          <Button onClick={() => navigate('/vacatures/new')} className="gap-2">
+            <Plus className="h-4 w-4" /> Nieuwe vacature
+          </Button>
+        )}
       </div>
 
       <div className="flex items-center gap-3 flex-wrap">
@@ -158,9 +162,11 @@ const Vacancies = () => {
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <Briefcase className="h-12 w-12 text-muted-foreground/40 mb-4" />
           <p className="text-lg font-medium text-muted-foreground">Nog geen vacatures</p>
-          <Button onClick={() => navigate('/vacatures/new')} variant="outline" className="mt-4 gap-2">
-            <Plus className="h-4 w-4" /> Voeg je eerste vacature toe
-          </Button>
+          {canEditVacancies && (
+            <Button onClick={() => navigate('/vacatures/new')} variant="outline" className="mt-4 gap-2">
+              <Plus className="h-4 w-4" /> Voeg je eerste vacature toe
+            </Button>
+          )}
         </div>
       ) : (
         <>
@@ -213,7 +219,7 @@ const Vacancies = () => {
                       <TableCell>
                         <Select
                           value={v.status}
-                          disabled={updateStatus.isPending}
+                          disabled={updateStatus.isPending || !canEditVacancies}
                           onValueChange={(newStatus) => updateStatus.mutate({ id: v.id, status: newStatus, oldStatus: v.status })}
                         >
                           <SelectTrigger className={`h-7 px-2 text-xs border-0 w-32 ${statusBadge[v.status] ?? ''}`}>

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { useAuth, useHasRole } from '@/contexts/AuthContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { applyBranding, type BrandingSettings } from '@/lib/branding';
 import { useQuery } from '@tanstack/react-query';
@@ -10,6 +10,7 @@ import {
   ChevronLeft, ChevronRight, Search, UserSearch, Calculator, ClipboardList, Fuel, FileText, BarChart3, CheckSquare, BarChart2, FolderHeart, GitCompareArrows, Database, TrendingUp,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { roleHasPermission, type PermissionKey } from '@/lib/permissions';
 import { useEffect } from 'react';
 
 interface AppSidebarProps {
@@ -17,7 +18,14 @@ interface AppSidebarProps {
 }
 
 // roles: null = visible for all roles (admin always sees everything)
-type NavItem = { label: string; icon: any; path: string; moduleKey: string | null; roles: string[] | null };
+type NavItem = {
+  label: string;
+  icon: any;
+  path: string;
+  moduleKey: string | null;
+  roles: string[] | null;
+  permission?: PermissionKey;
+};
 type NavGroup = { label: string | null; items: NavItem[] };
 
 const navGroups: NavGroup[] = [
@@ -34,7 +42,7 @@ const navGroups: NavGroup[] = [
     label: 'Relaties',
     items: [
       { label: 'Opdrachtgevers', icon: Building2, path: '/opdrachtgevers', moduleKey: 'opdrachtgevers', roles: ['intercedent', 'backoffice'] },
-      { label: 'Kandidaten', icon: Users, path: '/kandidaten', moduleKey: 'kandidaten', roles: ['intercedent', 'backoffice'] },
+      { label: 'Kandidaten', icon: Users, path: '/kandidaten', moduleKey: 'kandidaten', roles: null, permission: 'candidates.view' },
       { label: 'Contacten', icon: UserRound, path: '/contacten', moduleKey: 'contacten', roles: ['intercedent', 'backoffice'] },
       { label: 'Talentpools', icon: FolderHeart, path: '/talentpools', moduleKey: 'talentpools', roles: ['intercedent'] },
     ],
@@ -42,12 +50,12 @@ const navGroups: NavGroup[] = [
   {
     label: 'Werk',
     items: [
-      { label: 'Vacatures', icon: Briefcase, path: '/vacatures', moduleKey: 'vacatures', roles: ['intercedent'] },
-      { label: 'Match Pipeline', icon: GitCompareArrows, path: '/match-pipeline', moduleKey: 'vacatures', roles: ['intercedent'] },
-      { label: 'Plaatsingen', icon: UserCheck, path: '/plaatsingen', moduleKey: 'plaatsingen', roles: ['intercedent', 'backoffice'] },
+      { label: 'Vacatures', icon: Briefcase, path: '/vacatures', moduleKey: 'vacatures', roles: null, permission: 'vacancies.view' },
+      { label: 'Match Pipeline', icon: GitCompareArrows, path: '/match-pipeline', moduleKey: 'vacatures', roles: null, permission: 'matching.pipeline.view' },
+      { label: 'Plaatsingen', icon: UserCheck, path: '/plaatsingen', moduleKey: 'plaatsingen', roles: null, permission: 'placements.view' },
       { label: 'Planning', icon: Calendar, path: '/planning', moduleKey: 'planning', roles: ['intercedent', 'backoffice'] },
-      { label: 'Uren', icon: Clock, path: '/uren', moduleKey: 'uren', roles: ['intercedent', 'backoffice', 'finance'] },
-      { label: 'Facturatie', icon: FileText, path: '/facturatie', moduleKey: 'facturatie', roles: ['finance', 'backoffice'] },
+      { label: 'Uren', icon: Clock, path: '/uren', moduleKey: 'uren', roles: null, permission: 'finance.view' },
+      { label: 'Facturatie', icon: FileText, path: '/facturatie', moduleKey: 'facturatie', roles: null, permission: 'finance.view' },
       { label: 'Uitstroom', icon: BarChart3, path: '/uitstroom-analyse', moduleKey: 'uitstroom-analyse', roles: ['intercedent', 'backoffice'] },
     ],
   },
@@ -56,8 +64,8 @@ const navGroups: NavGroup[] = [
     items: [
       { label: 'Huisvesting', icon: Home, path: '/huisvesting', moduleKey: 'huisvesting', roles: ['intercedent', 'backoffice'] },
       { label: 'Transport', icon: Car, path: '/transport', moduleKey: 'transport', roles: ['intercedent', 'backoffice'] },
-      { label: 'Tankpas analyse', icon: Fuel, path: '/tankpas-analyse', moduleKey: 'tankpas-analyse', roles: ['finance', 'backoffice'] },
-      { label: 'Kilometeranalyse', icon: Calculator, path: '/kilometeranalyse', moduleKey: 'tankpas-analyse', roles: ['finance', 'backoffice'] },
+      { label: 'Tankpas analyse', icon: Fuel, path: '/tankpas-analyse', moduleKey: 'tankpas-analyse', roles: null, permission: 'finance.view' },
+      { label: 'Kilometeranalyse', icon: Calculator, path: '/kilometeranalyse', moduleKey: 'tankpas-analyse', roles: null, permission: 'finance.view' },
     ],
   },
   {
@@ -77,8 +85,8 @@ const navGroups: NavGroup[] = [
       { label: 'Kennisbank', icon: BookOpen, path: '/kennisbank', moduleKey: 'kennisbank', roles: null },
       { label: 'Vacaturebank', icon: Search, path: '/vacaturebank', moduleKey: 'vacaturebank', roles: ['intercedent'] },
       { label: 'Kandidaten zoeken', icon: UserSearch, path: '/kandidaten-zoeken', moduleKey: 'kandidaten-zoeken', roles: ['intercedent'] },
-      { label: 'Exact Online', icon: Calculator, path: '/exact-online', moduleKey: 'exact-online', roles: ['finance', 'backoffice'] },
-      { label: 'Omzet (directie)', icon: TrendingUp, path: '/omzet', moduleKey: 'exact-online', roles: ['admin'] },
+      { label: 'Exact Online', icon: Calculator, path: '/exact-online', moduleKey: 'exact-online', roles: null, permission: 'finance.view' },
+      { label: 'Omzet (directie)', icon: TrendingUp, path: '/omzet', moduleKey: 'exact-online', roles: null, permission: 'finance.view' },
       { label: 'Carerix import', icon: Database, path: '/carerix-import', moduleKey: 'carerix-import', roles: ['admin'] },
     ],
   },
@@ -163,10 +171,17 @@ const AppSidebar = ({ onNavigate }: AppSidebarProps) => {
     return !!userRole && roles.includes(userRole);
   };
 
+  const isPermissionAllowed = (permission?: PermissionKey): boolean => {
+    if (!permission) return true;
+    return roleHasPermission(userRole, permission, (org?.settings as any)?.role_permissions);
+  };
+
   const filteredGroups = navGroups
     .map(group => ({
       ...group,
-      items: group.items.filter(item => isModuleEnabled(item.moduleKey) && isRoleAllowed(item.roles)),
+      items: group.items.filter(item =>
+        isModuleEnabled(item.moduleKey) && isRoleAllowed(item.roles) && isPermissionAllowed(item.permission)
+      ),
     }))
     .filter(group => group.items.length > 0);
 
@@ -292,19 +307,21 @@ const AppSidebar = ({ onNavigate }: AppSidebarProps) => {
 
       {/* Bottom */}
       <div className="border-t border-sidebar-border px-2 py-3 space-y-0.5">
-        <NavLink
-          to="/instellingen"
-          onClick={handleNavClick}
-          className={cn(
-            'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors',
-            location.pathname === '/instellingen'
-              ? 'bg-sidebar-hover text-sidebar-active'
-              : 'text-sidebar-foreground hover:bg-sidebar-hover hover:text-sidebar-active'
-          )}
-        >
-          <Settings className="h-4 w-4 shrink-0" />
-          {!collapsed && <span>Instellingen</span>}
-        </NavLink>
+        {isPermissionAllowed('settings.manage') && (
+          <NavLink
+            to="/instellingen"
+            onClick={handleNavClick}
+            className={cn(
+              'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors',
+              location.pathname === '/instellingen'
+                ? 'bg-sidebar-hover text-sidebar-active'
+                : 'text-sidebar-foreground hover:bg-sidebar-hover hover:text-sidebar-active'
+            )}
+          >
+            <Settings className="h-4 w-4 shrink-0" />
+            {!collapsed && <span>Instellingen</span>}
+          </NavLink>
+        )}
 
         {/* User profile */}
         {!collapsed && profile && (
