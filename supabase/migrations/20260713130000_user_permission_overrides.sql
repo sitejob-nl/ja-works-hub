@@ -34,6 +34,21 @@ CREATE TABLE IF NOT EXISTS public.user_permission_overrides (
   PRIMARY KEY (user_id, permission_key)
 );
 
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+      FROM pg_constraint
+     WHERE conname = 'user_permission_overrides_individual_key_check'
+       AND conrelid = 'public.user_permission_overrides'::regclass
+  ) THEN
+    ALTER TABLE public.user_permission_overrides
+      ADD CONSTRAINT user_permission_overrides_individual_key_check
+      CHECK (permission_key NOT IN ('candidates.edit', 'finance.manage'));
+  END IF;
+END;
+$$;
+
 CREATE INDEX IF NOT EXISTS user_permission_overrides_org_user_idx
   ON public.user_permission_overrides (organization_id, user_id);
 
@@ -125,6 +140,10 @@ BEGIN
   LOOP
     IF NOT (public.role_permission_defaults('admin') ? v_key) THEN
       RAISE EXCEPTION 'Onbekend recht: %', v_key USING ERRCODE = '22023';
+    END IF;
+    IF v_key IN ('candidates.edit', 'finance.manage') THEN
+      RAISE EXCEPTION 'Recht % kan alleen via rolrechten worden ingesteld', v_key
+        USING ERRCODE = '22023';
     END IF;
     IF jsonb_typeof(v_value) <> 'boolean' THEN
       RAISE EXCEPTION 'Recht % moet true of false zijn', v_key USING ERRCODE = '22023';

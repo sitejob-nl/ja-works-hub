@@ -14,9 +14,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useRolePermissionMatrix } from '@/hooks/usePermissions';
 import {
   effectivePermissionDecision,
+  INDIVIDUALLY_CONFIGURABLE_PERMISSION_KEYS,
   normalizeUserPermissionOverrides,
   permissionGroups,
   ROLE_LABELS,
+  type PermissionDefinition,
   type PermissionKey,
   type UserPermissionOverrides,
   type UserRole,
@@ -44,7 +46,17 @@ const UserPermissionOverridesDialog = ({ user, open, onOpenChange, onSave }: Pro
   const [draft, setDraft] = useState<UserPermissionOverrides>({});
   const [isSaving, setIsSaving] = useState(false);
   const rolePermissionsQuery = useRolePermissionMatrix();
-  const groups = useMemo(() => permissionGroups(), []);
+  const groups = useMemo(
+    () => Object.fromEntries(
+      Object.entries(permissionGroups())
+        .map(([group, permissions]) => [
+          group,
+          permissions.filter((permission) => INDIVIDUALLY_CONFIGURABLE_PERMISSION_KEYS.includes(permission.key)),
+        ])
+        .filter(([, permissions]) => (permissions as PermissionDefinition[]).length > 0),
+    ) as Record<string, PermissionDefinition[]>,
+    [],
+  );
 
   useEffect(() => {
     if (open && user) setDraft(normalizeUserPermissionOverrides(user.permission_overrides));
@@ -88,7 +100,8 @@ const UserPermissionOverridesDialog = ({ user, open, onOpenChange, onSave }: Pro
           </DialogTitle>
           <DialogDescription>
             {user.full_name} heeft standaard de rechten van {roleLabel}. Kies alleen uitzonderingen die specifiek
-            voor deze gebruiker moeten gelden.
+            voor deze gebruiker moeten gelden. Kandidaten bewerken en Finance beheren blijven uitsluitend via de
+            rolrechten instelbaar.
           </DialogDescription>
         </DialogHeader>
 

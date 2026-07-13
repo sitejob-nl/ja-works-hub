@@ -75,13 +75,13 @@ describe('role permissions', () => {
   it('laat een individuele blokkade voorgaan op een toegestaan rolrecht', () => {
     const decision = effectivePermissionDecision(
       'intercedent',
-      'candidates.edit',
+      'candidates.screening.manage',
       undefined,
-      { 'candidates.edit': false },
+      { 'candidates.screening.manage': false },
     );
 
     expect(decision).toEqual({ allowed: false, source: 'user_deny' });
-    expect(userHasPermission('intercedent', 'candidates.edit', undefined, { 'candidates.edit': false })).toBe(false);
+    expect(userHasPermission('intercedent', 'candidates.screening.manage', undefined, { 'candidates.screening.manage': false })).toBe(false);
   });
 
   it('kan adminrechten niet via een gebruikersuitzondering beperken', () => {
@@ -96,5 +96,15 @@ describe('role permissions', () => {
       'unknown.permission': true,
       'finance.manage': 'yes',
     })).toEqual({ 'vacancies.edit': true });
+  });
+
+  it('houdt kandidaten bewerken en finance beheren uitsluitend op rolniveau', () => {
+    expect(normalizeUserPermissionOverrides({
+      'candidates.edit': false,
+      'finance.manage': true,
+      'vacancies.edit': true,
+    })).toEqual({ 'vacancies.edit': true });
+    expect(userHasPermission('intercedent', 'candidates.edit', undefined, { 'candidates.edit': false })).toBe(true);
+    expect(userHasPermission('backoffice', 'finance.manage', undefined, { 'finance.manage': true })).toBe(false);
   });
 });

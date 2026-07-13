@@ -30,7 +30,7 @@ describe('UserPermissionOverridesDialog', () => {
           role: 'backoffice',
           permission_overrides: {
             'vacancies.edit': true,
-            'candidates.edit': false,
+            'candidates.screening.manage': false,
           },
           permission_override_count: 2,
         }}

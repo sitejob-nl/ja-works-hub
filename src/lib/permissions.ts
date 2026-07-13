@@ -69,6 +69,10 @@ export const PERMISSIONS: PermissionDefinition[] = [
 
 export const ALL_PERMISSION_KEYS = PERMISSIONS.map((permission) => permission.key);
 export const INDIVIDUALLY_CONFIGURABLE_ROLES: UserRole[] = ['intercedent', 'backoffice', 'finance'];
+export const ROLE_ONLY_PERMISSION_KEYS: PermissionKey[] = ['candidates.edit', 'finance.manage'];
+export const INDIVIDUALLY_CONFIGURABLE_PERMISSION_KEYS = ALL_PERMISSION_KEYS.filter(
+  (permission) => !ROLE_ONLY_PERMISSION_KEYS.includes(permission),
+);
 
 const defaults = (enabled: PermissionKey[]): Record<PermissionKey, boolean> => {
   const set = new Set(enabled);
@@ -124,6 +128,8 @@ export const DEFAULT_ROLE_PERMISSIONS: RolePermissionMatrix = {
 
 const isRole = (value: string): value is UserRole => Object.prototype.hasOwnProperty.call(DEFAULT_ROLE_PERMISSIONS, value);
 const isPermission = (value: string): value is PermissionKey => ALL_PERMISSION_KEYS.includes(value as PermissionKey);
+const isIndividuallyConfigurablePermission = (value: string): value is PermissionKey =>
+  INDIVIDUALLY_CONFIGURABLE_PERMISSION_KEYS.includes(value as PermissionKey);
 
 export function normalizeRolePermissions(raw: unknown): RolePermissionMatrix {
   const matrix = structuredClone(DEFAULT_ROLE_PERMISSIONS) as RolePermissionMatrix;
@@ -164,7 +170,7 @@ export function normalizeUserPermissionOverrides(raw: unknown): UserPermissionOv
       if (!row || typeof row !== 'object') continue;
       const permission = (row as Record<string, unknown>).permission_key;
       const allowed = (row as Record<string, unknown>).allowed;
-      if (typeof permission === 'string' && isPermission(permission) && typeof allowed === 'boolean') {
+      if (typeof permission === 'string' && isIndividuallyConfigurablePermission(permission) && typeof allowed === 'boolean') {
         normalized[permission] = allowed;
       }
     }
@@ -173,7 +179,7 @@ export function normalizeUserPermissionOverrides(raw: unknown): UserPermissionOv
 
   if (!raw || typeof raw !== 'object') return normalized;
   for (const [permission, allowed] of Object.entries(raw as Record<string, unknown>)) {
-    if (isPermission(permission) && typeof allowed === 'boolean') normalized[permission] = allowed;
+    if (isIndividuallyConfigurablePermission(permission) && typeof allowed === 'boolean') normalized[permission] = allowed;
   }
   return normalized;
 }

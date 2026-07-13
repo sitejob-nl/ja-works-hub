@@ -14,6 +14,7 @@ type InternalRole = "admin" | "intercedent" | "backoffice" | "finance";
 
 const INTERNAL_ROLES: InternalRole[] = ["admin", "intercedent", "backoffice", "finance"];
 const PERMISSION_KEY_SET = new Set<EdgePermissionKey>(EDGE_PERMISSION_KEYS);
+const ROLE_ONLY_PERMISSION_KEY_SET = new Set<EdgePermissionKey>(["candidates.edit", "finance.manage"]);
 const ROLE_LABELS: Record<InternalRole, string> = {
   admin: "Admin",
   intercedent: "Intercedent",
@@ -41,6 +42,9 @@ function assertPermissionOverrides(value: unknown): Partial<Record<EdgePermissio
   for (const [permission, allowed] of Object.entries(value as Record<string, unknown>)) {
     if (!PERMISSION_KEY_SET.has(permission as EdgePermissionKey)) {
       throw new Error(`Onbekend recht: ${permission}`);
+    }
+    if (ROLE_ONLY_PERMISSION_KEY_SET.has(permission as EdgePermissionKey)) {
+      throw new Error(`Recht ${permission} kan alleen via rolrechten worden ingesteld`);
     }
     if (typeof allowed !== "boolean") {
       throw new Error(`Recht ${permission} moet true of false zijn`);
