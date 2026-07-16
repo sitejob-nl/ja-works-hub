@@ -9,6 +9,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
 import { storagePathFromCvValue } from "../_shared/candidate-dossier.ts";
 import { advanceMatchStatus, createMatchFollowUpTask, recordMatchProposalTokenResponse } from "../_shared/match-lifecycle.ts";
+import { resolvePublicProposalPage } from "../_shared/proposal-page.ts";
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -114,6 +115,11 @@ Deno.serve(async (req) => {
     const snapVacancy = asRecord(snapshot.vacancy);
     const snapCompany = asRecord(snapshot.company);
     const snapReport = asRecord(snapshot.report);
+    const {
+      proposalPage: publicProposalPage,
+      sections: pageSections,
+      sectionEnabled,
+    } = resolvePublicProposalPage(snapshot);
     const view = {
       candidate: (candidate || snapCandidate.name) ? {
         first_name: snapCandidate.first_name ?? candidate?.first_name ?? "",
@@ -130,27 +136,27 @@ Deno.serve(async (req) => {
       // korte-TTL CV-link, afwijsredenen, accountmanager-contact voor "vraag stellen".
       const [orgRes, mgrRes, reasonsRes, placementsRes, employmentRes, cvDocRes] = await Promise.all([
         service.from("organizations").select("logo_url, name, email, phone").eq("id", orgId).maybeSingle(),
-        vacancy?.created_by
+        sectionEnabled("contact") && vacancy?.created_by
           ? service.from("profiles").select("full_name, email, phone").eq("id", vacancy.created_by).maybeSingle()
           : Promise.resolve({ data: null }),
         service.from("match_feedback_reasons").select("id, reason")
           .eq("organization_id", orgId).eq("applies_to", "afgewezen").eq("is_active", true)
           .order("sort_order", { ascending: true }),
-        candidate?.id
+        sectionEnabled("history") && candidate?.id
           ? service.from("placements")
             .select("id, function_name, start_date, end_date, status, work_location, companies:company_id(name)")
             .eq("organization_id", orgId).eq("candidate_id", candidate.id)
             .order("start_date", { ascending: false })
             .limit(4)
           : Promise.resolve({ data: [] }),
-        candidate?.id
+        sectionEnabled("history") && candidate?.id
           ? service.from("candidate_employment")
             .select("id, contract_type, start_date, end_date, is_current, notes")
             .eq("organization_id", orgId).eq("candidate_id", candidate.id)
             .order("start_date", { ascending: false })
             .limit(4)
           : Promise.resolve({ data: [] }),
-        candidate?.id
+        sectionEnabled("cv") && candidate?.id
           ? service.from("documents")
             .select("name, file_path, type, created_at")
             .eq("organization_id", orgId).eq("candidate_id", candidate.id)
@@ -170,13 +176,13 @@ Deno.serve(async (req) => {
         cvPath = storagePathFromCvValue(cvDoc.file_path);
         cvFileName = cvDoc.name ?? null;
       }
-      if (cvPath) {
+      if (sectionEnabled("cv") && cvPath) {
         const { data: signed } = await service.storage.from("documents").createSignedUrl(cvPath, CV_SIGNED_TTL);
         cvUrl = signed?.signedUrl ?? null;
       }
       const placements = Array.isArray((placementsRes as any).data) ? (placementsRes as any).data : [];
       const employments = Array.isArray((employmentRes as any).data) ? (employmentRes as any).data : [];
-      const history = [
+      const history = sectionEnabled("history") ? [
         ...placements.map((placement: any) => ({
           id: placement.id,
           role: placement.function_name ?? null,
@@ -197,7 +203,7 @@ Deno.serve(async (req) => {
         })),
       ]
         .sort((a, b) => new Date(b.start_date ?? 0).getTime() - new Date(a.start_date ?? 0).getTime())
-        .slice(0, 6);
+        .slice(0, 6) : [];
 
       return json({
         status: "ok",
@@ -206,45 +212,58 @@ Deno.serve(async (req) => {
         candidate: view.candidate,
         vacancy: view.vacancy,
         company: (company || snapCompany.name) ? { name: snapCompany.name ?? company?.name } : null,
-        sections: asRecord(snapshot.sections),
+        proposal_page: publicProposalPage,
+        sections: pageSections,
         profile: candidate
           ? {
-            summary: snapReport.summary ?? candidate.ai_summary ?? null,
-            function_group: snapReport.function_group ?? candidate.ai_function_group ?? null,
-            classification: snapReport.classification ?? candidate.ai_classification ?? null,
-            target_functions: stringArray(snapReport.target_functions).length ? stringArray(snapReport.target_functions) : stringArray(candidate.ai_target_functions),
-            interview_questions: stringArray(snapReport.interview_questions).length ? stringArray(snapReport.interview_questions) : stringArray(candidate.ai_interview_questions),
-            skills: stringArray(snapReport.skills).length ? stringArray(snapReport.skills) : stringArray(candidate.skills),
-            certifications: stringArray(snapReport.certifications).length ? stringArray(snapReport.certifications) : stringArray(candidate.certifications),
-            languages: stringArray(snapReport.languages).length ? stringArray(snapReport.languages) : stringArray(candidate.languages),
-            city: snapCandidate.address_city ?? candidate.address_city ?? null,
-            available_from: snapCandidate.available_from ?? candidate.available_from ?? null,
-            available_until: candidate.available_until ?? null,
-            arrival_date: snapCandidate.arrival_date ?? candidate.arrival_date ?? null,
-            availability_notes: snapCandidate.availability_notes ?? candidate.availability_notes ?? null,
-            most_recent_role: candidate.most_recent_role ?? null,
-            most_recent_role_year: candidate.most_recent_role_year ?? null,
-            has_drivers_license: snapCandidate.has_drivers_license ?? candidate.has_drivers_license === true,
+            summary: sectionEnabled("summary") ? snapReport.summary ?? candidate.ai_summary ?? null : null,
+            function_group: null,
+            classification: null,
+            target_functions: sectionEnabled("targetFunctions")
+              ? stringArray(snapReport.target_functions).length ? stringArray(snapReport.target_functions) : stringArray(candidate.ai_target_functions)
+              : [],
+            interview_questions: [],
+            skills: sectionEnabled("skills")
+              ? stringArray(snapReport.skills).length ? stringArray(snapReport.skills) : stringArray(candidate.skills)
+              : [],
+            certifications: sectionEnabled("certifications")
+              ? stringArray(snapReport.certifications).length ? stringArray(snapReport.certifications) : stringArray(candidate.certifications)
+              : [],
+            languages: sectionEnabled("languages")
+              ? stringArray(snapReport.languages).length ? stringArray(snapReport.languages) : stringArray(candidate.languages)
+              : [],
+            city: sectionEnabled("availability") ? snapCandidate.address_city ?? candidate.address_city ?? null : null,
+            available_from: sectionEnabled("availability") ? snapCandidate.available_from ?? candidate.available_from ?? null : null,
+            available_until: sectionEnabled("availability") ? candidate.available_until ?? null : null,
+            arrival_date: sectionEnabled("availability") ? snapCandidate.arrival_date ?? candidate.arrival_date ?? null : null,
+            availability_notes: sectionEnabled("availability") ? snapCandidate.availability_notes ?? candidate.availability_notes ?? null : null,
+            most_recent_role: sectionEnabled("history") ? candidate.most_recent_role ?? null : null,
+            most_recent_role_year: sectionEnabled("history") ? candidate.most_recent_role_year ?? null : null,
+            has_drivers_license: sectionEnabled("availability") ? snapCandidate.has_drivers_license ?? candidate.has_drivers_license === true : false,
           }
           : null,
         history,
         report: candidate
           ? {
-            summary: snapReport.summary ?? candidate.ai_summary ?? null,
-            strong_signals: stringArray(snapReport.positive_signals).length ? stringArray(snapReport.positive_signals) : stringArray(candidate.ai_positive_signals),
-            attention_points: stringArray(snapReport.risk_factors).length ? stringArray(snapReport.risk_factors) : stringArray(candidate.ai_risk_factors),
+            summary: sectionEnabled("summary") ? snapReport.summary ?? candidate.ai_summary ?? null : null,
+            strong_signals: sectionEnabled("positiveSignals")
+              ? stringArray(snapReport.positive_signals).length ? stringArray(snapReport.positive_signals) : stringArray(candidate.ai_positive_signals)
+              : [],
+            attention_points: sectionEnabled("riskFactors")
+              ? stringArray(snapReport.risk_factors).length ? stringArray(snapReport.risk_factors) : stringArray(candidate.ai_risk_factors)
+              : [],
           }
           : null,
-        cv_url: cvUrl,
-        cv: cvUrl ? {
+        cv_url: sectionEnabled("cv") ? cvUrl : null,
+        cv: sectionEnabled("cv") && cvUrl ? {
           url: cvUrl,
           file_name: cvFileName ?? "CV",
           is_pdf: isPdfPath(cvPath),
         } : null,
         rejection_reasons: (reasonsRes as any).data ?? [],
         contact: {
-          manager_email: mgr?.email ?? org?.email ?? null,
-          manager_phone: mgr?.phone ?? org?.phone ?? null,
+          manager_email: sectionEnabled("contact") ? mgr?.email ?? org?.email ?? null : null,
+          manager_phone: sectionEnabled("contact") ? mgr?.phone ?? org?.phone ?? null : null,
         },
       });
     }

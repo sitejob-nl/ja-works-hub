@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useLocation, useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -10,6 +10,12 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { formatDate } from '@/lib/format';
+import {
+  mergeProposalPageConfig,
+  proposalListFromText,
+  type ProposalPageConfig,
+  type ProposalPageSectionKey,
+} from '@/lib/proposal-page';
 import {
   Award,
   BriefcaseBusiness,
@@ -71,6 +77,7 @@ type ProposalData = {
   report: Report | null;
   cv_url: string | null;
   cv: CvInfo | null;
+  proposal_page?: ProposalPageConfig;
   sections?: Record<string, boolean>;
   rejection_reasons: { id: string; reason: string }[];
   contact: { manager_email: string | null; manager_phone: string | null };
@@ -159,6 +166,8 @@ const TagList = ({ items, empty }: { items: string[]; empty: string }) => {
 
 const MatchResponse = () => {
   const { token } = useParams<{ token: string }>();
+  const location = useLocation();
+  const isPreview = new URLSearchParams(location.search).has('preview');
   const [data, setData] = useState<ProposalData | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -189,6 +198,7 @@ const MatchResponse = () => {
   }, [token]);
 
   const submit = async (decision: Exclude<Mode, null>) => {
+    if (isPreview) return;
     if (!token) return;
     if (decision === 'op_gesprek' && !interviewDate) return;
     if (decision === 'direct_starten' && !startDate) return;
@@ -272,20 +282,26 @@ const MatchResponse = () => {
   const managerEmail = data?.contact?.manager_email;
   const managerPhone = data?.contact?.manager_phone;
   const waPhone = managerPhone ? managerPhone.replace(/[^0-9]/g, '') : null;
-  const summary = report?.summary || buildSummary(candidateName, profile);
-  const sections = data?.sections ?? {};
-  const showSection = (key: string, defaultValue = true) => sections[key] !== false && sections.hideReport !== true && defaultValue;
+  const proposalPage = mergeProposalPageConfig(
+    data?.proposal_page && Object.keys(data.proposal_page).length > 0
+      ? data.proposal_page
+      : { sections: data?.sections },
+  );
+  const pageContent = (key: ProposalPageSectionKey) => proposalPage.content[key];
+  const sectionBody = (key: ProposalPageSectionKey) => pageContent(key).body.trim();
+  const sectionItems = (key: ProposalPageSectionKey, fallback: string[]) => {
+    const edited = proposalListFromText(sectionBody(key));
+    return edited.length > 0 ? edited : fallback;
+  };
+  const showSection = (key: ProposalPageSectionKey) => proposalPage.sections[key] !== false;
+  const summary = sectionBody('summary') || report?.summary || buildSummary(candidateName, profile);
+  const positiveSignals = sectionItems('positiveSignals', report?.strong_signals ?? []);
+  const riskFactors = sectionItems('riskFactors', report?.attention_points ?? []);
   const orgName = data?.org_name || 'JA Werkt';
   const hasReportContent = Boolean(
-    (showSection('positiveSignals') && (report?.strong_signals?.length ?? 0) > 0) ||
-    (showSection('riskFactors') && (report?.attention_points?.length ?? 0) > 0)
+    (showSection('positiveSignals') && positiveSignals.length > 0) ||
+    (showSection('riskFactors') && riskFactors.length > 0)
   );
-  const quickFacts = compact([
-    profile?.city ? `Regio ${profile.city}` : null,
-    profile?.function_group ?? profile?.classification,
-    profile?.has_drivers_license ? 'Rijbewijs' : null,
-    profile?.available_from ? `Beschikbaar vanaf ${formatDate(profile.available_from)}` : null,
-  ]);
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -301,7 +317,7 @@ const MatchResponse = () => {
             )}
             <div className="min-w-0">
               <div className="truncate text-sm font-medium text-slate-900">{orgName}</div>
-              <div className="truncate text-xs text-muted-foreground">Kandidaatvoorstel</div>
+              <div className="truncate text-xs text-muted-foreground">{proposalPage.title}</div>
             </div>
           </div>
           {data?.company?.name && (
@@ -318,9 +334,9 @@ const MatchResponse = () => {
           <CardHeader className="border-b bg-white">
             <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0">
-                <CardTitle className="text-2xl">Kandidaatvoorstel</CardTitle>
+                <CardTitle className="text-2xl">{proposalPage.title}</CardTitle>
                 <CardDescription className="mt-1">
-                  {data?.company?.name ? `Voor ${data.company.name}` : 'Wij stellen de volgende kandidaat aan u voor'}
+                  {proposalPage.intro}
                 </CardDescription>
               </div>
               {vacancy && (
@@ -343,31 +359,15 @@ const MatchResponse = () => {
                     <div className="min-w-0 flex-1">
                       <div className="text-sm text-muted-foreground">Kandidaat</div>
                       <h1 className="break-words text-2xl font-semibold text-slate-950">{candidateName}</h1>
-                      {profile?.most_recent_role && (
-                        <div className="mt-1 text-sm text-muted-foreground">
-                          Meest recente rol: {profile.most_recent_role}
-                          {profile.most_recent_role_year ? ` (${profile.most_recent_role_year})` : ''}
-                        </div>
-                      )}
                     </div>
                   </div>
-
-                  {quickFacts.length > 0 && (
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {quickFacts.map((fact) => (
-                        <Badge key={fact} variant="outline" className="rounded-md bg-white px-2.5 py-1 text-xs">
-                          {fact}
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
                 </section>
 
                 {showSection('summary') && (
                 <section className="space-y-3">
                   <div className="flex items-center gap-2">
                     <Sparkles className="h-4 w-4 text-slate-500" />
-                    <h2 className="text-base font-semibold">Samenvatting</h2>
+                    <h2 className="text-base font-semibold">{pageContent('summary').title}</h2>
                   </div>
                   {summary ? (
                     <p className="whitespace-pre-line text-sm leading-6 text-slate-700">{summary}</p>
@@ -383,70 +383,76 @@ const MatchResponse = () => {
                   {showSection('skills') && <div className="space-y-3">
                     <div className="flex items-center gap-2">
                       <BriefcaseBusiness className="h-4 w-4 text-slate-500" />
-                      <h2 className="text-base font-semibold">Vaardigheden</h2>
+                      <h2 className="text-base font-semibold">{pageContent('skills').title}</h2>
                     </div>
-                    <TagList items={profile?.skills ?? []} empty="Nog geen vaardigheden vastgelegd." />
+                    <TagList items={sectionItems('skills', profile?.skills ?? [])} empty="Nog geen vaardigheden vastgelegd." />
                   </div>}
                   {showSection('certifications') && <div className="space-y-3">
                     <div className="flex items-center gap-2">
                       <Award className="h-4 w-4 text-slate-500" />
-                      <h2 className="text-base font-semibold">Certificaten</h2>
+                      <h2 className="text-base font-semibold">{pageContent('certifications').title}</h2>
                     </div>
-                    <TagList items={profile?.certifications ?? []} empty="Nog geen certificaten vastgelegd." />
+                    <TagList items={sectionItems('certifications', profile?.certifications ?? [])} empty="Nog geen certificaten vastgelegd." />
                   </div>}
                   {showSection('languages') && <div className="space-y-3">
                     <div className="flex items-center gap-2">
                       <Languages className="h-4 w-4 text-slate-500" />
-                      <h2 className="text-base font-semibold">Talen</h2>
+                      <h2 className="text-base font-semibold">{pageContent('languages').title}</h2>
                     </div>
-                    <TagList items={profile?.languages ?? []} empty="Nog geen talen vastgelegd." />
+                    <TagList items={sectionItems('languages', profile?.languages ?? [])} empty="Nog geen talen vastgelegd." />
                   </div>}
                   {showSection('targetFunctions') && <div className="space-y-3">
                     <div className="flex items-center gap-2">
                       <UserRound className="h-4 w-4 text-slate-500" />
-                      <h2 className="text-base font-semibold">Passende functies</h2>
+                      <h2 className="text-base font-semibold">{pageContent('targetFunctions').title}</h2>
                     </div>
-                    <TagList items={profile?.target_functions ?? []} empty="Nog geen passende functies vastgelegd." />
+                    <TagList items={sectionItems('targetFunctions', profile?.target_functions ?? [])} empty="Nog geen passende functies vastgelegd." />
                   </div>}
                 </section>
 
-                {showSection('availability') && (profile?.availability_notes || profile?.available_from || profile?.available_until || profile?.arrival_date || profile?.city) && (
+                {showSection('availability') && (sectionBody('availability') || profile?.availability_notes || profile?.available_from || profile?.available_until || profile?.arrival_date || profile?.city) && (
                   <section className="rounded-md border p-4">
                     <div className="mb-3 flex items-center gap-2">
                       <CalendarDays className="h-4 w-4 text-slate-500" />
-                      <h2 className="text-base font-semibold">Beschikbaarheid</h2>
+                      <h2 className="text-base font-semibold">{pageContent('availability').title}</h2>
                     </div>
-                    <div className="grid gap-3 text-sm sm:grid-cols-2">
-                      {profile?.city && (
-                        <div className="flex items-start gap-2">
-                          <MapPin className="mt-0.5 h-4 w-4 text-muted-foreground" />
-                          <div>
-                            <div className="text-muted-foreground">Regio</div>
-                            <div className="font-medium">{profile.city}</div>
-                          </div>
+                    {sectionBody('availability') ? (
+                      <p className="whitespace-pre-line text-sm leading-6 text-slate-700">{sectionBody('availability')}</p>
+                    ) : (
+                      <>
+                        <div className="grid gap-3 text-sm sm:grid-cols-2">
+                          {profile?.city && (
+                            <div className="flex items-start gap-2">
+                              <MapPin className="mt-0.5 h-4 w-4 text-muted-foreground" />
+                              <div>
+                                <div className="text-muted-foreground">Regio</div>
+                                <div className="font-medium">{profile.city}</div>
+                              </div>
+                            </div>
+                          )}
+                          {profile?.available_from && (
+                            <div>
+                              <div className="text-muted-foreground">Beschikbaar vanaf</div>
+                              <div className="font-medium">{formatDate(profile.available_from)}</div>
+                            </div>
+                          )}
+                          {profile?.available_until && (
+                            <div>
+                              <div className="text-muted-foreground">Beschikbaar tot</div>
+                              <div className="font-medium">{formatDate(profile.available_until)}</div>
+                            </div>
+                          )}
+                          {profile?.arrival_date && (
+                            <div>
+                              <div className="text-muted-foreground">Aankomst/check-in</div>
+                              <div className="font-medium">{formatDate(profile.arrival_date)}</div>
+                            </div>
+                          )}
                         </div>
-                      )}
-                      {profile?.available_from && (
-                        <div>
-                          <div className="text-muted-foreground">Beschikbaar vanaf</div>
-                          <div className="font-medium">{formatDate(profile.available_from)}</div>
-                        </div>
-                      )}
-                      {profile?.available_until && (
-                        <div>
-                          <div className="text-muted-foreground">Beschikbaar tot</div>
-                          <div className="font-medium">{formatDate(profile.available_until)}</div>
-                        </div>
-                      )}
-                      {profile?.arrival_date && (
-                        <div>
-                          <div className="text-muted-foreground">Aankomst/check-in</div>
-                          <div className="font-medium">{formatDate(profile.arrival_date)}</div>
-                        </div>
-                      )}
-                    </div>
-                    {profile?.availability_notes && (
-                      <p className="mt-3 whitespace-pre-line text-sm leading-6 text-slate-700">{profile.availability_notes}</p>
+                        {profile?.availability_notes && (
+                          <p className="mt-3 whitespace-pre-line text-sm leading-6 text-slate-700">{profile.availability_notes}</p>
+                        )}
+                      </>
                     )}
                   </section>
                 )}
@@ -457,30 +463,31 @@ const MatchResponse = () => {
                       <ShieldCheck className="h-4 w-4 text-slate-500" />
                       <h2 className="text-base font-semibold">Beoordeling</h2>
                     </div>
-                    {showSection('positiveSignals') && report?.strong_signals && report.strong_signals.length > 0 && (
+                    {showSection('positiveSignals') && positiveSignals.length > 0 && (
                       <div>
-                        <div className="mb-1 text-sm font-semibold">Sterke punten</div>
+                        <div className="mb-1 text-sm font-semibold">{pageContent('positiveSignals').title}</div>
                         <ul className="list-disc space-y-1 pl-5 text-sm text-slate-700">
-                          {report.strong_signals.map((s, i) => <li key={i}>{s}</li>)}
+                          {positiveSignals.map((s, i) => <li key={i}>{s}</li>)}
                         </ul>
                       </div>
                     )}
-                    {showSection('riskFactors') && report?.attention_points && report.attention_points.length > 0 && (
+                    {showSection('riskFactors') && riskFactors.length > 0 && (
                       <div>
-                        <div className="mb-1 text-sm font-semibold">Aandachtspunten</div>
+                        <div className="mb-1 text-sm font-semibold">{pageContent('riskFactors').title}</div>
                         <ul className="list-disc space-y-1 pl-5 text-sm text-slate-700">
-                          {report.attention_points.map((s, i) => <li key={i}>{s}</li>)}
+                          {riskFactors.map((s, i) => <li key={i}>{s}</li>)}
                         </ul>
                       </div>
                     )}
                   </section>
                 )}
 
-                <section className="space-y-3">
+                {showSection('history') && <section className="space-y-3">
                   <div className="flex items-center gap-2">
                     <BriefcaseBusiness className="h-4 w-4 text-slate-500" />
-                    <h2 className="text-base font-semibold">Historie</h2>
+                    <h2 className="text-base font-semibold">{pageContent('history').title}</h2>
                   </div>
+                  {sectionBody('history') && <p className="whitespace-pre-line text-sm leading-6 text-slate-700">{sectionBody('history')}</p>}
                   {history.length > 0 ? (
                     <div className="divide-y rounded-md border">
                       {history.map((item) => (
@@ -508,13 +515,13 @@ const MatchResponse = () => {
                   ) : (
                     <p className="text-sm text-muted-foreground">Er is nog geen werkhistorie beschikbaar.</p>
                   )}
-                </section>
+                </section>}
 
-                <section className="space-y-3">
+                {showSection('cv') && <section className="space-y-3">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-center gap-2">
                       <FileText className="h-4 w-4 text-slate-500" />
-                      <h2 className="text-base font-semibold">CV</h2>
+                      <h2 className="text-base font-semibold">{pageContent('cv').title}</h2>
                     </div>
                     {cv?.url && (
                       <a href={cv.url} target="_blank" rel="noopener noreferrer">
@@ -524,6 +531,7 @@ const MatchResponse = () => {
                       </a>
                     )}
                   </div>
+                  {sectionBody('cv') && <p className="whitespace-pre-line text-sm leading-6 text-slate-700">{sectionBody('cv')}</p>}
                   {cv?.url ? (
                     cv.is_pdf ? (
                       <embed src={cv.url} type="application/pdf" className="h-[560px] w-full rounded-md border bg-white" />
@@ -535,11 +543,17 @@ const MatchResponse = () => {
                   ) : (
                     <p className="text-sm text-muted-foreground">Er is geen openbaar CV-bestand beschikbaar voor dit voorstel.</p>
                   )}
-                </section>
+                </section>}
               </div>
 
               <aside className="border-t bg-white p-5 sm:p-6 lg:border-l lg:border-t-0">
                 <div className="lg:sticky lg:top-6">
+                  {isPreview && (
+                    <div className="mb-4 rounded-md border border-blue-200 bg-blue-50 p-3 text-xs leading-5 text-blue-900">
+                      <strong className="block">Voorbeeldmodus</strong>
+                      U kunt de reactiestappen bekijken, maar niets bevestigen of versturen.
+                    </div>
+                  )}
                   <div className="mb-4">
                     <div className="text-sm font-semibold text-slate-900">Reactie opdrachtgever</div>
                     <p className="mt-1 text-sm text-muted-foreground">Kies de gewenste vervolgstap voor deze kandidaat.</p>
@@ -566,7 +580,7 @@ const MatchResponse = () => {
                       <Textarea placeholder="Opmerking (optioneel)" value={note} onChange={(e) => setNote(e.target.value)} />
                       <div className="flex gap-2">
                         <Button variant="ghost" onClick={() => setMode(null)} disabled={submitting}>Terug</Button>
-                        <Button className="flex-1 bg-emerald-600 hover:bg-emerald-700" onClick={() => submit('direct_starten')} disabled={submitting || !startDate}>
+                        <Button className="flex-1 bg-emerald-600 hover:bg-emerald-700" onClick={() => submit('direct_starten')} disabled={submitting || !startDate || isPreview}>
                           {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Bevestig'}
                         </Button>
                       </div>
@@ -583,7 +597,7 @@ const MatchResponse = () => {
                       <Textarea placeholder="Opmerking of voorkeurslocatie (optioneel)" value={note} onChange={(e) => setNote(e.target.value)} />
                       <div className="flex gap-2">
                         <Button variant="ghost" onClick={() => setMode(null)} disabled={submitting}>Terug</Button>
-                        <Button className="flex-1" onClick={() => submit('op_gesprek')} disabled={submitting || !interviewDate}>
+                        <Button className="flex-1" onClick={() => submit('op_gesprek')} disabled={submitting || !interviewDate || isPreview}>
                           {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Datum voorstellen'}
                         </Button>
                       </div>
@@ -604,29 +618,31 @@ const MatchResponse = () => {
                       <Textarea placeholder="Toelichting (optioneel)" value={note} onChange={(e) => setNote(e.target.value)} />
                       <div className="flex gap-2">
                         <Button variant="ghost" onClick={() => setMode(null)} disabled={submitting}>Terug</Button>
-                        <Button variant="destructive" className="flex-1" onClick={() => submit('afwijzen')} disabled={submitting || !reasonId}>
+                        <Button variant="destructive" className="flex-1" onClick={() => submit('afwijzen')} disabled={submitting || !reasonId || isPreview}>
                           {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Afwijzen'}
                         </Button>
                       </div>
                     </div>
                   )}
 
-                  {(managerEmail || waPhone) && (
+                  {showSection('contact') && (managerEmail || waPhone) && (
                     <>
                       <Separator className="my-5" />
                       <div>
-                        <div className="mb-2 text-sm text-muted-foreground">Een vraag over deze kandidaat?</div>
+                        <div className="mb-1 text-sm font-medium text-slate-900">{pageContent('contact').title}</div>
+                        {sectionBody('contact') && <p className="mb-3 whitespace-pre-line text-xs leading-5 text-muted-foreground">{sectionBody('contact')}</p>}
                         <div className="flex flex-wrap gap-2">
-                          {managerEmail && (
+                          {managerEmail && !isPreview && (
                             <a href={`mailto:${managerEmail}?subject=${encodeURIComponent(`Vraag over voorstel: ${candidateName}`)}`}>
                               <Button variant="outline" size="sm"><Mail className="h-4 w-4 mr-2" /> Mail</Button>
                             </a>
                           )}
-                          {waPhone && (
+                          {waPhone && !isPreview && (
                             <a href={`https://wa.me/${waPhone}?text=${encodeURIComponent(`Vraag over voorstel: ${candidateName}`)}`} target="_blank" rel="noopener noreferrer">
                               <Button variant="outline" size="sm"><MessageCircle className="h-4 w-4 mr-2" /> WhatsApp</Button>
                             </a>
                           )}
+                          {isPreview && <Button variant="outline" size="sm" disabled>Contactknoppen uitgeschakeld</Button>}
                         </div>
                       </div>
                     </>

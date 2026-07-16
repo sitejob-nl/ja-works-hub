@@ -4,6 +4,11 @@ import { buildOrganizationPublicUrl } from "../_shared/public-url.ts";
 import { sanitizeEmailHtml } from "../_shared/outlook-signature.ts";
 import { type BrandTheme, renderBrandedEmail, resolveBrandTheme } from "../_shared/email-layout.ts";
 import { advanceMatchStatus, ensureMatchProposalToken } from "../_shared/match-lifecycle.ts";
+import {
+  PROPOSAL_PAGE_SECTION_KEYS,
+  type ProposalPageConfig,
+  type ProposalPageSectionKey,
+} from "../_shared/proposal-page.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -29,6 +34,78 @@ function cleanEditableText(value: unknown, fallback: string, maxLength = 4000): 
   if (typeof value !== "string") return fallback;
   const cleaned = value.replace(/\r\n/g, "\n").trim();
   return cleaned ? cleaned.slice(0, maxLength) : fallback;
+}
+
+function stringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    : [];
+}
+
+function defaultProposalPage(candidate: any, match: any, candidateName: string, vacancyTitle: string): ProposalPageConfig {
+  const availability = [
+    candidate.available_from ? `Beschikbaar vanaf ${formatDateNl(candidate.available_from) ?? candidate.available_from}` : null,
+    candidate.arrival_date ? `Aankomst/check-in ${formatDateNl(candidate.arrival_date) ?? candidate.arrival_date}` : null,
+    candidate.address_city ? `Regio ${candidate.address_city}` : null,
+    candidate.has_drivers_license ? "Rijbewijs aanwezig" : null,
+    candidate.availability_notes,
+  ].filter(Boolean).join("\n");
+  const content = {
+    summary: { title: "Samenvatting", body: candidate.ai_summary ?? match.match_reasoning ?? "" },
+    skills: { title: "Vaardigheden", body: stringList(candidate.skills).join("\n") },
+    certifications: { title: "Certificaten", body: stringList(candidate.certifications).join("\n") },
+    languages: { title: "Talen", body: stringList(candidate.languages).join("\n") },
+    targetFunctions: { title: "Passende functies", body: stringList(candidate.ai_target_functions).join("\n") },
+    availability: { title: "Beschikbaarheid", body: availability },
+    positiveSignals: { title: "Sterke punten", body: stringList(candidate.ai_positive_signals).join("\n") },
+    riskFactors: { title: "Aandachtspunten", body: stringList(candidate.ai_risk_factors).join("\n") },
+    history: { title: "Werkervaring", body: "" },
+    cv: { title: "CV", body: "Bekijk het CV voor een volledig overzicht van opleiding en werkervaring." },
+    contact: { title: "Vragen over deze kandidaat?", body: "Neem gerust contact op met uw vaste contactpersoon." },
+  } satisfies ProposalPageConfig["content"];
+
+  return {
+    title: "Kandidaatvoorstel",
+    intro: `Bekijk het profiel van ${candidateName} voor de functie ${vacancyTitle} en geef aan welke vervolgstap u wilt nemen.`,
+    sections: {
+      summary: true,
+      skills: true,
+      certifications: true,
+      languages: true,
+      targetFunctions: true,
+      availability: true,
+      positiveSignals: true,
+      riskFactors: false,
+      history: true,
+      cv: true,
+      contact: true,
+    },
+    content,
+  };
+}
+
+function cleanProposalPage(value: unknown, fallback: ProposalPageConfig): ProposalPageConfig {
+  const raw = value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, any>
+    : {};
+  const rawSections = raw.sections && typeof raw.sections === "object" ? raw.sections : {};
+  const rawContent = raw.content && typeof raw.content === "object" ? raw.content : {};
+
+  return {
+    title: cleanEditableText(raw.title, fallback.title, 120),
+    intro: cleanEditableText(raw.intro, fallback.intro, 1000),
+    sections: Object.fromEntries(PROPOSAL_PAGE_SECTION_KEYS.map((key) => [
+      key,
+      typeof rawSections[key] === "boolean" ? rawSections[key] : fallback.sections[key],
+    ])) as Record<ProposalPageSectionKey, boolean>,
+    content: Object.fromEntries(PROPOSAL_PAGE_SECTION_KEYS.map((key) => {
+      const item = rawContent[key] && typeof rawContent[key] === "object" ? rawContent[key] : {};
+      return [key, {
+        title: cleanEditableText(item.title, fallback.content[key].title, 100),
+        body: cleanEditableText(item.body, fallback.content[key].body, 4000),
+      }];
+    })) as Record<ProposalPageSectionKey, { title: string; body: string }>,
+  };
 }
 
 function renderList(items: unknown, color = "#1e3a5f"): string {
@@ -75,10 +152,11 @@ function buildContentSnapshot(input: {
   introText: string;
   closingText: string;
   emailData: Record<string, unknown>;
+  proposalPage: ProposalPageConfig;
   responseUrl: string;
 }) {
   return {
-    version: 1,
+    version: 2,
     generated_at: new Date().toISOString(),
     subject: input.subject,
     intro_text: input.introText,
@@ -120,21 +198,9 @@ function buildContentSnapshot(input: {
       score: input.match.score ?? null,
       breakdown: input.match.match_breakdown ?? null,
     },
-    sections: {
-      summary: input.emailData.includeSummary !== false,
-      profile: input.emailData.includeProfile !== false,
-      skills: input.emailData.includeSkills !== false,
-      certifications: input.emailData.includeCertifications !== false,
-      languages: input.emailData.includeLanguages !== false,
-      availability: input.emailData.includeAvailability !== false,
-      positiveSignals: input.emailData.includePositiveSignals !== false,
-      riskFactors: input.emailData.includeRiskFactors !== false,
-      targetFunctions: input.emailData.includeTargetFunctions !== false,
-      interviewQuestions: input.emailData.includeInterviewQuestions === true,
-      matchReasoning: input.emailData.includeMatchReasoning !== false,
-      reliability: input.emailData.includeReliability === true,
-      hideReport: input.emailData.hideReport === true,
-    },
+    proposal_page: input.proposalPage,
+    // Legacy key blijft bestaan zodat reeds uitgerolde klantpagina's de zichtbaarheid respecteren.
+    sections: input.proposalPage.sections,
   };
 }
 
@@ -224,13 +290,9 @@ function buildProposalEmailHtml(data: {
               <span style="color:${theme.navyHex};font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">Kandidaat</span><br>
               <strong style="color:${theme.navyHex};font-size:15px;">${escapeHtml(data.candidateName)}</strong>
             </td></tr>
-            <tr><td style="padding:16px 20px;border-bottom:1px solid #e2e8f0;">
+            <tr><td style="padding:16px 20px;">
               <span style="color:${theme.navyHex};font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">Functie</span><br>
               <strong style="color:${theme.navyHex};font-size:15px;">${escapeHtml(data.vacancyTitle)}</strong>
-            </td></tr>
-            <tr><td style="padding:16px 20px;">
-              <span style="color:${theme.navyHex};font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">Opdrachtgever</span><br>
-              <strong style="color:${theme.navyHex};font-size:15px;">${escapeHtml(data.companyName)}</strong>
             </td></tr>
           </table>
 
@@ -244,7 +306,7 @@ function buildProposalEmailHtml(data: {
           <p style="margin:0 0 16px;color:${theme.textHex};font-size:14px;line-height:1.6;">${renderText(data.closingText)}</p>
 
           <table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 24px;"><tr><td style="border-radius:6px;background:${theme.accentHex};">
-            <a href="${escapeHtml(data.responseUrl)}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:12px 32px;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;border-radius:6px;">Bekijk CV en reageer op dit voorstel</a>
+            <a href="${escapeHtml(data.responseUrl)}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:12px 32px;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;border-radius:6px;">Bekijk voorstel en reageer</a>
           </td></tr></table>
 
           <p style="margin:8px 0 0;color:${theme.textHex};font-size:14px;">
@@ -289,6 +351,7 @@ Deno.serve(async (req) => {
       hide_ai_report,
       hide_reliability,
       include_sections,
+      proposal_page,
     } = body;
 
     if (!match_id) {
@@ -352,8 +415,8 @@ Deno.serve(async (req) => {
     const subject = (typeof subjectOverride === "string" && subjectOverride.trim())
       ? subjectOverride.trim()
       : `Kandidaatvoorstel: ${candidateName} voor ${vacancy.title}`;
-    const defaultIntroText = `Beste ${defaultName},\n\nGraag stellen wij ${candidateName} aan u voor voor de functie ${vacancy.title}. Hieronder vindt u de belangrijkste gegevens en onze toelichting.`;
-    const defaultClosingText = "Via onderstaande knop kunt u aangeven of u de kandidaat direct wilt laten starten, eerst op gesprek wilt uitnodigen of wilt afwijzen.";
+    const defaultIntroText = `Beste ${defaultName},\n\nGraag stellen wij ${candidateName} aan u voor voor de functie ${vacancy.title}.`;
+    const defaultClosingText = "Bekijk via onderstaande knop het volledige voorstel en geef aan welke vervolgstap u wilt nemen.";
     const introText = cleanEditableText(intro_text, defaultIntroText);
     const closingText = cleanEditableText(closing_text, defaultClosingText);
 
@@ -361,7 +424,7 @@ Deno.serve(async (req) => {
     const hideReliability = hide_reliability !== false;
     const hideReport = hide_ai_report === true;
     const rawSections = include_sections && typeof include_sections === "object" ? include_sections as Record<string, unknown> : {};
-    const sectionEnabled = (key: string, defaultValue = true) =>
+    const sectionEnabled = (key: string, defaultValue = false) =>
       Object.prototype.hasOwnProperty.call(rawSections, key) ? rawSections[key] !== false : defaultValue;
 
     const emailData = {
@@ -393,19 +456,23 @@ Deno.serve(async (req) => {
       matchReasoning: match.match_reasoning ?? null,
       hideReport,
       hideReliability,
-      includeSummary: !hideReport && sectionEnabled("summary"),
-      includeProfile: !hideReport && sectionEnabled("profile"),
-      includeSkills: !hideReport && sectionEnabled("skills"),
-      includeCertifications: !hideReport && sectionEnabled("certifications"),
-      includeLanguages: !hideReport && sectionEnabled("languages"),
-      includeAvailability: !hideReport && sectionEnabled("availability"),
-      includePositiveSignals: !hideReport && sectionEnabled("positiveSignals"),
-      includeRiskFactors: !hideReport && sectionEnabled("riskFactors"),
-      includeTargetFunctions: !hideReport && sectionEnabled("targetFunctions"),
+      includeSummary: !hideReport && sectionEnabled("summary", false),
+      includeProfile: !hideReport && sectionEnabled("profile", false),
+      includeSkills: !hideReport && sectionEnabled("skills", false),
+      includeCertifications: !hideReport && sectionEnabled("certifications", false),
+      includeLanguages: !hideReport && sectionEnabled("languages", false),
+      includeAvailability: !hideReport && sectionEnabled("availability", false),
+      includePositiveSignals: !hideReport && sectionEnabled("positiveSignals", false),
+      includeRiskFactors: !hideReport && sectionEnabled("riskFactors", false),
+      includeTargetFunctions: !hideReport && sectionEnabled("targetFunctions", false),
       includeInterviewQuestions: !hideReport && sectionEnabled("interviewQuestions", false),
-      includeMatchReasoning: !hideReport && sectionEnabled("matchReasoning"),
+      includeMatchReasoning: !hideReport && sectionEnabled("matchReasoning", false),
       includeReliability: !hideReport && sectionEnabled("reliability", !hideReliability),
     };
+    const proposalPage = cleanProposalPage(
+      proposal_page,
+      defaultProposalPage(candidate, match, candidateName, vacancy.title),
+    );
 
     const requestedTokenId = typeof proposal_token_id === "string" ? proposal_token_id : null;
     const previewRecipient = (typeof recipient_email === "string" && recipient_email.trim())
@@ -420,7 +487,8 @@ Deno.serve(async (req) => {
     const previewResponseUrl = await buildOrganizationPublicUrl(serviceClient, orgId, `/match-response/${previewToken.token}`);
 
     if (preview) {
-      const html = buildProposalEmailHtml({ ...emailData, responseUrl: previewResponseUrl });
+      const previewOnlyResponseUrl = `${previewResponseUrl}${previewResponseUrl.includes("?") ? "&" : "?"}preview=1`;
+      const html = buildProposalEmailHtml({ ...emailData, responseUrl: previewOnlyResponseUrl });
       const contentSnapshot = buildContentSnapshot({
         match,
         candidate,
@@ -430,8 +498,16 @@ Deno.serve(async (req) => {
         introText,
         closingText,
         emailData,
+        proposalPage,
         responseUrl: previewResponseUrl,
       });
+      const { error: previewSnapshotError } = await serviceClient
+        .from("match_proposal_tokens")
+        .update({ content_snapshot: contentSnapshot })
+        .eq("id", previewToken.id)
+        .eq("organization_id", orgId)
+        .eq("match_id", match.id);
+      if (previewSnapshotError) throw previewSnapshotError;
       return json({
         preview: true,
         to: defaultEmail,
@@ -443,6 +519,7 @@ Deno.serve(async (req) => {
         proposal_token_id: previewToken.id,
         response_url: previewResponseUrl,
         content_snapshot: contentSnapshot,
+        proposal_page: proposalPage,
         recipients: recipientOptions,
         has_cv: !!candidate.cv_file_url,
       });
@@ -479,6 +556,7 @@ Deno.serve(async (req) => {
       introText,
       closingText,
       emailData,
+      proposalPage,
       responseUrl,
     });
 
