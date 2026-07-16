@@ -4,12 +4,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import MatchProposalEmailDialog from '@/components/matches/MatchProposalEmailDialog';
 import { DEFAULT_PROPOSAL_PAGE_CONFIG } from '@/lib/proposal-page';
 
+const outlookState = vi.hoisted(() => ({ defaultAccountId: undefined as string | undefined }));
+
 vi.mock('@/hooks/useOrganizationId', () => ({ useOrganizationId: () => 'qa-org' }));
 vi.mock('@/hooks/useOutboundPause', () => ({
   useOutboundPause: () => ({ data: { email: true, whatsapp: true } }),
 }));
 vi.mock('@/hooks/useOutlookAccounts', () => ({
-  useOutlookAccounts: () => ({ usableAccounts: [], defaultAccountId: undefined }),
+  useOutlookAccounts: () => ({ usableAccounts: [], defaultAccountId: outlookState.defaultAccountId }),
 }));
 vi.mock('@/hooks/usePermissions', () => ({ useRolePermission: () => true }));
 vi.mock('@/integrations/supabase/client', () => ({
@@ -20,6 +22,7 @@ vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 describe('MatchProposalEmailDialog', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    outlookState.defaultAccountId = undefined;
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
       json: vi.fn().mockResolvedValue({
@@ -54,6 +57,26 @@ describe('MatchProposalEmailDialog', () => {
     rerender(view(vi.fn()));
 
     await waitFor(() => expect(screen.getByLabelText('Paginatitel')).toHaveValue('QA voorstel op maat'));
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('bewaart editorwijzigingen wanneer het standaard mailaccount later beschikbaar komt', async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const view = () => (
+      <QueryClientProvider client={queryClient}>
+        <MatchProposalEmailDialog open matchId="qa-match" onOpenChange={vi.fn()} />
+      </QueryClientProvider>
+    );
+
+    const { rerender } = render(view());
+    const title = await screen.findByLabelText('Paginatitel');
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
+
+    fireEvent.change(title, { target: { value: 'QA voorstel blijft behouden' } });
+    outlookState.defaultAccountId = 'mail-account-1';
+    rerender(view());
+
+    await waitFor(() => expect(screen.getByLabelText('Paginatitel')).toHaveValue('QA voorstel blijft behouden'));
     expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 });

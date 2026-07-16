@@ -88,7 +88,7 @@ const MatchProposalEmailDialog = ({ open, matchId, onOpenChange, onSent }: Match
   );
 
   const resetState = useCallback(() => {
-    setMailAccountId(defaultAccountId);
+    setMailAccountId(undefined);
     setMailTo('');
     setMailCc('');
     setMailBcc('');
@@ -103,7 +103,7 @@ const MatchProposalEmailDialog = ({ open, matchId, onOpenChange, onSent }: Match
     setPagePreviewRevision(0);
     setPageDirty(false);
     setPreviewLoading(false);
-  }, [defaultAccountId]);
+  }, []);
 
   const loadPreview = useCallback(async (
     targetMatchId: string,
@@ -163,12 +163,17 @@ const MatchProposalEmailDialog = ({ open, matchId, onOpenChange, onSent }: Match
 
   useEffect(() => {
     if (!open || !matchId) return;
-    setMailAccountId(defaultAccountId);
+    setMailAccountId(undefined);
     setMailCc('');
     setMailBcc('');
     setPageConfig(DEFAULT_PROPOSAL_PAGE_CONFIG);
     void loadPreview(matchId, DEFAULT_PROPOSAL_PAGE_CONFIG, { resetTo: true, syncPage: true });
-  }, [defaultAccountId, loadPreview, matchId, open]);
+  }, [loadPreview, matchId, open]);
+
+  useEffect(() => {
+    if (!open || !defaultAccountId) return;
+    setMailAccountId((current) => current ?? defaultAccountId);
+  }, [defaultAccountId, open]);
 
   const handleDialogOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) resetState();
