@@ -77,6 +77,7 @@ const MatchProposalEmailDialog = ({ open, matchId, onOpenChange, onSent }: Match
   const [pagePreviewRevision, setPagePreviewRevision] = useState(0);
   const [pageDirty, setPageDirty] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const pageDirtyRef = useRef(false);
 
   useEffect(() => {
     onOpenChangeRef.current = onOpenChange;
@@ -88,7 +89,7 @@ const MatchProposalEmailDialog = ({ open, matchId, onOpenChange, onSent }: Match
   );
 
   const resetState = useCallback(() => {
-    setMailAccountId(defaultAccountId);
+    setMailAccountId(undefined);
     setMailTo('');
     setMailCc('');
     setMailBcc('');
@@ -101,9 +102,10 @@ const MatchProposalEmailDialog = ({ open, matchId, onOpenChange, onSent }: Match
     setMailRecipients([]);
     setPageConfig(DEFAULT_PROPOSAL_PAGE_CONFIG);
     setPagePreviewRevision(0);
+    pageDirtyRef.current = false;
     setPageDirty(false);
     setPreviewLoading(false);
-  }, [defaultAccountId]);
+  }, []);
 
   const loadPreview = useCallback(async (
     targetMatchId: string,
@@ -145,9 +147,13 @@ const MatchProposalEmailDialog = ({ open, matchId, onOpenChange, onSent }: Match
       setProposalResponseUrl(json.response_url ?? '');
       setProposalTokenId(json.proposal_token_id ?? null);
       setMailRecipients(json.recipients ?? []);
-      if (opts.syncPage !== false) setPageConfig(mergeProposalPageConfig(json.proposal_page));
+      const preservePageEdits = opts.syncPage !== false && pageDirtyRef.current;
+      if (opts.syncPage !== false && !preservePageEdits) setPageConfig(mergeProposalPageConfig(json.proposal_page));
       setPagePreviewRevision((revision) => revision + 1);
-      setPageDirty(false);
+      if (!preservePageEdits) {
+        pageDirtyRef.current = false;
+        setPageDirty(false);
+      }
       if (opts.syncText !== false) {
         setIntroText(json.intro_text ?? '');
         setClosingText(json.closing_text ?? '');
@@ -163,12 +169,18 @@ const MatchProposalEmailDialog = ({ open, matchId, onOpenChange, onSent }: Match
 
   useEffect(() => {
     if (!open || !matchId) return;
-    setMailAccountId(defaultAccountId);
+    setMailAccountId(undefined);
     setMailCc('');
     setMailBcc('');
     setPageConfig(DEFAULT_PROPOSAL_PAGE_CONFIG);
+    pageDirtyRef.current = false;
     void loadPreview(matchId, DEFAULT_PROPOSAL_PAGE_CONFIG, { resetTo: true, syncPage: true });
-  }, [defaultAccountId, loadPreview, matchId, open]);
+  }, [loadPreview, matchId, open]);
+
+  useEffect(() => {
+    if (!open || !defaultAccountId) return;
+    setMailAccountId((current) => current ?? defaultAccountId);
+  }, [defaultAccountId, open]);
 
   const handleDialogOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) resetState();
@@ -382,6 +394,7 @@ const MatchProposalEmailDialog = ({ open, matchId, onOpenChange, onSent }: Match
               dirty={pageDirty}
               onChange={(nextConfig) => {
                 setPageConfig(nextConfig);
+                pageDirtyRef.current = true;
                 setPageDirty(true);
               }}
               onRefresh={refreshPreview}
