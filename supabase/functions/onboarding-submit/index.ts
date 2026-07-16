@@ -51,6 +51,29 @@ Deno.serve(async (req) => {
       }
       console.log(`[onboarding-submit] GET token-ok prefix=${tokenPrefix} candidate=${tokenData.candidate_id} form_id=${tokenData.form_id ?? "none"}`);
 
+      // Personalisatie voor de publieke pagina: alléén voornaam + org-branding
+      // (geen gevoelige kandidaatdata — de link kan gedeeld/doorgestuurd zijn).
+      let candidateFirstName: string | null = null;
+      let organizationName: string | null = null;
+      let organizationLogo: string | null = null;
+      if (tokenData.candidate_id) {
+        const { data: cand } = await admin
+          .from("candidates")
+          .select("first_name")
+          .eq("id", tokenData.candidate_id)
+          .maybeSingle();
+        candidateFirstName = cand?.first_name ?? null;
+      }
+      {
+        const { data: org } = await admin
+          .from("organizations")
+          .select("name, logo_url")
+          .eq("id", tokenData.organization_id)
+          .maybeSingle();
+        organizationName = org?.name ?? null;
+        organizationLogo = org?.logo_url ?? null;
+      }
+
       // If a form_id is linked, load the dynamic form
       let form = null;
       if (tokenData.form_id) {
@@ -134,7 +157,13 @@ Deno.serve(async (req) => {
         }
       }
 
-      return json({ valid: true, form });
+      return json({
+        valid: true,
+        form,
+        candidate_first_name: candidateFirstName,
+        organization_name: organizationName,
+        organization_logo: organizationLogo,
+      });
     }
 
     // ─── POST: submit onboarding data ───
