@@ -24,7 +24,7 @@ import MatchProposalEmailDialog from '@/components/matches/MatchProposalEmailDia
 import MatchRow from '@/components/matches/MatchRow';
 import { type MatchBreakdown } from '@/lib/matching';
 import { MATCH_STATUS_STEPS, getMatchStatusMeta, getNextMatchStatus, isTerminalMatchStatus, matchStatusNeedsFeedbackDialog } from '@/lib/match-status';
-import { scoreBadgeClass } from '@/lib/match-presenters';
+import { scoreBadgeClass, verdictBadgeClass } from '@/lib/match-presenters';
 import { advanceMatchStatus, createMatch } from '@/lib/match-lifecycle';
 
 const COLUMNS = MATCH_STATUS_STEPS;
@@ -84,9 +84,11 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [scoreFilter, setScoreFilter] = useState<'strong' | '60' | '70' | '80' | 'all'>('strong');
   const [selectedShortlist, setSelectedShortlist] = useState<Set<string>>(new Set());
+  // Stage-2 AI-herbeoordeling (rerank-matches): fit-score + onderbouwing per kandidaat-id.
+  const [rerankById, setRerankById] = useState<Record<string, any>>({});
   // Detail-dialoog: werkt zowel voor een shortlist-kandidaat (met candidate → "Match maken")
   // als voor een bestaande match (alleen lezen, breakdown uit match_breakdown).
-  const [detail, setDetail] = useState<{ name: string; breakdown: any; quality?: number | null; candidate?: any } | null>(null);
+  const [detail, setDetail] = useState<{ name: string; breakdown: any; quality?: number | null; candidate?: any; rerank?: any } | null>(null);
   const showWeakMatches = scoreFilter === 'all';
   const minScore = scoreFilter === '60' ? 60 : scoreFilter === '70' ? 70 : scoreFilter === '80' ? 80 : 0;
   // Feedback bij statuswijziging — matchIds zodat we het ook voor bulk kunnen gebruiken.
@@ -239,6 +241,35 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
       toast.success(`${created} match${created === 1 ? '' : 'es'} gemaakt${skipped ? ` (${skipped} bestond al)` : ''}`);
     },
     onError: (e: any) => toast.error(e.message),
+  });
+
+  // Stage-2: weegt de VOLLEDIGE vacaturetekst tegen elk shortlist-profiel met Gemini (flash-lite).
+  // Server cachet per (vacature × kandidaat) → herhaald draaien is gratis zolang de tekst niet wijzigt.
+  const rerankMutation = useMutation({
+    mutationFn: async (candidateIds: string[]) => {
+      if (candidateIds.length === 0) throw new Error('Geen kandidaten om te beoordelen');
+      const { data, error } = await supabase.functions.invoke('rerank-matches', {
+        body: { vacancy_id: vacancy.id, candidate_ids: candidateIds },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      return data;
+    },
+    onSuccess: (data: any) => {
+      const next: Record<string, any> = {};
+      for (const r of data?.results ?? []) {
+        if (r?.candidate_id && r.fit_score != null) next[r.candidate_id] = r;
+      }
+      setRerankById((prev) => ({ ...prev, ...next }));
+      const parts: string[] = [`${data?.scored ?? 0} beoordeeld`];
+      if (data?.cached) parts.push(`${data.cached} uit cache`);
+      if (data?.gemini_calls) parts.push(`${data.gemini_calls} nieuwe`);
+      if (typeof data?.cost_cents === 'number' && data.cost_cents > 0) parts.push(`€${(data.cost_cents / 100).toFixed(2)}`);
+      if (data?.failed) parts.push(`${data.failed} mislukt`);
+      toast.success(`AI-herbeoordeling klaar — ${parts.join(', ')}`);
+      if (data?.stopped) toast.warning('Niet alle kandidaten beoordeeld (saldo of tijd op). Draai nogmaals voor de rest.');
+    },
+    onError: (e: any) => toast.error(e.message ?? 'AI-herbeoordeling mislukt'),
   });
 
   const rescoreMutation = useMutation({
@@ -424,6 +455,17 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
   const filteredShortlist = (availableCandidates ?? []).filter(
     (c: any) => (c._vacancyScore?.matchPercent ?? 0) >= minScore,
   );
+  // Zodra de AI-herbeoordeling gedraaid heeft, herrangschikken we de shortlist op de AI-fit-score
+  // (val terug op de regelscore voor nog-niet-beoordeelde kandidaten). Selectie is id-gebaseerd en
+  // dus volgorde-onafhankelijk — alleen de weergave verandert.
+  const rerankActive = Object.keys(rerankById).length > 0;
+  const displayShortlist = rerankActive
+    ? [...filteredShortlist].sort((a: any, b: any) => {
+        const fa = rerankById[a.id]?.fit_score ?? a._vacancyScore?.matchPercent ?? 0;
+        const fb = rerankById[b.id]?.fit_score ?? b._vacancyScore?.matchPercent ?? 0;
+        return fb - fa;
+      })
+    : filteredShortlist;
   const selectedCandidates = filteredShortlist.filter((c: any) => selectedShortlist.has(c.id));
   const allShortlistSelected = filteredShortlist.length > 0 && filteredShortlist.every((c: any) => selectedShortlist.has(c.id));
   const toggleShortlist = (id: string) => setSelectedShortlist((s) => {
@@ -593,7 +635,24 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
               <SelectItem value="all">Alles (incl. zwak)</SelectItem>
             </SelectContent>
           </Select>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 whitespace-nowrap sm:ml-auto"
+            disabled={rerankMutation.isPending || filteredShortlist.length === 0}
+            title="Weegt de volledige vacaturetekst tegen elk profiel met Gemini en herrangschikt de shortlist"
+            onClick={() => rerankMutation.mutate(filteredShortlist.map((c: any) => c.id))}
+          >
+            <Sparkles className={cn('h-3.5 w-3.5', rerankMutation.isPending && 'animate-pulse')} />
+            {rerankMutation.isPending ? 'AI beoordeelt…' : rerankActive ? 'AI opnieuw' : 'AI-herbeoordeling'}
+          </Button>
         </div>
+
+        {filteredShortlist.length > 0 && (
+          <p className="text-[11px] text-muted-foreground -mt-1">
+            AI-herbeoordeling weegt de vólledige vacaturetekst tegen elk profiel (Gemini, ± 1 cent per kandidaat, resultaat wordt gecached) en herrangschikt op de AI-fitscore.
+          </p>
+        )}
 
         {rankFetching && (
           <p className="text-xs text-muted-foreground flex items-center gap-1.5">
@@ -626,9 +685,10 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
                 <Skeleton className="h-3 w-full" />
               </Card>
             ))}
-          {filteredShortlist.map((c: any) => {
+          {displayShortlist.map((c: any) => {
             const checked = selectedShortlist.has(c.id);
             const candidateWithContext = { ...c, ...(shortlistContextById.get(c.id) ?? {}) };
+            const rr = rerankById[c.id];
             return (
               <Card key={c.id} className={cn('p-3', checked && 'ring-1 ring-primary')}>
                 <div className="flex items-start gap-3">
@@ -642,6 +702,11 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
                       {typeof c._candidateQuality === 'number' && (
                         <Badge variant="outline" className="text-[10px] px-1.5 py-0 flex-shrink-0" title="Algemene AI-kwaliteitsscore (los van deze vacature)">★ {c._candidateQuality}</Badge>
                       )}
+                      {rr && (
+                        <Badge className={cn('text-[10px] px-1.5 py-0 flex-shrink-0 gap-0.5', verdictBadgeClass[rr.verdict] ?? 'bg-muted text-muted-foreground border-0')} title={`AI-oordeel op de volledige vacaturetekst — ${rr.verdict}${rr.cached ? ' (uit cache)' : ''}`}>
+                          <Sparkles className="h-2.5 w-2.5" /> AI {rr.fit_score}
+                        </Badge>
+                      )}
                     </div>
                     <MatchSkillBadges
                       skillMatches={c._vacancyScore.skillMatches}
@@ -652,12 +717,22 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
                     {c._vacancyScore.missing.length > 0 && (
                       <p className="text-[11px] text-amber-700 mt-1 line-clamp-1">{c._vacancyScore.missing[0]}</p>
                     )}
+                    {rr?.reasoning && (
+                      <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2">
+                        <span className="font-medium text-foreground/70">AI-oordeel:</span> {rr.reasoning}
+                      </p>
+                    )}
+                    {Array.isArray(rr?.concerns) && rr.concerns.length > 0 && (
+                      <p className="text-[11px] text-amber-700 mt-0.5 line-clamp-1" title={rr.concerns.join(' · ')}>
+                        Aandacht: {rr.concerns[0]}
+                      </p>
+                    )}
                   </div>
                   <div className="flex flex-col items-end gap-1 flex-shrink-0">
                     <Button size="sm" variant="outline" onClick={() => proposeMutation.mutate(c)} disabled={proposeMutation.isPending}>
                       <UserPlus className="h-3 w-3 mr-1" /> Match maken
                     </Button>
-                    <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground" onClick={() => setDetail({ name: `${c.first_name} ${c.last_name}`, breakdown: c._vacancyScore, quality: c._candidateQuality, candidate: candidateWithContext })}>
+                    <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground" onClick={() => setDetail({ name: `${c.first_name} ${c.last_name}`, breakdown: c._vacancyScore, quality: c._candidateQuality, candidate: candidateWithContext, rerank: rr })}>
                       Waarom?
                     </Button>
                   </div>
@@ -680,6 +755,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
         breakdown={detail?.breakdown ?? null}
         candidateQuality={detail?.quality ?? detail?.breakdown?.candidateQuality ?? null}
         candidate={detail?.candidate ?? null}
+        rerank={detail?.rerank ?? null}
         vacancyContext={[
           { label: 'Vacature', value: vacancy.title },
           { label: 'Locatie', value: vacancy.location },

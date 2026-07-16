@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Sparkles } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -12,7 +13,17 @@ import {
 import CandidateMatchContext from '@/components/matches/CandidateMatchContext';
 import type { MatchBreakdown } from '@/lib/matching';
 import { cn } from '@/lib/utils';
-import { componentLabel, scoreBadgeClass } from '@/lib/match-presenters';
+import { componentLabel, scoreBadgeClass, verdictBadgeClass } from '@/lib/match-presenters';
+
+// Stage-2 AI-herbeoordeling (rerank-matches) — optioneel; alleen aanwezig als de gebruiker
+// "AI-herbeoordeling" heeft gedraaid voor deze shortlist-kandidaat.
+type RerankResult = {
+  fit_score?: number | null;
+  verdict?: string | null;
+  reasoning?: string | null;
+  strengths?: string[] | null;
+  concerns?: string[] | null;
+};
 
 type MatchInspectorDialogProps = {
   open: boolean;
@@ -22,6 +33,7 @@ type MatchInspectorDialogProps = {
   breakdown?: MatchBreakdown | null;
   candidateQuality?: number | null;
   candidate?: any | null;
+  rerank?: RerankResult | null;
   vacancyContext?: Array<{ label: string; value?: string | number | null }>;
   action?: ReactNode;
 };
@@ -46,6 +58,7 @@ const MatchInspectorDialog = ({
   breakdown,
   candidateQuality,
   candidate,
+  rerank,
   vacancyContext = [],
   action,
 }: MatchInspectorDialogProps) => {
@@ -65,6 +78,11 @@ const MatchInspectorDialog = ({
             {typeof candidateQuality === 'number' && (
               <Badge variant="outline" className="text-xs" title="Algemene AI-kwaliteitsscore, los van deze vacature">
                 Dossier {candidateQuality}/100
+              </Badge>
+            )}
+            {rerank && typeof rerank.fit_score === 'number' && (
+              <Badge className={cn('gap-1 text-xs', verdictBadgeClass[rerank.verdict ?? ''] ?? 'bg-muted text-muted-foreground border-0')} title="AI-herbeoordeling op de volledige vacaturetekst">
+                <Sparkles className="h-3 w-3" /> AI {rerank.fit_score}
               </Badge>
             )}
           </DialogTitle>
@@ -89,6 +107,23 @@ const MatchInspectorDialog = ({
             )}
 
             <CandidateMatchContext candidate={candidate} />
+
+            {rerank && (
+              <div className="space-y-2 rounded-md border border-primary/20 bg-primary/5 p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  <p className="text-sm font-medium">AI-beoordeling (volledige vacaturetekst)</p>
+                  {typeof rerank.fit_score === 'number' && (
+                    <Badge className={cn('text-xs', verdictBadgeClass[rerank.verdict ?? ''] ?? 'bg-muted text-muted-foreground border-0')}>
+                      {rerank.fit_score}/100 · {rerank.verdict}
+                    </Badge>
+                  )}
+                </div>
+                {rerank.reasoning && <p className="text-sm text-muted-foreground">{rerank.reasoning}</p>}
+                <Section title="Sterke punten (AI)" tone="text-emerald-700" items={rerank.strengths ?? undefined} />
+                <Section title="Aandachtspunten (AI)" tone="text-amber-700" items={rerank.concerns ?? undefined} />
+              </div>
+            )}
 
             {breakdown.reasoning && <p className="text-sm text-muted-foreground">{breakdown.reasoning}</p>}
 

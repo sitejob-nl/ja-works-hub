@@ -5,6 +5,13 @@ export const scoreBadgeClass: Record<MatchBreakdown['label'], string> = {
   oranje: 'bg-yellow-100 text-yellow-700 border-0',
   rood: 'bg-red-100 text-red-600 border-0',
 };
+
+// Stage-2 AI-herbeoordeling (rerank-matches): verdict → badge-kleur, gelijk aan het match-label-palet.
+export const verdictBadgeClass: Record<string, string> = {
+  sterk: 'bg-stat-green/10 text-stat-green border-0',
+  redelijk: 'bg-yellow-100 text-yellow-700 border-0',
+  zwak: 'bg-red-100 text-red-600 border-0',
+};
 export const componentLabel: Record<string, string> = {
   skills: 'Vaardigheden',
   certifications: 'Certificaten',
