@@ -24,7 +24,7 @@ import MatchProposalEmailDialog from '@/components/matches/MatchProposalEmailDia
 import MatchRow from '@/components/matches/MatchRow';
 import { type MatchBreakdown } from '@/lib/matching';
 import { MATCH_STATUS_STEPS, getMatchStatusMeta, getNextMatchStatus, isTerminalMatchStatus, matchStatusNeedsFeedbackDialog } from '@/lib/match-status';
-import { scoreBadgeClass } from '@/lib/match-presenters';
+import { scoreBadgeClass, verdictBadgeClass } from '@/lib/match-presenters';
 import { advanceMatchStatus, createMatch } from '@/lib/match-lifecycle';
 
 const COLUMNS = MATCH_STATUS_STEPS;
@@ -55,13 +55,6 @@ const MatchSkillBadges = ({
       {showFallback && fallbackSkills.slice(0, 3).map((s) => <Badge key={`fallback-${s}`} variant="outline" className="text-xs">{s}</Badge>)}
     </div>
   );
-};
-
-// AI-herbeoordeling (stage-2): verdict → badge-kleur, gelijk aan de match-label-palet.
-const verdictBadgeClass: Record<string, string> = {
-  sterk: 'bg-stat-green/10 text-stat-green border-0',
-  redelijk: 'bg-yellow-100 text-yellow-700 border-0',
-  zwak: 'bg-red-100 text-red-600 border-0',
 };
 
 const sourceLabel: Record<string, string> = {
@@ -95,7 +88,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
   const [rerankById, setRerankById] = useState<Record<string, any>>({});
   // Detail-dialoog: werkt zowel voor een shortlist-kandidaat (met candidate → "Match maken")
   // als voor een bestaande match (alleen lezen, breakdown uit match_breakdown).
-  const [detail, setDetail] = useState<{ name: string; breakdown: any; quality?: number | null; candidate?: any } | null>(null);
+  const [detail, setDetail] = useState<{ name: string; breakdown: any; quality?: number | null; candidate?: any; rerank?: any } | null>(null);
   const showWeakMatches = scoreFilter === 'all';
   const minScore = scoreFilter === '60' ? 60 : scoreFilter === '70' ? 70 : scoreFilter === '80' ? 80 : 0;
   // Feedback bij statuswijziging — matchIds zodat we het ook voor bulk kunnen gebruiken.
@@ -250,7 +243,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
     onError: (e: any) => toast.error(e.message),
   });
 
-  // Stage-2: weegt de VOLLEDIGE vacaturetekst tegen elk shortlist-profiel met Gemini (2.5-flash).
+  // Stage-2: weegt de VOLLEDIGE vacaturetekst tegen elk shortlist-profiel met Gemini (flash-lite).
   // Server cachet per (vacature × kandidaat) → herhaald draaien is gratis zolang de tekst niet wijzigt.
   const rerankMutation = useMutation({
     mutationFn: async (candidateIds: string[]) => {
@@ -657,7 +650,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
 
         {filteredShortlist.length > 0 && (
           <p className="text-[11px] text-muted-foreground -mt-1">
-            AI-herbeoordeling weegt de vólledige vacaturetekst tegen elk profiel (Gemini 2.5-flash, ± 1 cent per kandidaat, resultaat wordt gecached) en herrangschikt op de AI-fitscore.
+            AI-herbeoordeling weegt de vólledige vacaturetekst tegen elk profiel (Gemini, ± 1 cent per kandidaat, resultaat wordt gecached) en herrangschikt op de AI-fitscore.
           </p>
         )}
 
@@ -739,7 +732,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
                     <Button size="sm" variant="outline" onClick={() => proposeMutation.mutate(c)} disabled={proposeMutation.isPending}>
                       <UserPlus className="h-3 w-3 mr-1" /> Match maken
                     </Button>
-                    <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground" onClick={() => setDetail({ name: `${c.first_name} ${c.last_name}`, breakdown: c._vacancyScore, quality: c._candidateQuality, candidate: candidateWithContext })}>
+                    <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground" onClick={() => setDetail({ name: `${c.first_name} ${c.last_name}`, breakdown: c._vacancyScore, quality: c._candidateQuality, candidate: candidateWithContext, rerank: rr })}>
                       Waarom?
                     </Button>
                   </div>
@@ -762,6 +755,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
         breakdown={detail?.breakdown ?? null}
         candidateQuality={detail?.quality ?? detail?.breakdown?.candidateQuality ?? null}
         candidate={detail?.candidate ?? null}
+        rerank={detail?.rerank ?? null}
         vacancyContext={[
           { label: 'Vacature', value: vacancy.title },
           { label: 'Locatie', value: vacancy.location },

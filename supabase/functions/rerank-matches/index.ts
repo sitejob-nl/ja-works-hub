@@ -5,10 +5,13 @@
 // kandidaatdossier → fit-score (0-100) + verdict + onderbouwing + sterke/zorgpunten. Zo telt de
 // nuance uit de vacatureomschrijving mee die de skill-match niet kan uitdrukken.
 //
-// Kosten: 1 Gemini-call per (nieuwe) kandidaat. Default-model is gemini-2.5-flash — pilot-verdict
-// bij de CV-analyse: beste prijs/kwaliteit (~1 cent/kandidaat, score vergelijkbaar met 3.5-flash) en
-// bewezen betrouwbaar met dit responseSchema. Resultaat wordt gecached in match_rerank_cache per
-// (vacature × kandidaat); reruns zijn gratis zolang de input (vacaturetekst + dossier) niet wijzigt
+// Kosten: 1 Gemini-call per (nieuwe) kandidaat. Default-model is gemini-3.1-flash-lite: het goedkoopste
+// model dat nog beschikbaar is op deze API-key (de hele 2.5-serie geeft sinds ~juli 2026 een 404
+// "no longer available to new users") en 6× goedkoper per token dan 3.5-flash. Door de Math.max(1,…)-
+// vloer is de reële prijs voor dit payloadformaat sowieso ~1 ct/kandidaat; het goedkopere tarief telt
+// pas als de vacaturetekst groot wordt. Wil je meer nuance op rijke vacatures: zet 'm op gemini-3.5-flash
+// (kost gelijk 1 ct tot de payload de vloer overschrijdt). Resultaat wordt gecached in match_rerank_cache
+// per (vacature × kandidaat); reruns zijn gratis zolang de input (vacaturetekst + dossier) niet wijzigt
 // (input_hash). Credits via consume_ai_credits.
 //
 // Auth: ingelogde org-gebruiker (RLS scoped op eigen org). verify_jwt=false in config.toml; we
@@ -30,7 +33,7 @@ const MAX_CANDIDATES = 30;
 const CONCURRENCY = 4;
 const PREFLIGHT_RESERVATION_CENTS = 2;
 const SOFT_DEADLINE_MS = 110_000;
-const GEMINI_DEFAULT_MODEL = "gemini-2.5-flash";
+const GEMINI_DEFAULT_MODEL = "gemini-3.1-flash-lite";
 
 interface GeminiPricing {
   inputCentsPerMtok: number;
@@ -90,11 +93,22 @@ function buildDossier(c: any): string {
   if (Array.isArray(c.languages) && c.languages.length) lines.push(`Talen: ${c.languages.join(", ")}`);
   if (c.address_city) lines.push(`Woonplaats: ${c.address_city}`);
   if (c.availability_notes) lines.push(`Beschikbaarheid: ${c.availability_notes}`);
+  // Samenvatting + sterke/zwakke punten uit de CV-analyse — de vakinhoudelijke nuance die de
+  // tags (skills/certs) niet vangen. Eerst de slanke first-class kolommen (cv-write synct ze uit
+  // ai_analysis), met de jsonb-samenvatting als fallback voor oudere/VPS-analyses.
   const ai = c.ai_analysis;
-  if (ai && typeof ai === "object") {
-    const summary = ai.samenvatting || ai.summary || ai.dossier || ai.toelichting;
-    if (typeof summary === "string" && summary.trim()) lines.push(`AI-samenvatting: ${summary.trim().slice(0, 1200)}`);
-  }
+  const nestedSummary = ai && typeof ai === "object"
+    ? (ai.samenvatting?.profiel || ai.samenvatting || ai.summary || ai.dossier || ai.toelichting)
+    : null;
+  const summary = (typeof c.ai_summary === "string" && c.ai_summary.trim()) ? c.ai_summary : nestedSummary;
+  if (typeof summary === "string" && summary.trim()) lines.push(`AI-samenvatting: ${summary.trim().slice(0, 1200)}`);
+
+  const strList = (v: unknown, n: number) =>
+    Array.isArray(v) ? v.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim()).slice(0, n) : [];
+  const positives = strList(c.ai_positive_signals, 6);
+  if (positives.length) lines.push(`Sterke punten (AI-analyse): ${positives.join("; ")}`);
+  const concerns = [...strList(c.ai_red_flags, 6), ...strList(c.ai_risk_factors, 4)];
+  if (concerns.length) lines.push(`Aandachtspunten/risico's (AI-analyse): ${concerns.join("; ")}`);
   return lines.join("\n");
 }
 
@@ -140,7 +154,7 @@ Deno.serve(async (req) => {
     // Kandidaten via RLS (eigen org).
     const { data: cands, error: candErr } = await userClient
       .from("candidates")
-      .select("id, first_name, last_name, skills, certifications, languages, ai_function_group, ai_target_functions, ai_classification, availability_notes, address_city, ai_analysis")
+      .select("id, first_name, last_name, skills, certifications, languages, ai_function_group, ai_target_functions, ai_classification, availability_notes, address_city, ai_analysis, ai_summary, ai_positive_signals, ai_red_flags, ai_risk_factors")
       .eq("organization_id", orgId)
       .in("id", candidateIds);
     if (candErr) return json({ error: "Kon kandidaten niet laden" }, 500);
