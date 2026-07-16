@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Copy, ExternalLink, Loader2, Mail, RefreshCw } from 'lucide-react';
+import { AlertTriangle, FileText, Loader2, Mail, Monitor } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { useOutboundPause } from '@/hooks/useOutboundPause';
@@ -8,12 +8,18 @@ import { useOutlookAccounts } from '@/hooks/useOutlookAccounts';
 import { useRolePermission } from '@/hooks/usePermissions';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import ProposalPageEditor from '@/components/matches/ProposalPageEditor';
+import {
+  DEFAULT_PROPOSAL_PAGE_CONFIG,
+  mergeProposalPageConfig,
+  type ProposalPageConfig,
+} from '@/lib/proposal-page';
 import { toast } from 'sonner';
 
 type RecipientOption = {
@@ -22,50 +28,20 @@ type RecipientOption = {
   is_primary: boolean;
 };
 
-type ProposalSections = {
-  summary: boolean;
-  profile: boolean;
-  skills: boolean;
-  certifications: boolean;
-  languages: boolean;
-  availability: boolean;
-  positiveSignals: boolean;
-  riskFactors: boolean;
-  targetFunctions: boolean;
-  interviewQuestions: boolean;
-  matchReasoning: boolean;
-  reliability: boolean;
-};
-
-const DEFAULT_PROPOSAL_SECTIONS: ProposalSections = {
-  summary: true,
-  profile: true,
-  skills: true,
-  certifications: true,
-  languages: true,
-  availability: true,
-  positiveSignals: true,
-  riskFactors: true,
-  targetFunctions: true,
+const MINIMAL_EMAIL_SECTIONS = {
+  summary: false,
+  profile: false,
+  skills: false,
+  certifications: false,
+  languages: false,
+  availability: false,
+  positiveSignals: false,
+  riskFactors: false,
+  targetFunctions: false,
   interviewQuestions: false,
-  matchReasoning: true,
+  matchReasoning: false,
   reliability: false,
 };
-
-const SECTION_OPTIONS: Array<{ key: keyof ProposalSections; label: string }> = [
-  { key: 'summary', label: 'Samenvatting' },
-  { key: 'profile', label: 'Profiel' },
-  { key: 'skills', label: 'Vaardigheden' },
-  { key: 'certifications', label: 'Certificaten' },
-  { key: 'languages', label: 'Talen' },
-  { key: 'availability', label: 'Beschikbaarheid' },
-  { key: 'positiveSignals', label: 'Sterke signalen' },
-  { key: 'riskFactors', label: 'Aandachtspunten' },
-  { key: 'targetFunctions', label: 'Passende functies' },
-  { key: 'interviewQuestions', label: 'Vragen' },
-  { key: 'matchReasoning', label: 'Matchnotitie' },
-  { key: 'reliability', label: 'Betrouwbaarheidsscore' },
-];
 
 type MatchProposalEmailDialogProps = {
   open: boolean;
@@ -96,7 +72,9 @@ const MatchProposalEmailDialog = ({ open, matchId, onOpenChange, onSent }: Match
   const [proposalResponseUrl, setProposalResponseUrl] = useState('');
   const [proposalTokenId, setProposalTokenId] = useState<string | null>(null);
   const [mailRecipients, setMailRecipients] = useState<RecipientOption[]>([]);
-  const [sections, setSections] = useState<ProposalSections>(DEFAULT_PROPOSAL_SECTIONS);
+  const [pageConfig, setPageConfig] = useState<ProposalPageConfig>(DEFAULT_PROPOSAL_PAGE_CONFIG);
+  const [pagePreviewRevision, setPagePreviewRevision] = useState(0);
+  const [pageDirty, setPageDirty] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
 
   const selectedRecipient = useMemo(
@@ -116,14 +94,26 @@ const MatchProposalEmailDialog = ({ open, matchId, onOpenChange, onSent }: Match
     setProposalResponseUrl('');
     setProposalTokenId(null);
     setMailRecipients([]);
-    setSections(DEFAULT_PROPOSAL_SECTIONS);
+    setPageConfig(DEFAULT_PROPOSAL_PAGE_CONFIG);
+    setPagePreviewRevision(0);
+    setPageDirty(false);
     setPreviewLoading(false);
   }, [defaultAccountId]);
 
   const loadPreview = useCallback(async (
     targetMatchId: string,
-    nextSections: ProposalSections,
-    opts: { resetTo?: boolean; intro?: string; closing?: string; syncText?: boolean; recipientEmail?: string; proposalTokenId?: string | null } = {},
+    nextPageConfig: ProposalPageConfig,
+    opts: {
+      resetTo?: boolean;
+      intro?: string;
+      closing?: string;
+      subject?: string;
+      syncText?: boolean;
+      syncSubject?: boolean;
+      syncPage?: boolean;
+      recipientEmail?: string;
+      proposalTokenId?: string | null;
+    } = {},
   ) => {
     setPreviewLoading(true);
     try {
@@ -136,18 +126,23 @@ const MatchProposalEmailDialog = ({ open, matchId, onOpenChange, onSent }: Match
           preview: true,
           proposal_token_id: opts.proposalTokenId,
           recipient_email: opts.recipientEmail || undefined,
-          include_sections: nextSections,
+          include_sections: MINIMAL_EMAIL_SECTIONS,
+          proposal_page: nextPageConfig,
+          subject: opts.subject,
           intro_text: opts.intro,
           closing_text: opts.closing,
         }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Kon preview niet laden');
-      setMailSubject(json.subject ?? '');
+      if (opts.syncSubject !== false) setMailSubject(json.subject ?? '');
       setPreviewHtml(json.html ?? '');
       setProposalResponseUrl(json.response_url ?? '');
       setProposalTokenId(json.proposal_token_id ?? null);
       setMailRecipients(json.recipients ?? []);
+      if (opts.syncPage !== false) setPageConfig(mergeProposalPageConfig(json.proposal_page));
+      setPagePreviewRevision((revision) => revision + 1);
+      setPageDirty(false);
       if (opts.syncText !== false) {
         setIntroText(json.intro_text ?? '');
         setClosingText(json.closing_text ?? '');
@@ -166,8 +161,8 @@ const MatchProposalEmailDialog = ({ open, matchId, onOpenChange, onSent }: Match
     setMailAccountId(defaultAccountId);
     setMailCc('');
     setMailBcc('');
-    setSections(DEFAULT_PROPOSAL_SECTIONS);
-    void loadPreview(matchId, DEFAULT_PROPOSAL_SECTIONS, { resetTo: true });
+    setPageConfig(DEFAULT_PROPOSAL_PAGE_CONFIG);
+    void loadPreview(matchId, DEFAULT_PROPOSAL_PAGE_CONFIG, { resetTo: true, syncPage: true });
   }, [defaultAccountId, loadPreview, matchId, open]);
 
   const handleDialogOpenChange = (nextOpen: boolean) => {
@@ -175,23 +170,14 @@ const MatchProposalEmailDialog = ({ open, matchId, onOpenChange, onSent }: Match
     onOpenChange(nextOpen);
   };
 
-  const handleSectionChange = (key: keyof ProposalSections, checked: boolean) => {
-    const nextSections = { ...sections, [key]: checked };
-    setSections(nextSections);
-    if (matchId) void loadPreview(matchId, nextSections, {
-      intro: introText,
-      closing: closingText,
-      syncText: false,
-      recipientEmail: mailTo,
-      proposalTokenId,
-    });
-  };
-
   const refreshPreview = () => {
-    if (matchId) void loadPreview(matchId, sections, {
+    if (matchId) void loadPreview(matchId, pageConfig, {
       intro: introText,
       closing: closingText,
+      subject: mailSubject,
       syncText: false,
+      syncSubject: false,
+      syncPage: false,
       recipientEmail: mailTo,
       proposalTokenId,
     });
@@ -219,7 +205,8 @@ const MatchProposalEmailDialog = ({ open, matchId, onOpenChange, onSent }: Match
           proposal_token_id: proposalTokenId,
           intro_text: introText,
           closing_text: closingText,
-          include_sections: sections,
+          include_sections: MINIMAL_EMAIL_SECTIONS,
+          proposal_page: pageConfig,
         }),
       });
       const json = await res.json();
@@ -243,10 +230,10 @@ const MatchProposalEmailDialog = ({ open, matchId, onOpenChange, onSent }: Match
 
   return (
     <Dialog open={open} onOpenChange={handleDialogOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[90vh] flex flex-col overflow-y-auto">
+      <DialogContent className="flex max-h-[94vh] w-[96vw] max-w-[1500px] flex-col overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Voorstel versturen</DialogTitle>
-          <DialogDescription>Controleer de preview, vink onderdelen aan of uit en pas de tekst aan voordat je verstuurt.</DialogDescription>
+          <DialogDescription>Houd de e-mail kort en bepaal afzonderlijk wat de opdrachtgever op de klantpagina ziet.</DialogDescription>
         </DialogHeader>
 
         {outboundPaused?.email === true && (
@@ -265,149 +252,138 @@ const MatchProposalEmailDialog = ({ open, matchId, onOpenChange, onSent }: Match
           </Alert>
         )}
 
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-          <div className="space-y-3">
-            {usableAccounts.length > 1 && (
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Afzender</Label>
-                <Select value={mailAccountId} onValueChange={setMailAccountId}>
-                  <SelectTrigger><SelectValue placeholder="Kies afzender-mailbox" /></SelectTrigger>
-                  <SelectContent>
-                    {personalAccounts.length > 0 && (
-                      <SelectGroup>
-                        <SelectLabel>Persoonlijk</SelectLabel>
-                        {personalAccounts.map((account) => (
-                          <SelectItem key={account.account_id} value={account.account_id}>
-                            {account.label || account.email || 'Persoonlijke mailbox'}
+        <Tabs defaultValue="klantpagina" className="space-y-4">
+          <TabsList className="grid w-full max-w-md grid-cols-2">
+            <TabsTrigger value="email" className="gap-2"><Mail className="h-4 w-4" /> E-mail</TabsTrigger>
+            <TabsTrigger value="klantpagina" className="gap-2"><Monitor className="h-4 w-4" /> Klantpagina</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="email" className="mt-0">
+            <div className="grid gap-4 lg:grid-cols-[minmax(320px,0.8fr)_minmax(460px,1.2fr)]">
+              <div className="space-y-3 rounded-lg border bg-muted/15 p-4">
+                <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-xs leading-5 text-blue-900">
+                  De e-mail bevat alleen de kandidaat, functie, een korte toelichting en de knop naar de klantpagina.
+                </div>
+
+                {usableAccounts.length > 1 && (
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Afzender</Label>
+                    <Select value={mailAccountId} onValueChange={setMailAccountId}>
+                      <SelectTrigger><SelectValue placeholder="Kies afzender-mailbox" /></SelectTrigger>
+                      <SelectContent>
+                        {personalAccounts.length > 0 && (
+                          <SelectGroup>
+                            <SelectLabel>Persoonlijk</SelectLabel>
+                            {personalAccounts.map((account) => (
+                              <SelectItem key={account.account_id} value={account.account_id}>
+                                {account.label || account.email || 'Persoonlijke mailbox'}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        )}
+                        {orgAccounts.length > 0 && (
+                          <SelectGroup>
+                            <SelectLabel>Bedrijf</SelectLabel>
+                            {orgAccounts.map((account) => (
+                              <SelectItem key={account.account_id} value={account.account_id}>
+                                {account.label || account.email || 'Bedrijfsmailbox'}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Aan</Label>
+                  {mailRecipients.length > 0 ? (
+                    <Select value={mailTo} onValueChange={setMailTo}>
+                      <SelectTrigger><SelectValue placeholder="Kies ontvanger" /></SelectTrigger>
+                      <SelectContent>
+                        {mailRecipients.map((recipient) => (
+                          <SelectItem key={recipient.email} value={recipient.email}>
+                            {recipient.is_primary ? '* ' : ''}{recipient.name} &lt;{recipient.email}&gt;
                           </SelectItem>
                         ))}
-                      </SelectGroup>
-                    )}
-                    {orgAccounts.length > 0 && (
-                      <SelectGroup>
-                        <SelectLabel>Bedrijf</SelectLabel>
-                        {orgAccounts.map((account) => (
-                          <SelectItem key={account.account_id} value={account.account_id}>
-                            {account.label || account.email || 'Bedrijfsmailbox'}
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Input value={mailTo} onChange={(event) => setMailTo(event.target.value)} placeholder="ontvanger@bedrijf.nl" />
+                  )}
+                  {selectedRecipient && <p className="text-xs text-muted-foreground">{selectedRecipient.name}</p>}
+                </div>
 
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Aan</Label>
-              {mailRecipients.length > 0 ? (
-                <Select value={mailTo} onValueChange={setMailTo}>
-                  <SelectTrigger><SelectValue placeholder="Kies ontvanger" /></SelectTrigger>
-                  <SelectContent>
-                    {mailRecipients.map((recipient) => (
-                      <SelectItem key={recipient.email} value={recipient.email}>
-                        {recipient.is_primary ? '* ' : ''}{recipient.name} &lt;{recipient.email}&gt;
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : (
-                <Input value={mailTo} onChange={(event) => setMailTo(event.target.value)} placeholder="ontvanger@bedrijf.nl" />
-              )}
-              {selectedRecipient && <p className="text-xs text-muted-foreground">{selectedRecipient.name}</p>}
-            </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">CC</Label>
+                    <Input value={mailCc} onChange={(event) => setMailCc(event.target.value)} placeholder="optioneel" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">BCC</Label>
+                    <Input value={mailBcc} onChange={(event) => setMailBcc(event.target.value)} placeholder="optioneel" />
+                  </div>
+                </div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">CC</Label>
-                <Input value={mailCc} onChange={(event) => setMailCc(event.target.value)} placeholder="optioneel" />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">BCC</Label>
-                <Input value={mailBcc} onChange={(event) => setMailBcc(event.target.value)} placeholder="optioneel" />
-              </div>
-            </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Onderwerp</Label>
+                  <Input value={mailSubject} onChange={(event) => setMailSubject(event.target.value)} />
+                </div>
 
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Onderwerp</Label>
-              <Input value={mailSubject} onChange={(event) => setMailSubject(event.target.value)} />
-            </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Korte begeleidende tekst</Label>
+                  <Textarea
+                    value={introText}
+                    onChange={(event) => setIntroText(event.target.value)}
+                    className="min-h-32 text-sm"
+                    placeholder="Schrijf hier de korte begeleidende tekst..."
+                  />
+                </div>
 
-            <div className="space-y-2 rounded-md border bg-muted/20 p-3">
-              <div className="flex items-center justify-between gap-2">
-                <Label className="text-sm font-medium">Onderdelen in voorstel</Label>
-                <Button type="button" variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={refreshPreview} disabled={previewLoading}>
-                  <RefreshCw className="h-3.5 w-3.5" /> Ververs
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Tekst boven de knop</Label>
+                  <Textarea
+                    value={closingText}
+                    onChange={(event) => setClosingText(event.target.value)}
+                    className="min-h-20 text-sm"
+                    placeholder="Nodig de opdrachtgever uit om het voorstel te bekijken."
+                  />
+                </div>
+
+                <Button type="button" variant="outline" onClick={refreshPreview} disabled={previewLoading} className="w-full gap-2">
+                  {previewLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+                  E-mailvoorbeeld bijwerken
                 </Button>
               </div>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {SECTION_OPTIONS.map((option) => (
-                  <label key={option.key} className="flex items-center gap-2 text-sm leading-none cursor-pointer">
-                    <Checkbox checked={sections[option.key]} onCheckedChange={(value) => handleSectionChange(option.key, value === true)} />
-                    {option.label}
-                  </label>
-                ))}
+
+              <div className="overflow-hidden rounded-lg border bg-white">
+                <div className="border-b px-3 py-2 text-sm font-medium">Preview e-mail</div>
+                {previewHtml ? (
+                  <iframe title="email-preview" srcDoc={previewHtml} sandbox="allow-popups allow-popups-to-escape-sandbox" className="h-[680px] w-full bg-white" />
+                ) : (
+                  <div className="flex h-[420px] items-center justify-center text-sm text-muted-foreground">Preview laden...</div>
+                )}
               </div>
             </div>
+          </TabsContent>
 
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Intro tekst</Label>
-              <Textarea
-                value={introText}
-                onChange={(event) => setIntroText(event.target.value)}
-                onBlur={refreshPreview}
-                className="min-h-32 text-sm"
-                placeholder="Schrijf hier de begeleidende tekst..."
-              />
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Afsluiting</Label>
-              <Textarea
-                value={closingText}
-                onChange={(event) => setClosingText(event.target.value)}
-                onBlur={refreshPreview}
-                className="min-h-24 text-sm"
-                placeholder="Schrijf hier de afsluitende tekst..."
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label className="text-xs text-muted-foreground">Preview</Label>
-              {previewLoading && <span className="inline-flex items-center gap-1 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Laden</span>}
-            </div>
-            {proposalResponseUrl && (
-              <div className="rounded-md border bg-muted/20 p-3">
-                <Label className="text-xs text-muted-foreground">Publieke klantlink</Label>
-                <div className="mt-1 flex gap-2">
-                  <Input value={proposalResponseUrl} readOnly className="h-9 bg-white text-xs" />
-                  <Button type="button" variant="outline" size="icon" onClick={copyProposalLink} title="Kopieer klantlink">
-                    <Copy className="h-4 w-4" />
-                  </Button>
-                  <Button type="button" variant="outline" size="icon" asChild title="Open preview">
-                    <a href={proposalResponseUrl} target="_blank" rel="noreferrer">
-                      <ExternalLink className="h-4 w-4" />
-                    </a>
-                  </Button>
-                </div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Deze link is publiek en werkt zonder klantaccount. Dezelfde link wordt gebruikt als je de mail verstuurt.
-                </p>
-              </div>
-            )}
-            <div className="overflow-hidden rounded-md border bg-white">
-              {previewHtml ? (
-                <iframe title="email-preview" srcDoc={previewHtml} sandbox="allow-popups allow-popups-to-escape-sandbox" className="h-[620px] w-full bg-white" />
-              ) : (
-                <div className="flex h-[360px] items-center justify-center text-sm text-muted-foreground">
-                  Preview laden...
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+          <TabsContent value="klantpagina" className="mt-0">
+            <ProposalPageEditor
+              config={pageConfig}
+              responseUrl={proposalResponseUrl}
+              previewRevision={pagePreviewRevision}
+              loading={previewLoading}
+              dirty={pageDirty}
+              onChange={(nextConfig) => {
+                setPageConfig(nextConfig);
+                setPageDirty(true);
+              }}
+              onRefresh={refreshPreview}
+              onCopyLink={copyProposalLink}
+            />
+          </TabsContent>
+        </Tabs>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => handleDialogOpenChange(false)}>Annuleren</Button>
