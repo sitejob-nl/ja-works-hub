@@ -5,7 +5,9 @@
 // kandidaatdossier → fit-score (0-100) + verdict + onderbouwing + sterke/zorgpunten. Zo telt de
 // nuance uit de vacatureomschrijving mee die de skill-match niet kan uitdrukken.
 //
-// Kosten: 1 Gemini-call per (nieuwe) kandidaat. Resultaat wordt gecached in match_rerank_cache per
+// Kosten: 1 Gemini-call per (nieuwe) kandidaat. Default-model is gemini-2.5-flash — pilot-verdict
+// bij de CV-analyse: beste prijs/kwaliteit (~1 cent/kandidaat, score vergelijkbaar met 3.5-flash) en
+// bewezen betrouwbaar met dit responseSchema. Resultaat wordt gecached in match_rerank_cache per
 // (vacature × kandidaat); reruns zijn gratis zolang de input (vacaturetekst + dossier) niet wijzigt
 // (input_hash). Credits via consume_ai_credits.
 //
@@ -28,7 +30,7 @@ const MAX_CANDIDATES = 30;
 const CONCURRENCY = 4;
 const PREFLIGHT_RESERVATION_CENTS = 2;
 const SOFT_DEADLINE_MS = 110_000;
-const GEMINI_DEFAULT_MODEL = "gemini-3.5-flash";
+const GEMINI_DEFAULT_MODEL = "gemini-2.5-flash";
 
 interface GeminiPricing {
   inputCentsPerMtok: number;
