@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, FileText, Loader2, Mail, Monitor } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
@@ -53,6 +53,7 @@ type MatchProposalEmailDialogProps = {
 const splitEmails = (value: string) => value.split(/[;,]/).map((item) => item.trim()).filter(Boolean);
 
 const MatchProposalEmailDialog = ({ open, matchId, onOpenChange, onSent }: MatchProposalEmailDialogProps) => {
+  const onOpenChangeRef = useRef(onOpenChange);
   const orgId = useOrganizationId();
   const qc = useQueryClient();
   const { data: outboundPaused } = useOutboundPause(orgId);
@@ -76,6 +77,10 @@ const MatchProposalEmailDialog = ({ open, matchId, onOpenChange, onSent }: Match
   const [pagePreviewRevision, setPagePreviewRevision] = useState(0);
   const [pageDirty, setPageDirty] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
+
+  useEffect(() => {
+    onOpenChangeRef.current = onOpenChange;
+  }, [onOpenChange]);
 
   const selectedRecipient = useMemo(
     () => mailRecipients.find((recipient) => recipient.email === mailTo),
@@ -150,11 +155,11 @@ const MatchProposalEmailDialog = ({ open, matchId, onOpenChange, onSent }: Match
       if (opts.resetTo) setMailTo(json.to ?? '');
     } catch (error: any) {
       toast.error(error.message);
-      onOpenChange(false);
+      onOpenChangeRef.current(false);
     } finally {
       setPreviewLoading(false);
     }
-  }, [onOpenChange]);
+  }, []);
 
   useEffect(() => {
     if (!open || !matchId) return;
