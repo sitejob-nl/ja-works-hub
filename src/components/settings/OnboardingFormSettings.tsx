@@ -24,7 +24,8 @@ const FIELD_TYPES = [
   { value: 'select', label: 'Dropdown' },
   { value: 'checkbox', label: 'Checkbox' },
   { value: 'textarea', label: 'Tekstvak' },
-  { value: 'file', label: 'Bestandsupload' },
+  // DB-constraint kent 'file_upload' (niet 'file') — renderer accepteert beide
+  { value: 'file_upload', label: 'Bestandsupload' },
   { value: 'heading', label: 'Koptekst (geen invoer)' },
 ];
 
@@ -438,7 +439,7 @@ const OnboardingFormSettings = () => {
               </div>
             )}
 
-            {editingField.field_type === 'file' && (
+            {(editingField.field_type === 'file' || editingField.field_type === 'file_upload') && (
               <div>
                 <Label>Documenttype</Label>
                 <Select value={editingField.document_type ?? ''} onValueChange={v => setEditingField(f => ({ ...f, document_type: v }))}>
