@@ -160,6 +160,9 @@ verify_jwt = false
 [functions.enrich-vacancies]
 verify_jwt = false
 
+[functions.generate-vacancy]
+verify_jwt = false
+
 [functions.generate-call-questions]
 verify_jwt = false
 

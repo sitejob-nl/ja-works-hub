@@ -8756,6 +8756,88 @@ export type Database = {
           },
         ]
       }
+      vacancy_seo_content: {
+        Row: {
+          body_markdown: string | null
+          content: Json
+          created_at: string
+          generated_at: string | null
+          generated_by: string | null
+          input_answers: Json
+          meta_description: string | null
+          model: string | null
+          organization_id: string
+          preview_text: string | null
+          provider: string | null
+          seo_title: string | null
+          slug: string | null
+          social_text: string | null
+          updated_at: string
+          vacancy_id: string
+          vacaturebank_variant: string | null
+        }
+        Insert: {
+          body_markdown?: string | null
+          content?: Json
+          created_at?: string
+          generated_at?: string | null
+          generated_by?: string | null
+          input_answers?: Json
+          meta_description?: string | null
+          model?: string | null
+          organization_id: string
+          preview_text?: string | null
+          provider?: string | null
+          seo_title?: string | null
+          slug?: string | null
+          social_text?: string | null
+          updated_at?: string
+          vacancy_id: string
+          vacaturebank_variant?: string | null
+        }
+        Update: {
+          body_markdown?: string | null
+          content?: Json
+          created_at?: string
+          generated_at?: string | null
+          generated_by?: string | null
+          input_answers?: Json
+          meta_description?: string | null
+          model?: string | null
+          organization_id?: string
+          preview_text?: string | null
+          provider?: string | null
+          seo_title?: string | null
+          slug?: string | null
+          social_text?: string | null
+          updated_at?: string
+          vacancy_id?: string
+          vacaturebank_variant?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vacancy_seo_content_generated_by_fkey"
+            columns: ["generated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vacancy_seo_content_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vacancy_seo_content_vacancy_id_fkey"
+            columns: ["vacancy_id"]
+            isOneToOne: true
+            referencedRelation: "vacancies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       vehicle_assignments: {
         Row: {
           assigned_date: string

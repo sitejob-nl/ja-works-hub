@@ -26,6 +26,7 @@ import OutlookSettings from '@/components/settings/OutlookSettings';
 import VoysSettings from '@/components/settings/VoysSettings';
 import PropertyOwnersSettings from '@/components/settings/PropertyOwnersSettings';
 import AiCvProviderSettings from '@/components/settings/AiCvProviderSettings';
+import VacancyPromptSettings from '@/components/settings/VacancyPromptSettings';
 import EngagementSettings from '@/components/settings/EngagementSettings';
 import SkillCatalogSettings from '@/components/settings/SkillCatalogSettings';
 import MatchPipelineSettings from '@/components/settings/MatchPipelineSettings';
@@ -551,6 +552,7 @@ const Settings = () => {
               <ExactOnlineSettings />
               <VoysSettings />
               <AiCvProviderSettings />
+              <VacancyPromptSettings />
             </TabsContent>
 
             <TabsContent value="domeinen" className="mt-0 space-y-5">
