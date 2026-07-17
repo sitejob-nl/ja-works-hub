@@ -334,6 +334,8 @@ const WhatsAppPage = () => {
         open={showTemplates}
         onOpenChange={setShowTemplates}
         orgId={orgId}
+        candidateId={selectedCandidateId}
+        candidateName={candidateName}
         onSend={handleSendTemplate}
         isSending={sendMutation.isPending}
       />
