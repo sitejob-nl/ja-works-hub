@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { VACANCY_ANSWER_FIELDS, buildVacancyPrefill } from '@/lib/vacancy-generator';
+import { VACANCY_ANSWER_FIELDS, buildVacancyPrefill, mapTermsToCatalog } from '@/lib/vacancy-generator';
 
 describe('buildVacancyPrefill', () => {
   it('vult functietitel, plaats en werkzaamheden uit de vacature', () => {
@@ -48,5 +48,48 @@ describe('buildVacancyPrefill', () => {
       expect(out).toHaveProperty(field.key);
     }
     expect(VACANCY_ANSWER_FIELDS).toHaveLength(16);
+  });
+});
+
+describe('mapTermsToCatalog', () => {
+  const catalog = [
+    'MIG-MAG lassen', 'Heftruck', 'VCA', 'CE rijbewijs', 'Technisch tekening lezen',
+    'Ploegendiensten', 'Werken in ploegendienst', 'Metaalbewerking', 'CO2 lassen',
+    'Communicatie Nederlands en Engels', 'Excel',
+  ];
+
+  it('matcht woordvarianten via token-prefix (technische → Technisch, ploegendienst → Ploegendiensten)', () => {
+    const out = mapTermsToCatalog(
+      ['Technische tekening kunnen lezen', '2-ploegendienst metaal'],
+      catalog,
+    );
+    expect(out).toContain('Technisch tekening lezen');
+    expect(out).toContain('Ploegendiensten');
+    expect(out).toContain('Werken in ploegendienst'); // werken/in zijn stopwoorden
+    expect(out).toContain('Metaalbewerking'); // metaal → prefix van metaalbewerking
+  });
+
+  it('matcht hele-zin-substring (VCA in "VCA-certificaat")', () => {
+    expect(mapTermsToCatalog(['VCA-certificaat verplicht'], catalog)).toContain('VCA');
+  });
+
+  it('geeft nooit termen terug die niet in de catalogus staan', () => {
+    const out = mapTermsToCatalog(['Ervaring met CNC-frezen', 'Fanuc besturing'], catalog);
+    for (const s of out) expect(catalog).toContain(s);
+    expect(out).not.toContain('CNC-frezen');
+  });
+
+  it('mapt "Rijbewijs B" niet op "CE rijbewijs" (alle tokens vereist)', () => {
+    expect(mapTermsToCatalog(['Rijbewijs B'], catalog)).not.toContain('CE rijbewijs');
+  });
+
+  it('vereist álle betekenisvolle tokens (CO2 lassen matcht niet op alleen "lassen")', () => {
+    expect(mapTermsToCatalog(['Ervaring met lassen'], catalog)).not.toContain('CO2 lassen');
+    expect(mapTermsToCatalog(['CO2 lassen van dunne plaat'], catalog)).toContain('CO2 lassen');
+  });
+
+  it('is leeg bij lege input', () => {
+    expect(mapTermsToCatalog([], catalog)).toEqual([]);
+    expect(mapTermsToCatalog(['', '  '], catalog)).toEqual([]);
   });
 });

@@ -32,6 +32,69 @@ export const VACANCY_ANSWER_FIELDS: VacancyAnswerField[] = [
 
 export type VacancyAnswers = Record<string, string>;
 
+// ---------------------------------------------------------------------------
+// Mapping van vrije AI-termen (harde criteria / zoekwoorden) → org-skillcatalogus.
+// Token-gebaseerd met stopwoorden en prefix-matching, zodat woordvarianten matchen
+// ("technische tekening lezen" → "Technisch tekening lezen", "2-ploegendienst" →
+// "Ploegendiensten") zonder ruwe AI-termen door te laten: het resultaat bevat
+// uitsluitend bestaande catalogus-schrijfwijzen. De recruiter controleert de
+// selectie altijd nog in een catalogus-gebonden picker.
+// ---------------------------------------------------------------------------
+
+const normalizeMatchTerm = (s: string) =>
+  s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+
+// Nederlandse voorzetsel-/vulwoorden die geen skill-betekenis dragen.
+const SKILL_STOPWORDS = new Set([
+  'de', 'het', 'een', 'en', 'of', 'in', 'op', 'met', 'van', 'voor', 'naar', 'bij',
+  'werken', 'kunnen', 'ervaring', 'als', 'is', 'zijn', 'je', 'jij',
+]);
+
+const tokenizeSkill = (s: string): string[] =>
+  normalizeMatchTerm(s)
+    .split(/[^a-z0-9]+/)
+    .filter((t) => t.length > 1 && !SKILL_STOPWORDS.has(t));
+
+// Twee tokens matchen bij gelijkheid, of via prefix wanneer beide lang genoeg zijn
+// ("technisch" ↔ "technische", "ploegendienst" ↔ "ploegendiensten").
+const tokensMatch = (a: string, b: string): boolean => {
+  if (a === b) return true;
+  if (a.length >= 5 && b.length >= 5) return a.startsWith(b) || b.startsWith(a);
+  return false;
+};
+
+/** Map vrije AI-termen op de skillcatalogus. Een catalogus-skill matcht wanneer
+ *  ál zijn betekenisvolle tokens terugkomen in de termen (of via hele-zin-substring).
+ *  Retourneert unieke catalogus-schrijfwijzen. */
+export function mapTermsToCatalog(terms: string[], catalog: string[]): string[] {
+  const termTokens = new Set<string>();
+  const normTerms: string[] = [];
+  for (const term of terms) {
+    const n = normalizeMatchTerm(String(term ?? ''));
+    if (!n) continue;
+    normTerms.push(n);
+    for (const t of tokenizeSkill(n)) termTokens.add(t);
+  }
+  if (normTerms.length === 0) return [];
+
+  const matched = new Set<string>();
+  for (const name of catalog) {
+    const nName = normalizeMatchTerm(name);
+    if (!nName) continue;
+    // 1. Hele-zin-substring (in beide richtingen) — de strengste, oude route.
+    if (normTerms.some((t) => t.includes(nName) || nName.includes(t))) {
+      matched.add(name);
+      continue;
+    }
+    // 2. Token-dekking: alle betekenisvolle catalogus-tokens komen voor in de termen.
+    const nameTokens = tokenizeSkill(nName);
+    if (nameTokens.length === 0) continue;
+    const covered = nameTokens.every((nt) => [...termTokens].some((tt) => tokensMatch(nt, tt)));
+    if (covered) matched.add(name);
+  }
+  return [...matched];
+}
+
 interface PrefillVacancy {
   title?: string | null;
   location?: string | null;

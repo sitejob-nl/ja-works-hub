@@ -77,6 +77,9 @@ function buildVacancyText(v: any): string {
   if (Array.isArray(v.required_certifications) && v.required_certifications.length) parts.push(`Vereiste certificaten: ${v.required_certifications.join(", ")}`);
   if (v.requires_drivers_license) parts.push("Rijbewijs vereist: ja");
   if (v.description) parts.push(`\nOmschrijving:\n${v.description}`);
+  // AI-gegenereerde uitgebreide vacaturetekst (indien aanwezig) — extra context voor de rerank.
+  // Alleen de rerank-prompt wordt hierdoor rijker; de deterministische score verandert niet.
+  if (v.body_markdown) parts.push(`\nUitgebreide vacaturetekst:\n${v.body_markdown}`);
   return parts.join("\n");
 }
 
@@ -149,7 +152,14 @@ Deno.serve(async (req) => {
       .single();
     if (vacErr || !vacancy) return json({ error: "Vacancy not found" }, 404);
     const orgId = vacancy.organization_id;
-    const vacancyText = buildVacancyText(vacancy);
+    // AI-gegenereerde vacaturetekst (1:1, RLS eigen org) — verrijkt de rerank-context indien aanwezig.
+    // Gated: zonder body blijft vacancyText (en dus input_hash/cache) identiek.
+    const { data: seo } = await userClient
+      .from("vacancy_seo_content")
+      .select("body_markdown")
+      .eq("vacancy_id", vacancyId)
+      .maybeSingle();
+    const vacancyText = buildVacancyText({ ...vacancy, body_markdown: seo?.body_markdown ?? null });
 
     // Kandidaten via RLS (eigen org).
     const { data: cands, error: candErr } = await userClient
