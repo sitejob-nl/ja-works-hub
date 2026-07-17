@@ -41,6 +41,8 @@ const LANGUAGE_LABELS: Record<string, string> = {
   fr: 'FR',
   es: 'ES',
   pt: 'PT',
+  pt_PT: 'PT',
+  pt_BR: 'BR',
   uk: 'UK',
   ru: 'RU',
 };

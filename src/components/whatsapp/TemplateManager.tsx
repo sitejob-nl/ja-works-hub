@@ -62,7 +62,11 @@ export function TemplateManager() {
 
   const handleDelete = async (name: string, id: string) => {
     try {
-      await deleteMutation.mutateAsync({ name, id });
+      // Verwijder per taalvariant via hsm_id (Meta-template-id). Zonder hsm_id verwijdert Meta
+      // ALLE talen met deze naam. `id` is alleen een echt hsm_id als het numeriek is (bij een
+      // lokale fallback is het de naam) — anders weglaten en op naam verwijderen.
+      const hsm_id = /^\d+$/.test(String(id)) ? id : undefined;
+      await deleteMutation.mutateAsync({ name, hsm_id });
       toast.success(`Template "${name}" verwijderd`);
     } catch {
       // error already shown by mutation's onError

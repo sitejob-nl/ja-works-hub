@@ -42,8 +42,17 @@ const LANGUAGE_LABELS: Record<string, string> = {
   nl: 'NL',
   en: 'EN',
   en_US: 'EN',
+  en_GB: 'EN',
   pl: 'PL',
   ro: 'RO',
+  de: 'DE',
+  fr: 'FR',
+  es: 'ES',
+  pt: 'PT',
+  pt_PT: 'PT',
+  pt_BR: 'BR',
+  uk: 'UK',
+  ru: 'RU',
 };
 
 function extractBodyText(components: any[]): string {
