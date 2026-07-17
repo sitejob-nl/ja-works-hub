@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { unwrap } from '@/lib/db';
 import PlacementSheet from '@/components/vacancies/PlacementSheet';
 import MatchFeedbackDialog from '@/components/matches/MatchFeedbackDialog';
 import MatchInspectorDialog from '@/components/matches/MatchInspectorDialog';
@@ -102,6 +103,13 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
   const [bulkMessageText, setBulkMessageText] = useState('');
   const [bulkSending, setBulkSending] = useState(false);
   const { data: outboundPaused } = useOutboundPause(orgId);
+  // AI-gegenereerde kandidaat-pitch (indien aanwezig) om het interesse-bericht mee te vullen.
+  const { data: vacancySeo } = useQuery({
+    queryKey: ['vacancy-seo', vacancy.id],
+    queryFn: () => unwrap(
+      supabase.from('vacancy_seo_content').select('preview_text, social_text').eq('vacancy_id', vacancy.id).maybeSingle(),
+    ),
+  });
 
   const { data: matches } = useQuery({
     queryKey: ['vacancy-matches', vacancy.id],
@@ -407,7 +415,14 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
   // De button-reply-id codeert de match (match_ja:<id> / match_nee:<id>) zodat de webhook later
   // automatisch de fase kan bijwerken. Sturen kan alleen als WhatsApp is gekoppeld.
   const openBulkMessage = () => {
-    setBulkMessageText(`Hoi {voornaam}, we hebben een passende functie voor je: ${vacancy.title}. Heb je interesse?`);
+    // Vul standaard met de AI-gegenereerde korte pitch (preview → social), anders de titel-default.
+    // Blijft bewerkbaar; {voornaam} en de ja/nee-vraag blijven behouden.
+    const pitch = (vacancySeo?.preview_text || vacancySeo?.social_text || '').trim();
+    setBulkMessageText(
+      pitch
+        ? `Hoi {voornaam}, ${pitch}\n\nHeb je interesse?`
+        : `Hoi {voornaam}, we hebben een passende functie voor je: ${vacancy.title}. Heb je interesse?`,
+    );
     setBulkMessageOpen(true);
   };
 

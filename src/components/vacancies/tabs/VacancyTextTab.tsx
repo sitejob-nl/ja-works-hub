@@ -6,9 +6,13 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Sparkles, Copy, Save, RotateCcw, FileText } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Sparkles, Copy, Save, RotateCcw, FileText, Target } from 'lucide-react';
 import { toast } from 'sonner';
-import { unwrap } from '@/lib/db';
+import { unwrap, unwrapList } from '@/lib/db';
+import { useOrganizationId } from '@/hooks/useOrganizationId';
+import SkillMultiSelect from '@/components/shared/SkillMultiSelect';
+import { mapTermsToCatalog } from '@/lib/vacancy-generator';
 import VacancyTextGeneratorDialog from '@/components/vacancies/VacancyTextGeneratorDialog';
 
 interface Props {
@@ -52,6 +56,20 @@ const VacancyTextTab = ({ vacancy, canEdit }: Props) => {
     ),
   });
 
+  // Actieve org-skillcatalogus — zelfde key als SkillMultiSelect zodat de cache gedeeld wordt.
+  const orgId = useOrganizationId();
+  const { data: catalogSkills = [] } = useQuery({
+    queryKey: ['skill-options', orgId],
+    queryFn: () => unwrapList(
+      supabase.from('skills').select('id, name').eq('organization_id', orgId).eq('is_active', true).order('name'),
+    ),
+    enabled: !!orgId,
+  });
+
+  // "Toepassen op matching" (B1): AI-criteria → catalogus-skills → vacancies.required_skills.
+  const [applyOpen, setApplyOpen] = useState(false);
+  const [applySkills, setApplySkills] = useState<string[]>([]);
+
   // Lokale bewerk-state voor de tekstvelden.
   const [fields, setFields] = useState<Record<string, string>>({});
   useEffect(() => {
@@ -74,6 +92,20 @@ const VacancyTextTab = ({ vacancy, canEdit }: Props) => {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['vacancy-seo', vacancyId] });
       toast.success('Wijzigingen opgeslagen');
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  // Schrijft de gecontroleerde catalogus-selectie naar vacancies.required_skills — de matcher leest die direct.
+  const applyToMatching = useMutation({
+    mutationFn: async () => {
+      await unwrap(supabase.from('vacancies').update({ required_skills: applySkills }).eq('id', vacancyId));
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['vacancy', vacancyId] });
+      qc.invalidateQueries({ queryKey: ['vacancy-canonical-skills', vacancyId] });
+      toast.success('Vereiste vaardigheden bijgewerkt — matching gebruikt ze direct');
+      setApplyOpen(false);
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -116,6 +148,20 @@ const VacancyTextTab = ({ vacancy, canEdit }: Props) => {
   const content = ((seo as any).content ?? {}) as Record<string, any>;
   const matching = (content.matching_profile ?? {}) as Record<string, any>;
   const seoReasoning = (content.seo_reasoning ?? {}) as Record<string, any>;
+
+  // Prefill = unie van de huidige vereiste skills met de op de catalogus gemapte AI-termen.
+  // Bestaande skills worden nooit weggelaten — de recruiter controleert en bevestigt in de dialog.
+  const openApplyDialog = () => {
+    const catalogNames = catalogSkills.map((s: any) => s.name as string);
+    const aiTerms = [
+      ...asArray(matching.harde_selectiecriteria),
+      ...asArray(matching.zoekwoorden_ai_matching),
+      ...asArray(content.keywords),
+    ];
+    const mapped = mapTermsToCatalog(aiTerms, catalogNames);
+    setApplySkills([...new Set([...((vacancy.required_skills as string[] | null) ?? []), ...mapped])]);
+    setApplyOpen(true);
+  };
   const generatedAt = (seo as any).generated_at
     ? new Date((seo as any).generated_at).toLocaleString('nl-NL', { dateStyle: 'medium', timeStyle: 'short' })
     : null;
@@ -241,7 +287,14 @@ const VacancyTextTab = ({ vacancy, canEdit }: Props) => {
       {/* Matchingprofiel */}
       {(matching.ideale_kandidaat || asArray(matching.harde_selectiecriteria).length > 0) && (
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm">AI-matchingprofiel</CardTitle></CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm">AI-matchingprofiel</CardTitle>
+            {canEdit && (
+              <Button variant="outline" size="sm" onClick={openApplyDialog} className="gap-1.5">
+                <Target className="h-3.5 w-3.5" /> Toepassen op matching
+              </Button>
+            )}
+          </CardHeader>
           <CardContent className="space-y-3 text-sm">
             {matching.ideale_kandidaat && (
               <div><Label className="text-xs text-muted-foreground">Ideale kandidaat</Label><p>{matching.ideale_kandidaat}</p></div>
@@ -301,6 +354,26 @@ const VacancyTextTab = ({ vacancy, canEdit }: Props) => {
       )}
 
       <VacancyTextGeneratorDialog open={dialogOpen} onOpenChange={setDialogOpen} vacancy={vacancy} />
+
+      {/* Toepassen op matching (B1): gecontroleerde overname van AI-criteria in required_skills */}
+      <Dialog open={applyOpen} onOpenChange={setApplyOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Toepassen op matching</DialogTitle>
+            <DialogDescription>
+              De AI-criteria zijn gemapt op de skillcatalogus en samengevoegd met de huidige vereiste
+              vaardigheden. Bestaande skills worden nooit verwijderd — controleer en bevestig.
+            </DialogDescription>
+          </DialogHeader>
+          <SkillMultiSelect value={applySkills} onChange={setApplySkills} />
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setApplyOpen(false)}>Annuleren</Button>
+            <Button onClick={() => applyToMatching.mutate()} disabled={applyToMatching.isPending}>
+              {applyToMatching.isPending ? 'Opslaan…' : 'Opslaan op vacature'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
