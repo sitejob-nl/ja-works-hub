@@ -314,7 +314,8 @@ export function TemplateCreateDialog({ open, onOpenChange }: TemplateCreateDialo
                     <SelectContent>
                       <SelectItem value="MARKETING">Marketing</SelectItem>
                       <SelectItem value="UTILITY">Utility</SelectItem>
-                      <SelectItem value="AUTHENTICATION">Authenticatie</SelectItem>
+                      {/* AUTHENTICATION bewust weggelaten: Meta eist voor auth-templates een
+                          vaste OTP-structuur (button + vaste body); een vrije body wordt geweigerd. */}
                     </SelectContent>
                   </Select>
                 </div>
