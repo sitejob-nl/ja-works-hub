@@ -10,6 +10,11 @@ import {
   META_API_BASE,
 } from "../_shared/whatsapp-utils.ts";
 
+// Media-header handles voor templates lopen via SiteJob Connect (die heeft de Meta
+// App-ID + doet de Resumable Upload). Wij sturen het voorbeeldbestand + tenant-secret.
+const CONNECT_UPLOAD_HANDLE_URL =
+  "https://xeshjkznwdrxjjhbpisn.supabase.co/functions/v1/whatsapp-upload-handle";
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -110,6 +115,56 @@ Deno.serve(async (req) => {
         }
 
         return jsonOk({ success: true, media_id: uploadData.id });
+      }
+
+      // ── Template media-header handle (via SiteJob Connect) ────────────────
+
+      case "upload_header_media": {
+        // Voorbeeldbestand voor een IMAGE/VIDEO/DOCUMENT-template-header. Meta eist bij het
+        // aanmaken een example.header_handle uit de Resumable Upload API; die upload draait
+        // op de Meta App-ID en gebeurt daarom bij SiteJob Connect.
+        if (!params.base64 || !params.mime_type) {
+          return jsonError("base64 en mime_type zijn verplicht", 400);
+        }
+        if (!creds.webhook_secret) {
+          return jsonError("WhatsApp-koppeling incompleet (geen webhook secret)", 400);
+        }
+
+        const { data: cfg } = await serviceClient
+          .from("whatsapp_config")
+          .select("tenant_id")
+          .eq("organization_id", orgId)
+          .maybeSingle();
+        if (!cfg?.tenant_id) return jsonError("WhatsApp niet gekoppeld", 400);
+
+        const uploadRes = await fetch(CONNECT_UPLOAD_HANDLE_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Webhook-Secret": creds.webhook_secret,
+          },
+          body: JSON.stringify({
+            tenant_id: cfg.tenant_id,
+            secret: creds.webhook_secret,
+            file: {
+              base64: params.base64,
+              filename: params.filename ?? "template-header",
+              mime_type: params.mime_type,
+            },
+            purpose: "template_header",
+          }),
+        });
+
+        const uploadData = await uploadRes.json().catch(() => ({}));
+        if (!uploadRes.ok || !uploadData?.handle) {
+          console.error("upload_header_media failed:", uploadData);
+          return jsonError(
+            uploadData?.error ?? uploadData?.meta_message ?? "Media-upload via Connect mislukt",
+            502,
+          );
+        }
+
+        return jsonOk({ handle: uploadData.handle });
       }
 
       // ── Account / Phone Status ────────────────────────────────────────────
