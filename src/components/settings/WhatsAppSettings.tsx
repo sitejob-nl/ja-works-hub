@@ -225,7 +225,7 @@ function BusinessProfileSection() {
                         },
                       });
 
-                      if (res.error) throw new Error(res.error.message);
+                      if (res.error) throw new Error(await readFunctionError(res.error, 'Profielfoto uploaden mislukt'));
                       toast.success('Profielfoto bijgewerkt');
                       // Refetch profile to show new photo
                       profileQuery.refetch();

@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { extractFunctionErrorMessage } from '@/lib/functionError';
+import { getErrorMessage } from '@/lib/error-message';
 
 interface MediaMessageProps {
   type: string;
@@ -23,8 +25,8 @@ export function MediaMessage({ type, body, mediaId }: MediaMessageProps) {
       const { data, error } = await supabase.functions.invoke('whatsapp-api', {
         body: { action: 'download_media', media_id: mediaId },
       });
-      if (error) throw new Error(error.message ?? 'Download mislukt');
-      if (data?.error) throw new Error(data.error);
+      if (error) throw new Error(await extractFunctionErrorMessage(error, 'Download mislukt'));
+      if (data?.error) throw new Error(getErrorMessage(data.error));
       if (!data?.base64) throw new Error('Geen bestandsinhoud ontvangen');
 
       const binary = atob(data.base64);
@@ -38,7 +40,7 @@ export function MediaMessage({ type, body, mediaId }: MediaMessageProps) {
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Document downloaden mislukt');
+      toast.error(getErrorMessage(err, 'Document downloaden mislukt'));
     } finally {
       setDownloading(false);
     }

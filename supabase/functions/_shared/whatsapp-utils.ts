@@ -217,6 +217,51 @@ function providerErrorMessage(body: unknown): string {
   return "WhatsApp-providerfout";
 }
 
+/**
+ * Vertaalt een Meta/WhatsApp-foutcode naar een begrijpelijke Nederlandse melding voor
+ * de eindgebruiker. Rauwe Engelse Meta-teksten tonen we nooit — die alleen server-side
+ * loggen. Onbekende codes vallen terug op `fallback`.
+ */
+export function metaErrorToDutch(
+  code?: string | number | null,
+  _raw?: string | null,
+  fallback = "Versturen via WhatsApp is mislukt. Probeer het later opnieuw.",
+): string {
+  const c = code != null ? String(code) : "";
+  const map: Record<string, string> = {
+    // 24-uurs servicevenster / re-engagement
+    "131047": "Je kunt dit bericht niet sturen: er zijn meer dan 24 uur voorbij sinds het laatste bericht van de kandidaat. Stuur een goedgekeurde template om het gesprek te heropenen.",
+    "470": "Het 24-uurs venster is gesloten. Stuur een goedgekeurde template om het gesprek te heropenen.",
+    "131051": "Dit berichttype wordt niet ondersteund.",
+    // Bezorging / nummer
+    "131026": "Dit bericht kon niet worden bezorgd. Het nummer gebruikt mogelijk geen WhatsApp of kan geen berichten ontvangen.",
+    "133010": "Dit telefoonnummer is niet geregistreerd voor WhatsApp.",
+    "1013": "Dit lijkt geen geldig WhatsApp-nummer.",
+    // Rate limiting
+    "131056": "Te veel berichten naar dit nummer in korte tijd. Probeer het later opnieuw.",
+    "80007": "Te veel verzoeken naar WhatsApp. Probeer het later opnieuw.",
+    "131048": "Er zijn te veel berichten verstuurd. Probeer het later opnieuw.",
+    // Templates
+    "132000": "De gekozen template klopt niet meer (verwijderd, gepauzeerd, of het aantal variabelen wijkt af). Synchroniseer de templates opnieuw.",
+    "132001": "De gekozen template bestaat niet (meer). Synchroniseer de templates opnieuw.",
+    "132005": "De template is afgekeurd door WhatsApp.",
+    "132007": "De template-inhoud voldoet niet aan de WhatsApp-richtlijnen.",
+    "132012": "De variabelen van deze template kloppen niet met wat is goedgekeurd.",
+    "132015": "Deze template is gepauzeerd door WhatsApp.",
+    "132016": "Deze template is uitgeschakeld door WhatsApp.",
+    // Auth / koppeling
+    "190": "De WhatsApp-koppeling is verlopen. Koppel WhatsApp opnieuw in Instellingen.",
+    "0": "De WhatsApp-koppeling is verlopen of ongeldig. Koppel WhatsApp opnieuw in Instellingen.",
+    "10": "De WhatsApp-koppeling heeft onvoldoende rechten voor deze actie.",
+    "200": "De WhatsApp-koppeling heeft onvoldoende rechten voor deze actie.",
+    // Algemeen ongeldig verzoek
+    "100": "Het verzoek naar WhatsApp was ongeldig. Controleer de invoer en probeer opnieuw.",
+    "131000": "Er ging iets mis bij WhatsApp. Probeer het later opnieuw.",
+    "131009": "Een van de waarden in dit bericht is ongeldig.",
+  };
+  return (c && map[c]) || fallback;
+}
+
 function providerErrorCode(body: unknown): string | number | null {
   if (body && typeof body === "object" && "error" in body) {
     const err = (body as any).error;
@@ -520,11 +565,12 @@ export async function sendOutboundWhatsApp(
     };
   } catch (err) {
     if (err instanceof WhatsAppProviderError) {
-      console.error("WhatsApp provider error:", err.providerStatus, err.providerBody);
+      // Rauwe Meta-tekst alleen loggen; naar de gebruiker een NL-melding op basis van de code.
+      console.error("WhatsApp provider error:", err.providerStatus, err.providerCode, err.providerBody);
       return {
         success: false,
         reason: "provider_error",
-        error: err.message,
+        error: metaErrorToDutch(err.providerCode, err.message),
         httpStatus: providerStatusToHttp(err.providerStatus),
         providerStatus: err.providerStatus,
         providerCode: err.providerCode ?? null,
@@ -537,7 +583,7 @@ export async function sendOutboundWhatsApp(
     return {
       success: false,
       reason: "provider_error",
-      error: (err as Error)?.message ?? "Bericht versturen mislukt",
+      error: "Versturen via WhatsApp is mislukt. Probeer het later opnieuw.",
       httpStatus: 502,
       normalizedTo: built.normalizedTo,
       messageBody: communicationBody,

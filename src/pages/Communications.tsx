@@ -4,6 +4,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatDateTime, formatDuration } from '@/lib/format';
+import { extractFunctionErrorMessage } from '@/lib/functionError';
+import { getErrorMessage } from '@/lib/error-message';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -202,14 +204,23 @@ const Communications = () => {
           company_id: formType === 'company' && formCompanyId ? formCompanyId : undefined,
         },
       });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+      if (error) throw new Error(await extractFunctionErrorMessage(error, 'Versturen mislukt'));
+      // Kill-switch: whatsapp-send geeft HTTP 200 met { paused:true } terug — dan is het
+      // bericht NIET verzonden maar als concept gelogd. Geen valse succesmelding tonen.
+      if (data?.paused) {
+        toast.warning('WhatsApp staat op pauze — het bericht is als concept opgeslagen, niet verzonden.');
+        queryClient.invalidateQueries({ queryKey: ['communications'] });
+        resetForm();
+        setSheetOpen(false);
+        return;
+      }
+      if (data?.error) throw new Error(getErrorMessage(data.error));
       toast.success('WhatsApp bericht verstuurd');
       queryClient.invalidateQueries({ queryKey: ['communications'] });
       resetForm();
       setSheetOpen(false);
     } catch (err: any) {
-      toast.error('Versturen mislukt: ' + (err.message || 'Onbekende fout'));
+      toast.error(getErrorMessage(err));
     } finally {
       setSendingWhatsApp(false);
     }

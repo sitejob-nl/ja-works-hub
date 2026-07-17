@@ -15,6 +15,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
+import { extractFunctionErrorMessage } from '@/lib/functionError';
+import { getErrorMessage } from '@/lib/error-message';
 import { cn } from '@/lib/utils';
 import { unwrap, unwrapList } from '@/lib/db';
 import {
@@ -485,7 +487,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
     const noPhone = selectedMatchRows.length - rows.length;
     if (!rows.length) { toast.error('Geen geselecteerde kandidaten met een telefoonnummer'); return; }
     setBulkSending(true);
-    let sentDirect = 0; let sentTemplate = 0; let skippedWindow = 0; const failed: string[] = [];
+    let sentDirect = 0; let sentTemplate = 0; let skippedWindow = 0; let pausedCount = 0; const failed: string[] = [];
     for (const m of rows) {
       const c = m.candidates;
       const inWindow = inWindowSet.has(c.id);
@@ -495,7 +497,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
       try {
         if (inWindow) {
           const text = bulkMessageText.replaceAll('{voornaam}', c.first_name ?? '').replaceAll('{vacature}', vacancy.title ?? '');
-          const { error } = await supabase.functions.invoke('whatsapp-send', {
+          const { data, error } = await supabase.functions.invoke('whatsapp-send', {
             body: {
               to: c.phone,
               type: 'interactive',
@@ -512,10 +514,10 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
               },
             },
           });
-          if (error) throw new Error(error.message);
-          sentDirect++;
+          if (error) throw new Error(await extractFunctionErrorMessage(error, 'Versturen mislukt'));
+          if (data?.paused) pausedCount++; else sentDirect++;
         } else {
-          const { error } = await supabase.functions.invoke('whatsapp-send', {
+          const { data, error } = await supabase.functions.invoke('whatsapp-send', {
             body: {
               to: c.phone,
               type: 'template',
@@ -528,11 +530,11 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
               }),
             },
           });
-          if (error) throw new Error(error.message);
-          sentTemplate++;
+          if (error) throw new Error(await extractFunctionErrorMessage(error, 'Versturen mislukt'));
+          if (data?.paused) pausedCount++; else sentTemplate++;
         }
       } catch (e: any) {
-        failed.push(`${c.first_name}: ${String(e.message).slice(0, 80)}`);
+        failed.push(`${c.first_name}: ${getErrorMessage(e)}`);
       }
     }
     setBulkSending(false);
@@ -546,9 +548,12 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
       ].filter(Boolean).join(', ');
       const skipped = [
         skippedWindow ? `${skippedWindow} buiten 24u-venster zonder template` : '',
+        pausedCount ? `${pausedCount} op pauze (als concept opgeslagen)` : '',
         noPhone ? `${noPhone} zonder telefoon` : '',
       ].filter(Boolean).join(', ');
       toast.success(`Interesse-bericht verstuurd: ${parts}${skipped ? ` (overgeslagen: ${skipped})` : ''}`);
+    } else if (pausedCount) {
+      toast.warning(`WhatsApp staat op pauze — ${pausedCount} bericht(en) als concept opgeslagen, niets verzonden.`);
     } else if (skippedWindow || noPhone) {
       toast.error(`Niets verstuurd — ${skippedWindow ? `${skippedWindow} buiten het 24u-venster (kies of maak een template)` : ''}${skippedWindow && noPhone ? ', ' : ''}${noPhone ? `${noPhone} zonder telefoon` : ''}`);
     }

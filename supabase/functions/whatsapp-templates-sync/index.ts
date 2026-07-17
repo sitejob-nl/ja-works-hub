@@ -39,7 +39,7 @@ Deno.serve(async (req) => {
       const errBody = await metaResponse.json().catch(() => ({}));
       console.error("Meta templates fetch error:", errBody);
       return jsonError(
-        errBody?.error?.message ?? "Templates ophalen bij Meta mislukt",
+        "Templates ophalen bij WhatsApp is mislukt. Probeer het later opnieuw.",
         metaResponse.status === 400 ? 400 : 502
       );
     }

@@ -7,6 +7,7 @@ import {
   jsonOk,
   jsonError,
   getWhatsAppCredentials,
+  metaErrorToDutch,
   META_API_BASE,
 } from "../_shared/whatsapp-utils.ts";
 
@@ -92,7 +93,7 @@ Deno.serve(async (req) => {
         const uploadData = await uploadRes.json();
         if (!uploadRes.ok) {
           console.error("Media upload failed:", uploadData);
-          return jsonError(uploadData?.error?.message ?? "Foto upload mislukt", 502);
+          return jsonError(metaErrorToDutch(uploadData?.error?.code, uploadData?.error?.message, "De foto kon niet worden geüpload."), 502);
         }
 
         // Now update profile with the media handle
@@ -111,7 +112,7 @@ Deno.serve(async (req) => {
         const profileResult = await profileRes.json();
         if (!profileRes.ok) {
           console.error("Profile photo update failed:", profileResult);
-          return jsonError(profileResult?.error?.message ?? "Profielfoto instellen mislukt", 502);
+          return jsonError(metaErrorToDutch(profileResult?.error?.code, profileResult?.error?.message, "De profielfoto kon niet worden ingesteld."), 502);
         }
 
         return jsonOk({ success: true, media_id: uploadData.id });
@@ -159,7 +160,7 @@ Deno.serve(async (req) => {
         if (!uploadRes.ok || !uploadData?.handle) {
           console.error("upload_header_media failed:", uploadData);
           return jsonError(
-            uploadData?.error ?? uploadData?.meta_message ?? "Media-upload via Connect mislukt",
+            "Het voorbeeldbestand kon niet worden geüpload. Gebruik een geldige JPG/PNG (afbeelding), MP4 (video) of PDF (document) en probeer opnieuw.",
             502,
           );
         }
@@ -285,7 +286,7 @@ Deno.serve(async (req) => {
         const metaInfo = await metaRes.json();
         if (!metaRes.ok || !metaInfo?.url) {
           console.error("download_media: media-info ophalen mislukt:", metaInfo);
-          return jsonError(metaInfo?.error?.message ?? "Media-info ophalen mislukt", 502);
+          return jsonError(metaErrorToDutch(metaInfo?.error?.code, metaInfo?.error?.message, "Het bestand kon niet worden opgehaald."), 502);
         }
 
         const MAX_MEDIA_BYTES = 15 * 1024 * 1024;
@@ -338,7 +339,7 @@ Deno.serve(async (req) => {
     if (!metaResponse.ok) {
       console.error(`whatsapp-api [${action}] Meta error:`, result);
       return jsonError(
-        result?.error?.message ?? "Meta API aanroep mislukt",
+        metaErrorToDutch(result?.error?.code, result?.error?.message, "De WhatsApp-actie is mislukt. Probeer het later opnieuw."),
         metaResponse.status >= 500 ? 502 : metaResponse.status
       );
     }

@@ -45,10 +45,13 @@ Deno.serve(async (req) => {
       }),
     });
 
+    // Connect's tenant-disconnect is idempotent en veilig. Als Connect onbereikbaar is of de
+    // tenant daar al weg is (404), mag de lokale ontkoppeling niet blijven hangen — we wissen
+    // lokaal altijd, zodat de admin nooit vastzit met een dode koppeling.
+    const connectOk = response.ok;
     if (!response.ok) {
-      const text = await response.text();
-      console.error("Connect disconnect failed:", text);
-      return jsonError("Ontkoppelen bij SiteJob Connect mislukt", 502);
+      const text = await response.text().catch(() => "");
+      console.error("Connect disconnect failed (lokaal toch wissen):", response.status, text);
     }
 
     await service
@@ -63,7 +66,11 @@ Deno.serve(async (req) => {
       })
       .eq("id", config.id);
 
-    return jsonOk({ success: true });
+    // Opruimen: lokale templates + gespreks-states van de (oude) WABA.
+    await service.from("whatsapp_templates").delete().eq("organization_id", auth.organizationId);
+    await service.from("whatsapp_conversation_states").delete().eq("organization_id", auth.organizationId);
+
+    return jsonOk({ success: true, connect_warning: !connectOk });
   } catch (err) {
     console.error("whatsapp-disconnect error:", err);
     return jsonError("Interne fout bij ontkoppelen", 500);
