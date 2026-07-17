@@ -51,6 +51,9 @@ interface SendViaOutlookAccountParams {
   senderName?: string | null;
   logCommunication?: boolean;
   require?: OutlookCapability;
+  /** Sla de outbound-pauze (kill-switch) over. Alléén voor gebruiker-geïnitieerde,
+   * kritieke auth-mail (bv. wachtwoord-reset) — nooit voor campagnes of automations. */
+  bypassOutboundPause?: boolean;
 }
 
 export interface SendResult {
@@ -120,7 +123,7 @@ export async function sendViaOutlookAccount(params: SendViaOutlookAccountParams)
   }));
 
   // Kill-switch: bij gepauzeerde uitgaande e-mail niets versturen, wel als concept loggen.
-  if (await isOutboundPaused(admin, params.orgId, "email")) {
+  if (params.bypassOutboundPause !== true && await isOutboundPaused(admin, params.orgId, "email")) {
     if (params.logCommunication !== false) {
       await logConceptCommunication(admin, {
         orgId: params.orgId,

@@ -184,6 +184,7 @@ async function handleRequest(req: Request, body: Record<string, unknown>): Promi
     htmlBody: html,
     senderName: null,
     logCommunication: false, // auth-mail hoort niet in de communicatie-tijdlijn
+    bypassOutboundPause: true, // reset-mail moet ook werken als de org-mail gepauzeerd is
   });
   if (!sendResult.success) {
     console.error("password-reset: mail versturen mislukt:", sendResult.error);
