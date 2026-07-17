@@ -21,7 +21,7 @@ import { cn } from '@/lib/utils';
 
 interface WhatsAppTemplate {
   id: string;
-  name: string;
+  template_name: string;
   language: string;
   category: string;
   status: string;
@@ -62,7 +62,11 @@ function extractBodyText(components: any[]): string {
 
 function extractVariables(text: string): string[] {
   const matches = text.match(/\{\{(\d+)\}\}/g) ?? [];
-  return [...new Set(matches)];
+  // Uniek + numeriek gesorteerd, zodat {{1}},{{2}},... altijd in de juiste positionele
+  // volgorde als parameters worden verstuurd, ongeacht hun volgorde in de bodytekst.
+  return [...new Set(matches)].sort(
+    (a, b) => Number(a.replace(/\{\{|\}\}/g, '')) - Number(b.replace(/\{\{|\}\}/g, '')),
+  );
 }
 
 function fillVariables(text: string, values: Record<string, string>): string {
@@ -86,7 +90,7 @@ export function TemplatePicker({ open, onOpenChange, orgId, onSend, isSending }:
         .select('*')
         .eq('organization_id', orgId)
         .eq('status', 'APPROVED')
-        .order('name');
+        .order('template_name');
       if (error) throw error;
       return data ?? [];
     },
@@ -94,7 +98,7 @@ export function TemplatePicker({ open, onOpenChange, orgId, onSend, isSending }:
   });
 
   const filtered = templates.filter((t) => {
-    if (search && !t.name.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search && !t.template_name.toLowerCase().includes(search.toLowerCase())) return false;
     if (langFilter !== 'all') {
       const tLang = t.language.toLowerCase().replace('_', '');
       const fLang = langFilter.toLowerCase();
@@ -149,7 +153,7 @@ export function TemplatePicker({ open, onOpenChange, orgId, onSend, isSending }:
     }
 
     onSend({
-      name: selected.name,
+      name: selected.template_name,
       language: selected.language,
       components: components.length > 0 ? components : undefined,
     });
@@ -249,7 +253,7 @@ export function TemplatePicker({ open, onOpenChange, orgId, onSend, isSending }:
                       className="w-full text-left p-3 rounded-md border hover:bg-muted/50 transition-colors space-y-1"
                     >
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium flex-1 truncate">{t.name}</span>
+                        <span className="text-sm font-medium flex-1 truncate">{t.template_name}</span>
                         <Badge variant="outline" className="text-xs shrink-0">
                           {LANGUAGE_LABELS[t.language] ?? t.language.toUpperCase()}
                         </Badge>
@@ -272,7 +276,7 @@ export function TemplatePicker({ open, onOpenChange, orgId, onSend, isSending }:
         {step === 'params' && selected && (
           <div className="flex flex-col gap-4">
             <p className="text-sm text-muted-foreground">
-              Vul de variabelen in voor <strong>{selected.name}</strong>:
+              Vul de variabelen in voor <strong>{selected.template_name}</strong>:
             </p>
             <div className="space-y-3">
               {vars.map((v) => {

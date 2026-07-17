@@ -66,7 +66,7 @@ Deno.serve(async (req) => {
       status: t.status,          // APPROVED / PENDING / REJECTED
       category: t.category,
       components: t.components ?? [],
-      meta_template_id: t.id,
+      last_synced_at: new Date().toISOString(),
     }));
 
     const { error: upsertError } = await serviceClient
