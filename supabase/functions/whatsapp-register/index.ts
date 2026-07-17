@@ -44,9 +44,11 @@ Deno.serve(async (req) => {
       .eq("organization_id", orgId)
       .maybeSingle();
 
-    // If already connected, return setup URL. Inactive legacy rows are
-    // re-registered below so they get the current per-org webhook URL.
-    if (existing?.tenant_id && existing.is_active && existing.phone_number_id) {
+    // Al geregistreerd (ook ná een ontkoppeling, waarbij tenant_id + webhook_secret bewust
+    // bewaard blijven): hergebruik de bestaande tenant en setup-link. Opnieuw registreren zou
+    // bij Connect een wees-tenant maken én — bij dezelfde webhook_url — een idempotente respons
+    // zónder webhook_secret geven, wat de koppeling brak. Zo werkt her-koppelen via dezelfde link.
+    if (existing?.tenant_id) {
       return jsonOk({
         tenant_id: existing.tenant_id,
         setup_url: `${SETUP_BASE_URL}?tenant_id=${existing.tenant_id}`,
@@ -85,7 +87,7 @@ Deno.serve(async (req) => {
     if (!response.ok) {
       const errText = await readConnectError(response);
       console.error("Connect registration failed:", response.status, errText);
-      return jsonError(`Registratie bij SiteJob Connect mislukt: ${errText}`, 502);
+      return jsonError("Koppelen met WhatsApp is mislukt. Probeer het later opnieuw of neem contact op met support.", 502);
     }
 
     const { tenant_id, webhook_secret } = await response.json();

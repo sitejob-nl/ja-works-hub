@@ -1,14 +1,18 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { extractFunctionErrorMessage } from '@/lib/functionError';
+import { getErrorMessage } from '@/lib/error-message';
 
 // Generic API call
 async function whatsAppApi(action: string, params?: Record<string, any>) {
   const { data, error } = await supabase.functions.invoke('whatsapp-api', {
     body: { action, ...params },
   });
-  if (error) throw new Error(error.message ?? 'API fout');
-  if (data?.error) throw new Error(data.error);
+  // Lees de echte (NL) foutmelding uit de response-body i.p.v. de generieke
+  // "Edge Function returned a non-2xx status code" van supabase-js.
+  if (error) throw new Error(await extractFunctionErrorMessage(error, 'WhatsApp-actie mislukt'));
+  if (data?.error) throw new Error(getErrorMessage(data.error));
   return data;
 }
 
@@ -32,7 +36,7 @@ export function useWhatsAppMutation(action: string) {
       queryClient.invalidateQueries({ queryKey: ['whatsapp-api'] });
     },
     onError: (error: Error) => {
-      toast.error(error.message ?? 'WhatsApp API fout');
+      toast.error(getErrorMessage(error));
     },
   });
 }

@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { extractFunctionErrorMessage } from '@/lib/functionError';
+import { getErrorMessage } from '@/lib/error-message';
 import { Plus, Search, RefreshCw, Loader2, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -51,10 +53,10 @@ export function TemplateManager() {
       const { error } = await supabase.functions.invoke('whatsapp-templates-sync', {
         body: { organization_id: orgId },
       });
-      if (error) throw error;
+      if (error) throw new Error(await extractFunctionErrorMessage(error, 'Synchronisatie mislukt'));
       toast.success('Templates gesynchroniseerd');
     } catch (err: any) {
-      toast.error('Synchronisatie mislukt: ' + (err?.message ?? 'Onbekende fout'));
+      toast.error(getErrorMessage(err, 'Synchronisatie mislukt'));
     } finally {
       setSyncing(false);
     }

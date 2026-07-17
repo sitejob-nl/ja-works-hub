@@ -3,6 +3,7 @@ import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { getErrorMessage } from '@/lib/error-message';
 import { supabase } from '@/integrations/supabase/client';
 import { MessageSquare, FileText, QrCode, BarChart3 } from 'lucide-react';
 
@@ -136,7 +137,7 @@ const WhatsAppPage = () => {
         candidate_id: selectedCandidateId ?? undefined,
       });
     } catch (err: any) {
-      toast.error('Media upload mislukt: ' + (err.message ?? 'Onbekende fout'));
+      toast.error(getErrorMessage(err, 'Media uploaden mislukt'));
     }
   };
 

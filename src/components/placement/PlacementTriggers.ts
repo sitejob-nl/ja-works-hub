@@ -1,6 +1,8 @@
 import { supabase } from '@/integrations/supabase/client';
 import { addDays, format, startOfWeek, getDay } from 'date-fns';
 import { getDrivingDistance } from '@/lib/distance';
+import { extractFunctionErrorMessage } from '@/lib/functionError';
+import { getErrorMessage } from '@/lib/error-message';
 
 /**
  * Post-placement automation:
@@ -197,19 +199,23 @@ export async function sendPlacementWhatsApp(
       },
     });
     if (error) {
-      // Edge function geeft 400 "WhatsApp niet geconfigureerd" wanneer org geen
-      // WhatsApp-config heeft — dat is geen technische fout, maar skip
-      const msg = (error as any)?.message ?? '';
-      const ctx = (data as any)?.error ?? '';
-      const combined = `${msg} ${ctx}`.toLowerCase();
+      // Edge function geeft 400 "WhatsApp niet geconfigureerd" wanneer de org geen
+      // WhatsApp-config heeft — dat is geen technische fout maar een skip. De echte
+      // melding zit in de response-body (niet in error.message).
+      const bodyMsg = await extractFunctionErrorMessage(error, '');
+      const combined = bodyMsg.toLowerCase();
       if (combined.includes('niet geconfigureerd') || combined.includes('afgemeld')) {
-        return { sent: false, skipped: true, reason: ctx || msg };
+        return { sent: false, skipped: true, reason: bodyMsg };
       }
-      return { sent: false, skipped: false, reason: msg };
+      return { sent: false, skipped: false, reason: getErrorMessage(bodyMsg || (error as any)?.message) };
+    }
+    // Kill-switch: 200 met paused → als concept gelogd, niet verzonden.
+    if ((data as any)?.paused) {
+      return { sent: false, skipped: true, reason: 'WhatsApp staat op pauze — als concept opgeslagen' };
     }
     return { sent: true, skipped: false };
   } catch (e: any) {
-    return { sent: false, skipped: false, reason: e?.message ?? 'Onbekende fout' };
+    return { sent: false, skipped: false, reason: getErrorMessage(e, 'Onbekende fout') };
   }
 }
 

@@ -59,6 +59,10 @@ Deno.serve(async (req) => {
         })
         .eq("id", config.id);
 
+      // Opruimen: lokale templates + gespreks-states horen bij de (nu losgekoppelde) WABA.
+      await serviceClient.from("whatsapp_templates").delete().eq("organization_id", config.organization_id);
+      await serviceClient.from("whatsapp_conversation_states").delete().eq("organization_id", config.organization_id);
+
       console.log(`WhatsApp ${body.action} for org:`, config.organization_id);
       return jsonOk({ status: body.action });
     }

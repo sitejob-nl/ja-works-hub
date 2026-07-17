@@ -25,6 +25,8 @@ import {
 import { Search, RefreshCw, Loader2, ArrowLeft, Send } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { extractFunctionErrorMessage } from '@/lib/functionError';
+import { getErrorMessage } from '@/lib/error-message';
 
 interface WhatsAppTemplate {
   id: string;
@@ -154,11 +156,11 @@ export function TemplatePicker({ open, onOpenChange, orgId, candidateId, candida
       const { error } = await supabase.functions.invoke('whatsapp-templates-sync', {
         body: { organization_id: orgId },
       });
-      if (error) throw error;
+      if (error) throw new Error(await extractFunctionErrorMessage(error, 'Synchronisatie mislukt'));
       await queryClient.invalidateQueries({ queryKey: ['whatsapp-templates', orgId] });
       toast.success('Templates gesynchroniseerd');
     } catch (err: any) {
-      toast.error('Synchronisatie mislukt: ' + (err.message ?? 'Onbekende fout'));
+      toast.error(getErrorMessage(err, 'Synchronisatie mislukt'));
     } finally {
       setSyncing(false);
     }
