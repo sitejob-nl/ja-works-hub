@@ -14,6 +14,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { toast } from 'sonner';
 import { logAudit } from '@/lib/audit';
 import VacancyDetailsTab from '@/components/vacancies/tabs/VacancyDetailsTab';
+import VacancyTextTab from '@/components/vacancies/tabs/VacancyTextTab';
 import VacancyMatchesTab from '@/components/vacancies/tabs/VacancyMatchesTab';
 import VacancyPlacementsTab from '@/components/vacancies/tabs/VacancyPlacementsTab';
 import VacancySignupLinkButton from '@/components/vacancies/VacancySignupLinkButton';
@@ -257,6 +258,7 @@ const VacancyDetail = () => {
         <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">
           <TabsList className="w-max sm:w-auto">
             <TabsTrigger value="details">Details</TabsTrigger>
+            <TabsTrigger value="vacaturetekst">Vacaturetekst</TabsTrigger>
             <TabsTrigger value="matches">Matches</TabsTrigger>
             <TabsTrigger value="plaatsingen">Plaatsingen</TabsTrigger>
             <TabsTrigger value="notities">Notities</TabsTrigger>
@@ -264,6 +266,7 @@ const VacancyDetail = () => {
           </TabsList>
         </div>
         <TabsContent value="details"><VacancyDetailsTab vacancy={vacancy} /></TabsContent>
+        <TabsContent value="vacaturetekst"><VacancyTextTab vacancy={vacancy} canEdit={canEditVacancies} /></TabsContent>
         <TabsContent value="matches"><VacancyMatchesTab vacancy={vacancy} /></TabsContent>
         <TabsContent value="plaatsingen"><VacancyPlacementsTab vacancyId={vacancy.id} /></TabsContent>
         <TabsContent value="notities"><NotesSection entityId={vacancy.id} entityType="vacature" /></TabsContent>

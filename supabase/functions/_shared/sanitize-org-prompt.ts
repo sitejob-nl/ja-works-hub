@@ -21,6 +21,11 @@
 // in analyze-cv ná sanitization toegevoegd en valt buiten deze cap.
 export const ORG_PROMPT_MAX_LENGTH = 4000;
 
+// De vacaturegenerator-masterprompt is een volledige copywriting/SEO-instructie
+// en is veel langer dan een CV-addendum. Nog steeds een ruime bovengrens tegen
+// DoS/cost-attacks; alleen org-admins kunnen deze prompt zetten.
+export const VACANCY_PROMPT_MAX_LENGTH = 20000;
+
 // Patronen die WAARSCHIJNLIJK control-tokens of role-spoofing zijn.
 // Lijst is conservatief — als de admin echt iets vergelijkbaars wil zeggen,
 // kan hij het in normale woorden formuleren.
@@ -67,7 +72,10 @@ export interface SanitizeResult {
   truncated: boolean;
 }
 
-export function sanitizeOrgPrompt(input: string | null | undefined): SanitizeResult {
+export function sanitizeOrgPrompt(
+  input: string | null | undefined,
+  maxLength: number = ORG_PROMPT_MAX_LENGTH,
+): SanitizeResult {
   if (!input) return { text: "", removed: 0, truncated: false };
 
   let text = String(input);
@@ -91,8 +99,8 @@ export function sanitizeOrgPrompt(input: string | null | undefined): SanitizeRes
 
   // 4. Cap lengte
   let truncated = false;
-  if (text.length > ORG_PROMPT_MAX_LENGTH) {
-    text = text.slice(0, ORG_PROMPT_MAX_LENGTH);
+  if (text.length > maxLength) {
+    text = text.slice(0, maxLength);
     truncated = true;
   }
 
