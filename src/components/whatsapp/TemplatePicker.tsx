@@ -15,6 +15,13 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Search, RefreshCw, Loader2, ArrowLeft, Send } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -32,6 +39,9 @@ interface TemplatePickerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   orgId: string;
+  /** Kandidaat van het open gesprek — om variabelen automatisch mee in te vullen. */
+  candidateId?: string | null;
+  candidateName?: string | null;
   onSend: (template: { name: string; language: string; components?: any[] }) => void;
   isSending: boolean;
 }
@@ -73,13 +83,29 @@ function fillVariables(text: string, values: Record<string, string>): string {
   return text.replace(/\{\{(\d+)\}\}/g, (_, n) => values[n] ?? `{{${n}}}`);
 }
 
-export function TemplatePicker({ open, onOpenChange, orgId, onSend, isSending }: TemplatePickerProps) {
+// Kandidaatvelden die je aan een template-variabele kunt koppelen (auto-invullen).
+const CANDIDATE_FIELDS: { key: string; label: string }[] = [
+  { key: 'first_name', label: 'Voornaam' },
+  { key: 'last_name', label: 'Achternaam' },
+  { key: 'full_name', label: 'Volledige naam' },
+  { key: 'phone', label: 'Telefoon' },
+  { key: 'email', label: 'E-mail' },
+];
+
+function resolveCandidateField(cand: any, key: string): string {
+  if (!cand) return '';
+  if (key === 'full_name') return [cand.first_name, cand.last_name].filter(Boolean).join(' ');
+  return cand[key] ?? '';
+}
+
+export function TemplatePicker({ open, onOpenChange, orgId, candidateId, candidateName, onSend, isSending }: TemplatePickerProps) {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [langFilter, setLangFilter] = useState('all');
   const [step, setStep] = useState<Step>('list');
   const [selected, setSelected] = useState<WhatsAppTemplate | null>(null);
   const [paramValues, setParamValues] = useState<Record<string, string>>({});
+  const [paramSources, setParamSources] = useState<Record<string, string>>({});
   const [syncing, setSyncing] = useState(false);
 
   const { data: templates = [], isLoading } = useQuery({
@@ -95,6 +121,21 @@ export function TemplatePicker({ open, onOpenChange, orgId, onSend, isSending }:
       return data ?? [];
     },
     enabled: !!orgId && open,
+  });
+
+  // Kandidaat van het open gesprek — velden om variabelen mee voor te vullen.
+  const { data: candidate } = useQuery({
+    queryKey: ['whatsapp-picker-candidate', candidateId],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('candidates')
+        .select('first_name, last_name, phone, email')
+        .eq('id', candidateId as string)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!candidateId && open,
   });
 
   const filtered = templates.filter((t) => {
@@ -126,12 +167,21 @@ export function TemplatePicker({ open, onOpenChange, orgId, onSend, isSending }:
   const handleSelectTemplate = (template: WhatsAppTemplate) => {
     setSelected(template);
     setParamValues({});
+    setParamSources({});
     const bodyText = extractBodyText(template.components);
     const vars = extractVariables(bodyText);
     if (vars.length === 0) {
       setStep('preview');
     } else {
       setStep('params');
+    }
+  };
+
+  // Koppel een variabele aan een kandidaatveld (of 'manual') en vul de waarde alvast in.
+  const applyFieldSource = (idx: string, key: string) => {
+    setParamSources((prev) => ({ ...prev, [idx]: key }));
+    if (key !== 'manual') {
+      setParamValues((prev) => ({ ...prev, [idx]: resolveCandidateField(candidate, key) }));
     }
   };
 
@@ -164,6 +214,7 @@ export function TemplatePicker({ open, onOpenChange, orgId, onSend, isSending }:
     setStep('list');
     setSelected(null);
     setParamValues({});
+    setParamSources({});
     onOpenChange(false);
   };
 
@@ -279,18 +330,49 @@ export function TemplatePicker({ open, onOpenChange, orgId, onSend, isSending }:
               Vul de variabelen in voor <strong>{selected.template_name}</strong>:
             </p>
             <div className="space-y-3">
+              {candidate && (
+                <p className="text-xs text-muted-foreground -mt-2">
+                  Kies per variabele een veld om automatisch in te vullen
+                  {candidateName ? ` met gegevens van ${candidateName}` : ''}, of typ zelf een waarde.
+                </p>
+              )}
               {vars.map((v) => {
                 const idx = v.replace(/\{\{|\}\}/g, '');
                 return (
                   <div key={idx} className="space-y-1">
                     <Label className="text-xs">{`Variabele ${idx}`}</Label>
-                    <Input
-                      placeholder={`Waarde voor {{${idx}}}`}
-                      value={paramValues[idx] ?? ''}
-                      onChange={(e) =>
-                        setParamValues((prev) => ({ ...prev, [idx]: e.target.value }))
-                      }
-                    />
+                    <div className="flex gap-2">
+                      {candidate && (
+                        <Select
+                          value={paramSources[idx] ?? 'manual'}
+                          onValueChange={(k) => applyFieldSource(idx, k)}
+                        >
+                          <SelectTrigger className="w-36 shrink-0 h-9">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="manual">Handmatig</SelectItem>
+                            {CANDIDATE_FIELDS.map((f) => (
+                              <SelectItem
+                                key={f.key}
+                                value={f.key}
+                                disabled={!resolveCandidateField(candidate, f.key)}
+                              >
+                                {f.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                      <Input
+                        placeholder={`Waarde voor {{${idx}}}`}
+                        value={paramValues[idx] ?? ''}
+                        onChange={(e) => {
+                          setParamValues((prev) => ({ ...prev, [idx]: e.target.value }));
+                          setParamSources((prev) => ({ ...prev, [idx]: 'manual' }));
+                        }}
+                      />
+                    </div>
                   </div>
                 );
               })}
