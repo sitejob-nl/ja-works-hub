@@ -705,18 +705,18 @@ const CandidateNew = () => {
                       <span className="font-medium">{d.first_name} {d.last_name}</span>
                       <span className="text-muted-foreground ml-2">— match op {d.matchedOn.join(', ')}</span>
                     </span>
-                    <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={() => window.open(`/kandidaten/${d.id}`, '_blank', 'noopener,noreferrer')}>
+                    <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={() => navigate(`/kandidaten/${d.id}`)}>
                       Bekijk
                     </Button>
                   </div>
                 ))}
               </div>
-              <p className="text-xs text-orange-600">Bekijken opent in een nieuw tabblad — je ingevulde gegevens blijven behouden. Je kunt de kandidaat alsnog aanmaken als het geen duplicaat is.</p>
+              <p className="text-xs text-orange-600">Bekijken opent het dossier; je ingevulde gegevens staan er weer als je teruggaat (een gekozen CV-bestand moet je wel opnieuw selecteren). Je kunt de kandidaat alsnog aanmaken als het geen duplicaat is.</p>
             </div>
           )}
 
           <div className="flex justify-end gap-3 pt-4 border-t">
-            <Button variant="ghost" onClick={() => navigate('/kandidaten')}>Annuleren</Button>
+            <Button variant="ghost" onClick={() => { clearDraft(); navigate('/kandidaten'); }}>Annuleren</Button>
             <Button onClick={() => mutation.mutate()} disabled={!form.first_name || !form.last_name || mutation.isPending}>
               {mutation.isPending ? 'Opslaan...' : 'Kandidaat aanmaken'}
             </Button>

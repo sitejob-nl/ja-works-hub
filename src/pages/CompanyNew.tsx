@@ -126,7 +126,7 @@ const CompanyNew = () => {
           <div className="space-y-1.5"><Label>Notities</Label><Textarea value={form.notes} onChange={(e) => set('notes', e.target.value)} rows={3} /></div>
 
           <div className="flex justify-end gap-3 pt-4 border-t">
-            <Button variant="ghost" onClick={() => navigate('/opdrachtgevers')}>Annuleren</Button>
+            <Button variant="ghost" onClick={() => { clearDraft(); navigate('/opdrachtgevers'); }}>Annuleren</Button>
             <Button onClick={() => mutation.mutate()} disabled={!form.name || mutation.isPending}>
               {mutation.isPending ? 'Opslaan...' : 'Opdrachtgever aanmaken'}
             </Button>
