@@ -2,10 +2,11 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Link, useNavigate } from 'react-router-dom';
-import { Building2, Plus, Search, Upload, RefreshCw } from 'lucide-react';
+import { Building2, Plus, Search, Upload, RefreshCw, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { EntityLink } from '@/components/ui/entity-link';
 import { PhoneLink } from '@/components/ui/contact-links';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -18,6 +19,7 @@ import ErrorState from '@/components/shared/ErrorState';
 import { toFriendlyError } from '@/lib/errorMessages';
 import { useAuth } from '@/contexts/AuthContext';
 import { logAudit } from '@/lib/audit';
+import { unwrap, unwrapList } from '@/lib/db';
 
 const PAGE_SIZE = 10;
 
@@ -30,6 +32,10 @@ const Companies = () => {
   const [page, setPage] = useState(0);
   const [importOpen, setImportOpen] = useState(false);
   const [resyncOpen, setResyncOpen] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  // RLS staat DELETE op companies alleen toe voor admins.
+  const canDelete = role === 'admin';
 
   const { data: kvkCount } = useQuery({
     queryKey: ['companies-kvk-count'],
@@ -152,9 +158,64 @@ const Companies = () => {
     },
   });
 
+  const bulkDelete = useMutation({
+    mutationFn: async (ids: string[]) => {
+      // Plaatsingen en facturen blokkeren verwijderen (FK RESTRICT); die opdrachtgevers slaan we over.
+      const [placementRows, invoiceRows, notificationRows] = await Promise.all([
+        unwrapList(supabase.from('placements').select('company_id').in('company_id', ids)),
+        unwrapList(supabase.from('invoices').select('company_id').in('company_id', ids)),
+        unwrapList(supabase.from('employee_notifications').select('company_id').in('company_id', ids)),
+      ]);
+      const blocked = new Set([...placementRows, ...invoiceRows, ...notificationRows].map((r: any) => r.company_id));
+      const deletable = ids.filter((id) => !blocked.has(id));
+      if (deletable.length > 0) {
+        await unwrap(supabase.from('companies').delete().in('id', deletable));
+        const names = new Map(companies.map((c: any) => [c.id, c.name]));
+        deletable.forEach((id) =>
+          logAudit({ action: 'delete', tableName: 'companies', recordId: id, oldValues: names.has(id) ? { name: names.get(id) } : undefined, reason: 'bulk-delete' })
+        );
+      }
+      return { deleted: deletable, blockedCount: blocked.size };
+    },
+    onSuccess: ({ deleted, blockedCount }) => {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        deleted.forEach((id) => next.delete(id));
+        return next;
+      });
+      setDeleteOpen(false);
+      qc.invalidateQueries({ queryKey: ['companies'] });
+      qc.invalidateQueries({ queryKey: ['companies-kvk-count'] });
+      if (blockedCount > 0) {
+        toast.warning(`${deleted.length} verwijderd, ${blockedCount} overgeslagen (gekoppelde plaatsingen of facturen)`);
+      } else {
+        toast.success(deleted.length === 1 ? '1 opdrachtgever verwijderd' : `${deleted.length} opdrachtgevers verwijderd`);
+      }
+    },
+    onError: (e: any) => toast.error(toFriendlyError(e, 'Verwijderen mislukt')),
+  });
+
   const companies = data?.companies ?? [];
   const total = data?.total ?? 0;
   const totalPages = Math.ceil(total / PAGE_SIZE);
+
+  const allOnPageSelected = companies.length > 0 && companies.every((c: any) => selected.has(c.id));
+  const toggleOne = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const toggleAll = () => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allOnPageSelected) companies.forEach((c: any) => next.delete(c.id));
+      else companies.forEach((c: any) => next.add(c.id));
+      return next;
+    });
+  };
 
   return (
     <div className="space-y-6">
@@ -213,6 +274,45 @@ const Companies = () => {
         <span className="text-sm text-muted-foreground">{total} opdrachtgevers</span>
       </div>
 
+      {canDelete && selected.size > 0 && (
+        <div className="bg-primary/5 border border-primary/20 rounded-lg px-4 py-2.5 flex items-center justify-between gap-3">
+          <span className="text-sm font-medium">{selected.size} geselecteerd</span>
+          <div className="flex gap-2">
+            <Button size="sm" variant="destructive" onClick={() => setDeleteOpen(true)} className="gap-1.5">
+              <Trash2 className="h-4 w-4" /> Verwijderen
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
+              Deselecteren
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {selected.size === 1 ? '1 opdrachtgever verwijderen?' : `${selected.size} opdrachtgevers verwijderen?`}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Contactpersonen, vacatures (incl. matches), tariefafspraken, SLA's en communicatiegeschiedenis
+              worden mee verwijderd. Opdrachtgevers met plaatsingen of facturen worden overgeslagen.
+              Dit kan niet ongedaan worden gemaakt.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={bulkDelete.isPending}>Annuleer</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); bulkDelete.mutate(Array.from(selected)); }}
+              disabled={bulkDelete.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {bulkDelete.isPending ? 'Bezig…' : 'Verwijderen'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {isError ? (
         <ErrorState error={error} onRetry={() => refetch()} />
       ) : !isLoading && companies.length === 0 ? (
@@ -229,6 +329,15 @@ const Companies = () => {
             <Table>
               <TableHeader>
                 <TableRow>
+                  {canDelete && (
+                    <TableHead className="w-10">
+                      <Checkbox
+                        checked={allOnPageSelected}
+                        onCheckedChange={toggleAll}
+                        aria-label={allOnPageSelected ? 'Deselecteer alle opdrachtgevers op deze pagina' : 'Selecteer alle opdrachtgevers op deze pagina'}
+                      />
+                    </TableHead>
+                  )}
                   <TableHead>Bedrijfsnaam</TableHead>
                   <TableHead>Stad</TableHead>
                   <TableHead>Primair contact</TableHead>
@@ -243,6 +352,15 @@ const Companies = () => {
                   const activePlacements = c.placements?.filter((p: any) => p.status === 'actief').length ?? 0;
                   return (
                     <TableRow key={c.id} className={i % 2 === 1 ? 'bg-background' : ''}>
+                      {canDelete && (
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          <Checkbox
+                            checked={selected.has(c.id)}
+                            onCheckedChange={() => toggleOne(c.id)}
+                            aria-label={`Selecteer opdrachtgever ${c.name}`}
+                          />
+                        </TableCell>
+                      )}
                       <TableCell>
                         <Link to={`/opdrachtgevers/${c.id}`} className="font-medium text-foreground hover:text-stat-blue transition-colors">
                           {c.name}

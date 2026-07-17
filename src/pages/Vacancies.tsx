@@ -3,12 +3,14 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Link, useNavigate } from 'react-router-dom';
 import { useSearchParamState } from '@/hooks/useSearchParamState';
-import { Briefcase, Plus, Search, AlertTriangle, Loader2 } from 'lucide-react';
+import { Briefcase, Plus, Search, AlertTriangle, Loader2, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
 import { formatDate, formatEUR } from '@/lib/format';
 import { logAudit } from '@/lib/audit';
@@ -17,6 +19,8 @@ import { toast } from 'sonner';
 import ErrorState from '@/components/shared/ErrorState';
 import { toFriendlyError } from '@/lib/errorMessages';
 import { useRolePermission } from '@/hooks/usePermissions';
+import { useAuth } from '@/contexts/AuthContext';
+import { unwrap, unwrapList } from '@/lib/db';
 
 const PAGE_SIZE = 10;
 
@@ -51,12 +55,17 @@ const renderSalary = (v: any): string => {
 const Vacancies = () => {
   const navigate = useNavigate();
   const canEditVacancies = useRolePermission('vacancies.edit');
+  const { role } = useAuth();
+  // RLS staat DELETE op vacancies alleen toe voor admins.
+  const canDelete = role === 'admin';
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useSearchParamState<string>('status', 'all');
   const [urgencyFilter, setUrgencyFilter] = useState('all');
   const [page, setPage] = useState(0);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   // Debounce de zoekterm zodat we niet per toetsaanslag een query vuren.
   useEffect(() => {
@@ -110,9 +119,59 @@ const Vacancies = () => {
     onError: (e: any) => toast.error(toFriendlyError(e)),
   });
 
+  const bulkDelete = useMutation({
+    mutationFn: async (ids: string[]) => {
+      // placements.vacancy_id heeft geen ON DELETE-cascade: vacatures met plaatsingen slaan we over.
+      const blocking = await unwrapList(supabase.from('placements').select('vacancy_id').in('vacancy_id', ids));
+      const blocked = new Set(blocking.map((p: any) => p.vacancy_id));
+      const deletable = ids.filter((id) => !blocked.has(id));
+      if (deletable.length > 0) {
+        await unwrap(supabase.from('vacancies').delete().in('id', deletable));
+        const titles = new Map(vacancies.map((v: any) => [v.id, v.title]));
+        deletable.forEach((id) =>
+          logAudit({ action: 'delete', tableName: 'vacancies', recordId: id, oldValues: titles.has(id) ? { title: titles.get(id) } : undefined, reason: 'bulk-delete' })
+        );
+      }
+      return { deleted: deletable, blockedCount: blocked.size };
+    },
+    onSuccess: ({ deleted, blockedCount }) => {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        deleted.forEach((id) => next.delete(id));
+        return next;
+      });
+      setDeleteOpen(false);
+      qc.invalidateQueries({ queryKey: ['vacancies'] });
+      if (blockedCount > 0) {
+        toast.warning(`${deleted.length} verwijderd, ${blockedCount} overgeslagen (gekoppelde plaatsingen)`);
+      } else {
+        toast.success(deleted.length === 1 ? '1 vacature verwijderd' : `${deleted.length} vacatures verwijderd`);
+      }
+    },
+    onError: (e: any) => toast.error(toFriendlyError(e, 'Verwijderen mislukt')),
+  });
+
   const vacancies = data?.vacancies ?? [];
   const total = data?.total ?? 0;
   const totalPages = Math.ceil(total / PAGE_SIZE);
+
+  const allOnPageSelected = vacancies.length > 0 && vacancies.every((v: any) => selected.has(v.id));
+  const toggleOne = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const toggleAll = () => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allOnPageSelected) vacancies.forEach((v: any) => next.delete(v.id));
+      else vacancies.forEach((v: any) => next.add(v.id));
+      return next;
+    });
+  };
 
   return (
     <div className="space-y-6" data-translate-region>
@@ -152,6 +211,44 @@ const Vacancies = () => {
         <span className="text-sm text-muted-foreground">{total} vacatures</span>
       </div>
 
+      {canDelete && selected.size > 0 && (
+        <div className="bg-primary/5 border border-primary/20 rounded-lg px-4 py-2.5 flex items-center justify-between gap-3">
+          <span className="text-sm font-medium">{selected.size} geselecteerd</span>
+          <div className="flex gap-2">
+            <Button size="sm" variant="destructive" onClick={() => setDeleteOpen(true)} className="gap-1.5">
+              <Trash2 className="h-4 w-4" /> Verwijderen
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
+              Deselecteren
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {selected.size === 1 ? '1 vacature verwijderen?' : `${selected.size} vacatures verwijderen?`}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Gekoppelde matches, vereiste skills en gegenereerde vacatureteksten worden mee verwijderd.
+              Vacatures met plaatsingen worden overgeslagen. Dit kan niet ongedaan worden gemaakt.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={bulkDelete.isPending}>Annuleer</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); bulkDelete.mutate(Array.from(selected)); }}
+              disabled={bulkDelete.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {bulkDelete.isPending ? 'Bezig…' : 'Verwijderen'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {isError ? (
         <ErrorState error={error} onRetry={() => refetch()} />
       ) : isLoading ? (
@@ -174,6 +271,15 @@ const Vacancies = () => {
             <Table>
               <TableHeader>
                 <TableRow>
+                  {canDelete && (
+                    <TableHead className="w-10">
+                      <Checkbox
+                        checked={allOnPageSelected}
+                        onCheckedChange={toggleAll}
+                        aria-label={allOnPageSelected ? 'Deselecteer alle vacatures op deze pagina' : 'Selecteer alle vacatures op deze pagina'}
+                      />
+                    </TableHead>
+                  )}
                   <TableHead>Titel</TableHead>
                   <TableHead>Opdrachtgever</TableHead>
                   <TableHead>Locatie</TableHead>
@@ -190,6 +296,15 @@ const Vacancies = () => {
                   const meta = v.urgency ? urgencyMeta[v.urgency] : null;
                   return (
                     <TableRow key={v.id} className={i % 2 === 1 ? 'bg-background' : ''}>
+                      {canDelete && (
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          <Checkbox
+                            checked={selected.has(v.id)}
+                            onCheckedChange={() => toggleOne(v.id)}
+                            aria-label={`Selecteer vacature ${v.title}`}
+                          />
+                        </TableCell>
+                      )}
                       <TableCell>
                         <Link to={`/vacatures/${v.id}`} className="font-medium text-foreground hover:text-stat-blue transition-colors">
                           {v.title}
