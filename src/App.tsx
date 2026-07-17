@@ -27,6 +27,7 @@ import { lazyRoute } from "@/lib/lazy-route";
 // spreadsheet parsers, recharts, tiptap) splits into its own chunk and is only
 // fetched when its route is first visited — keeping it off the initial bundle.
 const Login = lazyRoute(() => import("@/pages/Login"));
+const PasswordReset = lazyRoute(() => import("@/pages/PasswordReset"));
 const SuperAdminLogin = lazyRoute(() => import("@/pages/SuperAdminLogin"));
 const SuperAdminDashboard = lazyRoute(() => import("@/pages/superadmin/SuperAdminDashboard"));
 const SuperAdminOrganizations = lazyRoute(() => import("@/pages/superadmin/SuperAdminOrganizations"));
@@ -238,6 +239,7 @@ const App = () => (
               <Route path="/profiel/:token" element={<CandidateProfile />} />
               <Route path="/solliciteren/:slug" element={<PublicCandidateSignup />} />
               <Route path="/gebruikers/activeren/:token" element={<InternalUserActivate />} />
+              <Route path="/wachtwoord-herstellen" element={<TranslationProvider enableRuntimeTranslation={false}><PasswordReset /></TranslationProvider>} />
               <Route path="/portaal/activeren/:token" element={<TranslationProvider enableRuntimeTranslation={false}><PortalActivate /></TranslationProvider>} />
               <Route path="/portaal/login" element={<TranslationProvider enableRuntimeTranslation={false}><PortalLogin /></TranslationProvider>} />
               {/* Client portal (opdrachtgever) public routes */}

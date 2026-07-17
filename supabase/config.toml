@@ -214,6 +214,11 @@ verify_jwt = false
 [functions.client-portal-activate]
 verify_jwt = false
 
+# Publiek wachtwoord-vergeten endpoint (rate-limited via password_reset_attempts;
+# de update-action valideert zelf de recovery-sessie).
+[functions.password-reset]
+verify_jwt = false
+
 # ============================================================
 # VOYS TELEFONIE (beschermd)
 # ============================================================

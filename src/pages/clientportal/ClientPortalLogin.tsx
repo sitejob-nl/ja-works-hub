@@ -8,6 +8,7 @@ import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { LanguageToggle } from '@/components/translation/LanguageToggle';
 import { useTranslation } from '@/hooks/useTranslation';
+import { ForgotPasswordDialog } from '@/components/auth/ForgotPasswordDialog';
 
 const copy = {
   nl: {
@@ -95,6 +96,10 @@ const ClientPortalLogin = () => {
             {loading ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />{t.loggingIn}</> : t.login}
           </Button>
         </form>
+
+        <div className="text-center">
+          <ForgotPasswordDialog zone="klantportaal" defaultEmail={email} language={language} />
+        </div>
       </div>
     </div>
   );

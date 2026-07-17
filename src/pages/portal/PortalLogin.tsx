@@ -8,6 +8,7 @@ import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { LanguageToggle } from '@/components/translation/LanguageToggle';
 import { useTranslation } from '@/hooks/useTranslation';
+import { ForgotPasswordDialog } from '@/components/auth/ForgotPasswordDialog';
 
 const copy = {
   nl: {
@@ -119,6 +120,10 @@ const PortalLogin = () => {
             )}
           </Button>
         </form>
+
+        <div className="text-center">
+          <ForgotPasswordDialog zone="portaal" defaultEmail={email} language={language} />
+        </div>
       </div>
     </div>
   );
