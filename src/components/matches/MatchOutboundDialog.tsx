@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { AlertTriangle, MessageSquare } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -26,6 +27,10 @@ type MatchOutboundDialogProps = {
   onMessageChange: (value: string) => void;
   onCancel: () => void;
   onConfirm: () => void;
+  /** Optionele extra sectie (bv. template-keuze voor kandidaten buiten het 24u-venster). */
+  extra?: ReactNode;
+  /** Als false is versturen geblokkeerd ondanks geldige invoer (bv. template vereist maar niet gekozen). */
+  canConfirm?: boolean;
 };
 
 const MatchOutboundDialog = ({
@@ -42,6 +47,8 @@ const MatchOutboundDialog = ({
   onMessageChange,
   onCancel,
   onConfirm,
+  extra,
+  canConfirm = true,
 }: MatchOutboundDialogProps) => (
   <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen && !pending) onCancel(); }}>
     <DialogContent>
@@ -86,11 +93,13 @@ const MatchOutboundDialog = ({
             Controleer ontvangers en inhoud voordat je verstuurt. Bewaakte sendpaden respecteren de outbound kill-switch.
           </p>
         </div>
+
+        {extra}
       </div>
 
       <DialogFooter>
         <Button variant="outline" onClick={onCancel} disabled={pending}>Annuleren</Button>
-        <Button onClick={onConfirm} disabled={pending || paused || !message.trim() || selectedCount === 0}>
+        <Button onClick={onConfirm} disabled={pending || paused || !message.trim() || selectedCount === 0 || !canConfirm}>
           <MessageSquare className="h-3.5 w-3.5" /> {pending ? 'Versturen...' : 'Bevestig en verstuur'}
         </Button>
       </DialogFooter>

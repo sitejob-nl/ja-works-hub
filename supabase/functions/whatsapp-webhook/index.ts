@@ -219,7 +219,11 @@ async function processInboundMessage(
       break;
     }
     case "button":
+      // Quick-reply op een TEMPLATE-bericht: Meta levert die als type "button" met een
+      // payload (i.p.v. interactive.button_reply.id). Zelfde routing als interactive,
+      // zodat match_ja:/match_nee: uit template-knoppen ook de match verschuiven.
       body = msg.button?.text ?? "[Button antwoord]";
+      interactiveReplyId = msg.button?.payload ?? null;
       break;
     default:
       body = `[${messageType}]`;

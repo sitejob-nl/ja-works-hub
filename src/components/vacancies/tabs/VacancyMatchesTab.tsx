@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
@@ -16,7 +16,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { unwrap } from '@/lib/db';
+import { unwrap, unwrapList } from '@/lib/db';
+import {
+  buildInterestTemplatePayload,
+  isInterestTemplate,
+  previewInterestTemplate,
+  sanitizeTemplateParam,
+  type WhatsAppTemplateRow,
+} from '@/lib/whatsapp-template';
 import PlacementSheet from '@/components/vacancies/PlacementSheet';
 import MatchFeedbackDialog from '@/components/matches/MatchFeedbackDialog';
 import MatchInspectorDialog from '@/components/matches/MatchInspectorDialog';
@@ -105,6 +112,8 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
   const [bulkMessageOpen, setBulkMessageOpen] = useState(false);
   const [bulkMessageText, setBulkMessageText] = useState('');
   const [bulkSending, setBulkSending] = useState(false);
+  // Template voor kandidaten buiten het 24u-servicevenster (Meta bezorgt daar alleen templates).
+  const [bulkTemplateId, setBulkTemplateId] = useState<string>('');
   const { data: outboundPaused } = useOutboundPause(orgId);
   // AI-gegenereerde kandidaat-pitch (indien aanwezig) om het interesse-bericht mee te vullen.
   const { data: vacancySeo } = useQuery({
@@ -113,6 +122,23 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
       supabase.from('vacancy_seo_content').select('preview_text, social_text').eq('vacancy_id', vacancy.id).maybeSingle(),
     ),
   });
+
+  // Goedgekeurde WhatsApp-templates (zelfde key/vorm als TemplatePicker → gedeelde cache).
+  const { data: waTemplates = [] } = useQuery({
+    queryKey: ['whatsapp-templates', orgId],
+    queryFn: () => unwrapList(
+      (supabase as any).from('whatsapp_templates').select('*').eq('organization_id', orgId).eq('status', 'APPROVED').order('template_name'),
+    ) as Promise<WhatsAppTemplateRow[]>,
+    enabled: !!orgId && bulkMessageOpen,
+  });
+  // Alleen templates met minimaal 2 quick-reply-knoppen kunnen als interesse-bericht dienen.
+  const interestTemplates = waTemplates.filter(isInterestTemplate);
+
+  // Standaard de eerste geschikte template voorselecteren zodra de dialog open is.
+  useEffect(() => {
+    if (!bulkMessageOpen) return;
+    if (!bulkTemplateId && interestTemplates.length > 0) setBulkTemplateId(interestTemplates[0].id);
+  }, [bulkMessageOpen, bulkTemplateId, interestTemplates]);
 
   const { data: matches } = useQuery({
     queryKey: ['vacancy-matches', vacancy.id],
@@ -126,6 +152,31 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
       return data ?? [];
     },
   });
+
+  // Meta 24u-regel: buiten het servicevenster (laatste inkomende bericht < 24u) bezorgt Meta
+  // alleen goedgekeurde templates. Bepaal per geselecteerde kandidaat of het venster open is.
+  const selectedCandidateIds = ((matches ?? []) as any[])
+    .filter((m: any) => selectedMatches.has(m.id))
+    .map((m: any) => m.candidates?.id)
+    .filter(Boolean) as string[];
+  const { data: inWindowIds = [] } = useQuery({
+    queryKey: ['wa-service-window', vacancy.id, [...selectedCandidateIds].sort().join(',')],
+    queryFn: async () => {
+      const rows = await unwrapList(
+        (supabase as any)
+          .from('communications')
+          .select('candidate_id')
+          .eq('channel', 'whatsapp')
+          .eq('direction', 'inbound')
+          .in('candidate_id', selectedCandidateIds)
+          .gte('created_at', new Date(Date.now() - 24 * 3600_000).toISOString()),
+      );
+      return [...new Set((rows as any[]).map((r) => r.candidate_id))] as string[];
+    },
+    enabled: bulkMessageOpen && selectedCandidateIds.length > 0,
+  });
+  const inWindowSet = new Set(inWindowIds);
+  const selectedTemplate = interestTemplates.find((t) => t.id === bulkTemplateId) ?? null;
 
   const { data: vacancyCanonicalSkills = [] } = useQuery({
     queryKey: ['vacancy-canonical-skills', vacancy.id],
@@ -434,30 +485,52 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
     const noPhone = selectedMatchRows.length - rows.length;
     if (!rows.length) { toast.error('Geen geselecteerde kandidaten met een telefoonnummer'); return; }
     setBulkSending(true);
-    let sent = 0; const failed: string[] = [];
+    let sentDirect = 0; let sentTemplate = 0; let skippedWindow = 0; const failed: string[] = [];
     for (const m of rows) {
       const c = m.candidates;
-      const text = bulkMessageText.replaceAll('{voornaam}', c.first_name ?? '').replaceAll('{vacature}', vacancy.title ?? '');
+      const inWindow = inWindowSet.has(c.id);
+      // Meta 24u-regel: buiten het servicevenster komt een vrij bericht niet aan — daar is
+      // een goedgekeurde template verplicht. Zonder geschikte template slaan we expliciet over.
+      if (!inWindow && !selectedTemplate) { skippedWindow++; continue; }
       try {
-        const { error } = await supabase.functions.invoke('whatsapp-send', {
-          body: {
-            to: c.phone,
-            type: 'interactive',
-            candidate_id: c.id,
-            interactive: {
-              type: 'button',
-              body: { text },
-              action: {
-                buttons: [
-                  { type: 'reply', reply: { id: `match_ja:${m.id}`, title: 'Ja, interesse' } },
-                  { type: 'reply', reply: { id: `match_nee:${m.id}`, title: 'Nee, bedankt' } },
-                ],
+        if (inWindow) {
+          const text = bulkMessageText.replaceAll('{voornaam}', c.first_name ?? '').replaceAll('{vacature}', vacancy.title ?? '');
+          const { error } = await supabase.functions.invoke('whatsapp-send', {
+            body: {
+              to: c.phone,
+              type: 'interactive',
+              candidate_id: c.id,
+              interactive: {
+                type: 'button',
+                body: { text },
+                action: {
+                  buttons: [
+                    { type: 'reply', reply: { id: `match_ja:${m.id}`, title: 'Ja, interesse' } },
+                    { type: 'reply', reply: { id: `match_nee:${m.id}`, title: 'Nee, bedankt' } },
+                  ],
+                },
               },
             },
-          },
-        });
-        if (error) throw new Error(error.message);
-        sent++;
+          });
+          if (error) throw new Error(error.message);
+          sentDirect++;
+        } else {
+          const { error } = await supabase.functions.invoke('whatsapp-send', {
+            body: {
+              to: c.phone,
+              type: 'template',
+              candidate_id: c.id,
+              template: buildInterestTemplatePayload(selectedTemplate!, {
+                firstName: c.first_name ?? '',
+                vacancyTitle: vacancy.title ?? '',
+                pitch: sanitizeTemplateParam((vacancySeo?.preview_text || vacancySeo?.social_text || '')),
+                matchId: m.id,
+              }),
+            },
+          });
+          if (error) throw new Error(error.message);
+          sentTemplate++;
+        }
       } catch (e: any) {
         failed.push(`${c.first_name}: ${String(e.message).slice(0, 80)}`);
       }
@@ -465,7 +538,20 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
     setBulkSending(false);
     setBulkMessageOpen(false);
     setSelectedMatches(new Set());
-    if (sent) toast.success(`${sent} interesse-bericht${sent === 1 ? '' : 'en'} verstuurd${noPhone ? ` (${noPhone} zonder telefoon overgeslagen)` : ''}`);
+    const sent = sentDirect + sentTemplate;
+    if (sent) {
+      const parts = [
+        sentDirect ? `${sentDirect} direct` : '',
+        sentTemplate ? `${sentTemplate} via template` : '',
+      ].filter(Boolean).join(', ');
+      const skipped = [
+        skippedWindow ? `${skippedWindow} buiten 24u-venster zonder template` : '',
+        noPhone ? `${noPhone} zonder telefoon` : '',
+      ].filter(Boolean).join(', ');
+      toast.success(`Interesse-bericht verstuurd: ${parts}${skipped ? ` (overgeslagen: ${skipped})` : ''}`);
+    } else if (skippedWindow || noPhone) {
+      toast.error(`Niets verstuurd — ${skippedWindow ? `${skippedWindow} buiten het 24u-venster (kies of maak een template)` : ''}${skippedWindow && noPhone ? ', ' : ''}${noPhone ? `${noPhone} zonder telefoon` : ''}`);
+    }
     if (failed.length) toast.error(`${failed.length} mislukt: ${failed[0]}`);
   };
 
@@ -862,6 +948,51 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
         onMessageChange={setBulkMessageText}
         onCancel={() => setBulkMessageOpen(false)}
         onConfirm={sendBulkMessage}
+        extra={(() => {
+          // Meta 24u-regel: split tussen kandidaten mét open servicevenster (vrij bericht)
+          // en daarbuiten (template verplicht).
+          const withPhone = selectedMatchRows.filter((m: any) => m.candidates?.phone);
+          const outWindow = withPhone.filter((m: any) => !inWindowSet.has(m.candidates.id));
+          if (outWindow.length === 0) return null;
+          return (
+            <div className="space-y-2 rounded-md border bg-muted/30 p-3">
+              <p className="text-sm font-medium">
+                {outWindow.length} van {withPhone.length} kandidaten buiten het 24-uursvenster
+              </p>
+              <p className="text-xs text-muted-foreground">
+                WhatsApp bezorgt buiten het servicevenster (24 uur na het laatste bericht van de kandidaat)
+                alleen goedgekeurde templates. Deze kandidaten krijgen de template hieronder; de rest krijgt
+                het vrije bericht.
+              </p>
+              {interestTemplates.length > 0 ? (
+                <>
+                  <Select value={bulkTemplateId} onValueChange={setBulkTemplateId}>
+                    <SelectTrigger><SelectValue placeholder="Kies template" /></SelectTrigger>
+                    <SelectContent>
+                      {interestTemplates.map((t) => (
+                        <SelectItem key={t.id} value={t.id}>{t.template_name} ({t.language})</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {selectedTemplate && (
+                    <p className="rounded bg-background p-2 text-xs text-muted-foreground">
+                      {previewInterestTemplate(selectedTemplate, {
+                        firstName: 'voornaam',
+                        vacancyTitle: vacancy.title ?? '',
+                        pitch: sanitizeTemplateParam(vacancySeo?.preview_text || vacancySeo?.social_text || ''),
+                      })}
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p className="text-xs font-medium text-orange-600">
+                  Geen goedgekeurde template met ja/nee-knoppen gevonden — deze kandidaten worden
+                  overgeslagen. Maak er één aan via Instellingen → WhatsApp (twee quick-reply-knoppen).
+                </p>
+              )}
+            </div>
+          );
+        })()}
       />
 
       <MatchFeedbackDialog
