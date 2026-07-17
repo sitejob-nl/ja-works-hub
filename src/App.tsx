@@ -90,6 +90,7 @@ const PlacementsPage = lazyRoute(() => import("@/pages/Placements"));
 const PlacementDetail = lazyRoute(() => import("@/pages/PlacementDetail"));
 const MatchPipeline = lazyRoute(() => import("@/pages/MatchPipeline"));
 const MatchResponse = lazyRoute(() => import("@/pages/MatchResponse"));
+const CandidateInterest = lazyRoute(() => import("@/pages/CandidateInterest"));
 const UitstroomAnalyse = lazyRoute(() => import("@/pages/UitstroomAnalyse"));
 const Contacts = lazyRoute(() => import("@/pages/Contacts"));
 const ContactDetail = lazyRoute(() => import("@/pages/ContactDetail"));
@@ -235,6 +236,7 @@ const App = () => (
               <Route path="/contract/sign/:token" element={<ContractSign />} />
               <Route path="/match-response/:token" element={<MatchResponse />} />
               <Route path="/match/reageer/:token" element={<MatchResponse />} />
+              <Route path="/baan/interesse/:token" element={<CandidateInterest />} />
               <Route path="/profiel/:token" element={<CandidateProfile />} />
               <Route path="/solliciteren/:slug" element={<PublicCandidateSignup />} />
               <Route path="/gebruikers/activeren/:token" element={<InternalUserActivate />} />

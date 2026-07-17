@@ -5,7 +5,7 @@ import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { useOutboundPause } from '@/hooks/useOutboundPause';
 import { useAuth } from '@/contexts/AuthContext';
 import { Link } from 'react-router-dom';
-import { Search, UserPlus, Sparkles, Mail, Star, X, MessageSquare, Trash2, PhoneCall } from 'lucide-react';
+import { Search, UserPlus, Sparkles, Mail, Star, X, MessageSquare, Trash2, PhoneCall, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -22,6 +22,7 @@ import MatchFeedbackDialog from '@/components/matches/MatchFeedbackDialog';
 import MatchInspectorDialog from '@/components/matches/MatchInspectorDialog';
 import MatchOutboundDialog from '@/components/matches/MatchOutboundDialog';
 import MatchProposalEmailDialog from '@/components/matches/MatchProposalEmailDialog';
+import CandidateProposalEmailDialog from '@/components/matches/CandidateProposalEmailDialog';
 import MatchRow from '@/components/matches/MatchRow';
 import { type MatchBreakdown } from '@/lib/matching';
 import { MATCH_STATUS_STEPS, getMatchStatusMeta, getNextMatchStatus, isTerminalMatchStatus, matchStatusNeedsFeedbackDialog } from '@/lib/match-status';
@@ -81,6 +82,8 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
   const [candidateSearch, setCandidateSearch] = useState('');
   const [placementMatch, setPlacementMatch] = useState<any>(null);
   const [previewMatchId, setPreviewMatchId] = useState<string | null>(null);
+  // Baanvoorstel-mail naar de MEDEWERKER (A2) — apart van de opdrachtgever-voorstelmail.
+  const [candidateProposalMatchId, setCandidateProposalMatchId] = useState<string | null>(null);
   const [deleteMatchId, setDeleteMatchId] = useState<string | null>(null);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [scoreFilter, setScoreFilter] = useState<'strong' | '60' | '70' | '80' | 'all'>('strong');
@@ -597,6 +600,11 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
                       </Button>
                     </Link>
                   )}
+                  {!isTerminalMatchStatus(m.status) && c.email && (
+                    <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => setCandidateProposalMatchId(m.id)} title="Baanvoorstel mailen naar medewerker" aria-label={`Baanvoorstel mailen naar ${c.first_name ?? ''} ${c.last_name ?? ''}`.trim()}>
+                      <Send className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
                   {getNextMatchStatus(m.status) && (
                     <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => changeStatus([m.id], getNextMatchStatus(m.status)!)} title={`Naar ${statusLabel(getNextMatchStatus(m.status)!)}`}>
                       → {statusLabel(getNextMatchStatus(m.status)!)}
@@ -794,6 +802,15 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
         onSent={() => {
           qc.invalidateQueries({ queryKey: ['vacancy-matches', vacancy.id] });
           qc.invalidateQueries({ queryKey: ['match-pipeline'] });
+        }}
+      />
+
+      <CandidateProposalEmailDialog
+        open={!!candidateProposalMatchId}
+        matchId={candidateProposalMatchId}
+        onOpenChange={(open) => { if (!open) setCandidateProposalMatchId(null); }}
+        onSent={() => {
+          qc.invalidateQueries({ queryKey: ['vacancy-matches', vacancy.id] });
         }}
       />
 
