@@ -1,10 +1,10 @@
 // supabase/functions/whatsapp-send/index.ts
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireInternalProfile } from "../_shared/auth.ts";
 import {
   corsHeaders,
   jsonOk,
   jsonError,
-  getAuthenticatedOrg,
   markWhatsAppMessageRead,
   sendOutboundWhatsApp,
 } from "../_shared/whatsapp-utils.ts";
@@ -15,15 +15,18 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // Internal-only: portal roles (medewerker/opdrachtgever) mogen nooit namens de
+    // organisatie WhatsApp versturen. Alle interne rollen behouden toegang.
+    const auth = await requireInternalProfile(req, corsHeaders);
+    if (auth instanceof Response) return auth;
+    const orgId = auth.organizationId;
+    const userId = auth.userId;
+
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
       { global: { headers: { Authorization: req.headers.get("Authorization")! } } }
     );
-
-    const auth = await getAuthenticatedOrg(req, supabase);
-    if (auth instanceof Response) return auth;
-    const { orgId, userId } = auth;
 
     const body = await req.json();
     const { to, type, text, template, image, video, audio, document, reaction, interactive, candidate_id, context } = body;

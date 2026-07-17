@@ -43,7 +43,8 @@ const LANGUAGES = [
   { value: 'de', label: 'Duits (DE)' },
   { value: 'fr', label: 'Frans (FR)' },
   { value: 'es', label: 'Spaans (ES)' },
-  { value: 'pt', label: 'Portugees (PT)' },
+  { value: 'pt_PT', label: 'Portugees (PT)' },
+  { value: 'pt_BR', label: 'Braziliaans Portugees (BR)' },
   { value: 'uk', label: 'Oekraïens (UK)' },
   { value: 'ru', label: 'Russisch (RU)' },
 ];
@@ -180,13 +181,11 @@ export function TemplateCreateDialog({ open, onOpenChange }: TemplateCreateDialo
   const buildComponents = () => {
     const components: any[] = [];
 
-    // Header
-    if (headerEnabled) {
-      if (headerType === 'TEXT' && headerText) {
-        components.push({ type: 'HEADER', format: 'TEXT', text: headerText });
-      } else if (headerType !== 'TEXT') {
-        components.push({ type: 'HEADER', format: headerType });
-      }
+    // Header — alleen tekst-headers. Media-headers (IMAGE/VIDEO/DOCUMENT) vereisen bij
+    // het aanmaken een example.header_handle uit Meta's Resumable Upload API; zonder die
+    // handle weigert Meta de template. Dat pad ondersteunen we (nog) niet.
+    if (headerEnabled && headerText) {
+      components.push({ type: 'HEADER', format: 'TEXT', text: headerText });
     }
 
     // Body
@@ -242,6 +241,9 @@ export function TemplateCreateDialog({ open, onOpenChange }: TemplateCreateDialo
           name,
           category,
           language,
+          // Expliciet positioneel ({{1}}, {{2}}) — voorkomt afwijzing als de WABA-default
+          // op NAMED staat. Body-voorbeelden worden als body_text (array-of-arrays) meegestuurd.
+          parameter_format: 'POSITIONAL',
           components: buildComponents(),
           allow_category_change: true,
         },
@@ -354,35 +356,19 @@ export function TemplateCreateDialog({ open, onOpenChange }: TemplateCreateDialo
 
                 {headerEnabled && (
                   <div className="space-y-2 pl-0">
-                    <Select value={headerType} onValueChange={setHeaderType}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="TEXT">Tekst</SelectItem>
-                        <SelectItem value="IMAGE">Afbeelding</SelectItem>
-                        <SelectItem value="VIDEO">Video</SelectItem>
-                        <SelectItem value="DOCUMENT">Document</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    {headerType === 'TEXT' && (
-                      <div>
-                        <Input
-                          placeholder="Header tekst (max 60 tekens)"
-                          maxLength={60}
-                          value={headerText}
-                          onChange={(e) => setHeaderText(e.target.value)}
-                        />
-                        <p className="text-xs text-muted-foreground mt-1 text-right">
-                          {headerText.length}/60
-                        </p>
-                      </div>
-                    )}
-                    {headerType !== 'TEXT' && (
-                      <p className="text-xs text-muted-foreground">
-                        Het media-bestand upload je bij het versturen van de template.
-                      </p>
-                    )}
+                    <Input
+                      placeholder="Header tekst (max 60 tekens)"
+                      maxLength={60}
+                      value={headerText}
+                      onChange={(e) => setHeaderText(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground text-right">
+                      {headerText.length}/60
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Alleen tekst-headers. Media-headers (afbeelding/video/document) vereisen
+                      een aparte upload bij Meta en worden nog niet ondersteund.
+                    </p>
                   </div>
                 )}
               </div>

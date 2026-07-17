@@ -1,11 +1,11 @@
 // supabase/functions/whatsapp-api/index.ts
 // Generic proxy for ALL WhatsApp Cloud API (Meta Graph API v25.0) calls.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireInternalProfile } from "../_shared/auth.ts";
 import {
   corsHeaders,
   jsonOk,
   jsonError,
-  getAuthenticatedOrg,
   getWhatsAppCredentials,
   META_API_BASE,
 } from "../_shared/whatsapp-utils.ts";
@@ -16,15 +16,11 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: req.headers.get("Authorization")! } } }
-    );
-
-    const auth = await getAuthenticatedOrg(req, supabase);
+    // Internal-only: dit is een generieke Meta-proxy (templates aanmaken/verwijderen,
+    // profiel, QR-codes, analytics). Portal-rollen mogen hier nooit bij.
+    const auth = await requireInternalProfile(req, corsHeaders);
     if (auth instanceof Response) return auth;
-    const { orgId } = auth;
+    const orgId = auth.organizationId;
 
     // Service client for Vault-decrypted credential access (bypasses RLS)
     const serviceClient = createClient(
