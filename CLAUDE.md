@@ -442,7 +442,7 @@ De matching-kern is **deterministisch** in `supabase/functions/_shared/matching-
 ### Kill-switch uitgaande communicatie (`_shared/outbound-pause.ts`)
 
 Globale org-pauze in `organizations.settings.outbound_paused` (`true` of `{ email, whatsapp }`). Geblokkeerde berichten worden als **concept** in `communications` gelogd (`message_type='concept'`), niet stil weggegooid. Toggle in **Instellingen → Algemeen** (`OutboundPauseSettings.tsx`).
-- **E-mail-guards:** `isOutboundPaused()` in `_shared/outlook-send.ts` (`sendViaOutlookAccount`, alle template-mailers) én in `outlook-send-mail` (interactieve hoofdmail).
+- **E-mail-guards:** `isOutboundPaused()` in `_shared/outlook-send.ts` (`sendViaOutlookAccount`, alle template-mailers) én in `outlook-send-mail` (interactieve hoofdmail). Uitzondering: `password-reset` zet `bypassOutboundPause: true` — kritieke, gebruiker-geïnitieerde auth-mail moet ook bij pauze aankomen.
 - **WhatsApp-guards:** `whatsapp-send`, `bulk-campaign-processor`, `automated-messages`, `check-document-expiry`, `send-placement-confirmation`.
 - `logConceptCommunication` slaat over (met `console.warn`) wanneer er geen candidate/company-id is (CHECK `chk_comm_target`).
 
