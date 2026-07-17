@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { ForgotPasswordDialog } from '@/components/auth/ForgotPasswordDialog';
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -74,6 +75,10 @@ const Login = () => {
             {loading ? 'Inloggen...' : 'Inloggen'}
           </Button>
         </form>
+
+        <div className="text-center mt-4">
+          <ForgotPasswordDialog zone="app" defaultEmail={email} />
+        </div>
 
         <p className="text-center text-sm text-muted-foreground mt-6">
           Nog geen account?{' '}
