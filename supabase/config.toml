@@ -163,6 +163,13 @@ verify_jwt = false
 [functions.generate-vacancy]
 verify_jwt = false
 
+[functions.send-candidate-proposal]
+verify_jwt = false
+
+# Publiek (token-based, service-role validatie + IP-rate-limit — zoals match-response)
+[functions.candidate-interest]
+verify_jwt = false
+
 [functions.generate-call-questions]
 verify_jwt = false
 

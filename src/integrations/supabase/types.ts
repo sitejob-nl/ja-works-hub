@@ -5137,6 +5137,57 @@ export type Database = {
           },
         ]
       }
+      match_candidate_tokens: {
+        Row: {
+          candidate_email: string | null
+          created_at: string | null
+          expires_at: string
+          id: string
+          match_id: string
+          organization_id: string
+          response: string | null
+          token: string
+          used_at: string | null
+        }
+        Insert: {
+          candidate_email?: string | null
+          created_at?: string | null
+          expires_at?: string
+          id?: string
+          match_id: string
+          organization_id: string
+          response?: string | null
+          token?: string
+          used_at?: string | null
+        }
+        Update: {
+          candidate_email?: string | null
+          created_at?: string | null
+          expires_at?: string
+          id?: string
+          match_id?: string
+          organization_id?: string
+          response?: string | null
+          token?: string
+          used_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "match_candidate_tokens_match_id_fkey"
+            columns: ["match_id"]
+            isOneToOne: false
+            referencedRelation: "matches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "match_candidate_tokens_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       match_distance_cache: {
         Row: {
           calculated_at: string
@@ -6458,6 +6509,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      password_reset_attempts: {
+        Row: {
+          action: string | null
+          created_at: string
+          email_hash: string | null
+          id: string
+          ip_hash: string | null
+        }
+        Insert: {
+          action?: string | null
+          created_at?: string
+          email_hash?: string | null
+          id?: string
+          ip_hash?: string | null
+        }
+        Update: {
+          action?: string | null
+          created_at?: string
+          email_hash?: string | null
+          id?: string
+          ip_hash?: string | null
+        }
+        Relationships: []
       }
       payslips: {
         Row: {

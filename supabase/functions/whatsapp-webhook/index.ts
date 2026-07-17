@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { normalizePhone, sendOutboundWhatsAppText } from "../_shared/whatsapp-utils.ts";
 import { cascadeSickReport } from "../_shared/sick-report-handler.ts";
 import { getWhatsAppAutomationSettings } from "../_shared/whatsapp-automation-settings.ts";
-import { advanceMatchStatus } from "../_shared/match-lifecycle.ts";
+import { applyMatchInterest } from "../_shared/match-interest.ts";
 
 const OPT_OUT_KEYWORDS = ["stop", "afmelden", "uitschrijven", "stoppen", "unsubscribe"];
 // Substring match — any of these anywhere in the message triggers sick flow.
@@ -147,32 +147,13 @@ Deno.serve(async (req) => {
 });
 
 // Interesse-respons op een bulk match-bericht (VacancyMatchesTab "Interesse-bericht").
-// De ja/nee-knoppen dragen een reply-id match_ja:<matchId> / match_nee:<matchId>; hiermee
-// verschuift de match automatisch naar de juiste fase (Carerix-stijl "ja/nee → fase").
+// De ja/nee-knoppen dragen een reply-id match_ja:<matchId> / match_nee:<matchId>; de
+// fase-transitie zelf is gedeeld met de kandidaat-voorstelmail (_shared/match-interest.ts).
 async function handleMatchInterest(supabase: any, orgId: string, replyId: string) {
   const isYes = replyId.startsWith("match_ja:");
   const matchId = replyId.slice(replyId.indexOf(":") + 1);
   if (!matchId) return;
-  const { data: match } = await supabase
-    .from("matches")
-    .select("id, status, match_score, match_breakdown")
-    .eq("id", matchId)
-    .eq("organization_id", orgId)
-    .maybeSingle();
-  // Niet terugzetten als de match al verder of terminaal is.
-  if (!match || ["geaccepteerd", "geplaatst", "afgewezen"].includes(match.status)) return;
-  const newStatus = isYes ? "afspraak_voorgesteld" : "afgewezen";
-  await advanceMatchStatus(supabase, {
-    orgId,
-    matchId,
-    toStatus: newStatus,
-    currentMatch: { ...match, organization_id: orgId },
-    requireReason: false,
-    eventMode: "always",
-    notes: isYes
-      ? "Kandidaat reageerde 'Ja, interesse' via WhatsApp — afspraakvoorstel opvolgen"
-      : "Kandidaat reageerde 'Nee, bedankt' via WhatsApp",
-  });
+  await applyMatchInterest(supabase, { orgId, matchId, isYes, channel: "whatsapp" });
 }
 
 async function processInboundMessage(
