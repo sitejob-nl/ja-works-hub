@@ -11,7 +11,7 @@ This file provides guidance to Claude Code when working with the JA Werkt codeba
 **JA Werkt** is a multi-tenant staffing agency (uitzendbureau) SaaS platform built for JA Werkt, a temp agency specializing in labor migrants (arbeidsmigranten) in Brabant/Limburg, Netherlands. The platform consolidates multiple legacy systems (Carerix, Joboti, Umanga, OnTrack, Q8, Buddy) into a single system, while keeping Flexpedia as external payroll engine (loonmotor).
 
 **Key workflows:**
-1. **Candidate → Employee → Placement**: Create candidate → upload docs → hire (in dienst) → onboarding checklist → compliance check → vacancy matching (AI score) → pipeline (nieuwe_match → gescreend → voorgesteld → voorgesteld_bij_klant → afspraak_op_kantoor → geaccepteerd → geplaatst; `in_gesprek` is dormant) → place with ComplianceWarningDialog → planning
+1. **Candidate → Employee → Placement**: Create candidate → upload docs → hire (in dienst) → onboarding checklist → compliance check → vacancy matching (AI score) → pipeline (nieuwe_match → gescreend → voorgesteld → voorgesteld_bij_klant → afspraak_voorgesteld → afspraak_op_kantoor → geaccepteerd → geplaatst; `in_gesprek` is dormant) → place with ComplianceWarningDialog → planning
 2. **Housing**: Property → rooms (units) → assign resident (3-step wizard) → check-in → costs → keys → check-out. DB trigger blocks overbooking.
 3. **Timesheets**: Enter hours (manual or CSV) → AI validation (edge function, 6 rules) → approval (individual or bulk) → rejected: reopen to concept
 4. **Self-service onboarding**: Intercedent generates link → worker opens `/onboarding/{token}` (public) → fill form + accept docs → token-based auth (7 days, single use)
@@ -118,7 +118,7 @@ Routes live in [src/App.tsx](src/App.tsx) — read it for the full list. Pattern
 | `/klantportaal/*` | `ClientPortalProvider` + `ClientPortalLayout` | Opdrachtgever sees own placements + approves timesheets. `/klantportaal/login` and `/klantportaal/activeren/:token` are public. |
 | `/superadmin/*` | `SuperAdminProvider` + `SuperAdminLayout` | System admin — orgs, users, plans, errors, cv-backfill. |
 
-**Public token-based routes** (no provider, no login): `/onboarding/:token`, `/contract/sign/:token`, `/profiel/:token`, `/match/reageer/:token` (alias: `/match-response/:token`), `/registreren`, `/installeren`.
+**Public token-based routes** (no provider, no login): `/onboarding/:token`, `/contract/sign/:token`, `/profiel/:token`, `/match/reageer/:token` (alias: `/match-response/:token`, opdrachtgever), `/baan/interesse/:token` (medewerker reageert op baanvoorstel), `/registreren`, `/installeren`.
 
 Convention: Dutch URL slugs (`/kandidaten`, `/opdrachtgevers`, `/medewerkers`, `/uren`, `/huisvesting`, etc.) — see [Dutch Terminology](#dutch-terminology) for the mapping.
 
@@ -153,16 +153,16 @@ Database triggers encrypt sensitive fields (BSN, IBAN, webhook secrets, access t
 
 - **Candidates & HR**: `candidates` (merged with employees, see Architecture), `candidate_employment`, `candidate_profile_tokens`, `candidate_signup_links`, `contracts`, `documents`, `sick_reports`, `payslips`, `annual_statements`, `hour_letters`, `employee_deductions`, `employee_subsidies`, `employee_reservations`, `employee_notifications`.
 - **Companies**: `companies`, `company_contacts`, `company_functions`, `company_sla`, `rate_agreements`.
-- **Placements & Matching**: `placements`, `placement_allowances` / `_hour_types` / `_travel_types`, `matches`, `vacancies`, `match_proposal_tokens`.
+- **Placements & Matching**: `placements`, `placement_allowances` / `_hour_types` / `_travel_types`, `matches`, `vacancies`, `vacancy_seo_content` (AI-gegenereerde vacatureteksten, 1:1), `vacancy_required_skills` (canonieke join, door trigger gesynct uit `vacancies.required_skills`), `skills` + `skill_aliases` (org-catalogus), `match_proposal_tokens` (klant-reactie), `match_candidate_tokens` (medewerker-interesse), `match_rerank_cache` (Gemini stage-2), `match_feedback_reasons`.
 - **Timesheets & Invoicing**: `timesheets`, `invoices`, `invoice_lines`, `invoice_sequences`, `fuel_card_transactions`, `mileage_entries`.
 - **Housing**: `properties`, `property_owners`, `units`, `housing_assignments`, `housing_inspections`, `key_registrations`.
 - **Transport**: `vehicles`, `vehicle_assignments`, `vehicle_damage_reports`, `vehicle_fines`.
-- **Communication**: `communications`, `communication_preferences`, `bulk_campaigns`, `campaign_recipients`, `whatsapp_config`.
+- **Communication**: `communications`, `communication_preferences`, `bulk_campaigns`, `campaign_recipients`, `whatsapp_config`, `whatsapp_templates` (Meta-sync, status APPROVED), `mail_accounts`.
 - **Onboarding**: `onboarding_forms` / `_form_steps` / `_form_fields` / `_form_regulations` / `_responses` / `_tokens`.
 - **Compliance & Config**: `compliance_rules`, `regulations`, `regulation_acknowledgements`, `contract_templates`, `termination_reasons`, `knowledge_base`.
 - **Org & Users**: `organizations`, `profiles`, `superadmins`, `subscription_plans`, `organization_modules`, `portal_invites`.
 - **External Integration**: `exact_config`, `external_mappings`, `job_listings`, `job_import_logs`, `people_search_results`.
-- **Logging & System**: `audit_log`, `client_errors`, `rate_limit_tracking`, `recruiter_tasks`, `notes`, `talentpools`, `talentpool_members`.
+- **Logging & System**: `audit_log`, `client_errors`, `rate_limit_tracking`, `recruiter_tasks`, `notes`, `talentpools`, `talentpool_members`, `ai_usage_log` (append-only, provider CHECK vps|cloud|gemini), `organization_credits` (1:1 org, alleen via SECURITY DEFINER RPC's), `match_response_attempts` (service-role-only throttle voor publieke token-endpoints).
 
 ### Encrypted columns (never SELECT directly)
 
@@ -186,7 +186,9 @@ Database triggers encrypt sensitive fields (BSN, IBAN, webhook secrets, access t
 - **`candidates.cv_has_photo`** (boolean) bestaat wél, maar er is **géén profielfoto-URL-kolom** — publieke profielfoto's worden in de `documents`-bucket-map van de kandidaat bewaard en alleen via `cv_has_photo` geflagd.
 - **`candidates.search_unaccent`** is een `GENERATED ALWAYS … STORED` kolom (lower+unaccent van naam/stad/email/telefoon) met trigram-GIN-index, voor **accent-insensitief zoeken** ("Jose" vindt "José"). Gebruikt de IMMUTABLE wrapper `public.f_unaccent()` (2-arg `unaccent(regdictionary,text)`) — unaccent zelf is STABLE en mag niet direct in een generated column. UI foldt de zoekterm client-side (`Candidates.tsx`).
 - **`matches.interview_date` / `desired_start_date`** worden gezet vanaf de publieke reactiepagina ("op gesprek" + datum/tijd resp. "direct starten" + startdatum). Match-uniciteit zit op een bestaande UNIQUE index `(vacancy_id, candidate_id)` → dubbele match = fout `23505` (UI vangt af). `match_feedback_reasons` (per-org, `applies_to match_status`) voedt de verplichte afwijsreden-dropdown.
-- **`match_response_attempts`** is een service-role-only throttle/log-tabel (gehashte IP) voor het publieke `match-response` endpoint; spiegelt `registration_attempts`. RLS aan + geen policy = deny-all (bewust; advisor-INFO `rls_enabled_no_policy` is verwacht).
+- **`match_response_attempts`** is een service-role-only throttle/log-tabel (gehashte IP) voor de publieke `match-response` én `candidate-interest` endpoints; spiegelt `registration_attempts`. RLS aan + geen policy = deny-all (bewust; advisor-INFO `rls_enabled_no_policy` is verwacht).
+- **`vacancy_seo_content`** — 1:1 met `vacancies` (PK `vacancy_id`), geschreven door edge fn `generate-vacancy`. Eerste-klas bewerkbare teksten (`seo_title`, `slug`, `meta_description`, `body_markdown`, `vacaturebank_variant`, `social_text`, `preview_text`) + `content` jsonb (titelvarianten, FAQ, JobPosting JSON-LD, CTA's, `matching_profile`, keywords, SEO-onderbouwing) + `input_answers` jsonb (de 16 formulierantwoorden). RLS: interne rollen eigen org.
+- **`match_candidate_tokens`** — single-use tokens voor de kandidaat-interesse-links uit de kandidaat-voorstelmail. Bewust een **aparte tabel** naast `match_proposal_tokens`: een kandidaat-token mag nooit de klant-reactiepagina openen. Deny-all RLS (service-role-only, zoals `match_response_attempts`).
 - **`vehicle_status` enum** = `beschikbaar | toegewezen | onderhoud | uit_dienst` (géén `in_gebruik`). Voertuigtoewijzing bij plaatsing zet status op `toegewezen`; een DB-trigger `check_drivers_license()` blokkeert toewijzing zonder geldig rijbewijs.
 - **AI-afgeleide matcher-kolommen op `candidates`** — `_shared/cv-write.ts` schrijft bij elke AI-analyse een paar **slanke first-class kolommen** uit `ai_analysis` weg, zodat de matcher ze goedkoop kan lezen zonder de hele jsonb over de pool te fetchen: `drivers_license_categories text[]` (uit `mobiliteit.rijbewijs_types`, MG1 GAP3 — zwaar C/CE/D-rijbewijs = chauffeurssignaal), `most_recent_role text` + `most_recent_role_year int` (uit `werkhistorie[0]`; alleen jaartal, "heden"→huidig jaar; MG1 GAP2 recency). Patroon spiegelt `ai_function_group`/`ai_target_functions`. Niet handmatig vullen — ze worden bij (her)analyse gesynct; een migratie-backfill vult bestaande rijen.
 
@@ -228,7 +230,7 @@ Canonical in [src/integrations/supabase/types.ts](src/integrations/supabase/type
 | `sa_update_org_active` | org_uuid, active | void | Superadmin: activate/deactivate org |
 | `sa_update_org_plan` | org_uuid, new_plan_id | void | Superadmin: change subscription |
 
-## Edge Functions (~60 functies)
+## Edge Functions (~90 functies)
 
 > **NB**: alle protected functions hebben `verify_jwt = false` in `config.toml` met **self-auth** in de function body (de Supabase Edge Runtime kan ES256 signing keys niet valideren). Dat is bewust en gedocumenteerd in config.toml. **Uitzondering**: `analyze-cv` heeft `verify_jwt = true` (synchroon vanuit UI, anonieme JWT validatie volstaat).
 
@@ -257,6 +259,7 @@ Canonical in [src/integrations/supabase/types.ts](src/integrations/supabase/type
 | `contract-sign` | Digital contract signing (token-based) |
 | `candidate-profile` | Public candidate profile endpoint |
 | `match-response` | Publieke voorstel-reactiepagina (token, geen login): rapport + CV-signed-URL + accepteren (op gesprek/direct starten)/afwijzen. Service-role validatie, single-use, IP-rate-limit via `match_response_attempts` |
+| `candidate-interest` | Publieke medewerker-interesse (token uit de kandidaat-voorstelmail, `/baan/interesse/:token`): ja → `afspraak_voorgesteld` + opvolg-taak, nee → `afgewezen`. Zelfde transitie als de WhatsApp-ja/nee (`_shared/match-interest.ts`); service-role validatie, single-use, gedeelde IP-rate-limit |
 | `portal-activate` | Employee portal account activation |
 | `client-portal-activate` | Client portal (opdrachtgever) account activation |
 | `microsoft-callback` | Microsoft Graph OAuth callback |
@@ -272,6 +275,8 @@ Canonical in [src/integrations/supabase/types.ts](src/integrations/supabase/type
 | `whatsapp-templates-sync` | Sync approved message templates from Meta |
 | `send-placement-confirmation` | Email placement confirmations (to klant + medewerker) |
 | `send-match-proposal` | Send candidate-voorstel email to opdrachtgever (supports preview-only mode) |
+| `send-candidate-proposal` | Baanvoorstel-mail naar de MEDEWERKER (dual-mode preview/send), gevoed uit `vacancy_seo_content`, met interesse-links (tokens in `match_candidate_tokens`). Opdrachtgever wordt niet genoemd; geen statuswijziging bij verzenden |
+| `match-bulk-notify` | Fire-and-forget kandidaat-notificaties bij bulk-matchen (app-notificatie + e-mail + WhatsApp-concept), hardcoded copy, dedup-marker |
 | `send-damage-report` | Email vehicle damage report with photos + template |
 | `send-portal-invite` | Send employee portal activation link |
 | `send-timesheet-approval` | Notify approval/rejection of timesheets |
@@ -314,11 +319,13 @@ Canonical in [src/integrations/supabase/types.ts](src/integrations/supabase/type
 | `rank-candidates` | Rangschikt de hele kandidatenpool voor één vacature (shortlist "Beste kandidaten") |
 | `rank-vacancies` | **Reverse matching**: rangschikt alle open vacatures voor één kandidaat (tab "Vacatures" op het dossier) |
 | `enrich-vacancies` | **AI-skillverrijking** (Gemini): kent `required_skills` toe uit de volledige vacaturetekst, uitsluitend uit de actieve org-skillcatalogus. Batch (admin/superadmin/service) óf single (`vacancy_id`, RLS eigen-org elke rol). Idempotent via `skills_enriched_at`-cursor |
+| `rerank-matches` | **Stage-2 Gemini-rerank** van de shortlist-top-N: vacaturetekst (incl. `vacancy_seo_content.body_markdown` indien aanwezig) × compact kandidaatdossier → fit-score + onderbouwing ("Waarom?"). Cache in `match_rerank_cache` op `input_hash` (model+vacaturetekst+dossier); credits via `consume_ai_credits` |
 
 **AI**
 | Function | Purpose |
 |----------|---------|
 | `cv-rewrite` | AI-powered CV improvement |
+| `generate-vacancy` | **AI-vacaturetekstgenerator** (Claude Sonnet, `claude-sonnet-5`): 16 masterprompt-antwoorden → complete SEO-set, upsert in `vacancy_seo_content`. Auth `vacancies.edit`; billing via `consume_ai_credits` + `ai_usage_log` (feature `vacancy_generate`) |
 | `analyze-cv` | Submit kandidaatdossier for LLM analysis via VPS or Cloud. Builds dossier from CV/document text, profile and internal context; pseudonimiseert naam/email/tel/BSN/IBAN vóór verzending |
 | `analyze-cv-callback` | Receive async CV analysis results from LLM VPS |
 | `analyze-cv-batch` | **Backfill** voor bestaande kandidaten: select document/CV + notes/context → pseudonimiseer dossier → VPS. Superadmin-auth, throttle 1.5s/dossier |
@@ -400,7 +407,7 @@ Similar to WhatsApp — tenant registration via SiteJob Connect → OAuth popup 
 - Text extraction in the edge function supports PDF, DOCX, ODT, RTF, TXT and heuristic legacy DOC; image-only files are flagged but not OCRed server-side.
 - Throttle 1.5s/dossier. Max batch 25. Optie: mislukten opnieuw proberen.
 
-**LLM:** default lokaal/EU via Qwen3-14B op Hetzner VPS (`OLLAMA_BASE_URL` + `OLLAMA_API_KEY`). Optioneel sneller Cloud-pad via Anthropic Claude Haiku 4.5 (`ANTHROPIC_API_KEY`) met €50 starterbudget per organisatie in `organization_credits`.
+**LLM:** code-default is de VPS (Qwen3-14B via `OLLAMA_BASE_URL` + `OLLAMA_API_KEY`), maar in de praktijk draait CV-analyse via **Gemini** (org-setting `cv_ai_provider`); Cloud-pad via Anthropic (`ANTHROPIC_API_KEY`). Vacaturetekst-generatie (`generate-vacancy`) gebruikt **Claude Sonnet**. Alle betaalde paden schrijven af van het €50-starterbudget in `organization_credits` (`consume_ai_credits`) en loggen in `ai_usage_log`.
 
 **UI:** `src/components/candidates/tabs/CandidateAiTab.tsx` (realtime via Supabase channel) + `src/components/settings/AiCvProviderSettings.tsx` + `src/pages/superadmin/SuperAdminCvBackfill.tsx`
 
@@ -437,7 +444,9 @@ De matching-kern is **deterministisch** in `supabase/functions/_shared/matching-
 - **Functie-groep-guard** (Alam-fix): een als `specialist` geclassificeerde kandidaat (`candidates.ai_classification`) zónder skill-match én zónder functie-titel-signaal wordt gecapt op ≤40 (valt uit de shortlist). Productie-kandidaten worden nooit geraakt; een specialist mét match scoort normaal.
 - **Chauffeursconcept (MG1):** `isTruckDriverConcept()` matcht Nederlandse samenstellingen die op losse-token-overlap stranden (`vrachtwagenchauffeur`/`CE chauffeur`/`code 95` → "truck driver"), bewust **niet** heftruck/reachtruck. GAP3: een zwaar rijbewijs (`drivers_license_categories` met C/C1/CE/C1E/D/...) telt óók als chauffeurs-functiesignaal + pluspunt, ook zonder expliciete doelfunctie.
 - **Recency (MG1 GAP2):** `+5` als de meest recente rol (`most_recent_role`) aansluit op de vacature én binnen `RECENCY_WINDOW_YEARS` (4) eindigde. Via `options.nowYear` (door de edge-fns gezet met `new Date().getFullYear()`); **afwezig → bonus uit**, zodat de pure kern deterministisch blijft in unit-tests. Oude relevante ervaring wordt nooit bestraft.
-- **Frontend `VacancyMatchesTab.tsx`:** de match-pipeline is een **lijst** (statusfilter-chips per fase, géén drag-kanban). Klik "Waarom?" → volledige `match_breakdown` (punten per onderdeel). Shortlist "Beste kandidaten" met %-drempelfilter + multi-select + bulk "Voorstellen". **Bulk-acties op matches:** Status wijzigen + **Interesse-bericht (ja/nee)** → WhatsApp-knoppen met reply-id `match_ja:<id>` / `match_nee:<id>`; `whatsapp-webhook → handleMatchInterest()` verschuift de match automatisch (ja → `afspraak_op_kantoor`, nee → `afgewezen`). Reverse matching op het kandidaatdossier via `CandidateVacancyMatchesTab.tsx`.
+- **Frontend `VacancyMatchesTab.tsx`:** de match-pipeline is een **lijst** (statusfilter-chips per fase, géén drag-kanban). Klik "Waarom?" → volledige `match_breakdown` + evt. Gemini-rerank-onderbouwing. Shortlist "Beste kandidaten" met %-drempelfilter + multi-select + bulk "Voorstellen". Reverse matching op het kandidaatdossier via `CandidateVacancyMatchesTab.tsx`.
+- **Interesse-bericht (ja/nee, Meta-24u-bewust):** bulk-WhatsApp met reply-id `match_ja:<id>` / `match_nee:<id>`; default-tekst = AI-pitch uit `vacancy_seo_content` (`preview_text`→`social_text`→titel-fallback). **Venster-detectie per kandidaat** (inbound WhatsApp <24u in `communications`): binnen venster vrij interactive-bericht, daarbuiten een goedgekeurde **template** met dezelfde payloads in de quick-replies (`src/lib/whatsapp-template.ts`; template vereist ≥2 quick-reply-knoppen, vars {{1}}=voornaam {{2}}=vacature {{3}}=pitch). `whatsapp-webhook` routeert zowel `interactive.button_reply` als template-`button.payload` door `_shared/match-interest.ts → applyMatchInterest()` (ja → `afspraak_voorgesteld`, nee → `afgewezen`).
+- **Kandidaat-voorstelmail (A2):** per match-rij (Send-icoon, kandidaat mét e-mail) een bewerkbare/previewbare branded mail (`CandidateProposalEmailDialog` → `send-candidate-proposal`) met interesse-links → publieke pagina `/baan/interesse/:token` (`candidate-interest`). Antwoord voorgeselecteerd via `?a=ja|nee` maar altijd expliciete bevestiging (mail-scanner-prefetch kan nooit een match verschuiven).
 
 ### Kill-switch uitgaande communicatie (`_shared/outbound-pause.ts`)
 
@@ -455,11 +464,20 @@ Globale org-pauze in `organizations.settings.outbound_paused` (`true` of `{ emai
 
 `enrich-vacancies` (Gemini) vult `required_skills` uit de volledige vacaturetekst, **uitsluitend** uit de actieve org-skillcatalogus (`skills.is_active`). Auto-getriggerd bij `VacancyNew` (alleen als er geen handmatige skills zijn) + handmatige knop **"AI-skills"** op `VacancyDetail`. Cap via `skills_enriched_at`. Curatie van de actieve catalogus → `SkillCatalogSettings.tsx`.
 
+### AI-vacaturetekstgenerator (masterprompt → SEO-set)
+
+Tab **"Vacaturetekst"** op `VacancyDetail` → vooringevuld formulier (16 masterprompt-vragen, auto-prefill uit vacature + opdrachtgever in `src/lib/vacancy-generator.ts`) → edge fn `generate-vacancy` (**Claude Sonnet**, tool-schema-geforceerd) → complete set in `vacancy_seo_content`: websitetekst (≤600 w), titelvarianten, meta (≤160), slug, FAQ, JobPosting JSON-LD (`hiringOrganization` altijd JA Werkt), vacaturebank/social/preview-varianten, CTA's, AI-matchingprofiel, zoekwoorden. Per sectie bewerken/kopiëren in `VacancyTextTab.tsx`.
+
+- **Kern-guardrail (hardcoded, los van de prompt):** de opdrachtgever wordt nóóit genoemd of herleidbaar in publieke output; lengte-limieten + schema afgedwongen. Helper: `_shared/vacancy-generate.ts` (o.a. `DEFAULT_VACANCY_PROMPT`, `anthropicPricingForModel`).
+- **Masterprompt per org bewerkbaar** in Instellingen → Koppelingen (`VacancyPromptSettings.tsx` → `organizations.settings.vacancy_generation_prompt`; leeg = ingebouwde default). Server-side gesanitized: `sanitizeOrgPrompt(text, VACANCY_PROMPT_MAX_LENGTH=20000)`.
+- **Doorstroom van de output:** WhatsApp-interesse-pitch (A1), kandidaat-voorstelmail (A2), knop **"Toepassen op matching"** (B1: `mapTermsToCatalog` in `src/lib/vacancy-generator.ts` mapt AI-criteria op de actieve catalogus → **unie** in `required_skills` via de catalogus-gebonden `SkillMultiSelect`; nooit ruwe AI-termen direct schrijven — een ongemapte term landt als `is_active=false` maar wordt tóch door de matcher-join gescoord), en de stage-2 rerank (B2: `body_markdown` als extra context).
+- **Volgende fase (niet gebouwd):** teksten/JSON-LD naar de website pushen — de opslag is er al op ingericht.
+
 ### Match Proposal → publieke reactie → plaatsing (tracer bullet, meeting 17-06)
 
 De verticale slice voorstel → reactie → plaatsing (live):
 - **Voorstelmail (`send-match-proposal`, dual-mode `preview=true`):** bewerkbare editor in `VacancyMatchesTab.tsx` (afzender/ontvanger/CC/BCC, bewerkbare body, CV-bijlage-toggle); **'AI'-label weg + betrouwbaarheidsscore standaard verborgen** richting klant; O365-handtekening via `_shared/outlook-send.ts` (dat nu `bcc` + `attachments` ondersteunt). De CTA-link bevat placeholder `{{RESPONSE_URL}}` die server-side wordt vervangen.
-- **Publieke reactiepagina** `/match/reageer/:token` (alias `/match-response/:token`) → `src/pages/MatchResponse.tsx` + edge fn `match-response`: toont logo/rapport (zonder score/AI-label)/CV-PDF (korte-TTL signed URL, 5 min). Acties: **accepteren gesplitst** in "op gesprek" (+datum/tijd → `afspraak_op_kantoor`) en "direct starten" (+startdatum → `geaccepteerd`), of **afwijzen met verplichte reden** (dropdown uit `match_feedback_reasons`); "vraag stellen" via `mailto:`/`wa.me` naar de accountmanager.
+- **Publieke reactiepagina** `/match/reageer/:token` (alias `/match-response/:token`) → `src/pages/MatchResponse.tsx` + edge fn `match-response`: toont logo/rapport (zonder score/AI-label)/CV-PDF (korte-TTL signed URL, 5 min). Acties: **accepteren gesplitst** in "op gesprek" (+datum/tijd → `afspraak_voorgesteld`) en "direct starten" (+startdatum → `geaccepteerd`), of **afwijzen met verplichte reden** (dropdown uit `match_feedback_reasons`); "vraag stellen" via `mailto:`/`wa.me` naar de accountmanager.
 - **Acceptatie → plaatsing-popup:** bij status `geaccepteerd` opent `PlacementSheet` automatisch (checks: NL-adres/contract via `useComplianceCheck`, voertuig + begin-km, BSN/tel/email); plaatsing via RPC `create_placement_transaction`. Post-triggers (non-blocking) in `PlacementTriggers.ts`: timesheets, housing-suggesties, voertuig-toewijzing, **NT1 opvolg-taken** (accountmanager / contract "Maria" via `organizations.settings.contract_owner_profile_id` → fallback created_by→backoffice→admin / administratie).
 - **Security:** `match_proposal_tokens` (anon-enumeratie gedropt door SEC-4; validatie via service-role edge fn), single-use + 14d-expiry, IP-rate-limit (`match_response_attempts`); CV nooit permanent embedden.
 
@@ -651,4 +669,4 @@ npx supabase gen types typescript --project-id noaupcteygfvlyymqtew > src/integr
 - **Client:** JA Werkt, Jeroen Adriaans, Mierlo
 - **Supabase project ID:** `noaupcteygfvlyymqtew`
 - **GitHub repo:** `sitejob-nl/ja-works-hub`
-- **LLM infra:** Hetzner VPS, Qwen3-14B via Ollama by default; optional Anthropic Claude Haiku 4.5 Cloud path with per-org credits
+- **LLM infra:** Hetzner VPS (Qwen3-14B via Ollama) als code-default; in de praktijk Gemini voor CV-analyse/skills/rerank en Anthropic Claude Sonnet voor vacaturetekst-generatie, met per-org credits
