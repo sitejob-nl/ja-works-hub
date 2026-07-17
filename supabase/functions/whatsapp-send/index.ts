@@ -29,7 +29,7 @@ Deno.serve(async (req) => {
     );
 
     const body = await req.json();
-    const { to, type, text, template, image, video, audio, document, reaction, interactive, candidate_id, context } = body;
+    const { to, type, text, template, image, video, audio, document, reaction, interactive, candidate_id, company_id, context } = body;
 
     if (!to || !type) {
       return jsonError("Veld 'to' en 'type' zijn verplicht", 400);
@@ -93,6 +93,7 @@ Deno.serve(async (req) => {
       interactive,
       context,
       candidateId: candidate_id ?? null,
+      companyId: company_id ?? null,
       sentBy: userId,
     });
 

@@ -196,7 +196,8 @@ const Communications = () => {
       const { data, error } = await supabase.functions.invoke('whatsapp-send', {
         body: {
           to: formPhone,
-          message: formBody,
+          type: 'text',
+          text: { body: formBody },
           candidate_id: formType === 'candidate' && formCandidateId ? formCandidateId : undefined,
           company_id: formType === 'company' && formCompanyId ? formCompanyId : undefined,
         },
