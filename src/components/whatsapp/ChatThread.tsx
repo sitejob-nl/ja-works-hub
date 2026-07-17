@@ -68,6 +68,14 @@ export function ChatThread({
     groups[groups.length - 1].msgs.push(msg);
   }
 
+  // 24-uurs servicevenster: vrije berichten (tekst/media/interactief) mogen alleen
+  // binnen 24u na het laatste INKOMENDE bericht. Daarbuiten accepteert Meta enkel
+  // een goedgekeurde template. Heuristiek op basis van de geladen berichten.
+  const lastInboundAt = [...messages].reverse().find((m) => m.direction === 'inbound')?.sentAt ?? null;
+  const windowOpen = lastInboundAt
+    ? Date.now() - new Date(lastInboundAt).getTime() < 24 * 60 * 60 * 1000
+    : false;
+
   return (
     <div className="flex-1 flex flex-col min-w-0 h-full">
       <ChatHeader
@@ -109,6 +117,7 @@ export function ChatThread({
         onOpenTemplates={onOpenTemplates}
         onSendInteractive={onSendInteractive}
         isSending={isSending}
+        windowOpen={windowOpen}
       />
     </div>
   );

@@ -29,7 +29,19 @@ export function useWhatsAppSend(orgId: string) {
       });
 
       if (response.error) {
-        throw new Error(response.error.message ?? 'Versturen mislukt');
+        // supabase.functions.invoke geeft bij een non-2xx een generieke melding; de echte
+        // reden (bv. Meta 24-uurs venster / re-engagement 131047) staat in de response-body.
+        let msg = response.error.message ?? 'Versturen mislukt';
+        const ctx: any = (response.error as any).context;
+        if (ctx && typeof ctx.clone === 'function') {
+          try {
+            const parsed = await ctx.clone().json();
+            if (parsed?.error) msg = typeof parsed.error === 'string' ? parsed.error : (parsed.error.message ?? msg);
+          } catch {
+            // body niet leesbaar — generieke melding aanhouden
+          }
+        }
+        throw new Error(msg);
       }
 
       return response.data;
