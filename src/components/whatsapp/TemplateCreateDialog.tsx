@@ -55,6 +55,16 @@ function extractVariableIndices(text: string): string[] {
   return [...new Set(indices)].sort((a, b) => Number(a) - Number(b));
 }
 
+async function fileToBase64(file: File): Promise<string> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let binary = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
 function WhatsAppPreview({
   headerType,
   headerText,
@@ -141,6 +151,9 @@ export function TemplateCreateDialog({ open, onOpenChange }: TemplateCreateDialo
   const [headerEnabled, setHeaderEnabled] = useState(false);
   const [headerType, setHeaderType] = useState('TEXT');
   const [headerText, setHeaderText] = useState('');
+  const [headerHandle, setHeaderHandle] = useState('');
+  const [headerFileName, setHeaderFileName] = useState('');
+  const [uploadingHeader, setUploadingHeader] = useState(false);
   const [body, setBody] = useState('');
   const [bodyExamples, setBodyExamples] = useState<Record<string, string>>({});
   const [footer, setFooter] = useState('');
@@ -149,6 +162,36 @@ export function TemplateCreateDialog({ open, onOpenChange }: TemplateCreateDialo
   const [nameError, setNameError] = useState('');
 
   const createMutation = useWhatsAppMutation('create_template');
+  const uploadHeaderMutation = useWhatsAppMutation('upload_header_media');
+
+  // Voorbeeldbestand voor een media-header uploaden → header_handle via SiteJob Connect.
+  const handleHeaderFile = async (file: File) => {
+    if (file.size > 30 * 1024 * 1024) {
+      toast.error('Bestand is te groot (max 30MB)');
+      return;
+    }
+    setUploadingHeader(true);
+    try {
+      const base64 = await fileToBase64(file);
+      const res = await uploadHeaderMutation.mutateAsync({
+        base64,
+        mime_type: file.type,
+        filename: file.name,
+      });
+      if (!res?.handle) {
+        toast.error('Upload mislukt: geen handle ontvangen');
+        return;
+      }
+      setHeaderHandle(res.handle);
+      setHeaderFileName(file.name);
+    } catch {
+      // API-fout is al getoond door de mutation-onError
+      setHeaderHandle('');
+      setHeaderFileName('');
+    } finally {
+      setUploadingHeader(false);
+    }
+  };
 
   const bodyVarIndices = extractVariableIndices(body);
 
@@ -181,11 +224,18 @@ export function TemplateCreateDialog({ open, onOpenChange }: TemplateCreateDialo
   const buildComponents = () => {
     const components: any[] = [];
 
-    // Header — alleen tekst-headers. Media-headers (IMAGE/VIDEO/DOCUMENT) vereisen bij
-    // het aanmaken een example.header_handle uit Meta's Resumable Upload API; zonder die
-    // handle weigert Meta de template. Dat pad ondersteunen we (nog) niet.
-    if (headerEnabled && headerText) {
-      components.push({ type: 'HEADER', format: 'TEXT', text: headerText });
+    // Header. Tekst-headers direct; media-headers vereisen bij het aanmaken een
+    // example.header_handle (via SiteJob Connect → Meta Resumable Upload).
+    if (headerEnabled) {
+      if (headerType === 'TEXT' && headerText) {
+        components.push({ type: 'HEADER', format: 'TEXT', text: headerText });
+      } else if (headerType !== 'TEXT' && headerHandle) {
+        components.push({
+          type: 'HEADER',
+          format: headerType,
+          example: { header_handle: [headerHandle] },
+        });
+      }
     }
 
     // Body
@@ -224,13 +274,18 @@ export function TemplateCreateDialog({ open, onOpenChange }: TemplateCreateDialo
     return components;
   };
 
+  // Een ingeschakelde media-header vereist een geüploade handle; tekst-header niet.
+  const headerValid = !headerEnabled || headerType === 'TEXT' || Boolean(headerHandle);
+
   const isValid =
     name &&
     !nameError &&
     category &&
     language &&
     body.trim().length > 0 &&
-    bodyVarIndices.every((idx) => bodyExamples[idx]?.trim());
+    bodyVarIndices.every((idx) => bodyExamples[idx]?.trim()) &&
+    headerValid &&
+    !uploadingHeader;
 
   const handleSubmit = async () => {
     if (!isValid) return;
@@ -265,6 +320,9 @@ export function TemplateCreateDialog({ open, onOpenChange }: TemplateCreateDialo
     setHeaderEnabled(false);
     setHeaderType('TEXT');
     setHeaderText('');
+    setHeaderHandle('');
+    setHeaderFileName('');
+    setUploadingHeader(false);
     setBody('');
     setBodyExamples({});
     setFooter('');
@@ -357,19 +415,76 @@ export function TemplateCreateDialog({ open, onOpenChange }: TemplateCreateDialo
 
                 {headerEnabled && (
                   <div className="space-y-2 pl-0">
-                    <Input
-                      placeholder="Header tekst (max 60 tekens)"
-                      maxLength={60}
-                      value={headerText}
-                      onChange={(e) => setHeaderText(e.target.value)}
-                    />
-                    <p className="text-xs text-muted-foreground text-right">
-                      {headerText.length}/60
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Alleen tekst-headers. Media-headers (afbeelding/video/document) vereisen
-                      een aparte upload bij Meta en worden nog niet ondersteund.
-                    </p>
+                    <Select
+                      value={headerType}
+                      onValueChange={(v) => {
+                        setHeaderType(v);
+                        setHeaderHandle('');
+                        setHeaderFileName('');
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="TEXT">Tekst</SelectItem>
+                        <SelectItem value="IMAGE">Afbeelding</SelectItem>
+                        <SelectItem value="VIDEO">Video</SelectItem>
+                        <SelectItem value="DOCUMENT">Document</SelectItem>
+                      </SelectContent>
+                    </Select>
+
+                    {headerType === 'TEXT' ? (
+                      <div>
+                        <Input
+                          placeholder="Header tekst (max 60 tekens)"
+                          maxLength={60}
+                          value={headerText}
+                          onChange={(e) => setHeaderText(e.target.value)}
+                        />
+                        <p className="text-xs text-muted-foreground mt-1 text-right">
+                          {headerText.length}/60
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5">
+                        <input
+                          type="file"
+                          id="tpl-header-media"
+                          className="hidden"
+                          accept={
+                            headerType === 'IMAGE'
+                              ? 'image/jpeg,image/png'
+                              : headerType === 'VIDEO'
+                                ? 'video/mp4'
+                                : 'application/pdf'
+                          }
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handleHeaderFile(file);
+                            e.target.value = '';
+                          }}
+                        />
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={uploadingHeader}
+                            onClick={() => document.getElementById('tpl-header-media')?.click()}
+                          >
+                            {uploadingHeader ? 'Uploaden…' : 'Voorbeeldbestand kiezen'}
+                          </Button>
+                          {headerHandle && !uploadingHeader && (
+                            <span className="text-xs text-green-600 truncate">✓ {headerFileName}</span>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Voorbeeldbestand voor Meta-goedkeuring (upload via SiteJob Connect). Bij
+                          het versturen kies je per bericht het echte bestand.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
