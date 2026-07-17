@@ -15,6 +15,7 @@ import { entityPath } from '@/lib/entity-routes';
 import { toast } from 'sonner';
 import KpiDashboard from '@/components/dashboard/KpiDashboard';
 import OnboardingWizard from '@/components/onboarding/OnboardingWizard';
+import GettingStartedCard from '@/components/onboarding/GettingStartedCard';
 import {
   ExpiringContractsCard,
   ContractRenewalsCard,
@@ -96,8 +97,8 @@ const Dashboard = () => {
     weeklyHours: 0,
   });
 
-  // Onboarding wizard state
-  const storageKey = user ? `sitejob_onboarded_${user.id}` : null;
+  // Onboarding wizard state — v2-key zodat iedereen de nieuwe rondleiding éénmalig te zien krijgt
+  const storageKey = user ? `sitejob_onboarded_v2_${user.id}` : null;
   const [showOnboarding, setShowOnboarding] = useState(false);
 
   useEffect(() => {
@@ -388,6 +389,9 @@ const Dashboard = () => {
         <h1 className="text-xl sm:text-2xl font-semibold mb-1">{getGreeting()}, {firstName}</h1>
         <p className="text-sm text-muted-foreground">Hier is een overzicht van vandaag.</p>
       </div>
+
+      {/* Self-service inrichtingschecklist (admins, verdwijnt na afronden of verbergen) */}
+      <GettingStartedCard onStartTour={() => setShowOnboarding(true)} />
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">

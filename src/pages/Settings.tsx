@@ -11,7 +11,7 @@ import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { BriefcaseBusiness, Database, FileText, Globe2, Link2, Settings as SettingsIcon, Upload, Palette, Building2, User, LogOut, Trash2, FileSpreadsheet, RotateCcw, ShieldCheck, Users } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import WhatsAppSettings from '@/components/settings/WhatsAppSettings';
 import WhatsAppAutomationSettings from '@/components/settings/WhatsAppAutomationSettings';
 import ExactOnlineSettings from '@/components/settings/ExactOnlineSettings';
@@ -192,6 +192,9 @@ const Settings = () => {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [logoUploading, setLogoUploading] = useState(false);
+  // Deep-link naar een specifiek tabblad, bv. /instellingen?tab=koppelingen (Aan de slag-checklist)
+  const [searchParams] = useSearchParams();
+  const initialTab = searchParams.get('tab') ?? 'algemeen';
 
   const { data: org, isLoading } = useQuery({
     queryKey: ['organization', orgId],
@@ -380,7 +383,7 @@ const Settings = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
-          <Tabs defaultValue="algemeen" className="space-y-4">
+          <Tabs defaultValue={initialTab} className="space-y-4">
             <div className="overflow-x-auto pb-1">
               <TabsList className="h-auto w-max justify-start gap-1 bg-muted/70 p-1">
                 <TabsTrigger value="algemeen" className="gap-2 px-3 py-2">
