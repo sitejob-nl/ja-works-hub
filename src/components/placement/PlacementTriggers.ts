@@ -48,7 +48,9 @@ export async function generateTimesheetTemplates(input: PlacementTriggerInput): 
   const entries = [];
   for (let i = 0; i < 5; i++) {
     const day = addDays(weekStart, i);
-    if (day < start) continue; // skip days before start
+    // Stringvergelijking: new Date('YYYY-MM-DD') is UTC-middernacht en sloeg daardoor
+    // de startdag zelf over (lokale weekStart < UTC-start bij een maandag-start).
+    if (format(day, 'yyyy-MM-dd') < input.startDate) continue;
     entries.push({
       organization_id: input.organizationId,
       candidate_id: input.candidateId,

@@ -272,7 +272,7 @@ Deno.serve(async (req) => {
             candidate_id,
             candidates:candidate_id(id, first_name, last_name, email, phone, employee_number)
           ),
-          vacancies:vacancy_id(id, title, work_location)
+          vacancies:vacancy_id(id, title, location)
         `)
         .eq("id", placement_id)
         .single();
@@ -292,7 +292,7 @@ Deno.serve(async (req) => {
         supabase.from("candidates").select("id, first_name, last_name, email, phone, employee_number")
           .eq("id", placement_data.candidate_id).maybeSingle(),
         placement_data.vacancy_id
-          ? supabase.from("vacancies").select("id, title, work_location").eq("id", placement_data.vacancy_id).maybeSingle()
+          ? supabase.from("vacancies").select("id, title, location").eq("id", placement_data.vacancy_id).maybeSingle()
           : Promise.resolve({ data: null }),
       ]);
       if (!companyRow) return json({ error: "Company not found" }, 404);
@@ -329,7 +329,7 @@ Deno.serve(async (req) => {
     const companyName = company?.name ?? "Onbekend bedrijf";
     const functionName = placement.function_name;
     const startDate = placement.start_date;
-    const workLocation = vacancy?.work_location ?? placement.work_location ?? null;
+    const workLocation = placement.work_location ?? vacancy?.location ?? null;
     const workDays = placement.work_days ?? null;
 
     const results: {
@@ -467,7 +467,7 @@ Deno.serve(async (req) => {
       }
 
       // Send via Outlook if connected, otherwise store as concept (preview doet geen van beide)
-      let sendResult: { success: boolean; method: "outlook" | "none" | "preview"; error?: string } = { success: false, method: preview ? "preview" : "none" };
+      let sendResult: { success: boolean; method: "outlook" | "none" | "preview"; error?: string; communicationPaused?: boolean } = { success: false, method: preview ? "preview" : "none" };
       if (clientEmail && !preview) {
         sendResult = await sendViaOutlookAccount({
           orgId,
@@ -480,7 +480,8 @@ Deno.serve(async (req) => {
         });
       }
 
-      if (!sendResult.success && !preview) {
+      // Kill-switch heeft zelf al een concept gelogd — dan geen tweede fallback-insert.
+      if (!sendResult.success && !sendResult.communicationPaused && !preview) {
         // Fallback: store as concept in communications
         await serviceClient.from("communications").insert({
           organization_id: orgId,
@@ -552,7 +553,7 @@ Deno.serve(async (req) => {
       });
 
       // Send via Outlook if connected (preview verstuurt en logt niets)
-      let empSendResult: { success: boolean; method: "outlook" | "none" | "preview"; error?: string } = { success: false, method: "preview" };
+      let empSendResult: { success: boolean; method: "outlook" | "none" | "preview"; error?: string; communicationPaused?: boolean } = { success: false, method: "preview" };
       if (!preview) {
         empSendResult = await sendViaOutlookAccount({
           orgId,
@@ -564,7 +565,8 @@ Deno.serve(async (req) => {
           senderName: null,
         });
 
-        if (!empSendResult.success) {
+        // Kill-switch heeft zelf al een concept gelogd — dan geen tweede fallback-insert.
+        if (!empSendResult.success && !empSendResult.communicationPaused) {
           // Fallback: store as concept
           await serviceClient.from("communications").insert({
             organization_id: orgId,
