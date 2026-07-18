@@ -70,6 +70,9 @@ verify_jwt = false
 [functions.exact-list-glaccounts]
 verify_jwt = false
 
+[functions.exact-list-vatcodes]
+verify_jwt = false
+
 [functions.exact-sync-invoice]
 verify_jwt = false
 

@@ -31,6 +31,11 @@ function useExactApi() {
   }, [orgId]);
 }
 
+/** OData-stringliteral: een enkele quote wordt verdubbeld, anders breekt de query. */
+function odataLiteral(value: string): string {
+  return value.replace(/'/g, "''");
+}
+
 function extractResults(data: unknown): unknown[] {
   if (!data) return [];
   const d = (data as Record<string, unknown>).d;
@@ -51,7 +56,7 @@ function AccountsTab() {
     queryKey: ['exact-accounts', search],
     queryFn: () => {
       const filter = search
-        ? `?$filter=substringof('${search}',Name)&$select=ID,Code,Name,City,Email,Phone,Status&$top=50`
+        ? `?$filter=substringof('${odataLiteral(search)}',Name)&$select=ID,Code,Name,City,Email,Phone,Status&$top=50`
         : '?$select=ID,Code,Name,City,Email,Phone,Status&$top=50';
       return callExact(`crm/Accounts${filter}`);
     },
@@ -156,7 +161,6 @@ function CreateAccountDialog({ open, onOpenChange, onSuccess }: { open: boolean;
 
 // ─── Invoices Tab ───
 function InvoicesTab() {
-  const [search, setSearch] = useState('');
   const callExact = useExactApi();
 
   const { data, isLoading, refetch } = useQuery({
@@ -246,7 +250,7 @@ function ItemsTab() {
     queryKey: ['exact-items', search],
     queryFn: () => {
       const filter = search
-        ? `?$filter=substringof('${search}',Description)&$select=ID,Code,Description,IsSalesItem,IsPurchaseItem,IsStockItem&$top=50`
+        ? `?$filter=substringof('${odataLiteral(search)}',Description)&$select=ID,Code,Description,IsSalesItem,IsPurchaseItem,IsStockItem&$top=50`
         : '?$select=ID,Code,Description,IsSalesItem,IsPurchaseItem,IsStockItem&$top=50';
       return callExact(`logistics/Items${filter}`);
     },

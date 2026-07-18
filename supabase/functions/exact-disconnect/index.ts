@@ -56,12 +56,24 @@ Deno.serve(async (req) => {
       }),
     });
 
+    // Een tenant die Connect niet (meer) kent is geen fout maar het doel: hij is
+    // al weg. Zonder deze tak blijft de lokale rij op "gekoppeld" staan en kan de
+    // gebruiker níet opnieuw koppelen — de koppeling zit dan muurvast.
+    let tenantGone = false;
     if (!response.ok) {
       const text = await response.text().catch(() => "");
-      console.error("Exact Connect disconnect failed:", response.status, text);
-      return jsonError("Ontkoppelen bij SiteJob Connect mislukt", 502);
+      tenantGone = response.status === 404 || /tenant\s*not\s*found/i.test(text);
+      if (!tenantGone) {
+        console.error("Exact Connect disconnect failed:", response.status, text);
+        return jsonError("Ontkoppelen bij SiteJob Connect mislukt", 502);
+      }
+      console.warn("Exact-tenant bestond niet meer bij Connect — lokale koppeling opgeruimd");
     }
 
+    // Bij een normale ontkoppeling blijft de tenant bij Connect bestaan, dus
+    // houden we tenant_id + secret zodat opnieuw koppelen via dezelfde setup-link
+    // werkt. Is de tenant weg, dan moeten ze juist wél leeg zodat exact-register
+    // een verse tenant aanmaakt.
     await serviceClient
       .from("exact_config")
       .update({
@@ -69,11 +81,17 @@ Deno.serve(async (req) => {
         company_name: null,
         base_url: null,
         is_active: false,
+        default_journal: null,
+        default_glaccount_id: null,
+        default_item_id: null,
+        default_vat_codes: null,
+        defaults_discovered_at: null,
+        ...(tenantGone ? { tenant_id: null, webhook_secret: null } : {}),
         updated_at: new Date().toISOString(),
       })
       .eq("id", config.id);
 
-    return jsonOk({ success: true });
+    return jsonOk({ success: true, tenant_was_missing: tenantGone });
   } catch (err) {
     console.error("exact-disconnect error:", err);
     return jsonError("Interne fout bij ontkoppelen", 500);

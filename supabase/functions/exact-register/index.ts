@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireRolePermission } from "../_shared/auth.ts";
-import { getExactConnectUrl } from "../_shared/exact-helpers.ts";
+import { getExactConnectUrl, getExactToken } from "../_shared/exact-helpers.ts";
 
 import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
 
@@ -9,6 +9,25 @@ const SETUP_BASE_URL = "https://connect.sitejob.nl/exact-setup";
 function connectErrorMessage(data: any, fallback: string): string {
   const message = data?.error ?? data?.message ?? data?.details?.error ?? data?.details?.message;
   return typeof message === "string" && message.trim() ? message.slice(0, 500) : fallback.slice(0, 500);
+}
+
+/**
+ * Bestaat de geregistreerde tenant nog bij SiteJob Connect? Alleen een expliciete
+ * "tenant not found" telt als dood — een verlopen autorisatie (needs_reauth) of
+ * een tijdelijke storing betekent juist dat de bestaande tenant bruikbaar is en
+ * de setup-link opnieuw doorlopen moet worden.
+ */
+async function isTenantAlive(serviceClient: any, organizationId: string): Promise<boolean> {
+  const { data, error } = await serviceClient.rpc("get_exact_token", { p_org_id: organizationId });
+  const config = data?.[0];
+  if (error || !config?.tenant_id || !config?.decrypted_webhook_secret) return true;
+
+  try {
+    await getExactToken(config.tenant_id, config.decrypted_webhook_secret);
+    return true;
+  } catch (err) {
+    return (err as Error).message !== "TENANT_NOT_FOUND";
+  }
 }
 
 Deno.serve(async (req) => {
@@ -24,23 +43,53 @@ Deno.serve(async (req) => {
     const organization_id = auth.organizationId;
     const serviceClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
+    const body = await req.json().catch(() => ({} as Record<string, unknown>));
+    const forceNewTenant = body?.force === true;
+
     const { data: existing } = await serviceClient
       .from("exact_config")
-      .select("tenant_id, is_active, division")
+      .select("id, tenant_id, is_active, division")
       .eq("organization_id", organization_id)
       .maybeSingle();
 
-    if (existing?.tenant_id && existing.is_active) {
-      return new Response(
-        JSON.stringify({
-          success: true,
-          tenant_id: existing.tenant_id,
-          setup_url: `${SETUP_BASE_URL}?tenant_id=${existing.tenant_id}`,
-          already_registered: true,
-          is_active: existing.is_active,
-        }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+    if (existing?.tenant_id && existing.is_active && !forceNewTenant) {
+      // Controleer of de tenant bij Connect nog bestaat vóór we de gebruiker naar
+      // de setup-link sturen. Een tenant kan aan broker-zijde verdwijnen; dan is
+      // opnieuw registreren de enige uitweg en zou teruggeven van de oude
+      // tenant_id de gebruiker in een doodlopende flow zetten.
+      const alive = await isTenantAlive(serviceClient, organization_id);
+
+      if (alive) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            tenant_id: existing.tenant_id,
+            setup_url: `${SETUP_BASE_URL}?tenant_id=${existing.tenant_id}`,
+            already_registered: true,
+            is_active: existing.is_active,
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      console.warn("Exact-tenant bestaat niet meer bij Connect — nieuwe registratie wordt aangemaakt");
+      await serviceClient
+        .from("exact_config")
+        .update({
+          tenant_id: null,
+          webhook_secret: null,
+          division: null,
+          company_name: null,
+          base_url: null,
+          is_active: false,
+          default_journal: null,
+          default_glaccount_id: null,
+          default_item_id: null,
+          default_vat_codes: null,
+          defaults_discovered_at: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", existing.id);
     }
 
     const CONNECT_API_KEY = Deno.env.get("CONNECT_API_KEY");

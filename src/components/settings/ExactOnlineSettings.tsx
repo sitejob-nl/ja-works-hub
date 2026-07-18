@@ -9,6 +9,8 @@ import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { AlertTriangle, Bell, ExternalLink, FileSpreadsheet, Loader2, CheckCircle2, ListChecks, RefreshCw, XCircle, Unlink } from 'lucide-react';
 import ExactGLAccountMappings from './ExactGLAccountMappings';
+import ExactVatCodeMappings from './ExactVatCodeMappings';
+import { toExactErrorMessage } from '@/lib/exact-errors';
 
 type ExactDiagnosticResult = {
   ok: boolean;
@@ -90,7 +92,7 @@ const ExactOnlineSettings = () => {
         toast.success('Exact webhooks geactiveerd');
       }
     },
-    onError: (e: any) => toast.error('Webhooks activeren mislukt: ' + e.message),
+    onError: async (e: any) => toast.error(await toExactErrorMessage(e, 'Webhooks activeren mislukt')),
   });
 
   const disconnectMutation = useMutation({
@@ -106,7 +108,7 @@ const ExactOnlineSettings = () => {
       setWebhookResult(null);
       toast.success('Exact Online ontkoppeld');
     },
-    onError: (e: any) => toast.error('Ontkoppelen mislukt: ' + e.message),
+    onError: async (e: any) => toast.error(await toExactErrorMessage(e, 'Ontkoppelen mislukt')),
   });
 
   const testConnection = useMutation({
@@ -123,9 +125,9 @@ const ExactOnlineSettings = () => {
       if (data.ok) toast.success('Exact Online koppeling getest');
       else toast.error('Exact Online test heeft aandachtspunten');
     },
-    onError: (e: any) => {
+    onError: async (e: any) => {
       setDiagnosticResult(null);
-      toast.error('Exact test mislukt: ' + e.message);
+      toast.error(await toExactErrorMessage(e, 'Exact test mislukt'));
     },
   });
 
@@ -335,6 +337,7 @@ const ExactOnlineSettings = () => {
       </Card>
 
       {isConnected && <ExactGLAccountMappings />}
+      {isConnected && <ExactVatCodeMappings />}
     </div>
   );
 };
