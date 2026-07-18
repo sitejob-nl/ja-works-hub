@@ -5,6 +5,7 @@ import {
   corsHeaders,
   ensureExactDefaults,
   exactApi,
+  EXACT_SALES_CREDIT_NOTE_TYPE,
   exactSalesInvoiceType,
   findExactAccountId,
   getExactToken,
@@ -198,8 +199,13 @@ Deno.serve(async (req) => {
     }
 
     // ── Factuurregels ─────────────────────────────────────────────────────────
-    const isCreditNote = Number(invoice.total) < 0 || invoice.status === "gecrediteerd";
-    const { parts, warnings } = buildExactInvoiceLineParts(lines, { creditNote: isCreditNote });
+    // Twee losse vragen: (1) is dit document een creditnota — dat bepaalt het
+    // Exact-type — en (2) staan de bedragen negatief, want alleen dán moeten de
+    // tekens gedraaid worden. Een creditfactuur met positief opgeslagen bedragen
+    // krijgt dus wél Type 8021, maar geen dubbele omkering.
+    const amountsAreNegative = Number(invoice.total) < 0;
+    const isCreditNote = amountsAreNegative || invoice.status === "gecrediteerd";
+    const { parts, warnings } = buildExactInvoiceLineParts(lines, { creditNote: amountsAreNegative });
     for (const warning of warnings) {
       console.warn(`Exact sync factuur ${invoice.invoice_number}: ${warning}`);
     }
@@ -227,7 +233,7 @@ Deno.serve(async (req) => {
     // AmountFC/AmountDC zijn berekende velden in Exact en mogen niet mee: het
     // bedrag volgt uit Quantity × NetPrice per regel.
     const payload: Record<string, unknown> = {
-      Type: exactSalesInvoiceType(invoice.total),
+      Type: isCreditNote ? EXACT_SALES_CREDIT_NOTE_TYPE : exactSalesInvoiceType(invoice.total),
       OrderedBy: exactAccountId,
       InvoiceTo: exactAccountId,
       Description: `Factuur ${invoice.invoice_number}`,
