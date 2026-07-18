@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatDate, formatEUR } from '@/lib/format';
-import NewPlacementSheet from '@/components/placement/NewPlacementSheet';
+import PlacementWizard from '@/components/placement/PlacementWizard';
 
 const statusColors: Record<string, string> = {
   actief: 'bg-stat-green/10 text-stat-green border-0',
@@ -108,11 +108,9 @@ const PlacementsTab = ({ companyId, companyName }: { companyId: string; companyN
         </Table>
       </div>
 
-      <NewPlacementSheet
+      <PlacementWizard
         open={sheetOpen}
         onClose={() => setSheetOpen(false)}
-        orgId={orgId}
-        userId={user?.id}
         defaultCompanyId={companyId}
         lockedCompanyName={companyName}
       />

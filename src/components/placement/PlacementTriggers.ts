@@ -2,7 +2,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { addDays, format, startOfWeek, getDay } from 'date-fns';
 import { getDrivingDistance } from '@/lib/distance';
 import { extractFunctionErrorMessage } from '@/lib/functionError';
-import { getErrorMessage } from '@/lib/error-message';
+import { unwrap } from '@/lib/db';
 
 /**
  * Post-placement automation:
@@ -171,69 +171,23 @@ export async function getHousingSuggestions(
 }
 
 /**
- * Send WhatsApp placement confirmation (if WhatsApp is configured).
- * Returns { sent, skipped, reason } — callers can show a nette toast.
- */
-export interface WhatsAppSendResult {
-  sent: boolean;
-  skipped: boolean;
-  reason?: string;
-}
-
-export async function sendPlacementWhatsApp(
-  input: PlacementTriggerInput
-): Promise<WhatsAppSendResult> {
-  if (!input.candidatePhone) {
-    return { sent: false, skipped: true, reason: 'Geen telefoonnummer' };
-  }
-
-  try {
-    const { data, error } = await supabase.functions.invoke('whatsapp-send', {
-      body: {
-        to: input.candidatePhone,
-        type: 'text',
-        text: {
-          body: `Hoi ${input.candidateName ?? ''},\n\nJe plaatsing als ${input.functionName} is bevestigd. Je start op ${input.startDate}.\n\nSucces! 🎉\n\n— SiteJob`,
-        },
-        candidate_id: input.candidateId,
-      },
-    });
-    if (error) {
-      // Edge function geeft 400 "WhatsApp niet geconfigureerd" wanneer de org geen
-      // WhatsApp-config heeft — dat is geen technische fout maar een skip. De echte
-      // melding zit in de response-body (niet in error.message).
-      const bodyMsg = await extractFunctionErrorMessage(error, '');
-      const combined = bodyMsg.toLowerCase();
-      if (combined.includes('niet geconfigureerd') || combined.includes('afgemeld')) {
-        return { sent: false, skipped: true, reason: bodyMsg };
-      }
-      return { sent: false, skipped: false, reason: getErrorMessage(bodyMsg || (error as any)?.message) };
-    }
-    // Kill-switch: 200 met paused → als concept gelogd, niet verzonden.
-    if ((data as any)?.paused) {
-      return { sent: false, skipped: true, reason: 'WhatsApp staat op pauze — als concept opgeslagen' };
-    }
-    return { sent: true, skipped: false };
-  } catch (e: any) {
-    return { sent: false, skipped: false, reason: getErrorMessage(e, 'Onbekende fout') };
-  }
-}
-
-/**
  * Result from placement confirmation email generation.
  */
 export interface PlacementConfirmationResult {
   success: boolean;
+  preview?: boolean;
   client_email?: {
     subject: string;
     html: string;
     to: string;
+    sent_via?: string;
     communication_id?: string;
   };
   employee_email?: {
     subject: string;
     html: string;
     to: string;
+    sent_via?: string;
     communication_id?: string;
   };
   warnings: string[];
@@ -256,10 +210,102 @@ export async function sendPlacementConfirmation(
   });
 
   if (error) {
-    throw new Error(error.message ?? 'Fout bij versturen bevestigingsemail');
+    throw new Error(await extractFunctionErrorMessage(error, 'Fout bij versturen bevestigingsemail'));
   }
 
   return data as PlacementConfirmationResult;
+}
+
+/**
+ * Render de bevestigingsmails zonder te versturen of loggen. Werkt met een bestaand
+ * placement_id (opnieuw versturen vanaf de detailpagina) óf met losse placement-data
+ * (wizard-stap Controle, vóórdat de plaatsing bestaat).
+ */
+export async function previewPlacementConfirmation(input: {
+  placementId?: string;
+  placementData?: Record<string, unknown>;
+  sendToClient: boolean;
+  sendToEmployee: boolean;
+}): Promise<PlacementConfirmationResult> {
+  const { data, error } = await supabase.functions.invoke('send-placement-confirmation', {
+    body: {
+      preview: true,
+      placement_id: input.placementId,
+      placement_data: input.placementData,
+      send_to_client: input.sendToClient,
+      send_to_employee: input.sendToEmployee,
+    },
+  });
+
+  if (error) {
+    throw new Error(await extractFunctionErrorMessage(error, 'Fout bij genereren e-mailvoorbeeld'));
+  }
+
+  return data as PlacementConfirmationResult;
+}
+
+/**
+ * Portal auto-activeren bij plaatsing: zet portal_enabled, maakt (indien nodig) een
+ * invite en verstuurt de welkomstmail. Retourneert wat er gebeurd is voor de UI.
+ */
+export async function activatePortalOnPlacement(input: {
+  organizationId: string;
+  candidateId: string;
+  employeeId: string;
+}): Promise<{ activated: boolean; emailSent: boolean; email?: string; note?: string }> {
+  const { data: candData } = await supabase
+    .from('candidates')
+    .select('portal_enabled, email')
+    .eq('id', input.candidateId)
+    .single();
+
+  if (!candData || candData.portal_enabled || !candData.email) {
+    return { activated: false, emailSent: false, note: candData?.portal_enabled ? 'Portaal was al actief' : undefined };
+  }
+
+  await supabase.from('candidates').update({ portal_enabled: true }).eq('id', input.candidateId);
+
+  // Skip als er al een actieve, niet-verlopen invite is
+  const { data: existingInvite } = await supabase
+    .from('portal_invites')
+    .select('id, used_at, expires_at')
+    .eq('candidate_id', input.candidateId)
+    .is('used_at', null)
+    .gt('expires_at', new Date().toISOString())
+    .maybeSingle();
+
+  if (existingInvite) {
+    return { activated: true, emailSent: false, note: 'Bestaande activatielink is nog geldig' };
+  }
+
+  let inviteId: string | null = null;
+  try {
+    const newInvite = await unwrap(supabase.from('portal_invites')
+      .insert({
+        organization_id: input.organizationId,
+        candidate_id: input.candidateId,
+        employee_id: input.employeeId,
+        email: candData.email,
+      })
+      .select('id')
+      .single());
+    inviteId = newInvite?.id ?? null;
+  } catch (e: any) {
+    console.warn('Portal invite aanmaken mislukt:', e.message);
+  }
+  if (!inviteId) {
+    return { activated: true, emailSent: false };
+  }
+
+  try {
+    const { data: sendResult } = await supabase.functions.invoke('send-portal-invite', {
+      body: { invite_id: inviteId },
+    });
+    return { activated: true, emailSent: Boolean((sendResult as any)?.sent), email: candData.email };
+  } catch (sendErr) {
+    console.warn('Welkomstmail mislukt:', sendErr);
+    return { activated: true, emailSent: false, email: candData.email };
+  }
 }
 
 // Voertuig toewijzen bij een plaatsing: schrijft vehicle_assignments + zet het voertuig op 'toegewezen'.

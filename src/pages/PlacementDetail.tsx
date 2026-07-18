@@ -364,11 +364,9 @@ const PlacementDetail = () => {
         open={showConfirmation}
         onOpenChange={setShowConfirmation}
         placementId={id!}
-        candidateId={placement.candidate_id ?? undefined}
         candidateName={`${cand?.first_name ?? ''} ${cand?.last_name ?? ''}`.trim() || 'Medewerker'}
         candidateEmail={cand?.email ?? null}
         candidatePhone={cand?.phone ?? null}
-        companyId={placement.company_id}
         companyName={company?.name ?? 'Opdrachtgever'}
         functionName={placement.function_name}
         startDate={placement.start_date}

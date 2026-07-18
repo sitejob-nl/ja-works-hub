@@ -20,7 +20,7 @@ import { payrollerLabel } from '@/lib/payroller';
 import { getPaginationRange } from '@/lib/pagination';
 import { EntityLink } from '@/components/ui/entity-link';
 import ErrorState from '@/components/shared/ErrorState';
-import NewPlacementSheet from '@/components/placement/NewPlacementSheet';
+import PlacementWizard from '@/components/placement/PlacementWizard';
 
 type PlacementStatus = Database['public']['Enums']['placement_status'];
 type PayrollerType = Database['public']['Enums']['payroller_type'];
@@ -245,12 +245,7 @@ export default function PlacementsPage() {
         </div>
       )}
 
-      <NewPlacementSheet
-        open={newPlacementOpen}
-        onClose={() => setNewPlacementOpen(false)}
-        orgId={orgId}
-        userId={user?.id}
-      />
+      <PlacementWizard open={newPlacementOpen} onClose={() => setNewPlacementOpen(false)} />
     </div>
   );
 }
