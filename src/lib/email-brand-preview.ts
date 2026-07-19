@@ -8,7 +8,9 @@ const JA_WERKT = {
   textHex: "#334155",
   mutedHex: "#94A3B8",
   pageBgHex: "#F4F4F5",
-  tagline: "professionals at work",
+  // Spiegelt _shared/email-layout.ts: geen standaard-tagline, alleen als de org er zelf
+  // één zet via settings.email_tagline.
+  tagline: "",
 } as const;
 
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
@@ -39,15 +41,24 @@ export type PreviewBrand = {
   orgName: string;
   logoUrl: string | null;
   accentHex: string;
+  tagline: string;
 };
 
-type OrgRow = { name?: string | null; logo_url?: string | null; settings?: { accent_color?: string | null } | null };
+type OrgRow = {
+  name?: string | null;
+  logo_url?: string | null;
+  settings?: { accent_color?: string | null; email_tagline?: string | null } | null;
+};
 
 export function resolvePreviewBrand(org?: OrgRow | null): PreviewBrand {
   return {
     orgName: org?.name?.trim() || "JA Werkt",
     logoUrl: org?.logo_url?.trim() || null,
     accentHex: hslTripletToHex(org?.settings?.accent_color ?? null) || JA_WERKT.accentHex,
+    tagline:
+      typeof org?.settings?.email_tagline === 'string'
+        ? org.settings.email_tagline.trim()
+        : JA_WERKT.tagline,
   };
 }
 
@@ -80,7 +91,9 @@ export function renderBrandedEmailPreview(brand: PreviewBrand, contentHtml: stri
         <tr><td style="padding:28px 32px;color:${JA_WERKT.textHex};font-size:14px;line-height:1.6;">${contentHtml}</td></tr>
         <tr><td style="background:#f8fafc;padding:18px 32px;border-top:1px solid #e2e8f0;">
           <p style="margin:0;color:${JA_WERKT.navyHex};font-size:13px;font-weight:700;">${escapeHtml(brand.orgName)}</p>
-          <p style="margin:2px 0 0;color:${JA_WERKT.mutedHex};font-size:11px;letter-spacing:0.5px;text-transform:uppercase;">${JA_WERKT.tagline}</p>
+          ${brand.tagline
+            ? `<p style="margin:2px 0 0;color:${JA_WERKT.mutedHex};font-size:11px;letter-spacing:0.5px;text-transform:uppercase;">${escapeHtml(brand.tagline)}</p>`
+            : ''}
         </td></tr>
       </table>
     </td></tr>

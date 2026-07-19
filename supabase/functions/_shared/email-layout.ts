@@ -14,7 +14,9 @@ export const JA_WERKT_BRAND = {
   textHex: "#334155",     // body-tekst
   mutedHex: "#94A3B8",    // secundaire tekst / footer
   pageBgHex: "#F4F4F5",   // mail-achtergrond rond de kaart
-  tagline: "professionals at work",
+  // Geen standaard-tagline: JA Werkt wil die niet onder elke mail. Een org kan er zelf
+  // één zetten via settings.email_tagline; leeg betekent dat de regel wegvalt.
+  tagline: "",
 } as const;
 
 export type BrandTheme = {
@@ -65,7 +67,7 @@ export function hslTripletToHex(triplet?: string | null): string | null {
 type OrgBrandingRow = {
   name?: string | null;
   logo_url?: string | null;
-  settings?: { accent_color?: string | null } | null;
+  settings?: { accent_color?: string | null; email_tagline?: string | null } | null;
 };
 
 // Bouw een thema uit een organisatie-rij; mist een waarde → JA! Werkt-default.
@@ -79,7 +81,10 @@ export function resolveBrandTheme(org?: OrgBrandingRow | null): BrandTheme {
     textHex: JA_WERKT_BRAND.textHex,
     mutedHex: JA_WERKT_BRAND.mutedHex,
     pageBgHex: JA_WERKT_BRAND.pageBgHex,
-    tagline: JA_WERKT_BRAND.tagline,
+    tagline:
+      typeof org?.settings?.email_tagline === "string"
+        ? org.settings.email_tagline.trim()
+        : JA_WERKT_BRAND.tagline,
   };
 }
 
@@ -143,7 +148,9 @@ export function renderBrandedEmail(opts: BrandedEmailOptions): string {
         <tr><td style="padding:28px 32px;color:${theme.textHex};font-size:14px;line-height:1.6;">${opts.contentHtml}</td></tr>
         <tr><td style="background:#f8fafc;padding:18px 32px;border-top:1px solid #e2e8f0;">
           <p style="margin:0;color:${theme.navyHex};font-size:13px;font-weight:700;">${escapeHtml(theme.orgName)}</p>
-          <p style="margin:2px 0 0;color:${theme.mutedHex};font-size:11px;letter-spacing:0.5px;text-transform:uppercase;">${escapeHtml(theme.tagline)}</p>
+          ${theme.tagline
+            ? `<p style="margin:2px 0 0;color:${theme.mutedHex};font-size:11px;letter-spacing:0.5px;text-transform:uppercase;">${escapeHtml(theme.tagline)}</p>`
+            : ""}
           ${footerNote}
         </td></tr>
       </table>
