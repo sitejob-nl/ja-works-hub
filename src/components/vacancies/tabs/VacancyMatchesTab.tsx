@@ -33,6 +33,9 @@ import MatchOutboundDialog from '@/components/matches/MatchOutboundDialog';
 import MatchProposalEmailDialog from '@/components/matches/MatchProposalEmailDialog';
 import CandidateProposalEmailDialog from '@/components/matches/CandidateProposalEmailDialog';
 import MatchRow from '@/components/matches/MatchRow';
+import MatchAssigneeSelect from '@/components/matches/MatchAssigneeSelect';
+import { useMatchAssignees } from '@/hooks/useMatchAssignees';
+import { resolveDefaultMatchAssignee } from '@/lib/match-assignee';
 import { type MatchBreakdown } from '@/lib/matching';
 import { MATCH_STATUS_STEPS, getMatchStatusMeta, getNextMatchStatus, isTerminalMatchStatus, matchStatusNeedsFeedbackDialog } from '@/lib/match-status';
 import { scoreBadgeClass, verdictBadgeClass } from '@/lib/match-presenters';
@@ -96,8 +99,14 @@ const CANDIDATE_MATCH_CONTEXT_FIELDS = 'id, ai_analysis, ai_summary, ai_classifi
 
 const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
   const orgId = useOrganizationId();
-  const { user } = useAuth();
+  const { user, role } = useAuth();
   const qc = useQueryClient();
+  const { data: matchAssignees = [] } = useMatchAssignees(orgId);
+  const defaultAssignee = resolveDefaultMatchAssignee({
+    currentUserId: user?.id,
+    currentUserRole: role,
+    vacancyCreatedBy: vacancy?.created_by,
+  });
   const [candidateSearch, setCandidateSearch] = useState('');
   const [placementMatch, setPlacementMatch] = useState<any>(null);
   const [previewMatchId, setPreviewMatchId] = useState<string | null>(null);
@@ -168,7 +177,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('matches')
-        .select(`*, candidates!matches_candidate_id_fkey(id, first_name, last_name, email, phone, compliance_status, available_from, available_until, arrival_date, availability_notes, ai_analysis, ai_summary, ai_classification, ai_reliability_score, screening_data, screened_at, skills, certifications, languages, has_drivers_license, has_dutch_address, address_city)`)
+        .select(`*, assignee:profiles!matches_assigned_to_fkey(id, full_name, email), candidates!matches_candidate_id_fkey(id, first_name, last_name, email, phone, compliance_status, available_from, available_until, arrival_date, availability_notes, ai_analysis, ai_summary, ai_classification, ai_reliability_score, screening_data, screened_at, skills, certifications, languages, has_drivers_license, has_dutch_address, address_city)`)
         .eq('vacancy_id', vacancy.id)
         .order('created_at', { ascending: false });
       if (error) throw error;
@@ -297,6 +306,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
       vacancyId: vacancy.id,
       candidateId: candidate.id,
       proposedBy: user?.id ?? null,
+      assignedTo: defaultAssignee,
       source: 'eigen_match',
       score: score ?? null,
     });
@@ -417,6 +427,25 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
   });
 
   const openProposalEditor = (matchId: string) => setPreviewMatchId(matchId);
+
+  // Accountmanager per match. Deze persoon krijgt de opvolgtaken uit de publieke
+  // klantreactie (akkoord, gespreksvoorstel én afwijzing).
+  const assignMutation = useMutation({
+    mutationFn: async ({ matchId, assigneeId }: { matchId: string; assigneeId: string | null }) => {
+      const { error } = await (supabase as any)
+        .from('matches')
+        .update({ assigned_to: assigneeId })
+        .eq('id', matchId)
+        .eq('organization_id', orgId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['vacancy-matches', vacancy.id] });
+      qc.invalidateQueries({ queryKey: ['match-pipeline'] });
+      toast.success('Accountmanager bijgewerkt');
+    },
+    onError: (e: any) => toast.error(getErrorMessage(e, 'Kon accountmanager niet bijwerken')),
+  });
 
   const deleteMatchMutation = useMutation({
     mutationFn: async (matchId: string) => {
@@ -727,6 +756,18 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
               createdAt={m.created_at}
               selected={checked}
               onSelectChange={() => toggleMatch(m.id)}
+              assignee={m.assignee}
+              assigneeControl={
+                <MatchAssigneeSelect
+                  inline
+                  value={m.assigned_to}
+                  current={m.assignee}
+                  options={matchAssignees}
+                  disabled={assignMutation.isPending}
+                  ariaLabel={`Accountmanager koppelen voor ${c.first_name ?? ''} ${c.last_name ?? ''}`.trim()}
+                  onChange={(assigneeId) => assignMutation.mutate({ matchId: m.id, assigneeId })}
+                />
+              }
               onInspect={() => setDetail({ name: `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim(), breakdown: bd, quality: bd?.candidateQuality ?? null, candidate: c })}
               primaryAction={
                 m.status === 'voorgesteld' ? (

@@ -28,6 +28,8 @@ type MatchRowProps = {
     company_id?: string | null;
   } & Record<string, any>) | null;
   assignee?: { full_name?: string | null; email?: string | null } | null;
+  /** Interactieve accountmanager-keuze; vervangt de statische assignee-badge waar aanwezig. */
+  assigneeControl?: ReactNode;
   sourceLabel?: string | null;
   score?: number | null;
   breakdown?: MatchBreakdown | null;
@@ -63,6 +65,7 @@ const MatchRow = ({
   candidate,
   vacancy,
   assignee,
+  assigneeControl,
   sourceLabel,
   score,
   breakdown,
@@ -164,12 +167,14 @@ const MatchRow = ({
                   {mins != null ? `${Math.round(mins)} min` : 'reistijd ?'}{km != null ? ` · ${Math.round(km)} km` : ''}
                 </Badge>
               )}
-              {assignee && (
+              {!assigneeControl && assignee && (
                 <Badge variant="outline" className="gap-1 text-[10px] text-muted-foreground">
                   <UserCheck className="h-3 w-3" /> {assignee.full_name || assignee.email}
                 </Badge>
               )}
             </div>
+
+            {assigneeControl && <div className="mt-2" onClick={stop}>{assigneeControl}</div>}
 
             {issue && issue.tone !== 'green' && (
               <p className={cn('mt-2 flex items-start gap-1.5 text-xs leading-4',
@@ -269,6 +274,15 @@ const MatchRow = ({
             {skills.map((s) => <span key={`skill-${id}-${s}`} className="rounded bg-muted px-1.5 py-0.5">{s}</span>)}
             {certs.map((c) => <span key={`cert-${id}-${c}`} className="rounded bg-muted px-1.5 py-0.5">{c}</span>)}
             {statusAge && <span className="inline-flex items-center gap-1"><CalendarClock className="h-3.5 w-3.5" /> {statusAge}</span>}
+            {/* `undefined` = de aanroeper heeft de accountmanager niet meegeladen; dan
+                zwijgen we liever dan "Geen accountmanager" te tonen bij een match die
+                er wél een heeft. `null` (embed zonder assigned_to) is wél een uitspraak. */}
+            {!assigneeControl && assignee !== undefined && (
+              <span className="inline-flex items-center gap-1">
+                <UserCheck className="h-3.5 w-3.5" />
+                {assignee ? (assignee.full_name || assignee.email) : 'Geen accountmanager'}
+              </span>
+            )}
           </div>
 
           {issue && (
@@ -296,6 +310,7 @@ const MatchRow = ({
             )}
             {primaryAction}
           </div>
+          {assigneeControl}
           <div className="flex items-center gap-1.5">
             <Badge variant="outline" className="hidden gap-1 text-[10px] sm:inline-flex">
               <ArrowRight className="h-3 w-3" /> {nextAction}

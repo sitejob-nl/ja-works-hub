@@ -69,7 +69,7 @@ Deno.serve(async (req) => {
     const { data: tok } = await service
       .from("match_candidate_tokens")
       .select(
-        "id, match_id, organization_id, response, used_at, expires_at, matches!match_candidate_tokens_match_id_fkey(status, vacancies!matches_vacancy_id_fkey(title, location, created_by), candidates!matches_candidate_id_fkey(first_name))",
+        "id, match_id, organization_id, response, used_at, expires_at, matches!match_candidate_tokens_match_id_fkey(status, assigned_to, vacancies!matches_vacancy_id_fkey(title, location, created_by), candidates!matches_candidate_id_fkey(first_name))",
       )
       .eq("token", token)
       .maybeSingle();
@@ -129,7 +129,9 @@ Deno.serve(async (req) => {
       await createMatchFollowUpTask(service, {
         orgId,
         matchId: tok.match_id,
-        assignedTo: vacancy?.created_by ?? null,
+        // Zelfde routing als de klant-reactieflow: accountmanager van de match,
+        // vacature-eigenaar als vangnet.
+        assignedTo: matchRow?.assigned_to ?? vacancy?.created_by ?? null,
         title: `Kandidaat heeft interesse — opvolgen (${candName})`,
         description: `${candName} reageerde 'Ja, ik heb interesse' op het baanvoorstel "${vacancy?.title ?? ""}" via e-mail. Plan een gesprek in.`,
         priority: "high",
