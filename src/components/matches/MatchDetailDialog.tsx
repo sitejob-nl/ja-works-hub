@@ -470,6 +470,7 @@ const MatchDetailDialog = ({ open, match, onOpenChange, onChanged, canConfirmInt
                   <Label>Accountmanager</Label>
                   <MatchAssigneeSelect
                     value={assignedTo}
+                    current={match?.assignee}
                     options={assignees}
                     disabled={assignMutation.isPending}
                     onChange={(next) => {

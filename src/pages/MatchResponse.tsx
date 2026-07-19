@@ -289,6 +289,12 @@ const MatchResponse = () => {
   const managerEmail = data?.contact?.manager_email;
   const managerPhone = data?.contact?.manager_phone;
   const waPhone = managerPhone ? managerPhone.replace(/[^0-9]/g, '') : null;
+  // Een accountmanager zonder eigen nummer (of mailadres) valt terug op de algemene
+  // organisatielijn. Dat kanaal krijgt het label "algemeen", zodat het niet leest als
+  // de directe lijn van de hierboven genoemde persoon. Vlaggen ontbreken bij een oude
+  // edge-function-versie; dan tonen we het label niet (geen valse belofte, geen ruis).
+  const emailIsGeneral = Boolean(managerName) && data?.contact?.email_is_personal === false;
+  const phoneIsGeneral = Boolean(managerName) && data?.contact?.phone_is_personal === false;
   const proposalPage = mergeProposalPageConfig(
     data?.proposal_page && Object.keys(data.proposal_page).length > 0
       ? data.proposal_page
@@ -646,12 +652,12 @@ const MatchResponse = () => {
                         <div className="flex flex-wrap gap-2">
                           {managerEmail && !isPreview && (
                             <a href={`mailto:${managerEmail}?subject=${encodeURIComponent(`Vraag over voorstel: ${candidateName}`)}`}>
-                              <Button variant="outline" size="sm"><Mail className="h-4 w-4 mr-2" /> Mail</Button>
+                              <Button variant="outline" size="sm"><Mail className="h-4 w-4 mr-2" /> {emailIsGeneral ? 'Mail (algemeen)' : 'Mail'}</Button>
                             </a>
                           )}
                           {waPhone && !isPreview && (
                             <a href={`https://wa.me/${waPhone}?text=${encodeURIComponent(`Vraag over voorstel: ${candidateName}`)}`} target="_blank" rel="noopener noreferrer">
-                              <Button variant="outline" size="sm"><MessageCircle className="h-4 w-4 mr-2" /> WhatsApp</Button>
+                              <Button variant="outline" size="sm"><MessageCircle className="h-4 w-4 mr-2" /> {phoneIsGeneral ? 'WhatsApp (algemeen)' : 'WhatsApp'}</Button>
                             </a>
                           )}
                           {isPreview && <Button variant="outline" size="sm" disabled>Contactknoppen uitgeschakeld</Button>}

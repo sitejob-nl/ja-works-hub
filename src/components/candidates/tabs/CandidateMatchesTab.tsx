@@ -30,7 +30,7 @@ const CandidateMatchesTab = ({ candidateId, candidate }: { candidateId: string; 
     queryFn: async () => {
       const { data, error } = await supabase
         .from('matches')
-        .select('*, vacancies!matches_vacancy_id_fkey(id, title, companies!vacancies_company_id_fkey(id, name))')
+        .select('*, assignee:profiles!matches_assigned_to_fkey(id, full_name, email), vacancies!matches_vacancy_id_fkey(id, title, companies!vacancies_company_id_fkey(id, name))')
         .eq('organization_id', orgId)
         .eq('candidate_id', candidateId)
         .order('proposed_at', { ascending: false });
@@ -137,6 +137,7 @@ const CandidateMatchesTab = ({ candidateId, candidate }: { candidateId: string; 
                 company_id: company?.id,
                 company_name: company?.name,
               }}
+              assignee={m.assignee}
               statusChangedAt={m.status_changed_at}
               createdAt={m.created_at}
               score={m.match_score}

@@ -274,7 +274,10 @@ const MatchRow = ({
             {skills.map((s) => <span key={`skill-${id}-${s}`} className="rounded bg-muted px-1.5 py-0.5">{s}</span>)}
             {certs.map((c) => <span key={`cert-${id}-${c}`} className="rounded bg-muted px-1.5 py-0.5">{c}</span>)}
             {statusAge && <span className="inline-flex items-center gap-1"><CalendarClock className="h-3.5 w-3.5" /> {statusAge}</span>}
-            {!assigneeControl && (
+            {/* `undefined` = de aanroeper heeft de accountmanager niet meegeladen; dan
+                zwijgen we liever dan "Geen accountmanager" te tonen bij een match die
+                er wél een heeft. `null` (embed zonder assigned_to) is wél een uitspraak. */}
+            {!assigneeControl && assignee !== undefined && (
               <span className="inline-flex items-center gap-1">
                 <UserCheck className="h-3.5 w-3.5" />
                 {assignee ? (assignee.full_name || assignee.email) : 'Geen accountmanager'}

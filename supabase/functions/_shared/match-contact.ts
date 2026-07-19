@@ -46,8 +46,11 @@ const clean = (value?: string | null): string | null => {
 
 /**
  * Bepaalt welk contact de klant ziet: de aan de match gekoppelde accountmanager,
- * met de algemene organisatiegegevens als vangnet. Per kanaal wordt bijgehouden of
- * het persoonlijk is, zodat de pagina geen algemeen nummer aan een naam plakt.
+ * met de algemene organisatiegegevens als vangnet per kanaal. Een accountmanager
+ * met alleen een e-mailadres levert dus een persoonlijk mailadres én het algemene
+ * telefoonnummer op. `email_is_personal` / `phone_is_personal` zeggen per kanaal
+ * welke van de twee het is; de pagina labelt het algemene kanaal daarmee expliciet,
+ * zodat er geen algemeen nummer als privélijn van de genoemde persoon leest.
  */
 export function resolveMatchContact(input: {
   enabled?: boolean;

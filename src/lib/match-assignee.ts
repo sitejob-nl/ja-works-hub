@@ -13,7 +13,13 @@ export type AssigneeProfile = {
  * Rollen die accountmanager van een match mogen zijn — dezelfde set als
  * `is_internal_user()` in de RLS-policies. De portaalrollen (`medewerker`,
  * `opdrachtgever`) horen hier bewust niet bij: een kandidaat of klantcontact
- * mag nooit als interne verantwoordelijke aan een match hangen.
+ * hoort niet als interne verantwoordelijke aan een match te hangen.
+ *
+ * Let op het niveau van de garantie: dit filtert de keuzelijst en de
+ * standaardwaarde in de UI. Er staat (nog) géén CHECK of trigger op
+ * `matches.assigned_to`, dus een directe API-schrijfactie door een interne
+ * gebruiker kan er nog steeds een portaalprofiel in zetten. Wie dat écht dicht
+ * wil zetten, heeft een DB-constraint nodig.
  */
 export const INTERNAL_ASSIGNEE_ROLES: UserRole[] = ['admin', 'intercedent', 'backoffice', 'finance'];
 

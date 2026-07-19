@@ -79,7 +79,7 @@ Deno.serve(async (req) => {
     for (let from = 0; ; from += PAGE) {
       let q = userClient
         .from("vacancies")
-        .select("id, title, description, location, required_skills, required_certifications, requires_drivers_license, status, company_id, hourly_rate, salary_display, salary_min, salary_max, start_date, start_date_text, end_date, required_count, filled_count, urgency, companies!vacancies_company_id_fkey(name, address_lat, address_lng, visit_address_lat, visit_address_lng)")
+        .select("id, title, description, location, required_skills, required_certifications, requires_drivers_license, status, company_id, created_by, hourly_rate, salary_display, salary_min, salary_max, start_date, start_date_text, end_date, required_count, filled_count, urgency, companies!vacancies_company_id_fkey(name, address_lat, address_lng, visit_address_lat, visit_address_lng)")
         .eq("organization_id", orgId)
         .eq("status", "open");
       if (search) q = q.or(`title.ilike.%${search}%,location.ilike.%${search}%`);
@@ -145,6 +145,9 @@ Deno.serve(async (req) => {
           location: r.vacancy.location,
           company_id: r.vacancy.company_id,
           company_name: r.company?.name ?? null,
+          // Vangnet-accountmanager wanneer de match niet door een interne gebruiker
+          // wordt aangemaakt (resolveDefaultMatchAssignee in de frontend).
+          created_by: r.vacancy.created_by ?? null,
           description: r.vacancy.description ?? null,
           hourly_rate: r.vacancy.hourly_rate ?? null,
           salary_display: r.vacancy.salary_display ?? null,

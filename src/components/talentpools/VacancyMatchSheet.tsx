@@ -44,7 +44,8 @@ export default function VacancyMatchSheet({ open, onOpenChange, members }: Vacan
     queryFn: async () => {
       let query = supabase
         .from('vacancies')
-        .select('id, title, function_name, status, companies!vacancies_company_id_fkey(name)')
+        // created_by voedt de vangnet-accountmanager in resolveDefaultMatchAssignee.
+        .select('id, title, function_name, status, created_by, companies!vacancies_company_id_fkey(name)')
         .eq('organization_id', orgId)
         .eq('status', 'open')
         .order('created_at', { ascending: false })

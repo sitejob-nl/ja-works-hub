@@ -706,6 +706,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
                 <MatchAssigneeSelect
                   inline
                   value={m.assigned_to}
+                  current={m.assignee}
                   options={matchAssignees}
                   disabled={assignMutation.isPending}
                   ariaLabel={`Accountmanager koppelen voor ${c.first_name ?? ''} ${c.last_name ?? ''}`.trim()}
