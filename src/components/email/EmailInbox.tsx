@@ -114,6 +114,16 @@ function classifyEmailMessage(msg: EmailMessage) {
   return { label, priority, category, reasoning };
 }
 
+// Zichtbare tekst per categorie. De sleutels zelf blijven ongewijzigd — ze worden
+// opgeslagen in settings.triage_routing en sturen de toewijzing aan.
+const triageDisplayLabel: Record<TriageLabel, string> = {
+  CV: 'Sollicitatie of cv',
+  Klantvraag: 'Vraag van een opdrachtgever',
+  Partner: 'Partner of bureau',
+  Ruis: 'Niet relevant',
+  Review: 'Weet het niet zeker',
+};
+
 const triageBadgeClass: Record<TriageLabel, string> = {
   CV: 'bg-stat-green/10 text-stat-green border-0',
   Klantvraag: 'bg-orange-100 text-orange-700 border-0',
@@ -271,8 +281,8 @@ const EmailInbox = ({ selectedAccount }: { selectedAccount?: string }) => {
         if (communicationError) throw communicationError;
       }
 
-      // Rol-routing: een geconfigureerde eigenaar per triage-categorie (Instellingen →
-      // Mail-triage routering). Niet ingesteld → val terug op de triërende gebruiker.
+      // Vaste eigenaar per categorie (Instellingen → "Wie pakt welke e-mail op?").
+      // Niet ingesteld → de taak blijft bij de gebruiker die de mail verwerkt.
       let assignedTo: string | null = user?.id ?? null;
       const { data: orgRow } = await supabase.from('organizations').select('settings').eq('id', organizationId).single();
       const routing = (orgRow?.settings as any)?.triage_routing;
@@ -306,9 +316,9 @@ const EmailInbox = ({ selectedAccount }: { selectedAccount?: string }) => {
       queryClient.invalidateQueries({ queryKey: ['tasks-overview'] });
       queryClient.invalidateQueries({ queryKey: ['recruiter-tasks'] });
       queryClient.invalidateQueries({ queryKey: ['open-task-count'] });
-      toast.success(`Triagetaak aangemaakt (${label})`);
+      toast.success(`Taak aangemaakt — ${triageDisplayLabel[label]}`);
     },
-    onError: (error: any) => toast.error(error.message ?? 'Triagetaak kon niet worden aangemaakt'),
+    onError: (error: any) => toast.error(error.message ?? 'De taak kon niet worden aangemaakt'),
   });
 
   // Mark as read
@@ -626,9 +636,9 @@ const EmailInbox = ({ selectedAccount }: { selectedAccount?: string }) => {
                     <Brain className="mt-0.5 h-4 w-4 text-stat-blue" />
                     <div className="space-y-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-sm font-medium">AI triage</span>
+                        <span className="text-sm font-medium">Voorstel van de AI</span>
                         <Badge variant="secondary" className={triageBadgeClass[triage.label]}>
-                          {triage.label}
+                          {triageDisplayLabel[triage.label]}
                         </Badge>
                       </div>
                       <p className="text-xs text-muted-foreground">{triage.reasoning}</p>
@@ -649,7 +659,7 @@ const EmailInbox = ({ selectedAccount }: { selectedAccount?: string }) => {
                     ) : (
                       <>
                         <ClipboardList className="mr-2 h-4 w-4" />
-                        Maak triagetaak
+                        Maak er een taak van
                       </>
                     )}
                   </Button>
