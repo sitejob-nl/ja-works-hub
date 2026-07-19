@@ -14,3 +14,22 @@ export const payrollerBadgeClass: Record<string, string> = {
 
 /** Payrollers that ja werkt invoices for (excludes Flexpedia) */
 export const JA_WERKT_PAYROLLERS = ['brioworks', 'bromida', 'retiva'];
+
+export const ALL_PAYROLLERS = ['flexpedia', 'brioworks', 'bromida', 'retiva'] as const;
+
+export interface PayrollerSettings {
+  /** Payrollers die de org actief gebruikt (kiesbaar in de plaatsingswizard). */
+  enabled: string[];
+  /** Vooringevulde payroller bij een nieuwe plaatsing (moet in `enabled` zitten). */
+  default: string | null;
+}
+
+/** Leest `organizations.settings.payrollers`; zonder instelling zijn alle payrollers actief. */
+export function getPayrollerSettings(settings: unknown): PayrollerSettings {
+  const raw = (settings as any)?.payrollers;
+  const enabled = Array.isArray(raw?.enabled)
+    ? raw.enabled.filter((p: unknown): p is string => typeof p === 'string' && p in payrollerLabel)
+    : [...ALL_PAYROLLERS];
+  const def = typeof raw?.default === 'string' && enabled.includes(raw.default) ? raw.default : null;
+  return { enabled, default: def };
+}

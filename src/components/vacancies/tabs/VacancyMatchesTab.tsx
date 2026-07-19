@@ -26,7 +26,7 @@ import {
   sanitizeTemplateParam,
   type WhatsAppTemplateRow,
 } from '@/lib/whatsapp-template';
-import PlacementSheet from '@/components/vacancies/PlacementSheet';
+import PlacementWizard from '@/components/placement/PlacementWizard';
 import MatchFeedbackDialog from '@/components/matches/MatchFeedbackDialog';
 import MatchInspectorDialog from '@/components/matches/MatchInspectorDialog';
 import MatchOutboundDialog from '@/components/matches/MatchOutboundDialog';
@@ -884,7 +884,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
         ) : null}
       />
 
-      <PlacementSheet match={placementMatch} vacancy={vacancy} onClose={() => setPlacementMatch(null)} />
+      <PlacementWizard open={!!placementMatch} match={placementMatch} vacancy={vacancy} onClose={() => setPlacementMatch(null)} />
 
       <MatchProposalEmailDialog
         open={!!previewMatchId}

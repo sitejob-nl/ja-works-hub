@@ -34,6 +34,7 @@ import MatchFeedbackReasonsSettings from '@/components/settings/MatchFeedbackRea
 import DomainSettings from '@/components/settings/DomainSettings';
 import OutboundPauseSettings from '@/components/settings/OutboundPauseSettings';
 import TriageRoutingSettings from '@/components/settings/TriageRoutingSettings';
+import PlacementSettings from '@/components/settings/PlacementSettings';
 import RolePermissionsSettings from '@/components/settings/RolePermissionsSettings';
 import UserManagementSettings from '@/components/settings/UserManagementSettings';
 import { applyBranding, BRANDING_DEFAULTS, type BrandingSettings } from '@/lib/branding';
@@ -570,6 +571,7 @@ const Settings = () => {
             </TabsContent>
 
             <TabsContent value="hr" className="mt-0 space-y-5">
+              <PlacementSettings />
               <ComplianceRulesSettings />
               <RegulationsSettings />
               <ContractTemplatesSettings />

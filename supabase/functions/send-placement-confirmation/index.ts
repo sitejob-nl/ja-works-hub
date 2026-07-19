@@ -243,10 +243,14 @@ Deno.serve(async (req) => {
     );
 
     // ── Parse input ──
+    // Twee modi: (a) placement_id — bestaande plaatsing (verzenden of preview),
+    // (b) preview + placement_data — mails renderen vóórdat de plaatsing bestaat
+    // (plaatsingswizard, stap Controle). Preview verstuurt niets en logt niets.
     const body = await req.json();
-    const { placement_id, send_to_client, send_to_employee } = body;
+    const { placement_id, send_to_client, send_to_employee, placement_data } = body;
+    const preview = body.preview === true;
 
-    if (!placement_id) {
+    if (!placement_id && !(preview && placement_data)) {
       return json({ error: "placement_id is required" }, 400);
     }
 
@@ -254,25 +258,53 @@ Deno.serve(async (req) => {
       return json({ error: "At least one recipient required" }, 400);
     }
 
-    // ── Fetch placement with relations ──
-    const { data: placement, error: plErr } = await supabase
-      .from("placements")
-      .select(`
-        *,
-        companies:company_id(id, name, email, phone, address_city),
-        candidate:candidate_id(id, first_name, last_name, email, phone, employee_number),
-        employees:employee_id(
-          id,
-          candidate_id,
-          candidates:candidate_id(id, first_name, last_name, email, phone, employee_number)
-        ),
-        vacancies:vacancy_id(id, title, work_location)
-      `)
-      .eq("id", placement_id)
-      .single();
+    let placement: any;
+    if (placement_id) {
+      // ── Fetch placement with relations ──
+      const { data, error: plErr } = await supabase
+        .from("placements")
+        .select(`
+          *,
+          companies:company_id(id, name, email, phone, address_city),
+          candidate:candidate_id(id, first_name, last_name, email, phone, employee_number),
+          employees:employee_id(
+            id,
+            candidate_id,
+            candidates:candidate_id(id, first_name, last_name, email, phone, employee_number)
+          ),
+          vacancies:vacancy_id(id, title, location)
+        `)
+        .eq("id", placement_id)
+        .single();
 
-    if (plErr || !placement) {
-      return json({ error: "Placement not found" }, 404);
+      if (plErr || !data) {
+        return json({ error: "Placement not found" }, 404);
+      }
+      placement = data;
+    } else {
+      // Preview zonder bestaande plaatsing: relaties los ophalen (RLS via user-client).
+      if (!placement_data.candidate_id || !placement_data.company_id) {
+        return json({ error: "placement_data requires candidate_id and company_id" }, 400);
+      }
+      const [{ data: companyRow }, { data: candidateRow }, vacancyRes] = await Promise.all([
+        supabase.from("companies").select("id, name, email, phone, address_city")
+          .eq("id", placement_data.company_id).maybeSingle(),
+        supabase.from("candidates").select("id, first_name, last_name, email, phone, employee_number")
+          .eq("id", placement_data.candidate_id).maybeSingle(),
+        placement_data.vacancy_id
+          ? supabase.from("vacancies").select("id, title, location").eq("id", placement_data.vacancy_id).maybeSingle()
+          : Promise.resolve({ data: null }),
+      ]);
+      if (!companyRow) return json({ error: "Company not found" }, 404);
+      if (!candidateRow) return json({ error: "Candidate not found" }, 404);
+      placement = {
+        ...placement_data,
+        id: null,
+        companies: companyRow,
+        candidate: candidateRow,
+        employees: null,
+        vacancies: (vacancyRes as any)?.data ?? null,
+      };
     }
 
     const company = (placement as any).companies;
@@ -289,7 +321,7 @@ Deno.serve(async (req) => {
     if (!candidate.email) warnings.push("Kandidaat heeft geen e-mailadres");
     if (!candidate.phone) warnings.push("Kandidaat heeft geen telefoonnummer");
 
-    if (send_to_employee && !candidate.email) {
+    if (send_to_employee && !candidate.email && !preview) {
       return json({ error: "Kandidaat heeft geen e-mailadres", warnings }, 400);
     }
 
@@ -297,7 +329,7 @@ Deno.serve(async (req) => {
     const companyName = company?.name ?? "Onbekend bedrijf";
     const functionName = placement.function_name;
     const startDate = placement.start_date;
-    const workLocation = vacancy?.work_location ?? placement.work_location ?? null;
+    const workLocation = placement.work_location ?? vacancy?.location ?? null;
     const workDays = placement.work_days ?? null;
 
     const results: {
@@ -434,9 +466,9 @@ Deno.serve(async (req) => {
         warnings.push("Geen actieve algemene voorwaarden-template gevonden");
       }
 
-      // Send via Outlook if connected, otherwise store as concept
-      let sendResult: { success: boolean; method: "outlook" | "none"; error?: string } = { success: false, method: "none" };
-      if (clientEmail) {
+      // Send via Outlook if connected, otherwise store as concept (preview doet geen van beide)
+      let sendResult: { success: boolean; method: "outlook" | "none" | "preview"; error?: string; communicationPaused?: boolean } = { success: false, method: preview ? "preview" : "none" };
+      if (clientEmail && !preview) {
         sendResult = await sendViaOutlookAccount({
           orgId,
           to: clientEmail,
@@ -448,7 +480,8 @@ Deno.serve(async (req) => {
         });
       }
 
-      if (!sendResult.success) {
+      // Kill-switch heeft zelf al een concept gelogd — dan geen tweede fallback-insert.
+      if (!sendResult.success && !sendResult.communicationPaused && !preview) {
         // Fallback: store as concept in communications
         await serviceClient.from("communications").insert({
           organization_id: orgId,
@@ -471,7 +504,7 @@ Deno.serve(async (req) => {
     }
 
     // ── Client WhatsApp confirmation ──
-    if (send_to_client && automation.placement_client_whatsapp_enabled) {
+    if (!preview && send_to_client && automation.placement_client_whatsapp_enabled) {
       const clientPhone = primaryContact?.phone ?? company?.phone;
       if (clientPhone) {
         const text = mergeWhatsAppTemplate(automation.placement_client_message, {
@@ -519,40 +552,44 @@ Deno.serve(async (req) => {
         footerNote,
       });
 
-      // Send via Outlook if connected
-      const empSendResult = await sendViaOutlookAccount({
-        orgId,
-        to: candidate.email,
-        subject,
-        htmlBody: html,
-        candidateId: candidate.id,
-        sentBy: userId,
-        senderName: null,
-      });
-
-      if (!empSendResult.success) {
-        // Fallback: store as concept
-        await serviceClient.from("communications").insert({
-          organization_id: orgId,
-          channel: "email",
-          direction: "outbound",
+      // Send via Outlook if connected (preview verstuurt en logt niets)
+      let empSendResult: { success: boolean; method: "outlook" | "none" | "preview"; error?: string; communicationPaused?: boolean } = { success: false, method: "preview" };
+      if (!preview) {
+        empSendResult = await sendViaOutlookAccount({
+          orgId,
+          to: candidate.email,
           subject,
-          body: html,
-          sent_by: userId,
-          candidate_id: candidate.id,
+          htmlBody: html,
+          candidateId: candidate.id,
+          sentBy: userId,
+          senderName: null,
         });
+
+        // Kill-switch heeft zelf al een concept gelogd — dan geen tweede fallback-insert.
+        if (!empSendResult.success && !empSendResult.communicationPaused) {
+          // Fallback: store as concept
+          await serviceClient.from("communications").insert({
+            organization_id: orgId,
+            channel: "email",
+            direction: "outbound",
+            subject,
+            body: html,
+            sent_by: userId,
+            candidate_id: candidate.id,
+          });
+        }
       }
 
       results.employee_email = {
         subject,
         html,
-        to: candidate.email,
+        to: candidate.email ?? "Geen e-mail beschikbaar",
         sent_via: empSendResult.method,
       };
     }
 
     // ── Employee WhatsApp confirmation ──
-    if (send_to_employee && automation.placement_employee_whatsapp_enabled) {
+    if (!preview && send_to_employee && automation.placement_employee_whatsapp_enabled) {
       if (candidate.phone) {
         const text = mergeWhatsAppTemplate(automation.placement_employee_message, templateVars as any);
         const wa = await sendWhatsAppDirect(serviceClient, {
@@ -571,7 +608,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    return json({ success: true, ...results, whatsapp: whatsappResults });
+    return json({ success: true, preview, ...results, whatsapp: whatsappResults });
   } catch (err) {
     console.error("send-placement-confirmation error:", err);
     return json({ error: "Internal server error" }, 500);

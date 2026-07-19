@@ -18,7 +18,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { formatDate, formatEUR } from '@/lib/format';
 import { useNavigate } from 'react-router-dom';
-import NewPlacementSheet from '@/components/placement/NewPlacementSheet';
+import PlacementWizard from '@/components/placement/PlacementWizard';
 
 const PAGE_SIZE = 20;
 
@@ -420,7 +420,7 @@ const Planning = () => {
         </Card>
       )}
 
-      <NewPlacementSheet open={sheetOpen} onClose={() => setSheetOpen(false)} orgId={orgId} userId={user?.id} />
+      <PlacementWizard open={sheetOpen} onClose={() => setSheetOpen(false)} />
     </div>
   );
 };
