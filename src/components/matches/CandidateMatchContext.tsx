@@ -177,10 +177,12 @@ const CandidateMatchContext = ({ candidate, compact = false, className }: Candid
           )}
         </div>
         {employers.length > 0 && (
+          /* totaleJaren niet doorgeven: de badgerij hierboven toont "X jaar
+             ervaring" al, en dat twee regels lager herhalen is precies de
+             dubbeling waar deze weergave vanaf moest. */
           <WorkHistoryTimeline
             werkgevers={employers}
             gaten={gaps}
-            totaleJaren={totalYears}
             compact
           />
         )}

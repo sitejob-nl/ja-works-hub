@@ -16,12 +16,17 @@ const gaten = [
 
 describe('parseYearRange', () => {
   it('leest begin- en eindjaar uit een periode', () => {
-    expect(parseYearRange('2018 - 2020')).toEqual({ start: 2018, end: 2020 });
-    expect(parseYearRange('jan 2019 - mrt 2021')).toEqual({ start: 2019, end: 2021 });
+    expect(parseYearRange('2018 - 2020')).toEqual({ start: 2018, end: 2020, known: true });
+    expect(parseYearRange('jan 2019 - mrt 2021')).toEqual({ start: 2019, end: 2021, known: true });
   });
 
   it('mapt een lopend dienstverband op het huidige jaar', () => {
-    expect(parseYearRange('2022 - heden')).toEqual({ start: 2022, end: CURRENT_YEAR });
+    expect(parseYearRange('2022 - heden')).toEqual({ start: 2022, end: CURRENT_YEAR, known: true });
+  });
+
+  it('markeert een periode zonder jaartal als onbekend', () => {
+    expect(parseYearRange('een paar jaar').known).toBe(false);
+    expect(parseYearRange(undefined).known).toBe(false);
   });
 
   it('laat de tijdlijn nooit in de toekomst doorlopen', () => {
@@ -57,6 +62,15 @@ describe('buildTimelineRows', () => {
     expect(row.title).toBe('Functie onbekend');
     expect(row.meta).toBe('Werkgever onbekend · Periode onbekend');
     expect(row.months).toBeNull();
+  });
+
+  it('zet een dienstverband zonder leesbare periode onderaan, niet bovenaan', () => {
+    const rows = buildTimelineRows(
+      [{ functie: 'Losse klus', bedrijf: 'Onbekend' }, ...werkgevers],
+      [],
+    );
+    expect(rows[rows.length - 1].title).toBe('Losse klus');
+    expect(rows[0].title).toBe('Heftruckchauffeur');
   });
 });
 
@@ -94,6 +108,34 @@ describe('WorkHistoryTimeline', () => {
 
     expect(screen.queryByText('Heftruckchauffeur')).toBeNull();
     expect(screen.queryByRole('listitem')).toBeNull();
+  });
+
+  it('geeft de overzichtsbalk een tekstalternatief met werkgevers en gaten', () => {
+    render(<WorkHistoryTimeline werkgevers={werkgevers} gaten={gaten} showDetails={false} />);
+
+    const label = screen.getByRole('img').getAttribute('aria-label') ?? '';
+    expect(label).toContain('Heftruckchauffeur: Van Dijk Logistiek · 2022 - heden');
+    expect(label).toContain('Gat in werkhistorie: 2020 - 2022');
+    expect(label).toContain('Productiemedewerker: Acme Food · 2018 - 2020');
+  });
+
+  it('houdt een balk uit het lopende jaar binnen de as', () => {
+    render(
+      <WorkHistoryTimeline
+        werkgevers={[
+          { functie: 'Starter', bedrijf: 'Nieuw', periode: `${CURRENT_YEAR}`, duur_maanden: 3 },
+          { functie: 'Oud', bedrijf: 'Vorig', periode: '2015 - 2018', duur_maanden: 36 },
+        ]}
+        gaten={[]}
+        showDetails={false}
+      />,
+    );
+
+    // left mag nooit op 100% staan: de container heeft overflow-hidden, de balk
+    // zou dan onzichtbaar buiten beeld vallen.
+    const bar = screen.getByRole('img').querySelector('div') as HTMLElement;
+    expect(parseFloat(bar.style.left)).toBeLessThan(100);
+    expect(parseFloat(bar.style.left) + parseFloat(bar.style.width)).toBeCloseTo(100, 5);
   });
 
   it('beperkt compact tot drie regels en meldt de rest', () => {

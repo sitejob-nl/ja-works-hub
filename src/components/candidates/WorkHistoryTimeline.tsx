@@ -20,8 +20,16 @@ interface Props {
 }
 
 const COMPACT_ROW_LIMIT = 3;
+const MIN_BAR_WIDTH_PCT = 1.5;
 const GAP_BAR_CLASS = 'bg-orange-400';
 const GAP_BADGE_CLASS = 'bg-orange-100 text-orange-800 border-0';
+/**
+ * Aangrenzende werkgevers kunnen dezelfde duur-kleur krijgen (30 en 40 maanden
+ * zijn allebei groen). Zonder scheidingslijn lopen die twee balken visueel als
+ * één blok door en is niet te zien waar de ene werkgever ophoudt. De ring in de
+ * achtergrondkleur zet er een dunne naad tussen, in licht én donker thema.
+ */
+const BAR_SEPARATOR_CLASS = 'ring-1 ring-background';
 
 const WorkHistoryTimeline = ({
   werkgevers = [],
@@ -40,14 +48,25 @@ const WorkHistoryTimeline = ({
   const totalSpan = maxYear - minYear || 1;
   const tickYears = buildTickYears(minYear, maxYear, compact ? 4 : 6);
 
-  const offsets = (row: { start: number; end: number }) => ({
-    left: `${((row.start - minYear) / totalSpan) * 100}%`,
-    width: `${Math.max(((row.end - row.start) / totalSpan) * 100, 1.5)}%`,
-  });
+  const offsets = (row: { start: number; end: number }) => {
+    const width = Math.max(((row.end - row.start) / totalSpan) * 100, MIN_BAR_WIDTH_PCT);
+    // Clampen op de rechterrand: een dienstverband in het lopende jaar krijgt
+    // anders left: 100% en valt door de overflow-hidden volledig weg.
+    const left = Math.min(Math.max(((row.start - minYear) / totalSpan) * 100, 0), 100 - width);
+    return { left: `${left}%`, width: `${width}%` };
+  };
 
   const visibleRows = compact ? rows.slice(0, COMPACT_ROW_LIMIT) : rows;
   const hiddenRows = rows.length - visibleRows.length;
   const showHeader = title != null || totaleJaren != null;
+
+  // Tekstalternatief voor de overzichtsbalk: die balk is de enige weergave in
+  // de showDetails={false}-tak, dus zonder dit label draagt kleur daar wél de
+  // betekenis. De omliggende kaarten tonen bovendien geen gaten.
+  const overviewLabel = [
+    `Werkhistorie ${minYear} tot ${maxYear}`,
+    ...rows.map((row) => `${row.title}: ${row.meta}, ${formatWorkDuration(row.months)}`),
+  ].join('. ');
 
   return (
     <div className={cn(compact ? 'space-y-2' : 'space-y-3', className)}>
@@ -118,7 +137,14 @@ const WorkHistoryTimeline = ({
           )}
         </ul>
       ) : (
-        <div className={cn('relative overflow-hidden rounded-md bg-muted/40', compact ? 'h-5' : 'h-7')}>
+        /* role="img" + label: de balk is een plaatje, maar wel een plaatje dat
+           hier de enige weergave is. Screenreaders krijgen dezelfde feiten als
+           de ziende gebruiker uit de tooltips haalt. */
+        <div
+          role="img"
+          aria-label={overviewLabel}
+          className={cn('relative overflow-hidden rounded-md bg-muted/40', compact ? 'h-5' : 'h-7')}
+        >
           {/* Gaten als achtergrondband, dienstverbanden daarbovenop — anders dekt een
               gat een kortere baan af die er deels overheen loopt. */}
           {rows.filter((r) => r.kind === 'gat').map((row) => (
@@ -132,7 +158,12 @@ const WorkHistoryTimeline = ({
           {rows.filter((r) => r.kind === 'werk').map((row) => (
             <div
               key={row.key}
-              className={cn('absolute top-0.5 rounded', compact ? 'h-4' : 'h-6', durationRailClass(row.months))}
+              className={cn(
+                'absolute top-0.5 rounded',
+                compact ? 'h-4' : 'h-6',
+                durationRailClass(row.months),
+                BAR_SEPARATOR_CLASS,
+              )}
               style={offsets(row)}
               title={`${row.title} — ${row.meta} (${formatWorkDuration(row.months)})`}
             />

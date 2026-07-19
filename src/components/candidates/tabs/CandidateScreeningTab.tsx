@@ -729,10 +729,10 @@ const CandidateScreeningTab = ({
         </div>
 
         {workEmployers.length > 0 && (
+          /* Geen totaleJaren: de badge "X jaar totaal" staat al in de kop hierboven. */
           <WorkHistoryTimeline
             werkgevers={workEmployers}
             gaten={workGaps}
-            totaleJaren={workTotalYears}
             showDetails={false}
             className="rounded-md bg-muted/25 p-3"
           />
@@ -833,10 +833,10 @@ const CandidateScreeningTab = ({
             </div>
 
             {workEmployers.length > 0 && (
+              /* Geen totaleJaren: de badge "X jaar totaal" staat al in de kop hierboven. */
               <WorkHistoryTimeline
                 werkgevers={workEmployers}
                 gaten={workGaps}
-                totaleJaren={workTotalYears}
                 showDetails={false}
                 className="mb-3 rounded-md bg-muted/25 p-3"
               />
