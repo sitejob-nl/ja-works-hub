@@ -1,4 +1,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import {
+  mergeProfileValues,
+  validateProfileSubmission,
+} from "../_shared/profile-validation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -131,6 +135,41 @@ Deno.serve(async (req) => {
       const candidateId = tokenRow.candidate_id;
       const organizationId = tokenRow.organization_id;
 
+      // Server-side hervalidatie. Dit endpoint is publiek (geen login), dus client-validatie
+      // is hooguit een gebruiksgemak — een POST met een halve body moet hier stranden.
+      //
+      // We valideren op de SAMENVOEGING van wat er binnenkomt en wat al in het dossier staat:
+      // de COALESCE-regel hieronder laat lege waarden bestaande gegevens nooit overschrijven,
+      // dus een leeg meegestuurd veld is compleet zolang het dossier de waarde al heeft.
+      const { data: existingCandidate, error: existingErr } = await supabase
+        .from("candidates")
+        // Eén stringliteral: supabase-js leidt de rijtypes af uit de select-tekst, en een
+        // samengestelde expressie laat die inferentie stuklopen.
+        .select("status, phone, phone_nl, email, emergency_contact_name, emergency_contact_phone, date_of_birth, nationality, languages, has_dutch_address, address_street, address_postal, address_city, has_drivers_license, drivers_license_expiry, available_from, available_until")
+        .eq("id", candidateId)
+        .maybeSingle();
+
+      // Niet stil doorgaan: aan deze query hangen twee dingen tegelijk (de dossier-merge én
+      // de statusovergang nieuw → in_behandeling). Faalt hij, dan zou de validatie strenger
+      // worden dan bedoeld en een compleet profiel kunnen afkeuren.
+      if (existingErr) {
+        console.error("candidate-profile: kandidaat ophalen mislukt:", existingErr.message);
+        return json({ error: "Je gegevens konden even niet worden opgehaald. Probeer het zo nog eens." }, 500);
+      }
+
+      const effectiveValues = mergeProfileValues(candidate_data, existingCandidate);
+      const validation = validateProfileSubmission(effectiveValues);
+      if (!validation.valid) {
+        return json(
+          {
+            error: "Niet alle verplichte gegevens zijn ingevuld.",
+            field_errors: validation.errors,
+            missing: validation.missingLabels,
+          },
+          400,
+        );
+      }
+
       // B-upload: upload CV/photo here with the service-role client. The public
       // page is anonymous, and the documents bucket INSERT policy is TO authenticated,
       // so a direct client upload silently fails and the file is lost. We accept the
@@ -190,13 +229,7 @@ Deno.serve(async (req) => {
 
         // Update status from 'nieuw' to 'in_behandeling'
         // Only if currently 'nieuw' to avoid overwriting more advanced statuses
-        const { data: currentCandidate } = await supabase
-          .from("candidates")
-          .select("status")
-          .eq("id", candidateId)
-          .single();
-
-        if (currentCandidate?.status === "nieuw") {
+        if (existingCandidate?.status === "nieuw") {
           updatePayload.status = "in_behandeling";
         }
 
