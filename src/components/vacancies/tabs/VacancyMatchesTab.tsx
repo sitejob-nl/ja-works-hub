@@ -40,6 +40,16 @@ import { advanceMatchStatus, createMatch } from '@/lib/match-lifecycle';
 
 const COLUMNS = MATCH_STATUS_STEPS;
 
+// Keuzes voor "Toon max." op de shortlist. 100 is de harde bovengrens van de edge function
+// rank-candidates — hoger aanvragen levert daar stil 100 op, dus bieden we dat ook niet aan.
+const SHORTLIST_LIMIT_OPTIONS = [25, 50, 100] as const;
+const SHORTLIST_LIMIT_DEFAULT = 25;
+// rerank-matches kapt de meegestuurde lijst zelf af op MAX_CANDIDATES = 30
+// (supabase/functions/rerank-matches/index.ts). We sturen daarom nooit meer dan dat én zeggen het
+// in de hint: anders belooft de knop bij "Toon max. 100" een beoordeling van 100 kandidaten
+// terwijl de server er stil 70 weggooit.
+const RERANK_MAX_CANDIDATES = 30;
+
 // Status-label/-kleur komen uit de gedeelde match-status-bron (getMatchStatusMeta),
 // niet meer uit lokaal her-gedefinieerde maps.
 const statusLabel = (status: string) => getMatchStatusMeta(status).label;
@@ -96,6 +106,12 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
   const [deleteMatchId, setDeleteMatchId] = useState<string | null>(null);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [scoreFilter, setScoreFilter] = useState<'strong' | '60' | '70' | '80' | 'all'>('strong');
+  // Hoeveel kandidaten de shortlist maximaal toont. De server rangschikt altijd de VOLLEDIGE pool
+  // en kapt pas daarna af, dus dit bepaalt puur hoeveel van de ranglijst je te zien krijgt.
+  // Default 25 (langere lijsten maken elke vacaturepagina zwaarder); 100 is tevens de bovengrens
+  // die rank-candidates afdwingt. De kosten van de AI-herbeoordeling lopen hier NIET mee op —
+  // die zit vast op RERANK_MAX_CANDIDATES.
+  const [shortlistLimit, setShortlistLimit] = useState<number>(SHORTLIST_LIMIT_DEFAULT);
   const [selectedShortlist, setSelectedShortlist] = useState<Set<string>>(new Set());
   // Stage-2 AI-herbeoordeling (rerank-matches): fit-score + onderbouwing per kandidaat-id.
   const [rerankById, setRerankById] = useState<Record<string, any>>({});
@@ -104,6 +120,11 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
   const [detail, setDetail] = useState<{ name: string; breakdown: any; quality?: number | null; candidate?: any; rerank?: any } | null>(null);
   const showWeakMatches = scoreFilter === 'all';
   const minScore = scoreFilter === '60' ? 60 : scoreFilter === '70' ? 70 : scoreFilter === '80' ? 80 : 0;
+  // Bij een zoekterm zetten we include_weak aan: wie op naam zoekt wil die persoon vinden, ook als
+  // hij zwak scoort. Gevolg is wel dat de server dán GEEN drempel toepast (matching-core →
+  // passesShortlist: `if (includeWeak) return true`), dus ook zijn totalen slaan op de ongefilterde
+  // pool. Eén variabele voor zowel de request als de teksten eronder, zodat die niet uit elkaar lopen.
+  const shortlistIncludeWeak = showWeakMatches || !!candidateSearch;
   // Feedback bij statuswijziging — matchIds zodat we het ook voor bulk kunnen gebruiken.
   const [feedbackRequest, setFeedbackRequest] = useState<{ matchIds: string[]; toStatus: string } | null>(null);
   const [feedbackReasonId, setFeedbackReasonId] = useState('');
@@ -210,33 +231,45 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
 
   // Shortlist via de server-side rank-candidates edge function: rangschikt de VOLLEDIGE pool
   // (geen limit-150-op-voornaam meer) met de gedeelde matching-core, inclusief afstand.
-  const { data: availableCandidates, isError: rankError, isFetching: rankFetching } = useQuery({
-    queryKey: ['available-candidates-for-vacancy', vacancy.id, candidateSearch, scoreFilter, showWeakMatches, (matches ?? []).length],
+  // De drempelfilters (minScore / requireSkillSignal) gaan mee naar de server en lopen dus over
+  // de hele pool; pas daarna kapt de server af op `limit`. We houden de totalen vast zodat de
+  // gebruiker ziet dát er is afgekapt — een lijst van 25 zag er eerder compleet uit terwijl dat niet zo was.
+  const { data: rankResult, isError: rankError, isFetching: rankFetching } = useQuery({
+    queryKey: ['available-candidates-for-vacancy', vacancy.id, candidateSearch, scoreFilter, showWeakMatches, shortlistLimit, (matches ?? []).length],
     queryFn: async () => {
       const matchedIds = (matches ?? []).map((m: any) => m.candidate_id);
       const { data, error } = await supabase.functions.invoke('rank-candidates', {
         body: {
           vacancy_id: vacancy.id,
-          include_weak: showWeakMatches || !!candidateSearch,
+          include_weak: shortlistIncludeWeak,
           search: candidateSearch || undefined,
           exclude_candidate_ids: matchedIds,
           criteria_options: {
             minScore: minScore || undefined,
             requireSkillSignal: scoreFilter === 'strong',
           },
-          limit: 25,
+          limit: shortlistLimit,
         },
       });
       if (error) throw error;
-      return ((data?.results ?? []) as any[]).map((r) => ({
-        ...r.candidate,
-        _showForVacancy: true,
-        _vacancyScore: r.breakdown,
-        _candidateQuality: r.candidate_quality,
-      }));
+      return {
+        results: ((data?.results ?? []) as any[]).map((r) => ({
+          ...r.candidate,
+          _showForVacancy: true,
+          _vacancyScore: r.breakdown,
+          _candidateQuality: r.candidate_quality,
+        })),
+        // pool_size = alle kandidaten met een actieve status die de server heeft opgehaald en
+        // gescoord; shortlisted = hoeveel daarvan dit filter haalden (vóór het afkappen op limit).
+        poolSize: Number(data?.pool_size) || 0,
+        shortlisted: Number(data?.shortlisted) || 0,
+      };
     },
     enabled: !!matches,
   });
+  const availableCandidates = rankResult?.results;
+  const rankPoolSize = rankResult?.poolSize ?? 0;
+  const rankShortlisted = rankResult?.shortlisted ?? 0;
 
   const shortlistCandidateIds = (availableCandidates ?? []).map((candidate: any) => candidate.id).filter(Boolean).join(',');
   const { data: shortlistCandidateContext = [] } = useQuery({
@@ -560,20 +593,42 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
     if (failed.length) toast.error(`${failed.length} mislukt: ${failed[0]}`);
   };
 
-  // Shortlist na client-side drempelfilter (server levert de top-25 op score).
+  // NIET WEGHALEN als "redundant": zodra `shortlistIncludeWeak` aan staat (elke zoekopdracht, en
+  // het filter "Alles") slaat de server zijn eigen drempel over, en is dit de ENIGE plek waar
+  // minScore nog wordt afgedwongen. Zonder deze filter verschijnen bij elke zoekopdracht
+  // kandidaten onder de gekozen drempel in de shortlist.
   const filteredShortlist = (availableCandidates ?? []).filter(
     (c: any) => (c._vacancyScore?.matchPercent ?? 0) >= minScore,
   );
+  // `shortlisted` van de server telt alleen dát wat de gebruiker ook te zien zou krijgen bij een
+  // oneindige limiet, zolang de client-side drempel hierboven niets meer wegfiltert. Dat is het
+  // geval als de server de drempel zelf toepaste, of als er helemaal geen drempel is (minScore 0).
+  // Bij "zoekterm + ≥80%" telt `shortlisted` de hele gezochte pool — dan zwijgen we over totalen
+  // in plaats van een verkeerd getal en een zinloos advies te tonen.
+  const shortlistTotalExact = !shortlistIncludeWeak || minScore === 0;
+  // Meer kandidaten voldoen aan het filter dan er passen binnen "Toon max." — dat moet zichtbaar
+  // zijn, anders leest een afgekapte lijst als de volledige uitslag.
+  const shortlistTruncated = shortlistTotalExact && rankShortlisted > filteredShortlist.length;
+  // Wat we naar rerank-matches sturen: nooit meer dan de servercap, anders wordt de rest stil
+  // genegeerd terwijl de knop wél een volledige beoordeling suggereert.
+  const rerankTargets = filteredShortlist.slice(0, RERANK_MAX_CANDIDATES);
+  const rerankSkipped = filteredShortlist.length - rerankTargets.length;
   // Zodra de AI-herbeoordeling gedraaid heeft, herrangschikken we de shortlist op de AI-fit-score
-  // (val terug op de regelscore voor nog-niet-beoordeelde kandidaten). Selectie is id-gebaseerd en
-  // dus volgorde-onafhankelijk — alleen de weergave verandert.
+  // (val terug op de regelscore voor nog-niet-beoordeelde kandidaten). Alleen het blok dat de AI
+  // ook echt kán hebben gezien wordt herrangschikt; AI-fitscore en regelscore zijn twee
+  // verschillende schalen, dus door elkaar sorteren zou een niet-beoordeelde kandidaat op regelscore
+  // boven een door de AI afgeserveerde kandidaat kunnen zetten. Selectie is id-gebaseerd en dus
+  // volgorde-onafhankelijk — alleen de weergave verandert.
   const rerankActive = Object.keys(rerankById).length > 0;
   const displayShortlist = rerankActive
-    ? [...filteredShortlist].sort((a: any, b: any) => {
-        const fa = rerankById[a.id]?.fit_score ?? a._vacancyScore?.matchPercent ?? 0;
-        const fb = rerankById[b.id]?.fit_score ?? b._vacancyScore?.matchPercent ?? 0;
-        return fb - fa;
-      })
+    ? [
+        ...[...rerankTargets].sort((a: any, b: any) => {
+          const fa = rerankById[a.id]?.fit_score ?? a._vacancyScore?.matchPercent ?? 0;
+          const fb = rerankById[b.id]?.fit_score ?? b._vacancyScore?.matchPercent ?? 0;
+          return fb - fa;
+        }),
+        ...filteredShortlist.slice(RERANK_MAX_CANDIDATES),
+      ]
     : filteredShortlist;
   const selectedCandidates = filteredShortlist.filter((c: any) => selectedShortlist.has(c.id));
   const allShortlistSelected = filteredShortlist.length > 0 && filteredShortlist.every((c: any) => selectedShortlist.has(c.id));
@@ -749,22 +804,66 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
               <SelectItem value="all">Alles (incl. zwak)</SelectItem>
             </SelectContent>
           </Select>
+          <Select
+            value={String(shortlistLimit)}
+            onValueChange={(v) => { setShortlistLimit(Number(v)); setSelectedShortlist(new Set()); }}
+          >
+            <SelectTrigger className="w-full sm:w-40" title="Hoeveel kandidaten uit de ranglijst je maximaal te zien krijgt">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {SHORTLIST_LIMIT_OPTIONS.map((n) => (
+                <SelectItem key={n} value={String(n)}>Toon max. {n}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button
             variant="outline"
             size="sm"
             className="gap-1.5 whitespace-nowrap sm:ml-auto"
-            disabled={rerankMutation.isPending || filteredShortlist.length === 0}
-            title="Weegt de volledige vacaturetekst tegen elk profiel met Gemini en herrangschikt de shortlist"
-            onClick={() => rerankMutation.mutate(filteredShortlist.map((c: any) => c.id))}
+            disabled={rerankMutation.isPending || rerankTargets.length === 0}
+            title={`Weegt de volledige vacaturetekst tegen elk profiel met Gemini en herrangschikt de shortlist (maximaal ${RERANK_MAX_CANDIDATES} kandidaten per keer)`}
+            onClick={() => rerankMutation.mutate(rerankTargets.map((c: any) => c.id))}
           >
             <Sparkles className={cn('h-3.5 w-3.5', rerankMutation.isPending && 'animate-pulse')} />
             {rerankMutation.isPending ? 'AI beoordeelt…' : rerankActive ? 'AI opnieuw' : 'AI-herbeoordeling'}
           </Button>
         </div>
 
+        {/* Alleen tonen als de server de totalen daadwerkelijk meestuurt — een oudere deploy van
+            rank-candidates zonder pool_size/shortlisted mag hier geen "0 beoordeeld" van maken. */}
+        {!rankError && rankShortlisted > 0 && filteredShortlist.length > 0 && (
+          <div className="-mt-1 space-y-1">
+            <p className="text-xs text-muted-foreground">
+              {!shortlistTotalExact ? (
+                // Zoekterm mét drempel: de server telde ongefilterd, dus over het totaal kunnen we
+                // niets waars zeggen. Alleen melden wat er in beeld staat.
+                <><span className="font-medium text-foreground">{filteredShortlist.length}</span> kandidaten in beeld.</>
+              ) : shortlistTruncated ? (
+                <>Top <span className="font-medium text-foreground">{filteredShortlist.length}</span> van <span className="font-medium text-foreground">{rankShortlisted}</span> {shortlistIncludeWeak ? 'kandidaten' : 'passende kandidaten'}.</>
+              ) : (
+                <><span className="font-medium text-foreground">{rankShortlisted}</span> {shortlistIncludeWeak ? 'kandidaten' : 'passende kandidaten'} — dit is de volledige lijst.</>
+              )}
+            </p>
+            {rankPoolSize > 0 && (
+              <p className="text-xs text-muted-foreground">
+                Gezocht in een pool van {rankPoolSize} kandidaten.
+              </p>
+            )}
+            {shortlistTruncated && (
+              <p className="text-xs text-amber-700 dark:text-amber-300">
+                {rankShortlisted - filteredShortlist.length} kandidaten vallen buiten deze weergave. Zet &ldquo;Toon max.&rdquo; hoger om ze te zien.
+              </p>
+            )}
+          </div>
+        )}
+
         {filteredShortlist.length > 0 && (
-          <p className="text-[11px] text-muted-foreground -mt-1">
+          <p className="text-[11px] text-muted-foreground">
             AI-herbeoordeling weegt de vólledige vacaturetekst tegen elk profiel (Gemini, ± 1 cent per kandidaat, resultaat wordt gecached) en herrangschikt op de AI-fitscore.
+            {rerankSkipped > 0
+              ? ` Per keer worden alleen de bovenste ${RERANK_MAX_CANDIDATES} kandidaten beoordeeld; de overige ${rerankSkipped} blijven eronder op hun regelscore staan.`
+              : ` Nu ${rerankTargets.length} kandidaten.`}
           </p>
         )}
 
@@ -856,7 +955,10 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
           })}
           {rankError && <p className="text-sm text-red-600">Kandidaten konden niet worden geladen. Probeer het opnieuw.</p>}
           {!rankError && !rankFetching && filteredShortlist.length === 0 && (
-            <p className="text-sm text-muted-foreground">{minScore > 0 ? `Geen kandidaten met match ≥ ${minScore}%.` : 'Geen beschikbare kandidaten met deze vacature-eisen gevonden'}</p>
+            <p className="text-sm text-muted-foreground">
+              {minScore > 0 ? `Geen kandidaten met match ≥ ${minScore}%` : 'Geen beschikbare kandidaten met deze vacature-eisen gevonden'}
+              {rankPoolSize > 0 ? ` — gezocht in een pool van ${rankPoolSize} kandidaten.` : '.'}
+            </p>
           )}
         </div>
       </div>
