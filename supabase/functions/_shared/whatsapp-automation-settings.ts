@@ -21,6 +21,16 @@ export interface WhatsAppAutomationSettings {
   document_expiry_message: string;
   placement_employee_message: string;
   placement_client_message: string;
+  /**
+   * Goedgekeurde Meta-template voor de plaatsingsbevestiging. Buiten het 24-uurs
+   * servicevenster is dít wat verstuurd wordt; het vrije bericht hierboven geldt
+   * alleen binnen het venster. Leeg = buiten het venster niets versturen.
+   */
+  placement_employee_template_name: string;
+  placement_client_template_name: string;
+  /** Welke variabele op {{1}}, {{2}}, … komt — moet matchen met de goedgekeurde template. */
+  placement_employee_template_vars: string[];
+  placement_client_template_vars: string[];
 }
 
 export const DEFAULT_WHATSAPP_AUTOMATION_SETTINGS: WhatsAppAutomationSettings = {
@@ -48,6 +58,10 @@ export const DEFAULT_WHATSAPP_AUTOMATION_SETTINGS: WhatsAppAutomationSettings = 
     "Hoi {{first_name}}, je plaatsing als {{function_name}} bij {{company_name}} is bevestigd. Startdatum: {{start_date}}. Werklocatie: {{work_location}}.",
   placement_client_message:
     "Beste {{contact_name}}, hierbij bevestigen wij de plaatsing van {{employee_name}} als {{function_name}}. Startdatum: {{start_date}}.",
+  placement_employee_template_name: "",
+  placement_client_template_name: "",
+  placement_employee_template_vars: ["first_name", "function_name", "company_name", "start_date", "work_location"],
+  placement_client_template_vars: ["contact_name", "employee_name", "function_name", "start_date"],
 };
 
 function numberArray(value: unknown, fallback: number[]): number[] {
@@ -63,6 +77,17 @@ function num(value: unknown, fallback: number, min = 0): number {
 
 function str(value: unknown, fallback: string): string {
   return typeof value === "string" && value.trim() ? value : fallback;
+}
+
+/** Lege string is hier betekenisvol ("geen template ingesteld"), dus niet terugvallen. */
+function optionalStr(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function stringArray(value: unknown, fallback: string[]): string[] {
+  if (!Array.isArray(value)) return fallback;
+  const parsed = value.filter((v): v is string => typeof v === "string" && v.trim().length > 0);
+  return parsed.length > 0 ? parsed : fallback;
 }
 
 export function normalizeWhatsAppAutomationSettings(raw: any): WhatsAppAutomationSettings {
@@ -92,6 +117,16 @@ export function normalizeWhatsAppAutomationSettings(raw: any): WhatsAppAutomatio
     document_expiry_message: str(source.document_expiry_message, defaults.document_expiry_message),
     placement_employee_message: str(source.placement_employee_message, defaults.placement_employee_message),
     placement_client_message: str(source.placement_client_message, defaults.placement_client_message),
+    placement_employee_template_name: optionalStr(source.placement_employee_template_name),
+    placement_client_template_name: optionalStr(source.placement_client_template_name),
+    placement_employee_template_vars: stringArray(
+      source.placement_employee_template_vars,
+      defaults.placement_employee_template_vars,
+    ),
+    placement_client_template_vars: stringArray(
+      source.placement_client_template_vars,
+      defaults.placement_client_template_vars,
+    ),
   };
 }
 
