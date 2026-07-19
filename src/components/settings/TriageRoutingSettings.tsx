@@ -7,14 +7,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
-// Categorie-labels uit de mail-triage (EmailInbox.tsx → classifyEmailMessage). Per categorie
-// kun je een vaste eigenaar kiezen; leeg = de triagetaak gaat naar de gebruiker die triëert.
+// De `key` is de opgeslagen sleutel in settings.triage_routing en moet gelijk blijven
+// aan de labels uit EmailInbox.tsx → classifyEmailMessage. Alleen `label` is zichtbaar.
 const TRIAGE_LABELS: { key: string; label: string; hint: string }[] = [
-  { key: 'CV', label: 'CV / sollicitatie', hint: 'Inkomende cv’s en sollicitaties' },
-  { key: 'Klantvraag', label: 'Klantvraag', hint: 'Vragen/verzoeken van opdrachtgevers' },
-  { key: 'Partner', label: 'Partner', hint: 'Recruitment- en samenwerkingspartners' },
-  { key: 'Ruis', label: 'Ruis', hint: 'Nieuwsbrieven, spam, niet-relevant' },
-  { key: 'Review', label: 'Overig / review', hint: 'Niet automatisch te classificeren' },
+  { key: 'CV', label: 'Sollicitatie of cv', hint: 'Iemand solliciteert of stuurt een cv' },
+  { key: 'Klantvraag', label: 'Vraag van een opdrachtgever', hint: 'Een klant vraagt of meldt iets' },
+  { key: 'Partner', label: 'Partner of bureau', hint: 'Samenwerkingspartners en andere bureaus' },
+  { key: 'Ruis', label: 'Niet relevant', hint: 'Nieuwsbrieven, reclame en spam' },
+  { key: 'Review', label: 'Weet het niet zeker', hint: 'De AI kon dit niet met zekerheid indelen' },
 ];
 
 const SELF = '__self__';
@@ -61,7 +61,7 @@ const TriageRoutingSettings = () => {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['triage-routing-settings', orgId] });
-      toast.success('Triage-routering bijgewerkt');
+      toast.success('Opgeslagen — nieuwe e-mails gaan naar de gekozen persoon');
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -70,12 +70,13 @@ const TriageRoutingSettings = () => {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          <Inbox className="h-4 w-4" /> Mail-triage routering
+          <Inbox className="h-4 w-4" /> Wie pakt welke e-mail op?
         </CardTitle>
         <CardDescription>
-          Bepaal per categorie wie de triagetaak krijgt wanneer je een inkomende e-mail triëert in het
-          Postvak. Laat een categorie op <strong>“De triërende gebruiker”</strong> staan om de taak (zoals nu)
-          aan jezelf toe te wijzen.
+          Verwerk je een e-mail in het Postvak, dan maakt het systeem daar een taak van. Hier kies je per
+          soort e-mail wie die taak krijgt — bijvoorbeeld: sollicitaties altijd naar de recruiter, vragen
+          van opdrachtgevers naar de accountmanager. Staat er <strong>“Wie de e-mail verwerkt”</strong>, dan
+          blijft de taak bij degene die hem op dat moment oppakt.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -92,7 +93,7 @@ const TriageRoutingSettings = () => {
             >
               <SelectTrigger className="w-56 shrink-0"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value={SELF}>De triërende gebruiker</SelectItem>
+                <SelectItem value={SELF}>Wie de e-mail verwerkt</SelectItem>
                 {users.map((u: any) => (
                   <SelectItem key={u.id} value={u.id}>{u.full_name || u.email}</SelectItem>
                 ))}
