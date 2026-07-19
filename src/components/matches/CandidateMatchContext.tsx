@@ -177,10 +177,12 @@ const CandidateMatchContext = ({ candidate, compact = false, className }: Candid
           )}
         </div>
         {employers.length > 0 && (
+          /* totaleJaren niet doorgeven: de badgerij hierboven toont "X jaar
+             ervaring" al, en dat twee regels lager herhalen is precies de
+             dubbeling waar deze weergave vanaf moest. */
           <WorkHistoryTimeline
             werkgevers={employers}
             gaten={gaps}
-            totaleJaren={totalYears}
             compact
           />
         )}
@@ -199,7 +201,7 @@ const CandidateMatchContext = ({ candidate, compact = false, className }: Candid
             <p className="text-sm font-medium">Werkhistorie uit AI-dossier</p>
             {pattern && <Badge variant="outline">{PATTERN_LABEL[pattern] ?? pattern}</Badge>}
           </div>
-          <WorkHistoryTimeline werkgevers={employers} gaten={gaps} totaleJaren={totalYears} />
+          <WorkHistoryTimeline werkgevers={employers} gaten={gaps} totaleJaren={totalYears} showDetails={false} />
           <div className="grid gap-2 sm:grid-cols-2">
             {employers.slice(0, 6).map((entry, index) => (
               <div key={`${entry.bedrijf}-${entry.periode}-${index}`} className="rounded-md border bg-background p-2 text-sm">

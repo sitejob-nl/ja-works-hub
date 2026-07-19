@@ -1,134 +1,175 @@
 import { Badge } from '@/components/ui/badge';
-
-interface WorkEntry {
-  bedrijf: string;
-  functie: string;
-  periode: string;
-  duur_maanden: number;
-}
-
-interface Gap {
-  periode: string;
-  duur_maanden: number;
-  mogelijke_verklaring: string;
-}
+import { cn } from '@/lib/utils';
+import { durationRailClass, durationToneClass, formatWorkDuration } from '@/lib/candidateScreening';
+import { buildTickYears, buildTimelineRows, type WorkEntry, type WorkGap } from '@/lib/work-history';
 
 interface Props {
   werkgevers?: WorkEntry[];
-  gaten?: Gap[];
+  gaten?: WorkGap[];
   totaleJaren?: number;
   compact?: boolean;
+  /**
+   * false = alleen de overzichtsbalk, zonder regels per functie. Voor schermen die
+   * de losse dienstverbanden al in eigen kaarten tonen (screening, matchcontext),
+   * zodat dezelfde feiten niet twee keer onder elkaar staan.
+   */
+  showDetails?: boolean;
+  /** null onderdrukt de kop, bijvoorbeeld wanneer de omliggende kaart al "Werkhistorie" heet. */
+  title?: string | null;
   className?: string;
 }
 
-const CURRENT_YEAR = new Date().getFullYear();
-
+const COMPACT_ROW_LIMIT = 3;
+const MIN_BAR_WIDTH_PCT = 1.5;
+const GAP_BAR_CLASS = 'bg-orange-400';
+const GAP_BADGE_CLASS = 'bg-orange-100 text-orange-800 border-0';
 /**
- * Parse "2019 - 2021" or "jan 2020 - mrt 2022" into approximate start/end years.
- * Harde grens op het huidige jaar: een CV-typo ("2027") of een mis-geparste
- * "tot heden" mag de tijdlijn nooit naar de toekomst laten doorlopen. "Heden"/
- * "present" (zonder eindjaar) mapt naar het huidige jaar i.p.v. start + 1.
+ * Aangrenzende werkgevers kunnen dezelfde duur-kleur krijgen (30 en 40 maanden
+ * zijn allebei groen). Zonder scheidingslijn lopen die twee balken visueel als
+ * één blok door en is niet te zien waar de ene werkgever ophoudt. De ring in de
+ * achtergrondkleur zet er een dunne naad tussen, in licht én donker thema.
  */
-function parseYearRange(periode: string): { start: number; end: number } {
-  const nums = periode.match(/\d{4}/g);
-  const ongoing = /heden|present|current|\bnu\b|now/i.test(periode);
-  if (!nums || nums.length === 0) return { start: CURRENT_YEAR - 1, end: CURRENT_YEAR };
-  const start = Math.min(parseInt(nums[0]), CURRENT_YEAR);
-  let end = nums.length > 1
-    ? Math.min(parseInt(nums[nums.length - 1]), CURRENT_YEAR)
-    : (ongoing ? CURRENT_YEAR : Math.min(start + 1, CURRENT_YEAR));
-  if (end < start) end = start;
-  return { start, end };
-}
+const BAR_SEPARATOR_CLASS = 'ring-1 ring-background';
 
-const WorkHistoryTimeline = ({ werkgevers = [], gaten = [], totaleJaren, compact = false, className = '' }: Props) => {
+const WorkHistoryTimeline = ({
+  werkgevers = [],
+  gaten = [],
+  totaleJaren,
+  compact = false,
+  showDetails = true,
+  title = 'Tijdlijn werkgeschiedenis',
+  className = '',
+}: Props) => {
   if (werkgevers.length === 0) return null;
 
-  // Calculate timeline bounds
-  const allRanges = werkgevers.map(w => parseYearRange(w.periode));
-  const gapRanges = gaten.map(g => parseYearRange(g.periode));
-  const minYear = Math.min(...allRanges.map(r => r.start), ...gapRanges.map(r => r.start));
-  const maxYear = Math.max(...allRanges.map(r => r.end), ...gapRanges.map(r => r.end), new Date().getFullYear());
+  const rows = buildTimelineRows(werkgevers, gaten);
+  const minYear = Math.min(...rows.map((r) => r.start));
+  const maxYear = Math.max(...rows.map((r) => r.end), new Date().getFullYear());
   const totalSpan = maxYear - minYear || 1;
+  const tickYears = buildTickYears(minYear, maxYear, compact ? 4 : 6);
 
-  const COLORS = [
-    'bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-teal-500',
-    'bg-indigo-500', 'bg-cyan-500', 'bg-emerald-500',
-  ];
+  const offsets = (row: { start: number; end: number }) => {
+    const width = Math.max(((row.end - row.start) / totalSpan) * 100, MIN_BAR_WIDTH_PCT);
+    // Clampen op de rechterrand: een dienstverband in het lopende jaar krijgt
+    // anders left: 100% en valt door de overflow-hidden volledig weg.
+    const left = Math.min(Math.max(((row.start - minYear) / totalSpan) * 100, 0), 100 - width);
+    return { left: `${left}%`, width: `${width}%` };
+  };
 
-  // Year markers
-  const years: number[] = [];
-  for (let y = minYear; y <= maxYear; y++) years.push(y);
+  const visibleRows = compact ? rows.slice(0, COMPACT_ROW_LIMIT) : rows;
+  const hiddenRows = rows.length - visibleRows.length;
+  const showHeader = title != null || totaleJaren != null;
+
+  // Tekstalternatief voor de overzichtsbalk: die balk is de enige weergave in
+  // de showDetails={false}-tak, dus zonder dit label draagt kleur daar wél de
+  // betekenis. De omliggende kaarten tonen bovendien geen gaten.
+  const overviewLabel = [
+    `Werkhistorie ${minYear} tot ${maxYear}`,
+    ...rows.map((row) => `${row.title}: ${row.meta}, ${formatWorkDuration(row.months)}`),
+  ].join('. ');
 
   return (
-    <div className={`${compact ? 'space-y-2' : 'space-y-3'} ${className}`}>
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-muted-foreground">Tijdlijn werkgeschiedenis</span>
-        {totaleJaren && <Badge variant="secondary" className="text-xs">{totaleJaren} jaar ervaring</Badge>}
+    <div className={cn(compact ? 'space-y-2' : 'space-y-3', className)}>
+      {showHeader && (
+        <div className="flex items-center justify-between gap-2">
+          {title != null
+            ? <span className="text-xs font-medium text-muted-foreground">{title}</span>
+            : <span />}
+          {totaleJaren != null && <Badge variant="secondary" className="text-xs">{totaleJaren} jaar ervaring</Badge>}
+        </div>
+      )}
+
+      {/* Jaar-as: één keer bovenaan, alle balken eronder delen dezelfde schaal. */}
+      <div className="relative h-4" aria-hidden="true">
+        {tickYears.map((y, i) => (
+          <span
+            key={y}
+            className="absolute top-0 text-[10px] tabular-nums text-muted-foreground"
+            style={{
+              left: `${((y - minYear) / totalSpan) * 100}%`,
+              transform: i === 0
+                ? 'translateX(0)'
+                : i === tickYears.length - 1 ? 'translateX(-100%)' : 'translateX(-50%)',
+            }}
+          >
+            {y}
+          </span>
+        ))}
       </div>
 
-      {/* Timeline bar */}
-      <div className="relative">
-        {/* Year markers */}
-        <div className="flex justify-between mb-1">
-          {years.filter((_, i) => i % Math.max(1, Math.floor(years.length / 8)) === 0 || i === years.length - 1).map(y => (
-            <span key={y} className="text-[10px] text-muted-foreground">{y}</span>
+      {showDetails ? (
+        <ul className={compact ? 'space-y-1.5' : 'space-y-2.5'}>
+          {visibleRows.map((row) => (
+            <li key={row.key} className="space-y-1">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className={cn(
+                    'font-medium leading-snug',
+                    compact ? 'truncate text-xs' : 'text-sm',
+                    row.kind === 'gat' && 'text-orange-700',
+                  )}>
+                    {row.title}
+                  </p>
+                  {/* Periode staat in de regel zelf: de recruiter hoeft geen kleur
+                      terug te zoeken in de balk om te zien wanneer dit was. */}
+                  <p className={cn('leading-snug text-muted-foreground', compact ? 'truncate text-[11px]' : 'text-xs')}>
+                    {row.meta}
+                  </p>
+                  {!compact && row.note && (
+                    <p className="line-clamp-2 text-xs text-muted-foreground">{row.note}</p>
+                  )}
+                </div>
+                <Badge className={cn('shrink-0 text-[11px]', row.kind === 'gat' ? GAP_BADGE_CLASS : durationToneClass(row.months))}>
+                  {formatWorkDuration(row.months)}
+                </Badge>
+              </div>
+              {/* Puur visueel: elk feit staat al als tekst in de regel hierboven. */}
+              <div className="relative h-1.5 overflow-hidden rounded-full bg-muted/50" aria-hidden="true">
+                <span
+                  className={cn('absolute top-0 h-full rounded-full', row.kind === 'gat' ? GAP_BAR_CLASS : durationRailClass(row.months))}
+                  style={offsets(row)}
+                />
+              </div>
+            </li>
+          ))}
+          {hiddenRows > 0 && (
+            <li className="text-xs text-muted-foreground">+{hiddenRows} eerdere periode{hiddenRows === 1 ? '' : 's'}</li>
+          )}
+        </ul>
+      ) : (
+        /* role="img" + label: de balk is een plaatje, maar wel een plaatje dat
+           hier de enige weergave is. Screenreaders krijgen dezelfde feiten als
+           de ziende gebruiker uit de tooltips haalt. */
+        <div
+          role="img"
+          aria-label={overviewLabel}
+          className={cn('relative overflow-hidden rounded-md bg-muted/40', compact ? 'h-5' : 'h-7')}
+        >
+          {/* Gaten als achtergrondband, dienstverbanden daarbovenop — anders dekt een
+              gat een kortere baan af die er deels overheen loopt. */}
+          {rows.filter((r) => r.kind === 'gat').map((row) => (
+            <div
+              key={row.key}
+              className="absolute top-0 h-full bg-orange-200 border-l border-r border-orange-300"
+              style={offsets(row)}
+              title={`${row.title} — ${row.meta} (${formatWorkDuration(row.months)})`}
+            />
+          ))}
+          {rows.filter((r) => r.kind === 'werk').map((row) => (
+            <div
+              key={row.key}
+              className={cn(
+                'absolute top-0.5 rounded',
+                compact ? 'h-4' : 'h-6',
+                durationRailClass(row.months),
+                BAR_SEPARATOR_CLASS,
+              )}
+              style={offsets(row)}
+              title={`${row.title} — ${row.meta} (${formatWorkDuration(row.months)})`}
+            />
           ))}
         </div>
-
-        {/* Track */}
-        <div className={`relative ${compact ? 'h-5' : 'h-7'} bg-muted/40 rounded-md overflow-hidden`}>
-          {/* Gaps (red) */}
-          {gaten.map((g, i) => {
-            const range = parseYearRange(g.periode);
-            const left = ((range.start - minYear) / totalSpan) * 100;
-            const width = Math.max(((range.end - range.start) / totalSpan) * 100, 1);
-            return (
-              <div
-                key={`gap-${i}`}
-                className="absolute top-0 h-full bg-orange-200 border-l border-r border-orange-300"
-                style={{ left: `${left}%`, width: `${width}%` }}
-                title={`Gap: ${g.periode} (${g.duur_maanden} mnd) — ${g.mogelijke_verklaring}`}
-              />
-            );
-          })}
-
-          {/* Work periods */}
-          {werkgevers.map((w, i) => {
-            const range = parseYearRange(w.periode);
-            const left = ((range.start - minYear) / totalSpan) * 100;
-            const width = Math.max(((range.end - range.start) / totalSpan) * 100, 2);
-            return (
-              <div
-                key={i}
-                className={`absolute ${compact ? 'top-0.5 h-4' : 'top-0.5 h-6'} rounded ${COLORS[i % COLORS.length]} opacity-90`}
-                style={{ left: `${left}%`, width: `${width}%` }}
-                title={`${w.functie} @ ${w.bedrijf} (${w.periode}, ${w.duur_maanden} mnd)`}
-              />
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Legend */}
-      <div className="flex flex-wrap gap-x-4 gap-y-1">
-        {werkgevers.slice(0, compact ? 3 : werkgevers.length).map((w, i) => (
-          <div key={i} className="flex items-center gap-1.5 text-xs">
-            <span className={`h-2.5 w-2.5 rounded-sm ${COLORS[i % COLORS.length]}`} />
-            <span className="text-muted-foreground">{w.bedrijf}</span>
-            {!compact && <span className="font-medium">({w.duur_maanden} mnd)</span>}
-          </div>
-        ))}
-        {compact && werkgevers.length > 3 && (
-          <div className="text-xs text-muted-foreground">+{werkgevers.length - 3} meer</div>
-        )}
-        {gaten.length > 0 && (
-          <div className="flex items-center gap-1.5 text-xs">
-            <span className="h-2.5 w-2.5 rounded-sm bg-orange-200 border border-orange-300" />
-            <span className="text-orange-600">Gap ({gaten.length})</span>
-          </div>
-        )}
-      </div>
+      )}
     </div>
   );
 };
