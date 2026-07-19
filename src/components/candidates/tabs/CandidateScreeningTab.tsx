@@ -733,6 +733,7 @@ const CandidateScreeningTab = ({
             werkgevers={workEmployers}
             gaten={workGaps}
             totaleJaren={workTotalYears}
+            showDetails={false}
             className="rounded-md bg-muted/25 p-3"
           />
         )}
@@ -836,6 +837,7 @@ const CandidateScreeningTab = ({
                 werkgevers={workEmployers}
                 gaten={workGaps}
                 totaleJaren={workTotalYears}
+                showDetails={false}
                 className="mb-3 rounded-md bg-muted/25 p-3"
               />
             )}

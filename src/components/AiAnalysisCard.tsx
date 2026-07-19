@@ -235,30 +235,14 @@ const AiAnalysisCard = ({ analysis }: { analysis: AiAnalysis }) => {
               <span className="font-medium">{analysis.werkhistorie.totale_werkervaring_jaren} jaar</span>
               {analysis.werkhistorie.patroon && <PatroonBadge patroon={analysis.werkhistorie.patroon} />}
             </div>
+            {/* Eén weergave van de werkhistorie: elke regel draagt zelf functie,
+                werkgever, periode en duur, plus een balkje op de gedeelde jaar-as.
+                Gaten staan als eigen regel tussen de dienstverbanden. */}
             <WorkHistoryTimeline
               werkgevers={analysis.werkhistorie.werkgevers}
               gaten={analysis.werkhistorie.gaten}
-              totaleJaren={analysis.werkhistorie.totale_werkervaring_jaren}
+              title={null}
             />
-            <div className="space-y-2">
-              {analysis.werkhistorie.werkgevers?.map((w, i) => (
-                <div key={i} className="text-sm border-l-2 border-muted pl-3 py-1">
-                  <p className="font-medium">{w.functie}</p>
-                  <p className="text-muted-foreground">{w.bedrijf} — {w.periode}</p>
-                  <p className="text-xs text-muted-foreground">{w.duur_maanden} maanden</p>
-                </div>
-              ))}
-            </div>
-            {analysis.werkhistorie.gaten && analysis.werkhistorie.gaten.length > 0 && (
-              <div className="pt-2 border-t">
-                <p className="text-xs font-medium text-orange-600 mb-1">Gaten in CV</p>
-                {analysis.werkhistorie.gaten.map((g, i) => (
-                  <div key={i} className="text-sm text-orange-600 bg-orange-50 rounded px-2 py-1 mb-1">
-                    {g.periode} ({g.duur_maanden} mnd) — {g.mogelijke_verklaring}
-                  </div>
-                ))}
-              </div>
-            )}
           </Section>
         )}
 
