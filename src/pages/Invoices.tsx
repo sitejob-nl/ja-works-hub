@@ -20,6 +20,7 @@ import { formatDate, formatEUR } from '@/lib/format';
 import { EntityLink } from '@/components/ui/entity-link';
 import { logAudit } from '@/lib/audit';
 import { extractFunctionErrorMessage } from '@/lib/functionError';
+import { toExactErrorMessage } from '@/lib/exact-errors';
 import { payrollerLabel, payrollerBadgeClass, JA_WERKT_PAYROLLERS } from '@/lib/payroller';
 import { useRolePermission } from '@/hooks/usePermissions';
 
@@ -685,8 +686,16 @@ function InvoiceDetailSheet({ invoice, lines, open, onOpenChange, onUpdate, canM
       if (data?.error) throw new Error(data.error);
       return data;
     },
-    onSuccess: (data) => { toast.success(data?.message || 'Gesynchroniseerd naar Exact Online'); onUpdate(); },
-    onError: async (e: any) => toast.error(await extractFunctionErrorMessage(e, 'Synchroniseren naar Exact Online mislukt')),
+    onSuccess: (data) => {
+      toast.success(data?.message || 'Gesynchroniseerd naar Exact Online');
+      // De sync splitst een regel in componenten; wijkt de som af van het
+      // regeltotaal, dan is dat een boekhoudkundig signaal en geen detail.
+      for (const warning of (data?.warnings ?? []) as string[]) {
+        toast.warning(warning);
+      }
+      onUpdate();
+    },
+    onError: async (e: any) => toast.error(await toExactErrorMessage(e, 'Synchroniseren naar Exact Online mislukt')),
   });
 
   return (

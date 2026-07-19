@@ -1,11 +1,14 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireRolePermission } from "../_shared/auth.ts";
 import {
   classifyExactProviderError,
   corsHeaders,
+  exactApi,
+  findExactAccountId,
   getExactToken,
   jsonError,
   jsonOk,
-  sanitizeExactErrorDetail,
+  logExactSync,
 } from "../_shared/exact-helpers.ts";
 
 Deno.serve(async (req) => {
@@ -13,72 +16,56 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const startedAt = Date.now();
+  let orgId: string | null = null;
+  let companyId: string | null = null;
+  const serviceClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return jsonError("Unauthorized", 401);
-    }
-
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
-
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) {
-      return jsonError("Unauthorized", 401);
-    }
-
-    const { data: profile } = await supabase.from("profiles").select("organization_id, role").eq("id", user.id).single();
-    if (!profile) {
-      return jsonError("Profile not found", 404);
-    }
-    // Financiële actie: alleen admin/backoffice/finance mogen relaties naar Exact pushen (consistent met exact-api).
-    if (!["admin", "backoffice", "finance"].includes(profile.role)) {
-      return jsonError("Geen toegang tot Exact-synchronisatie", 403);
-    }
-
-    const orgId = profile.organization_id;
-    const serviceClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const auth = await requireRolePermission(req, "finance.manage", corsHeaders);
+    if (auth instanceof Response) return auth;
+    orgId = auth.organizationId;
 
     const body = await req.json();
-    const { company_id } = body;
-
-    if (!company_id) {
+    companyId = body?.company_id ?? null;
+    if (!companyId) {
       return jsonError("company_id is required", 400);
     }
 
-    // Fetch Exact config (decrypted)
     const { data: exactConfig, error: configError } = await serviceClient.rpc("get_exact_token", { p_org_id: orgId });
     if (configError || !exactConfig?.length) {
       return jsonError("Exact Online niet geconfigureerd", 400);
     }
     const config = exactConfig[0];
-
     if (!config.tenant_id || !config.decrypted_webhook_secret) {
       return jsonError("Exact Online niet geconfigureerd", 400);
     }
 
-    // Get fresh token
     let tokenData;
     try {
       tokenData = await getExactToken(config.tenant_id, config.decrypted_webhook_secret);
     } catch (err: unknown) {
-      if ((err as Error).message === "REAUTH_REQUIRED") {
+      const message = (err as Error).message;
+      if (message === "REAUTH_REQUIRED") {
         return jsonError("Exact Online koppeling verlopen. Koppel opnieuw via Instellingen.", 401, {
           needs_reauth: true,
           setup_url: `https://connect.sitejob.nl/exact-setup?tenant_id=${config.tenant_id}`,
         });
       }
+      if (message === "TENANT_NOT_FOUND") {
+        return jsonError(
+          "De Exact-koppeling bestaat niet meer bij SiteJob Connect. Ontkoppel en koppel opnieuw via Instellingen.",
+          409,
+          { exact_tenant_not_found: true },
+        );
+      }
       throw err;
     }
 
-    // Fetch company
     const { data: company, error: compError } = await serviceClient
       .from("companies")
       .select("*")
-      .eq("id", company_id)
+      .eq("id", companyId)
       .eq("organization_id", orgId)
       .single();
 
@@ -86,10 +73,10 @@ Deno.serve(async (req) => {
       return jsonError("Opdrachtgever niet gevonden", 404);
     }
 
-    // Build Exact Account payload
     const accountPayload: Record<string, unknown> = {
       Name: company.name,
       Status: "C",
+      IsSales: true,
       Country: "NL",
     };
     if (company.email) accountPayload.Email = company.email;
@@ -101,67 +88,88 @@ Deno.serve(async (req) => {
     if (company.kvk_number) accountPayload.ChamberOfCommerce = company.kvk_number;
     if (company.website) accountPayload.Website = company.website;
 
-    let exactAccountId = company.exact_account_id;
+    let exactAccountId: string | null = company.exact_account_id || null;
+    let action: "updated" | "created" | "linked" = "updated";
+    let matchedOn: string | null = exactAccountId ? "opgeslagen" : null;
 
-    if (exactAccountId) {
-      // UPDATE existing Account in Exact
-      const updateRes = await fetch(
-        `${tokenData.base_url}/api/v1/${tokenData.division}/crm/Accounts(guid'${exactAccountId}')`,
-        {
-          method: "PUT",
-          headers: { Authorization: `Bearer ${tokenData.access_token}`, "Content-Type": "application/json", Accept: "application/json" },
-          body: JSON.stringify(accountPayload),
-        }
-      );
-
-      if (!updateRes.ok) {
-        const errBody = sanitizeExactErrorDetail(await updateRes.text());
-        console.error("Update account failed:", errBody);
-        return jsonError("Kon account niet bijwerken in Exact", 502, { details: errBody });
-      }
-
-      return jsonOk({
-        success: true,
-        exact_account_id: exactAccountId,
-        action: "updated",
-        message: `Relatie ${company.name} bijgewerkt in Exact Online`,
+    // Nog niet gekoppeld? Eerst zoeken op KvK / BTW / e-mail / naam. Zonder deze
+    // stap maakt elke sync een duplicaat aan voor een relatie die al bestaat.
+    if (!exactAccountId) {
+      const match = await findExactAccountId(tokenData, {
+        kvkNumber: company.kvk_number,
+        vatNumber: company.btw_number,
+        email: company.email,
+        name: company.name,
       });
-    }
-
-    // CREATE new Account in Exact
-    const createRes = await fetch(
-      `${tokenData.base_url}/api/v1/${tokenData.division}/crm/Accounts`,
-      {
-        method: "POST",
-        headers: { Authorization: `Bearer ${tokenData.access_token}`, "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify(accountPayload),
+      if (match) {
+        exactAccountId = match.id;
+        matchedOn = match.matchedOn;
+        action = "linked";
       }
-    );
-
-    if (!createRes.ok) {
-      const errBody = sanitizeExactErrorDetail(await createRes.text());
-      console.error("Create account failed:", errBody);
-      return jsonError("Kon account niet aanmaken in Exact", 502, { details: errBody });
     }
 
-    const createdAccount = await createRes.json();
-    exactAccountId = createdAccount?.d?.ID;
-
-    // Persist exact_account_id on company
     if (exactAccountId) {
-      await serviceClient.from("companies").update({ exact_account_id: exactAccountId }).eq("id", company_id);
+      await exactApi(tokenData, `crm/Accounts(guid'${exactAccountId}')`, {
+        method: "PUT",
+        body: accountPayload,
+      });
+    } else {
+      const created = await exactApi<{ d?: { ID?: string } }>(tokenData, "crm/Accounts", {
+        method: "POST",
+        body: accountPayload,
+      });
+      exactAccountId = created?.d?.ID ?? null;
+      action = "created";
+      matchedOn = "aangemaakt";
     }
+
+    if (exactAccountId && exactAccountId !== company.exact_account_id) {
+      await serviceClient.from("companies").update({ exact_account_id: exactAccountId }).eq("id", companyId);
+    }
+
+    await logExactSync(serviceClient, {
+      organizationId: orgId,
+      direction: "outbound",
+      entityType: "company",
+      entityId: companyId,
+      operation: `account_${action}`,
+      status: "success",
+      exactId: exactAccountId,
+      durationMs: Date.now() - startedAt,
+      payload: { name: company.name, matched_on: matchedOn },
+    });
+
+    const messages: Record<typeof action, string> = {
+      created: `Relatie ${company.name} aangemaakt in Exact Online`,
+      updated: `Relatie ${company.name} bijgewerkt in Exact Online`,
+      linked: `Relatie ${company.name} gekoppeld aan een bestaande Exact-relatie (gevonden op ${matchedOn})`,
+    };
 
     return jsonOk({
       success: true,
       exact_account_id: exactAccountId,
-      action: "created",
-      message: `Relatie ${company.name} aangemaakt in Exact Online`,
+      action,
+      matched_on: matchedOn,
+      message: messages[action],
     });
-
   } catch (err) {
-    console.error("Exact sync account error:", err);
     const classified = classifyExactProviderError(err);
+    console.error("Exact sync account error:", classified.publicCode, classified.detail);
+
+    if (orgId) {
+      await logExactSync(serviceClient, {
+        organizationId: orgId,
+        direction: "outbound",
+        entityType: "company",
+        entityId: companyId,
+        operation: "account_sync",
+        status: "failed",
+        httpStatus: classified.providerStatus,
+        errorDetail: classified.detail,
+        durationMs: Date.now() - startedAt,
+      });
+    }
+
     return jsonError(classified.publicCode, classified.httpStatus, {
       provider_status: classified.providerStatus,
       detail: classified.detail,

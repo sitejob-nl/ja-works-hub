@@ -11,6 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { formatEUR } from '@/lib/format';
+import { extractFunctionErrorMessage } from '@/lib/functionError';
 import { TrendingUp, RefreshCw, Save, Lock, AlertTriangle } from 'lucide-react';
 
 // Roept de exact-api OData-proxy aan (rol-gate + token-refresh zitten in de edge function).
@@ -60,14 +61,32 @@ export default function Omzet() {
     [org],
   );
 
-  // Beschikbare omzetrekeningen (Type 20) uit Exact.
-  const { data: glRaw, isLoading: glLoading, error: glError, refetch: refetchGl } = useQuery({
-    queryKey: ['omzet-glaccounts', orgId],
-    queryFn: () => exactApiWithOrg('financial/GLAccounts?$filter=Type eq 20&$select=ID,Code,Description&$top=200&$orderby=Code', orgId),
+  // Beschikbare omzetrekeningen uit Exact. Via exact-list-glaccounts, dat op
+  // Type 110 (Revenue) + code-prefix 8 filtert. Eerder stond hier `Type eq 20`,
+  // maar dat is in Exact "Accounts receivable" (debiteuren) — de picker toonde
+  // dus de verkeerde rekeningen.
+  const { data: glData, isLoading: glLoading, error: glError, refetch: refetchGl } = useQuery({
+    queryKey: ['omzet-glaccounts', orgId, 'revenue'],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke('exact-list-glaccounts', {
+        body: { kind: 'revenue' },
+      });
+      if (error) throw new Error(await extractFunctionErrorMessage(error, 'Grootboekrekeningen ophalen mislukt'));
+      if (data?.error) throw new Error(data.error);
+      return data as { accounts?: Array<{ id: string; code: string; description: string | null }> };
+    },
     enabled: !!orgId && isAdmin,
     retry: false,
   });
-  const glAccounts: GLAccount[] = odataResults<GLAccount>(glRaw);
+
+  // De opgeslagen selectie in organizations.settings gebruikt het Exact-formaat
+  // ({ ID, Code, Description }); die vorm houden we aan zodat bestaande
+  // instellingen blijven werken.
+  const glAccounts: GLAccount[] = (glData?.accounts ?? []).map((account) => ({
+    ID: account.id,
+    Code: account.code,
+    Description: account.description ?? '',
+  }));
 
   // De effectieve selectie: lokaal gewijzigd of (bij eerste render) de opgeslagen set.
   const effectiveSelected = selectedIds ?? new Set(savedAccounts.map((a) => a.ID));

@@ -20,14 +20,15 @@ async function fetchRevenueGLAccounts() {
   return data as { accounts?: GLAccount[] };
 }
 
+// Exact het rijtje dat de factuur-sync ook echt gebruikt bij het splitsen van een
+// factuurregel (zie _shared/exact-invoice-lines.ts). Eerder stonden hier ook
+// nacht-/weekend-/feestdagtoeslag en wachturen, maar die konden nooit werken:
+// een factuurregel draagt geen toeslagsóórt, alleen een totaalbedrag.
 const HOUR_TYPES = [
-  { code: 'normaal', label: 'Normaal' },
+  { code: 'normaal', label: 'Normale uren' },
   { code: 'overwerk', label: 'Overwerk' },
-  { code: 'toeslag_nacht', label: 'Nachttoeslag' },
-  { code: 'toeslag_weekend', label: 'Weekendtoeslag' },
-  { code: 'toeslag_feestdag', label: 'Feestdagtoeslag' },
-  { code: 'reis', label: 'Reisuren' },
-  { code: 'wacht', label: 'Wachturen' },
+  { code: 'reis', label: 'Reiskosten' },
+  { code: 'toeslagen', label: 'Toeslagen' },
 ];
 
 interface GLAccount {
@@ -126,7 +127,9 @@ export default function ExactGLAccountMappings() {
               <BookOpen className="h-5 w-5" /> Grootboekkoppelingen
             </CardTitle>
             <CardDescription>
-              Koppel uurtypes aan grootboekrekeningen in Exact Online
+              Koppel uurtypes aan grootboekrekeningen in Exact Online. Niet ingevuld? Dan gebruikt de
+              factuur-sync de rekening van &quot;Normale uren&quot;, en anders de omzetrekening die bij het
+              koppelen is gevonden.
             </CardDescription>
           </div>
           <Button variant="outline" size="sm" onClick={() => refetchGL()} disabled={glLoading}>

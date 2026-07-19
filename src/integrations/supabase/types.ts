@@ -3022,6 +3022,11 @@ export type Database = {
           base_url: string | null
           company_name: string | null
           created_at: string
+          default_glaccount_id: string | null
+          default_item_id: string | null
+          default_journal: string | null
+          default_vat_codes: Json | null
+          defaults_discovered_at: string | null
           division: number | null
           id: string
           is_active: boolean
@@ -3035,6 +3040,11 @@ export type Database = {
           base_url?: string | null
           company_name?: string | null
           created_at?: string
+          default_glaccount_id?: string | null
+          default_item_id?: string | null
+          default_journal?: string | null
+          default_vat_codes?: Json | null
+          defaults_discovered_at?: string | null
           division?: number | null
           id?: string
           is_active?: boolean
@@ -3048,6 +3058,11 @@ export type Database = {
           base_url?: string | null
           company_name?: string | null
           created_at?: string
+          default_glaccount_id?: string | null
+          default_item_id?: string | null
+          default_journal?: string | null
+          default_vat_codes?: Json | null
+          defaults_discovered_at?: string | null
           division?: number | null
           id?: string
           is_active?: boolean
@@ -3101,6 +3116,103 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "exact_glaccount_mappings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      exact_sync_log: {
+        Row: {
+          created_at: string
+          direction: string
+          duration_ms: number | null
+          entity_id: string | null
+          entity_type: string
+          error_detail: string | null
+          exact_id: string | null
+          http_status: number | null
+          id: string
+          operation: string
+          organization_id: string
+          payload: Json | null
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          direction: string
+          duration_ms?: number | null
+          entity_id?: string | null
+          entity_type: string
+          error_detail?: string | null
+          exact_id?: string | null
+          http_status?: number | null
+          id?: string
+          operation: string
+          organization_id: string
+          payload?: Json | null
+          status: string
+        }
+        Update: {
+          created_at?: string
+          direction?: string
+          duration_ms?: number | null
+          entity_id?: string | null
+          entity_type?: string
+          error_detail?: string | null
+          exact_id?: string | null
+          http_status?: number | null
+          id?: string
+          operation?: string
+          organization_id?: string
+          payload?: Json | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "exact_sync_log_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      exact_webhook_events: {
+        Row: {
+          created_at: string
+          event_action: string | null
+          event_id: string
+          exact_key: string | null
+          id: string
+          organization_id: string
+          processed_at: string
+          topic: string | null
+        }
+        Insert: {
+          created_at?: string
+          event_action?: string | null
+          event_id: string
+          exact_key?: string | null
+          id?: string
+          organization_id: string
+          processed_at?: string
+          topic?: string | null
+        }
+        Update: {
+          created_at?: string
+          event_action?: string | null
+          event_id?: string
+          exact_key?: string | null
+          id?: string
+          organization_id?: string
+          processed_at?: string
+          topic?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "exact_webhook_events_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
@@ -4290,6 +4402,8 @@ export type Database = {
           due_date: string | null
           exact_invoice_id: string | null
           exact_sync_error: string | null
+          exact_sync_started_at: string | null
+          exact_synced_at: string | null
           id: string
           invoice_date: string
           invoice_number: string
@@ -4316,6 +4430,8 @@ export type Database = {
           due_date?: string | null
           exact_invoice_id?: string | null
           exact_sync_error?: string | null
+          exact_sync_started_at?: string | null
+          exact_synced_at?: string | null
           id?: string
           invoice_date?: string
           invoice_number: string
@@ -4342,6 +4458,8 @@ export type Database = {
           due_date?: string | null
           exact_invoice_id?: string | null
           exact_sync_error?: string | null
+          exact_sync_started_at?: string | null
+          exact_synced_at?: string | null
           id?: string
           invoice_date?: string
           invoice_number?: string

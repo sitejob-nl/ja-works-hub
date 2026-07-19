@@ -1,3 +1,21 @@
+import {
+  buildAccountMatchQueries,
+  ExactApiError,
+  exactRetryDelayMs,
+  normalizeVatPercentage,
+  odataResults,
+  odataString,
+  sanitizeExactErrorDetail,
+  selectVatCodeForRate,
+  type ExactAccountMatchKeys,
+  type ExactVatCodeRow,
+} from "./exact-format.ts";
+
+// De pure reken- en classificatieregels staan in exact-format.ts (Deno-vrij, zodat
+// ze in vitest getest kunnen worden). Ze horen bij dezelfde publieke API, dus we
+// exporteren ze hier door: bestaande imports uit exact-helpers blijven werken.
+export * from "./exact-format.ts";
+
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-webhook-secret",
@@ -11,41 +29,6 @@ export interface ExactTokenResponse {
   expires_at: string;
 }
 
-export type ExactProviderErrorKind =
-  | "division_scope_error"
-  | "needs_reauth"
-  | "provider_forbidden"
-  | "provider_unavailable"
-  | "unknown_provider_error";
-
-export type ExactProviderErrorClassification = {
-  kind: ExactProviderErrorKind;
-  publicCode:
-    | "exact_division_scope_error"
-    | "needs_reauth"
-    | "exact_provider_forbidden"
-    | "exact_provider_unavailable"
-    | "exact_provider_error";
-  httpStatus: number;
-  providerStatus: number | null;
-  detail: string;
-};
-
-export class ExactApiError extends Error {
-  method: string;
-  path: string;
-  status: number;
-  detail: string;
-
-  constructor(args: { method: string; path: string; status: number; detail: string }) {
-    super(`Exact ${args.method} ${args.path} -> ${args.status}: ${args.detail}`);
-    this.name = "ExactApiError";
-    this.method = args.method;
-    this.path = args.path;
-    this.status = args.status;
-    this.detail = args.detail;
-  }
-}
 
 export type ExactWebhookConfig = {
   id: string;
@@ -73,94 +56,6 @@ export function getExactWebhookCallbackUrl(): string {
     ?? getExactConnectUrl("exact-webhook-router");
 }
 
-export function sanitizeExactErrorDetail(raw: unknown, maxLength = 500): string {
-  const value = raw instanceof Error ? raw.message : String(raw ?? "onbekende fout");
-  return value
-    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
-    .replace(/access[_-]?token["':=\s]+[A-Za-z0-9._~+/=-]+/gi, "access_token=[redacted]")
-    .replace(/refresh[_-]?token["':=\s]+[A-Za-z0-9._~+/=-]+/gi, "refresh_token=[redacted]")
-    .slice(0, maxLength);
-}
-
-function providerStatusFromMessage(message: string): number | null {
-  const match = /(?:->|failed\s*\()\s*(\d{3})/i.exec(message);
-  if (!match?.[1]) return null;
-  const status = Number(match[1]);
-  return Number.isFinite(status) ? status : null;
-}
-
-export function classifyExactProviderError(error: unknown): ExactProviderErrorClassification {
-  const message = sanitizeExactErrorDetail(error);
-  const status = error instanceof ExactApiError
-    ? error.status
-    : providerStatusFromMessage(message);
-  const normalized = message.toLowerCase();
-
-  if (
-    normalized.includes("exact_needs_reauth") ||
-    normalized.includes("reauth_required") ||
-    normalized.includes("needs_reauth")
-  ) {
-    return {
-      kind: "needs_reauth",
-      publicCode: "needs_reauth",
-      httpStatus: 409,
-      providerStatus: status,
-      detail: message,
-    };
-  }
-
-  if (
-    normalized.includes("user division is not within division scope") ||
-    normalized.includes("wrongdivision") ||
-    normalized.includes("division is not within division scope")
-  ) {
-    return {
-      kind: "division_scope_error",
-      publicCode: "exact_division_scope_error",
-      httpStatus: 409,
-      providerStatus: status ?? 403,
-      detail: message,
-    };
-  }
-
-  if (status === 401 || status === 403) {
-    return {
-      kind: "provider_forbidden",
-      publicCode: "exact_provider_forbidden",
-      httpStatus: 502,
-      providerStatus: status,
-      detail: message,
-    };
-  }
-
-  if (
-    status === 429 ||
-    status === 500 ||
-    status === 502 ||
-    status === 503 ||
-    status === 504 ||
-    normalized.includes("etimedout") ||
-    normalized.includes("econnreset") ||
-    normalized.includes("rate limit")
-  ) {
-    return {
-      kind: "provider_unavailable",
-      publicCode: "exact_provider_unavailable",
-      httpStatus: 502,
-      providerStatus: status,
-      detail: message,
-    };
-  }
-
-  return {
-    kind: "unknown_provider_error",
-    publicCode: "exact_provider_error",
-    httpStatus: 502,
-    providerStatus: status,
-    detail: message,
-  };
-}
 
 function organizationIdFromRequest(req: Request): string | null {
   const url = new URL(req.url);
@@ -276,6 +171,12 @@ export async function getExactToken(tenantId: string, webhookSecret: string): Pr
       if (data.needs_reauth) {
         throw new Error("REAUTH_REQUIRED");
       }
+      // Connect kent deze tenant niet (meer). Apart van REAUTH_REQUIRED omdat
+      // opnieuw autoriseren niet helpt: er moet een nieuwe tenant geregistreerd
+      // worden. exact-register/-disconnect gebruiken dit om te herstellen.
+      if (res.status === 404 || /tenant\s*not\s*found/i.test(String(data.error ?? ""))) {
+        throw new Error("TENANT_NOT_FOUND");
+      }
       throw new Error(data.error || (res.status === 503 ? "Connect bleef bezig (503)" : "Token ophalen mislukt"));
     }
     tokenCache.set(cacheKey, data as ExactTokenResponse);
@@ -296,12 +197,15 @@ export type GLAccountRow = {
   IsBlocked?: boolean | null;
 };
 
-async function exactApi<T = unknown>(
+
+const MAX_EXACT_API_ATTEMPTS = 4;
+
+export async function exactApi<T = unknown>(
   token: ExactTokenResponse,
   path: string,
   init?: { method?: string; body?: unknown; query?: Record<string, string> },
 ): Promise<T> {
-  const method = init?.method ?? "GET";
+  const method = (init?.method ?? "GET").toUpperCase();
   const url = new URL(`${token.base_url}/api/v1/${token.division}/${path}`);
   if (init?.query) {
     for (const [key, value] of Object.entries(init.query)) {
@@ -309,18 +213,32 @@ async function exactApi<T = unknown>(
     }
   }
 
-  const res = await fetch(url.toString(), {
-    method,
-    headers: {
-      Authorization: `Bearer ${token.access_token}`,
-      Accept: "application/json",
-      ...(init?.body ? { "Content-Type": "application/json" } : {}),
-    },
-    body: init?.body ? JSON.stringify(init.body) : undefined,
-  });
+  for (let attempt = 1; ; attempt++) {
+    const res = await fetch(url.toString(), {
+      method,
+      headers: {
+        Authorization: `Bearer ${token.access_token}`,
+        Accept: "application/json",
+        ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      },
+      body: init?.body ? JSON.stringify(init.body) : undefined,
+    });
 
-  const text = await res.text();
-  if (!res.ok) {
+    const text = await res.text();
+    if (res.ok) {
+      if (!text) return undefined as T;
+      return JSON.parse(text) as T;
+    }
+
+    // 429 = door Exact geweigerd, dus gegarandeerd niet uitgevoerd → altijd veilig
+    // om te herhalen. Een 5xx is ambigu: bij een schrijvende call kan de boeking
+    // tóch zijn aangemaakt, dus die herhalen we bewust NIET (dubbele factuur).
+    const retryable = res.status === 429 || (method === "GET" && [500, 502, 503, 504].includes(res.status));
+    if (retryable && attempt < MAX_EXACT_API_ATTEMPTS) {
+      await new Promise((r) => setTimeout(r, exactRetryDelayMs(res.headers, attempt)));
+      continue;
+    }
+
     let detail = text;
     try {
       const parsed = JSON.parse(text);
@@ -330,9 +248,220 @@ async function exactApi<T = unknown>(
     }
     throw new ExactApiError({ method, path, status: res.status, detail });
   }
+}
 
-  if (!text) return undefined as T;
-  return JSON.parse(text) as T;
+
+export async function listExactVatCodes(token: ExactTokenResponse): Promise<ExactVatCodeRow[]> {
+  const response = await exactApi(token, "vat/VATCodes", {
+    query: {
+      $select: "ID,Code,Description,Percentage,Type,VATTransactionType,IsBlocked",
+      $top: "500",
+    },
+  });
+  return odataResults<ExactVatCodeRow>(response);
+}
+
+// ── Dagboek (Journal) ────────────────────────────────────────────────────────
+/** Verkoopdagboek = Journal met Type 20. Geeft de Code terug (bv. "80"). */
+export async function findSalesJournalCode(token: ExactTokenResponse): Promise<string | null> {
+  const response = await exactApi(token, "financial/Journals", {
+    query: { $select: "Code,Description,Type", $filter: "Type eq 20", $top: "50" },
+  });
+  const rows = odataResults<{ Code?: string }>(response);
+  const codes = rows
+    .map((row) => String(row.Code ?? "").trim())
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b));
+  return codes[0] ?? null;
+}
+
+// ── Artikel (Item) ───────────────────────────────────────────────────────────
+/**
+ * Exact vereist een Item op een verkoopfactuurregel. Wij factureren uren, geen
+ * artikelen, dus zoeken we één generiek dienstartikel op (en maken het alleen aan
+ * als het écht niet bestaat). Faalt dit, dan geven we null terug en laat de
+ * sync het veld weg — dan bepaalt Exact zelf of dat acceptabel is.
+ */
+export async function findOrCreateGenericItem(token: ExactTokenResponse): Promise<string | null> {
+  const findByCode = async (code: string) => {
+    const response = await exactApi(token, "logistics/Items", {
+      query: { $select: "ID,Code", $filter: `Code eq '${odataString(code)}'`, $top: "1" },
+    });
+    return odataResults<{ ID?: string }>(response)[0]?.ID ?? null;
+  };
+
+  try {
+    const existing = await findByCode("DIVERSEN");
+    if (existing) return existing;
+
+    const anySalesItem = await exactApi(token, "logistics/Items", {
+      query: { $select: "ID,Code", $filter: "IsSalesItem eq true", $top: "1" },
+    });
+    const fallback = odataResults<{ ID?: string }>(anySalesItem)[0]?.ID;
+    if (fallback) return fallback;
+
+    const created = await exactApi<{ d?: { ID?: string } }>(token, "logistics/Items", {
+      method: "POST",
+      body: { Code: "DIVERSEN", Description: "Diversen", IsSalesItem: true },
+    });
+    return created?.d?.ID ?? null;
+  } catch (err) {
+    console.warn("Exact: generiek artikel niet beschikbaar:", sanitizeExactErrorDetail(err));
+    return null;
+  }
+}
+
+
+/**
+ * Zoekt een bestaande relatie in Exact. Accepteert alleen een **eenduidige**
+ * treffer: bij meerdere hits op dezelfde sleutel weten we niet welke bedoeld is
+ * en gaan we door naar de volgende (of laten we de beller een nieuwe aanmaken).
+ */
+export async function findExactAccountId(
+  token: ExactTokenResponse,
+  keys: ExactAccountMatchKeys,
+): Promise<{ id: string; matchedOn: string } | null> {
+  for (const { key, filter } of buildAccountMatchQueries(keys)) {
+    try {
+      const response = await exactApi(token, "crm/Accounts", {
+        query: { $select: "ID,Name", $filter: filter, $top: "2" },
+      });
+      const rows = odataResults<{ ID?: string }>(response);
+      if (rows.length === 1 && rows[0].ID) {
+        return { id: rows[0].ID, matchedOn: key };
+      }
+    } catch (err) {
+      // Een onbruikbare sleutel (bv. veld niet gevuld in deze administratie) mag
+      // de hele sync niet blokkeren — probeer gewoon de volgende.
+      console.warn(`Exact account-zoekactie op ${key} mislukt:`, sanitizeExactErrorDetail(err));
+    }
+  }
+  return null;
+}
+
+// ── Administratie-defaults (journal / omzet-GL / artikel / BTW) ──────────────
+export type ExactDefaults = {
+  journal: string | null;
+  glAccountId: string | null;
+  itemId: string | null;
+  vatCodes: Record<string, string>;
+};
+
+/**
+ * Vult ontbrekende administratie-defaults aan en slaat ze op, zodat een volgende
+ * sync ze niet opnieuw hoeft te ontdekken. Elk onderdeel is best-effort: wat niet
+ * gevonden wordt blijft leeg en wordt door de sync weggelaten.
+ */
+export async function ensureExactDefaults(
+  serviceClient: any,
+  organizationId: string,
+  token: ExactTokenResponse,
+  stored: {
+    default_journal?: string | null;
+    default_glaccount_id?: string | null;
+    default_item_id?: string | null;
+    default_vat_codes?: Record<string, string> | null;
+  },
+  options: { vatRates?: Array<number | string> } = {},
+): Promise<ExactDefaults> {
+  const defaults: ExactDefaults = {
+    journal: stored.default_journal ?? null,
+    glAccountId: stored.default_glaccount_id ?? null,
+    itemId: stored.default_item_id ?? null,
+    vatCodes: { ...(stored.default_vat_codes ?? {}) },
+  };
+
+  const updates: Record<string, unknown> = {};
+
+  if (!defaults.journal) {
+    try {
+      defaults.journal = await findSalesJournalCode(token);
+      if (defaults.journal) updates.default_journal = defaults.journal;
+    } catch (err) {
+      console.warn("Exact: verkoopdagboek niet gevonden:", sanitizeExactErrorDetail(err));
+    }
+  }
+
+  if (!defaults.glAccountId) {
+    try {
+      const candidates = await listGLAccountCandidates(token, [110], "8");
+      defaults.glAccountId = candidates[0]?.ID ?? null;
+      if (defaults.glAccountId) updates.default_glaccount_id = defaults.glAccountId;
+    } catch (err) {
+      console.warn("Exact: omzetrekening niet gevonden:", sanitizeExactErrorDetail(err));
+    }
+  }
+
+  if (!defaults.itemId) {
+    defaults.itemId = await findOrCreateGenericItem(token);
+    if (defaults.itemId) updates.default_item_id = defaults.itemId;
+  }
+
+  const wantedRates = (options.vatRates ?? [])
+    .map((rate) => normalizeVatPercentage(rate))
+    .filter((rate): rate is number => rate !== null)
+    .map((rate) => String(rate));
+  const missingRates = wantedRates.filter((rate) => !defaults.vatCodes[rate]);
+
+  if (missingRates.length > 0) {
+    try {
+      const vatRows = await listExactVatCodes(token);
+      for (const rate of missingRates) {
+        const code = selectVatCodeForRate(vatRows, rate);
+        if (code) defaults.vatCodes[rate] = code;
+      }
+      updates.default_vat_codes = defaults.vatCodes;
+    } catch (err) {
+      console.warn("Exact: BTW-codes niet gevonden:", sanitizeExactErrorDetail(err));
+    }
+  }
+
+  if (Object.keys(updates).length > 0) {
+    updates.defaults_discovered_at = new Date().toISOString();
+    const { error } = await serviceClient
+      .from("exact_config")
+      .update(updates)
+      .eq("organization_id", organizationId);
+    if (error) console.warn("Exact: defaults opslaan mislukt:", error.message);
+  }
+
+  return defaults;
+}
+
+// ── Sync-audittrail ──────────────────────────────────────────────────────────
+export type ExactSyncLogEntry = {
+  organizationId: string;
+  direction: "outbound" | "inbound";
+  entityType: string;
+  entityId?: string | null;
+  operation: string;
+  status: "success" | "failed" | "skipped";
+  exactId?: string | null;
+  httpStatus?: number | null;
+  errorDetail?: string | null;
+  durationMs?: number | null;
+  payload?: Record<string, unknown> | null;
+};
+
+/** Logt een sync-actie. Faalt stil: een kapotte logregel mag nooit een sync breken. */
+export async function logExactSync(serviceClient: any, entry: ExactSyncLogEntry): Promise<void> {
+  try {
+    await serviceClient.from("exact_sync_log").insert({
+      organization_id: entry.organizationId,
+      direction: entry.direction,
+      entity_type: entry.entityType,
+      entity_id: entry.entityId ?? null,
+      operation: entry.operation,
+      status: entry.status,
+      exact_id: entry.exactId ?? null,
+      http_status: entry.httpStatus ?? null,
+      error_detail: entry.errorDetail ? sanitizeExactErrorDetail(entry.errorDetail) : null,
+      duration_ms: entry.durationMs ?? null,
+      payload: entry.payload ?? null,
+    });
+  } catch (err) {
+    console.warn("Exact sync-log schrijven mislukt:", (err as Error).message);
+  }
 }
 
 export async function listGLAccountCandidates(
