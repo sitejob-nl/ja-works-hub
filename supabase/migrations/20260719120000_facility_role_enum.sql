@@ -1,0 +1,18 @@
+-- Rol "Facility" toevoegen aan user_role.
+--
+-- Facility is intern personeel dat het vastgoed en het wagenpark beheert
+-- (huisvesting, sleutels, inspecties, voertuigen, schades, kilometers).
+-- Bewust GEEN toegang tot financiele gegevens en geen recruitmentrechten.
+--
+-- Waarom staat deze ALTER TYPE alleen in dit bestand, zonder BEGIN/COMMIT?
+--   Postgres verbiedt het GEBRUIKEN van een enumwaarde in dezelfde transactie
+--   waarin die waarde is toegevoegd ("unsafe use of new value of enum type").
+--   De Supabase CLI draait elk migratiebestand in een eigen transactie, dus
+--   zodra dezelfde migratie ook maar een vergelijking met 'facility'::user_role
+--   zou doen, faalt de hele migratie. Alle autorisatielogica die de nieuwe
+--   waarde daadwerkelijk aanspreekt staat daarom in de volgende migratie
+--   (20260719120100_facility_role_authz.sql).
+--
+-- IF NOT EXISTS maakt dit herhaalbaar: een enumwaarde is niet te verwijderen,
+-- dus een tweede run mag geen fout opleveren.
+ALTER TYPE public.user_role ADD VALUE IF NOT EXISTS 'facility';

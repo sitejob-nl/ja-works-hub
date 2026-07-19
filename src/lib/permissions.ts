@@ -1,6 +1,9 @@
 import type { Database } from '@/integrations/supabase/types';
 
-export type UserRole = Database['public']['Enums']['user_role'];
+// 'facility' bestaat in de database (migratie 20260719120000) maar zit nog niet
+// in de gegenereerde types; die worden pas bij de eerstvolgende regeneratie
+// bijgewerkt en mogen niet met de hand worden aangepast.
+export type UserRole = Database['public']['Enums']['user_role'] | 'facility';
 
 export type PermissionKey =
   | 'candidates.view'
@@ -23,6 +26,12 @@ export type PermissionKey =
   | 'settings.manage'
   | 'settings.permissions.manage';
 
+/**
+ * Cast voor Supabase-queries die op de rolkolom filteren: de gegenereerde
+ * enum-typen kennen 'facility' nog niet, de database wel.
+ */
+export const asStoredRoles = (roles: UserRole[]) => roles as Database['public']['Enums']['user_role'][];
+
 export type RolePermissionMatrix = Record<UserRole, Record<PermissionKey, boolean>>;
 export type UserPermissionOverrides = Partial<Record<PermissionKey, boolean>>;
 export type PermissionSource = 'admin' | 'user_allow' | 'user_deny' | 'role';
@@ -39,11 +48,12 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   intercedent: 'Intercedent',
   backoffice: 'Backoffice',
   finance: 'Finance',
+  facility: 'Facility',
   medewerker: 'Medewerkerportaal',
   opdrachtgever: 'Opdrachtgeverportaal',
 };
 
-export const CONFIGURABLE_ROLES: UserRole[] = ['admin', 'intercedent', 'backoffice', 'finance', 'medewerker', 'opdrachtgever'];
+export const CONFIGURABLE_ROLES: UserRole[] = ['admin', 'intercedent', 'backoffice', 'finance', 'facility', 'medewerker', 'opdrachtgever'];
 
 export const PERMISSIONS: PermissionDefinition[] = [
   { key: 'candidates.view', label: 'Kandidaten bekijken', description: 'Kandidaatlijsten en dossiers openen.', group: 'Kandidaten' },
@@ -122,6 +132,11 @@ export const DEFAULT_ROLE_PERMISSIONS: RolePermissionMatrix = {
     'finance.view',
     'finance.manage',
   ]),
+  // Facility beheert huisvesting en wagenpark. Die schermen hangen niet aan een
+  // eigen permissiesleutel maar aan RLS (is_facility_user, migratie
+  // 20260719120100); candidates.view is nodig om bewoners en bestuurders bij
+  // naam te tonen. Financiele rechten staan bewust uit.
+  facility: defaults(['candidates.view']),
   medewerker: defaults([]),
   opdrachtgever: defaults([]),
 };

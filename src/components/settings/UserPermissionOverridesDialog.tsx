@@ -28,7 +28,7 @@ export type PermissionManagedUser = {
   id: string;
   email: string;
   full_name: string;
-  role: 'admin' | 'intercedent' | 'backoffice' | 'finance';
+  role: UserRole;
   permission_overrides: UserPermissionOverrides;
   permission_override_count: number;
 };

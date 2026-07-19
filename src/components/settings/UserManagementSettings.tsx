@@ -31,7 +31,7 @@ import { useOutlookAccounts } from '@/hooks/useOutlookAccounts';
 import { supabase } from '@/integrations/supabase/client';
 import { ROLE_LABELS, type UserPermissionOverrides, type UserRole } from '@/lib/permissions';
 
-type InternalRole = 'admin' | 'intercedent' | 'backoffice' | 'finance';
+type InternalRole = 'admin' | 'intercedent' | 'backoffice' | 'finance' | 'facility';
 
 type InternalUser = PermissionManagedUser & {
   is_active: boolean;
@@ -60,7 +60,10 @@ type InviteResponse = {
   invites: InternalInvite[];
 };
 
-const INTERNAL_ROLES: InternalRole[] = ['admin', 'intercedent', 'backoffice', 'finance'];
+const INTERNAL_ROLES: InternalRole[] = ['admin', 'intercedent', 'backoffice', 'finance', 'facility'];
+// Rollen met een vaste rechtenset: geen knop voor individuele uitzonderingen.
+// De edge function weigert deze rollen ook server-side (internal-user-invites).
+const FIXED_PERMISSION_ROLES: UserRole[] = ['admin', 'facility'];
 
 const STATUS_LABELS: Record<InternalInviteStatus, string> = {
   created: 'Link aangemaakt',
@@ -393,8 +396,8 @@ const UserManagementSettings = () => {
                         </div>
                       </TableCell>
                       <TableCell>
-                        {user.role === 'admin' ? (
-                          <Badge variant="secondary">Altijd volledig</Badge>
+                        {FIXED_PERMISSION_ROLES.includes(user.role) ? (
+                          <Badge variant="secondary">{user.role === 'admin' ? 'Altijd volledig' : 'Vaste rolrechten'}</Badge>
                         ) : (
                           <Button
                             type="button"

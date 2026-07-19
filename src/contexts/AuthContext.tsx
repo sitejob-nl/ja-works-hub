@@ -1,13 +1,12 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
-import type { Database, Tables } from '@/integrations/supabase/types';
+import type { Tables } from '@/integrations/supabase/types';
 import { useSessionIdleTimeout } from '@/hooks/useSessionIdleTimeout';
 import { signOutAndRedirect } from '@/lib/session-security';
+import type { UserRole } from '@/lib/permissions';
 
 type Profile = Tables<'profiles'>;
-
-type UserRole = Database['public']['Enums']['user_role'];
 
 interface AuthContextType {
   session: Session | null;

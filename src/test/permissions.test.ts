@@ -18,6 +18,23 @@ describe('role permissions', () => {
     expect(roleHasPermission('backoffice', 'vacancies.edit')).toBe(false);
   });
 
+  it('geeft facility alleen leesrecht op kandidaten en nooit finance', () => {
+    expect(roleHasPermission('facility', 'candidates.view')).toBe(true);
+    expect(roleHasPermission('facility', 'candidates.edit')).toBe(false);
+    expect(roleHasPermission('facility', 'finance.view')).toBe(false);
+    expect(roleHasPermission('facility', 'finance.manage')).toBe(false);
+    expect(roleHasPermission('facility', 'placements.edit')).toBe(false);
+    expect(roleHasPermission('facility', 'matching.pipeline.view')).toBe(false);
+    expect(roleHasPermission('facility', 'settings.manage')).toBe(false);
+    expect(roleHasPermission('facility', 'settings.permissions.manage')).toBe(false);
+  });
+
+  it('laat een individuele uitzondering facility geen finance geven', () => {
+    // Facility staat niet in INDIVIDUALLY_CONFIGURABLE_ROLES, dus een override
+    // mag de rol niet oprekken — de edge function weigert dit ook server-side.
+    expect(userHasPermission('facility', 'finance.view', undefined, { 'finance.view': true })).toBe(false);
+  });
+
   it('kan rechten per rol overschrijven vanuit organization settings', () => {
     const matrix = normalizeRolePermissions({
       finance: {

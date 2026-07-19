@@ -19,7 +19,7 @@ import { toast } from 'sonner';
 
 const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
   const orgId = useOrganizationId();
-  const canAssignVehicle = useHasRole(['admin', 'intercedent', 'backoffice']);
+  const canAssignVehicle = useHasRole(['admin', 'intercedent', 'backoffice', 'facility']);
   const qc = useQueryClient();
 
   const { data: assignment } = useQuery({

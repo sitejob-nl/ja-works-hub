@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Plus, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { logAudit } from '@/lib/audit';
+import { asStoredRoles } from '@/lib/permissions';
 
 const NONE = '__none__';
 
@@ -65,7 +66,7 @@ export default function CleaningTab({ property }: { property: any }) {
         .from('profiles')
         .select('id, full_name, email, role')
         .eq('organization_id', property.organization_id)
-        .in('role', ['admin', 'intercedent', 'backoffice', 'medewerker'])
+        .in('role', asStoredRoles(['admin', 'intercedent', 'backoffice', 'facility', 'medewerker']))
         .order('full_name');
       if (error) throw error;
       return data as any[];

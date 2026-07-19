@@ -10,9 +10,9 @@ import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
 import { sendViaOutlookAccount } from "../_shared/outlook-send.ts";
 import { buildOrganizationPublicUrl } from "../_shared/public-url.ts";
 
-type InternalRole = "admin" | "intercedent" | "backoffice" | "finance";
+type InternalRole = "admin" | "intercedent" | "backoffice" | "finance" | "facility";
 
-const INTERNAL_ROLES: InternalRole[] = ["admin", "intercedent", "backoffice", "finance"];
+const INTERNAL_ROLES: InternalRole[] = ["admin", "intercedent", "backoffice", "finance", "facility"];
 const PERMISSION_KEY_SET = new Set<EdgePermissionKey>(EDGE_PERMISSION_KEYS);
 const ROLE_ONLY_PERMISSION_KEY_SET = new Set<EdgePermissionKey>(["candidates.edit", "finance.manage"]);
 const ROLE_LABELS: Record<InternalRole, string> = {
@@ -20,6 +20,7 @@ const ROLE_LABELS: Record<InternalRole, string> = {
   intercedent: "Intercedent",
   backoffice: "Backoffice",
   finance: "Finance",
+  facility: "Facility",
 };
 
 const json = (body: unknown, status = 200) => jsonResponse(body, status, corsHeaders);
@@ -287,8 +288,11 @@ Deno.serve(async (req) => {
       if (target.role === "admin") {
         return json({ error: "Adminrechten kunnen niet individueel worden aangepast" }, 400);
       }
+      // Facility heeft een vaste, bewust smalle rechtenset (huisvesting en
+      // wagenpark via RLS). Individuele uitzonderingen zijn daar niet op
+      // ingericht en zouden de rol stilletjes kunnen oprekken.
       if (!["intercedent", "backoffice", "finance"].includes(target.role)) {
-        return json({ error: "Alleen interne gebruikers ondersteunen individuele rechten" }, 400);
+        return json({ error: "Deze rol ondersteunt geen individuele rechten" }, 400);
       }
 
       const { data: savedOverrides, error: saveError } = await admin.rpc(

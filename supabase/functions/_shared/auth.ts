@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient, type User } from 'https://esm.sh/@supabase/supabase-js@2';
 
-export type EdgeUserRole = 'admin' | 'intercedent' | 'backoffice' | 'finance' | 'medewerker' | 'opdrachtgever';
+export type EdgeUserRole = 'admin' | 'intercedent' | 'backoffice' | 'finance' | 'facility' | 'medewerker' | 'opdrachtgever';
 export type EdgePermissionKey =
   | 'candidates.view'
   | 'candidates.edit'
@@ -80,6 +80,11 @@ const DEFAULT_PERMISSIONS: Record<EdgeUserRole, ReadonlySet<EdgePermissionKey>> 
     'candidates.view', 'vacancies.view', 'matching.pipeline.view',
     'placements.view', 'finance.view', 'finance.manage',
   ]),
+  // Facility beheert huisvesting en wagenpark; die toegang loopt via RLS
+  // (is_facility_user), niet via deze matrix. De rol staat bewust niet in
+  // isInternalRole(), waardoor profileHasRolePermission() facility al eerder
+  // afwijst — deze regel houdt de matrix compleet en spiegelt de databasekant.
+  facility: new Set<EdgePermissionKey>(['candidates.view']),
   medewerker: new Set<EdgePermissionKey>(),
   opdrachtgever: new Set<EdgePermissionKey>(),
 };
@@ -119,6 +124,9 @@ export function internalFunctionHeaders(): Record<string, string> {
   return internalSecret ? { [INTERNAL_FUNCTION_SECRET_HEADER]: internalSecret } : {};
 }
 
+// Spiegelt public.is_internal_user() in de database. 'facility' hoort hier
+// bewust NIET bij: die rol krijgt alleen vastgoed- en wagenparktoegang via
+// eigen RLS-policies, niet de brede staftoegang die deze helper afgeeft.
 export function isInternalRole(role: string | null | undefined): boolean {
   return role === 'admin' || role === 'intercedent' || role === 'backoffice' || role === 'finance';
 }
