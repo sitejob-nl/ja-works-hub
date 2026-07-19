@@ -141,13 +141,21 @@ Deno.serve(async (req) => {
       // We valideren op de SAMENVOEGING van wat er binnenkomt en wat al in het dossier staat:
       // de COALESCE-regel hieronder laat lege waarden bestaande gegevens nooit overschrijven,
       // dus een leeg meegestuurd veld is compleet zolang het dossier de waarde al heeft.
-      const { data: existingCandidate } = await supabase
+      const { data: existingCandidate, error: existingErr } = await supabase
         .from("candidates")
         // Eén stringliteral: supabase-js leidt de rijtypes af uit de select-tekst, en een
         // samengestelde expressie laat die inferentie stuklopen.
         .select("status, phone, phone_nl, email, emergency_contact_name, emergency_contact_phone, date_of_birth, nationality, languages, has_dutch_address, address_street, address_postal, address_city, has_drivers_license, drivers_license_expiry, available_from, available_until")
         .eq("id", candidateId)
         .maybeSingle();
+
+      // Niet stil doorgaan: aan deze query hangen twee dingen tegelijk (de dossier-merge én
+      // de statusovergang nieuw → in_behandeling). Faalt hij, dan zou de validatie strenger
+      // worden dan bedoeld en een compleet profiel kunnen afkeuren.
+      if (existingErr) {
+        console.error("candidate-profile: kandidaat ophalen mislukt:", existingErr.message);
+        return json({ error: "Je gegevens konden even niet worden opgehaald. Probeer het zo nog eens." }, 500);
+      }
 
       const effectiveValues = mergeProfileValues(candidate_data, existingCandidate);
       const validation = validateProfileSubmission(effectiveValues);

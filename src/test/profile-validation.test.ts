@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 // Validatie van de publieke profielaanvullink is server-side gedeeld; we testen de pure
 // module hier rechtstreeks (zelfde patroon als matching.test.ts).
 import {
+  hasDutchAddressOnFile,
+  isDutchPostalCode,
   mergeProfileValues,
   parseIsoDate,
   summarizeProfileErrors,
@@ -211,6 +213,46 @@ describe('summarizeProfileErrors', () => {
   });
 });
 
+describe('hasDutchAddressOnFile', () => {
+  it('herkent een Nederlandse postcode als doorslaggevend', () => {
+    expect(isDutchPostalCode('5731 AB')).toBe(true);
+    expect(isDutchPostalCode('5731ab')).toBe(true);
+    expect(isDutchPostalCode('60-305')).toBe(false);
+    expect(isDutchPostalCode('')).toBe(false);
+    expect(hasDutchAddressOnFile({ address_postal: '5731 AB', has_dutch_address: false })).toBe(true);
+  });
+
+  // Dit is de kern van de fix: in productie staat has_dutch_address bij honderden kandidaten
+  // op true met een buitenlands adres (overgenomen uit Carerix "eigen huisvesting"). Zouden we
+  // het vinkje daaruit voorinvullen, dan eist het formulier een NL-postcode die ze niet hebben.
+  it('vertrouwt de vlag niet bij een buitenlands adres', () => {
+    for (const [address_postal, address_country] of [
+      ['60-305', 'PL'],
+      ['905700', 'RO'],
+      ['2835-511', 'PT'],
+      ['', 'RO'],
+    ]) {
+      expect(hasDutchAddressOnFile({ has_dutch_address: true, address_postal, address_country })).toBe(
+        false,
+      );
+    }
+  });
+
+  it('vertrouwt de vlag wél als het land Nederlands of onbekend is', () => {
+    expect(hasDutchAddressOnFile({ has_dutch_address: true, address_country: 'NL' })).toBe(true);
+    expect(hasDutchAddressOnFile({ has_dutch_address: true, address_country: 'Nederland' })).toBe(true);
+    expect(hasDutchAddressOnFile({ has_dutch_address: true, address_country: null })).toBe(true);
+    expect(hasDutchAddressOnFile({ has_dutch_address: false, address_country: 'NL' })).toBe(false);
+  });
+
+  it('valt zonder vlag terug op straat + woonplaats (gedrag van vóór deze fix)', () => {
+    expect(hasDutchAddressOnFile({ address_street: 'Dorpsstraat 1', address_city: 'Mierlo' })).toBe(true);
+    expect(hasDutchAddressOnFile({ address_city: 'Mierlo' })).toBe(false);
+    expect(hasDutchAddressOnFile({})).toBe(false);
+    expect(hasDutchAddressOnFile(null)).toBe(false);
+  });
+});
+
 describe('parseIsoDate', () => {
   it('parseert een geldige ISO-datum', () => {
     expect(parseIsoDate('2026-07-19')?.toISOString()).toBe('2026-07-19T00:00:00.000Z');
@@ -254,9 +296,49 @@ describe('mergeProfileValues', () => {
       mergeProfileValues({ has_dutch_address: false }, { has_dutch_address: true })
         .has_dutch_address,
     ).toBe(false);
-    expect(
-      mergeProfileValues({}, { has_dutch_address: true }).has_dutch_address,
-    ).toBe(true);
+  });
+
+  // De samenvoeging mag ontbrekende gegevens aanvullen, maar nooit een eis toevoegen die de
+  // kandidaat niet op zijn scherm zag staan.
+  describe('voegt nooit voorwaardelijke eisen toe uit het dossier', () => {
+    it('laat een opgeslagen has_dutch_address geen NL-adres afdwingen', () => {
+      // Productiescenario: de vlag komt uit de Carerix-import ("eigen huisvesting") terwijl het
+      // adres in Polen ligt. De kandidaat zet het vinkje uit; de server mag hem daarna niet
+      // alsnog om een Nederlandse postcode vragen.
+      const merged = mergeProfileValues(compleet(), {
+        has_dutch_address: true,
+        address_postal: '60-305',
+        address_country: 'PL',
+      });
+      expect(merged.has_dutch_address).toBe(false);
+      expect(validate(merged).valid).toBe(true);
+    });
+
+    it('laat een opgeslagen rijbewijs geen verloopdatum afdwingen', () => {
+      const merged = mergeProfileValues(compleet(), { has_drivers_license: true });
+      expect(merged.has_drivers_license).toBe(false);
+      expect(validate(merged).valid).toBe(true);
+    });
+
+    it('haalt een geleegde einddatum niet terug uit het dossier', () => {
+      // De kandidaat maakt "beschikbaar tot" leeg en kiest een latere startdatum. De client
+      // keurt dat goed; zonder deze regel weigerde de server het op een datum die niet meer
+      // op het scherm stond.
+      const merged = mergeProfileValues(
+        compleet({ available_from: '2026-09-01', available_until: '' }),
+        { available_until: '2026-07-01' },
+      );
+      expect(merged.available_until).toBe('');
+      expect(validate(merged).valid).toBe(true);
+    });
+
+    it('controleert een wél meegestuurde einddatum gewoon', () => {
+      const merged = mergeProfileValues(
+        compleet({ available_from: '2026-09-01', available_until: '2026-07-01' }),
+        {},
+      );
+      expect(validate(merged).errors.available_until).toContain('vóór je startdatum');
+    });
   });
 
   it('keurt een profiel goed dat al compleet in het dossier staat maar niet is meegestuurd', () => {

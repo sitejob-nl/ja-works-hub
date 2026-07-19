@@ -17,8 +17,10 @@ import LanguageMultiSelect from '@/components/shared/LanguageMultiSelect';
 import { normalizeNationality, normalizeLanguages } from '@/lib/candidate-options';
 import { allowFileDrop, getDroppedFiles } from '@/lib/file-input';
 import {
-  summarizeProfileErrors,
+  hasDutchAddressOnFile,
   validateProfileSubmission,
+  PROFILE_FIELD_LABELS,
+  PROFILE_FIELD_ORDER,
   type ProfileField,
   type ProfileFieldErrors,
 } from '@/lib/profile-validation';
@@ -27,6 +29,16 @@ type PageState = 'loading' | 'invalid' | 'expired' | 'used' | 'form' | 'success'
 
 /** Anker-id per veld, zodat we naar de eerste fout kunnen scrollen. */
 const fieldAnchorId = (field: ProfileField) => `veld-${field}`;
+
+/**
+ * Postcode en stad zitten in AddressAutocomplete en hebben geen eigen anker; hun melding
+ * staat onder het adresblok. Zonder deze omleiding springt de pagina nergens heen als de
+ * postcode de enige fout is.
+ */
+const ANCHOR_FALLBACK: Partial<Record<ProfileField, ProfileField>> = {
+  address_postal: 'address_street',
+  address_city: 'address_street',
+};
 
 const FieldError = ({ message }: { message?: string }) =>
   message ? <p className="text-sm font-medium text-destructive">{message}</p> : null;
@@ -67,7 +79,13 @@ const CandidateProfile = () => {
   // averechts. De samenvatting wordt hieruit afgeleid, zodat lijst en velden niet uit
   // elkaar kunnen lopen.
   const [errors, setErrors] = useState<ProfileFieldErrors>({});
-  const missingLabels = summarizeProfileErrors(errors);
+  // Samenvatting in formuliervolgorde, mét de melding zelf: "E-mail" onder een kopje dat
+  // "ontbreekt" impliceert klopt niet als het veld gevuld is maar een typefout bevat.
+  const errorSummary = PROFILE_FIELD_ORDER.filter((field) => errors[field]).map((field) => ({
+    field,
+    label: PROFILE_FIELD_LABELS[field],
+    message: errors[field] as string,
+  }));
 
   // File state
   const [photoFile, setPhotoFile] = useState<File | null>(null);
@@ -122,7 +140,11 @@ const CandidateProfile = () => {
         setOrganizationId(data.organization_id ?? '');
 
         const c = data.candidate;
-        const hasNlAddress = c.has_dutch_address ?? (!!c.address_city && !!c.address_street);
+        // Vinkje voorinvullen op basis van het adres in het dossier, niet blind op de vlag:
+        // `has_dutch_address` komt bij veel kandidaten uit de Carerix-import van "eigen
+        // huisvesting" en staat ook op `true` bij een Pools of Roemeens adres. Blind
+        // overnemen zou die kandidaten om een Nederlandse postcode vragen die ze niet hebben.
+        const hasNlAddress = hasDutchAddressOnFile(c);
         setForm({
           first_name: c.first_name ?? '',
           last_name: c.last_name ?? '',
@@ -172,10 +194,12 @@ const CandidateProfile = () => {
   /** Toont de fouten en springt naar het eerste veld dat nog aandacht nodig heeft. */
   const showValidationErrors = (fieldErrors: ProfileFieldErrors) => {
     setErrors(fieldErrors);
-    const firstField = (Object.keys(fieldErrors) as ProfileField[])[0];
+    // Formuliervolgorde, niet sleutelvolgorde: springen naar het bovenste foute veld.
+    const firstField = PROFILE_FIELD_ORDER.find((field) => fieldErrors[field]);
     if (firstField) {
+      const anchor = ANCHOR_FALLBACK[firstField] ?? firstField;
       document
-        .getElementById(fieldAnchorId(firstField))
+        .getElementById(fieldAnchorId(anchor))
         ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   };
@@ -436,9 +460,18 @@ const CandidateProfile = () => {
                 if (!v) setErrors(({ address_street, address_postal, address_city, ...rest }) => rest);
               }}
             />
-            <Label htmlFor="has-dutch-address" className="text-sm cursor-pointer leading-snug">
-              Ik heb al een (vast) adres in Nederland
-            </Label>
+            <div className="space-y-1">
+              <Label htmlFor="has-dutch-address" className="text-sm cursor-pointer leading-snug">
+                Ik heb al een (vast) adres in Nederland
+              </Label>
+              {/* Het vinkje bepaalt of straat/postcode/stad verplicht zijn. Wie nog in het
+                  buitenland woont moet weten dat weghalen de juiste actie is — anders zoekt
+                  hij naar een Nederlandse postcode die hij niet heeft. */}
+              <p className="text-xs text-muted-foreground leading-snug">
+                Woon je nog in het buitenland of weet je je Nederlandse adres nog niet? Laat dit
+                vinkje dan leeg.
+              </p>
+            </div>
           </div>
 
           {form.has_dutch_address ? (
@@ -590,20 +623,22 @@ const CandidateProfile = () => {
           </div>
         </div>
 
-        {/* Overzicht van wat er nog ontbreekt. Verschijnt pas na een verzendpoging, en
-            blokkeert het invullen niet — alleen het versturen. */}
-        {missingLabels.length > 0 && (
+        {/* Overzicht van wat er nog aandacht nodig heeft. Verschijnt pas na een verzendpoging,
+            en blokkeert het invullen niet — alleen het versturen. */}
+        {errorSummary.length > 0 && (
           <div
             role="alert"
             className="rounded-xl border border-destructive/40 bg-destructive/10 p-4 space-y-2"
           >
             <div className="flex items-center gap-2 text-sm font-semibold text-destructive">
               <AlertTriangle className="h-4 w-4 shrink-0" />
-              Nog even dit invullen
+              Controleer deze velden
             </div>
-            <ul className="list-disc pl-5 text-sm text-destructive space-y-0.5">
-              {missingLabels.map((label) => (
-                <li key={label}>{label}</li>
+            <ul className="list-disc pl-5 text-sm text-destructive space-y-1">
+              {errorSummary.map(({ field, label, message }) => (
+                <li key={field}>
+                  <span className="font-medium">{label}</span> — {message}
+                </li>
               ))}
             </ul>
           </div>

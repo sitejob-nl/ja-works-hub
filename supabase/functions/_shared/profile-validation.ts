@@ -42,6 +42,7 @@ export interface ProfileFormValues {
   address_street?: string | null;
   address_postal?: string | null;
   address_city?: string | null;
+  address_country?: string | null;
   has_drivers_license?: boolean | null;
   drivers_license_expiry?: string | null;
   available_from?: string | null;
@@ -72,7 +73,9 @@ export const PROFILE_FIELD_LABELS: Record<ProfileField, string> = {
   date_of_birth: 'Geboortedatum',
   nationality: 'Nationaliteit',
   languages: 'Talen',
-  address_street: 'Straat + huisnummer',
+  // Zelfde tekst als het invoerveld in AddressAutocomplete — anders zoekt de kandidaat in de
+  // samenvatting naar een label dat nergens boven een veld staat.
+  address_street: 'Straat + huisnr',
   address_postal: 'Postcode',
   address_city: 'Stad',
   drivers_license_expiry: 'Verloopdatum rijbewijs',
@@ -108,9 +111,49 @@ const MIN_PHONE_DIGITS = 7;
 const MIN_AGE_YEARS = 16;
 const MAX_AGE_YEARS = 100;
 
+/** Landwaarden die "Nederland" betekenen. Het dossier bevat zowel ISO-codes als vrije tekst. */
+const DUTCH_COUNTRY_VALUES = new Set([
+  'nl',
+  'nld',
+  'nederland',
+  'netherlands',
+  'the netherlands',
+  'holland',
+]);
+
 const text = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
 
 const countDigits = (value: string): number => (value.match(/\d/g) ?? []).length;
+
+/** Heeft deze waarde de vorm van een Nederlandse postcode (1234 AB)? */
+export function isDutchPostalCode(value: unknown): boolean {
+  return NL_POSTAL_PATTERN.test(text(value));
+}
+
+/**
+ * Staat er in het dossier werkelijk een Nederlands adres?
+ *
+ * `has_dutch_address` alléén is hiervoor niet betrouwbaar: de vlag komt bij honderden
+ * kandidaten uit de Carerix-import van "eigen huisvesting" (`_10232`), niet uit een
+ * Nederlands adres. In productie staat de vlag daardoor massaal op `true` bij een Pools,
+ * Roemeens of Portugees adres. Zouden we het vinkje op de profielpagina daaruit
+ * voorinvullen, dan vraagt het formulier die kandidaten om een NL-postcode die ze niet
+ * hebben — en loopt de inzending vast op data die zij niet hebben ingevoerd.
+ *
+ * Daarom: een herkenbare NL-postcode is doorslaggevend, een expliciet buitenlands land
+ * sluit het uit, en pas als het land Nederlands of onbekend is vertrouwen we op de vlag
+ * (en zonder vlag op straat + woonplaats, zoals de pagina het altijd al deed).
+ */
+export function hasDutchAddressOnFile(values: ProfileFormValues | null | undefined): boolean {
+  const current = values ?? {};
+  if (isDutchPostalCode(current.address_postal)) return true;
+
+  const country = text(current.address_country).toLowerCase();
+  if (country && !DUTCH_COUNTRY_VALUES.has(country)) return false;
+
+  if (typeof current.has_dutch_address === 'boolean') return current.has_dutch_address;
+  return Boolean(text(current.address_street) && text(current.address_city));
+}
 
 /**
  * Parse een `YYYY-MM-DD`-string naar een UTC-datum. Geeft null bij een onmogelijke datum
@@ -280,6 +323,12 @@ export function summarizeProfileErrors(errors: ProfileFieldErrors): string[] {
  * bestaande kandidaatgegevens nooit, dus mag een leeg veld ook geen fout opleveren als het
  * dossier de waarde al heeft. Zonder deze samenvoeging zou een oudere/gecachede
  * frontend-bundel (die het veld niet meestuurt) een compleet profiel afgekeurd krijgen.
+ *
+ * De samenvoeging mag alleen ontbrekende gegevens AANVULLEN, nooit extra eisen opleggen.
+ * `has_dutch_address`, `has_drivers_license` en `available_until` doen daarom niet mee: die
+ * sturen uitsluitend voorwaardelijke eisen aan, en een dossierwaarde die de kandidaat niet op
+ * het scherm ziet mag de server nooit strenger maken dan het formulier waarop hij net
+ * "opslaan" heeft gedrukt.
  */
 export function mergeProfileValues(
   submitted: ProfileFormValues | null | undefined,
@@ -296,11 +345,13 @@ export function mergeProfileValues(
   const submittedLanguages = Array.isArray(incoming.languages) ? incoming.languages : [];
   const currentLanguages = Array.isArray(current.languages) ? current.languages : [];
 
-  const pickBoolean = (key: 'has_dutch_address' | 'has_drivers_license'): boolean => {
-    const next = incoming[key];
-    if (typeof next === 'boolean') return next;
-    return current[key] === true;
-  };
+  // Alleen wat de kandidaat NU heeft bevestigd zet een voorwaardelijke eis aan. Zonder deze
+  // regel zou een opgeslagen `has_dutch_address = true` (in productie vaak overgenomen uit
+  // Carerix "eigen huisvesting", bij een buitenlands adres) op de server alsnog een
+  // NL-postcode eisen nadat de kandidaat het vinkje had uitgezet — de client keurt dan goed
+  // wat de server weigert.
+  const pickSubmittedBoolean = (key: 'has_dutch_address' | 'has_drivers_license'): boolean =>
+    incoming[key] === true;
 
   return {
     phone: pickText('phone'),
@@ -311,13 +362,17 @@ export function mergeProfileValues(
     date_of_birth: pickText('date_of_birth'),
     nationality: pickText('nationality'),
     languages: submittedLanguages.length > 0 ? submittedLanguages : currentLanguages,
-    has_dutch_address: pickBoolean('has_dutch_address'),
+    has_dutch_address: pickSubmittedBoolean('has_dutch_address'),
     address_street: pickText('address_street'),
     address_postal: pickText('address_postal'),
     address_city: pickText('address_city'),
-    has_drivers_license: pickBoolean('has_drivers_license'),
+    address_country: pickText('address_country'),
+    has_drivers_license: pickSubmittedBoolean('has_drivers_license'),
     drivers_license_expiry: pickText('drivers_license_expiry'),
     available_from: pickText('available_from'),
-    available_until: pickText('available_until'),
+    // Einddatum is optioneel en wordt alleen gebruikt voor de check "niet vóór de startdatum".
+    // Zou hij uit het dossier worden aangevuld, dan krijgt een kandidaat die het veld juist
+    // heeft leeggemaakt een foutmelding over een datum die niet meer op zijn scherm staat.
+    available_until: text(incoming.available_until),
   };
 }
