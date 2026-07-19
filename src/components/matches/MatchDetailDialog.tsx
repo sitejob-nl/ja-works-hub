@@ -12,8 +12,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import MatchAssigneeSelect from '@/components/matches/MatchAssigneeSelect';
 import MatchInspectorDialog from '@/components/matches/MatchInspectorDialog';
 import TaskEditorSheet from '@/components/shared/TaskEditorSheet';
+import { useMatchAssignees } from '@/hooks/useMatchAssignees';
+import { assigneeName } from '@/lib/match-assignee';
 import { logAudit } from '@/lib/audit';
 import { formatDate } from '@/lib/format';
 import { getMatchStatusMeta } from '@/lib/match-status';
@@ -50,15 +53,12 @@ const formatDateTime = (value?: string | null) => value ? new Date(value).toLoca
 const fullName = (candidate: any) =>
   [candidate?.first_name, candidate?.last_name].filter(Boolean).join(' ') || 'Kandidaat onbekend';
 
-const UNASSIGNED = 'unassigned';
-
-const profileName = (profile?: { full_name?: string | null; email?: string | null } | null) =>
-  profile?.full_name || profile?.email || 'Onbekend';
+const profileName = assigneeName;
 
 const summarizeAudit = (entry: any) => {
   const oldValues = entry?.old_values ?? {};
   const newValues = entry?.new_values ?? {};
-  if ('assigned_to' in newValues) return 'Match-eigenaar gewijzigd';
+  if ('assigned_to' in newValues) return 'Accountmanager gewijzigd';
   if ('status' in newValues) {
     return `${getMatchStatusMeta(oldValues.status).label} -> ${getMatchStatusMeta(newValues.status).label}`;
   }
@@ -74,7 +74,7 @@ const MatchDetailDialog = ({ open, match, onOpenChange, onChanged, canConfirmInt
   const [location, setLocation] = useState('');
   const [interviewType, setInterviewType] = useState('op_kantoor');
   const [note, setNote] = useState('');
-  const [assignedTo, setAssignedTo] = useState(UNASSIGNED);
+  const [assignedTo, setAssignedTo] = useState<string | null>(null);
   const [newNote, setNewNote] = useState('');
   const [taskEditorOpen, setTaskEditorOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<any | null>(null);
@@ -87,7 +87,7 @@ const MatchDetailDialog = ({ open, match, onOpenChange, onChanged, canConfirmInt
     setLocation(match.interview_location ?? '');
     setInterviewType(match.interview_type ?? 'op_kantoor');
     setNote(match.interview_proposed_note ?? '');
-    setAssignedTo(match.assigned_to ?? UNASSIGNED);
+    setAssignedTo(match.assigned_to ?? null);
     setNewNote('');
     setTaskEditorOpen(false);
     setEditingTask(null);
@@ -183,20 +183,7 @@ const MatchDetailDialog = ({ open, match, onOpenChange, onChanged, canConfirmInt
     },
   });
 
-  const { data: assignees = [] } = useQuery({
-    queryKey: ['match-assignees', match?.organization_id],
-    enabled: open && !!match?.organization_id,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id, full_name, email')
-        .eq('organization_id', match.organization_id)
-        .eq('is_active', true)
-        .order('full_name');
-      if (error) throw error;
-      return data ?? [];
-    },
-  });
+  const { data: assignees = [] } = useMatchAssignees(match?.organization_id, open);
 
   const confirmMutation = useMutation({
     mutationFn: async () => {
@@ -229,9 +216,8 @@ const MatchDetailDialog = ({ open, match, onOpenChange, onChanged, canConfirmInt
   });
 
   const assignMutation = useMutation({
-    mutationFn: async (value: string) => {
+    mutationFn: async (nextAssignee: string | null) => {
       if (!match?.id) throw new Error('Geen match geselecteerd');
-      const nextAssignee = value === UNASSIGNED ? null : value;
       const { error } = await (supabase as any)
         .from('matches')
         .update({ assigned_to: nextAssignee })
@@ -247,14 +233,15 @@ const MatchDetailDialog = ({ open, match, onOpenChange, onChanged, canConfirmInt
         recordId: match.id,
         oldValues: { assigned_to: match.assigned_to ?? null },
         newValues: { assigned_to: nextAssignee },
-        reason: 'Match-eigenaar gewijzigd vanuit matchdetail',
+        reason: 'Accountmanager gewijzigd vanuit matchdetail',
       });
-      setAssignedTo(nextAssignee ?? UNASSIGNED);
+      setAssignedTo(nextAssignee);
       qc.invalidateQueries({ queryKey: ['match-pipeline'] });
+      qc.invalidateQueries({ queryKey: ['vacancy-matches'] });
       qc.invalidateQueries({ queryKey: ['match-notes', match?.id] });
       qc.invalidateQueries({ queryKey: ['match-audit-log', match?.id] });
       onChanged?.();
-      toast.success('Matchtoewijzing bijgewerkt');
+      toast.success('Accountmanager bijgewerkt');
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -386,7 +373,7 @@ const MatchDetailDialog = ({ open, match, onOpenChange, onChanged, canConfirmInt
               </div>
             </section>
             <section className="rounded-md border p-3">
-              <div className="mb-2 flex items-center gap-2 text-sm font-medium"><UserCheck className="h-4 w-4" /> Match-eigenaar</div>
+              <div className="mb-2 flex items-center gap-2 text-sm font-medium"><UserCheck className="h-4 w-4" /> Accountmanager</div>
               <div className="space-y-1 text-sm">
                 <div className="font-medium">{assignee ? profileName(assignee) : 'Nog niet toegewezen'}</div>
                 <div className="text-muted-foreground">
@@ -480,26 +467,21 @@ const MatchDetailDialog = ({ open, match, onOpenChange, onChanged, canConfirmInt
               <section className="rounded-md border p-4">
                 <div className="mb-3 flex items-center gap-2 font-medium"><UserCheck className="h-4 w-4" /> Toewijzing</div>
                 <div className="space-y-2">
-                  <Label>Match-eigenaar</Label>
-                  <Select
+                  <Label>Accountmanager</Label>
+                  <MatchAssigneeSelect
                     value={assignedTo}
-                    onValueChange={(value) => {
-                      setAssignedTo(value);
-                      assignMutation.mutate(value);
-                    }}
+                    options={assignees}
                     disabled={assignMutation.isPending}
-                  >
-                    <SelectTrigger><SelectValue placeholder="Niet toegewezen" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={UNASSIGNED}>Niet toegewezen</SelectItem>
-                      {assignees.map((profile: any) => (
-                        <SelectItem key={profile.id} value={profile.id}>
-                          {profileName(profile)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {assignee && <p className="text-xs text-muted-foreground">Deze persoon is operationeel verantwoordelijk voor opvolging.</p>}
+                    onChange={(next) => {
+                      setAssignedTo(next);
+                      assignMutation.mutate(next);
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {assignee
+                      ? 'Deze persoon is verantwoordelijk voor de opvolging en krijgt de taken uit de klantreactie.'
+                      : 'Zonder accountmanager landen de taken uit de klantreactie bij de vacature-eigenaar.'}
+                  </p>
                 </div>
               </section>
 

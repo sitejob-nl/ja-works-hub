@@ -39,6 +39,7 @@ type SignupLink = {
     id: string;
     title: string | null;
     status: string | null;
+    created_by: string | null;
     companies?: {
       name: string | null;
     } | null;
@@ -110,7 +111,7 @@ const publicLinkState = (link: SignupLink | null) => {
 const getSignupLink = async (slug: string) => {
   const { data, error } = await admin
     .from("candidate_signup_links")
-    .select("*, organizations(name, logo_url, email, phone), vacancies!candidate_signup_links_vacancy_id_fkey(id, title, status, companies!vacancies_company_id_fkey(name))")
+    .select("*, organizations(name, logo_url, email, phone), vacancies!candidate_signup_links_vacancy_id_fkey(id, title, status, created_by, companies!vacancies_company_id_fkey(name))")
     .eq("slug", slug)
     .maybeSingle();
 
@@ -356,6 +357,9 @@ Deno.serve(async (req) => {
           orgId: link.organization_id,
           vacancyId: link.vacancy_id,
           candidateId,
+          // Publieke sollicitatie: geen ingelogde gebruiker, dus de vacature-eigenaar
+          // is de accountmanager die de opvolgtaken krijgt.
+          assignedTo: link.vacancies?.created_by ?? null,
           source: "website_sollicitatie",
           notes: `Website-sollicitatie via ${link.title}${vacancyLabel ? ` voor ${vacancyLabel}` : ""}.`,
         });

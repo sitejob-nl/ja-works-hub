@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Search, Sparkles, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { createMatch } from '@/lib/match-lifecycle';
+import { resolveDefaultMatchAssignee } from '@/lib/match-assignee';
 
 interface MatchResult {
   candidateId: string;
@@ -30,7 +31,7 @@ interface VacancyMatchSheetProps {
 
 export default function VacancyMatchSheet({ open, onOpenChange, members }: VacancyMatchSheetProps) {
   const orgId = useOrganizationId();
-  const { user } = useAuth();
+  const { user, role } = useAuth();
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [selectedVacancy, setSelectedVacancy] = useState<any>(null);
@@ -122,6 +123,11 @@ export default function VacancyMatchSheet({ open, onOpenChange, members }: Vacan
                 vacancyId: vacancy.id,
                 candidateId: result.candidateId,
                 proposedBy: user?.id ?? null,
+                assignedTo: resolveDefaultMatchAssignee({
+                  currentUserId: user?.id,
+                  currentUserRole: role,
+                  vacancyCreatedBy: vacancy?.created_by,
+                }),
                 source: 'eigen_match',
               });
               matchId = newMatch.id;

@@ -20,6 +20,7 @@ import { formatDate, formatEUR } from '@/lib/format';
 import { toast } from 'sonner';
 import { type MatchBreakdown } from '@/lib/matching';
 import { createMatch } from '@/lib/match-lifecycle';
+import { resolveDefaultMatchAssignee } from '@/lib/match-assignee';
 
 const scoreBadgeClass: Record<MatchBreakdown['label'], string> = {
   groen: 'bg-stat-green/10 text-stat-green border-0',
@@ -30,7 +31,7 @@ const scoreBadgeClass: Record<MatchBreakdown['label'], string> = {
 // Reverse matching: passende OPEN vacatures voor deze kandidaat (via rank-vacancies edge fn).
 const CandidateVacancyMatchesTab = ({ candidateId, candidate }: { candidateId: string; candidate?: any }) => {
   const orgId = useOrganizationId();
-  const { user } = useAuth();
+  const { user, role } = useAuth();
   const qc = useQueryClient();
   const [minScore, setMinScore] = useState(60);
   const [vacancySearch, setVacancySearch] = useState('');
@@ -105,6 +106,11 @@ const CandidateVacancyMatchesTab = ({ candidateId, candidate }: { candidateId: s
         vacancyId: r.vacancy.id,
         candidateId,
         proposedBy: user?.id ?? null,
+        assignedTo: resolveDefaultMatchAssignee({
+          currentUserId: user?.id,
+          currentUserRole: role,
+          vacancyCreatedBy: r.vacancy?.created_by,
+        }),
         source: 'eigen_match',
         score: r.breakdown ?? null,
       });

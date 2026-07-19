@@ -80,7 +80,13 @@ type ProposalData = {
   proposal_page?: ProposalPageConfig;
   sections?: Record<string, boolean>;
   rejection_reasons: { id: string; reason: string }[];
-  contact: { manager_email: string | null; manager_phone: string | null };
+  contact: {
+    manager_name: string | null;
+    manager_email: string | null;
+    manager_phone: string | null;
+    email_is_personal?: boolean;
+    phone_is_personal?: boolean;
+  };
 };
 
 type Mode = 'op_gesprek' | 'direct_starten' | 'afwijzen' | null;
@@ -279,6 +285,7 @@ const MatchResponse = () => {
   const history = data?.history ?? [];
   const cv = data?.cv ?? (data?.cv_url ? { url: data.cv_url, file_name: 'CV', is_pdf: true } : null);
   const candidateName = `${candidate?.first_name ?? ''} ${candidate?.last_name ?? ''}`.trim();
+  const managerName = data?.contact?.manager_name;
   const managerEmail = data?.contact?.manager_email;
   const managerPhone = data?.contact?.manager_phone;
   const waPhone = managerPhone ? managerPhone.replace(/[^0-9]/g, '') : null;
@@ -630,6 +637,11 @@ const MatchResponse = () => {
                       <Separator className="my-5" />
                       <div>
                         <div className="mb-1 text-sm font-medium text-slate-900">{pageContent('contact').title}</div>
+                        {managerName && (
+                          <p className="mb-2 text-sm text-slate-700">
+                            Uw contactpersoon voor dit voorstel is <span className="font-medium text-slate-900">{managerName}</span>.
+                          </p>
+                        )}
                         {sectionBody('contact') && <p className="mb-3 whitespace-pre-line text-xs leading-5 text-muted-foreground">{sectionBody('contact')}</p>}
                         <div className="flex flex-wrap gap-2">
                           {managerEmail && !isPreview && (

@@ -9,6 +9,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
 import { storagePathFromCvValue } from "../_shared/candidate-dossier.ts";
 import { advanceMatchStatus, createMatchFollowUpTask, recordMatchProposalTokenResponse } from "../_shared/match-lifecycle.ts";
+import { resolveMatchContact } from "../_shared/match-contact.ts";
 import { resolvePublicProposalPage } from "../_shared/proposal-page.ts";
 
 const json = (body: unknown, status = 200) =>
@@ -97,7 +98,7 @@ Deno.serve(async (req) => {
     const { data: tok } = await service
       .from("match_proposal_tokens")
       .select(
-        "id, match_id, response, used_at, expires_at, content_snapshot, matches!match_proposal_tokens_match_id_fkey(status, match_score, match_breakdown, organization_id, candidate_id, vacancy_id, candidates!matches_candidate_id_fkey(id, first_name, last_name, address_city, ai_summary, ai_function_group, ai_classification, ai_positive_signals, ai_risk_factors, ai_target_functions, ai_interview_questions, skills, certifications, languages, available_from, available_until, arrival_date, availability_notes, most_recent_role, most_recent_role_year, has_drivers_license, cv_file_url), vacancies!matches_vacancy_id_fkey(title, created_by, companies:company_id(name)))",
+        "id, match_id, response, used_at, expires_at, content_snapshot, matches!match_proposal_tokens_match_id_fkey(status, match_score, match_breakdown, organization_id, assigned_to, candidate_id, vacancy_id, candidates!matches_candidate_id_fkey(id, first_name, last_name, address_city, ai_summary, ai_function_group, ai_classification, ai_positive_signals, ai_risk_factors, ai_target_functions, ai_interview_questions, skills, certifications, languages, available_from, available_until, arrival_date, availability_notes, most_recent_role, most_recent_role_year, has_drivers_license, cv_file_url), vacancies!matches_vacancy_id_fkey(title, created_by, companies:company_id(name)))",
       )
       .eq("token", token)
       .maybeSingle();
@@ -110,6 +111,10 @@ Deno.serve(async (req) => {
     const candidate = matchRow?.candidates ?? null;
     const vacancy = matchRow?.vacancies ?? null;
     const company = vacancy?.companies ?? null;
+    // Accountmanager van deze match. `matches.assigned_to` is de expliciete koppeling
+    // die intern gezet wordt; de vacature-eigenaar is het vangnet voor oude matches
+    // waarop nog niemand is toegewezen.
+    const accountManagerId: string | null = matchRow?.assigned_to ?? vacancy?.created_by ?? null;
     const snapshot = asRecord((tok as any).content_snapshot);
     const snapCandidate = asRecord(snapshot.candidate);
     const snapVacancy = asRecord(snapshot.vacancy);
@@ -136,8 +141,8 @@ Deno.serve(async (req) => {
       // korte-TTL CV-link, afwijsredenen, accountmanager-contact voor "vraag stellen".
       const [orgRes, mgrRes, reasonsRes, placementsRes, employmentRes, cvDocRes] = await Promise.all([
         service.from("organizations").select("logo_url, name, email, phone").eq("id", orgId).maybeSingle(),
-        sectionEnabled("contact") && vacancy?.created_by
-          ? service.from("profiles").select("full_name, email, phone").eq("id", vacancy.created_by).maybeSingle()
+        sectionEnabled("contact") && accountManagerId
+          ? service.from("profiles").select("full_name, email, phone").eq("id", accountManagerId).maybeSingle()
           : Promise.resolve({ data: null }),
         service.from("match_feedback_reasons").select("id, reason")
           .eq("organization_id", orgId).eq("applies_to", "afgewezen").eq("is_active", true)
@@ -261,10 +266,12 @@ Deno.serve(async (req) => {
           is_pdf: isPdfPath(cvPath),
         } : null,
         rejection_reasons: (reasonsRes as any).data ?? [],
-        contact: {
-          manager_email: sectionEnabled("contact") ? mgr?.email ?? org?.email ?? null : null,
-          manager_phone: sectionEnabled("contact") ? mgr?.phone ?? org?.phone ?? null : null,
-        },
+        // Alleen interne bronnen (accountmanager-profiel + organisatie) — zie _shared/match-contact.ts.
+        contact: resolveMatchContact({
+          enabled: sectionEnabled("contact"),
+          manager: mgr,
+          organization: org,
+        }),
       });
     }
 
@@ -276,12 +283,14 @@ Deno.serve(async (req) => {
     const rejectionReasonId = typeof body.rejection_reason_id === "string" ? body.rejection_reason_id : null;
     const note = typeof body.note === "string" ? body.note.slice(0, 2000) : null;
 
+    let rejectionReasonText: string | null = null;
     if (decision === "afwijzen") {
       if (!rejectionReasonId) return json({ error: "Reden is verplicht" }, 400);
       // Reden moet bij deze org horen en op 'afgewezen' van toepassing zijn.
       const { data: reason } = await service.from("match_feedback_reasons")
-        .select("id").eq("id", rejectionReasonId).eq("organization_id", orgId).eq("applies_to", "afgewezen").maybeSingle();
+        .select("id, reason").eq("id", rejectionReasonId).eq("organization_id", orgId).eq("applies_to", "afgewezen").maybeSingle();
       if (!reason) return json({ error: "Ongeldige reden" }, 400);
+      rejectionReasonText = typeof reason.reason === "string" ? reason.reason : null;
     }
 
     if (tok.used_at) {
@@ -325,23 +334,46 @@ Deno.serve(async (req) => {
       eventMode: "always",
     });
 
-    // Bij acceptatie/gesprek: interne opvolg-taak. Een gesprek is nog géén plaatsing;
-    // pas na klantakkoord/direct starten opent intern de plaatsingspopup.
-    if (decision !== "afwijzen") {
-      const candName = candidate ? `${candidate.first_name ?? ""} ${candidate.last_name ?? ""}`.trim() : "kandidaat";
-      const isDirectStart = decision === "direct_starten";
-      const label = isDirectStart ? "wil direct starten" : "stelde een gesprek voor";
-      await createMatchFollowUpTask(service, {
-        orgId,
-        matchId: tok.match_id,
-        assignedTo: vacancy?.created_by ?? null,
-        title: isDirectStart
-          ? `Klant keurde kandidaat goed — plaatsing voorbereiden (${candName})`
-          : `Klant stelt gesprek voor met kandidaat (${candName})`,
-        description: `De opdrachtgever ${label} voor "${vacancy?.title ?? ""}".${note ? ` Opmerking: ${note}` : ""}`,
-        priority: "high",
-        category: isDirectStart ? "plaatsing" : "matching",
-      });
+    // Interne opvolg-taak voor de accountmanager van de match. Ook bij afwijzen:
+    // zonder taak verdween een afwijzing stil in de statuslog en zag niemand dat de
+    // vacature weer een kandidaat tekortkomt. Taken zijn best-effort — een mislukte
+    // insert mag de klantreactie (die al verwerkt is) niet alsnog laten falen.
+    const candName = candidate ? `${candidate.first_name ?? ""} ${candidate.last_name ?? ""}`.trim() : "kandidaat";
+    const vacancyTitle = vacancy?.title ?? "";
+    try {
+      if (decision === "afwijzen") {
+        await createMatchFollowUpTask(service, {
+          orgId,
+          matchId: tok.match_id,
+          assignedTo: accountManagerId,
+          title: `Klant wees kandidaat af — vervanging zoeken (${candName})`,
+          description: [
+            `De opdrachtgever wees ${candName} af voor "${vacancyTitle}".`,
+            rejectionReasonText ? `Reden: ${rejectionReasonText}.` : null,
+            note ? `Toelichting: ${note}` : null,
+            "Bepaal of er een andere kandidaat voorgesteld kan worden.",
+          ].filter(Boolean).join(" "),
+          // Lagere prioriteit dan een akkoord: dit is opvolgen, geen deadline-actie.
+          priority: "medium",
+          category: "matching",
+        });
+      } else {
+        const isDirectStart = decision === "direct_starten";
+        const label = isDirectStart ? "wil direct starten" : "stelde een gesprek voor";
+        await createMatchFollowUpTask(service, {
+          orgId,
+          matchId: tok.match_id,
+          assignedTo: accountManagerId,
+          title: isDirectStart
+            ? `Klant keurde kandidaat goed — plaatsing voorbereiden (${candName})`
+            : `Klant stelt gesprek voor met kandidaat (${candName})`,
+          description: `De opdrachtgever ${label} voor "${vacancyTitle}".${note ? ` Opmerking: ${note}` : ""}`,
+          priority: "high",
+          category: isDirectStart ? "plaatsing" : "matching",
+        });
+      }
+    } catch (err) {
+      console.error("match-response follow-up task failed:", err);
     }
 
     // Best-effort audit (schemamismatch mag de publieke flow niet breken).

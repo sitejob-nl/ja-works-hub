@@ -56,11 +56,14 @@ const PortalJobMarket = () => {
   const matchedVacancies = new Map(myMatches.map((m: any) => [m.vacancy_id, m.status]));
 
   const applyMutation = useMutation({
-    mutationFn: async ({ vacancyId }: { vacancyId: string }) => {
+    mutationFn: async ({ vacancyId, vacancyCreatedBy }: { vacancyId: string; vacancyCreatedBy?: string | null }) => {
       await createMatch(supabase as any, {
         candidateId: employee!.id,
         vacancyId,
         orgId: orgId!,
+        // De medewerker solliciteert zelf; die mag nooit accountmanager van de eigen
+        // match worden. De vacature-eigenaar pakt de opvolging op.
+        assignedTo: vacancyCreatedBy ?? null,
         source: 'sollicitatie',
         notes: motivation || null,
         proposedAt: new Date().toISOString().split('T')[0],
@@ -204,7 +207,7 @@ const PortalJobMarket = () => {
                 Annuleren
               </Button>
               <Button
-                onClick={() => applyMutation.mutate({ vacancyId: applyVacancy.id })}
+                onClick={() => applyMutation.mutate({ vacancyId: applyVacancy.id, vacancyCreatedBy: applyVacancy.created_by })}
                 disabled={applyMutation.isPending}
               >
                 {applyMutation.isPending ? 'Versturen...' : 'Sollicitatie versturen'}
