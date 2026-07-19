@@ -19,6 +19,12 @@ export interface WhatsAppAutomationSettings {
   document_expiry_message: string;
   placement_employee_message: string;
   placement_client_message: string;
+  /** Goedgekeurde Meta-template, gebruikt buiten het 24-uurs servicevenster. Leeg = niets sturen. */
+  placement_employee_template_name: string;
+  placement_client_template_name: string;
+  /** Volgorde waarin de variabelen op {{1}}, {{2}}, … worden ingevuld. */
+  placement_employee_template_vars: string[];
+  placement_client_template_vars: string[];
 }
 
 export const DEFAULT_WHATSAPP_AUTOMATION_SETTINGS: WhatsAppAutomationSettings = {
@@ -46,6 +52,10 @@ export const DEFAULT_WHATSAPP_AUTOMATION_SETTINGS: WhatsAppAutomationSettings = 
     "Hoi {{first_name}}, je plaatsing als {{function_name}} bij {{company_name}} is bevestigd. Startdatum: {{start_date}}. Werklocatie: {{work_location}}.",
   placement_client_message:
     "Beste {{contact_name}}, hierbij bevestigen wij de plaatsing van {{employee_name}} als {{function_name}}. Startdatum: {{start_date}}.",
+  placement_employee_template_name: "",
+  placement_client_template_name: "",
+  placement_employee_template_vars: ["first_name", "function_name", "company_name", "start_date", "work_location"],
+  placement_client_template_vars: ["contact_name", "employee_name", "function_name", "start_date"],
 };
 
 const numberArray = (value: unknown, fallback: number[]) => {
@@ -61,6 +71,15 @@ const num = (value: unknown, fallback: number, min = 0) => {
 
 const text = (value: unknown, fallback: string) =>
   typeof value === "string" && value.trim() ? value : fallback;
+
+/** Lege string betekent hier "geen template gekozen", dus geen fallback. */
+const optionalText = (value: unknown) => (typeof value === "string" ? value.trim() : "");
+
+const stringArray = (value: unknown, fallback: string[]) => {
+  if (!Array.isArray(value)) return fallback;
+  const parsed = value.filter((v): v is string => typeof v === "string" && v.trim().length > 0);
+  return parsed.length > 0 ? parsed : fallback;
+};
 
 export const normalizeWhatsAppAutomationSettings = (raw: any): WhatsAppAutomationSettings => {
   const defaults = DEFAULT_WHATSAPP_AUTOMATION_SETTINGS;
@@ -89,5 +108,15 @@ export const normalizeWhatsAppAutomationSettings = (raw: any): WhatsAppAutomatio
     document_expiry_message: text(source.document_expiry_message, defaults.document_expiry_message),
     placement_employee_message: text(source.placement_employee_message, defaults.placement_employee_message),
     placement_client_message: text(source.placement_client_message, defaults.placement_client_message),
+    placement_employee_template_name: optionalText(source.placement_employee_template_name),
+    placement_client_template_name: optionalText(source.placement_client_template_name),
+    placement_employee_template_vars: stringArray(
+      source.placement_employee_template_vars,
+      defaults.placement_employee_template_vars,
+    ),
+    placement_client_template_vars: stringArray(
+      source.placement_client_template_vars,
+      defaults.placement_client_template_vars,
+    ),
   };
 };

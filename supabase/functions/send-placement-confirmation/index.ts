@@ -3,6 +3,7 @@ import { requireRolePermission } from "../_shared/auth.ts";
 import { sendViaOutlookAccount } from "../_shared/outlook-send.ts";
 import { sendOutboundWhatsApp } from "../_shared/whatsapp-utils.ts";
 import { getWhatsAppAutomationSettings, mergeTemplate as mergeWhatsAppTemplate } from "../_shared/whatsapp-automation-settings.ts";
+import { buildTemplatePayload, fetchApprovedTemplate, isWithinServiceWindow } from "../_shared/whatsapp-template.ts";
 import { type BrandTheme, loadBrandTheme, renderBrandedEmail } from "../_shared/email-layout.ts";
 
 const corsHeaders = {
@@ -69,30 +70,69 @@ function mergeTemplate(content: string, vars: Record<string, string | null | und
   });
 }
 
-async function sendWhatsAppDirect(service: any, input: {
+/**
+ * Verstuurt een plaatsingsbevestiging via WhatsApp, bewust van de Meta 24u-regel.
+ *
+ * Binnen het servicevenster (ontvanger appte < 24u geleden) mag vrije tekst; daarbuiten
+ * bezorgt Meta alleen goedgekeurde templates. Een plaatsingsbevestiging is proactief, dus
+ * dat laatste is het normale geval. Zonder ingestelde template sturen we buiten het venster
+ * bewust NIETS — dat is beter dan een bericht dat Meta stil weigert (fout 131047).
+ */
+async function sendPlacementWhatsApp(service: any, input: {
   orgId: string;
   to: string;
   text: string;
   subject: string;
+  templateName: string;
+  templateVarOrder: string[];
+  vars: Record<string, unknown>;
   candidateId?: string | null;
   companyId?: string | null;
   companyContactId?: string | null;
   placementId?: string | null;
   sentBy?: string | null;
 }) {
-  const result = await sendOutboundWhatsApp(service, {
+  const shared = {
     orgId: input.orgId,
     to: input.to,
-    type: "text",
-    text: { body: input.text },
     subject: input.subject,
     candidateId: input.candidateId ?? null,
     companyId: input.companyId ?? null,
     companyContactId: input.companyContactId ?? null,
     placementId: input.placementId ?? null,
     sentBy: input.sentBy ?? null,
+  };
+
+  const inWindow = await isWithinServiceWindow(service, {
+    orgId: input.orgId,
+    candidateId: input.candidateId ?? null,
+    companyContactId: input.companyContactId ?? null,
   });
-  return { ok: result.success, error: result.error, message_id: result.messageId ?? null };
+
+  if (inWindow) {
+    const result = await sendOutboundWhatsApp(service, { ...shared, type: "text", text: { body: input.text } });
+    return { ok: result.success, error: result.error, message_id: result.messageId ?? null, route: "tekst" };
+  }
+
+  const template = await fetchApprovedTemplate(service, input.orgId, input.templateName);
+  if (!template) {
+    return {
+      ok: false,
+      route: "geblokkeerd",
+      message_id: null,
+      error: input.templateName
+        ? `De ingestelde WhatsApp-template "${input.templateName}" is niet gevonden of niet goedgekeurd door Meta. Buiten het 24-uursvenster is er niets verstuurd.`
+        : "Buiten het 24-uursvenster mag WhatsApp alleen een goedgekeurde template versturen. Stel die in bij Instellingen → WhatsApp-automatisering; er is nu niets verstuurd.",
+    };
+  }
+
+  const values = input.templateVarOrder.map((key) => input.vars[key]);
+  const result = await sendOutboundWhatsApp(service, {
+    ...shared,
+    type: "template",
+    template: buildTemplatePayload(template, values),
+  });
+  return { ok: result.success, error: result.error, message_id: result.messageId ?? null, route: "template" };
 }
 
 // Inhoud van een vrije org-template (contract_templates) — body als pre-wrap, in de merk-frame.
@@ -507,22 +547,23 @@ Deno.serve(async (req) => {
     if (!preview && send_to_client && automation.placement_client_whatsapp_enabled) {
       const clientPhone = primaryContact?.phone ?? company?.phone;
       if (clientPhone) {
-        const text = mergeWhatsAppTemplate(automation.placement_client_message, {
-          ...templateVars,
-          contact_name: primaryContact?.full_name ?? companyName,
-        } as any);
-        const wa = await sendWhatsAppDirect(serviceClient, {
+        const clientVars = { ...templateVars, contact_name: primaryContact?.full_name ?? companyName };
+        const text = mergeWhatsAppTemplate(automation.placement_client_message, clientVars as any);
+        const wa = await sendPlacementWhatsApp(serviceClient, {
           orgId,
           to: clientPhone,
           text,
           subject: "WhatsApp plaatsingsbevestiging opdrachtgever",
+          templateName: automation.placement_client_template_name,
+          templateVarOrder: automation.placement_client_template_vars,
+          vars: clientVars as any,
           candidateId: candidate.id,
           companyId: company.id,
           companyContactId: primaryContact?.id ?? null,
           placementId: placement.id,
           sentBy: userId,
         });
-        whatsappResults.client_whatsapp = { to: clientPhone, success: wa.ok, error: wa.error };
+        whatsappResults.client_whatsapp = { to: clientPhone, success: wa.ok, error: wa.error, route: wa.route };
       } else {
         whatsappResults.client_whatsapp = { success: false, error: "Geen telefoonnummer gevonden voor opdrachtgever" };
       }
@@ -592,17 +633,20 @@ Deno.serve(async (req) => {
     if (!preview && send_to_employee && automation.placement_employee_whatsapp_enabled) {
       if (candidate.phone) {
         const text = mergeWhatsAppTemplate(automation.placement_employee_message, templateVars as any);
-        const wa = await sendWhatsAppDirect(serviceClient, {
+        const wa = await sendPlacementWhatsApp(serviceClient, {
           orgId,
           to: candidate.phone,
           text,
           subject: "WhatsApp plaatsingsbevestiging medewerker",
+          templateName: automation.placement_employee_template_name,
+          templateVarOrder: automation.placement_employee_template_vars,
+          vars: templateVars as any,
           candidateId: candidate.id,
           companyId: company.id,
           placementId: placement.id,
           sentBy: userId,
         });
-        whatsappResults.employee_whatsapp = { to: candidate.phone, success: wa.ok, error: wa.error };
+        whatsappResults.employee_whatsapp = { to: candidate.phone, success: wa.ok, error: wa.error, route: wa.route };
       } else {
         whatsappResults.employee_whatsapp = { success: false, error: "Kandidaat heeft geen telefoonnummer" };
       }

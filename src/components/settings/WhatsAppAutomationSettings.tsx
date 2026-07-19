@@ -23,6 +23,9 @@ const parseDays = (value: string) =>
 
 const formatDays = (days: number[]) => days.join(', ');
 
+// Radix Select accepteert geen lege string als waarde; sentinel voor "geen template".
+const NO_TEMPLATE = '__none__';
+
 const WhatsAppAutomationSettings = () => {
   const orgId = useOrganizationId();
   const qc = useQueryClient();
@@ -36,6 +39,22 @@ const WhatsAppAutomationSettings = () => {
       const { data, error } = await supabase.from('organizations').select('settings').eq('id', orgId).single();
       if (error) throw error;
       return data;
+    },
+    enabled: !!orgId,
+  });
+
+  // Alleen door Meta goedgekeurde templates zijn buiten het 24-uursvenster bruikbaar.
+  const { data: approvedTemplates = [] } = useQuery({
+    queryKey: ['whatsapp-approved-templates', orgId],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('whatsapp_templates')
+        .select('id, template_name, language')
+        .eq('organization_id', orgId)
+        .eq('status', 'APPROVED')
+        .order('template_name');
+      if (error) throw error;
+      return data ?? [];
     },
     enabled: !!orgId,
   });
@@ -198,6 +217,62 @@ const WhatsAppAutomationSettings = () => {
           <div>
             <Label>Plaatsingsbericht opdrachtgever</Label>
             <Textarea value={draft.placement_client_message} onChange={(e) => setValue('placement_client_message', e.target.value)} rows={2} />
+          </div>
+
+          <div className="rounded-md border bg-muted/30 p-3 space-y-3">
+            <div>
+              <Label>Goedgekeurde template voor de plaatsingsbevestiging</Label>
+              <p className="text-xs text-muted-foreground mt-1">
+                WhatsApp staat een vrij bericht alleen toe binnen 24 uur nadat iemand jóu heeft geappt.
+                Een plaatsingsbevestiging valt daar meestal buiten, en dan bezorgt WhatsApp alleen een
+                vooraf goedgekeurde template. Kies je er geen, dan wordt er buiten die 24 uur niets
+                verstuurd — de e-mail gaat wel gewoon door.
+              </p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <Label className="text-xs">Naar de medewerker</Label>
+                <Select
+                  value={draft.placement_employee_template_name || NO_TEMPLATE}
+                  onValueChange={(v) => setValue('placement_employee_template_name', v === NO_TEMPLATE ? '' : v)}
+                >
+                  <SelectTrigger className="mt-1"><SelectValue placeholder="Geen template" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_TEMPLATE}>Geen — buiten 24 uur niets sturen</SelectItem>
+                    {approvedTemplates.map((t: any) => (
+                      <SelectItem key={t.id} value={t.template_name}>{t.template_name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Naar de opdrachtgever</Label>
+                <Select
+                  value={draft.placement_client_template_name || NO_TEMPLATE}
+                  onValueChange={(v) => setValue('placement_client_template_name', v === NO_TEMPLATE ? '' : v)}
+                >
+                  <SelectTrigger className="mt-1"><SelectValue placeholder="Geen template" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_TEMPLATE}>Geen — buiten 24 uur niets sturen</SelectItem>
+                    {approvedTemplates.map((t: any) => (
+                      <SelectItem key={t.id} value={t.template_name}>{t.template_name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {approvedTemplates.length === 0 && (
+              <p className="text-xs text-amber-600 dark:text-amber-500">
+                Er zijn nog geen goedgekeurde templates. Maak er een aan onder Instellingen → WhatsApp en
+                laat die door Meta goedkeuren.
+              </p>
+            )}
+            <p className="text-xs text-muted-foreground">
+              De variabelen worden op volgorde ingevuld — medewerker:{' '}
+              <span className="font-mono">{draft.placement_employee_template_vars.join(', ')}</span>; opdrachtgever:{' '}
+              <span className="font-mono">{draft.placement_client_template_vars.join(', ')}</span>. Zorg dat de
+              goedgekeurde template dezelfde volgorde aanhoudt.
+            </p>
           </div>
           <div>
             <Label>Ziekmelding bevestiging</Label>
