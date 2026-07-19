@@ -16,8 +16,27 @@ import NationalitySelect from '@/components/shared/NationalitySelect';
 import LanguageMultiSelect from '@/components/shared/LanguageMultiSelect';
 import { normalizeNationality, normalizeLanguages } from '@/lib/candidate-options';
 import { allowFileDrop, getDroppedFiles } from '@/lib/file-input';
+import {
+  summarizeProfileErrors,
+  validateProfileSubmission,
+  type ProfileField,
+  type ProfileFieldErrors,
+} from '@/lib/profile-validation';
 
 type PageState = 'loading' | 'invalid' | 'expired' | 'used' | 'form' | 'success';
+
+/** Anker-id per veld, zodat we naar de eerste fout kunnen scrollen. */
+const fieldAnchorId = (field: ProfileField) => `veld-${field}`;
+
+const FieldError = ({ message }: { message?: string }) =>
+  message ? <p className="text-sm font-medium text-destructive">{message}</p> : null;
+
+/** Label met sterretje voor verplichte velden — één plek, zodat het consistent blijft. */
+const RequiredLabel = ({ children }: { children: React.ReactNode }) => (
+  <Label>
+    {children} <span className="text-destructive">*</span>
+  </Label>
+);
 
 const CandidateProfile = () => {
   const { token } = useParams<{ token: string }>();
@@ -43,6 +62,13 @@ const CandidateProfile = () => {
     availability_notes: '',
   });
 
+  // Validatie. `errors` is pas gevuld ná een verzendpoging: we blokkeren het invullen
+  // nooit, alleen het versturen — meteen rood kleuren terwijl iemand nog bezig is werkt
+  // averechts. De samenvatting wordt hieruit afgeleid, zodat lijst en velden niet uit
+  // elkaar kunnen lopen.
+  const [errors, setErrors] = useState<ProfileFieldErrors>({});
+  const missingLabels = summarizeProfileErrors(errors);
+
   // File state
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
@@ -50,7 +76,16 @@ const CandidateProfile = () => {
   const photoInputRef = useRef<HTMLInputElement>(null);
   const cvInputRef = useRef<HTMLInputElement>(null);
 
-  const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
+  const set = (k: string, v: any) => {
+    setForm((f) => ({ ...f, [k]: v }));
+    // Fout van dit veld meteen opruimen zodra de kandidaat het aanpast.
+    setErrors((prev) => {
+      if (!(k in prev)) return prev;
+      const next = { ...prev };
+      delete next[k as ProfileField];
+      return next;
+    });
+  };
 
   const handleCvDrop = (event: DragEvent<HTMLDivElement>) => {
     const [droppedFile] = getDroppedFiles(event);
@@ -134,8 +169,26 @@ const CandidateProfile = () => {
     reader.readAsDataURL(file);
   };
 
+  /** Toont de fouten en springt naar het eerste veld dat nog aandacht nodig heeft. */
+  const showValidationErrors = (fieldErrors: ProfileFieldErrors) => {
+    setErrors(fieldErrors);
+    const firstField = (Object.keys(fieldErrors) as ProfileField[])[0];
+    if (firstField) {
+      document
+        .getElementById(fieldAnchorId(firstField))
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  };
+
   const handleSubmit = async () => {
     if (!token) return;
+
+    const validation = validateProfileSubmission(form);
+    if (!validation.valid) {
+      showValidationErrors(validation.errors);
+      return;
+    }
+    setErrors({});
     setSubmitting(true);
 
     try {
@@ -214,6 +267,12 @@ const CandidateProfile = () => {
       if (result.success) {
         setState('success');
       } else {
+        // De server valideert opnieuw (publiek endpoint). Landt daar toch iets fout,
+        // dan tonen we dat per veld i.p.v. als losse melding.
+        if (result.field_errors && typeof result.field_errors === 'object') {
+          showValidationErrors(result.field_errors as ProfileFieldErrors);
+          return;
+        }
         throw new Error(result.error ?? 'Onbekende fout');
       }
     } catch (err: any) {
@@ -289,6 +348,9 @@ const CandidateProfile = () => {
           {orgName && <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{orgName}</p>}
           <h1 className="text-xl font-semibold">Hoi {form.first_name}! Vul je profiel aan.</h1>
           <p className="text-sm text-muted-foreground">Het duurt maar een paar minuten.</p>
+          <p className="text-xs text-muted-foreground">
+            Velden met <span className="text-destructive">*</span> zijn verplicht.
+          </p>
         </div>
 
         {/* Section 1: Persoonlijke gegevens */}
@@ -306,43 +368,56 @@ const CandidateProfile = () => {
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <Label>Telefoon (EU / buitenland)</Label>
-            <Input value={form.phone} onChange={(e) => set('phone', e.target.value)} type="tel" placeholder="bijv. +40 ..." className="h-12 text-base" />
+          <div className="space-y-1.5" id={fieldAnchorId('phone')}>
+            <RequiredLabel>Telefoon (EU / buitenland)</RequiredLabel>
+            <Input value={form.phone} onChange={(e) => set('phone', e.target.value)} type="tel" placeholder="bijv. +40 ..." className="h-12 text-base" aria-invalid={!!errors.phone} />
+            <FieldError message={errors.phone} />
           </div>
 
-          <div className="space-y-1.5">
+          <div className="space-y-1.5" id={fieldAnchorId('phone_nl')}>
             <Label>Telefoon (Nederlands)</Label>
-            <Input value={form.phone_nl} onChange={(e) => set('phone_nl', e.target.value)} type="tel" placeholder="bijv. +31 6 ..." className="h-12 text-base" />
+            <Input value={form.phone_nl} onChange={(e) => set('phone_nl', e.target.value)} type="tel" placeholder="bijv. +31 6 ..." className="h-12 text-base" aria-invalid={!!errors.phone_nl} />
+            <p className="text-xs text-muted-foreground">Heb je nog geen Nederlands nummer? Laat dit veld dan leeg.</p>
+            <FieldError message={errors.phone_nl} />
           </div>
 
-          <div className="space-y-1.5">
-            <Label>E-mail</Label>
-            <Input value={form.email} onChange={(e) => set('email', e.target.value)} type="email" className="h-12 text-base" />
+          <div className="space-y-1.5" id={fieldAnchorId('email')}>
+            <RequiredLabel>E-mail</RequiredLabel>
+            <Input value={form.email} onChange={(e) => set('email', e.target.value)} type="email" className="h-12 text-base" aria-invalid={!!errors.email} />
+            <FieldError message={errors.email} />
           </div>
 
           <div className="space-y-2 rounded-lg bg-muted/40 p-3">
-            <Label className="text-sm font-medium">Noodcontact (ICE)</Label>
+            <RequiredLabel>Noodcontact (ICE)</RequiredLabel>
             <div className="space-y-1.5">
-              <Input value={form.emergency_contact_name} onChange={(e) => set('emergency_contact_name', e.target.value)} placeholder="Naam noodcontact" className="h-12 text-base" />
-              <Input value={form.emergency_contact_phone} onChange={(e) => set('emergency_contact_phone', e.target.value)} type="tel" placeholder="Telefoonnummer noodcontact" className="h-12 text-base" />
+              <div className="space-y-1.5" id={fieldAnchorId('emergency_contact_name')}>
+                <Input value={form.emergency_contact_name} onChange={(e) => set('emergency_contact_name', e.target.value)} placeholder="Naam noodcontact" className="h-12 text-base" aria-invalid={!!errors.emergency_contact_name} />
+                <FieldError message={errors.emergency_contact_name} />
+              </div>
+              <div className="space-y-1.5" id={fieldAnchorId('emergency_contact_phone')}>
+                <Input value={form.emergency_contact_phone} onChange={(e) => set('emergency_contact_phone', e.target.value)} type="tel" placeholder="Telefoonnummer noodcontact" className="h-12 text-base" aria-invalid={!!errors.emergency_contact_phone} />
+                <FieldError message={errors.emergency_contact_phone} />
+              </div>
             </div>
             <p className="text-xs text-muted-foreground">Wie kunnen we bellen in geval van nood?</p>
           </div>
 
-          <div className="space-y-1.5">
-            <Label>Geboortedatum</Label>
-            <Input value={form.date_of_birth} onChange={(e) => set('date_of_birth', e.target.value)} type="date" className="h-12 text-base" />
+          <div className="space-y-1.5" id={fieldAnchorId('date_of_birth')}>
+            <RequiredLabel>Geboortedatum</RequiredLabel>
+            <Input value={form.date_of_birth} onChange={(e) => set('date_of_birth', e.target.value)} type="date" className="h-12 text-base" aria-invalid={!!errors.date_of_birth} />
+            <FieldError message={errors.date_of_birth} />
           </div>
 
-          <div className="space-y-1.5">
-            <Label>Nationaliteit</Label>
+          <div className="space-y-1.5" id={fieldAnchorId('nationality')}>
+            <RequiredLabel>Nationaliteit</RequiredLabel>
             <NationalitySelect value={form.nationality} onChange={(v) => set('nationality', v)} />
+            <FieldError message={errors.nationality} />
           </div>
 
-          <div className="space-y-2">
-            <Label>Talen</Label>
+          <div className="space-y-2" id={fieldAnchorId('languages')}>
+            <RequiredLabel>Talen</RequiredLabel>
             <LanguageMultiSelect value={form.languages} onChange={(v) => set('languages', v)} />
+            <FieldError message={errors.languages} />
           </div>
         </div>
 
@@ -354,7 +429,12 @@ const CandidateProfile = () => {
             <Checkbox
               id="has-dutch-address"
               checked={form.has_dutch_address}
-              onCheckedChange={(v) => set('has_dutch_address', !!v)}
+              onCheckedChange={(v) => {
+                set('has_dutch_address', !!v);
+                // Adresvelden gelden alleen mét dit vinkje — anders blijven hun meldingen
+                // in de samenvatting staan terwijl de velden niet meer zichtbaar zijn.
+                if (!v) setErrors(({ address_street, address_postal, address_city, ...rest }) => rest);
+              }}
             />
             <Label htmlFor="has-dutch-address" className="text-sm cursor-pointer leading-snug">
               Ik heb al een (vast) adres in Nederland
@@ -362,23 +442,34 @@ const CandidateProfile = () => {
           </div>
 
           {form.has_dutch_address ? (
-            <AddressAutocomplete
-              value={{ street: form.address_street, postal: form.address_postal, city: form.address_city, country: form.address_country, lat: form.address_lat, lng: form.address_lng }}
-              onChange={(address) => setForm((f) => ({
-                ...f,
-                address_street: address.street,
-                address_postal: address.postal,
-                address_city: address.city,
-                address_country: address.country ?? f.address_country,
-                address_lat: address.lat ?? null,
-                address_lng: address.lng ?? null,
-              }))}
-              gridClassName="grid-cols-2 gap-3"
-              streetClassName="col-span-2"
-              countryClassName="col-span-2"
-              showCountry
-              inputClassName="h-12 text-base"
-            />
+            <div className="space-y-2" id={fieldAnchorId('address_street')}>
+              <AddressAutocomplete
+                value={{ street: form.address_street, postal: form.address_postal, city: form.address_city, country: form.address_country, lat: form.address_lat, lng: form.address_lng }}
+                onChange={(address) => {
+                  setForm((f) => ({
+                    ...f,
+                    address_street: address.street,
+                    address_postal: address.postal,
+                    address_city: address.city,
+                    address_country: address.country ?? f.address_country,
+                    address_lat: address.lat ?? null,
+                    address_lng: address.lng ?? null,
+                  }));
+                  setErrors(({ address_street, address_postal, address_city, ...rest }) => rest);
+                }}
+                gridClassName="grid-cols-2 gap-3"
+                streetClassName="col-span-2"
+                countryClassName="col-span-2"
+                showCountry
+                required
+                inputClassName="h-12 text-base"
+              />
+              {/* AddressAutocomplete heeft geen eigen foutslot; we tonen de meldingen
+                  daarom per adresveld onder het blok. */}
+              <FieldError message={errors.address_street} />
+              <FieldError message={errors.address_postal} />
+              <FieldError message={errors.address_city} />
+            </div>
           ) : (
             <p className="text-sm text-muted-foreground">
               Geen Nederlands adres? Geen probleem — je recruiter helpt je verder met huisvesting.
@@ -395,26 +486,32 @@ const CandidateProfile = () => {
               <Checkbox
                 id="drivers-license"
                 checked={form.has_drivers_license}
-                onCheckedChange={(v) => set('has_drivers_license', !!v)}
+                onCheckedChange={(v) => {
+                  set('has_drivers_license', !!v);
+                  if (!v) setErrors(({ drivers_license_expiry, ...rest }) => rest);
+                }}
               />
               <Label htmlFor="drivers-license" className="cursor-pointer">Ik heb een rijbewijs</Label>
             </div>
             {form.has_drivers_license && (
-              <div className="space-y-1.5">
-                <Label>Verloopdatum rijbewijs</Label>
-                <Input type="date" value={form.drivers_license_expiry} onChange={(e) => set('drivers_license_expiry', e.target.value)} className="h-12 text-base" />
+              <div className="space-y-1.5" id={fieldAnchorId('drivers_license_expiry')}>
+                <RequiredLabel>Verloopdatum rijbewijs</RequiredLabel>
+                <Input type="date" value={form.drivers_license_expiry} onChange={(e) => set('drivers_license_expiry', e.target.value)} className="h-12 text-base" aria-invalid={!!errors.drivers_license_expiry} />
+                <FieldError message={errors.drivers_license_expiry} />
               </div>
             )}
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label>Beschikbaar vanaf</Label>
-              <Input type="date" value={form.available_from} onChange={(e) => set('available_from', e.target.value)} className="h-12 text-base" />
+            <div className="space-y-1.5" id={fieldAnchorId('available_from')}>
+              <RequiredLabel>Beschikbaar vanaf</RequiredLabel>
+              <Input type="date" value={form.available_from} onChange={(e) => set('available_from', e.target.value)} className="h-12 text-base" aria-invalid={!!errors.available_from} />
+              <FieldError message={errors.available_from} />
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-1.5" id={fieldAnchorId('available_until')}>
               <Label>Beschikbaar tot</Label>
-              <Input type="date" value={form.available_until} onChange={(e) => set('available_until', e.target.value)} className="h-12 text-base" />
+              <Input type="date" value={form.available_until} onChange={(e) => set('available_until', e.target.value)} className="h-12 text-base" aria-invalid={!!errors.available_until} />
+              <FieldError message={errors.available_until} />
             </div>
           </div>
 
@@ -492,6 +589,25 @@ const CandidateProfile = () => {
             />
           </div>
         </div>
+
+        {/* Overzicht van wat er nog ontbreekt. Verschijnt pas na een verzendpoging, en
+            blokkeert het invullen niet — alleen het versturen. */}
+        {missingLabels.length > 0 && (
+          <div
+            role="alert"
+            className="rounded-xl border border-destructive/40 bg-destructive/10 p-4 space-y-2"
+          >
+            <div className="flex items-center gap-2 text-sm font-semibold text-destructive">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              Nog even dit invullen
+            </div>
+            <ul className="list-disc pl-5 text-sm text-destructive space-y-0.5">
+              {missingLabels.map((label) => (
+                <li key={label}>{label}</li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {/* Submit */}
         <Button
