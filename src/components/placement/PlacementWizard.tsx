@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { checkCompliance, type ComplianceResult } from '@/hooks/useComplianceCheck';
 import ComplianceWarningDialog from '@/components/ComplianceWarningDialog';
+import ComplianceFixList from './ComplianceFixList';
 import { logAudit } from '@/lib/audit';
 import { vehicleFreeOn } from '@/lib/vehicle-availability';
 import { getPayrollerSettings, payrollerLabel } from '@/lib/payroller';
@@ -583,17 +584,9 @@ const PlacementWizard = ({ open, onClose, match, vacancy, defaultCompanyId, lock
 
               {(matchMode || selectedEmployee) && (
                 <>
-                  {/* Compliance-strip: direct zichtbaar wat er ontbreekt, i.p.v. pas bij plaatsen */}
-                  {compliance && !compliance.passed && (
-                    <div className="rounded-md border border-orange-200 bg-orange-50 dark:bg-orange-950/30 dark:border-orange-900 p-3 text-sm">
-                      <div className="flex items-center gap-2 font-medium text-orange-800 dark:text-orange-300">
-                        <AlertTriangle className="h-4 w-4" /> Dossier niet compleet
-                      </div>
-                      <ul className="mt-1.5 space-y-0.5 text-xs text-orange-800/90 dark:text-orange-300/90">
-                        {compliance.issues.map((issue, i) => <li key={i}>• {issue}</li>)}
-                      </ul>
-                      <p className="mt-1.5 text-xs text-muted-foreground">Plaatsen kan straks alsnog, met een gelogde override.</p>
-                    </div>
+                  {/* Compliance-strip: laat direct zien wát er ontbreekt én laat het hier aanvullen */}
+                  {compliance && !compliance.passed && candidateId && (
+                    <ComplianceFixList candidateId={candidateId} compliance={compliance} />
                   )}
                   {compliance?.passed && (
                     <div className="rounded-md border border-green-200 bg-green-50 dark:bg-green-950/30 dark:border-green-900 p-2.5 text-sm flex items-center gap-2 text-green-800 dark:text-green-300">
