@@ -181,6 +181,8 @@ export interface PlacementConfirmationResult {
   client_email?: {
     subject: string;
     html: string;
+    /** Platte, gemergede tekst — dit is wat de gebruiker in de wizard bewerkt. */
+    body_text?: string;
     to: string;
     sent_via?: string;
     communication_id?: string;
@@ -188,11 +190,45 @@ export interface PlacementConfirmationResult {
   employee_email?: {
     subject: string;
     html: string;
+    body_text?: string;
     to: string;
     sent_via?: string;
     communication_id?: string;
   };
   warnings: string[];
+}
+
+/**
+ * Door de gebruiker aangepaste bevestigingsmail. De body is platte tékst, geen HTML:
+ * de server rendert 'm in de huisstijl-frame, zodat opmaak en merk intact blijven.
+ */
+export interface PlacementMailEdits {
+  accountId?: string | null;
+  clientTo?: string;
+  clientSubject?: string;
+  clientBody?: string;
+  clientCc?: string[];
+  clientBcc?: string[];
+  employeeSubject?: string;
+  employeeBody?: string;
+  employeeCc?: string[];
+  employeeBcc?: string[];
+}
+
+function mailEditsToBody(edits?: PlacementMailEdits): Record<string, unknown> {
+  if (!edits) return {};
+  return {
+    account_id: edits.accountId ?? null,
+    client_to: edits.clientTo,
+    client_subject: edits.clientSubject,
+    client_body: edits.clientBody,
+    client_cc: edits.clientCc,
+    client_bcc: edits.clientBcc,
+    employee_subject: edits.employeeSubject,
+    employee_body: edits.employeeBody,
+    employee_cc: edits.employeeCc,
+    employee_bcc: edits.employeeBcc,
+  };
 }
 
 /**
@@ -202,12 +238,14 @@ export async function sendPlacementConfirmation(
   placementId: string,
   sendToClient: boolean,
   sendToEmployee: boolean,
+  edits?: PlacementMailEdits,
 ): Promise<PlacementConfirmationResult> {
   const { data, error } = await supabase.functions.invoke('send-placement-confirmation', {
     body: {
       placement_id: placementId,
       send_to_client: sendToClient,
       send_to_employee: sendToEmployee,
+      ...mailEditsToBody(edits),
     },
   });
 
@@ -228,6 +266,7 @@ export async function previewPlacementConfirmation(input: {
   placementData?: Record<string, unknown>;
   sendToClient: boolean;
   sendToEmployee: boolean;
+  edits?: PlacementMailEdits;
 }): Promise<PlacementConfirmationResult> {
   const { data, error } = await supabase.functions.invoke('send-placement-confirmation', {
     body: {
@@ -236,6 +275,7 @@ export async function previewPlacementConfirmation(input: {
       placement_data: input.placementData,
       send_to_client: input.sendToClient,
       send_to_employee: input.sendToEmployee,
+      ...mailEditsToBody(input.edits),
     },
   });
 

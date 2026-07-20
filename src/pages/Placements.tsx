@@ -16,14 +16,14 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
 import { Search, Users, CalendarClock, TrendingUp, Plus } from 'lucide-react';
 import { formatDate, formatEUR } from '@/lib/format';
-import { payrollerLabel } from '@/lib/payroller';
+import { payrollerBadgeClass } from '@/lib/payroller';
+import { usePayrollers } from '@/hooks/usePayrollers';
 import { getPaginationRange } from '@/lib/pagination';
 import { EntityLink } from '@/components/ui/entity-link';
 import ErrorState from '@/components/shared/ErrorState';
 import PlacementWizard from '@/components/placement/PlacementWizard';
 
 type PlacementStatus = Database['public']['Enums']['placement_status'];
-type PayrollerType = Database['public']['Enums']['payroller_type'];
 
 const PAGE_SIZE = 25;
 
@@ -48,7 +48,8 @@ export default function PlacementsPage() {
   const { user } = useAuth();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useSearchParamState<PlacementStatus | 'all'>('status', 'all');
-  const [payrollerFilter, setPayrollerFilter] = useState<PayrollerType | 'all'>('all');
+  const [payrollerFilter, setPayrollerFilter] = useState<string>('all');
+  const { data: payrollerOptions } = usePayrollers();
   const [page, setPage] = useState(0);
   const [newPlacementOpen, setNewPlacementOpen] = useState(false);
 
@@ -57,11 +58,11 @@ export default function PlacementsPage() {
     queryFn: async () => {
       let q = supabase
         .from('placements')
-        .select('*, companies!placements_company_id_fkey(id, name), candidates!placements_candidate_id_fkey(id, first_name, last_name), employees!placements_employee_id_fkey(id, candidate_id, candidates!employees_candidate_id_fkey(id, first_name, last_name))')
+        .select('*, companies!placements_company_id_fkey(id, name), candidates!placements_candidate_id_fkey(id, first_name, last_name), employees!placements_employee_id_fkey(id, candidate_id, candidates!employees_candidate_id_fkey(id, first_name, last_name)), payrollers(id, name, legacy_key)')
         .eq('organization_id', orgId)
         .order('start_date', { ascending: false });
       if (statusFilter !== 'all') q = q.eq('status', statusFilter);
-      if (payrollerFilter !== 'all') q = q.eq('payroller', payrollerFilter);
+      if (payrollerFilter !== 'all') q = q.eq('payroller_id', payrollerFilter);
       const { data, error } = await q;
       if (error) throw error;
       return data;
@@ -136,14 +137,13 @@ export default function PlacementsPage() {
             <SelectItem value="voortijdig_beeindigd">Voortijdig beëindigd</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={payrollerFilter} onValueChange={(v) => { setPayrollerFilter(v as PayrollerType | 'all'); setPage(0); }}>
+        <Select value={payrollerFilter} onValueChange={(v) => { setPayrollerFilter(v); setPage(0); }}>
           <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Alle payrollers</SelectItem>
-            <SelectItem value="flexpedia">Flexpedia</SelectItem>
-            <SelectItem value="brioworks">BrioWorks</SelectItem>
-            <SelectItem value="bromida">Bromida</SelectItem>
-            <SelectItem value="retiva">Retiva/A1</SelectItem>
+            {(payrollerOptions ?? []).map((pr) => (
+              <SelectItem key={pr.id} value={pr.id}>{pr.name}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
@@ -191,7 +191,7 @@ export default function PlacementsPage() {
                           {p.function_name || 'Plaatsing'}
                         </EntityLink>
                       </TableCell>
-                      <TableCell>{p.payroller ? <Badge variant="outline" className="text-xs">{payrollerLabel[p.payroller] ?? p.payroller}</Badge> : <span className="text-muted-foreground">—</span>}</TableCell>
+                      <TableCell>{p.payrollers ? <Badge variant="secondary" className={`text-xs ${payrollerBadgeClass(p.payrollers)}`}>{p.payrollers.name}</Badge> : <span className="text-muted-foreground">—</span>}</TableCell>
                       <TableCell className="text-xs whitespace-nowrap">{formatDate(p.start_date)} — {formatDate(p.expected_end_date || p.end_date)}</TableCell>
                       <TableCell className="font-mono text-xs">{formatEUR(p.client_hourly_rate || p.hourly_rate)}</TableCell>
                       <TableCell><Badge variant="secondary" className={st.class}>{st.label}</Badge></TableCell>

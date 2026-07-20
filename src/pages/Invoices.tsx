@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import type { Database } from '@/integrations/supabase/types';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -21,14 +20,13 @@ import { EntityLink } from '@/components/ui/entity-link';
 import { logAudit } from '@/lib/audit';
 import { extractFunctionErrorMessage } from '@/lib/functionError';
 import { toExactErrorMessage } from '@/lib/exact-errors';
-import { payrollerLabel, payrollerBadgeClass, JA_WERKT_PAYROLLERS } from '@/lib/payroller';
+import { payrollerBadgeClass, type Payroller } from '@/lib/payroller';
+import { usePayrollers } from '@/hooks/usePayrollers';
 import { useRolePermission } from '@/hooks/usePermissions';
 
-type PayrollerType = Database['public']['Enums']['payroller_type'];
-type PayrollerFilter = PayrollerType | 'all';
-type PayrollerCreateFilter = PayrollerFilter | 'ja_werkt';
-
-const jaWerktPayrollers = JA_WERKT_PAYROLLERS as readonly PayrollerType[];
+/** Filterwaarden zijn payroller-id's; 'all' en 'ja_werkt' zijn pseudo-waarden. */
+type PayrollerFilter = string;
+type PayrollerCreateFilter = string;
 
 const statusBadge: Record<string, { class: string; label: string }> = {
   concept: { class: 'bg-muted text-muted-foreground border-0', label: 'Concept' },
@@ -49,45 +47,53 @@ export default function InvoicesPage() {
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<string>('eigen');
 
+  // Payrollers van de org. `invoiced_by_us=false` betekent dat de payroller zelf aan de
+  // eindklant factureert (bij ja werkt: Flexpedia) — die uren zijn alleen referentie.
+  const { data: allPayrollers } = usePayrollers();
+  const externalPayrollers = (allPayrollers ?? []).filter((p) => !p.invoiced_by_us);
+  const externalPayrollerIds = externalPayrollers.map((p) => p.id);
+  const externalLabel = externalPayrollers.map((p) => p.name).join(', ') || 'Externe payrollers';
+
   // Fetch invoices with payroller info from invoice_lines -> placements
   const { data: invoices, isLoading } = useQuery({
     queryKey: ['invoices', orgId, statusFilter],
     queryFn: async () => {
       let q = supabase
         .from('invoices')
-        .select('*, companies(name), invoice_lines(placements(payroller))')
+        .select('*, companies(name), invoice_lines(placements(payroller_id, payrollers(id, name, legacy_key)))')
         .eq('organization_id', orgId)
         .order('created_at', { ascending: false });
       if (statusFilter !== 'all') q = q.eq('status', statusFilter as any);
       const { data, error } = await q;
       if (error) throw error;
-      // Derive unique payrollers per invoice
+      // Unieke payrollers per factuur (op id ontdubbeld).
       return (data ?? []).map((inv: any) => {
-        const payrollers = [...new Set(
-          (inv.invoice_lines ?? [])
-            .map((l: any) => l.placements?.payroller)
-            .filter(Boolean)
-        )] as string[];
-        return { ...inv, payrollers };
+        const byId = new Map<string, any>();
+        for (const line of inv.invoice_lines ?? []) {
+          const pr = line.placements?.payrollers;
+          if (pr) byId.set(pr.id, pr);
+        }
+        return { ...inv, payrollerRows: [...byId.values()] };
       });
     },
   });
 
-  // Fetch Flexpedia timesheets (read-only reference)
+  // Uren van payrollers die zelf factureren (alleen-lezen referentie).
   const { data: flexpediaTimesheets, isLoading: flexpediaLoading } = useQuery({
-    queryKey: ['flexpedia-timesheets', orgId],
+    queryKey: ['external-payroller-timesheets', orgId, externalPayrollerIds],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('timesheets')
-        .select('*, placements!inner(company_id, function_name, payroller, client_hourly_rate, overtime_rate, companies!placements_company_id_fkey(name), employees(id, candidates(first_name, last_name)))')
+        .select('*, placements!inner(company_id, function_name, payroller_id, client_hourly_rate, overtime_rate, payrollers(id, name, legacy_key), companies!placements_company_id_fkey(name), employees(id, candidates(first_name, last_name)))')
         .eq('organization_id', orgId)
         .eq('status', 'goedgekeurd')
-        .eq('placements.payroller', 'flexpedia')
+        .in('placements.payroller_id', externalPayrollerIds)
         .is('invoice_line_id', null)
         .order('work_date', { ascending: false });
       if (error) throw error;
       return data ?? [];
     },
+    enabled: externalPayrollerIds.length > 0,
   });
 
   // Fetch invoice lines when selected
@@ -97,7 +103,7 @@ export default function InvoicesPage() {
       if (!selectedInvoice) return [];
       const { data, error } = await supabase
         .from('invoice_lines')
-        .select('*, placements(function_name, payroller, employees(id, candidates(first_name, last_name)))')
+        .select('*, placements(function_name, payroller_id, payrollers(id, name, legacy_key), employees(id, candidates(first_name, last_name)))')
         .eq('invoice_id', selectedInvoice.id)
         .order('sort_order');
       if (error) throw error;
@@ -108,7 +114,7 @@ export default function InvoicesPage() {
 
   const filtered = (invoices ?? []).filter((inv: any) => {
     if (payrollerFilter !== 'all') {
-      if (!inv.payrollers?.includes(payrollerFilter)) return false;
+      if (!(inv.payrollerRows ?? []).some((p: Payroller) => p.id === payrollerFilter)) return false;
     }
     if (!search) return true;
     const s = search.toLowerCase();
@@ -128,7 +134,7 @@ export default function InvoicesPage() {
   const flexpediaByCompany = (flexpediaTimesheets ?? []).reduce((acc: Record<string, any>, ts: any) => {
     const companyName = ts.placements?.companies?.name ?? 'Onbekend';
     if (!acc[companyName]) {
-      acc[companyName] = { company: companyName, hours: 0, overtime_hours: 0, timesheets: [] };
+      acc[companyName] = { company: companyName, payroller: ts.placements?.payrollers ?? null, hours: 0, overtime_hours: 0, timesheets: [] };
     }
     acc[companyName].hours += Number(ts.hours) || 0;
     acc[companyName].overtime_hours += Number(ts.overtime_hours) || 0;
@@ -171,7 +177,7 @@ export default function InvoicesPage() {
           <p className="text-2xl font-semibold text-orange-600">{formatEUR(totals.open)}</p>
         </CardContent></Card>
         <Card><CardContent className="py-4">
-          <p className="text-xs text-muted-foreground">Flexpedia (referentie)</p>
+          <p className="text-xs text-muted-foreground">{externalLabel} (referentie)</p>
           <p className="text-2xl font-semibold text-amber-600">{formatEUR(flexpediaTotal)}</p>
           <p className="text-[10px] text-muted-foreground mt-0.5">Niet door ja werkt gefactureerd</p>
         </CardContent></Card>
@@ -180,7 +186,7 @@ export default function InvoicesPage() {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="mb-4">
           <TabsTrigger value="eigen">Eigen facturen</TabsTrigger>
-          <TabsTrigger value="flexpedia">Flexpedia (referentie)</TabsTrigger>
+          <TabsTrigger value="flexpedia">{externalLabel} (referentie)</TabsTrigger>
         </TabsList>
 
         <TabsContent value="eigen">
@@ -205,9 +211,9 @@ export default function InvoicesPage() {
               <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Alle payrollers</SelectItem>
-                <SelectItem value="brioworks">BrioWorks</SelectItem>
-                <SelectItem value="bromida">Bromida</SelectItem>
-                <SelectItem value="retiva">Retiva/A1</SelectItem>
+                {(allPayrollers ?? []).map((pr) => (
+                  <SelectItem key={pr.id} value={pr.id}>{pr.name}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -242,10 +248,10 @@ export default function InvoicesPage() {
                           <TableCell><EntityLink type="company" id={inv.company_id}>{inv.companies?.name ?? '—'}</EntityLink></TableCell>
                           <TableCell>
                             <div className="flex gap-1 flex-wrap">
-                              {(inv.payrollers ?? []).length > 0
-                                ? inv.payrollers.map((p: string) => (
-                                    <Badge key={p} variant="secondary" className={`text-[10px] ${payrollerBadgeClass[p] ?? ''}`}>
-                                      {payrollerLabel[p] ?? p}
+                              {(inv.payrollerRows ?? []).length > 0
+                                ? inv.payrollerRows.map((p: Payroller) => (
+                                    <Badge key={p.id} variant="secondary" className={`text-[10px] ${payrollerBadgeClass(p)}`}>
+                                      {p.name}
                                     </Badge>
                                   ))
                                 : <span className="text-muted-foreground text-xs">—</span>
@@ -272,8 +278,8 @@ export default function InvoicesPage() {
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 flex items-start gap-2">
             <Info className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
             <div className="text-sm text-amber-800">
-              <p className="font-medium">Deze uren worden door Flexpedia gefactureerd</p>
-              <p className="text-xs text-amber-600 mt-0.5">Flexpedia factureert rechtstreeks aan de eindklant. Dit overzicht is alleen ter referentie — hier worden geen facturen voor aangemaakt.</p>
+              <p className="font-medium">Deze uren worden door {externalLabel} gefactureerd</p>
+              <p className="text-xs text-amber-600 mt-0.5">Deze payroller factureert rechtstreeks aan de eindklant. Dit overzicht is alleen ter referentie — hier worden geen facturen voor aangemaakt.</p>
             </div>
           </div>
 
@@ -281,7 +287,7 @@ export default function InvoicesPage() {
             <div className="space-y-3">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}</div>
           ) : Object.keys(flexpediaByCompany).length === 0 ? (
             <div className="text-center text-muted-foreground py-12">
-              <p>Geen goedgekeurde, niet-gefactureerde Flexpedia uren gevonden.</p>
+              <p>Geen goedgekeurde, niet-gefactureerde uren gevonden voor {externalLabel}.</p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -291,7 +297,7 @@ export default function InvoicesPage() {
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center gap-2">
                         <h4 className="font-medium">{group.company}</h4>
-                        <Badge variant="secondary" className={payrollerBadgeClass.flexpedia + ' text-[10px]'}>Flexpedia</Badge>
+                        {group.payroller && <Badge variant="secondary" className={`${payrollerBadgeClass(group.payroller)} text-[10px]`}>{group.payroller.name}</Badge>}
                       </div>
                       <span className="text-sm text-muted-foreground">{group.hours.toFixed(1)}u normaal{group.overtime_hours > 0 ? ` + ${group.overtime_hours.toFixed(1)}u overwerk` : ''}</span>
                     </div>
@@ -349,6 +355,14 @@ function CreateInvoiceSheet({ open, onOpenChange, orgId, onSuccess }: { open: bo
   const [loading, setLoading] = useState(false);
   const [payrollerCreateFilter, setPayrollerCreateFilter] = useState<PayrollerCreateFilter>('ja_werkt');
 
+  // 'ja_werkt' = alle payrollers waarvoor wij factureren. Dit is de enige plek die
+  // bepaalt welke uren op een factuur mogen belanden; een zelf toegevoegde payroller
+  // hoort er automatisch bij zodra invoiced_by_us aan staat.
+  const { data: sheetPayrollers } = usePayrollers();
+  const invoicedPayrollerIds = (sheetPayrollers ?? []).filter((p) => p.invoiced_by_us).map((p) => p.id);
+  const externalNames = (sheetPayrollers ?? []).filter((p) => !p.invoiced_by_us).map((p) => p.name);
+  const invoicedNames = (sheetPayrollers ?? []).filter((p) => p.invoiced_by_us).map((p) => p.name);
+
   // Manual lines state
   const [manualLines, setManualLines] = useState<ManualLine[]>([{ description: '', hours: 0, hourly_rate: 0, line_total: 0 }]);
 
@@ -379,11 +393,17 @@ function CreateInvoiceSheet({ open, onOpenChange, orgId, onSuccess }: { open: bo
   // Load approved timesheets for preview (filtered by payroller)
   const loadTimesheets = async () => {
     if (!companyId || !periodStart || !periodEnd) return;
+    // Zonder geladen payrollers zou de 'ja_werkt'-filter op een lege id-lijst draaien
+    // en stil nul uren opleveren — dat leest als "niets te factureren".
+    if (payrollerCreateFilter === 'ja_werkt' && invoicedPayrollerIds.length === 0) {
+      toast.error('Payrollers zijn nog niet geladen of er is er geen ingesteld waarvoor jullie factureren.');
+      return;
+    }
     setLoading(true);
     try {
       let q = supabase
         .from('timesheets')
-        .select('*, placements!inner(company_id, function_name, payroller, client_hourly_rate, overtime_rate, employees(id, candidates(first_name, last_name)))')
+        .select('*, placements!inner(company_id, function_name, payroller_id, payrollers(id, name, legacy_key), client_hourly_rate, overtime_rate, employees(id, candidates(first_name, last_name)))')
         .eq('organization_id', orgId)
         .eq('status', 'goedgekeurd')
         .is('invoice_line_id', null)
@@ -394,9 +414,9 @@ function CreateInvoiceSheet({ open, onOpenChange, orgId, onSuccess }: { open: bo
 
       // Apply payroller filter
       if (payrollerCreateFilter === 'ja_werkt') {
-        q = q.in('placements.payroller', jaWerktPayrollers);
+        q = q.in('placements.payroller_id', invoicedPayrollerIds);
       } else if (payrollerCreateFilter !== 'all') {
-        q = q.eq('placements.payroller', payrollerCreateFilter);
+        q = q.eq('placements.payroller_id', payrollerCreateFilter);
       }
 
       const { data, error } = await q;
@@ -416,7 +436,7 @@ function CreateInvoiceSheet({ open, onOpenChange, orgId, onSuccess }: { open: bo
       const emp = p?.employees?.candidates;
       acc[pid] = {
         placement_id: pid, employee_id: p?.employees?.id,
-        payroller: p?.payroller ?? null,
+        payroller: p?.payrollers ?? null,
         description: `${p?.function_name ?? 'Plaatsing'} — ${emp?.first_name ?? ''} ${emp?.last_name ?? ''}`.trim(),
         hours: 0, overtime_hours: 0,
         hourly_rate: Number(p?.client_hourly_rate) || Number(ts.hourly_rate) || 0,
@@ -504,8 +524,12 @@ function CreateInvoiceSheet({ open, onOpenChange, orgId, onSuccess }: { open: bo
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2">
             <Info className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
             <div className="text-sm text-blue-800">
-              <p className="font-medium">Alleen BrioWorks, Bromida en Retiva plaatsingen</p>
-              <p className="text-xs text-blue-600 mt-0.5">Flexpedia factureert rechtstreeks aan de eindklant. Die uren worden hier standaard uitgesloten.</p>
+              <p className="font-medium">Alleen plaatsingen die wij factureren{invoicedNames.length > 0 ? ` (${invoicedNames.join(', ')})` : ''}</p>
+              <p className="text-xs text-blue-600 mt-0.5">
+                {externalNames.length > 0
+                  ? `${externalNames.join(', ')} factureert rechtstreeks aan de eindklant. Die uren worden hier standaard uitgesloten.`
+                  : 'Payrollers die zelf aan de eindklant factureren worden hier standaard uitgesloten.'}
+              </p>
             </div>
           </div>
 
@@ -522,11 +546,11 @@ function CreateInvoiceSheet({ open, onOpenChange, orgId, onSuccess }: { open: bo
               <Select value={payrollerCreateFilter} onValueChange={(v) => { setPayrollerCreateFilter(v as PayrollerCreateFilter); setPreview([]); }}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="ja_werkt">Eigen facturatie (BrioWorks, Bromida, Retiva)</SelectItem>
-                  <SelectItem value="brioworks">Alleen BrioWorks</SelectItem>
-                  <SelectItem value="bromida">Alleen Bromida</SelectItem>
-                  <SelectItem value="retiva">Alleen Retiva/A1</SelectItem>
-                  <SelectItem value="all">Alles (incl. Flexpedia)</SelectItem>
+                  <SelectItem value="ja_werkt">Eigen facturatie{invoicedNames.length > 0 ? ` (${invoicedNames.join(', ')})` : ''}</SelectItem>
+                  {(sheetPayrollers ?? []).map((pr) => (
+                    <SelectItem key={pr.id} value={pr.id}>Alleen {pr.name}</SelectItem>
+                  ))}
+                  <SelectItem value="all">Alles{externalNames.length > 0 ? ` (incl. ${externalNames.join(', ')})` : ''}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -565,8 +589,8 @@ function CreateInvoiceSheet({ open, onOpenChange, orgId, onSuccess }: { open: bo
                         <div className="flex items-center gap-2">
                           <p className="font-medium flex-1">{l.description}</p>
                           {l.payroller && (
-                            <Badge variant="secondary" className={`text-[10px] ${payrollerBadgeClass[l.payroller] ?? ''}`}>
-                              {payrollerLabel[l.payroller] ?? l.payroller}
+                            <Badge variant="secondary" className={`text-[10px] ${payrollerBadgeClass(l.payroller)}`}>
+                              {l.payroller.name}
                             </Badge>
                           )}
                         </div>
@@ -722,14 +746,14 @@ function InvoiceDetailSheet({ invoice, lines, open, onOpenChange, onUpdate, canM
           <div className="space-y-2">
             {lines.map((l: any) => {
               const emp = l.placements?.employees?.candidates;
-              const linePayroller = l.placements?.payroller;
+              const linePayroller = l.placements?.payrollers ?? null;
               return (
                 <div key={l.id} className="bg-muted/50 rounded-lg p-3 text-sm">
                   <div className="flex items-center gap-2">
                     <p className="font-medium flex-1">{l.description}</p>
                     {linePayroller && (
-                      <Badge variant="secondary" className={`text-[10px] ${payrollerBadgeClass[linePayroller] ?? ''}`}>
-                        {payrollerLabel[linePayroller] ?? linePayroller}
+                      <Badge variant="secondary" className={`text-[10px] ${payrollerBadgeClass(linePayroller)}`}>
+                        {linePayroller.name}
                       </Badge>
                     )}
                   </div>

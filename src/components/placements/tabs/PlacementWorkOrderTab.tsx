@@ -9,7 +9,6 @@ import { Progress } from '@/components/ui/progress';
 import { supabase } from '@/integrations/supabase/client';
 import { unwrapList } from '@/lib/db';
 import { formatDate, formatEUR } from '@/lib/format';
-import { payrollerLabel } from '@/lib/payroller';
 import { qk } from '@/lib/query-keys';
 
 type PlacementWorkOrderTabProps = {

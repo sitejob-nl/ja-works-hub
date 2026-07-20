@@ -1,35 +1,48 @@
-export const payrollerLabel: Record<string, string> = {
-  flexpedia: 'Flexpedia',
-  brioworks: 'BrioWorks',
-  bromida: 'Bromida',
-  retiva: 'Retiva/A1',
-};
+/**
+ * Payrollers (loonmotoren) komen sinds migratie 20260720120000 uit de tabel
+ * `payrollers` per organisatie — niet meer uit een vaste enum met vier waarden.
+ * Of ja werkt factureert is nu een eigenschap van de rij (`invoiced_by_us`)
+ * in plaats van een hardcoded lijst in deze file.
+ */
+export interface Payroller {
+  id: string;
+  name: string;
+  invoiced_by_us: boolean;
+  is_active: boolean;
+  is_default: boolean;
+  sort_order: number;
+  /** Enum-waarde waar deze rij uit gemigreerd is; zelf toegevoegd = null. */
+  legacy_key: string | null;
+}
 
-export const payrollerBadgeClass: Record<string, string> = {
+/** De vier oorspronkelijke payrollers houden hun vertrouwde badge-kleur. */
+const LEGACY_BADGE_CLASS: Record<string, string> = {
   flexpedia: 'bg-blue-100 text-blue-800',
   brioworks: 'bg-emerald-100 text-emerald-800',
   bromida: 'bg-amber-100 text-amber-800',
   retiva: 'bg-purple-100 text-purple-800',
 };
 
-/** Payrollers that ja werkt invoices for (excludes Flexpedia) */
-export const JA_WERKT_PAYROLLERS = ['brioworks', 'bromida', 'retiva'];
+/** Kleuren voor zelf toegevoegde payrollers — stabiel per naam, niet willekeurig. */
+const BADGE_PALETTE = [
+  'bg-sky-100 text-sky-800',
+  'bg-rose-100 text-rose-800',
+  'bg-teal-100 text-teal-800',
+  'bg-indigo-100 text-indigo-800',
+  'bg-lime-100 text-lime-800',
+  'bg-fuchsia-100 text-fuchsia-800',
+];
 
-export const ALL_PAYROLLERS = ['flexpedia', 'brioworks', 'bromida', 'retiva'] as const;
-
-export interface PayrollerSettings {
-  /** Payrollers die de org actief gebruikt (kiesbaar in de plaatsingswizard). */
-  enabled: string[];
-  /** Vooringevulde payroller bij een nieuwe plaatsing (moet in `enabled` zitten). */
-  default: string | null;
-}
-
-/** Leest `organizations.settings.payrollers`; zonder instelling zijn alle payrollers actief. */
-export function getPayrollerSettings(settings: unknown): PayrollerSettings {
-  const raw = (settings as any)?.payrollers;
-  const enabled = Array.isArray(raw?.enabled)
-    ? raw.enabled.filter((p: unknown): p is string => typeof p === 'string' && p in payrollerLabel)
-    : [...ALL_PAYROLLERS];
-  const def = typeof raw?.default === 'string' && enabled.includes(raw.default) ? raw.default : null;
-  return { enabled, default: def };
+export function payrollerBadgeClass(
+  payroller: Pick<Payroller, 'name' | 'legacy_key'> | null | undefined,
+): string {
+  if (!payroller) return '';
+  if (payroller.legacy_key && LEGACY_BADGE_CLASS[payroller.legacy_key]) {
+    return LEGACY_BADGE_CLASS[payroller.legacy_key];
+  }
+  let hash = 0;
+  for (let i = 0; i < payroller.name.length; i++) {
+    hash = (hash * 31 + payroller.name.charCodeAt(i)) >>> 0;
+  }
+  return BADGE_PALETTE[hash % BADGE_PALETTE.length];
 }

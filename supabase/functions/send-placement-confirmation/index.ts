@@ -5,6 +5,12 @@ import { sendOutboundWhatsApp } from "../_shared/whatsapp-utils.ts";
 import { getWhatsAppAutomationSettings, mergeTemplate as mergeWhatsAppTemplate } from "../_shared/whatsapp-automation-settings.ts";
 import { buildTemplatePayload, fetchApprovedTemplate, isWithinServiceWindow } from "../_shared/whatsapp-template.ts";
 import { type BrandTheme, loadBrandTheme, renderBrandedEmail } from "../_shared/email-layout.ts";
+import {
+  escapeHtml,
+  generalTermsSection,
+  mergeTemplateText,
+  templateToEmailContent,
+} from "../_shared/placement-mail.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -17,10 +23,6 @@ const json = (body: unknown, status = 200) =>
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
-
-function escapeHtml(str: string): string {
-  return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
 
 function formatDate(iso: string | null | undefined): string {
   if (!iso) return '—';
@@ -45,15 +47,6 @@ function formatWorkDays(days: string[] | null): string {
   return days.join(", ");
 }
 
-function generalTermsSection(terms: { name: string; content: string } | null): string {
-  if (!terms?.content) return "";
-  return `
-          <div style="background:#f8fafc;border-radius:6px;border:1px solid #e2e8f0;padding:14px 20px;margin:24px 0;">
-            <p style="margin:0 0 8px;color:#334155;font-size:14px;font-weight:600;">${escapeHtml(terms.name || "Algemene voorwaarden")}</p>
-            <p style="margin:0;color:#334155;font-size:12px;line-height:1.5;white-space:pre-wrap;">${escapeHtml(terms.content)}</p>
-          </div>`;
-}
-
 function extractTemplateVariables(content: string): string[] {
   const matches = Array.from(content.matchAll(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g), (match) => match[1]);
   return Array.from(new Set(matches));
@@ -61,13 +54,6 @@ function extractTemplateVariables(content: string): string[] {
 
 function unknownTemplateVariables(content: string, vars: Record<string, unknown>): string[] {
   return extractTemplateVariables(content).filter((key) => !(key in vars));
-}
-
-function mergeTemplate(content: string, vars: Record<string, string | null | undefined>): string {
-  return content.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (token, key: string) => {
-    if (!(key in vars)) return token;
-    return escapeHtml(String(vars[key] ?? ""));
-  });
 }
 
 /**
@@ -133,13 +119,6 @@ async function sendPlacementWhatsApp(service: any, input: {
     template: buildTemplatePayload(template, values),
   });
   return { ok: result.success, error: result.error, message_id: result.messageId ?? null, route: "template" };
-}
-
-// Inhoud van een vrije org-template (contract_templates) — body als pre-wrap, in de merk-frame.
-function templateToEmailContent(template: { name: string; content: string }, vars: Record<string, string | null | undefined>, theme: BrandTheme): string {
-  const body = mergeTemplate(template.content, vars);
-  return `<h2 style="margin:0 0 16px;color:${theme.navyHex};font-size:18px;">${escapeHtml(template.name)}</h2>
-          <div style="color:${theme.textHex};font-size:14px;line-height:1.6;white-space:pre-wrap;">${body}</div>`;
 }
 
 function buildClientEmailContent(data: {
@@ -290,6 +269,26 @@ Deno.serve(async (req) => {
     const { placement_id, send_to_client, send_to_employee, placement_data } = body;
     const preview = body.preview === true;
 
+    // Bewerkte mail vanuit de wizard. De gebruiker bewerkt platte tékst, geen HTML —
+    // de merk-frame en de gegevenstabel blijven zo altijd intact en er kan geen
+    // ruwe HTML uit de UI de mail in lekken.
+    const overrides = {
+      accountId: typeof body.account_id === "string" ? body.account_id : null,
+      client: {
+        subject: typeof body.client_subject === "string" ? body.client_subject.trim() : null,
+        bodyText: typeof body.client_body === "string" ? body.client_body : null,
+        cc: Array.isArray(body.client_cc) ? body.client_cc.filter((e: unknown) => typeof e === "string") : [],
+        bcc: Array.isArray(body.client_bcc) ? body.client_bcc.filter((e: unknown) => typeof e === "string") : [],
+        to: typeof body.client_to === "string" && body.client_to.trim() ? body.client_to.trim() : null,
+      },
+      employee: {
+        subject: typeof body.employee_subject === "string" ? body.employee_subject.trim() : null,
+        bodyText: typeof body.employee_body === "string" ? body.employee_body : null,
+        cc: Array.isArray(body.employee_cc) ? body.employee_cc.filter((e: unknown) => typeof e === "string") : [],
+        bcc: Array.isArray(body.employee_bcc) ? body.employee_bcc.filter((e: unknown) => typeof e === "string") : [],
+      },
+    };
+
     if (!placement_id && !(preview && placement_data)) {
       return json({ error: "placement_id is required" }, 400);
     }
@@ -373,8 +372,8 @@ Deno.serve(async (req) => {
     const workDays = placement.work_days ?? null;
 
     const results: {
-      client_email?: { subject: string; html: string; to: string; sent_via?: string };
-      employee_email?: { subject: string; html: string; to: string; sent_via?: string };
+      client_email?: { subject: string; html: string; body_text: string; to: string; sent_via?: string };
+      employee_email?: { subject: string; html: string; body_text: string; to: string; sent_via?: string };
       warnings: string[];
     } = { warnings };
 
@@ -418,6 +417,10 @@ Deno.serve(async (req) => {
       end_date: formatDate(placement.end_date),
       expected_end_date: formatDate(placement.expected_end_date),
       function_name: functionName,
+      // Bij een plaatsing vanuit een match is function_name voorgevuld met de
+      // vacaturetitel. Dan zou een aparte "Vacature"-regel exact hetzelfde zeggen als
+      // "Functie"; leeg laten, dan valt de regel vanzelf weg in de opmaak.
+      vacancy_title: vacancy?.title && vacancy.title !== functionName ? vacancy.title : "",
       hourly_rate: formatAmount(placement.hourly_rate),
       client_hourly_rate: formatAmount(placement.client_hourly_rate),
       overtime_rate: formatAmount(placement.overtime_rate),
@@ -473,16 +476,20 @@ Deno.serve(async (req) => {
 
     // ── Client email ──
     if (send_to_client) {
-      const clientEmail = primaryContact?.email ?? company?.email;
+      const clientEmail = overrides.client.to ?? primaryContact?.email ?? company?.email;
       const contactName = primaryContact?.full_name ?? companyName;
 
       if (!clientEmail) {
         warnings.push("Geen e-mailadres gevonden voor opdrachtgever");
       }
 
-      const subject = `Plaatsingsbevestiging - ${functionName} bij ${companyName}`;
-      const clientContent = clientTemplate
-        ? templateToEmailContent(clientTemplate as any, { ...templateVars, contact_name: contactName }, brandTheme)
+      // Onderwerp noemt de kandidaat: de opdrachtgever ziet in zijn inbox meteen om wie het gaat.
+      const subject = overrides.client.subject ||
+        `Plaatsingsbevestiging — ${candidateName} als ${functionName} bij ${companyName}`;
+      const clientBodyText = overrides.client.bodyText ??
+        (clientTemplate ? mergeTemplateText((clientTemplate as any).content, { ...templateVars, contact_name: contactName }) : "");
+      const clientContent = clientTemplate || overrides.client.bodyText
+        ? templateToEmailContent(clientBodyText, "Plaatsingsbevestiging", `Bevestiging van de plaatsing van ${candidateName} bij ${companyName}`, brandTheme)
         : buildClientEmailContent({
         companyName,
         contactName,
@@ -495,9 +502,10 @@ Deno.serve(async (req) => {
         candidateEmail: candidate.email,
         orgName: brandTheme.orgName,
       }, brandTheme);
+      const termsText = generalTerms ? mergeTemplateText((generalTerms as any).content, templateVars) : "";
       const html = renderBrandedEmail({
         theme: brandTheme,
-        contentHtml: clientContent + generalTermsSection(generalTerms as any),
+        contentHtml: clientContent + generalTermsSection(termsText),
         preheader: `Plaatsingsbevestiging — ${candidateName} bij ${companyName}`,
         footerNote,
       });
@@ -512,6 +520,9 @@ Deno.serve(async (req) => {
         sendResult = await sendViaOutlookAccount({
           orgId,
           to: clientEmail,
+          cc: overrides.client.cc,
+          bcc: overrides.client.bcc,
+          accountId: overrides.accountId,
           subject,
           htmlBody: html,
           companyId: company.id,
@@ -538,6 +549,7 @@ Deno.serve(async (req) => {
       results.client_email = {
         subject,
         html,
+        body_text: clientBodyText,
         to: clientEmail ?? "Geen e-mail beschikbaar",
         sent_via: sendResult.method,
       };
@@ -571,9 +583,12 @@ Deno.serve(async (req) => {
 
     // ── Employee email ──
     if (send_to_employee) {
-      const subject = `Plaatsingsbevestiging - ${functionName} bij ${companyName}`;
-      const employeeContent = employeeTemplate
-        ? templateToEmailContent(employeeTemplate as any, employeeTemplateVars, brandTheme)
+      const subject = overrides.employee.subject ||
+        `Je plaatsing als ${functionName} bij ${companyName} is bevestigd`;
+      const employeeBodyText = overrides.employee.bodyText ??
+        (employeeTemplate ? mergeTemplateText((employeeTemplate as any).content, employeeTemplateVars) : "");
+      const employeeContent = employeeTemplate || overrides.employee.bodyText
+        ? templateToEmailContent(employeeBodyText, "Je plaatsing is bevestigd", `${functionName} bij ${companyName}`, brandTheme)
         : buildEmployeeEmailContent({
         candidateName,
         functionName,
@@ -599,6 +614,9 @@ Deno.serve(async (req) => {
         empSendResult = await sendViaOutlookAccount({
           orgId,
           to: candidate.email,
+          cc: overrides.employee.cc,
+          bcc: overrides.employee.bcc,
+          accountId: overrides.accountId,
           subject,
           htmlBody: html,
           candidateId: candidate.id,
@@ -624,6 +642,7 @@ Deno.serve(async (req) => {
       results.employee_email = {
         subject,
         html,
+        body_text: employeeBodyText,
         to: candidate.email ?? "Geen e-mail beschikbaar",
         sent_via: empSendResult.method,
       };
