@@ -47,6 +47,9 @@ interface SendViaOutlookAccountParams {
   companyId?: string;
   companyContactId?: string;
   matchId?: string;
+  /** Koppelt de gelogde communicatie aan een plaatsing, zodat de mail zichtbaar
+   * wordt op het Communicatie-tabblad van die plaatsing. */
+  placementId?: string;
   sentBy?: string;
   senderName?: string | null;
   logCommunication?: boolean;
@@ -137,6 +140,7 @@ export async function sendViaOutlookAccount(params: SendViaOutlookAccountParams)
         companyId: params.companyId ?? null,
         companyContactId: params.companyContactId ?? null,
         matchId: params.matchId ?? null,
+        placementId: params.placementId ?? null,
         sentBy: params.sentBy ?? null,
       });
     }
@@ -191,6 +195,7 @@ export async function sendViaOutlookAccount(params: SendViaOutlookAccountParams)
         company_id: params.companyId ?? null,
         company_contact_id: params.companyContactId ?? null,
         match_id: params.matchId ?? null,
+        placement_id: params.placementId ?? null,
         channel: "email",
         direction: "outbound",
         subject: params.subject,

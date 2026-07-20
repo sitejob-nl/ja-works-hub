@@ -130,6 +130,22 @@ const CandidateScreeningTab = ({
   const saveSeq = useRef(0);
   const aiEnabled = useModuleEnabled('ai-analyse');
 
+  // Het concept wordt met een lazy initializer opgebouwd en dus maar één keer gevuld.
+  // Blijft de tab gemount terwijl je naar een ander dossier navigeert, dan hoort het
+  // concept bij de vórige kandidaat — en werd bij opslaan diens (lege) profiel over de
+  // nieuwe kandidaat geschreven. Bij wisseling van kandidaat opnieuw opbouwen.
+  const loadedCandidateId = useRef<string>(candidate.id);
+  useEffect(() => {
+    if (loadedCandidateId.current === candidate.id) return;
+    loadedCandidateId.current = candidate.id;
+    const nextData = getInitialData(candidate);
+    const nextDraft = getProfileDraft(candidate);
+    setData(nextData);
+    setProfileDraft(nextDraft);
+    setLastSavedAt((candidate.screening_data as any)?.updated_at ?? candidate.screened_at ?? null);
+    setLastSavedSnapshot(buildSnapshot(nextData, nextDraft));
+  }, [candidate]);
+
   // Vakinhoudelijke belvragen (hybride): geopend vanuit een match → ?vacancy=<id>.
   // Deterministische laag = gratis, uit match_breakdown.missing; AI-laag = Gemini (kost credits).
   const [aiCallQuestions, setAiCallQuestions] = useState<string[]>([]);

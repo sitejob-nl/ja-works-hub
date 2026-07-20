@@ -497,10 +497,12 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
   const toggleAllMatches = () => setSelectedMatches(allMatchesSelected ? new Set() : new Set(visibleMatches.map((m: any) => m.id)));
 
   // Na acceptatie meteen de plaatsing-popup openen (één match tegelijk).
+  // Een al geplaatste match slaan we over: de wizard opnieuw openen suggereert dat
+  // er nog geplaatst moet worden en nodigt uit tot een tweede plaatsing.
   const openPlacementForAccepted = (matchIds: string[], toStatus: string) => {
     if (toStatus !== 'geaccepteerd' || matchIds.length !== 1) return;
     const row = (matches ?? []).find((m: any) => m.id === matchIds[0]);
-    if (row) setPlacementMatch(row);
+    if (row && row.status !== 'geplaatst') setPlacementMatch(row);
   };
 
   // Statuswijziging (1 of meer matches). Terminale statussen vragen eerst een feedbackreden.
