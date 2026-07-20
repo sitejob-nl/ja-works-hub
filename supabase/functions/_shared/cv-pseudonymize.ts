@@ -40,7 +40,52 @@ export function pseudonymizeCv(
   let text = rawText;
   const meta = { name: 0, email: 0, phone: 0, bsn: 0, iban: 0 };
 
-  // 1. Volledige naam (case-insensitive) — eerst de combinatie, dan losse onderdelen
+  // 1. Email
+  text = text.replace(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi, () => {
+    meta.email += 1;
+    return '[EMAIL]';
+  });
+
+  // 2. IBAN (NL + 2 cijfers + 4 letters bank + 10 cijfers)
+  text = text.replace(/\bNL\d{2}[A-Z]{4}\d{10}\b/gi, () => {
+    meta.iban += 1;
+    return '[IBAN]';
+  });
+
+  // 3. BSN (9 cijfers met 11-proef)
+  text = text.replace(/\b\d{9}\b/g, (match) => {
+    if (bsnIsValid(match)) {
+      meta.bsn += 1;
+      return '[BSN]';
+    }
+    return match;
+  });
+
+  // 4. Telefoon (NL)
+  //
+  // NA IBAN en BSN. De telefoonregex accepteert elk cijferblok dat met een 0 begint
+  // en pakte daardoor de laatste tien cijfers van een IBAN mee:
+  // "NL91ABNA0417164300" werd "NL91ABNA[TELEFOON]", zodat de IBAN nooit als IBAN
+  // gemaskeerd werd. Een BSN die met een 0 begint had hetzelfde probleem.
+  // +31 6 12345678 / +31612345678 / 06-12345678 / 06 12 34 56 78 / 0612345678 / (020) 1234567
+  text = text.replace(
+    /(?:\+31|0031|0)(?:[\s-]?\d){8,10}/g,
+    (match) => {
+      // Alleen vervang als minimaal 9 cijfers totaal (anders te kort voor NL nummer)
+      const digits = match.replace(/\D/g, '');
+      if (digits.length < 9 || digits.length > 11) return match;
+      meta.phone += 1;
+      return '[TELEFOON]';
+    }
+  );
+
+  // 5. Volledige naam (case-insensitive) — eerst de combinatie, dan losse onderdelen.
+  //
+  // BEWUST ALS LAATSTE. De naam is het enige patroon dat geen vaste vorm heeft en dus
+  // middenin andere gegevens kan vallen: "t.wieczorek@example.com" werd eerder
+  // "t.[KANDIDAAT]@example.com", waarna de e-mailregex niet meer matchte en het
+  // adres half zichtbaar bleef. Structurele gegevens (e-mail, telefoon, BSN, IBAN)
+  // maskeren we daarom eerst; die zijn ondubbelzinnig te herkennen.
   const tokens: string[] = [];
   if (candidate.first_name && candidate.last_name) {
     tokens.push(`${candidate.first_name} ${candidate.last_name}`);
@@ -60,40 +105,6 @@ export function pseudonymizeCv(
     text = text.replace(re, '[KANDIDAAT]');
     if (text.length !== before) meta.name += 1;
   }
-
-  // 2. Email
-  text = text.replace(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi, () => {
-    meta.email += 1;
-    return '[EMAIL]';
-  });
-
-  // 3. Telefoon (NL)
-  // +31 6 12345678 / +31612345678 / 06-12345678 / 06 12 34 56 78 / 0612345678 / (020) 1234567
-  text = text.replace(
-    /(?:\+31|0031|0)(?:[\s-]?\d){8,10}/g,
-    (match) => {
-      // Alleen vervang als minimaal 9 cijfers totaal (anders te kort voor NL nummer)
-      const digits = match.replace(/\D/g, '');
-      if (digits.length < 9 || digits.length > 11) return match;
-      meta.phone += 1;
-      return '[TELEFOON]';
-    }
-  );
-
-  // 4. BSN (9 cijfers met 11-proef)
-  text = text.replace(/\b\d{9}\b/g, (match) => {
-    if (bsnIsValid(match)) {
-      meta.bsn += 1;
-      return '[BSN]';
-    }
-    return match;
-  });
-
-  // 5. IBAN (NL + 2 cijfers + 4 letters bank + 10 cijfers)
-  text = text.replace(/\bNL\d{2}[A-Z]{4}\d{10}\b/gi, () => {
-    meta.iban += 1;
-    return '[IBAN]';
-  });
 
   return { text, meta };
 }
