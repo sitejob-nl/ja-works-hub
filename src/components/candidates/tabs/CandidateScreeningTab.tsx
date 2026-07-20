@@ -753,6 +753,21 @@ const CandidateScreeningTab = ({
                     <Badge className={cn('shrink-0 text-[11px]', durationToneClass(months))}>{formatWorkDuration(months)}</Badge>
                   </div>
                   <p className="mt-2 text-xs text-muted-foreground">{job?.periode || 'Periode onbekend'}</p>
+                  {/* Kernactiviteiten stonden alleen in het dubbele blok in "AI-beredenering".
+                      Dat blok is weg, dus ze verhuizen hierheen — anders was de opschoning
+                      stiekem een functieverlies. */}
+                  {Array.isArray(job?.kernactiviteiten) && job.kernactiviteiten.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {job.kernactiviteiten.slice(0, 3).map((activity: string) => (
+                        <span
+                          key={`${job?.bedrijf ?? 'werk'}-${activity}`}
+                          className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground"
+                        >
+                          {activity}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -823,69 +838,9 @@ const CandidateScreeningTab = ({
           </div>
         )}
 
-        {(workEmployers.length > 0 || workGaps.length > 0) && (
-          <div className="rounded-md border p-3">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-sm font-medium"><Briefcase className="h-3.5 w-3.5" /> Werkervaring</div>
-              {typeof workTotalYears === 'number' && (
-                <Badge variant="secondary" className="text-xs">{workTotalYears} jaar totaal</Badge>
-              )}
-            </div>
-
-            {workEmployers.length > 0 && (
-              /* Geen totaleJaren: de badge "X jaar totaal" staat al in de kop hierboven. */
-              <WorkHistoryTimeline
-                werkgevers={workEmployers}
-                gaten={workGaps}
-                showDetails={false}
-                className="mb-3 rounded-md bg-muted/25 p-3"
-              />
-            )}
-
-            <div className="grid gap-2 md:grid-cols-2">
-              {workEmployers.slice(0, 6).map((job: any, index: number) => {
-                const months = workDurationMonths(job);
-                const activities = Array.isArray(job?.kernactiviteiten) ? job.kernactiviteiten.slice(0, 3) : [];
-                return (
-                  <div key={`${job?.bedrijf ?? 'werk'}-${index}`} className="relative overflow-hidden rounded-md border bg-background p-3 text-sm">
-                    <span className={cn('absolute inset-y-0 left-0 w-1', durationRailClass(months))} />
-                    <div className="flex items-start justify-between gap-2 pl-2">
-                      <div className="min-w-0">
-                        <p className="line-clamp-2 font-medium leading-5">{job?.functie || 'Functie onbekend'}</p>
-                        <p className="mt-0.5 text-xs text-muted-foreground">{[job?.bedrijf, job?.periode].filter(Boolean).join(' · ') || 'Werkgever/periode onbekend'}</p>
-                      </div>
-                      <Badge className={cn('shrink-0 text-[11px]', durationToneClass(months))}>
-                        {formatWorkDuration(months)}
-                      </Badge>
-                    </div>
-                    {activities.length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-1 pl-2">
-                        {activities.map((activity: string) => (
-                          <span key={`${job?.bedrijf ?? 'werk'}-${activity}`} className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
-                            {activity}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-              {workEmployers.length > 6 && (
-                <div className="rounded-md border border-dashed bg-muted/20 p-3 text-xs text-muted-foreground">
-                  +{workEmployers.length - 6} eerdere werkgever{workEmployers.length - 6 === 1 ? '' : 's'} in de AI-analyse.
-                </div>
-              )}
-            </div>
-
-            <div className="mt-2 space-y-1.5">
-              {workGaps.slice(0, 3).map((gap: any, index: number) => (
-                <div key={`${gap?.periode ?? 'gat'}-${index}`} className="rounded bg-orange-50 px-2 py-1 text-xs text-orange-700">
-                  Gat: {gap?.periode}{gap?.duur_maanden ? ` (${gap.duur_maanden} mnd)` : ''}{gap?.mogelijke_verklaring ? ` · ${gap.mogelijke_verklaring}` : ''}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* Geen werkervaringsblok hier: "Werkervaring in beeld" (renderWorkExperiencePanel)
+            toont dezelfde tijdlijn en werkgeverkaarten, mét de stabiliteitsbadges. Dit blok
+            was daar een restant van en stond er dus twee keer onder elkaar. */}
       </Card>
     );
   };
