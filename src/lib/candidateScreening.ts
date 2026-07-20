@@ -500,21 +500,38 @@ export const formatWorkDuration = (months: number | null) => {
   return `${years}j ${rest}m`;
 };
 
-export const durationToneClass = (months: number | null) => {
-  if (!months) return 'bg-muted text-muted-foreground border-0';
-  if (months >= 24) return 'bg-stat-green/10 text-stat-green border-0';
-  if (months >= 12) return 'bg-blue-100 text-blue-700 border-0';
-  if (months >= 6) return 'bg-amber-100 text-amber-800 border-0';
-  return 'bg-red-100 text-red-700 border-0';
-};
+/**
+ * Kleurschaal van de werkhistorie: de kleur zegt hoe láng iemand ergens bleef,
+ * niet welke baan het is. Drie dienstverbanden van 2+ jaar krijgen dus dezelfde
+ * kleur — dat is de bedoeling (stabiliteitssignaal), maar het vraagt wel om een
+ * legenda, anders leest een recruiter de kleur als een categorie.
+ *
+ * Eén bron voor drempel, label, balkkleur en badgekleur, zodat de legenda niet
+ * uit de pas kan lopen met wat er getekend wordt.
+ */
+export interface DurationBand {
+  /** Ondergrens in maanden (inclusief). */
+  minMonths: number;
+  label: string;
+  railClass: string;
+  toneClass: string;
+}
 
-export const durationRailClass = (months: number | null) => {
-  if (!months) return 'bg-muted-foreground/30';
-  if (months >= 24) return 'bg-stat-green';
-  if (months >= 12) return 'bg-blue-500';
-  if (months >= 6) return 'bg-amber-500';
-  return 'bg-red-500';
-};
+export const DURATION_BANDS: DurationBand[] = [
+  { minMonths: 24, label: '2 jaar of langer', railClass: 'bg-stat-green', toneClass: 'bg-stat-green/10 text-stat-green border-0' },
+  { minMonths: 12, label: '1 tot 2 jaar', railClass: 'bg-blue-500', toneClass: 'bg-blue-100 text-blue-700 border-0' },
+  { minMonths: 6, label: '6 tot 12 maanden', railClass: 'bg-amber-500', toneClass: 'bg-amber-100 text-amber-800 border-0' },
+  { minMonths: 0, label: 'korter dan 6 maanden', railClass: 'bg-red-500', toneClass: 'bg-red-100 text-red-700 border-0' },
+];
+
+export const durationBand = (months: number | null): DurationBand | null =>
+  months ? DURATION_BANDS.find((band) => months >= band.minMonths) ?? null : null;
+
+export const durationToneClass = (months: number | null) =>
+  durationBand(months)?.toneClass ?? 'bg-muted text-muted-foreground border-0';
+
+export const durationRailClass = (months: number | null) =>
+  durationBand(months)?.railClass ?? 'bg-muted-foreground/30';
 
 export const buildScreeningNoteContent = (data: ScreeningData): string => {
   const resultLabel = RESULT_OPTIONS.find((r) => r.value === data.result)?.label ?? data.result;

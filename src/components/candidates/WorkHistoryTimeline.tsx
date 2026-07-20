@@ -1,6 +1,6 @@
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { durationRailClass, durationToneClass, formatWorkDuration } from '@/lib/candidateScreening';
+import { DURATION_BANDS, durationBand, durationRailClass, durationToneClass, formatWorkDuration } from '@/lib/candidateScreening';
 import { buildTickYears, buildTimelineRows, type WorkEntry, type WorkGap } from '@/lib/work-history';
 
 interface Props {
@@ -57,6 +57,17 @@ const WorkHistoryTimeline = ({
   };
 
   const visibleRows = compact ? rows.slice(0, COMPACT_ROW_LIMIT) : rows;
+
+  /**
+   * Legenda. De kleur codeert duur, niet identiteit — drie banen van 2+ jaar zijn
+   * alle drie groen. Zonder sleutel leest dat als "waarom zie ik drie dezelfde
+   * kleuren?". We tonen alleen de banden die in dít dossier voorkomen, zodat de
+   * legenda uitlegt wat er staat in plaats van een volledige schaal op te dreunen.
+   */
+  const usedBands = DURATION_BANDS.filter((band) =>
+    rows.some((row) => row.kind === 'werk' && durationBand(row.months) === band));
+  const hasGap = rows.some((row) => row.kind === 'gat');
+  const showLegend = !compact && (usedBands.length > 1 || hasGap);
   const hiddenRows = rows.length - visibleRows.length;
   const showHeader = title != null || totaleJaren != null;
 
@@ -168,6 +179,24 @@ const WorkHistoryTimeline = ({
               title={`${row.title} — ${row.meta} (${formatWorkDuration(row.months)})`}
             />
           ))}
+        </div>
+      )}
+
+      {showLegend && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+          <span>Kleur = hoe lang bij één werkgever:</span>
+          {usedBands.map((band) => (
+            <span key={band.label} className="inline-flex items-center gap-1">
+              <span className={cn('h-2 w-2 shrink-0 rounded-full', band.railClass)} aria-hidden="true" />
+              {band.label}
+            </span>
+          ))}
+          {hasGap && (
+            <span className="inline-flex items-center gap-1">
+              <span className={cn('h-2 w-2 shrink-0 rounded-full', GAP_BAR_CLASS)} aria-hidden="true" />
+              gat tussen banen
+            </span>
+          )}
         </div>
       )}
     </div>

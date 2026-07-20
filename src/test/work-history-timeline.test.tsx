@@ -156,3 +156,23 @@ describe('WorkHistoryTimeline', () => {
     expect(container).toBeEmptyDOMElement();
   });
 });
+
+describe('WorkHistoryTimeline — kleurlegenda', () => {
+  it('legt uit waarvoor de kleur staat zodra er meerdere banden in beeld zijn', () => {
+    // Tomasz-scenario: drie dienstverbanden van 2+ jaar (allemaal groen) plus één
+    // van 1j7m (blauw). Zonder legenda leest dat als "waarom drie dezelfde kleuren?".
+    render(<WorkHistoryTimeline werkgevers={werkgevers} gaten={gaten} />);
+    expect(screen.getByText(/Kleur = hoe lang bij één werkgever/)).toBeInTheDocument();
+  });
+
+  it('toont alleen de banden die echt voorkomen', () => {
+    // Eén werkgever van ruim 2 jaar en geen gaten: een legenda voegt niets toe.
+    render(<WorkHistoryTimeline werkgevers={[{ werkgever: 'Solo BV', functie: 'Lasser', van: '2019', tot: '2024' }]} gaten={[]} />);
+    expect(screen.queryByText(/Kleur = hoe lang bij één werkgever/)).not.toBeInTheDocument();
+  });
+
+  it('benoemt gaten apart in de legenda', () => {
+    render(<WorkHistoryTimeline werkgevers={werkgevers} gaten={gaten} />);
+    expect(screen.getByText('gat tussen banen')).toBeInTheDocument();
+  });
+});
