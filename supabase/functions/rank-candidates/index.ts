@@ -8,7 +8,7 @@
 // config.toml; we valideren de Bearer-token zelf via auth.getUser().
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { haversineKm, scoreMatch, passesShortlist, type MatchBreakdown, type MatchCriteriaOptions } from "../_shared/matching-core.ts";
+import { haversineKm, scoreMatch, passesShortlist, MATCHABLE_CANDIDATE_STATUSES, type MatchBreakdown, type MatchCriteriaOptions } from "../_shared/matching-core.ts";
 import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
 
 const json = (body: unknown, status = 200) =>
@@ -26,7 +26,9 @@ const normalizeCriteriaOptions = (value: unknown): MatchCriteriaOptions => {
   };
 };
 
-const ACTIVE_STATUSES = ["nieuw", "in_behandeling", "beschikbaar", "werkzoekend"];
+// Toelatingspoort: alleen kandidaten die een recruiter heeft toegelaten. Zie
+// MATCHABLE_CANDIDATE_STATUSES in _shared/matching-core.ts voor het waarom.
+const ACTIVE_STATUSES = [...MATCHABLE_CANDIDATE_STATUSES];
 const CANDIDATE_FIELDS =
   "id, first_name, last_name, status, skills, certifications, languages, has_drivers_license, drivers_license_categories, has_dutch_address, compliance_status, address_city, address_lat, address_lng, available_from, available_until, arrival_date, availability_notes, ai_function_group, ai_target_functions, ai_classification, ai_reliability_score, most_recent_role, most_recent_role_year";
 

@@ -5,7 +5,7 @@
 // de hele pool; hier, op één paar, halen we de echte reistijd op).
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { scoreMatch, type DistanceInfo, type MatchCriteriaOptions } from "../_shared/matching-core.ts";
+import { scoreMatch, isCandidateScorable, type DistanceInfo, type MatchCriteriaOptions } from "../_shared/matching-core.ts";
 import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
 import { buildMatchScorePatch } from "../_shared/match-lifecycle.ts";
 
@@ -122,10 +122,17 @@ Deno.serve(async (req) => {
 
     const { data: candidate, error: candidateError } = await userClient
       .from("candidates")
-      .select("id, organization_id, first_name, last_name, skills, certifications, languages, has_drivers_license, drivers_license_categories, has_dutch_address, address_city, address_lat, address_lng, available_from, available_until, arrival_date, availability_notes, ai_function_group, ai_target_functions, ai_classification, ai_reliability_score, most_recent_role, most_recent_role_year")
+      .select("id, organization_id, status, first_name, last_name, skills, certifications, languages, has_drivers_license, drivers_license_categories, has_dutch_address, address_city, address_lat, address_lng, available_from, available_until, arrival_date, availability_notes, ai_function_group, ai_target_functions, ai_classification, ai_reliability_score, most_recent_role, most_recent_role_year")
       .eq("id", candidate_id)
       .single();
     if (candidateError) throw candidateError;
+
+    // Een afgewezen of uitgeschreven kandidaat alsnog scoren zet een verse
+    // matchscore op een dossier dat bewust uit beeld is. `geplaatst` mag wel:
+    // een bestaande plaatsing herberekenen is legitiem.
+    if (!isCandidateScorable((candidate as any)?.status)) {
+      return json({ error: "Kandidaat is niet meer in beeld voor matching" }, 409);
+    }
 
     const { data: vacancy, error: vacancyError } = await userClient
       .from("vacancies")

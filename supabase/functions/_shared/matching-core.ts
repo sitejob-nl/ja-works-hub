@@ -605,3 +605,31 @@ export function passesShortlist(breakdown: MatchBreakdown, includeWeak = false, 
   if (options?.requireKnownDistance && breakdown.distance.km == null && breakdown.distance.durationMin == null) return false;
   return true;
 }
+
+// ── Toelatingspoort ────────────────────────────────────────────────────────────
+//
+// Besluit meeting 17-06/17-07: de matcher draait alleen over kandidaten die een
+// recruiter heeft toegelaten. Daarvóór stond `nieuw` in de pool, en dat is precies
+// de status waarop Carerix-imports binnenkomen — waardoor ~2000 nooit-beoordeelde
+// mensen werden voorgesteld. De Carerix-historie is op 2026-07-20 eenmalig
+// toegelaten (bereikbare kandidaten → `werkzoekend`); nieuwe instroom moet voortaan
+// wél door de funnel.
+//
+// `in_behandeling` hoort hier bewust NIET in: dat betekent "recruiter volgt op",
+// dus nog vóór het toelatingsbesluit.
+
+/** Kandidaatstatussen die de matcher mag voorstellen. */
+export const MATCHABLE_CANDIDATE_STATUSES = ["beschikbaar", "werkzoekend"] as const;
+
+/**
+ * Statussen waarbij een match scoren ongewenst is: de kandidaat is afgewezen of
+ * uit beeld. `geplaatst` staat hier bewust niet bij — een bestaande plaatsing mag
+ * herberekend worden.
+ */
+export const UNSCORABLE_CANDIDATE_STATUSES = ["afgewezen", "uitgeschreven", "niet_beschikbaar"] as const;
+
+export const isCandidateMatchable = (status: string | null | undefined) =>
+  (MATCHABLE_CANDIDATE_STATUSES as readonly string[]).includes(status ?? "");
+
+export const isCandidateScorable = (status: string | null | undefined) =>
+  !(UNSCORABLE_CANDIDATE_STATUSES as readonly string[]).includes(status ?? "");
