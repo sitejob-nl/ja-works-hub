@@ -38,6 +38,8 @@ import { useMatchAssignees } from '@/hooks/useMatchAssignees';
 import { resolveDefaultMatchAssignee } from '@/lib/match-assignee';
 import { type MatchBreakdown } from '@/lib/matching';
 import { MATCH_STATUS_STEPS, getMatchStatusMeta, getNextMatchStatus, isTerminalMatchStatus, matchStatusNeedsFeedbackDialog } from '@/lib/match-status';
+import { getMatchTransition } from '@/lib/match-transitions';
+import { useMatchTransitions } from '@/components/matches/useMatchTransitions';
 import { scoreBadgeClass, verdictBadgeClass } from '@/lib/match-presenters';
 import { advanceMatchStatus, createMatch } from '@/lib/match-lifecycle';
 
@@ -396,7 +398,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
   });
 
   const statusMutation = useMutation({
-    mutationFn: async ({ matchId, status, reasonId, notes }: { matchId: string; status: string; reasonId?: string | null; notes?: string | null }) => {
+    mutationFn: async ({ matchId, status, reasonId, notes, patch }: { matchId: string; status: string; reasonId?: string | null; notes?: string | null; patch?: Record<string, unknown> }) => {
       const current = (matches ?? []).find((m: any) => m.id === matchId) as any;
       await advanceMatchStatus(supabase as any, {
         orgId,
@@ -405,6 +407,7 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
         currentMatch: current,
         reasonId: reasonId ?? null,
         notes: notes ?? null,
+        patch,
         actorId: user?.id ?? null,
       });
     },
@@ -506,9 +509,29 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
   };
 
   // Statuswijziging (1 of meer matches). Terminale statussen vragen eerst een feedbackreden.
+  // Zelfde overgangslaag als de kanban op /matches — zie @/lib/match-transitions.
+  // Plaatsen laten we hier bewust op de bestaande route: dit scherm heeft de volledige
+  // vacature al in handen, dus openPlacementForAccepted hoeft niets op te halen.
+  const transitions = useMatchTransitions({
+    commit: (matchIds, status, extra) => {
+      Promise.all(matchIds.map((id) => statusMutation.mutateAsync({ matchId: id, status, patch: extra })))
+        .then(() => { toast.success('Status bijgewerkt'); setSelectedMatches(new Set()); })
+        .catch(() => { /* per-mutation toast */ });
+    },
+    onDone: () => {
+      qc.invalidateQueries({ queryKey: ['vacancy-matches', vacancy.id] });
+      qc.invalidateQueries({ queryKey: ['match-pipeline'] });
+    },
+  });
+
   const changeStatus = (matchIds: string[], toStatus: string) => {
     if (!matchIds.length) return;
-    if (matchStatusNeedsFeedbackDialog(toStatus)) {
+    const transition = getMatchTransition(toStatus, matchIds.length);
+    if (transition.kind !== 'feedback' && transition.kind !== 'placement' && matchIds.length === 1) {
+      const row = (matches ?? []).find((m: any) => m.id === matchIds[0]);
+      if (transitions.request(matchIds, toStatus, row)) return;
+    }
+    if (transition.kind === 'feedback') {
       setFeedbackRequest({ matchIds, toStatus });
       setFeedbackReasonId('');
       setFeedbackNotes('');
@@ -1028,6 +1051,8 @@ const VacancyMatchesTab = ({ vacancy }: { vacancy: any }) => {
           </Button>
         ) : null}
       />
+
+      {transitions.dialogs}
 
       <PlacementWizard open={!!placementMatch} match={placementMatch} vacancy={vacancy} onClose={() => setPlacementMatch(null)} />
 
