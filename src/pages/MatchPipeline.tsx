@@ -17,6 +17,8 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { unwrap } from '@/lib/db';
 import { MATCH_STATUS_STEPS, isTerminalMatchStatus, matchStatusNeedsFeedbackDialog } from '@/lib/match-status';
+import { getMatchTransition } from '@/lib/match-transitions';
+import { useMatchTransitions } from '@/components/matches/useMatchTransitions';
 import { normalizeMatchPipelineFollowupDays } from '@/lib/match-followup';
 import { useEffectivePermissions } from '@/hooks/usePermissions';
 import { advanceMatchStatus } from '@/lib/match-lifecycle';
@@ -156,11 +158,14 @@ const MatchPipeline = () => {
     status,
     reasonId,
     notes,
+    patch,
   }: {
     matchId: string;
     status: string;
     reasonId?: string | null;
     notes?: string | null;
+    /** Extra velden die bij de fase horen, bv. interview_date bij een afspraak. */
+    patch?: Record<string, unknown>;
   }) => {
     if (!canUpdateStatus) throw new Error('Je rol mag matchstatussen niet wijzigen');
     if ((reasonId || notes || matchStatusNeedsFeedbackDialog(status) || isTerminalMatchStatus(status)) && !canWriteFeedback) {
@@ -174,6 +179,7 @@ const MatchPipeline = () => {
       currentMatch: current,
       reasonId: reasonId ?? null,
       notes: notes ?? null,
+      patch,
       actorId: user?.id ?? null,
     });
   };
@@ -313,6 +319,22 @@ const MatchPipeline = () => {
     });
   };
 
+  // Fasewissels doen meer dan een statusveld zetten — zie @/lib/match-transitions.
+  const transitions = useMatchTransitions({
+    commit: (matchIds, status, extra) => {
+      if (matchIds.length === 1) {
+        statusMutation.mutate({ matchId: matchIds[0], status, patch: extra });
+      } else {
+        bulkStatusMutation.mutate({ matchIds, status });
+      }
+    },
+    onDone: () => {
+      qc.invalidateQueries({ queryKey: ['match-pipeline', orgId] });
+      qc.invalidateQueries({ queryKey: ['vacancy-matches'] });
+    },
+    canConfirmInterview,
+  });
+
   const changeStatus = (matchIds: string[], status: string) => {
     if (matchIds.length === 0) return;
     if (matchIds.length > 1 && !canBulkUpdateStatus) {
@@ -327,11 +349,17 @@ const MatchPipeline = () => {
       toast.error('Je rol mag geen matchfeedback vastleggen');
       return;
     }
-    if (matchStatusNeedsFeedbackDialog(status)) {
+    if (getMatchTransition(status, matchIds.length).kind === 'feedback') {
       setFeedbackRequest({ matchIds, toStatus: status });
       setFeedbackReasonId('');
       setFeedbackNotes('');
       return;
+    }
+    // Voorstelmail, afspraakdatum, plaatsingswizard of screening — als de laag dit
+    // overneemt schrijft zij de status zelf weg (of juist bewust nog niet).
+    if (matchIds.length === 1) {
+      const row = (matches as any[]).find((m: any) => m.id === matchIds[0]);
+      if (transitions.request(matchIds, status, row)) return;
     }
     if (matchIds.length === 1) {
       statusMutation.mutate({ matchId: matchIds[0], status });
@@ -659,6 +687,8 @@ const MatchPipeline = () => {
           qc.invalidateQueries({ queryKey: ['communications'] });
         }}
       />
+
+      {transitions.dialogs}
 
       <MatchFeedbackDialog
         open={!!feedbackRequest}
