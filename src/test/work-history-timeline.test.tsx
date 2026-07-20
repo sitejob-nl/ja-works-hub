@@ -167,7 +167,7 @@ describe('WorkHistoryTimeline — kleurlegenda', () => {
 
   it('toont alleen de banden die echt voorkomen', () => {
     // Eén werkgever van ruim 2 jaar en geen gaten: een legenda voegt niets toe.
-    render(<WorkHistoryTimeline werkgevers={[{ werkgever: 'Solo BV', functie: 'Lasser', van: '2019', tot: '2024' }]} gaten={[]} />);
+    render(<WorkHistoryTimeline werkgevers={[{ functie: 'Lasser', bedrijf: 'Solo BV', periode: '2019 - 2024', duur_maanden: 60 }]} gaten={[]} />);
     expect(screen.queryByText(/Kleur = hoe lang bij één werkgever/)).not.toBeInTheDocument();
   });
 
