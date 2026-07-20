@@ -526,6 +526,7 @@ Deno.serve(async (req) => {
           subject,
           htmlBody: html,
           companyId: company.id,
+          placementId: placement.id,
           sentBy: userId,
           senderName: null,
         });
@@ -543,6 +544,7 @@ Deno.serve(async (req) => {
           sent_by: userId,
           company_id: company.id,
           company_contact_id: primaryContact?.id ?? null,
+          placement_id: placement.id,
         });
       }
 
@@ -620,6 +622,7 @@ Deno.serve(async (req) => {
           subject,
           htmlBody: html,
           candidateId: candidate.id,
+          placementId: placement.id,
           sentBy: userId,
           senderName: null,
         });
@@ -635,6 +638,7 @@ Deno.serve(async (req) => {
             body: html,
             sent_by: userId,
             candidate_id: candidate.id,
+            placement_id: placement.id,
           });
         }
       }

@@ -570,12 +570,29 @@ export const buildScreeningNoteContent = (data: ScreeningData): string => {
   return lines.join('\n').trim();
 };
 
-export const buildCandidateScreeningProfilePayload = (draft: ProfileDraft, availability: ScreeningData['availability']) => {
+/**
+ * Bewaart een bestaande waarde wanneer het concept leeg is.
+ *
+ * Contactgegevens zijn het enige kanaal naar een kandidaat; ze stil kwijtraken is
+ * duurder dan ze niet vanaf dit tabblad kunnen legen. Een leeg conceptveld (nog niet
+ * geladen, of per ongeluk gewist) mag daarom nooit een gevuld telefoonnummer of
+ * e-mailadres op `null` zetten. Legen kan wel via het kandidaatprofiel zelf.
+ */
+const keepIfBlank = (next: string | null, current: unknown): string | null => {
+  if (next) return next;
+  return typeof current === 'string' && current.trim() ? current : null;
+};
+
+export const buildCandidateScreeningProfilePayload = (
+  draft: ProfileDraft,
+  availability: ScreeningData['availability'],
+  current?: CandidateScreeningCandidate | null,
+) => {
   const phones = mergeCandidatePhoneFields({ phone: draft.phone, phone_nl: draft.phone_nl });
   return {
-    phone: stripPlaceholder(phones.phone) || null,
-    phone_nl: stripPlaceholder(phones.phone_nl) || null,
-    email: stripPlaceholder(draft.email.trim()) || null,
+    phone: keepIfBlank(stripPlaceholder(phones.phone) || null, current?.phone),
+    phone_nl: keepIfBlank(stripPlaceholder(phones.phone_nl) || null, current?.phone_nl),
+    email: keepIfBlank(stripPlaceholder(draft.email.trim()) || null, current?.email),
     date_of_birth: draft.date_of_birth || null,
     nationality: stripPlaceholder(draft.nationality.trim()) || null,
     address_street: draft.address_street.trim() || null,
@@ -623,7 +640,7 @@ export function prepareCandidateScreeningSave({
     completed_by: complete ? userId ?? null : data.completed_by ?? null,
   };
   const updates: Record<string, unknown> = {
-    ...buildCandidateScreeningProfilePayload(profileDraft, screeningData.availability),
+    ...buildCandidateScreeningProfilePayload(profileDraft, screeningData.availability, candidate),
     screening_data: screeningData as any,
   };
 
