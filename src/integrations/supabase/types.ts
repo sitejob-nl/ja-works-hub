@@ -6652,6 +6652,53 @@ export type Database = {
         }
         Relationships: []
       }
+      payrollers: {
+        Row: {
+          created_at: string
+          id: string
+          invoiced_by_us: boolean
+          is_active: boolean
+          is_default: boolean
+          legacy_key: Database["public"]["Enums"]["payroller_type"] | null
+          name: string
+          organization_id: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          invoiced_by_us?: boolean
+          is_active?: boolean
+          is_default?: boolean
+          legacy_key?: Database["public"]["Enums"]["payroller_type"] | null
+          name: string
+          organization_id: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          invoiced_by_us?: boolean
+          is_active?: boolean
+          is_default?: boolean
+          legacy_key?: Database["public"]["Enums"]["payroller_type"] | null
+          name?: string
+          organization_id?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payrollers_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payslips: {
         Row: {
           allowances_total: number | null
@@ -7057,6 +7104,7 @@ export type Database = {
           organization_id: string
           overtime_rate: number | null
           payroller: Database["public"]["Enums"]["payroller_type"] | null
+          payroller_id: string | null
           rate_agreement_id: string | null
           salary_indication: string | null
           start_date: string
@@ -7099,6 +7147,7 @@ export type Database = {
           organization_id: string
           overtime_rate?: number | null
           payroller?: Database["public"]["Enums"]["payroller_type"] | null
+          payroller_id?: string | null
           rate_agreement_id?: string | null
           salary_indication?: string | null
           start_date: string
@@ -7141,6 +7190,7 @@ export type Database = {
           organization_id?: string
           overtime_rate?: number | null
           payroller?: Database["public"]["Enums"]["payroller_type"] | null
+          payroller_id?: string | null
           rate_agreement_id?: string | null
           salary_indication?: string | null
           start_date?: string
@@ -7218,6 +7268,13 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "placements_payroller_id_fkey"
+            columns: ["payroller_id"]
+            isOneToOne: false
+            referencedRelation: "payrollers"
             referencedColumns: ["id"]
           },
           {

@@ -21,7 +21,7 @@ import ComplianceWarningDialog from '@/components/ComplianceWarningDialog';
 import ComplianceFixList from './ComplianceFixList';
 import { logAudit } from '@/lib/audit';
 import { vehicleFreeOn } from '@/lib/vehicle-availability';
-import { getPayrollerSettings, payrollerLabel } from '@/lib/payroller';
+import { useActivePayrollers } from '@/hooks/usePayrollers';
 import {
   activatePortalOnPlacement, assignVehicleOnPlacement, generateTimesheetTemplates,
   getHousingSuggestions, notifyPlacementStakeholders,
@@ -31,7 +31,6 @@ import {
 import PlacementMailEditor from './PlacementMailEditor';
 import type { Database } from '@/integrations/supabase/types';
 
-type PayrollerType = Database['public']['Enums']['payroller_type'];
 type HousingAssignmentStatus = Database['public']['Enums']['housing_assignment_status'];
 
 const DAYS = ['ma', 'di', 'wo', 'do', 'vr', 'za', 'zo'];
@@ -150,19 +149,15 @@ const PlacementWizard = ({ open, onClose, match, vacancy, defaultCompanyId, lock
   }));
 
   // ── Data ──
-  const { data: org } = useQuery({
-    queryKey: ['placement-settings', orgId],
-    queryFn: () => unwrap(supabase.from('organizations').select('settings').eq('id', orgId).single()),
-    enabled: !!orgId && open,
-  });
-  const payrollers = getPayrollerSettings(org?.settings);
+  const { data: payrollers } = useActivePayrollers();
 
   // Default payroller éénmalig voorvullen zodra de instellingen binnen zijn.
   useEffect(() => {
-    if (!open || payrollerInitialized || !org) return;
-    if (payrollers.default) setForm((f) => (f.payroller ? f : { ...f, payroller: payrollers.default! }));
+    if (!open || payrollerInitialized || payrollers.length === 0) return;
+    const fallback = payrollers.find((p) => p.is_default);
+    if (fallback) setForm((f) => (f.payroller ? f : { ...f, payroller: fallback.id }));
     setPayrollerInitialized(true);
-  }, [open, org, payrollers.default, payrollerInitialized]);
+  }, [open, payrollers, payrollerInitialized]);
 
   const { data: employees = [] } = useQuery({
     queryKey: ['employees-active-planning'],
@@ -302,7 +297,7 @@ const PlacementWizard = ({ open, onClose, match, vacancy, defaultCompanyId, lock
 
     // Velden die de RPC (bewust smal gehouden) niet kent
     const extra: Record<string, unknown> = {};
-    if (form.payroller) extra.payroller = form.payroller as PayrollerType;
+    if (form.payroller) extra.payroller_id = form.payroller;
     if (form.cao_hours) extra.cao_hours = parseFloat(form.cao_hours);
     if (form.work_location) extra.work_location = form.work_location;
     if (form.work_days.length > 0) extra.work_days = form.work_days;
@@ -588,8 +583,8 @@ const PlacementWizard = ({ open, onClose, match, vacancy, defaultCompanyId, lock
                           <SelectTrigger className="mt-1"><SelectValue placeholder="Selecteer payroller" /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value={NONE}>Nog niet vastleggen</SelectItem>
-                            {payrollers.enabled.map((key) => (
-                              <SelectItem key={key} value={key}>{payrollerLabel[key]}</SelectItem>
+                            {payrollers.map((p) => (
+                              <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
@@ -766,7 +761,7 @@ const PlacementWizard = ({ open, onClose, match, vacancy, defaultCompanyId, lock
                 <div><span className="text-muted-foreground">Opdrachtgever:</span> <strong>{companyName}</strong></div>
                 <div><span className="text-muted-foreground">Functie:</span> <strong>{form.function_name}</strong> per <strong>{form.start_date}</strong>{form.end_date ? ` t/m ${form.end_date}` : ''}</div>
                 <div><span className="text-muted-foreground">Tarief:</span> <strong>€{form.hourly_rate}</strong>{form.client_hourly_rate ? ` · klant €${form.client_hourly_rate}` : ''}</div>
-                {form.payroller && <div><span className="text-muted-foreground">Payroller:</span> <strong>{payrollerLabel[form.payroller]}</strong></div>}
+                {form.payroller && <div><span className="text-muted-foreground">Payroller:</span> <strong>{payrollers.find((p) => p.id === form.payroller)?.name ?? '—'}</strong></div>}
                 <div><span className="text-muted-foreground">Voertuig:</span> {vehicleId
                   ? <strong>{(availableVehicles as any[]).find((v) => v.id === vehicleId)?.license_plate ?? 'Geselecteerd'} vanaf {vehicleFrom || form.start_date}</strong>
                   : 'Geen'}</div>

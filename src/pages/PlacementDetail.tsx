@@ -18,7 +18,8 @@ import PageHeader from '@/components/layout/PageHeader';
 import { toast } from 'sonner';
 import { formatDate } from '@/lib/format';
 import { logAudit } from '@/lib/audit';
-import { payrollerLabel } from '@/lib/payroller';
+import { payrollerBadgeClass } from '@/lib/payroller';
+import { useActivePayrollers } from '@/hooks/usePayrollers';
 import PlacementHourTypesTab from '@/components/placements/tabs/PlacementHourTypesTab';
 import PlacementTravelTypesTab from '@/components/placements/tabs/PlacementTravelTypesTab';
 import PlacementAllowancesTab from '@/components/placements/tabs/PlacementAllowancesTab';
@@ -64,7 +65,7 @@ const PlacementDetail = () => {
     queryKey: ['placement', id],
     queryFn: async () => {
       const { data, error } = await supabase.from('placements')
-        .select('*, companies!placements_company_id_fkey(id, name, email, phone, address_city), candidates!placements_candidate_id_fkey(id, first_name, last_name, email, phone, portal_enabled), employees!placements_employee_id_fkey(id, candidates!employees_candidate_id_fkey(id, first_name, last_name, email, phone, portal_enabled))')
+        .select('*, companies!placements_company_id_fkey(id, name, email, phone, address_city), candidates!placements_candidate_id_fkey(id, first_name, last_name, email, phone, portal_enabled), employees!placements_employee_id_fkey(id, candidates!employees_candidate_id_fkey(id, first_name, last_name, email, phone, portal_enabled)), payrollers(id, name, legacy_key)')
         .eq('id', id!)
         .single();
       if (error) throw error;
@@ -72,6 +73,10 @@ const PlacementDetail = () => {
     },
     enabled: !!id,
   });
+
+  // Payroller van deze plaatsing (joined) + de lijst voor de keuzelijst bij bewerken.
+  const placementPayroller = (placement as any)?.payrollers ?? null;
+  const { data: activePayrollers } = useActivePayrollers();
 
   const { data: carerixMapping } = useQuery({
     queryKey: ['placement-carerix-mapping', id, placement?.organization_id],
@@ -125,7 +130,7 @@ const PlacementDetail = () => {
       start_date: placement.start_date,
       end_date: placement.end_date ?? '',
       expected_end_date: placement.expected_end_date ?? '',
-      payroller: placement.payroller ?? '',
+      payroller: placement.payroller_id ?? '',
       housing_payment_type: placement.housing_payment_type ?? '',
       salary_indication: placement.salary_indication ?? '',
     });
@@ -147,7 +152,7 @@ const PlacementDetail = () => {
         start_date: form.start_date,
         end_date: form.end_date || null,
         expected_end_date: form.expected_end_date || null,
-        payroller: form.payroller || null,
+        payroller_id: form.payroller || null,
         housing_payment_type: form.housing_payment_type || null,
         salary_indication: form.salary_indication || null,
       }).eq('id', id!);
@@ -216,7 +221,7 @@ const PlacementDetail = () => {
       >
         <div className="flex items-center gap-2 flex-wrap mt-2">
           <Badge variant="secondary" className={statusBadge[placement.status] ?? ''}>{statusLabel[placement.status] ?? placement.status}</Badge>
-          {placement.payroller && <Badge variant="outline" className="text-xs">{payrollerLabel[placement.payroller] ?? placement.payroller}</Badge>}
+          {placementPayroller && <Badge variant="secondary" className={`text-xs ${payrollerBadgeClass(placementPayroller)}`}>{placementPayroller.name}</Badge>}
           {company && <Link to={`/opdrachtgevers/${company.id}`} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"><Building2 className="h-3 w-3" />{company.name}</Link>}
           {placement.candidate_id && <Link to={`/kandidaten/${placement.candidate_id}`} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"><User className="h-3 w-3" />{cand?.first_name} {cand?.last_name}</Link>}
           {placement.vacancy_id && <Link to={`/vacatures/${placement.vacancy_id}`} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"><Briefcase className="h-3 w-3" />Vacature</Link>}
@@ -253,10 +258,9 @@ const PlacementDetail = () => {
               <Select value={form.payroller} onValueChange={v => setForm((f: any) => ({ ...f, payroller: v }))}>
                 <SelectTrigger><SelectValue placeholder="Selecteer..." /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="flexpedia">Flexpedia</SelectItem>
-                  <SelectItem value="brioworks">BrioWorks (Portugal)</SelectItem>
-                  <SelectItem value="bromida">Bromida (Litouwen)</SelectItem>
-                  <SelectItem value="retiva">Retiva / A1</SelectItem>
+                  {activePayrollers.map((pr) => (
+                    <SelectItem key={pr.id} value={pr.id}>{pr.name}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
