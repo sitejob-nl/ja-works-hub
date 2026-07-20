@@ -1,8 +1,36 @@
 import { supabase } from '@/integrations/supabase/client';
 
+/**
+ * Soort compliance-probleem. Bepaalt welke actie de UI eraan kan hangen:
+ * - `document`  → ontbrekend document, op te lossen met een upload
+ * - `field`     → leeg kandidaatveld, op te lossen met een invoerveld
+ * - `sensitive` → leeg BSN/IBAN; schrijven gaat via `candidates` (DB-trigger versleutelt)
+ * - `blocked`   → wél melden, maar niet ter plekke op te lossen (bijv. verlopen rijbewijs)
+ */
+export type ComplianceItemKind = 'document' | 'field' | 'sensitive' | 'blocked';
+
+export interface ComplianceItem {
+  /** Stabiele sleutel, uniek binnen één resultaat. Bijv. `doc:id_bewijs` of `field:bsn`. */
+  code: string;
+  /** De Nederlandse melding zoals die in `issues` staat. */
+  label: string;
+  kind: ComplianceItemKind;
+  /** Alleen bij kind 'document': het documenttype dat ontbreekt. */
+  docType?: string;
+  /** Alleen bij kind 'field' / 'sensitive': de kolom op `candidates`. */
+  field?: string;
+}
+
 export interface ComplianceResult {
   passed: boolean;
+  /**
+   * Platte meldingen, één per probleem. Bewust behouden naast `items`: onder meer
+   * ComplianceWarningDialog en de override-reden in het audit-log gebruiken deze vorm.
+   * Altijd gelijk aan `items.map((i) => i.label)`.
+   */
   issues: string[];
+  /** Zelfde problemen, maar gestructureerd zodat de UI er een actie aan kan hangen. */
+  items: ComplianceItem[];
   rulesApplied: string;
 }
 
@@ -39,7 +67,19 @@ export const checkCompliance = async (
   candidateId: string,
   options?: { sector?: string; contractType?: string }
 ): Promise<ComplianceResult> => {
-  const issues: string[] = [];
+  const items: ComplianceItem[] = [];
+
+  const addDocument = (docType: string, label: string) =>
+    items.push({ code: `doc:${docType}`, label, kind: 'document', docType });
+  const addField = (field: string, label: string) =>
+    items.push({
+      code: `field:${field}`,
+      label,
+      kind: field === 'bsn' || field === 'iban' ? 'sensitive' : 'field',
+      field,
+    });
+  const addBlocked = (code: string, label: string) =>
+    items.push({ code: `blocked:${code}`, label, kind: 'blocked' });
 
   // 1. Try to load dynamic rules
   let rulesApplied = 'standaard';
@@ -95,16 +135,16 @@ export const checkCompliance = async (
       if (docType === 'contract') continue;
       if (docType === 'id_bewijs') {
         const hasValidId = (docs ?? []).some(d => d.type === 'id_bewijs' && d.status !== 'verlopen');
-        if (!hasValidId) issues.push(`Geen geldig ${DOC_LABELS[docType] || docType}`);
+        if (!hasValidId) addDocument(docType, `Geen geldig ${DOC_LABELS[docType] || docType}`);
       } else {
-        if (!docTypes.includes(docType as any)) issues.push(`${DOC_LABELS[docType] || docType} ontbreekt`);
+        if (!docTypes.includes(docType as any)) addDocument(docType, `${DOC_LABELS[docType] || docType} ontbreekt`);
       }
     }
 
     // Check fields
     for (const field of requiredFields) {
       if (!hasSensitiveField(field)) {
-        issues.push(`${FIELD_LABELS[field] || field} niet ingevuld`);
+        addField(field, `${FIELD_LABELS[field] || field} niet ingevuld`);
       }
     }
   } else {
@@ -112,27 +152,28 @@ export const checkCompliance = async (
     const hasValidId = (docs ?? []).some(d => d.type === 'id_bewijs' && d.status !== 'verlopen');
     const hasReglement = docTypes.includes('reglement');
 
-    if (!hasValidId) issues.push('Geen geldig ID bewijs');
-    if (!hasReglement) issues.push('Reglement niet afgetekend');
-    if (!hasSensitiveField('bsn')) issues.push('BSN niet ingevuld');
-    if (!hasSensitiveField('iban')) issues.push('IBAN niet ingevuld');
-    if (!candidate?.date_of_birth) issues.push('Geboortedatum ontbreekt');
+    if (!hasValidId) addDocument('id_bewijs', 'Geen geldig ID bewijs');
+    if (!hasReglement) addDocument('reglement', 'Reglement niet afgetekend');
+    if (!hasSensitiveField('bsn')) addField('bsn', 'BSN niet ingevuld');
+    if (!hasSensitiveField('iban')) addField('iban', 'IBAN niet ingevuld');
+    if (!candidate?.date_of_birth) addField('date_of_birth', 'Geboortedatum ontbreekt');
   }
 
   // Always: rijbewijs-vervaldatum
   if (candidate?.has_drivers_license && candidate?.drivers_license_expiry) {
     if (new Date(candidate.drivers_license_expiry) < new Date()) {
-      issues.push('Rijbewijs is verlopen');
+      addBlocked('drivers_license_expired', 'Rijbewijs is verlopen');
     }
   }
 
   // Always: Nederlands adres tijdens plaatsing (meeting 17-06) + contract aanwezig.
   if (candidate && (candidate as any).has_dutch_address === false) {
-    issues.push('Geen Nederlands adres');
+    addBlocked('no_dutch_address', 'Geen Nederlands adres');
   }
   if (!docTypes.includes('contract')) {
-    issues.push('Contract ontbreekt');
+    addDocument('contract', 'Contract ontbreekt');
   }
 
-  return { passed: issues.length === 0, issues, rulesApplied };
+  const issues = items.map((item) => item.label);
+  return { passed: items.length === 0, issues, items, rulesApplied };
 };

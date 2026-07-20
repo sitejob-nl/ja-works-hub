@@ -128,6 +128,76 @@ describe('checkCompliance — dynamische regels', () => {
   });
 });
 
+describe('checkCompliance — gestructureerde items', () => {
+  it('houdt issues en items in dezelfde volgorde gelijk', async () => {
+    setup({ rules: [], candidate: { date_of_birth: null }, docs: [], bsn: null, iban: null });
+    const res = await checkCompliance('cand-items-1');
+
+    expect(res.items.map((i) => i.label)).toEqual(res.issues);
+  });
+
+  it('geeft per probleem het soort mee, met documenttype of veldnaam', async () => {
+    setup({ rules: [], candidate: { date_of_birth: null }, docs: [], bsn: null, iban: null });
+    const res = await checkCompliance('cand-items-2');
+    const byCode = Object.fromEntries(res.items.map((i) => [i.code, i]));
+
+    expect(byCode['doc:id_bewijs']).toMatchObject({ kind: 'document', docType: 'id_bewijs' });
+    expect(byCode['doc:contract']).toMatchObject({ kind: 'document', docType: 'contract' });
+    expect(byCode['field:bsn']).toMatchObject({ kind: 'sensitive', field: 'bsn' });
+    expect(byCode['field:iban']).toMatchObject({ kind: 'sensitive', field: 'iban' });
+    expect(byCode['field:date_of_birth']).toMatchObject({ kind: 'field', field: 'date_of_birth' });
+  });
+
+  it('markeert verlopen rijbewijs en ontbrekend NL-adres als niet ter plekke oplosbaar', async () => {
+    setup({
+      candidate: {
+        date_of_birth: '1990-01-01',
+        has_dutch_address: false,
+        has_drivers_license: true,
+        drivers_license_expiry: '2020-01-01',
+      },
+      docs: [{ type: 'id_bewijs', status: 'geldig' }, { type: 'reglement' }, { type: 'contract' }],
+      bsn: FAKE_BSN,
+      iban: FAKE_IBAN,
+    });
+    const res = await checkCompliance('cand-items-3');
+
+    expect(res.items.every((i) => i.kind === 'blocked')).toBe(true);
+    expect(res.items.map((i) => i.code)).toEqual([
+      'blocked:drivers_license_expired',
+      'blocked:no_dutch_address',
+    ]);
+  });
+
+  it('geeft velden uit dynamische regels het juiste soort', async () => {
+    setup({
+      rules: [{ id: 'r1', name: 'Productie NL', required_documents: ['vca'], required_fields: ['iban', 'phone'] }],
+      candidate: { phone: null, has_dutch_address: true },
+      docs: [{ type: 'contract' }],
+      iban: null,
+    });
+    const res = await checkCompliance('cand-items-4');
+    const byCode = Object.fromEntries(res.items.map((i) => [i.code, i]));
+
+    expect(byCode['doc:vca']).toMatchObject({ kind: 'document', docType: 'vca' });
+    expect(byCode['field:iban']).toMatchObject({ kind: 'sensitive' });
+    expect(byCode['field:phone']).toMatchObject({ kind: 'field', field: 'phone' });
+  });
+
+  it('geeft een lege items-lijst wanneer het dossier compleet is', async () => {
+    setup({
+      candidate: { date_of_birth: '1990-01-01', has_dutch_address: true },
+      docs: [{ type: 'id_bewijs', status: 'geldig' }, { type: 'reglement' }, { type: 'contract' }],
+      bsn: FAKE_BSN,
+      iban: FAKE_IBAN,
+    });
+    const res = await checkCompliance('cand-items-5');
+
+    expect(res.items).toEqual([]);
+    expect(res.passed).toBe(true);
+  });
+});
+
 describe('checkCompliance — altijd-aan checks', () => {
   it('vlagt verlopen rijbewijs en ontbrekend Nederlands adres', async () => {
     setup({
