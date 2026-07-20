@@ -11,10 +11,9 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import {
-  AlertTriangle, Building2, Car, Check, CheckCircle2, ChevronLeft, ChevronRight,
+  AlertTriangle, Car, Check, CheckCircle2, ChevronLeft, ChevronRight,
   Home, Loader2, Mail, MapPin, Navigation, User, Users,
 } from 'lucide-react';
 import { checkCompliance, type ComplianceResult } from '@/hooks/useComplianceCheck';
@@ -25,9 +24,11 @@ import { vehicleFreeOn } from '@/lib/vehicle-availability';
 import { getPayrollerSettings, payrollerLabel } from '@/lib/payroller';
 import {
   activatePortalOnPlacement, assignVehicleOnPlacement, generateTimesheetTemplates,
-  getHousingSuggestions, notifyPlacementStakeholders, previewPlacementConfirmation,
+  getHousingSuggestions, notifyPlacementStakeholders,
   sendPlacementConfirmation, type HousingSuggestion, type PlacementConfirmationResult,
+  type PlacementMailEdits,
 } from './PlacementTriggers';
+import PlacementMailEditor from './PlacementMailEditor';
 import type { Database } from '@/integrations/supabase/types';
 
 type PayrollerType = Database['public']['Enums']['payroller_type'];
@@ -56,19 +57,6 @@ interface SuccessSummary {
   portal: string | null;
   mails: PlacementConfirmationResult | null;
   mailError: string | null;
-}
-
-/** HTML-preview van de server-gegenereerde mail in een sandboxed iframe (defense-in-depth). */
-function HtmlPreview({ html }: { html: string }) {
-  return (
-    <iframe
-      sandbox=""
-      srcDoc={html}
-      className="border rounded-md w-full bg-white"
-      style={{ height: 320 }}
-      title="E-mailvoorbeeld"
-    />
-  );
 }
 
 const PlacementWizard = ({ open, onClose, match, vacancy, defaultCompanyId, lockedCompanyName }: PlacementWizardProps) => {
@@ -109,9 +97,7 @@ const PlacementWizard = ({ open, onClose, match, vacancy, defaultCompanyId, lock
   // Mail
   const [sendToClient, setSendToClient] = useState(true);
   const [sendToEmployee, setSendToEmployee] = useState(true);
-  const [preview, setPreview] = useState<PlacementConfirmationResult | null>(null);
-  const [previewError, setPreviewError] = useState<string | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
+  const [mailEdits, setMailEdits] = useState<PlacementMailEdits>({});
 
   // Compliance + afronding
   const [complianceIssues, setComplianceIssues] = useState<string[]>([]);
@@ -128,8 +114,7 @@ const PlacementWizard = ({ open, onClose, match, vacancy, defaultCompanyId, lock
     if (!open) return;
     setStep(0);
     setSuccess(null);
-    setPreview(null);
-    setPreviewError(null);
+    setMailEdits({});
     setSelectedEmployee(null);
     setEmpSearch('');
     setVehicleId('');
@@ -263,7 +248,7 @@ const PlacementWizard = ({ open, onClose, match, vacancy, defaultCompanyId, lock
   });
   const selectedSuggestion = housingSuggestions.find((s) => s.unitId === selectedUnitId);
 
-  // ── Mail-preview op de controle-stap ──
+  // Gegevens voor de mail-preview, vóórdat de plaatsing bestaat.
   const placementData = useMemo(() => ({
     candidate_id: candidateId,
     company_id: companyId,
@@ -279,24 +264,6 @@ const PlacementWizard = ({ open, onClose, match, vacancy, defaultCompanyId, lock
     work_location: form.work_location || null,
     work_days: form.work_days.length > 0 ? form.work_days : null,
   }), [candidateId, companyId, matchMode, vacancy, form]);
-
-  useEffect(() => {
-    if (!open || step !== 3 || success) return;
-    if (!sendToClient && !sendToEmployee) {
-      setPreview(null);
-      setPreviewError(null);
-      return;
-    }
-    let cancelled = false;
-    setPreviewLoading(true);
-    setPreviewError(null);
-    previewPlacementConfirmation({ placementData, sendToClient, sendToEmployee })
-      .then((res) => { if (!cancelled) setPreview(res); })
-      .catch((e: any) => { if (!cancelled) { setPreview(null); setPreviewError(e.message); } })
-      .finally(() => { if (!cancelled) setPreviewLoading(false); });
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, step, sendToClient, sendToEmployee]);
 
   // ── Plaatsen ──
   const executePlacement = async (isOverride: boolean) => {
@@ -436,7 +403,7 @@ const PlacementWizard = ({ open, onClose, match, vacancy, defaultCompanyId, lock
     const wantEmployee = sendToEmployee && Boolean(candidate?.email);
     if (wantClient || wantEmployee) {
       try {
-        summary.mails = await sendPlacementConfirmation(placementId, wantClient, wantEmployee);
+        summary.mails = await sendPlacementConfirmation(placementId, wantClient, wantEmployee, mailEdits);
         summary.mails?.warnings?.forEach((w) => toast.warning(w));
       } catch (e: any) {
         summary.mailError = e.message;
@@ -816,68 +783,20 @@ const PlacementWizard = ({ open, onClose, match, vacancy, defaultCompanyId, lock
                 </div>
               )}
 
-              {(missingEmail || missingPhone) && (
-                <div className="flex flex-wrap gap-2">
-                  {missingEmail && <Badge variant="destructive" className="gap-1"><AlertTriangle className="h-3 w-3" />Geen e-mailadres kandidaat</Badge>}
-                  {missingPhone && <Badge variant="destructive" className="gap-1"><AlertTriangle className="h-3 w-3" />Telefoonnummer kandidaat ontbreekt</Badge>}
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">Bevestigingsmails</Label>
-                <div className="flex items-center gap-2">
-                  <Checkbox id="send-client" checked={sendToClient} onCheckedChange={(v) => setSendToClient(v === true)} />
-                  <label htmlFor="send-client" className="flex items-center gap-1.5 text-sm cursor-pointer">
-                    <Building2 className="h-3.5 w-3.5 text-muted-foreground" />E-mail naar opdrachtgever ({companyName})
-                  </label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Checkbox id="send-employee" checked={sendToEmployee && !missingEmail} onCheckedChange={(v) => setSendToEmployee(v === true)} disabled={missingEmail} />
-                  <label htmlFor="send-employee" className={`flex items-center gap-1.5 text-sm cursor-pointer ${missingEmail ? 'text-muted-foreground line-through' : ''}`}>
-                    <User className="h-3.5 w-3.5 text-muted-foreground" />E-mail naar medewerker ({candidateName})
-                    {missingEmail && <span className="text-xs text-destructive ml-1">(geen e-mail)</span>}
-                  </label>
-                </div>
-              </div>
-
-              {previewLoading && (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground py-2"><Loader2 className="h-4 w-4 animate-spin" /> Voorbeeld genereren...</div>
-              )}
-
-              {previewError && (
-                <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm">
-                  <div className="flex items-center gap-2 font-medium text-destructive"><AlertTriangle className="h-4 w-4" /> Voorbeeld niet beschikbaar</div>
-                  <p className="mt-1 text-xs text-muted-foreground">{previewError}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">Controleer de e-mailtemplates onder Instellingen → HR &amp; documenten.</p>
-                </div>
-              )}
-
-              {!previewLoading && preview && (preview.client_email || preview.employee_email) && (
-                <Tabs defaultValue={preview.client_email ? 'client' : 'employee'} className="w-full">
-                  <TabsList className="w-full">
-                    {preview.client_email && <TabsTrigger value="client" className="flex-1 gap-1"><Building2 className="h-3.5 w-3.5" />Opdrachtgever</TabsTrigger>}
-                    {preview.employee_email && <TabsTrigger value="employee" className="flex-1 gap-1"><User className="h-3.5 w-3.5" />Medewerker</TabsTrigger>}
-                  </TabsList>
-                  {preview.client_email && (
-                    <TabsContent value="client" className="space-y-2">
-                      <div className="text-xs text-muted-foreground space-y-1">
-                        <div><strong>Aan:</strong> {preview.client_email.to}</div>
-                        <div><strong>Onderwerp:</strong> {preview.client_email.subject}</div>
-                      </div>
-                      <HtmlPreview html={preview.client_email.html} />
-                    </TabsContent>
-                  )}
-                  {preview.employee_email && (
-                    <TabsContent value="employee" className="space-y-2">
-                      <div className="text-xs text-muted-foreground space-y-1">
-                        <div><strong>Aan:</strong> {preview.employee_email.to}</div>
-                        <div><strong>Onderwerp:</strong> {preview.employee_email.subject}</div>
-                      </div>
-                      <HtmlPreview html={preview.employee_email.html} />
-                    </TabsContent>
-                  )}
-                </Tabs>
-              )}
+              <PlacementMailEditor
+                active={step === 3}
+                placementData={placementData}
+                candidateName={candidateName}
+                companyName={companyName}
+                missingEmail={missingEmail}
+                missingPhone={missingPhone}
+                sendToClient={sendToClient}
+                sendToEmployee={sendToEmployee}
+                onSendToClientChange={setSendToClient}
+                onSendToEmployeeChange={setSendToEmployee}
+                edits={mailEdits}
+                onEditsChange={setMailEdits}
+              />
             </div>
           )}
 
@@ -897,7 +816,7 @@ const PlacementWizard = ({ open, onClose, match, vacancy, defaultCompanyId, lock
                   </Button>
                 )}
                 {step === 3 && (
-                  <Button onClick={() => mutation.mutate()} disabled={!step0Valid || busy || previewLoading}>
+                  <Button onClick={() => mutation.mutate()} disabled={!step0Valid || busy}>
                     {busy && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                     {busy ? 'Plaatsen...' : (sendToClient || (sendToEmployee && !missingEmail)) ? 'Plaatsen & versturen' : 'Plaatsen zonder e-mail'}
                   </Button>
