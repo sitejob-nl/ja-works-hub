@@ -400,6 +400,23 @@ const hasArrayDiff = (current: string[], suggested: string[]) => {
 
 const clean = (value: unknown) => (typeof value === 'string' ? value.trim() : '');
 
+/**
+ * De AI krijgt het dossier gepseudonimiseerd binnen (AVG): naam, e-mail, NL-telefoon,
+ * BSN en IBAN zijn vervangen door [KANDIDAAT], [EMAIL], [TELEFOON], [BSN], [IBAN].
+ * Die tokens komen dus terug in `ai_analysis` en mogen nooit als suggestie worden
+ * aangeboden of in het profiel belanden — anders staat er letterlijk "[TELEFOON]"
+ * in het telefoonveld van de kandidaat.
+ *
+ * We controleren op *bevatten*, niet op gelijkheid: een gedeeltelijk gemaskeerde
+ * waarde als "t.[KANDIDAAT]@example.com" is net zo onbruikbaar.
+ */
+const PSEUDONYM_PLACEHOLDERS = ['[KANDIDAAT]', '[EMAIL]', '[TELEFOON]', '[BSN]', '[IBAN]'];
+
+export const containsPseudonymPlaceholder = (value: unknown): boolean =>
+  typeof value === 'string' && PSEUDONYM_PLACEHOLDERS.some((token) => value.includes(token));
+
+const stripPlaceholder = (value: string) => (containsPseudonymPlaceholder(value) ? '' : value);
+
 const normalizeCompare = (value: unknown) =>
   clean(value).toLowerCase().replace(/\s+/g, ' ');
 
@@ -416,7 +433,7 @@ export const aiCertLabel = (item: any): string => {
 };
 
 const uniqueCleanStrings = (values: unknown[]): string[] => [
-  ...new Set(values.map(clean).filter(Boolean)),
+  ...new Set(values.map(clean).filter((v) => Boolean(v) && !containsPseudonymPlaceholder(v))),
 ];
 
 const isDutchMobileCandidate = (value: string) => /^(?:\+31|0031|0)\s*6/.test(value.replace(/[()\-.]/g, ' ').trim());
@@ -429,7 +446,7 @@ export const getAiProfileDiffs = (candidate: CandidateScreeningCandidate, draft:
 
   const addText = (key: keyof ProfileDraft, label: string, suggestedRaw: unknown) => {
     const suggested = clean(suggestedRaw);
-    if (!suggested) return;
+    if (!suggested || containsPseudonymPlaceholder(suggested)) return;
     const current = clean(draft[key]);
     if (normalizeCompare(current) === normalizeCompare(suggested)) return;
     diffs.push({ kind: 'text', key, label, current, suggested });
@@ -539,14 +556,14 @@ export const buildScreeningNoteContent = (data: ScreeningData): string => {
 export const buildCandidateScreeningProfilePayload = (draft: ProfileDraft, availability: ScreeningData['availability']) => {
   const phones = mergeCandidatePhoneFields({ phone: draft.phone, phone_nl: draft.phone_nl });
   return {
-    phone: phones.phone || null,
-    phone_nl: phones.phone_nl || null,
-    email: draft.email.trim() || null,
+    phone: stripPlaceholder(phones.phone) || null,
+    phone_nl: stripPlaceholder(phones.phone_nl) || null,
+    email: stripPlaceholder(draft.email.trim()) || null,
     date_of_birth: draft.date_of_birth || null,
-    nationality: draft.nationality.trim() || null,
+    nationality: stripPlaceholder(draft.nationality.trim()) || null,
     address_street: draft.address_street.trim() || null,
     address_postal: draft.address_postal.trim() || null,
-    address_city: draft.address_city.trim() || null,
+    address_city: stripPlaceholder(draft.address_city.trim()) || null,
     has_drivers_license: draft.has_drivers_license,
     drivers_license_expiry: draft.has_drivers_license && draft.drivers_license_expiry ? draft.drivers_license_expiry : null,
     skills: draft.skills,
