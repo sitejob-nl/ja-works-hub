@@ -417,7 +417,10 @@ Deno.serve(async (req) => {
       end_date: formatDate(placement.end_date),
       expected_end_date: formatDate(placement.expected_end_date),
       function_name: functionName,
-      vacancy_title: vacancy?.title ?? "",
+      // Bij een plaatsing vanuit een match is function_name voorgevuld met de
+      // vacaturetitel. Dan zou een aparte "Vacature"-regel exact hetzelfde zeggen als
+      // "Functie"; leeg laten, dan valt de regel vanzelf weg in de opmaak.
+      vacancy_title: vacancy?.title && vacancy.title !== functionName ? vacancy.title : "",
       hourly_rate: formatAmount(placement.hourly_rate),
       client_hourly_rate: formatAmount(placement.client_hourly_rate),
       overtime_rate: formatAmount(placement.overtime_rate),

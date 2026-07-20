@@ -87,3 +87,17 @@ describe('generalTermsSection', () => {
     expect(html).not.toContain('{{organization_name}}');
   });
 });
+
+describe('losse label-regel met lege waarde', () => {
+  it('valt weg in plaats van als kale "Label:" te blijven staan', () => {
+    // Ontstaat zodra een variabele leeg is, bv. "Contactgegevens: {{candidate_phone}}"
+    // zonder telefoonnummer.
+    expect(parseTemplateBlocks('Contactgegevens medewerker: ')).toEqual([]);
+  });
+
+  it('blijft staan zodra er wél een waarde is', () => {
+    expect(parseTemplateBlocks('Let op: neem je ID mee')).toEqual([
+      { kind: 'paragraph', lines: ['Let op: neem je ID mee'] },
+    ]);
+  });
+});

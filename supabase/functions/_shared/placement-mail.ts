@@ -39,9 +39,14 @@ export function parseTemplateBlocks(text: string): TemplateBlock[] {
   const flushRows = () => {
     if (rows.length === 0) return;
     if (rows.length === 1) {
-      // Eén losse label-regel is gewoon een zin — geen tabel van maken.
-      paragraph.push(`${rows[0].label}: ${rows[0].value}`.trimEnd());
+      const [only] = rows;
       rows = [];
+      // Eén losse label-regel is gewoon een zin ("Let op: neem je ID mee") — geen
+      // tabel van maken. Maar zonder waarde is het een restant van een lege
+      // variabele; dan valt de hele regel weg in plaats van als losse "Label:"
+      // in de mail te blijven staan.
+      if (only.value === '' || only.value === '—') return;
+      paragraph.push(`${only.label}: ${only.value}`);
       return;
     }
     const filled = rows.filter((r) => r.value !== "" && r.value !== "—");
