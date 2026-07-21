@@ -43,7 +43,8 @@ import { useTrackPageVisit } from '@/hooks/useTrackPageVisit';
 import { useTabSearchParam } from '@/hooks/useTabSearchParam';
 import { usePublicUrl } from '@/hooks/usePublicUrl';
 import { useOutlookAccounts } from '@/hooks/useOutlookAccounts';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuth, useHasRole } from '@/contexts/AuthContext';
+import DeleteCandidateDialog from '@/components/candidates/DeleteCandidateDialog';
 import type { Database } from '@/integrations/supabase/types';
 
 type CandidateStatus = Database['public']['Enums']['candidate_status'];
@@ -160,6 +161,8 @@ const CandidateDetail = () => {
 
   // H4 / AVG art.17: admin-gated anonimisering (RPC enforces admin + org server-side).
   const [anonOpen, setAnonOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const canDeleteCandidate = useHasRole(['intercedent']);
   const [anonReason, setAnonReason] = useState('');
   const anonymize = useMutation({
     mutationFn: async () => {
@@ -370,8 +373,23 @@ const CandidateDetail = () => {
               >
                 Anonimiseren (AVG art. 17)
               </DropdownMenuItem>
+              {canDeleteCandidate && (
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onClick={() => setDeleteOpen(true)}
+                >
+                  Kandidaat verwijderen
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
+
+          <DeleteCandidateDialog
+            open={deleteOpen}
+            onOpenChange={setDeleteOpen}
+            candidates={candidate ? [{ id: candidate.id, name: `${candidate.first_name ?? ''} ${candidate.last_name ?? ''}`.trim() }] : []}
+            onDeleted={() => navigate('/kandidaten')}
+          />
 
           <AlertDialog open={anonOpen} onOpenChange={setAnonOpen}>
             <AlertDialogContent>

@@ -9909,6 +9909,14 @@ export type Database = {
         }[]
       }
       decrypt_sensitive: { Args: { ciphertext: string }; Returns: string }
+      delete_candidate_preview: {
+        Args: { p_candidate_id: string }
+        Returns: Json
+      }
+      delete_candidate_record: {
+        Args: { p_candidate_id: string; p_reason?: string }
+        Returns: Json
+      }
       encrypt_sensitive: { Args: { plaintext: string }; Returns: string }
       f_unaccent: { Args: { "": string }; Returns: string }
       find_duplicate_candidates: {

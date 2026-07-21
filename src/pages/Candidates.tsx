@@ -24,6 +24,9 @@ import { formatDate } from '@/lib/format';
 import ErrorState from '@/components/shared/ErrorState';
 import { getPaginationRange } from '@/lib/pagination';
 import { useRolePermission } from '@/hooks/usePermissions';
+import { useHasRole } from '@/contexts/AuthContext';
+import DeleteCandidateDialog from '@/components/candidates/DeleteCandidateDialog';
+import { Trash2 } from 'lucide-react';
 
 const PAGE_SIZE = 10;
 
@@ -130,6 +133,7 @@ type CandidateTab = 'alle' | 'instroom' | 'in-dienst';
 const Candidates = () => {
   const navigate = useNavigate();
   const canEditCandidates = useRolePermission('candidates.edit');
+  const canDeleteCandidates = useHasRole(['intercedent']); // RPC staat admin + intercedent toe
   const [searchParams, setSearchParams] = useSearchParams();
   const initialTab: CandidateTab = searchParams.get('tab') === 'in-dienst'
     ? 'in-dienst'
@@ -147,6 +151,7 @@ const Candidates = () => {
   const [importPreset, setImportPreset] = useState<'carerix' | 'buddy' | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [poolSheetOpen, setPoolSheetOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [portalCandidate, setPortalCandidate] = useState<any | null>(null);
   const [cvSearch, setCvSearch] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -596,6 +601,16 @@ const Candidates = () => {
             <Button size="sm" variant="outline" onClick={() => setPoolSheetOpen(true)} className="gap-1.5">
               <FolderHeart className="h-4 w-4" /> Toevoegen aan talentpool
             </Button>
+            {canDeleteCandidates && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setDeleteOpen(true)}
+                className="gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
+              >
+                <Trash2 className="h-4 w-4" /> Verwijderen
+              </Button>
+            )}
             <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
               Deselecteren
             </Button>
@@ -890,6 +905,17 @@ const Candidates = () => {
           onOpenChange={setPoolSheetOpen}
           candidateIds={Array.from(selected)}
           onDone={() => setSelected(new Set())}
+        />
+      )}
+      {canDeleteCandidates && (
+        <DeleteCandidateDialog
+          open={deleteOpen}
+          onOpenChange={setDeleteOpen}
+          candidates={Array.from(selected).map((id) => {
+            const row = candidates.find((c: any) => c.id === id);
+            return { id, name: row ? `${row.first_name ?? ''} ${row.last_name ?? ''}`.trim() : 'Kandidaat' };
+          })}
+          onDeleted={() => setSelected(new Set())}
         />
       )}
       {canEditCandidates && portalCandidate && (
