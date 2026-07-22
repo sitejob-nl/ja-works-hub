@@ -154,8 +154,12 @@ const PortalDashboard = () => {
     return d.toISOString();
   })();
 
+  // Eigen sleutel: PortalNotifications (de bel) gebruikt 'portal-notifications' voor een
+  // andere vorm (samengevoegde meldingen). Met dezelfde sleutel deelden ze één cache-entry
+  // en rende deze lijst de bel-objecten door de urenregel-template — elke melding werd
+  // "Je uren van — zijn afgekeurd".
   const { data: recentNotifications = [] } = useQuery({
-    queryKey: ['portal-notifications', employeeId],
+    queryKey: ['portal-recent-timesheet-approvals', employeeId],
     queryFn: async () => {
       const { data } = await supabase
         .from('timesheets')

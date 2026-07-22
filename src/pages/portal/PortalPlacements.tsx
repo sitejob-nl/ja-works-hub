@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Clock, Mail, MapPin, Phone, ChevronDown, ChevronUp } from 'lucide-react';
-import { formatDate, formatEUR } from '@/lib/format';
+import { formatDate } from '@/lib/format';
 
 const statusColors: Record<string, string> = {
   actief: 'bg-stat-green/10 text-stat-green border-0',
@@ -108,10 +108,12 @@ const PortalPlacements = () => {
                 <span className="font-medium">{p.work_days.join(', ')}</span>
               </div>
             )}
-            {p.salary_indication != null && (
+            {/* salary_indication is vrije tekst ("EUR 20 per uur", "3000-4000"), geen bedrag —
+                door formatEUR halen gaf "€ NaN". */}
+            {p.salary_indication && (
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Salarisindicatie</span>
-                <span className="font-medium">{formatEUR(p.salary_indication)}</span>
+                <span className="font-medium">{p.salary_indication}</span>
               </div>
             )}
             {p.companies?.address_city && (

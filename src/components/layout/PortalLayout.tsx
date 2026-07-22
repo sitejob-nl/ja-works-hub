@@ -47,8 +47,11 @@ const PortalLayout = () => {
       });
   }, [candidate?.id]);
 
+  // Geen harde 'nl'-fallback: zolang de kandidaat nog laadt is portal_language undefined, en
+  // dan moet de provider terugvallen op de opgeslagen voorkeur in plaats van de taal van de
+  // gebruiker te overschrijven.
   return (
-    <TranslationProvider initialLanguage={candidate?.portal_language ?? 'nl'} onLanguageChange={persistLanguage}>
+    <TranslationProvider initialLanguage={candidate?.portal_language ?? null} onLanguageChange={persistLanguage}>
       <div className="min-h-screen bg-background flex flex-col">
       {/* Top bar */}
       <header className="bg-card border-b px-4 py-3 flex items-center justify-between shrink-0">
