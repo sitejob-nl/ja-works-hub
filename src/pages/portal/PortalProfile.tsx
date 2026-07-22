@@ -143,8 +143,9 @@ const PortalProfile = () => {
               setLang(nextLanguage);
               setLanguage(nextLanguage);
             }}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
+              {/* Taalnamen blijven in hun eigen taal staan, dus niet meevertalen. */}
+              <SelectTrigger data-no-translate="true"><SelectValue /></SelectTrigger>
+              <SelectContent data-no-translate="true">
                 {PLATFORM_LANGUAGES.map((option) => (
                   <SelectItem key={option.value} value={option.value}>
                     {option.flag} {option.label}
