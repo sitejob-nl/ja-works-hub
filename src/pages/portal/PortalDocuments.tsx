@@ -207,7 +207,7 @@ const PortalDocuments = () => {
                       {sc.label}
                     </Badge>
                   </div>
-                  <p className="text-sm font-medium truncate">{doc.name}</p>
+                  <p className="text-sm font-medium truncate" data-no-translate="true">{doc.name}</p>
                   {doc.expiry_date && (
                     <p className="text-xs text-muted-foreground">
                       Vervalt: {format(new Date(doc.expiry_date), 'd MMM yyyy', { locale: nl })}

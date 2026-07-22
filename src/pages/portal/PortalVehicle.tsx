@@ -136,19 +136,19 @@ const PortalVehicle = () => {
       <div className="bg-card rounded-xl border p-4 space-y-3">
         <div className="flex items-center gap-2">
           <Car className="h-4 w-4 text-stat-blue" />
-          <p className="font-semibold">{vehicle.license_plate}</p>
+          <p className="font-semibold" data-no-translate="true">{vehicle.license_plate}</p>
         </div>
         <div className="grid grid-cols-2 gap-2 text-sm">
           {vehicle.brand && (
             <div>
               <span className="text-muted-foreground">Merk:</span>{' '}
-              <span className="font-medium">{vehicle.brand}</span>
+              <span className="font-medium" data-no-translate="true">{vehicle.brand}</span>
             </div>
           )}
           {vehicle.model && (
             <div>
               <span className="text-muted-foreground">Model:</span>{' '}
-              <span className="font-medium">{vehicle.model}</span>
+              <span className="font-medium" data-no-translate="true">{vehicle.model}</span>
             </div>
           )}
           {vehicle.fuel_type && (

@@ -19,6 +19,14 @@ describe('portaal-woordenboek', () => {
     expect(leeg).toEqual([]);
   });
 
+  it('bevat geen sleutel die aan zichzelf gelijk is', () => {
+    // Zo'n regel vertaalt niets, maar kan wél per ongeluk op klantdata matchen.
+    const noops = Object.entries(PORTAL_DICTIONARY_EN)
+      .filter(([k, v]) => k === v)
+      .map(([k]) => k);
+    expect(noops).toEqual([]);
+  });
+
   it('bevat de kernnavigatie van het portaal', () => {
     expect(PORTAL_DICTIONARY_EN['Uren']).toBe('Hours');
     expect(PORTAL_DICTIONARY_EN['Huisvesting']).toBe('Housing');

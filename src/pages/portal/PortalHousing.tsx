@@ -197,7 +197,7 @@ const PortalHousing = () => {
       <div className="bg-card rounded-xl border p-4 space-y-3">
         <div className="flex items-center gap-2">
           <Home className="h-4 w-4 text-stat-blue" />
-          <p className="font-semibold">{property?.name}</p>
+          <p className="font-semibold" data-no-translate="true">{property?.name}</p>
         </div>
         <p className="text-sm text-muted-foreground">
           {property?.address_street}, {property?.address_postal} {property?.address_city}
@@ -205,7 +205,7 @@ const PortalHousing = () => {
         <div className="grid grid-cols-2 gap-2 text-sm">
           <div>
             <span className="text-muted-foreground">Kamer:</span>{' '}
-            <span className="font-medium">{unit?.name}</span>
+            <span className="font-medium" data-no-translate="true">{unit?.name}</span>
           </div>
           {unit?.floor != null && (
             <div>

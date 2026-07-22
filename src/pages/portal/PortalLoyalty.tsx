@@ -128,7 +128,7 @@ const PortalLoyalty = () => {
               <Card key={reward.id}>
                 <CardContent className="p-4 flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="font-medium">{reward.name}</p>
+                    <p className="font-medium" data-no-translate="true">{reward.name}</p>
                     {reward.description && <p className="text-sm text-muted-foreground mt-1">{reward.description}</p>}
                     <p className="text-sm font-medium mt-2">{reward.points_cost.toLocaleString('nl-NL')} punten</p>
                   </div>
@@ -162,7 +162,7 @@ const PortalLoyalty = () => {
             {redemptions.map((redemption: any) => (
               <div key={redemption.id} className="px-4 py-3 flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-sm font-medium">{redemption.reward_catalog?.name ?? 'Reward'}</p>
+                  <p className="text-sm font-medium" data-no-translate="true">{redemption.reward_catalog?.name ?? 'Reward'}</p>
                   <p className="text-xs text-muted-foreground">{formatDate(redemption.requested_at)} · {redemption.points_cost} punten</p>
                 </div>
                 <Badge variant="secondary" className={redemptionStatusClass[redemption.status] ?? ''}>{redemption.status}</Badge>
@@ -182,7 +182,7 @@ const PortalLoyalty = () => {
           {transactions.map((transaction: any) => (
             <div key={transaction.id} className="px-4 py-3 flex items-center justify-between gap-3">
               <div>
-                <p className="text-sm font-medium">{transaction.description}</p>
+                <p className="text-sm font-medium" data-no-translate="true">{transaction.description}</p>
                 <p className="text-xs text-muted-foreground">{formatDate(transaction.created_at)}</p>
               </div>
               <span className={transaction.points > 0 ? 'text-stat-green font-semibold' : 'text-destructive font-semibold'}>

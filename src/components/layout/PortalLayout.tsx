@@ -59,7 +59,7 @@ const PortalLayout = () => {
           <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
             <span className="text-primary-foreground font-bold text-xs">JA</span>
           </div>
-          <span className="font-semibold text-sm hidden sm:inline">{profile?.full_name ?? 'Portaal'}</span>
+          <span className="font-semibold text-sm hidden sm:inline" data-no-translate="true">{profile?.full_name ?? 'Portaal'}</span>
         </div>
 
         <div className="flex items-center gap-2">
@@ -71,7 +71,7 @@ const PortalLayout = () => {
             <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium text-stat-blue">
               {initials}
             </div>
-            <span className="text-sm font-medium hidden sm:inline">{firstName}</span>
+            <span className="text-sm font-medium hidden sm:inline" data-no-translate="true">{firstName}</span>
           </div>
 
           <Button variant="ghost" size="icon" onClick={signOut} className="h-8 w-8 text-muted-foreground" title="Uitloggen">
