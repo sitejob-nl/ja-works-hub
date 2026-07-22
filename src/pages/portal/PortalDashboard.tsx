@@ -194,14 +194,14 @@ const PortalDashboard = () => {
 
       {/* Welcome card */}
       <div className="bg-card rounded-xl border p-5">
-        <h1 className="text-lg font-semibold">Welkom, {firstName} 👋</h1>
+        <h1 className="text-lg font-semibold">Welkom, <span data-no-translate="true">{firstName}</span> 👋</h1>
         {placements.length > 0 ? (
           <div className="mt-2 space-y-2">
             {placements.map((p: any) => (
               <div key={p.id} className="text-sm text-muted-foreground">
                 <p>
-                  Plaatsing bij <span className="font-medium text-foreground">{p.companies?.name}</span>
-                  {p.vacancies?.title && <span className="text-xs"> · {p.vacancies.title}</span>}
+                  Plaatsing bij <span className="font-medium text-foreground" data-no-translate="true">{p.companies?.name}</span>
+                  {p.vacancies?.title && <span className="text-xs" data-no-translate="true"> · {p.vacancies.title}</span>}
                 </p>
                 <p className="text-xs">Sinds {formatDate(p.start_date)}{p.end_date ? ` tot ${formatDate(p.end_date)}` : ''}</p>
               </div>
@@ -220,9 +220,9 @@ const PortalDashboard = () => {
             <h2 className="font-medium">Mijn plaatsing</h2>
           </div>
           <div className="text-sm space-y-1">
-            <p className="font-medium">{(placements[0] as any).companies?.name}</p>
+            <p className="font-medium" data-no-translate="true">{(placements[0] as any).companies?.name}</p>
             <p className="text-muted-foreground">
-              {(placements[0] as any).function_name && `${(placements[0] as any).function_name} · `}
+              <span data-no-translate="true">{(placements[0] as any).function_name && `${(placements[0] as any).function_name} · `}</span>
               Sinds {formatDate((placements[0] as any).start_date)}
             </p>
           </div>
@@ -344,12 +344,12 @@ const PortalDashboard = () => {
             <h2 className="font-medium">Mijn huisvesting</h2>
           </div>
           <div className="text-sm space-y-1">
-            <p className="font-medium">{(housing.units as any)?.properties?.name}</p>
-            <p className="text-muted-foreground">
+            <p className="font-medium" data-no-translate="true">{(housing.units as any)?.properties?.name}</p>
+            <p className="text-muted-foreground" data-no-translate="true">
               {(housing.units as any)?.properties?.address_street}, {(housing.units as any)?.properties?.address_city}
             </p>
             <p className="text-muted-foreground">
-              Kamer: {(housing.units as any)?.name} · Ingecheckt: {formatDate(housing.check_in_date)}
+              Kamer: <span data-no-translate="true">{(housing.units as any)?.name}</span> · Ingecheckt: {formatDate(housing.check_in_date)}
             </p>
           </div>
         </div>
@@ -363,8 +363,8 @@ const PortalDashboard = () => {
             <h2 className="font-medium">Mijn auto</h2>
           </div>
           <div className="text-sm">
-            <p className="font-medium">{(vehicle.vehicles as any)?.license_plate}</p>
-            <p className="text-muted-foreground">
+            <p className="font-medium" data-no-translate="true">{(vehicle.vehicles as any)?.license_plate}</p>
+            <p className="text-muted-foreground" data-no-translate="true">
               {(vehicle.vehicles as any)?.brand} {(vehicle.vehicles as any)?.model}
             </p>
           </div>

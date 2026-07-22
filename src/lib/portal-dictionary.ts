@@ -10,13 +10,24 @@
  * in hun eigen taal te blijven. Een opzoektabel doet dat vanzelf goed — een
  * machinevertaler deed het fout en vertaalde bedrijfsnamen mee.
  *
+ * **Namen en andere klantdata worden nooit vertaald.** Daar vertrouwen we niet op toeval:
+ * de plekken die zulke tekst tonen (namen, bedrijven, kentekens, panden, rewards,
+ * documentnamen) staan in de JSX gemarkeerd met `data-no-translate="true"`, want zonder
+ * dat zou een medewerker die "Bel" heet of een inlener die "Actief" heet zijn naam
+ * vertaald zien worden. Toon je nieuwe klantdata? Markeer het element dan ook.
+ *
+ * Twee regels voor deze tabel:
+ * 1. Geen sleutel die aan zichzelf gelijk is — die vertaalt niets en vergroot alleen de
+ *    kans dat hij per ongeluk op klantdata matcht.
+ * 2. Wees terughoudend met korte, generieke woorden: hoe korter de sleutel, hoe groter de
+ *    kans dat een naam of plaats er toevallig gelijk aan is.
+ *
  * Nieuwe UI-tekst toevoegen? Zet de Nederlandse tekst er precies zo in als hij op het
  * scherm staat. Staat een tekst er niet in, dan is dat zichtbaar (hij blijft Nederlands),
  * niet stuk.
  */
 export const PORTAL_DICTIONARY_EN: Record<string, string> = {
   // --- Navigatie & chrome ---------------------------------------------------------
-  'Dashboard': 'Dashboard',
   'Uren': 'Hours',
   'Plaatsingen': 'Placements',
   'Documenten': 'Documents',
@@ -86,7 +97,6 @@ export const PORTAL_DICTIONARY_EN: Record<string, string> = {
   'vri': 'fri',
   'zat': 'sat',
   'zon': 'sun',
-  'Week': 'Week',
 
   // --- Plaatsingen ----------------------------------------------------------------
   'Mijn plaatsingen': 'My placements',
@@ -124,12 +134,10 @@ export const PORTAL_DICTIONARY_EN: Record<string, string> = {
   'Er zijn momenteel geen openstaande vacatures': 'There are currently no open vacancies',
   'Geen vacatures gevonden voor je zoekopdracht': 'No vacancies found for your search',
   'Vereisten:': 'Requirements:',
-  'Start:': 'Start:',
   '/uur': '/hr',
 
   // --- Huisvesting ----------------------------------------------------------------
   'Verdieping:': 'Floor:',
-  'Check-in:': 'Check-in:',
   'Inhouding:': 'Deduction:',
   'Borg:': 'Deposit:',
   'Betaald': 'Paid',
@@ -161,7 +169,6 @@ export const PORTAL_DICTIONARY_EN: Record<string, string> = {
   'Bekijk je saldo, geschiedenis en beschikbare rewards.': 'View your balance, history and available rewards.',
   'Beschikbaar saldo': 'Available balance',
   'punten': 'points',
-  'Rewards': 'Rewards',
   'Geschiedenis': 'History',
   'Aanvragen': 'Request',
   'Aangevraagd': 'Requested',
@@ -218,5 +225,4 @@ export const PORTAL_DICTIONARY_EN: Record<string, string> = {
   'Opnieuw proberen': 'Try again',
   'Er ging iets mis': 'Something went wrong',
   'Bel': 'Call',
-  'Mail': 'Mail',
 };

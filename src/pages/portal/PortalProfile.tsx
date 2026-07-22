@@ -90,11 +90,11 @@ const PortalProfile = () => {
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label className="text-xs text-muted-foreground">Voornaam</Label>
-            <p className="text-sm font-medium">{candidate.first_name}</p>
+            <p className="text-sm font-medium" data-no-translate="true">{candidate.first_name}</p>
           </div>
           <div>
             <Label className="text-xs text-muted-foreground">Achternaam</Label>
-            <p className="text-sm font-medium">{candidate.last_name}</p>
+            <p className="text-sm font-medium" data-no-translate="true">{candidate.last_name}</p>
           </div>
           <div>
             <Label className="text-xs text-muted-foreground">Geboortedatum</Label>

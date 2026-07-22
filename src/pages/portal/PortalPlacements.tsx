@@ -77,7 +77,7 @@ const PortalPlacements = () => {
         <Card key={p.id} className="border-primary/20">
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-base">{p.companies?.name ?? 'Onbekend bedrijf'}</CardTitle>
+              <CardTitle className="text-base">{p.companies?.name ? <span data-no-translate="true">{p.companies.name}</span> : 'Onbekend bedrijf'}</CardTitle>
               <Badge variant="secondary" className={statusColors[p.status] ?? ''}>
                 {statusLabels[p.status] ?? p.status}
               </Badge>
@@ -87,7 +87,7 @@ const PortalPlacements = () => {
             {p.function_name && (
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Functie</span>
-                <span className="font-medium">{p.function_name}</span>
+                <span className="font-medium" data-no-translate="true">{p.function_name}</span>
               </div>
             )}
             <div className="flex justify-between">
@@ -99,13 +99,13 @@ const PortalPlacements = () => {
             {p.work_location && (
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Werklocatie</span>
-                <span className="font-medium">{p.work_location}</span>
+                <span className="font-medium" data-no-translate="true">{p.work_location}</span>
               </div>
             )}
             {p.work_days && p.work_days.length > 0 && (
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Werkdagen</span>
-                <span className="font-medium">{p.work_days.join(', ')}</span>
+                <span className="font-medium" data-no-translate="true">{p.work_days.join(', ')}</span>
               </div>
             )}
             {/* salary_indication is vrije tekst ("EUR 20 per uur", "3000-4000"), geen bedrag —
@@ -113,13 +113,13 @@ const PortalPlacements = () => {
             {p.salary_indication && (
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Salarisindicatie</span>
-                <span className="font-medium">{p.salary_indication}</span>
+                <span className="font-medium" data-no-translate="true">{p.salary_indication}</span>
               </div>
             )}
             {p.companies?.address_city && (
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Stad</span>
-                <span className="font-medium">{p.companies.address_city}</span>
+                <span className="font-medium" data-no-translate="true">{p.companies.address_city}</span>
               </div>
             )}
             {p.companies?.phone && (
@@ -170,9 +170,9 @@ const PortalPlacements = () => {
               {pastPlacements.map((p: any) => (
                 <div key={p.id} className="flex items-center justify-between px-4 py-3">
                   <div className="space-y-0.5">
-                    <p className="text-sm font-medium">{p.companies?.name ?? 'Onbekend bedrijf'}</p>
+                    <p className="text-sm font-medium">{p.companies?.name ? <span data-no-translate="true">{p.companies.name}</span> : 'Onbekend bedrijf'}</p>
                     <p className="text-xs text-muted-foreground">
-                      {p.function_name && `${p.function_name} · `}
+                      <span data-no-translate="true">{p.function_name && `${p.function_name} · `}</span>
                       {formatDate(p.start_date)} — {p.end_date ? formatDate(p.end_date) : '—'}
                     </p>
                   </div>
