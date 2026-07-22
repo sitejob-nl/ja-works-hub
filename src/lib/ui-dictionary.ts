@@ -319,4 +319,38 @@ export const UI_DICTIONARY_EN: Record<string, string> = {
   'Nog geen vacatures': 'No vacancies yet',
   'Voeg je eerste vacature toe': 'Add your first vacancy',
   'Zoek op functietitel of opdrachtgever...': 'Search by job title or client...',
+  'Meer filters': 'More filters',
+  '1 — Laag': '1 — Low',
+  '2 — Normaal': '2 — Normal',
+  '3 — Hoog': '3 — High',
+
+  // --- Recruiter: statuslabels in tabellen -----------------------------------------
+  // De kandidatenlijst rendert deze uit vaste labelmaps; de compliance-badge toont de
+  // ruwe enum-waarde, vandaar de kleine letters.
+  'In behandeling': 'In progress',
+  'Beschikbaar': 'Available',
+  'Werkzoekend': 'Job seeking',
+  'Geplaatst': 'Placed',
+  'Inactief': 'Inactive',
+  'Afgewezen': 'Rejected',
+  'Niet beschikbaar': 'Not available',
+  'Uitgeschreven': 'Deregistered',
+  'Ziek': 'Sick',
+  'Uit dienst': 'Left employment',
+  'compleet': 'complete',
+  'incompleet': 'incomplete',
+  'verlopen': 'expired',
+  'Geen link': 'No link',
+  'Link aangemaakt': 'Link created',
+  'Link verstuurd': 'Link sent',
+  'Bezig met invullen': 'Being filled in',
+  'Profiel compleet': 'Profile complete',
+
+  // Telregels naast de filters: React zet het aantal in een eigen knoop, dus de sleutel
+  // is alleen het zelfstandig naamwoord.
+  'kandidaten': 'candidates',
+  'vacatures': 'vacancies',
+
+  'Selecteer alle kandidaten op deze pagina': 'Select all candidates on this page',
+  'Deselecteer alle kandidaten op deze pagina': 'Deselect all candidates on this page',
 };
