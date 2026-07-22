@@ -249,6 +249,7 @@ export const UI_DICTIONARY_EN: Record<string, string> = {
   'Kandidaten zoeken': 'Search candidates',
   'Omzet (directie)': 'Revenue (management)',
   'Instellingen': 'Settings',
+  'Mijn Outlook': 'My Outlook',
   'Zoeken...': 'Search...',
   'Inklappen': 'Collapse',
   'Uitklappen': 'Expand',
