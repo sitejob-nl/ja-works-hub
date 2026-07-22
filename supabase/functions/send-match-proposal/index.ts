@@ -5,6 +5,8 @@ import { sanitizeEmailHtml } from "../_shared/outlook-signature.ts";
 import { type BrandTheme, renderBrandedEmail, resolveBrandTheme } from "../_shared/email-layout.ts";
 import { advanceMatchStatus, ensureMatchProposalToken } from "../_shared/match-lifecycle.ts";
 import {
+  buildClientSummary,
+  clientSafeSummary,
   PROPOSAL_PAGE_SECTION_KEYS,
   type ProposalPageConfig,
   type ProposalPageSectionKey,
@@ -51,7 +53,7 @@ function defaultProposalPage(candidate: any, match: any, candidateName: string, 
     candidate.availability_notes,
   ].filter(Boolean).join("\n");
   const content = {
-    summary: { title: "Samenvatting", body: candidate.ai_summary ?? match.match_reasoning ?? "" },
+    summary: { title: "Samenvatting", body: clientSafeSummary(candidate.ai_summary) ?? buildClientSummary(candidate, candidateName) },
     skills: { title: "Vaardigheden", body: stringList(candidate.skills).join("\n") },
     certifications: { title: "Certificaten", body: stringList(candidate.certifications).join("\n") },
     languages: { title: "Talen", body: stringList(candidate.languages).join("\n") },
@@ -437,7 +439,7 @@ Deno.serve(async (req) => {
       companyName: company.name,
       introText,
       closingText,
-      summary: candidate.ai_summary ?? match.match_reasoning ?? null,
+      summary: clientSafeSummary(candidate.ai_summary) ?? (buildClientSummary(candidate, candidateName) || null),
       functionGroup: candidate.ai_function_group ?? null,
       classification: candidate.ai_classification ?? null,
       reliabilityScore: candidate.ai_reliability_score ?? null,
