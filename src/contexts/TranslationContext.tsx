@@ -13,6 +13,11 @@ const STORAGE_KEY = 'jawerkt-platform-language';
 const CACHE_KEY = 'jawerkt-platform-translation-cache-v1';
 const MAX_BATCH_ITEMS = 80;
 const MAX_TEXT_LENGTH = 900;
+/** Na een mislukte vertaalronde even niets proberen, daarna steeds langer. */
+const RETRY_BASE_MS = 30_000;
+const RETRY_MAX_MS = 10 * 60_000;
+/** Zoveel mislukte rondes achter elkaar en we geven het op tot een herlaad/taalwissel. */
+const MAX_CONSECUTIVE_FAILURES = 4;
 const TRANSLATABLE_ATTRIBUTES = ['placeholder', 'title', 'aria-label'] as const;
 
 const nodeTranslations = new WeakMap<Text, TranslationRecord>();
@@ -216,6 +221,8 @@ export function TranslationProvider({
   const pendingTimerRef = useRef<number | undefined>();
   const mutationObserverRef = useRef<MutationObserver | null>(null);
   const cacheRef = useRef<Record<string, string>>(readCache());
+  const failureCountRef = useRef(0);
+  const retryAfterRef = useRef(0);
 
   useEffect(() => {
     onLanguageChangeRef.current = onLanguageChange;
@@ -230,6 +237,9 @@ export function TranslationProvider({
     languageRef.current = language;
     document.documentElement.lang = language;
     window.localStorage.setItem(STORAGE_KEY, language);
+    // Een bewuste taalwissel verdient een nieuwe poging, ook na eerdere fouten.
+    failureCountRef.current = 0;
+    retryAfterRef.current = 0;
   }, [language]);
 
   /** Zet alle vertaalde knopen terug naar het Nederlandse origineel. */
@@ -266,6 +276,10 @@ export function TranslationProvider({
       return;
     }
 
+    // De vertaalronde wordt door elke DOM-mutatie opnieuw ingepland. Blijft de edge functie
+    // falen (bijv. DeepL-quota op, HTTP 456), dan zou dat honderden requests opleveren.
+    if (failureCountRef.current >= MAX_CONSECUTIVE_FAILURES || Date.now() < retryAfterRef.current) return;
+
     const root = document.getElementById('root');
     if (!root) return;
 
@@ -297,7 +311,18 @@ export function TranslationProvider({
     });
     setIsTranslating(false);
 
-    if (error || !Array.isArray(data?.translations)) return;
+    if (error || !Array.isArray(data?.translations)) {
+      failureCountRef.current += 1;
+      retryAfterRef.current = Date.now()
+        + Math.min(RETRY_BASE_MS * 2 ** (failureCountRef.current - 1), RETRY_MAX_MS);
+      if (failureCountRef.current >= MAX_CONSECUTIVE_FAILURES) {
+        console.warn('[translate] vertaling blijft mislukken, gestopt tot herladen of taalwissel', error);
+      }
+      return;
+    }
+
+    failureCountRef.current = 0;
+    retryAfterRef.current = 0;
 
     data.translations.forEach((item: { source?: string; text?: string }) => {
       if (item.source && item.text) {

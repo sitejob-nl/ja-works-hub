@@ -100,7 +100,8 @@ const ClientPortalLogin = () => {
         </form>
 
         <div className="text-center">
-          <ForgotPasswordDialog zone="klantportaal" defaultEmail={email} language={language} />
+          {/* Deze pagina valt voor PL/RO terug op Engels; houd de dialoog daarmee in lijn. */}
+          <ForgotPasswordDialog zone="klantportaal" defaultEmail={email} language={language === 'nl' ? 'nl' : 'en'} />
         </div>
       </div>
     </div>
