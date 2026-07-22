@@ -130,20 +130,29 @@ All data scoped by `organization_id`. RLS policies enforce tenant isolation. The
 
 Candidates and employees share the single `candidates` table. The portal's `employee` field is an alias for the candidates row. The `/medewerkers` pages also operate on the candidates table. The `employees` table still exists but is legacy — `candidates` is the source of truth.
 
-> ⚠️ **Behalve voor de portaal-RLS.** Alle self-policies van het medewerkersportaal hangen aan
-> `employees.auth_user_id`, niet aan `candidates.auth_user_id`. Twee gevolgen die je een keer bijten:
->
-> 1. **`get_employee_id()` geeft `employees.id`, `get_employee_candidate_id()` geeft `candidates.id`** — en
->    in geen enkele rij zijn die gelijk. Vergelijk je een `candidate_id`-kolom tegen `get_employee_id()`,
->    dan is de policy een **stille no-op**: geen fout, gewoon nul rijen, en dat ziet er identiek uit aan
->    "deze medewerker heeft nog geen data". Zo waren solliciteren vanuit het portaal en de
->    portaal-notificaties maandenlang kapot (rechtgezet in migratie `20260722083651`).
-> 2. `EmployeeNew` maakt de `employees`-rij aan en `portal-activate` spiegelt daar `auth_user_id` op.
->    Bestaat die rij niet, dan slaagt die update op 0 rijen en is het hele portaal leeg voor die gebruiker.
->
-> Verifieer een nieuwe portaalpolicy dus altijd door een échte gebruiker te simuleren en de rijaantallen
+**De portaal-RLS hangt sinds migratie `20260722132232` aan `candidates.auth_user_id`** en filtert op
+`candidate_id`. Daarvóór hing hij aan de legacy `employees`-spiegel, wat twee keer stil misging:
+
+1. `get_employee_id()` geeft `employees.id`, `get_employee_candidate_id()` geeft `candidates.id`, en in
+   geen enkele rij zijn die gelijk. Verwissel je ze, dan is de policy een **stille no-op**: geen fout,
+   nul rijen, niet te onderscheiden van "deze medewerker heeft nog geen data". Zo waren solliciteren en
+   de portaalnotificaties maandenlang kapot (`20260722083651`).
+2. Erger: de meeste policies filterden op de kolom `employee_id`, die de huidige plaatsingsflow niet
+   meer vult. Van de 665 plaatsingen hadden er 642 alleen `candidate_id` — en `NULL IN (...)` is `NULL`,
+   dus die waren onzichtbaar in het portaal.
+
+`get_employee_id()` bestaat nog voor de recruiter-UI maar wordt door **geen enkele policy** meer
+gebruikt; vergelijk het nooit met een `candidate_id`-kolom. Schrijf nieuwe portaalpolicies tegen
+`candidate_id = get_employee_candidate_id()` (of `get_portal_org_id()` voor org-brede leesrechten).
+
+> ⚠️ Verifieer een nieuwe portaalpolicy altijd door een échte gebruiker te simuleren en de rijaantallen
 > te vergelijken met een gewone SQL-telling — niet door de policy te lezen. Zie
 > [Portaalpolicies en QA verifiëren](#portaalpolicies-en-qa-verifiëren).
+
+**Kolom-guard op `candidates`.** De policy `candidate_self_update` geeft rij-toegang maar RLS kent geen
+kolomrechten, dus een trigger (`a_portal_column_guard`) beperkt portaalgebruikers tot contactgegevens,
+adres, `portal_language`, `portal_last_login` en `portal_welcome_video_seen_url`. Schrijft het portaal
+straks een nieuwe kolom, zet die er dan bij — anders faalt het opslaan met een 42501.
 
 ### Sensitive Data Encryption
 
@@ -678,13 +687,6 @@ const { data: { user } } = await supabaseClient.auth.getUser(authHeader.replace(
 ### Testing
 - Vitest + Testing Library + jsdom voor unit; **Playwright voor e2e** (`tests/e2e/`)
 - Coverage is nog beperkt — uitbouw lopend
-
-### `portal-activate` is niet transactioneel
-De functie maakt achtereenvolgens een auth-user, een profiel, een `candidates`-update en de
-`employees`-spiegel. Faalt een latere stap, dan blijven de eerdere staan: de gebruiker kán inloggen maar
-ziet een **leeg portaal** (de self-policies hangen aan `employees.auth_user_id`), de uitnodiging blijft
-ongebruikt, en een tweede poging stuit op "e-mailadres bestaat al" (409). Opruimen moet dan met de hand.
-Echte fix: de stappen in één RPC, of de portaal-RLS omhangen naar `candidates.auth_user_id`.
 
 ### Integrations
 - WhatsApp: full code but not tested with real Meta credentials

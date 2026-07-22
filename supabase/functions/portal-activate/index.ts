@@ -100,57 +100,26 @@ Deno.serve(async (req) => {
 
     const newUserId = authData.user.id;
 
-    // 3. Insert profile
-    const { error: profileErr } = await supabaseAdmin
-      .from("profiles")
-      .insert({
-        id: newUserId,
-        organization_id: candidate.organization_id,
-        email: invite.email,
-        full_name: fullName,
-        role: "medewerker",
-      });
+    // 3. Profiel, kandidaatkoppeling, employees-spiegel en het afstempelen van de uitnodiging
+    // gebeuren in één transactie. Deden we dat los, dan kon een fout halverwege een half
+    // account achterlaten: inloggen lukt, portaal blijft leeg, uitnodiging blijft ongebruikt
+    // en een tweede poging strandt op 409.
+    const { error: activateErr } = await supabaseAdmin.rpc("activate_portal_account", {
+      p_token: token,
+      p_user_id: newUserId,
+      p_language: language,
+    });
 
-    if (profileErr) throw profileErr;
-
-    // 4. Update candidate with portal fields
-    const { error: candErr } = await supabaseAdmin
-      .from("candidates")
-      .update({
-        auth_user_id: newUserId,
-        portal_enabled: true,
-        portal_activated_at: new Date().toISOString(),
-        portal_language: language,
-      })
-      .eq("id", candidate.id);
-
-    if (candErr) throw candErr;
-
-    // 5. Mirror auth link on the employee record. Portal RLS self-policies
-    // use employees.auth_user_id, while older portal screens still read
-    // candidate portal fields for backwards compatibility.
-    const employeeUpdate = supabaseAdmin
-      .from("employees")
-      .update({
-        auth_user_id: newUserId,
-        portal_enabled: true,
-        portal_activated_at: new Date().toISOString(),
-        portal_language: language,
-      });
-
-    const { error: employeeErr } = invite.employee_id
-      ? await employeeUpdate.eq("id", invite.employee_id)
-      : await employeeUpdate.eq("candidate_id", candidate.id);
-
-    if (employeeErr) throw employeeErr;
-
-    // 6. Mark invite as used
-    const { error: usedErr } = await supabaseAdmin
-      .from("portal_invites")
-      .update({ used_at: new Date().toISOString() })
-      .eq("id", invite.id);
-
-    if (usedErr) throw usedErr;
+    if (activateErr) {
+      // De auth-gebruiker valt buiten de transactie, dus die draaien we hier zelf terug.
+      // Zonder deze compensatie blokkeert het zojuist aangemaakte account elke nieuwe poging
+      // met "e-mailadres bestaat al", terwijl er geen bruikbaar profiel bij hoort.
+      const { error: cleanupErr } = await supabaseAdmin.auth.admin.deleteUser(newUserId);
+      if (cleanupErr) {
+        console.error("portal-activate: opruimen auth-gebruiker mislukt", newUserId, cleanupErr);
+      }
+      throw activateErr;
+    }
 
     return new Response(
       JSON.stringify({ success: true, user_id: newUserId }),
