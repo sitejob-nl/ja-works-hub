@@ -920,6 +920,7 @@ export type Database = {
           portal_enabled: boolean | null
           portal_language: string | null
           portal_last_login: string | null
+          portal_welcome_video_seen_url: string | null
           screened_at: string | null
           screened_by: string | null
           screening_data: Json | null
@@ -1010,6 +1011,7 @@ export type Database = {
           portal_enabled?: boolean | null
           portal_language?: string | null
           portal_last_login?: string | null
+          portal_welcome_video_seen_url?: string | null
           screened_at?: string | null
           screened_by?: string | null
           screening_data?: Json | null
@@ -1100,6 +1102,7 @@ export type Database = {
           portal_enabled?: boolean | null
           portal_language?: string | null
           portal_last_login?: string | null
+          portal_welcome_video_seen_url?: string | null
           screened_at?: string | null
           screened_by?: string | null
           screening_data?: Json | null
