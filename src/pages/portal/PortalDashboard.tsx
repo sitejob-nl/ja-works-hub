@@ -242,10 +242,11 @@ const PortalDashboard = () => {
           <ul className="space-y-2">
             {recentNotifications.map((n: any) => (
               <li key={n.id} className="text-sm">
+                {/* Datum als eigen knoop, niet in een template-string: dan zijn de vaste
+                    delen los te vertalen en blijft de datum staan zoals hij is. */}
                 <span className={n.status === 'goedgekeurd' ? 'text-stat-green' : 'text-destructive'}>
-                  {n.status === 'goedgekeurd'
-                    ? `Je uren van ${formatDate(n.work_date)} zijn goedgekeurd \u2713`
-                    : `Je uren van ${formatDate(n.work_date)} zijn afgekeurd \u2717`}
+                  Je uren van {formatDate(n.work_date)}{' '}
+                  {n.status === 'goedgekeurd' ? 'zijn goedgekeurd \u2713' : 'zijn afgekeurd \u2717'}
                 </span>
               </li>
             ))}
