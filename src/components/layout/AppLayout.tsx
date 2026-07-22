@@ -5,6 +5,7 @@ import { setObservabilityUser } from '@/lib/observability';
 import AppSidebar from './AppSidebar';
 import TopBar from './TopBar';
 import RecentItemsBar from './RecentItemsBar';
+import { TranslationProvider } from '@/contexts/TranslationContext';
 
 const AppLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -17,7 +18,11 @@ const AppLayout = () => {
     setObservabilityUser(user?.id, profile?.organization_id);
   }, [user?.id, profile?.organization_id]);
 
+  // Alleen de schil (navigatie + balk bovenin) wordt vertaald. De paginalichamen staan
+  // vol kandidaatnamen, notities en vrije tekst; die zetten we pas per scherm aan als ze
+  // zijn nagelopen op klantdata.
   return (
+    <TranslationProvider roots={['[data-translate-region]']}>
     <div className="flex h-screen w-full overflow-hidden">
       {/* Mobile overlay */}
       {sidebarOpen && (
@@ -46,6 +51,7 @@ const AppLayout = () => {
         </main>
       </div>
     </div>
+    </TranslationProvider>
   );
 };
 

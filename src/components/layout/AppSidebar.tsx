@@ -200,6 +200,7 @@ const AppSidebar = ({ onNavigate }: AppSidebarProps) => {
 
   return (
     <aside
+      data-translate-region
       className={cn(
         'flex flex-col h-screen bg-sidebar text-sidebar-foreground transition-all duration-200 shrink-0',
         collapsed ? 'w-16' : 'w-60'
@@ -220,7 +221,7 @@ const AppSidebar = ({ onNavigate }: AppSidebarProps) => {
             )}
           />
         ) : (
-          <span className={cn(
+          <span data-no-translate="true" className={cn(
             'font-semibold text-sidebar-active truncate',
             collapsed ? 'text-sm' : 'text-xl'
           )}>

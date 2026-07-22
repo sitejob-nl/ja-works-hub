@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { PORTAL_DICTIONARY_EN } from '@/lib/portal-dictionary';
+import { UI_DICTIONARY_EN } from '@/lib/ui-dictionary';
 
 /** Zelfde normalisatie als TranslationContext toepast vóór het opzoeken. */
 const normalize = (s: string) => s.replace(/\s+/g, ' ').trim();
@@ -8,12 +8,12 @@ describe('portaal-woordenboek', () => {
   it('heeft sleutels die exact matchen op de genormaliseerde DOM-tekst', () => {
     // Een sleutel met dubbele spaties of randspaties wordt nooit gevonden, want de
     // vertaler zoekt op de genormaliseerde tekst. Die fout is anders onzichtbaar.
-    const kapot = Object.keys(PORTAL_DICTIONARY_EN).filter((k) => k !== normalize(k));
+    const kapot = Object.keys(UI_DICTIONARY_EN).filter((k) => k !== normalize(k));
     expect(kapot).toEqual([]);
   });
 
   it('heeft voor elke sleutel een niet-lege vertaling', () => {
-    const leeg = Object.entries(PORTAL_DICTIONARY_EN)
+    const leeg = Object.entries(UI_DICTIONARY_EN)
       .filter(([, v]) => !v || !v.trim())
       .map(([k]) => k);
     expect(leeg).toEqual([]);
@@ -21,15 +21,15 @@ describe('portaal-woordenboek', () => {
 
   it('bevat geen sleutel die aan zichzelf gelijk is', () => {
     // Zo'n regel vertaalt niets, maar kan wél per ongeluk op klantdata matchen.
-    const noops = Object.entries(PORTAL_DICTIONARY_EN)
+    const noops = Object.entries(UI_DICTIONARY_EN)
       .filter(([k, v]) => k === v)
       .map(([k]) => k);
     expect(noops).toEqual([]);
   });
 
   it('bevat de kernnavigatie van het portaal', () => {
-    expect(PORTAL_DICTIONARY_EN['Uren']).toBe('Hours');
-    expect(PORTAL_DICTIONARY_EN['Huisvesting']).toBe('Housing');
-    expect(PORTAL_DICTIONARY_EN['Mijn uren deze week']).toBe('My hours this week');
+    expect(UI_DICTIONARY_EN['Uren']).toBe('Hours');
+    expect(UI_DICTIONARY_EN['Huisvesting']).toBe('Housing');
+    expect(UI_DICTIONARY_EN['Mijn uren deze week']).toBe('My hours this week');
   });
 });
