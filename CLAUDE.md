@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code when working with the JA Werkt codebase.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 > **Resuming active work:** read [HANDOVER_SESSION.md](HANDOVER_SESSION.md) first. This file is the stable codebase guide; the handover contains the current branch, dirty worktree and next actions.
 
@@ -130,6 +130,21 @@ All data scoped by `organization_id`. RLS policies enforce tenant isolation. The
 
 Candidates and employees share the single `candidates` table. The portal's `employee` field is an alias for the candidates row. The `/medewerkers` pages also operate on the candidates table. The `employees` table still exists but is legacy — `candidates` is the source of truth.
 
+> ⚠️ **Behalve voor de portaal-RLS.** Alle self-policies van het medewerkersportaal hangen aan
+> `employees.auth_user_id`, niet aan `candidates.auth_user_id`. Twee gevolgen die je een keer bijten:
+>
+> 1. **`get_employee_id()` geeft `employees.id`, `get_employee_candidate_id()` geeft `candidates.id`** — en
+>    in geen enkele rij zijn die gelijk. Vergelijk je een `candidate_id`-kolom tegen `get_employee_id()`,
+>    dan is de policy een **stille no-op**: geen fout, gewoon nul rijen, en dat ziet er identiek uit aan
+>    "deze medewerker heeft nog geen data". Zo waren solliciteren vanuit het portaal en de
+>    portaal-notificaties maandenlang kapot (rechtgezet in migratie `20260722083651`).
+> 2. `EmployeeNew` maakt de `employees`-rij aan en `portal-activate` spiegelt daar `auth_user_id` op.
+>    Bestaat die rij niet, dan slaagt die update op 0 rijen en is het hele portaal leeg voor die gebruiker.
+>
+> Verifieer een nieuwe portaalpolicy dus altijd door een échte gebruiker te simuleren en de rijaantallen
+> te vergelijken met een gewone SQL-telling — niet door de policy te lezen. Zie
+> [Portaalpolicies en QA verifiëren](#portaalpolicies-en-qa-verifiëren).
+
 ### Sensitive Data Encryption
 
 Database triggers encrypt sensitive fields (BSN, IBAN, webhook secrets, access tokens) on write using Supabase Vault. **Never read encrypted columns directly.** Use:
@@ -212,7 +227,9 @@ Canonical in [src/integrations/supabase/types.ts](src/integrations/supabase/type
 | `get_whatsapp_token` | p_org_id | { phone_number_id, waba_id, decrypted_access_token, decrypted_webhook_secret }[] | Decrypt WhatsApp credentials |
 | `get_user_org_id` | (none) | string | Get current user's organization_id |
 | `get_user_role` | (none) | user_role enum | Get current user's role |
-| `get_employee_id` | (none) | string | Get current user's employee/candidate ID |
+| `get_employee_id` | (none) | string | **`employees.id`** van de ingelogde portaalgebruiker — géén candidate-id. Zie de waarschuwing onder [Candidates = Employees](#candidates--employees-merged-model) |
+| `get_employee_candidate_id` | (none) | string | **`candidates.id`** van diezelfde gebruiker (`employees.candidate_id`). Dit is wat je nodig hebt zodra je een `candidate_id`-kolom vergelijkt |
+| `get_portal_org_info` | (none) | { name, logo_url, welcome_video_url }[] | Smalle org-velden voor het portaal. Medewerkers mogen `organizations` niet lezen (`org_select` vereist `is_internal_user()`) en `settings` bevat o.a. `role_permissions` |
 | `is_employee_user` | (none) | boolean | Check if current user is employee role |
 | `is_superadmin` | (none) | boolean | Check if current user is superadmin |
 | `encrypt_sensitive` | plaintext | string | Encrypt via Supabase Vault |
@@ -332,6 +349,7 @@ Canonical in [src/integrations/supabase/types.ts](src/integrations/supabase/type
 | `refresh-talentpool-members` | **Dynamische talentpools**: past `filter_criteria` toe + diff vs huidige leden. Single-mode (user-JWT) of cron-mode (`x-cron-secret`) |
 | `validate-timesheets` | AI validation of timesheet entries (6 rules) |
 | `recruiter-priorities` | Calculate recruiter task priorities |
+| `translate-platform` | DeepL-proxy. **Niet meer in gebruik** — de UI vertaalt via een meegebouwd woordenboek (zie [Meertaligheid](#meertaligheid-nl--en-via-een-meegebouwd-woordenboek)). Blijft staan, kan weg |
 
 **Telephony (Voys) — AI call support**
 | Function | Purpose |
@@ -560,6 +578,73 @@ Project-id: `noaupcteygfvlyymqtew` (vermeld in CLAUDE.md "Team & Contact" hieron
 
 **`is_internal_user()`** (the central authorization helper in RLS policies and edge functions) = role IN (`admin`, `intercedent`, `backoffice`, `finance`). The two portal roles (`medewerker`, `opdrachtgever`) are deliberately excluded and get their own self-scoped policies. When you add a `{public}`/`{authenticated}` RLS policy on a tenant table, gate org-wide access with `AND is_internal_user()` and leave portal access to dedicated self-policies — otherwise a low-privilege portal role gains org-wide reach. See [docs/security-audit-2026-06-10.md](docs/security-audit-2026-06-10.md).
 
+### Meertaligheid (NL → EN) via een meegebouwd woordenboek
+
+Geen i18n-library en geen `t()`-aanroepen: de UI is in het Nederlands geschreven en wordt **runtime in de
+DOM vervangen**. `TranslationProvider` ([src/contexts/TranslationContext.tsx](src/contexts/TranslationContext.tsx))
+loopt met een TreeWalker langs de tekstknopen en zoekt elke knoop op in
+[src/lib/ui-dictionary.ts](src/lib/ui-dictionary.ts) (`UI_DICTIONARY_EN`, NL→EN). Er is géén netwerkaanroep:
+het woordenboek zit in de bundel.
+
+Drie dingen die je moet weten voordat je eraan werkt:
+
+1. **De sleutels zijn DOM-tekstknopen, niet JSX-broncode.** React splitst `Sinds {datum}` in een los knoopje
+   `"Sinds"` plus de datum, dus de sleutel is `"Sinds"` en de datum blijft staan. Een woordenboek uit de JSX
+   raden geeft misses — oogst sleutels uit de draaiende app.
+2. **Wat niet in het woordenboek staat, blijft Nederlands.** Dat is de hele truc: bedrijfsnamen,
+   vacatureteksten en ingevulde gegevens worden vanzelf met rust gelaten. (De vorige opzet riep DeepL aan en
+   vertaalde die juist wél mee.)
+3. **Twee beschermingsrichtingen, per zone verschillend:**
+
+| | scope | mechanisme |
+|---|---|---|
+| Portalen (`/portaal`, `/klantportaal`) | hele boom (`#root`) | klantdata is per stuk gemarkeerd met `data-no-translate="true"` |
+| Recruiter-omgeving | alleen `[data-translate-region]` (nu: zijbalk + topbar) | de rest wordt nooit aangeraakt |
+
+De recruiter-omgeving is omgekeerd omdat daar ~1.800–2.800 vaste teksten over 292 componenten staan, met
+kandidaatnamen en notities door de tabellen heen. Wil je daar een scherm in het Engels: loop het na op
+klantdata, markeer die, en zet dan pas `data-translate-region` op de container.
+
+**Namen mangelen is de val hier.** Het matchen is exact, dus een sleutel die toevallig gelijk is aan een naam
+slaat toe — een medewerker "Bel" werd "Call", een inlener "Actief" werd "Active". Vandaar twee regels die door
+[src/test/ui-dictionary.test.ts](src/test/ui-dictionary.test.ts) worden bewaakt: geen sleutel die aan zichzelf
+gelijk is, en sleutels moeten genormaliseerd zijn (anders matchen ze nooit). Wees terughoudend met korte,
+generieke woorden.
+
+Taalvoorkeur staat op `candidates.portal_language` (`nl`/`en`, CHECK-constraint op `employees`), met
+localStorage als fallback. De edge functie `translate-platform` (DeepL) bestaat nog maar wordt **niet meer
+aangeroepen**; het DeepL-quotum was op (`456`) en de kosten schaalden per gebruiker.
+
+### Portaalpolicies en QA verifiëren
+
+Twee technieken die je nodig hebt en die niet uit de code blijken:
+
+**RLS testen als een échte gebruiker.** Een policy lezen zegt niets — simuleer hem en vergelijk met een
+gewone telling. De MCP-SQL-verbinding is *geen* `service_role`, dus impersonatie werkt:
+
+```sql
+select set_config('request.jwt.claims',
+  '{"sub":"<auth_user_id>","role":"authenticated"}', true);
+set local role authenticated;
+select count(*) from vacancies;   -- moet gelijk zijn aan het verwachte aantal
+```
+
+Diezelfde truc is nodig om `organizations.settings` te schrijven (bv. de kill-switch aanzetten voor QA): de
+trigger `enforce_organization_settings_update` laat `service_role`, superadmin of `admin` door, maar de
+MCP-verbinding valt in geen van die drie — impersoneer dus een demo-admin.
+
+**Browser-QA.** De app draait op `https://ja-works-hub.vercel.app`; de `*-<hash>.vercel.app`-deploy-URL's
+zitten achter Vercel SSO en zijn niet bruikbaar. Let op de **PWA-serviceworker**: die serveert de vorige
+bundel, dus na een deploy zie je je wijziging niet. Leegmaken vóór je concludeert dat iets stuk is:
+
+```js
+(await navigator.serviceWorker.getRegistrations()).forEach(r => r.unregister());
+(await caches.keys()).forEach(k => caches.delete(k));
+```
+
+Een portaalaccount opzetten zonder mail te versturen: maak een `portal_invites`-rij rechtstreeks aan en open
+`/portaal/activeren/<token>` — dan kies je zelf het wachtwoord en gaat er niets de deur uit.
+
 ### Compliance
 
 `src/hooks/useComplianceCheck.ts` + `src/components/ComplianceWarningDialog.tsx`
@@ -593,6 +678,13 @@ const { data: { user } } = await supabaseClient.auth.getUser(authHeader.replace(
 ### Testing
 - Vitest + Testing Library + jsdom voor unit; **Playwright voor e2e** (`tests/e2e/`)
 - Coverage is nog beperkt — uitbouw lopend
+
+### `portal-activate` is niet transactioneel
+De functie maakt achtereenvolgens een auth-user, een profiel, een `candidates`-update en de
+`employees`-spiegel. Faalt een latere stap, dan blijven de eerdere staan: de gebruiker kán inloggen maar
+ziet een **leeg portaal** (de self-policies hangen aan `employees.auth_user_id`), de uitnodiging blijft
+ongebruikt, en een tweede poging stuit op "e-mailadres bestaat al" (409). Opruimen moet dan met de hand.
+Echte fix: de stappen in één RPC, of de portaal-RLS omhangen naar `candidates.auth_user_id`.
 
 ### Integrations
 - WhatsApp: full code but not tested with real Meta credentials
