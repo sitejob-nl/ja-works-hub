@@ -54,9 +54,10 @@ const PortalWelcomeVideoSettings = () => {
           <PlayCircle className="h-4 w-4" /> Welkomstvideo medewerkersportaal
         </CardTitle>
         <CardDescription>
-          Wordt bovenaan het dashboard van het medewerkersportaal getoond. Medewerkers kunnen de video
-          wegklikken; plaats je later een andere video, dan verschijnt die opnieuw. Laat leeg om geen
-          video te tonen. Alleen YouTube- en Vimeo-links.
+          Wordt bovenaan het dashboard van het medewerkersportaal getoond, en verdwijnt daarna vanzelf —
+          iedere medewerker krijgt hem één keer te zien. Zet je hier later een andere video neer, dan
+          verschijnt die eenmalig opnieuw. Laat leeg om geen video te tonen. Alleen YouTube- en
+          Vimeo-links.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
