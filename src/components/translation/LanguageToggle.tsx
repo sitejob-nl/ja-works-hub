@@ -1,4 +1,4 @@
-import { Globe, Languages } from 'lucide-react';
+import { Globe } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -16,7 +16,7 @@ interface LanguageToggleProps {
 }
 
 export function LanguageToggle({ compact = false, className }: LanguageToggleProps) {
-  const { language, isTranslating, setLanguage } = useTranslation();
+  const { language, setLanguage } = useTranslation();
   const active = languageOption(language);
   const title = language === 'nl' ? 'Taal wisselen' : 'Change language';
 
@@ -30,7 +30,7 @@ export function LanguageToggle({ compact = false, className }: LanguageTogglePro
           title={title}
           data-no-translate="true"
         >
-          {isTranslating ? <Languages className="h-4 w-4 animate-pulse" /> : <Globe className="h-4 w-4" />}
+          <Globe className="h-4 w-4" />
           {!compact && <span className="text-xs font-semibold">{active.short}</span>}
         </Button>
       </DropdownMenuTrigger>

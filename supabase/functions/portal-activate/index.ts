@@ -8,7 +8,7 @@ const corsHeaders = {
 };
 
 /** Portaaltalen; alles daarbuiten valt terug op Nederlands. */
-const PORTAL_LANGUAGES = ["nl", "en", "pl", "ro"];
+const PORTAL_LANGUAGES = ["nl", "en"];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -71,8 +71,6 @@ Deno.serve(async (req) => {
     }
 
     // admin.createUser bypasses the GoTrue password policy, so enforce it here.
-    // De wachtwoordmeldingen bestaan alleen in NL en EN; voor PL/RO is Engels de
-    // bruikbaarste van de twee.
     const pwError = await assertPasswordAcceptable(password, language === "nl" ? "nl" : "en");
     if (pwError) {
       return new Response(

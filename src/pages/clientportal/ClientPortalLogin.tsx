@@ -36,9 +36,7 @@ const copy = {
 const ClientPortalLogin = () => {
   const navigate = useNavigate();
   const { language } = useTranslation();
-  // Opdrachtgevers zijn NL/EN; PL en RO vallen hier terug op Engels. Ná het inloggen
-  // vertaalt het klantportaal wél runtime naar alle portaaltalen.
-  const t = copy[language] ?? copy.en;
+  const t = copy[language] ?? copy.nl;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -100,8 +98,7 @@ const ClientPortalLogin = () => {
         </form>
 
         <div className="text-center">
-          {/* Deze pagina valt voor PL/RO terug op Engels; houd de dialoog daarmee in lijn. */}
-          <ForgotPasswordDialog zone="klantportaal" defaultEmail={email} language={language === 'nl' ? 'nl' : 'en'} />
+          <ForgotPasswordDialog zone="klantportaal" defaultEmail={email} language={language} />
         </div>
       </div>
     </div>

@@ -86,8 +86,7 @@ async function inspectClientPortalInvite(token: string) {
 const ClientPortalActivate = () => {
   const { token } = useParams<{ token: string }>();
   const { language } = useTranslation();
-  // Opdrachtgevers zijn NL/EN; PL en RO vallen hier terug op Engels.
-  const t = copy[language] ?? copy.en;
+  const t = copy[language] ?? copy.nl;
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);

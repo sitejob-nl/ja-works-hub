@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { TranslationContext, type PlatformLanguage } from '@/contexts/translation-context';
-import { DEEPL_TARGETS, SOURCE_LANGUAGE, normalizeLanguage } from '@/lib/platform-languages';
+import { SOURCE_LANGUAGE, normalizeLanguage } from '@/lib/platform-languages';
+import { PORTAL_DICTIONARY_EN } from '@/lib/portal-dictionary';
 
 interface TranslationRecord {
   original: string;
@@ -10,15 +10,13 @@ interface TranslationRecord {
 }
 
 const STORAGE_KEY = 'jawerkt-platform-language';
-const CACHE_KEY = 'jawerkt-platform-translation-cache-v1';
-const MAX_BATCH_ITEMS = 80;
 const MAX_TEXT_LENGTH = 900;
-/** Na een mislukte vertaalronde even niets proberen, daarna steeds langer. */
-const RETRY_BASE_MS = 30_000;
-const RETRY_MAX_MS = 10 * 60_000;
-/** Zoveel mislukte rondes achter elkaar en we geven het op tot een herlaad/taalwissel. */
-const MAX_CONSECUTIVE_FAILURES = 4;
 const TRANSLATABLE_ATTRIBUTES = ['placeholder', 'title', 'aria-label'] as const;
+
+/** Per doeltaal één woordenboek. Nederlands is de bron en heeft er dus geen. */
+const DICTIONARIES: Record<Exclude<PlatformLanguage, 'nl'>, Record<string, string>> = {
+  en: PORTAL_DICTIONARY_EN,
+};
 
 const nodeTranslations = new WeakMap<Text, TranslationRecord>();
 const attributeTranslations = new WeakMap<Element, Map<string, TranslationRecord>>();
@@ -30,23 +28,6 @@ type TranslationTarget =
 function readInitialLanguage(): PlatformLanguage {
   if (typeof window === 'undefined') return SOURCE_LANGUAGE;
   return normalizeLanguage(window.localStorage.getItem(STORAGE_KEY));
-}
-
-function readCache(): Record<string, string> {
-  if (typeof window === 'undefined') return {};
-  try {
-    return JSON.parse(window.localStorage.getItem(CACHE_KEY) ?? '{}');
-  } catch {
-    return {};
-  }
-}
-
-function writeCache(cache: Record<string, string>) {
-  try {
-    window.localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
-  } catch {
-    // Cache is a performance hint; translation still works without storage.
-  }
 }
 
 function shouldSkipElement(element: Element | null): boolean {
@@ -119,10 +100,6 @@ function collectTextNodes(root: HTMLElement): Text[] {
   return nodes;
 }
 
-function cacheKey(text: string, targetLanguage: PlatformLanguage): string {
-  return `${targetLanguage}:${text}`;
-}
-
 function getAttributeRecord(element: Element, attribute: string): TranslationRecord | undefined {
   return attributeTranslations.get(element)?.get(attribute);
 }
@@ -134,9 +111,8 @@ function setAttributeRecord(element: Element, attribute: string, record: Transla
 }
 
 /**
- * De brontekst voor een knoop die mogelijk al vertaald is. Staat er nog een vertaling
- * uit een andere taal in de DOM (NL -> EN, daarna EN -> PL), dan is het Nederlandse
- * origineel de bron — niet de Engelse tekst die er nu staat.
+ * De brontekst voor een knoop die mogelijk al vertaald is. Staat de vertaling van een
+ * andere taal in de DOM, dan is het Nederlandse origineel de bron — niet wat er nu staat.
  */
 function sourceTextFor(current: string, previous: TranslationRecord | undefined): string {
   if (previous && normalizedText(current) === normalizedText(previous.translated)) return previous.original;
@@ -183,11 +159,7 @@ function collectTranslationTargets(root: HTMLElement, targetLanguage: PlatformLa
 function applyTranslation(target: TranslationTarget, translated: string, targetLanguage: PlatformLanguage) {
   if (target.type === 'text') {
     target.node.nodeValue = withOriginalSpacing(target.node.nodeValue ?? '', translated);
-    nodeTranslations.set(target.node, {
-      original: target.original,
-      translated,
-      targetLanguage,
-    });
+    nodeTranslations.set(target.node, { original: target.original, translated, targetLanguage });
     return;
   }
 
@@ -206,6 +178,14 @@ interface TranslationProviderProps {
   enableRuntimeTranslation?: boolean;
 }
 
+/**
+ * Vertaalt de vaste UI-teksten van het portaal door de DOM langs te lopen en elke
+ * tekstknoop op te zoeken in een meegebouwd woordenboek ([[portal-dictionary]]).
+ *
+ * Bewust een opzoektabel en geen vertaaldienst: wat niet in het woordenboek staat —
+ * bedrijfsnamen, vacatureteksten, ingevulde gegevens — blijft onaangeraakt. Er is geen
+ * netwerkaanroep, dus ook geen wachttijd, kosten of quotum dat op kan raken.
+ */
 export function TranslationProvider({
   children,
   initialLanguage,
@@ -215,14 +195,10 @@ export function TranslationProvider({
   const [language, setLanguageState] = useState<PlatformLanguage>(() => (
     initialLanguage ? normalizeLanguage(initialLanguage) : readInitialLanguage()
   ));
-  const [isTranslating, setIsTranslating] = useState(false);
   const languageRef = useRef(language);
   const onLanguageChangeRef = useRef(onLanguageChange);
   const pendingTimerRef = useRef<number | undefined>();
   const mutationObserverRef = useRef<MutationObserver | null>(null);
-  const cacheRef = useRef<Record<string, string>>(readCache());
-  const failureCountRef = useRef(0);
-  const retryAfterRef = useRef(0);
 
   useEffect(() => {
     onLanguageChangeRef.current = onLanguageChange;
@@ -237,9 +213,6 @@ export function TranslationProvider({
     languageRef.current = language;
     document.documentElement.lang = language;
     window.localStorage.setItem(STORAGE_KEY, language);
-    // Een bewuste taalwissel verdient een nieuwe poging, ook na eerdere fouten.
-    failureCountRef.current = 0;
-    retryAfterRef.current = 0;
   }, [language]);
 
   /** Zet alle vertaalde knopen terug naar het Nederlandse origineel. */
@@ -269,85 +242,29 @@ export function TranslationProvider({
     });
   }, []);
 
-  const translateNow = useCallback(async () => {
+  const translateNow = useCallback(() => {
     const targetLanguage = languageRef.current;
     if (!enableRuntimeTranslation || targetLanguage === SOURCE_LANGUAGE) {
       restoreSource();
       return;
     }
 
-    // De vertaalronde wordt door elke DOM-mutatie opnieuw ingepland. Blijft de edge functie
-    // falen (bijv. DeepL-quota op, HTTP 456), dan zou dat honderden requests opleveren.
-    if (failureCountRef.current >= MAX_CONSECUTIVE_FAILURES || Date.now() < retryAfterRef.current) return;
+    const dictionary = DICTIONARIES[targetLanguage as Exclude<PlatformLanguage, 'nl'>];
+    if (!dictionary) return;
 
     const root = document.getElementById('root');
     if (!root) return;
 
-    const targets = collectTranslationTargets(root, targetLanguage);
-    const uncached = new Set<string>();
-
-    targets.forEach(({ original }) => {
-      if (!cacheRef.current[cacheKey(original, targetLanguage)]) {
-        uncached.add(original);
-      }
-    });
-
-    targets.forEach((target) => {
-      const translated = cacheRef.current[cacheKey(target.original, targetLanguage)];
+    collectTranslationTargets(root, targetLanguage).forEach((target) => {
+      const translated = dictionary[target.original];
       if (!translated) return;
       applyTranslation(target, translated, targetLanguage);
     });
-
-    const texts = Array.from(uncached).slice(0, MAX_BATCH_ITEMS);
-    if (texts.length === 0) return;
-
-    setIsTranslating(true);
-    const { data, error } = await supabase.functions.invoke('translate-platform', {
-      body: {
-        source_lang: 'NL',
-        target_lang: DEEPL_TARGETS[targetLanguage],
-        texts,
-      },
-    });
-    setIsTranslating(false);
-
-    if (error || !Array.isArray(data?.translations)) {
-      failureCountRef.current += 1;
-      retryAfterRef.current = Date.now()
-        + Math.min(RETRY_BASE_MS * 2 ** (failureCountRef.current - 1), RETRY_MAX_MS);
-      if (failureCountRef.current >= MAX_CONSECUTIVE_FAILURES) {
-        console.warn('[translate] vertaling blijft mislukken, gestopt tot herladen of taalwissel', error);
-      }
-      return;
-    }
-
-    failureCountRef.current = 0;
-    retryAfterRef.current = 0;
-
-    data.translations.forEach((item: { source?: string; text?: string }) => {
-      if (item.source && item.text) {
-        cacheRef.current[cacheKey(item.source, targetLanguage)] = item.text;
-      }
-    });
-    writeCache(cacheRef.current);
-
-    // De gebruiker kan tijdens het wachten van taal zijn gewisseld.
-    if (languageRef.current !== targetLanguage) return;
-
-    targets.forEach((target) => {
-      const translated = cacheRef.current[cacheKey(target.original, targetLanguage)];
-      if (!translated) return;
-      applyTranslation(target, translated, targetLanguage);
-    });
-
-    if (uncached.size > MAX_BATCH_ITEMS && languageRef.current === targetLanguage) {
-      window.setTimeout(translateNow, 200);
-    }
   }, [enableRuntimeTranslation, restoreSource]);
 
   const scheduleTranslation = useCallback(() => {
     window.clearTimeout(pendingTimerRef.current);
-    pendingTimerRef.current = window.setTimeout(translateNow, 120);
+    pendingTimerRef.current = window.setTimeout(translateNow, 60);
   }, [translateNow]);
 
   useEffect(() => {
@@ -379,10 +296,7 @@ export function TranslationProvider({
     onLanguageChangeRef.current?.(normalized);
   }, []);
 
-  const value = useMemo(
-    () => ({ language, isTranslating, setLanguage }),
-    [isTranslating, language, setLanguage],
-  );
+  const value = useMemo(() => ({ language, setLanguage }), [language, setLanguage]);
 
   return <TranslationContext.Provider value={value}>{children}</TranslationContext.Provider>;
 }
