@@ -13,6 +13,7 @@ import {
   CommandList,
 } from '@/components/ui/command';
 import NotificationBell from './NotificationBell';
+import { LanguageToggle } from '@/components/translation/LanguageToggle';
 
 interface TopBarProps {
   onMenuClick?: () => void;
@@ -112,7 +113,7 @@ const TopBar = ({ onMenuClick }: TopBarProps) => {
     || results.companies.length > 0 || results.vacancies.length > 0 || results.placements.length > 0;
 
   return (
-    <header className="h-14 border-b border-border bg-card flex items-center justify-between px-3 sm:px-6 shrink-0">
+    <header data-translate-region className="h-14 border-b border-border bg-card flex items-center justify-between px-3 sm:px-6 shrink-0">
       <div className="flex items-center gap-2 flex-1 min-w-0">
         {/* Mobile menu button */}
         <Button
@@ -146,11 +147,13 @@ const TopBar = ({ onMenuClick }: TopBarProps) => {
 
         <NotificationBell />
 
+        <LanguageToggle compact />
+
         <div className="flex items-center gap-2 cursor-pointer" onClick={signOut}>
           <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium text-stat-blue">
             {firstName.charAt(0).toUpperCase()}
           </div>
-          <div className="hidden sm:block">
+          <div className="hidden sm:block" data-no-translate="true">
             <p className="text-sm font-medium leading-tight">{profile?.full_name}</p>
             <p className="text-[11px] text-muted-foreground capitalize">{profile?.role}</p>
           </div>

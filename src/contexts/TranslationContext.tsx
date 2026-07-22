@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { TranslationContext, type PlatformLanguage } from '@/contexts/translation-context';
 import { SOURCE_LANGUAGE, normalizeLanguage } from '@/lib/platform-languages';
-import { PORTAL_DICTIONARY_EN } from '@/lib/portal-dictionary';
+import { UI_DICTIONARY_EN } from '@/lib/ui-dictionary';
 
 interface TranslationRecord {
   original: string;
@@ -15,7 +15,7 @@ const TRANSLATABLE_ATTRIBUTES = ['placeholder', 'title', 'aria-label'] as const;
 
 /** Per doeltaal één woordenboek. Nederlands is de bron en heeft er dus geen. */
 const DICTIONARIES: Record<Exclude<PlatformLanguage, 'nl'>, Record<string, string>> = {
-  en: PORTAL_DICTIONARY_EN,
+  en: UI_DICTIONARY_EN,
 };
 
 const nodeTranslations = new WeakMap<Text, TranslationRecord>();
@@ -176,6 +176,22 @@ interface TranslationProviderProps {
   initialLanguage?: PlatformLanguage | null;
   onLanguageChange?: (language: PlatformLanguage) => void;
   enableRuntimeTranslation?: boolean;
+  /**
+   * Waar er vertaald mag worden, als CSS-selectors. Standaard de hele app.
+   *
+   * De portalen tonen bijna uitsluitend eigen gegevens van de ingelogde medewerker en
+   * zijn scherm voor scherm nagelopen, dus daar kan de hele boom mee. De recruiter-
+   * omgeving staat vol kandidaatnamen, notities en vrije tekst in tabellen; daar wijzen
+   * we per gebied aan wat vertaald mag worden, zodat klantdata niet per ongeluk door het
+   * woordenboek loopt.
+   */
+  roots?: string[];
+}
+
+const DEFAULT_ROOTS = ['#root'];
+
+function resolveRoots(selectors: string[]): HTMLElement[] {
+  return selectors.flatMap((selector) => Array.from(document.querySelectorAll<HTMLElement>(selector)));
 }
 
 /**
@@ -191,6 +207,7 @@ export function TranslationProvider({
   initialLanguage,
   onLanguageChange,
   enableRuntimeTranslation = true,
+  roots = DEFAULT_ROOTS,
 }: TranslationProviderProps) {
   const [language, setLanguageState] = useState<PlatformLanguage>(() => (
     initialLanguage ? normalizeLanguage(initialLanguage) : readInitialLanguage()
@@ -199,6 +216,9 @@ export function TranslationProvider({
   const onLanguageChangeRef = useRef(onLanguageChange);
   const pendingTimerRef = useRef<number | undefined>();
   const mutationObserverRef = useRef<MutationObserver | null>(null);
+  // Als ref zodat translateNow niet opnieuw hoeft te worden opgebouwd bij elke render.
+  const rootsRef = useRef(roots);
+  rootsRef.current = roots;
 
   useEffect(() => {
     onLanguageChangeRef.current = onLanguageChange;
@@ -217,9 +237,7 @@ export function TranslationProvider({
 
   /** Zet alle vertaalde knopen terug naar het Nederlandse origineel. */
   const restoreSource = useCallback(() => {
-    const root = document.getElementById('root');
-    if (!root) return;
-
+    resolveRoots(rootsRef.current).forEach((root) => {
     collectTextNodes(root).forEach((node) => {
       const record = nodeTranslations.get(node);
       if (record && node.nodeValue === record.translated) {
@@ -240,6 +258,7 @@ export function TranslationProvider({
         records.delete(attribute);
       });
     });
+    });
   }, []);
 
   const translateNow = useCallback(() => {
@@ -252,13 +271,12 @@ export function TranslationProvider({
     const dictionary = DICTIONARIES[targetLanguage as Exclude<PlatformLanguage, 'nl'>];
     if (!dictionary) return;
 
-    const root = document.getElementById('root');
-    if (!root) return;
-
-    collectTranslationTargets(root, targetLanguage).forEach((target) => {
-      const translated = dictionary[target.original];
-      if (!translated) return;
-      applyTranslation(target, translated, targetLanguage);
+    resolveRoots(rootsRef.current).forEach((root) => {
+      collectTranslationTargets(root, targetLanguage).forEach((target) => {
+        const translated = dictionary[target.original];
+        if (!translated) return;
+        applyTranslation(target, translated, targetLanguage);
+      });
     });
   }, [enableRuntimeTranslation, restoreSource]);
 

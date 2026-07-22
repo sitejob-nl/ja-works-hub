@@ -1,5 +1,5 @@
 /**
- * Vaste Nederlandse UI-teksten van het portaal, met hun Engelse vertaling.
+ * Vaste Nederlandse UI-teksten met hun Engelse vertaling.
  *
  * De sleutels zijn de **letterlijke tekstknopen zoals ze in de DOM staan** (whitespace
  * samengevouwen), niet de JSX-broncode. React splitst `Sinds {datum}` in een los knoopje
@@ -26,7 +26,7 @@
  * scherm staat. Staat een tekst er niet in, dan is dat zichtbaar (hij blijft Nederlands),
  * niet stuk.
  */
-export const PORTAL_DICTIONARY_EN: Record<string, string> = {
+export const UI_DICTIONARY_EN: Record<string, string> = {
   // --- Navigatie & chrome ---------------------------------------------------------
   'Uren': 'Hours',
   'Plaatsingen': 'Placements',
@@ -225,4 +225,31 @@ export const PORTAL_DICTIONARY_EN: Record<string, string> = {
   'Opnieuw proberen': 'Try again',
   'Er ging iets mis': 'Something went wrong',
   'Bel': 'Call',
+  // --- Recruiter-omgeving: navigatie en balk bovenin --------------------------------
+  // Alleen de schil is vertaald; paginalichamen staan nog in het Nederlands. De
+  // vertaler draait daar dan ook alleen binnen [data-translate-region].
+  'Relaties': 'Relations',
+  'Werk': 'Work',
+  'Vastgoed & Fleet': 'Property & fleet',
+  'Taken': 'Tasks',
+  'Opdrachtgevers': 'Clients',
+  'Kandidaten': 'Candidates',
+  'Contacten': 'Contacts',
+  'Talentpools': 'Talent pools',
+  'Facturatie': 'Invoicing',
+  'Uitstroom': 'Attrition',
+  'Tankpas analyse': 'Fuel card analysis',
+  'Kilometeranalyse': 'Mileage analysis',
+  'Communicatie': 'Communication',
+  'Email Templates': 'Email templates',
+  'Agenda': 'Calendar',
+  'Bulk Campagnes': 'Bulk campaigns',
+  'Kennisbank': 'Knowledge base',
+  'Vacaturebank': 'Job board',
+  'Kandidaten zoeken': 'Search candidates',
+  'Omzet (directie)': 'Revenue (management)',
+  'Instellingen': 'Settings',
+  'Zoeken...': 'Search...',
+  'Inklappen': 'Collapse',
+  'Uitklappen': 'Expand',
 };
