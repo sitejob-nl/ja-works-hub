@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/dialog';
 import { CheckCircle2, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import type { PlatformLanguage } from '@/contexts/translation-context';
 
 const copy = {
   nl: {
@@ -37,16 +38,40 @@ const copy = {
     close: 'Close',
     genericError: 'Something went wrong. Please try again later.',
   },
+  pl: {
+    linkLabel: 'Nie pamiętasz hasła?',
+    title: 'Nie pamiętasz hasła',
+    description: 'Podaj swój adres e-mail, a wyślemy Ci link do ustawienia nowego hasła.',
+    email: 'Adres e-mail',
+    emailPlaceholder: 'imie@przyklad.pl',
+    send: 'Wyślij link do resetowania',
+    sending: 'Wysyłanie...',
+    sentBody: 'Jeśli ten adres e-mail jest nam znany, link do resetowania został wysłany. Sprawdź także folder ze spamem.',
+    close: 'Zamknij',
+    genericError: 'Coś poszło nie tak. Spróbuj ponownie później.',
+  },
+  ro: {
+    linkLabel: 'Ai uitat parola?',
+    title: 'Ai uitat parola',
+    description: 'Introdu adresa ta de e-mail și îți vom trimite un link pentru a seta o parolă nouă.',
+    email: 'Adresă de e-mail',
+    emailPlaceholder: 'nume@exemplu.ro',
+    send: 'Trimite linkul de resetare',
+    sending: 'Se trimite...',
+    sentBody: 'Dacă această adresă de e-mail este cunoscută de noi, a fost trimis un link de resetare. Verifică și folderul de spam.',
+    close: 'Închide',
+    genericError: 'A apărut o eroare. Încearcă din nou mai târziu.',
+  },
 };
 
 interface ForgotPasswordDialogProps {
   zone: 'app' | 'portaal' | 'klantportaal';
   defaultEmail?: string;
-  language?: 'nl' | 'en';
+  language?: PlatformLanguage;
 }
 
 export const ForgotPasswordDialog = ({ zone, defaultEmail, language = 'nl' }: ForgotPasswordDialogProps) => {
-  const t = copy[language];
+  const t = copy[language] ?? copy.nl;
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState('');
   const [sending, setSending] = useState(false);

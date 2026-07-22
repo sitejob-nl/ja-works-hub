@@ -10010,6 +10010,14 @@ export type Database = {
           decrypted_iban: string
         }[]
       }
+      get_portal_org_info: {
+        Args: never
+        Returns: {
+          logo_url: string
+          name: string
+          welcome_video_url: string
+        }[]
+      }
       get_termination_analytics: {
         Args: { p_from?: string; p_org_id: string; p_to?: string }
         Returns: Json

@@ -6,7 +6,7 @@ const DEEPL_API_URL = "https://api.deepl.com/v2/translate";
 const DEEPL_FREE_API_URL = "https://api-free.deepl.com/v2/translate";
 const MAX_ITEMS = 100;
 const MAX_TEXT_LENGTH = 1000;
-const ALLOWED_TARGETS = new Set(["EN", "EN-US", "EN-GB", "NL"]);
+const ALLOWED_TARGETS = new Set(["EN", "EN-US", "EN-GB", "NL", "PL", "RO"]);
 const ALLOWED_SOURCES = new Set(["NL", "EN"]);
 
 function cleanTexts(value: unknown): string[] {

@@ -15,6 +15,7 @@ import AddressAutocomplete from '@/components/shared/AddressAutocomplete';
 import { resolveAddressCoordinates } from '@/lib/pdok';
 import { useTranslation } from '@/hooks/useTranslation';
 import type { PlatformLanguage } from '@/contexts/translation-context';
+import { PLATFORM_LANGUAGES, normalizeLanguage } from '@/lib/platform-languages';
 
 const PortalProfile = () => {
   const { employee, candidate } = usePortal();
@@ -42,7 +43,7 @@ const PortalProfile = () => {
       setAddressLng(candidate.address_lng ?? null);
     }
     if (employee) {
-      setLang(employee.portal_language === 'en' ? 'en' : 'nl');
+      setLang(normalizeLanguage(employee.portal_language));
     }
   }, [candidate, employee]);
 
@@ -138,14 +139,17 @@ const PortalProfile = () => {
           <div className="space-y-1.5">
             <Label>Taal portaal</Label>
             <Select value={lang} onValueChange={(value) => {
-              const nextLanguage = value === 'en' ? 'en' : 'nl';
+              const nextLanguage = normalizeLanguage(value);
               setLang(nextLanguage);
               setLanguage(nextLanguage);
             }}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="nl">Nederlands</SelectItem>
-                <SelectItem value="en">English</SelectItem>
+                {PLATFORM_LANGUAGES.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.flag} {option.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

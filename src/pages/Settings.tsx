@@ -33,6 +33,7 @@ import MatchPipelineSettings from '@/components/settings/MatchPipelineSettings';
 import MatchFeedbackReasonsSettings from '@/components/settings/MatchFeedbackReasonsSettings';
 import DomainSettings from '@/components/settings/DomainSettings';
 import OutboundPauseSettings from '@/components/settings/OutboundPauseSettings';
+import PortalWelcomeVideoSettings from '@/components/settings/PortalWelcomeVideoSettings';
 import TriageRoutingSettings from '@/components/settings/TriageRoutingSettings';
 import PlacementSettings from '@/components/settings/PlacementSettings';
 import RolePermissionsSettings from '@/components/settings/RolePermissionsSettings';
@@ -417,6 +418,7 @@ const Settings = () => {
             <TabsContent value="algemeen" className="mt-0 space-y-5">
               <OutboundPauseSettings />
               <TriageRoutingSettings />
+              <PortalWelcomeVideoSettings />
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-base">

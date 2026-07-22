@@ -6,14 +6,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import type { PlatformLanguage } from '@/contexts/translation-context';
+import { PLATFORM_LANGUAGES, languageOption } from '@/lib/platform-languages';
 import { useTranslation } from '@/hooks/useTranslation';
 import { cn } from '@/lib/utils';
-
-const languages: Array<{ value: PlatformLanguage; label: string; short: string }> = [
-  { value: 'nl', label: 'Nederlands', short: 'NL' },
-  { value: 'en', label: 'English', short: 'EN' },
-];
 
 interface LanguageToggleProps {
   compact?: boolean;
@@ -22,8 +17,8 @@ interface LanguageToggleProps {
 
 export function LanguageToggle({ compact = false, className }: LanguageToggleProps) {
   const { language, isTranslating, setLanguage } = useTranslation();
-  const active = languages.find((item) => item.value === language) ?? languages[0];
-  const title = language === 'en' ? 'Change language' : 'Taal wisselen';
+  const active = languageOption(language);
+  const title = language === 'nl' ? 'Taal wisselen' : 'Change language';
 
   return (
     <DropdownMenu>
@@ -40,12 +35,13 @@ export function LanguageToggle({ compact = false, className }: LanguageTogglePro
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" data-no-translate="true">
-        {languages.map((item) => (
+        {PLATFORM_LANGUAGES.map((item) => (
           <DropdownMenuItem
             key={item.value}
             onClick={() => setLanguage(item.value)}
-            className={cn(item.value === language && 'font-semibold')}
+            className={cn('gap-2', item.value === language && 'font-semibold')}
           >
+            <span aria-hidden>{item.flag}</span>
             {item.label}
           </DropdownMenuItem>
         ))}
