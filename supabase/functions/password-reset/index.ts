@@ -114,7 +114,8 @@ function buildResetEmailHtml(data: {
 async function handleRequest(req: Request, body: Record<string, unknown>): Promise<Response> {
   const email = String(body.email ?? "").trim().toLowerCase();
   const zone: Zone = body.zone === "portaal" || body.zone === "klantportaal" ? body.zone : "app";
-  const lang: Lang = body.language === "en" ? "en" : "nl";
+  // Meldingen bestaan alleen in NL en EN; PL/RO krijgen Engels (bruikbaarder dan Nederlands).
+  const lang: Lang = !body.language || body.language === "nl" ? "nl" : "en";
 
   // Generiek ok — ook op invalide input — zodat het endpoint niets over accounts prijsgeeft.
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json({ ok: true });
@@ -194,7 +195,8 @@ async function handleRequest(req: Request, body: Record<string, unknown>): Promi
 }
 
 async function handleUpdate(req: Request, body: Record<string, unknown>): Promise<Response> {
-  const lang: Lang = body.language === "en" ? "en" : "nl";
+  // Meldingen bestaan alleen in NL en EN; PL/RO krijgen Engels (bruikbaarder dan Nederlands).
+  const lang: Lang = !body.language || body.language === "nl" ? "nl" : "en";
   const password = body.password;
 
   const authHeader = req.headers.get("Authorization") ?? "";

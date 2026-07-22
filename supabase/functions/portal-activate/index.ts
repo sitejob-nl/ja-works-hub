@@ -7,13 +7,17 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+/** Portaaltalen; alles daarbuiten valt terug op Nederlands. */
+const PORTAL_LANGUAGES = ["nl", "en", "pl", "ro"];
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { token, password, language, action } = await req.json();
+    const { token, password, language: rawLanguage, action } = await req.json();
+    const language = PORTAL_LANGUAGES.includes(rawLanguage) ? rawLanguage : "nl";
 
     if (!token) {
       return new Response(
@@ -67,7 +71,9 @@ Deno.serve(async (req) => {
     }
 
     // admin.createUser bypasses the GoTrue password policy, so enforce it here.
-    const pwError = await assertPasswordAcceptable(password, language === "en" ? "en" : "nl");
+    // De wachtwoordmeldingen bestaan alleen in NL en EN; voor PL/RO is Engels de
+    // bruikbaarste van de twee.
+    const pwError = await assertPasswordAcceptable(password, language === "nl" ? "nl" : "en");
     if (pwError) {
       return new Response(
         JSON.stringify({ error: pwError }),
@@ -116,7 +122,7 @@ Deno.serve(async (req) => {
         auth_user_id: newUserId,
         portal_enabled: true,
         portal_activated_at: new Date().toISOString(),
-        portal_language: language || "nl",
+        portal_language: language,
       })
       .eq("id", candidate.id);
 
@@ -131,7 +137,7 @@ Deno.serve(async (req) => {
         auth_user_id: newUserId,
         portal_enabled: true,
         portal_activated_at: new Date().toISOString(),
-        portal_language: language || "nl",
+        portal_language: language,
       });
 
     const { error: employeeErr } = invite.employee_id

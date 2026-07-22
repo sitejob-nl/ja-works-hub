@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { Copy, Check, Mail, Send } from 'lucide-react';
 import { format } from 'date-fns';
+import { PLATFORM_LANGUAGES } from '@/lib/platform-languages';
 
 interface Props {
   open: boolean;
@@ -293,8 +294,11 @@ const PortalActivateSheet = ({ open, onOpenChange, candidateId: candidateIdProp,
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="nl">Nederlands</SelectItem>
-                <SelectItem value="en">English</SelectItem>
+                {PLATFORM_LANGUAGES.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.flag} {option.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

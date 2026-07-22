@@ -31,12 +31,34 @@ const copy = {
     loggingIn: 'Logging in...',
     loginFailed: 'Login failed',
   },
+  // Publieke pagina: de DeepL-vertaalfunctie vereist een ingelogd profiel en draait hier
+  // niet, dus deze teksten staan vast in de code.
+  pl: {
+    title: 'Portal pracownika',
+    subtitle: 'Zaloguj się na swoje konto',
+    email: 'Adres e-mail',
+    emailPlaceholder: 'ty@email.com',
+    password: 'Hasło',
+    login: 'Zaloguj się',
+    loggingIn: 'Logowanie...',
+    loginFailed: 'Logowanie nie powiodło się',
+  },
+  ro: {
+    title: 'Portalul angajatului',
+    subtitle: 'Conectează-te la contul tău',
+    email: 'Adresă de e-mail',
+    emailPlaceholder: 'tu@email.com',
+    password: 'Parolă',
+    login: 'Conectare',
+    loggingIn: 'Se conectează...',
+    loginFailed: 'Conectarea a eșuat',
+  },
 };
 
 const PortalLogin = () => {
   const navigate = useNavigate();
   const { language } = useTranslation();
-  const t = copy[language];
+  const t = copy[language] ?? copy.nl;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);

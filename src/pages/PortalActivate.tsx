@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { LanguageToggle } from '@/components/translation/LanguageToggle';
 import { useTranslation } from '@/hooks/useTranslation';
 import type { PlatformLanguage } from '@/contexts/translation-context';
+import { PLATFORM_LANGUAGES, normalizeLanguage } from '@/lib/platform-languages';
 import { isPasswordValid } from '@/lib/password-policy';
 import { PasswordChecklist } from '@/components/auth/PasswordChecklist';
 
@@ -72,6 +73,66 @@ const copy = {
     creatingAccount: 'Creating account...',
     createAccount: 'Create account',
   },
+  // De activatiepagina is publiek; de DeepL-vertaalfunctie vereist een ingelogd
+  // profiel en draait hier dus niet. Deze teksten staan daarom vast in de code.
+  pl: {
+    notFound: 'Nie znaleziono',
+    missingToken: 'Brak tokenu',
+    activationFailed: 'Aktywacja nie powiodła się',
+    accountCreatedToast: 'Konto zostało utworzone!',
+    activationError: 'Coś poszło nie tak podczas aktywacji konta',
+    invalidTitle: 'Link jest nieprawidłowy lub wygasł',
+    invalidBody: 'Ten link aktywacyjny jest nieprawidłowy lub wygasł. Skontaktuj się z pracodawcą, aby otrzymać nowe zaproszenie.',
+    successTitle: 'Twoje konto zostało utworzone!',
+    successBody: 'Możesz teraz zalogować się do portalu pracownika.',
+    goToPortal: 'Przejdź do portalu',
+    activateTitle: 'Aktywuj portal',
+    portalName: 'Portal pracownika',
+    welcome: 'Witaj,',
+    email: 'Adres e-mail',
+    password: 'Hasło',
+    passwordPlaceholder: 'Co najmniej 8 znaków',
+    pwLength: 'Co najmniej 8 znaków',
+    pwLower: 'Mała litera',
+    pwUpper: 'Wielka litera',
+    pwDigit: 'Cyfra',
+    pwSymbol: 'Symbol (np. !?@#)',
+    confirmPassword: 'Potwierdź hasło',
+    confirmPlaceholder: 'Powtórz hasło',
+    passwordsMismatch: 'Hasła nie są zgodne',
+    language: 'Język',
+    creatingAccount: 'Tworzenie konta...',
+    createAccount: 'Utwórz konto',
+  },
+  ro: {
+    notFound: 'Nu a fost găsit',
+    missingToken: 'Token lipsă',
+    activationFailed: 'Activarea a eșuat',
+    accountCreatedToast: 'Cont creat!',
+    activationError: 'A apărut o eroare la activarea contului',
+    invalidTitle: 'Link invalid sau expirat',
+    invalidBody: 'Acest link de activare este invalid sau a expirat. Contactează angajatorul pentru o nouă invitație.',
+    successTitle: 'Contul tău a fost creat!',
+    successBody: 'Acum te poți conecta la portalul angajatului.',
+    goToPortal: 'Mergi la portal',
+    activateTitle: 'Activează portalul',
+    portalName: 'Portalul angajatului',
+    welcome: 'Bun venit,',
+    email: 'Adresă de e-mail',
+    password: 'Parolă',
+    passwordPlaceholder: 'Minimum 8 caractere',
+    pwLength: 'Minimum 8 caractere',
+    pwLower: 'O literă mică',
+    pwUpper: 'O literă mare',
+    pwDigit: 'O cifră',
+    pwSymbol: 'Un simbol (ex. !?@#)',
+    confirmPassword: 'Confirmă parola',
+    confirmPlaceholder: 'Repetă parola',
+    passwordsMismatch: 'Parolele nu se potrivesc',
+    language: 'Limbă',
+    creatingAccount: 'Se creează contul...',
+    createAccount: 'Creează cont',
+  },
 };
 
 async function inspectPortalInvite(token: string) {
@@ -94,7 +155,7 @@ async function inspectPortalInvite(token: string) {
 const PortalActivate = () => {
   const { token } = useParams<{ token: string }>();
   const { language: platformLanguage, setLanguage: setPlatformLanguage } = useTranslation();
-  const t = copy[platformLanguage];
+  const t = copy[platformLanguage] ?? copy.nl;
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [portalLanguage, setPortalLanguage] = useState<PlatformLanguage>(platformLanguage);
@@ -282,7 +343,7 @@ const PortalActivate = () => {
           <div className="space-y-2">
             <Label htmlFor="lang">{t.language}</Label>
             <Select value={portalLanguage} onValueChange={(value) => {
-              const nextLanguage = value === 'en' ? 'en' : 'nl';
+              const nextLanguage = normalizeLanguage(value);
               setPortalLanguage(nextLanguage);
               setPlatformLanguage(nextLanguage);
             }}>
@@ -290,8 +351,11 @@ const PortalActivate = () => {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="nl">Nederlands</SelectItem>
-                <SelectItem value="en">English</SelectItem>
+                {PLATFORM_LANGUAGES.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.flag} {option.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

@@ -36,7 +36,9 @@ const copy = {
 const ClientPortalLogin = () => {
   const navigate = useNavigate();
   const { language } = useTranslation();
-  const t = copy[language];
+  // Opdrachtgevers zijn NL/EN; PL en RO vallen hier terug op Engels. Ná het inloggen
+  // vertaalt het klantportaal wél runtime naar alle portaaltalen.
+  const t = copy[language] ?? copy.en;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);

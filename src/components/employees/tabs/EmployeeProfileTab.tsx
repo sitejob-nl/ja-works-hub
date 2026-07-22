@@ -6,6 +6,7 @@ import { Send } from 'lucide-react';
 import PortalActivateSheet from '@/components/employees/PortalActivateSheet';
 import { useDecryptedCandidate } from '@/hooks/useDecryptedCandidate';
 import SensitiveField from '@/components/ui/sensitive-field';
+import { languageOption, normalizeLanguage } from '@/lib/platform-languages';
 
 const Field = ({ label, value }: { label: string; value: string | null | undefined }) => (
   <div>
@@ -104,7 +105,7 @@ const EmployeeProfileTab = ({ candidateId, candidate, employment }: { candidateI
           <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <Field label="Geactiveerd op" value={formatDate(candidate?.portal_activated_at)} />
-              <Field label="Taal" value={candidate?.portal_language === 'en' ? 'English' : 'Nederlands'} />
+              <Field label="Taal" value={languageOption(normalizeLanguage(candidate?.portal_language)).label} />
               <Field label="Laatste login" value={formatDate(candidate?.portal_last_login) || 'Nog niet ingelogd'} />
             </div>
             <Button variant="outline" size="sm" className="gap-2" onClick={() => setSheetOpen(true)}>

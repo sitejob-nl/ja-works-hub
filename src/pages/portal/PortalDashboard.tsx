@@ -14,6 +14,7 @@ import {
   ChartTooltipContent,
 } from '@/components/ui/chart';
 import { BarChart, Bar, XAxis, YAxis, Line, ComposedChart, PieChart, Pie, Cell } from 'recharts';
+import PortalWelcomeVideo from '@/components/portal/PortalWelcomeVideo';
 
 const PortalDashboard = () => {
   const { employee, candidate } = usePortal();
@@ -185,6 +186,8 @@ const PortalDashboard = () => {
 
   return (
     <div className="space-y-4">
+      <PortalWelcomeVideo />
+
       {/* Welcome card */}
       <div className="bg-card rounded-xl border p-5">
         <h1 className="text-lg font-semibold">Welkom, {firstName} 👋</h1>
