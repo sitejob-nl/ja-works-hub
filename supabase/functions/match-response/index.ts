@@ -10,7 +10,7 @@ import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
 import { storagePathFromCvValue } from "../_shared/candidate-dossier.ts";
 import { advanceMatchStatus, createMatchFollowUpTask, recordMatchProposalTokenResponse } from "../_shared/match-lifecycle.ts";
 import { resolveMatchContact } from "../_shared/match-contact.ts";
-import { resolvePublicProposalPage } from "../_shared/proposal-page.ts";
+import { clientSafeSummary, resolvePublicProposalPage } from "../_shared/proposal-page.ts";
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -221,7 +221,7 @@ Deno.serve(async (req) => {
         sections: pageSections,
         profile: candidate
           ? {
-            summary: sectionEnabled("summary") ? snapReport.summary ?? candidate.ai_summary ?? null : null,
+            summary: sectionEnabled("summary") ? clientSafeSummary(snapReport.summary) ?? clientSafeSummary(candidate.ai_summary) : null,
             function_group: null,
             classification: null,
             target_functions: sectionEnabled("targetFunctions")
@@ -250,7 +250,7 @@ Deno.serve(async (req) => {
         history,
         report: candidate
           ? {
-            summary: sectionEnabled("summary") ? snapReport.summary ?? candidate.ai_summary ?? null : null,
+            summary: sectionEnabled("summary") ? clientSafeSummary(snapReport.summary) ?? clientSafeSummary(candidate.ai_summary) : null,
             strong_signals: sectionEnabled("positiveSignals")
               ? stringArray(snapReport.positive_signals).length ? stringArray(snapReport.positive_signals) : stringArray(candidate.ai_positive_signals)
               : [],
