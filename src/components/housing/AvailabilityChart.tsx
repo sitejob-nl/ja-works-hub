@@ -17,7 +17,13 @@ type AssignmentSlim = { check_in_date: string | null; check_out_date: string | n
 
 const MAX_WEEKS = 104;
 
-const AvailabilityChart = ({ totalCapacity }: { totalCapacity: number }) => {
+const AvailabilityChart = ({
+  totalCapacity,
+  assignments: providedAssignments,
+}: {
+  totalCapacity: number;
+  assignments?: AssignmentSlim[];
+}) => {
   const orgId = useOrganizationId();
   const [preset, setPreset] = useState<Preset>('12w');
   const [customStart, setCustomStart] = useState<string>('');
@@ -63,7 +69,7 @@ const AvailabilityChart = ({ totalCapacity }: { totalCapacity: number }) => {
     return { start: s, end: e, weeks: w };
   }, [preset, customStart, customEnd]);
 
-  const { data: assignments = [] } = useQuery({
+  const { data: queriedAssignments = [] } = useQuery({
     queryKey: ['housing-assignments-range', orgId, formatISO(start, { representation: 'date' }), formatISO(end, { representation: 'date' })],
     queryFn: async () => {
       const startStr = formatISO(start, { representation: 'date' });
@@ -78,8 +84,9 @@ const AvailabilityChart = ({ totalCapacity }: { totalCapacity: number }) => {
       if (error) throw error;
       return (data ?? []) as AssignmentSlim[];
     },
-    enabled: !!orgId,
+    enabled: providedAssignments === undefined && !!orgId,
   });
+  const assignments = providedAssignments ?? queriedAssignments;
 
   const data = useMemo(() => {
     return Array.from({ length: weeks }, (_, i) => {

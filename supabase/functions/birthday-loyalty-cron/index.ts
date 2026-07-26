@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendViaOutlookAccount } from "../_shared/outlook-send.ts";
+import { requireInternalProfile } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -106,22 +107,9 @@ async function resolveOrgIds(req: Request, admin: any): Promise<string[] | Respo
     return (data ?? []).map((org: any) => org.id);
   }
 
-  const authHeader = req.headers.get("Authorization");
-  if (!authHeader?.startsWith("Bearer ")) return json({ error: "Unauthorized" }, 401);
-
-  const token = authHeader.substring("Bearer ".length).trim();
-  const { data: userData, error: userError } = await admin.auth.getUser(token);
-  if (userError || !userData.user) return json({ error: "Unauthorized" }, 401);
-
-  const { data: profile, error: profileError } = await admin
-    .from("profiles")
-    .select("organization_id, role")
-    .eq("id", userData.user.id)
-    .maybeSingle();
-
-  if (profileError || !profile?.organization_id) return json({ error: "Profile not found" }, 404);
-  if (!["admin", "backoffice", "finance", "intercedent"].includes(profile.role)) return json({ error: "Forbidden" }, 403);
-  return [profile.organization_id];
+  const auth = await requireInternalProfile(req, corsHeaders);
+  if (auth instanceof Response) return auth;
+  return [auth.organizationId];
 }
 
 async function awardBirthdayPoints(admin: any, orgId: string, candidate: any, points: number, todayIso: string) {

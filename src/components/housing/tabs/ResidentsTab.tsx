@@ -28,6 +28,13 @@ import { formatDate, formatEUR } from '@/lib/format';
 import { toast } from 'sonner';
 import { logAudit } from '@/lib/audit';
 import { resolveEmployeeId } from '@/lib/assignments';
+import { useAuth } from '@/contexts/AuthContext';
+import {
+  fetchFacilityHousingSnapshot,
+  fetchFacilityWorkerDirectory,
+  isFacilityRole,
+  saveFacilityOperationalEntity,
+} from '@/lib/facility';
 
 const WEEKS_PER_MONTH = 4.33;
 
@@ -39,7 +46,7 @@ const isAssignableHousingCandidate = (candidate: any) => {
   return !EXCLUDED_CANDIDATE_STATUSES.includes(candidate.status);
 };
 
-const ResidentsTab = ({ property }: { property: any }) => {
+const InternalResidentsTab = ({ property }: { property: any }) => {
   const orgId = useOrganizationId();
   const qc = useQueryClient();
   const [assigning, setAssigning] = useState(false);
@@ -666,6 +673,259 @@ const ResidentsTab = ({ property }: { property: any }) => {
       )}
     </div>
   );
+};
+
+const FacilityResidentsTab = ({ property }: { property: any }) => {
+  const qc = useQueryClient();
+  const [formOpen, setFormOpen] = useState(false);
+  const [candidateId, setCandidateId] = useState('');
+  const [unitId, setUnitId] = useState('');
+  const [checkInDate, setCheckInDate] = useState('');
+  const [moving, setMoving] = useState<any | null>(null);
+  const [targetUnitId, setTargetUnitId] = useState('');
+
+  const { data: directory = [] } = useQuery({
+    queryKey: ['facility-worker-directory'],
+    queryFn: fetchFacilityWorkerDirectory,
+  });
+  const { data: snapshot, isLoading: snapshotLoading } = useQuery({
+    queryKey: ['facility-housing-snapshot'],
+    queryFn: () => fetchFacilityHousingSnapshot(),
+  });
+
+  const properties = snapshot?.properties ?? [property];
+  const units = property.units ?? [];
+  const allAssignments = units.flatMap((unit: any) =>
+    (unit.housing_assignments ?? []).map((assignment: any) => ({ ...assignment, unitName: unit.name })),
+  );
+  const activeAssignments = allAssignments.filter((assignment: any) =>
+    ACTIVE_HOUSING_STATUSES.includes(assignment.status),
+  );
+  const occupiedCandidateIds = new Set(
+    properties.flatMap((item: any) => (item.units ?? []).flatMap((unit: any) =>
+      (unit.housing_assignments ?? [])
+        .filter((assignment: any) => ACTIVE_HOUSING_STATUSES.includes(assignment.status))
+        .map((assignment: any) => assignment.candidate_id),
+    )),
+  );
+  const availableWorkers = snapshot ? directory.filter((worker: any) =>
+    worker.candidate_id
+    && worker.employee_id
+    && worker.employee_status !== 'uit_dienst'
+    && worker.status !== 'uit_dienst'
+    && !occupiedCandidateIds.has(worker.candidate_id),
+  ) : [];
+  const availableUnits = units.filter((unit: any) => {
+    const occupied = (unit.housing_assignments ?? []).filter((assignment: any) =>
+      ACTIVE_HOUSING_STATUSES.includes(assignment.status),
+    ).length;
+    return unit.status === 'beschikbaar' && occupied < (unit.capacity ?? 0);
+  });
+  const moveUnits = properties.flatMap((item: any) => (item.units ?? [])
+    .filter((unit: any) => {
+      if (unit.id === moving?.unit_id || unit.status !== 'beschikbaar') return false;
+      const occupied = (unit.housing_assignments ?? []).filter((assignment: any) =>
+        ACTIVE_HOUSING_STATUSES.includes(assignment.status) && assignment.id !== moving?.id,
+      ).length;
+      return occupied < (unit.capacity ?? 0);
+    })
+    .map((unit: any) => ({ ...unit, propertyLabel: item.name || item.address_street || 'Pand' })));
+
+  const directoryByCandidate = new Map(directory.map((worker: any) => [worker.candidate_id, worker]));
+  const directoryByEmployee = new Map(directory.map((worker: any) => [worker.employee_id, worker]));
+  const workerFor = (assignment: any) =>
+    directoryByCandidate.get(assignment.candidate_id) ?? directoryByEmployee.get(assignment.employee_id);
+  const workerLabel = (worker: any) =>
+    [worker?.first_name, worker?.last_name].filter(Boolean).join(' ') || 'Medewerker';
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ['facility-housing-snapshot'] });
+    qc.invalidateQueries({ queryKey: ['property', property.id, 'facility'] });
+  };
+
+  const assign = useMutation({
+    mutationFn: async () => {
+      const worker = directory.find((item: any) => item.candidate_id === candidateId);
+      if (!worker || !unitId || !checkInDate) throw new Error('Selecteer een medewerker, kamer en datum.');
+      return saveFacilityOperationalEntity('housing_assignment', {
+        organization_id: property.organization_id,
+        unit_id: unitId,
+        candidate_id: worker.candidate_id,
+        employee_id: worker.employee_id,
+        status: 'gereserveerd',
+        check_in_date: checkInDate,
+      });
+    },
+    onSuccess: (assignmentId) => {
+      invalidate();
+      setFormOpen(false);
+      setCandidateId('');
+      setUnitId('');
+      setCheckInDate('');
+      toast.success('Bewoner toegewezen');
+    },
+    onError: (error: any) => toast.error(error.message ?? 'Toewijzen mislukt'),
+  });
+
+  const update = useMutation({
+    mutationFn: async ({ id, values }: { id: string; values: Record<string, unknown> }) => {
+      await saveFacilityOperationalEntity('housing_assignment', { id, ...values });
+    },
+    onSuccess: (_, variables) => {
+      invalidate();
+      toast.success('Toewijzing bijgewerkt');
+    },
+    onError: (error: any) => toast.error(error.message ?? 'Bijwerken mislukt'),
+  });
+
+  const move = useMutation({
+    mutationFn: async () => {
+      if (!moving || !targetUnitId) throw new Error('Selecteer een kamer.');
+      return saveFacilityOperationalEntity('housing_assignment', { id: moving.id, unit_id: targetUnitId });
+    },
+    onSuccess: () => {
+      invalidate();
+      setMoving(null);
+      setTargetUnitId('');
+      toast.success('Bewoner verplaatst');
+    },
+    onError: (error: any) => toast.error(error.message ?? 'Verplaatsen mislukt'),
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-between items-center">
+        <h3 className="font-medium">Bewoners</h3>
+        <Button size="sm" variant="outline" onClick={() => setFormOpen(true)} className="gap-1">
+          <Plus className="h-3.5 w-3.5" /> Bewoner toewijzen
+        </Button>
+      </div>
+
+      <Sheet open={formOpen} onOpenChange={setFormOpen}>
+        <SheetContent className="sm:max-w-md overflow-y-auto">
+          <SheetHeader><SheetTitle>Bewoner toewijzen</SheetTitle></SheetHeader>
+          <div className="mt-6 space-y-4">
+            <div>
+              <Label>Medewerker</Label>
+              <Select value={candidateId} onValueChange={setCandidateId}>
+                <SelectTrigger><SelectValue placeholder="Selecteer medewerker" /></SelectTrigger>
+                <SelectContent>
+                  {availableWorkers.map((worker: any) => (
+                    <SelectItem key={worker.candidate_id} value={worker.candidate_id}>
+                      {workerLabel(worker)}{worker.employee_number ? ` · #${worker.employee_number}` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Kamer</Label>
+              <Select value={unitId} onValueChange={setUnitId}>
+                <SelectTrigger><SelectValue placeholder="Selecteer kamer" /></SelectTrigger>
+                <SelectContent>
+                  {availableUnits.map((unit: any) => (
+                    <SelectItem key={unit.id} value={unit.id}>{unit.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Check-in datum</Label>
+              <Input type="date" value={checkInDate} onChange={(event) => setCheckInDate(event.target.value)} />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Financiële afspraken worden uitsluitend door backoffice of finance beheerd.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setFormOpen(false)}>Annuleren</Button>
+              <Button onClick={() => assign.mutate()} disabled={snapshotLoading || !candidateId || !unitId || !checkInDate || assign.isPending}>
+                {assign.isPending ? 'Toewijzen...' : 'Toewijzen'}
+              </Button>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      <Sheet open={!!moving} onOpenChange={(open) => { if (!open) { setMoving(null); setTargetUnitId(''); } }}>
+        <SheetContent className="sm:max-w-md overflow-y-auto">
+          <SheetHeader><SheetTitle>Bewoner verplaatsen</SheetTitle></SheetHeader>
+          <div className="mt-6 space-y-4">
+            <p className="text-sm text-muted-foreground">Kies een beschikbare kamer.</p>
+            <Select value={targetUnitId} onValueChange={setTargetUnitId}>
+              <SelectTrigger><SelectValue placeholder="Selecteer kamer" /></SelectTrigger>
+              <SelectContent>
+                {moveUnits.map((unit: any) => (
+                  <SelectItem key={unit.id} value={unit.id}>{unit.propertyLabel} · {unit.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setMoving(null)}>Annuleren</Button>
+              <Button onClick={() => move.mutate()} disabled={!targetUnitId || move.isPending}>
+                {move.isPending ? 'Verplaatsen...' : 'Verplaatsen'}
+              </Button>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {activeAssignments.length === 0 ? (
+        <p className="text-center text-muted-foreground py-8">Geen bewoners</p>
+      ) : (
+        <div className="bg-card rounded-lg border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Naam</TableHead>
+                <TableHead>Kamer</TableHead>
+                <TableHead>Check-in</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Actie</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {activeAssignments.map((assignment: any) => (
+                <TableRow key={assignment.id}>
+                  <TableCell className="font-medium">{workerLabel(workerFor(assignment))}</TableCell>
+                  <TableCell>{assignment.unitName}</TableCell>
+                  <TableCell>{formatDate(assignment.check_in_date)}</TableCell>
+                  <TableCell>
+                    <Badge variant="secondary" className={`text-xs ${assignment.status === 'ingecheckt' ? 'bg-stat-green/10 text-stat-green border-0' : 'bg-blue-100 text-blue-700 border-0'}`}>
+                      {assignment.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex justify-end gap-1">
+                      {assignment.status === 'gereserveerd' && (
+                        <Button size="sm" variant="outline" onClick={() => update.mutate({ id: assignment.id, values: { status: 'ingecheckt' } })}>
+                          Inchecken
+                        </Button>
+                      )}
+                      {assignment.status === 'ingecheckt' && (
+                        <Button size="sm" variant="outline" onClick={() => update.mutate({ id: assignment.id, values: { status: 'uitgecheckt', check_out_date: new Date().toISOString().slice(0, 10) } })}>
+                          Uitchecken
+                        </Button>
+                      )}
+                      <Button size="sm" variant="ghost" onClick={() => { setMoving(assignment); setTargetUnitId(''); }}>
+                        Verplaatsen
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const ResidentsTab = ({ property }: { property: any }) => {
+  const { role } = useAuth();
+  return isFacilityRole(role)
+    ? <FacilityResidentsTab property={property} />
+    : <InternalResidentsTab property={property} />;
 };
 
 export default ResidentsTab;

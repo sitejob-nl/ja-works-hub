@@ -1,5 +1,5 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
+import { getAuthenticatedProfile } from "../_shared/auth.ts";
 
 // RDW Open Data API (gratis, geen API key nodig)
 const RDW_VEHICLE_URL = "https://opendata.rdw.nl/resource/m9d7-ebf2.json";
@@ -34,16 +34,11 @@ Deno.serve(async (req) => {
       });
     }
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
-
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
+    const auth = await getAuthenticatedProfile(req, corsHeaders);
+    if (auth instanceof Response) return auth;
+    if (!["admin", "intercedent", "backoffice", "facility"].includes(auth.role)) {
+      return new Response(JSON.stringify({ error: "Forbidden" }), {
+        status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }

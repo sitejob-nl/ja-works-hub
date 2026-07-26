@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Plus, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { logAudit } from '@/lib/audit';
+import { fetchFacilityHousingSnapshot, fetchFacilityProfileDirectory, isFacilityRole } from '@/lib/facility';
 
 const NONE = '__none__';
 
@@ -31,7 +32,8 @@ const priorityClass: Record<string, string> = {
 
 export default function CleaningTab({ property }: { property: any }) {
   const qc = useQueryClient();
-  const { user } = useAuth();
+  const { user, role } = useAuth();
+  const isFacility = isFacilityRole(role);
   const units = property.units ?? [];
   const [openForm, setOpenForm] = useState(false);
   const [form, setForm] = useState({
@@ -45,8 +47,19 @@ export default function CleaningTab({ property }: { property: any }) {
   const [completionFiles, setCompletionFiles] = useState<Record<string, File[]>>({});
 
   const { data: tasks = [] } = useQuery({
-    queryKey: ['housing-cleaning-tasks', property.id],
+    queryKey: ['housing-cleaning-tasks', property.id, isFacility ? 'facility' : 'internal'],
     queryFn: async () => {
+      if (isFacility) {
+        const [snapshot, profiles] = await Promise.all([
+          fetchFacilityHousingSnapshot(property.id),
+          fetchFacilityProfileDirectory(),
+        ]);
+        return (snapshot.cleaning_tasks ?? []).map((task: any) => ({
+          ...task,
+          units: task.units ?? { name: units.find((unit: any) => unit.id === task.unit_id)?.name },
+          assignee: task.assignee ?? profiles.find((profile: any) => profile.id === task.assigned_to) ?? null,
+        }));
+      }
       const { data, error } = await supabase
         .from('housing_cleaning_tasks' as any)
         .select('*, units(name), assignee:profiles!housing_cleaning_tasks_assigned_to_fkey(full_name,email)')
@@ -61,6 +74,7 @@ export default function CleaningTab({ property }: { property: any }) {
   const { data: assignees = [] } = useQuery({
     queryKey: ['housing-cleaning-assignees', property.organization_id],
     queryFn: async () => {
+      if (isFacility) return fetchFacilityProfileDirectory();
       const { data, error } = await supabase
         .from('profiles')
         .select('id, full_name, email, role')
@@ -86,6 +100,20 @@ export default function CleaningTab({ property }: { property: any }) {
         priority: form.priority,
         created_by: user?.id ?? null,
       };
+      if (isFacility) {
+        const id = crypto.randomUUID();
+        const { error } = await supabase
+          .from('housing_cleaning_tasks' as any)
+          .insert({ id, ...payload });
+        if (error) throw error;
+        return {
+          id,
+          ...payload,
+          status: 'open',
+          units: { name: units.find((unit: any) => unit.id === payload.unit_id)?.name },
+          assignee: assignees.find((profile: any) => profile.id === payload.assigned_to) ?? null,
+        };
+      }
       const { data, error } = await supabase
         .from('housing_cleaning_tasks' as any)
         .insert(payload)
@@ -101,7 +129,8 @@ export default function CleaningTab({ property }: { property: any }) {
       });
       qc.invalidateQueries({ queryKey: ['housing-cleaning-tasks', property.id] });
       qc.invalidateQueries({ queryKey: ['housing-cleaning-overview'] });
-      logAudit({ action: 'create', tableName: 'housing_cleaning_tasks', recordId: data.id });
+      if (isFacility) qc.invalidateQueries({ queryKey: ['facility-housing-snapshot'] });
+      if (!isFacility) logAudit({ action: 'create', tableName: 'housing_cleaning_tasks', recordId: data.id });
       toast.success('Schoonmaaktaak aangemaakt');
       setForm({ title: '', description: '', unit_id: NONE, assigned_to: NONE, due_date: '', priority: 'medium' });
       setOpenForm(false);
@@ -153,11 +182,12 @@ export default function CleaningTab({ property }: { property: any }) {
 
       const { error } = await supabase.from('housing_cleaning_tasks' as any).update(update).eq('id', task.id);
       if (error) throw error;
-      logAudit({ action: 'status_change', tableName: 'housing_cleaning_tasks', recordId: task.id, newValues: update });
+      if (!isFacility) logAudit({ action: 'status_change', tableName: 'housing_cleaning_tasks', recordId: task.id, newValues: update });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['housing-cleaning-tasks', property.id] });
       qc.invalidateQueries({ queryKey: ['housing-cleaning-overview'] });
+      if (isFacility) qc.invalidateQueries({ queryKey: ['facility-housing-snapshot'] });
       setCompletionFiles({});
       toast.success('Status bijgewerkt');
     },
@@ -196,7 +226,7 @@ export default function CleaningTab({ property }: { property: any }) {
                   <SelectItem value={NONE}>Niet toegewezen</SelectItem>
                   {assignees.map((profile: any) => (
                     <SelectItem key={profile.id} value={profile.id}>
-                      {profile.full_name || profile.email || 'Gebruiker'}{profile.role ? ` (${profile.role})` : ''}
+                      {profile.full_name || (!isFacility ? profile.email : null) || 'Gebruiker'}{profile.role ? ` (${profile.role})` : ''}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -251,7 +281,7 @@ export default function CleaningTab({ property }: { property: any }) {
               </TableCell>
               <TableCell>{task.units?.name ?? 'Hele pand'}</TableCell>
               <TableCell>
-                {task.assignee?.full_name || task.assignee?.email || <span className="text-muted-foreground">—</span>}
+                {task.assignee?.full_name || (!isFacility ? task.assignee?.email : null) || <span className="text-muted-foreground">—</span>}
               </TableCell>
               <TableCell>{task.due_date ? new Date(task.due_date).toLocaleDateString('nl-NL') : '—'}</TableCell>
               <TableCell><Badge variant="secondary" className={priorityClass[task.priority] ?? ''}>{task.priority}</Badge></TableCell>

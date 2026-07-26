@@ -1,32 +1,14 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { serveEdge, CORS_HEADERS } from '../_shared/http.ts';
-import { createAdminClient } from '../_shared/auth.ts';
+import { createAdminClient, requireInternalProfile } from '../_shared/auth.ts';
 
 Deno.serve(serveEdge(async (req) => {
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) throw new Error('No auth header');
+    const auth = await requireInternalProfile(req, CORS_HEADERS);
+    if (auth instanceof Response) return auth;
 
-    // Service-role client for the work; the user's identity is resolved separately
-    // (below) via the anon client + Authorization header — self-auth unchanged.
+    // Service-role client for the work; requireInternalProfile already verified
+    // the JWT, active account state and an internal role.
     const supabase = createAdminClient();
-
-    // Get user's org
-    const { data: { user } } = await createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: authHeader } } }
-    ).auth.getUser();
-
-    if (!user) throw new Error('Unauthorized');
-
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('organization_id')
-      .eq('id', user.id)
-      .single();
-
-    if (!profile) throw new Error('No profile');
-    const orgId = profile.organization_id;
+    const orgId = auth.organizationId;
 
     const today = new Date().toISOString().split('T')[0];
     const thirtyDays = new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0];

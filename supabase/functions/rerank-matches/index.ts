@@ -14,11 +14,12 @@
 // per (vacature × kandidaat); reruns zijn gratis zolang de input (vacaturetekst + dossier) niet wijzigt
 // (input_hash). Credits via consume_ai_credits.
 //
-// Auth: ingelogde org-gebruiker (RLS scoped op eigen org). verify_jwt=false in config.toml; we
-// valideren de Bearer-token zelf. Cache-writes + creditafschrijving gaan via de service-role.
+// Auth: actieve interne org-gebruiker met matching.pipeline.view. verify_jwt=false in config.toml;
+// de gedeelde auth-helper valideert de Bearer-token. Cache-writes + credits gaan via service-role.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { rerankCandidateFit } from "../_shared/gemini-rerank.ts";
+import { requireRolePermission } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -121,14 +122,14 @@ Deno.serve(async (req) => {
   try {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) return json({ error: "Unauthorized" }, 401);
+    const auth = await requireRolePermission(req, "matching.pipeline.view", corsHeaders);
+    if (auth instanceof Response) return auth;
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const userClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
       global: { headers: { Authorization: authHeader } },
     });
-    const { data: { user }, error: userErr } = await userClient.auth.getUser();
-    if (userErr || !user) return json({ error: "Unauthorized" }, 401);
-    const userId = user.id;
+    const userId = auth.userId;
 
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
     if (!GEMINI_API_KEY) return json({ error: "GEMINI_API_KEY ontbreekt" }, 500);

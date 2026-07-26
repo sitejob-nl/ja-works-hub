@@ -16,6 +16,7 @@ import AddressAutocomplete from '@/components/shared/AddressAutocomplete';
 import { resolveAddressCoordinates } from '@/lib/pdok';
 import OwnerSelector from '@/components/housing/OwnerSelector';
 import { Upload } from 'lucide-react';
+import { isFacilityRole, saveFacilityOperationalEntity } from '@/lib/facility';
 
 interface Props {
   open: boolean;
@@ -47,7 +48,8 @@ const createDefaultPropertyForm = () => ({
 
 const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
   const orgId = useOrganizationId();
-  const { user } = useAuth();
+  const { user, role } = useAuth();
+  const isFacility = isFacilityRole(role);
   const qc = useQueryClient();
   const isEdit = !!property;
 
@@ -136,17 +138,13 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
         lng: form.address_lng,
       });
 
-      const payload = {
+      const operationalPayload = {
         name: form.name?.trim() || null,
         address_street: form.address_street,
         address_postal: form.address_postal,
         address_city: form.address_city,
         address_lat: address.lat,
         address_lng: address.lng,
-        owner_id: form.owner_id,
-        rental_contract_start_date: form.rental_contract_start_date || null,
-        rental_contract_end_date: form.rental_contract_end_date || null,
-        rental_contract_notes: form.rental_contract_notes || null,
         has_rental_permit: form.has_rental_permit,
         rental_permit_number: form.has_rental_permit ? (form.rental_permit_number || null) : null,
         rental_permit_expiry: form.has_rental_permit ? (form.rental_permit_expiry || null) : null,
@@ -154,6 +152,15 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
         snf_certificate_number: form.has_snf_certificate ? (form.snf_certificate_number || null) : null,
         snf_certificate_expiry: form.has_snf_certificate ? (form.snf_certificate_expiry || null) : null,
         max_persons_permit: toNum(form.max_persons_permit),
+        total_capacity: form.total_capacity ? Number(form.total_capacity) : 0,
+      };
+      const payload = {
+        ...operationalPayload,
+        notes: form.notes || null,
+        owner_id: form.owner_id,
+        rental_contract_start_date: form.rental_contract_start_date || null,
+        rental_contract_end_date: form.rental_contract_end_date || null,
+        rental_contract_notes: form.rental_contract_notes || null,
         monthly_rent: toNum(form.monthly_rent),
         cost_gas: toNum(form.cost_gas),
         cost_water: toNum(form.cost_water),
@@ -163,11 +170,15 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
         cost_price: totalCosts || null,
         energy_wizard_id: form.energy_wizard_id || null,
         energy_wizard_linked: form.energy_wizard_linked,
-        total_capacity: form.total_capacity ? Number(form.total_capacity) : 0,
-        notes: form.notes || null,
       };
       let propertyId: string;
-      if (isEdit) {
+      if (isFacility) {
+        const result = await saveFacilityOperationalEntity('property', {
+          ...(isEdit ? { id: property.id } : {}),
+          ...operationalPayload,
+        });
+        propertyId = (property?.id ?? result) as string;
+      } else if (isEdit) {
         await unwrap(supabase.from('properties').update(payload).eq('id', property.id));
         propertyId = property.id as string;
       } else {
@@ -175,14 +186,15 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
         propertyId = data.id as string;
       }
 
-      const uploadedContract = await uploadRentalContract(propertyId);
+      const uploadedContract = isFacility ? false : await uploadRentalContract(propertyId);
       return { propertyId, uploadedContract };
     },
-    onSuccess: ({ propertyId, uploadedContract }: { propertyId: string; uploadedContract: boolean }) => {
+    onSuccess: ({ uploadedContract }: { propertyId: string; uploadedContract: boolean }) => {
       qc.invalidateQueries({ queryKey: ['properties'] });
       qc.invalidateQueries({ queryKey: ['property'] });
       qc.invalidateQueries({ queryKey: ['property-contracts'] });
       qc.invalidateQueries({ queryKey: ['property-contracts-recent'] });
+      if (isFacility) qc.invalidateQueries({ queryKey: ['facility-housing-snapshot'] });
       toast.success(uploadedContract
         ? (isEdit ? 'Pand bijgewerkt en contract geüpload' : 'Pand aangemaakt en contract geüpload')
         : (isEdit ? 'Pand bijgewerkt' : 'Pand aangemaakt'));
@@ -233,7 +245,7 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
           <Separator />
 
           {/* Section 2: Owner */}
-          <div className="space-y-3">
+          {!isFacility && <div className="space-y-3">
             <SectionHeader>Eigenaar / Verhuurder</SectionHeader>
             <div>
               <Label>Eigenaar</Label>
@@ -261,9 +273,9 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
               <Label className="text-xs text-muted-foreground">Notities huurcontract</Label>
               <Textarea value={form.rental_contract_notes} onChange={(e) => set('rental_contract_notes', e.target.value)} rows={2} placeholder="Bijv. opzegtermijn, kosten bij verlenging..." />
             </div>
-          </div>
+          </div>}
 
-          <Separator />
+          {!isFacility && <Separator />}
 
           {/* Section 3: Permits */}
           <div className="space-y-3">
@@ -294,7 +306,7 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
           <Separator />
 
           {/* Section 4: Monthly costs */}
-          <div className="space-y-3">
+          {!isFacility && <div className="space-y-3">
             <SectionHeader>Maandelijkse lasten</SectionHeader>
             <div className="grid grid-cols-3 gap-3">
               <div><Label>Huur (€)</Label><Input type="number" value={form.monthly_rent} onChange={(e) => set('monthly_rent', e.target.value)} /></div>
@@ -310,12 +322,12 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
               <span className="text-sm font-medium text-foreground">Totale maandlasten</span>
               <span className="text-sm font-bold text-foreground">€ {totalCosts.toFixed(2)}</span>
             </div>
-          </div>
+          </div>}
 
-          <Separator />
+          {!isFacility && <Separator />}
 
           {/* Section 5: EnergyWizard */}
-          <div className="space-y-3">
+          {!isFacility && <div className="space-y-3">
             <SectionHeader>EnergyWizard</SectionHeader>
             <div className="grid grid-cols-2 gap-3 items-end">
               <div><Label>EnergyWizard ID</Label><Input value={form.energy_wizard_id} onChange={(e) => set('energy_wizard_id', e.target.value)} /></div>
@@ -324,15 +336,15 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
                 <Switch checked={form.energy_wizard_linked} onCheckedChange={(v) => set('energy_wizard_linked', v)} />
               </div>
             </div>
-          </div>
+          </div>}
 
-          <Separator />
+          {!isFacility && <Separator />}
 
           {/* Section 6: Other */}
           <div className="space-y-3">
             <SectionHeader>Overig</SectionHeader>
             <div><Label>Totale capaciteit</Label><Input type="number" value={form.total_capacity} onChange={(e) => set('total_capacity', e.target.value)} /></div>
-            <div><Label>Notities</Label><Textarea value={form.notes} onChange={(e) => set('notes', e.target.value)} rows={3} /></div>
+            {!isFacility && <div><Label>Notities</Label><Textarea value={form.notes} onChange={(e) => set('notes', e.target.value)} rows={3} /></div>}
           </div>
 
           <div className="flex justify-end gap-3 pt-4">

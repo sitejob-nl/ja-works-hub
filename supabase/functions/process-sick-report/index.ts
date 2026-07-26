@@ -1,5 +1,5 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { cascadeSickReport } from "../_shared/sick-report-handler.ts";
+import { createAdminClient, getAuthenticatedProfile } from "../_shared/auth.ts";
 
 import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
 
@@ -15,35 +15,17 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) return json({ error: "Unauthorized" }, 401);
-
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
-
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return json({ error: "Unauthorized" }, 401);
+    const auth = await getAuthenticatedProfile(req, corsHeaders);
+    if (auth instanceof Response) return auth;
 
     const body = await req.json();
     const { sick_report_id } = body as { sick_report_id: string };
     if (!sick_report_id) return json({ error: "sick_report_id required" }, 400);
 
-    const service = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
+    const service = createAdminClient();
 
     // Verify the user has access to this sick_report. Internal users may process
     // org reports; portal employees may process only their own report.
-    const { data: profile } = await service
-      .from("profiles")
-      .select("organization_id, role")
-      .eq("id", user.id)
-      .maybeSingle();
-
     const { data: report } = await service
       .from("sick_reports")
       .select("organization_id, candidate_id, employee_id")
@@ -54,16 +36,16 @@ Deno.serve(async (req) => {
       return json({ error: "Sick report not found" }, 404);
     }
 
-    const sameOrg = !!profile?.organization_id && report.organization_id === profile.organization_id;
-    const isInternal = sameOrg && INTERNAL_ROLES.has(String(profile?.role ?? ""));
+    const sameOrg = report.organization_id === auth.organizationId;
+    const isInternal = sameOrg && INTERNAL_ROLES.has(String(auth.role));
     let isOwnPortalReport = false;
 
-    if (sameOrg && profile?.role === "medewerker") {
+    if (sameOrg && auth.role === "medewerker") {
       const { data: candidate } = await service
         .from("candidates")
         .select("id")
         .eq("id", report.candidate_id)
-        .eq("auth_user_id", user.id)
+        .eq("auth_user_id", auth.userId)
         .maybeSingle();
 
       if (candidate?.id && report.employee_id) {
@@ -72,7 +54,7 @@ Deno.serve(async (req) => {
           .select("id")
           .eq("id", report.employee_id)
           .eq("candidate_id", candidate.id)
-          .eq("auth_user_id", user.id)
+          .eq("auth_user_id", auth.userId)
           .maybeSingle();
         isOwnPortalReport = !!employee?.id;
       }
@@ -82,7 +64,7 @@ Deno.serve(async (req) => {
       return json({ error: "Forbidden" }, 403);
     }
 
-    const result = await cascadeSickReport(service, sick_report_id, user.id);
+    const result = await cascadeSickReport(service, sick_report_id, auth.userId);
     return json(result);
   } catch (err: any) {
     console.error("process-sick-report error:", err);

@@ -134,6 +134,11 @@ Deno.serve(async (req) => {
 
       const candidateId = tokenRow.candidate_id;
       const organizationId = tokenRow.organization_id;
+      const isCandidateStoragePath = (value: unknown): value is string => {
+        if (typeof value !== "string" || value.includes("://")) return false;
+        return value.startsWith(`${organizationId}/${candidateId}/`) ||
+          value.startsWith(`${organizationId}/candidates/${candidateId}/`);
+      };
 
       // Server-side hervalidatie. Dit endpoint is publiek (geen login), dus client-validatie
       // is hooguit een gebruiksgemak — een POST met een halve body moet hier stranden.
@@ -210,7 +215,6 @@ Deno.serve(async (req) => {
           "skills", "certifications", "has_dutch_address", "address_street", "address_postal",
           "address_city", "address_country", "address_lat", "address_lng", "has_drivers_license",
           "drivers_license_expiry", "available_from", "available_until", "arrival_date", "availability_notes",
-          "cv_file_url", "profile_photo_url",
         ];
 
         const updatePayload: Record<string, unknown> = {};
@@ -268,7 +272,10 @@ Deno.serve(async (req) => {
       // Insert documents if provided
       if (Array.isArray(documents) && documents.length > 0) {
         const docRows = documents
-          .filter((d: any) => d.file_path && d.name && d.type)
+          // This endpoint uses service role. Never persist an arbitrary client path:
+          // match-response signs stored CV paths later and would otherwise become a
+          // cross-candidate/cross-tenant signed-URL primitive.
+          .filter((d: any) => isCandidateStoragePath(d.file_path) && d.name && d.type)
           .map((d: any) => ({
             candidate_id: candidateId,
             organization_id: organizationId,

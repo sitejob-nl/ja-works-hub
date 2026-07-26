@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createAdminClient, getAuthenticatedProfile } from "../_shared/auth.ts";
 import { sendViaOutlookAccount } from "../_shared/outlook-send.ts";
 
 const corsHeaders = {
@@ -129,30 +129,13 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) return json({ error: "Unauthorized" }, 401);
-
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
-
-    const { data: { user }, error: userErr } = await supabase.auth.getUser();
-    if (userErr || !user) return json({ error: "Unauthorized" }, 401);
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("organization_id, role")
-      .eq("id", user.id)
-      .single();
-    if (!profile) return json({ error: "Profile not found" }, 404);
-    const orgId = profile.organization_id;
-
-    const serviceClient = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
+    const auth = await getAuthenticatedProfile(req, corsHeaders);
+    if (auth instanceof Response) return auth;
+    if (!["admin", "intercedent", "backoffice", "facility"].includes(auth.role)) {
+      return json({ error: "Onvoldoende rechten" }, 403);
+    }
+    const orgId = auth.organizationId;
+    const serviceClient = createAdminClient();
 
     const body = await req.json();
     const { report_id, target = "internal" } = body as { report_id: string; target?: "internal" | "external" };
@@ -180,7 +163,7 @@ Deno.serve(async (req) => {
 
     const r = report as any;
     if (target === "external") {
-      if (!["admin", "backoffice"].includes(profile.role)) {
+      if (!["admin", "backoffice"].includes(auth.role)) {
         return json({ error: "Alleen admin/backoffice mag een schademelding extern doorsturen" }, 403);
       }
       if (r.route_status !== "internal_notified") {
@@ -237,7 +220,7 @@ Deno.serve(async (req) => {
       to: recipient,
       subject,
       htmlBody: html,
-      sentBy: user.id,
+      sentBy: auth.userId,
     });
 
     if (!result.success) {
@@ -256,7 +239,7 @@ Deno.serve(async (req) => {
       subject,
       body: `Schademelding voor ${vehicleLabel}`,
       sent_at: new Date().toISOString(),
-      sent_by: user.id,
+      sent_by: auth.userId,
       email_to: [recipient],
     });
 

@@ -24,10 +24,12 @@ import { Plus, MoreHorizontal, Pencil, Trash2, AlertTriangle } from 'lucide-reac
 import { formatDate } from '@/lib/format';
 import { toast } from 'sonner';
 import { logAudit } from '@/lib/audit';
+import { useAuth } from '@/contexts/AuthContext';
+import { fetchFacilityHousingSnapshot, fetchFacilityWorkerDirectory, isFacilityRole } from '@/lib/facility';
 
 const emptyForm = { key_number: '', unit_id: '', employee_id: '', issued_at: '' };
 
-const KeysTab = ({ propertyId }: { propertyId: string }) => {
+const InternalKeysTab = ({ propertyId }: { propertyId: string }) => {
   const orgId = useOrganizationId();
   const qc = useQueryClient();
   const [formOpen, setFormOpen] = useState(false);
@@ -101,6 +103,7 @@ const KeysTab = ({ propertyId }: { propertyId: string }) => {
 
   const saveKey = useMutation({
     mutationFn: async () => {
+      const recordId = editingId ?? crypto.randomUUID();
       const payload = {
         key_number: form.key_number,
         unit_id: form.unit_id,
@@ -340,6 +343,176 @@ const KeysTab = ({ propertyId }: { propertyId: string }) => {
       </AlertDialog>
     </div>
   );
+};
+
+const FacilityKeysTab = ({ property }: { property: any }) => {
+  const orgId = useOrganizationId();
+  const qc = useQueryClient();
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState(emptyForm);
+  const units = property.units ?? [];
+
+  const { data: snapshot } = useQuery({
+    queryKey: ['facility-housing-snapshot', property.id],
+    queryFn: () => fetchFacilityHousingSnapshot(property.id),
+  });
+  const { data: directory = [] } = useQuery({
+    queryKey: ['facility-worker-directory'],
+    queryFn: fetchFacilityWorkerDirectory,
+  });
+  const keys = snapshot?.key_registrations ?? [];
+  const activeResidents = units.flatMap((unit: any) =>
+    (unit.housing_assignments ?? [])
+      .filter((assignment: any) => assignment.status === 'ingecheckt')
+      .map((assignment: any) => ({ ...assignment, unit_id: unit.id })),
+  );
+  const workerByEmployee = new Map(directory.map((worker: any) => [worker.employee_id, worker]));
+  const workerLabel = (employeeId: string) => {
+    const worker: any = workerByEmployee.get(employeeId);
+    return [worker?.first_name, worker?.last_name].filter(Boolean).join(' ') || 'Medewerker';
+  };
+  const unitLabel = (unitId: string) => units.find((unit: any) => unit.id === unitId)?.name ?? '—';
+
+  const closeForm = () => {
+    setFormOpen(false);
+    setEditingId(null);
+    setForm(emptyForm);
+  };
+  const save = useMutation({
+    mutationFn: async () => {
+      const recordId = editingId ?? crypto.randomUUID();
+      const payload = {
+        key_number: form.key_number,
+        unit_id: form.unit_id,
+        employee_id: form.employee_id,
+        issued_at: form.issued_at || new Date().toISOString(),
+      };
+      const query = editingId
+        ? supabase.from('key_registrations').update(payload).eq('id', editingId)
+        : supabase.from('key_registrations').insert({ id: recordId, ...payload, organization_id: orgId });
+      const { error } = await query;
+      if (error) throw error;
+      return recordId;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['facility-housing-snapshot'] });
+      qc.invalidateQueries({ queryKey: ['property', property.id, 'facility'] });
+      toast.success(editingId ? 'Sleutel bijgewerkt' : 'Sleutel geregistreerd');
+      closeForm();
+    },
+    onError: (error: any) => toast.error(error.message ?? 'Opslaan mislukt'),
+  });
+  const updateStatus = useMutation({
+    mutationFn: async ({ id, values }: { id: string; values: Record<string, string> }) => {
+      const { error } = await supabase.from('key_registrations').update(values).eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: (_, variables) => {
+      qc.invalidateQueries({ queryKey: ['facility-housing-snapshot'] });
+      toast.success('Sleutelstatus bijgewerkt');
+    },
+    onError: (error: any) => toast.error(error.message ?? 'Bijwerken mislukt'),
+  });
+  const openEdit = (key: any) => {
+    setEditingId(key.id);
+    setForm({
+      key_number: key.key_number ?? '',
+      unit_id: key.unit_id ?? '',
+      employee_id: key.employee_id ?? '',
+      issued_at: key.issued_at ? key.issued_at.split('T')[0] : '',
+    });
+    setFormOpen(true);
+  };
+  const getStatus = (key: any) => {
+    if (key.lost_at) return { label: 'Verloren', cls: 'bg-red-100 text-red-700 border-0' };
+    if (key.returned_at) return { label: 'Ingeleverd', cls: 'bg-stat-green/10 text-stat-green border-0' };
+    return { label: 'Uitstaand', cls: 'bg-orange-100 text-orange-600 border-0' };
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-between items-center">
+        <h3 className="font-medium">Sleutelregistratie</h3>
+        <Button size="sm" variant="outline" onClick={() => { setEditingId(null); setForm(emptyForm); setFormOpen(true); }} className="gap-1">
+          <Plus className="h-3.5 w-3.5" /> Nieuwe sleutel
+        </Button>
+      </div>
+
+      {formOpen && (
+        <div className="bg-card rounded-lg border p-4 space-y-3">
+          <p className="text-sm font-medium">{editingId ? 'Sleutel bewerken' : 'Nieuwe sleutel'}</p>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div><Label>Sleutelnummer *</Label><Input value={form.key_number} onChange={(event) => setForm((value) => ({ ...value, key_number: event.target.value }))} /></div>
+            <div><Label>Uitgiftedatum</Label><Input type="date" value={form.issued_at} onChange={(event) => setForm((value) => ({ ...value, issued_at: event.target.value }))} /></div>
+            <div>
+              <Label>Kamer *</Label>
+              <Select value={form.unit_id} onValueChange={(value) => setForm((current) => ({ ...current, unit_id: value }))}>
+                <SelectTrigger><SelectValue placeholder="Selecteer kamer" /></SelectTrigger>
+                <SelectContent>{units.map((unit: any) => <SelectItem key={unit.id} value={unit.id}>{unit.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Medewerker *</Label>
+              <Select value={form.employee_id} onValueChange={(value) => setForm((current) => ({ ...current, employee_id: value }))}>
+                <SelectTrigger><SelectValue placeholder="Selecteer bewoner" /></SelectTrigger>
+                <SelectContent>
+                  {activeResidents.map((assignment: any) => (
+                    <SelectItem key={`${assignment.id}-${assignment.employee_id}`} value={assignment.employee_id}>
+                      {workerLabel(assignment.employee_id)} · {unitLabel(assignment.unit_id)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" size="sm" onClick={closeForm}>Annuleren</Button>
+            <Button size="sm" onClick={() => save.mutate()} disabled={!form.key_number || !form.unit_id || !form.employee_id || save.isPending}>Opslaan</Button>
+          </div>
+        </div>
+      )}
+
+      {keys.length === 0 ? (
+        <p className="text-center text-muted-foreground py-8">Geen sleutels geregistreerd</p>
+      ) : (
+        <div className="bg-card rounded-lg border">
+          <Table>
+            <TableHeader><TableRow><TableHead>Sleutelnr.</TableHead><TableHead>Kamer</TableHead><TableHead>Medewerker</TableHead><TableHead>Uitgifte</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actie</TableHead></TableRow></TableHeader>
+            <TableBody>
+              {keys.map((key: any) => {
+                const status = getStatus(key);
+                const isOpen = !key.returned_at && !key.lost_at;
+                return (
+                  <TableRow key={key.id}>
+                    <TableCell className="font-medium">{key.key_number}</TableCell>
+                    <TableCell>{unitLabel(key.unit_id)}</TableCell>
+                    <TableCell>{workerLabel(key.employee_id)}</TableCell>
+                    <TableCell>{formatDate(key.issued_at)}</TableCell>
+                    <TableCell><Badge variant="secondary" className={`text-xs ${status.cls}`}>{status.label}</Badge></TableCell>
+                    <TableCell>
+                      <div className="flex justify-end gap-1">
+                        {isOpen && <Button size="sm" variant="outline" onClick={() => updateStatus.mutate({ id: key.id, values: { returned_at: new Date().toISOString() } })}>Ingeleverd</Button>}
+                        {isOpen && <Button size="sm" variant="ghost" onClick={() => updateStatus.mutate({ id: key.id, values: { lost_at: new Date().toISOString() } })}>Verloren</Button>}
+                        <Button size="sm" variant="ghost" onClick={() => openEdit(key)}>Bewerken</Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const KeysTab = ({ property }: { property: any }) => {
+  const { role } = useAuth();
+  return isFacilityRole(role)
+    ? <FacilityKeysTab property={property} />
+    : <InternalKeysTab propertyId={property.id} />;
 };
 
 export default KeysTab;

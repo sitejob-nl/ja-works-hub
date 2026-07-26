@@ -8,6 +8,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { scoreMatch, isCandidateScorable, type DistanceInfo, type MatchCriteriaOptions } from "../_shared/matching-core.ts";
 import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
 import { buildMatchScorePatch } from "../_shared/match-lifecycle.ts";
+import { requireRolePermission } from "../_shared/auth.ts";
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -106,15 +107,14 @@ Deno.serve(async (req) => {
   try {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) return json({ error: "Unauthorized" }, 401);
+    const auth = await requireRolePermission(req, "matching.pipeline.view", corsHeaders);
+    if (auth instanceof Response) return auth;
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const userClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
       global: { headers: { Authorization: authHeader } },
     });
-
-    const { data: { user }, error: userError } = await userClient.auth.getUser();
-    if (userError || !user) return json({ error: "Unauthorized" }, 401);
 
     const { match_id, candidate_id, vacancy_id, criteria_options } = await req.json();
     const criteriaOptions = normalizeCriteriaOptions(criteria_options);

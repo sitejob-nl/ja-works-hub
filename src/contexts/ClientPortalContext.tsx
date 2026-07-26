@@ -43,6 +43,15 @@ export const ClientPortalProvider: React.FC<{ children: React.ReactNode }> = ({ 
       .eq('id', userId)
       .maybeSingle();
 
+    if (prof && prof.is_active !== true) {
+      setProfile(null);
+      setContact(null);
+      setCompany(null);
+      setLoading(false);
+      await signOutAndRedirect('/klantportaal/login?reason=account-disabled');
+      return;
+    }
+
     if (!prof || prof.role !== 'opdrachtgever') {
       navigate('/', { replace: true });
       setLoading(false);

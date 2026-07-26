@@ -3,13 +3,13 @@ import {
   corsHeaders,
   jsonOk,
   jsonError,
-  getAuthenticatedOrg,
   isOutboundWhatsAppConfigured,
   isOutboundWhatsAppPaused,
   normalizePhone,
   sendOutboundWhatsApp,
 } from "../_shared/whatsapp-utils.ts";
 import { getWhatsAppAutomationSettings } from "../_shared/whatsapp-automation-settings.ts";
+import { requireInternalProfile } from "../_shared/auth.ts";
 
 const MAX_RETRIES = 3;
 const RETRY_DELAYS = [60, 300, 900]; // 1min, 5min, 15min in seconds
@@ -27,12 +27,6 @@ Deno.serve(async (req) => {
     const { campaign_id } = await req.json();
     if (!campaign_id) return jsonError("campaign_id is verplicht", 400);
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: req.headers.get("Authorization")! } } }
-    );
-
     const cronSecret = req.headers.get("X-Cron-Secret");
     const expectedCronSecret = Deno.env.get("CRON_SECRET");
     let orgId: string;
@@ -48,9 +42,9 @@ Deno.serve(async (req) => {
       orgId = camp.organization_id;
       userId = camp.created_by ?? null;
     } else {
-      const auth = await getAuthenticatedOrg(req, supabase);
+      const auth = await requireInternalProfile(req, corsHeaders);
       if (auth instanceof Response) return auth;
-      orgId = auth.orgId;
+      orgId = auth.organizationId;
       userId = auth.userId;
     }
 

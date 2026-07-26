@@ -14,6 +14,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { formatDate } from '@/lib/format';
 import { differenceInCalendarDays, parseISO } from 'date-fns';
 import TransportFinesTab from '@/components/transport/TransportFinesTab';
+import { useAuth } from '@/contexts/AuthContext';
+import { fetchFacilityTransportSnapshot, isFacilityRole } from '@/lib/facility';
 
 
 const PAGE_SIZE = 10;
@@ -30,11 +32,19 @@ const statusLabel: Record<string, string> = {
 
 const Transport = () => {
   const navigate = useNavigate();
+  const { role, profile } = useAuth();
+  const isFacility = isFacilityRole(role);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [page, setPage] = useState(0);
 
-  const { data, isLoading } = useQuery({
+  const { data: facilitySnapshot, isLoading: isFacilityLoading } = useQuery({
+    queryKey: ['facility-transport-snapshot', profile?.organization_id],
+    queryFn: () => fetchFacilityTransportSnapshot(),
+    enabled: isFacility,
+  });
+
+  const { data: internalData, isLoading: isInternalLoading } = useQuery({
     queryKey: ['vehicles', search, statusFilter, page],
     queryFn: async () => {
       let query = supabase.from('vehicles').select(`
@@ -56,7 +66,28 @@ const Transport = () => {
       if (error) throw error;
       return { vehicles: data ?? [], total: count ?? 0 };
     },
+    enabled: !isFacility,
   });
+
+  const facilityData = useMemo(() => {
+    if (!isFacility) return { vehicles: [], total: 0 };
+    const normalizedSearch = search.trim().toLocaleLowerCase('nl-NL');
+    const filtered = [...(facilitySnapshot?.vehicles ?? [])]
+      .filter((vehicle: any) => statusFilter === 'all' || vehicle.status === statusFilter)
+      .filter((vehicle: any) => {
+        if (!normalizedSearch) return true;
+        return [vehicle.license_plate, vehicle.brand, vehicle.model]
+          .some((value) => String(value ?? '').toLocaleLowerCase('nl-NL').includes(normalizedSearch));
+      })
+      .sort((a: any, b: any) => String(a.license_plate ?? '').localeCompare(String(b.license_plate ?? ''), 'nl'));
+    return {
+      vehicles: filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE),
+      total: filtered.length,
+    };
+  }, [facilitySnapshot, isFacility, page, search, statusFilter]);
+
+  const data = isFacility ? facilityData : internalData;
+  const isLoading = isFacility ? isFacilityLoading : isInternalLoading;
 
   const vehicles = data?.vehicles ?? [];
   const total = data?.total ?? 0;
@@ -70,6 +101,7 @@ const Transport = () => {
       if (error) throw error;
       return data ?? [];
     },
+    enabled: !isFacility,
   });
 
   const { data: fuelFlagCount = 0 } = useQuery({
@@ -82,9 +114,10 @@ const Transport = () => {
       if (error) throw error;
       return count ?? 0;
     },
+    enabled: !isFacility,
   });
 
-  const { data: openDamageCount = 0 } = useQuery({
+  const { data: internalOpenDamageCount = 0 } = useQuery({
     queryKey: ['damage-open-count'],
     queryFn: async () => {
       const { count, error } = await supabase.from('vehicle_damage_reports')
@@ -93,28 +126,35 @@ const Transport = () => {
       if (error) throw error;
       return count ?? 0;
     },
+    enabled: !isFacility,
   });
 
+  const openDamageCount = isFacility
+    ? (facilitySnapshot?.damage_reports ?? []).filter((report: any) => !report.resolved).length
+    : internalOpenDamageCount;
+
   const stats = useMemo(() => {
-    const v = allVehicles ?? [];
+    const v = isFacility ? (facilitySnapshot?.vehicles ?? []) : (allVehicles ?? []);
     return {
       total: v.length,
       beschikbaar: v.filter((x: any) => x.status === 'beschikbaar').length,
       toegewezen: v.filter((x: any) => x.status === 'toegewezen').length,
       onderhoud: v.filter((x: any) => x.status === 'onderhoud').length,
     };
-  }, [allVehicles]);
+  }, [allVehicles, facilitySnapshot, isFacility]);
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Transport</h1>
-          <p className="text-muted-foreground text-sm mt-1">Voertuigen, toewijzingen en kilometerregistratie</p>
+          <p className="text-muted-foreground text-sm mt-1">
+            {isFacility ? 'Voertuigen, toewijzingen en schademeldingen' : 'Voertuigen, toewijzingen en kilometerregistratie'}
+          </p>
         </div>
         <div className="flex gap-2">
-          <Button asChild variant="outline" className="gap-2"><Link to="/tankpas-analyse"><Fuel className="h-4 w-4" /> Tankpas analyse</Link></Button>
-          <Button onClick={() => navigate('/transport/new')} className="gap-2"><Plus className="h-4 w-4" /> Nieuw voertuig</Button>
+          {!isFacility && <Button asChild variant="outline" className="gap-2"><Link to="/tankpas-analyse"><Fuel className="h-4 w-4" /> Tankpas analyse</Link></Button>}
+          {!isFacility && <Button onClick={() => navigate('/transport/new')} className="gap-2"><Plus className="h-4 w-4" /> Nieuw voertuig</Button>}
         </div>
       </div>
 
@@ -130,10 +170,12 @@ const Transport = () => {
             <div className="text-lg font-semibold">{s.value}</div>
           </div>
         ))}
-        <Link to="/tankpas-analyse" className={`bg-card border rounded-lg p-3 hover:ring-2 hover:ring-ring transition ${fuelFlagCount > 0 ? 'border-destructive bg-destructive/5' : ''}`}>
-          <div className="text-xs text-muted-foreground">Afwijkingen tankpas</div>
-          <div className={`text-lg font-semibold ${fuelFlagCount > 0 ? 'text-destructive' : ''}`}>{fuelFlagCount}</div>
-        </Link>
+        {!isFacility && (
+          <Link to="/tankpas-analyse" className={`bg-card border rounded-lg p-3 hover:ring-2 hover:ring-ring transition ${fuelFlagCount > 0 ? 'border-destructive bg-destructive/5' : ''}`}>
+            <div className="text-xs text-muted-foreground">Afwijkingen tankpas</div>
+            <div className={`text-lg font-semibold ${fuelFlagCount > 0 ? 'text-destructive' : ''}`}>{fuelFlagCount}</div>
+          </Link>
+        )}
         <div className={`bg-card border rounded-lg p-3 ${openDamageCount > 0 ? 'border-orange-400 bg-orange-50 dark:bg-orange-950/20' : ''}`}>
           <div className="text-xs text-muted-foreground">Open schademeldingen</div>
           <div className={`text-lg font-semibold ${openDamageCount > 0 ? 'text-orange-600' : ''}`}>{openDamageCount}</div>
@@ -143,7 +185,7 @@ const Transport = () => {
       <Tabs defaultValue="voertuigen" className="space-y-4">
         <TabsList>
           <TabsTrigger value="voertuigen">Voertuigen</TabsTrigger>
-          <TabsTrigger value="boetes">Boetes</TabsTrigger>
+          {!isFacility && <TabsTrigger value="boetes">Boetes</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="voertuigen" className="space-y-4">
@@ -166,7 +208,7 @@ const Transport = () => {
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <Car className="h-12 w-12 text-muted-foreground/40 mb-4" />
               <p className="text-lg font-medium text-muted-foreground">Nog geen voertuigen</p>
-              <Button onClick={() => navigate('/transport/new')} variant="outline" className="mt-4 gap-2"><Plus className="h-4 w-4" /> Voeg je eerste voertuig toe</Button>
+              {!isFacility && <Button onClick={() => navigate('/transport/new')} variant="outline" className="mt-4 gap-2"><Plus className="h-4 w-4" /> Voeg je eerste voertuig toe</Button>}
             </div>
           ) : (
             <>
@@ -181,16 +223,16 @@ const Transport = () => {
                       <TableHead className="text-right">Deuren</TableHead>
                       <TableHead className="text-right">KM-stand</TableHead>
                       <TableHead>APK</TableHead>
-                      <TableHead>Tankpas</TableHead>
+                      {!isFacility && <TableHead>Tankpas</TableHead>}
                       <TableHead>Status</TableHead>
                       <TableHead>Toegewezen aan</TableHead>
-                      <TableHead>Notitie</TableHead>
+                      {!isFacility && <TableHead>Notitie</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {vehicles.map((v: any, i: number) => {
-                      const activeAssignment = (v.vehicle_assignments as any[])?.find((a: any) => !a.returned_date);
-                      const assignee = activeAssignment?.employees?.candidates as any;
+                      const activeAssignment = ((v.assignments ?? v.vehicle_assignments) as any[])?.find((a: any) => !a.returned_date);
+                      const assignee = activeAssignment?.employees?.candidates ?? activeAssignment?.worker ?? activeAssignment;
                       return (
                         <TableRow key={v.id} className={i % 2 === 1 ? 'bg-background' : ''}>
                           <TableCell>
@@ -214,16 +256,20 @@ const Transport = () => {
                               );
                             })()}
                           </TableCell>
-                          <TableCell className="font-mono text-xs">{v.fuel_card_reference ?? '—'}</TableCell>
+                          {!isFacility && <TableCell className="font-mono text-xs">{v.fuel_card_reference ?? '—'}</TableCell>}
                           <TableCell><Badge variant="secondary" className={statusBadge[v.status] ?? ''}>{statusLabel[v.status] ?? v.status}</Badge></TableCell>
-                          <TableCell>{assignee ? <EntityLink type="employee" id={activeAssignment?.employees?.id}>{assignee.first_name} {assignee.last_name}</EntityLink> : '—'}</TableCell>
-                          <TableCell className="max-w-[200px]">
+                          <TableCell>{assignee ? (
+                            isFacility
+                              ? <span>{assignee.first_name} {assignee.last_name}</span>
+                              : <EntityLink type="employee" id={activeAssignment?.employees?.id}>{assignee.first_name} {assignee.last_name}</EntityLink>
+                          ) : '—'}</TableCell>
+                          {!isFacility && <TableCell className="max-w-[200px]">
                             {v.notes ? (
                               <span className="text-xs text-muted-foreground truncate block" title={v.notes}>{v.notes}</span>
                             ) : (
                               <span className="text-muted-foreground">—</span>
                             )}
-                          </TableCell>
+                          </TableCell>}
                         </TableRow>
                       );
                     })}
@@ -245,9 +291,11 @@ const Transport = () => {
           )}
         </TabsContent>
 
-        <TabsContent value="boetes">
-          <TransportFinesTab />
-        </TabsContent>
+        {!isFacility && (
+          <TabsContent value="boetes">
+            <TransportFinesTab />
+          </TabsContent>
+        )}
       </Tabs>
 
       

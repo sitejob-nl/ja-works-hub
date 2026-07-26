@@ -26,9 +26,16 @@ import {
 import { toast } from 'sonner';
 import { formatDate } from '@/lib/format';
 import { logAudit } from '@/lib/audit';
+import { useAuth } from '@/contexts/AuthContext';
+import { fetchFacilityTransportSnapshot, fetchFacilityWorkerDirectory, isFacilityRole, saveFacilityOperationalEntity } from '@/lib/facility';
+
+const assignmentPerson = (assignment: any) => assignment?.employees?.candidates ?? assignment?.worker ?? assignment;
+const workerPerson = (worker: any) => worker?.candidates ?? worker;
 
 const VehicleAssignmentsTab = ({ vehicle }: { vehicle: any }) => {
   const orgId = useOrganizationId();
+  const { role } = useAuth();
+  const isFacility = isFacilityRole(role);
   const qc = useQueryClient();
   const [assignOpen, setAssignOpen] = useState(false);
   const [returnDialog, setReturnDialog] = useState<any>(null);
@@ -47,8 +54,14 @@ const VehicleAssignmentsTab = ({ vehicle }: { vehicle: any }) => {
   const [assignmentToDelete, setAssignmentToDelete] = useState<any | null>(null);
 
   const { data: assignments } = useQuery({
-    queryKey: ['vehicle-assignments', vehicle.id],
+    queryKey: ['vehicle-assignments', vehicle.id, orgId, isFacility ? 'facility' : 'internal'],
     queryFn: async () => {
+      if (isFacility) {
+        const snapshot = await fetchFacilityTransportSnapshot(vehicle.id);
+        return (snapshot.assignments ?? [])
+          .filter((assignment: any) => assignment.vehicle_id === vehicle.id)
+          .sort((a: any, b: any) => String(b.assigned_date ?? '').localeCompare(String(a.assigned_date ?? '')));
+      }
       const { data, error } = await supabase.from('vehicle_assignments').select(`
         *,
         employees!vehicle_assignments_employee_id_fkey(id, candidates!employees_candidate_id_fkey(first_name, last_name))
@@ -59,8 +72,14 @@ const VehicleAssignmentsTab = ({ vehicle }: { vehicle: any }) => {
   });
 
   const { data: employees } = useQuery({
-    queryKey: ['employees-active-for-assign'],
+    queryKey: ['employees-active-for-assign', orgId, isFacility ? 'facility' : 'internal'],
     queryFn: async () => {
+      if (isFacility) {
+        const workers = await fetchFacilityWorkerDirectory();
+        return workers
+          .filter((worker: any) => worker.status === 'actief')
+          .sort((a: any, b: any) => `${a.last_name ?? ''} ${a.first_name ?? ''}`.localeCompare(`${b.last_name ?? ''} ${b.first_name ?? ''}`, 'nl'));
+      }
       const { data, error } = await supabase.from('employees').select('id, candidate_id, candidates!employees_candidate_id_fkey(first_name, last_name)').eq('status', 'actief' as any);
       if (error) throw error;
       return data ?? [];
@@ -70,7 +89,7 @@ const VehicleAssignmentsTab = ({ vehicle }: { vehicle: any }) => {
 
   const assignMutation = useMutation({
     mutationFn: async () => {
-      const selectedEmployee = (employees ?? []).find((employee: any) => employee.id === employeeId) as any;
+      const selectedEmployee = (employees ?? []).find((employee: any) => (employee.employee_id ?? employee.id) === employeeId) as any;
       const { error } = await supabase.from('vehicle_assignments').insert({
         organization_id: orgId,
         vehicle_id: vehicle.id,
@@ -80,13 +99,18 @@ const VehicleAssignmentsTab = ({ vehicle }: { vehicle: any }) => {
         start_mileage: startMileage ? parseInt(startMileage) : null,
       });
       if (error) throw error;
-      const { error: vErr } = await supabase.from('vehicles').update({ status: 'toegewezen' as any }).eq('id', vehicle.id);
-      if (vErr) throw vErr;
+      if (isFacility) {
+        await saveFacilityOperationalEntity('vehicle', { id: vehicle.id, status: 'toegewezen' });
+      } else {
+        const { error: vErr } = await supabase.from('vehicles').update({ status: 'toegewezen' as any }).eq('id', vehicle.id);
+        if (vErr) throw vErr;
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['vehicle-assignments', vehicle.id] });
       qc.invalidateQueries({ queryKey: ['vehicle', vehicle.id] });
       qc.invalidateQueries({ queryKey: ['vehicles'] });
+      qc.invalidateQueries({ queryKey: ['facility-transport-snapshot'] });
       toast.success('Voertuig toegewezen');
       setAssignOpen(false);
       setEmployeeId(''); setAssignedDate('');
@@ -109,13 +133,18 @@ const VehicleAssignmentsTab = ({ vehicle }: { vehicle: any }) => {
         end_mileage: km,
       }).eq('id', returnDialog.id);
       if (error) throw error;
-      const { error: vErr } = await supabase.from('vehicles').update({ current_mileage: km, status: 'beschikbaar' as any }).eq('id', vehicle.id);
-      if (vErr) throw vErr;
+      if (isFacility) {
+        await saveFacilityOperationalEntity('vehicle', { id: vehicle.id, current_mileage: km, status: 'beschikbaar' });
+      } else {
+        const { error: vErr } = await supabase.from('vehicles').update({ current_mileage: km, status: 'beschikbaar' as any }).eq('id', vehicle.id);
+        if (vErr) throw vErr;
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['vehicle-assignments', vehicle.id] });
       qc.invalidateQueries({ queryKey: ['vehicle', vehicle.id] });
       qc.invalidateQueries({ queryKey: ['vehicles'] });
+      qc.invalidateQueries({ queryKey: ['facility-transport-snapshot'] });
       toast.success('Voertuig ingeleverd');
       setReturnDialog(null); setEndMileage('');
     },
@@ -138,7 +167,8 @@ const VehicleAssignmentsTab = ({ vehicle }: { vehicle: any }) => {
     onSuccess: (update) => {
       qc.invalidateQueries({ queryKey: ['vehicle-assignments', vehicle.id] });
       qc.invalidateQueries({ queryKey: ['vehicle', vehicle.id] });
-      logAudit({ action: 'update', tableName: 'vehicle_assignments', recordId: editingAssignment?.id ?? '', newValues: update });
+      qc.invalidateQueries({ queryKey: ['facility-transport-snapshot'] });
+      if (!isFacility) logAudit({ action: 'update', tableName: 'vehicle_assignments', recordId: editingAssignment?.id ?? '', newValues: update });
       toast.success('Toewijzing bijgewerkt');
       setEditingAssignment(null);
     },
@@ -195,12 +225,16 @@ const VehicleAssignmentsTab = ({ vehicle }: { vehicle: any }) => {
           </TableHeader>
           <TableBody>
             {(assignments ?? []).map((a: any) => {
-              const c = a.employees?.candidates as any;
+              const c = assignmentPerson(a);
               const totalKm = a.start_mileage != null && a.end_mileage != null ? a.end_mileage - a.start_mileage : null;
               return (
                 <TableRow key={a.id}>
                   <TableCell>
-                    <Link to={`/medewerkers/${a.employees?.id}`} className="font-medium hover:text-stat-blue">{c?.first_name} {c?.last_name}</Link>
+                    {isFacility ? (
+                      <span className="font-medium">{c?.first_name} {c?.last_name}</span>
+                    ) : (
+                      <Link to={`/medewerkers/${a.employees?.id}`} className="font-medium hover:text-stat-blue">{c?.first_name} {c?.last_name}</Link>
+                    )}
                   </TableCell>
                   <TableCell>{formatDate(a.assigned_date)}</TableCell>
                   <TableCell>{a.returned_date ? formatDate(a.returned_date) : <Badge variant="secondary" className="bg-stat-green/10 text-stat-green border-0">Huidig</Badge>}</TableCell>
@@ -218,10 +252,12 @@ const VehicleAssignmentsTab = ({ vehicle }: { vehicle: any }) => {
                           <DropdownMenuItem onClick={() => openEdit(a)}>
                             <Pencil className="h-3.5 w-3.5 mr-2" /> Bewerken
                           </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => setAssignmentToDelete(a)} className="text-destructive">
-                            <Trash2 className="h-3.5 w-3.5 mr-2" /> Verwijderen
-                          </DropdownMenuItem>
+                          {!isFacility && <DropdownMenuSeparator />}
+                          {!isFacility && (
+                            <DropdownMenuItem onClick={() => setAssignmentToDelete(a)} className="text-destructive">
+                              <Trash2 className="h-3.5 w-3.5 mr-2" /> Verwijderen
+                            </DropdownMenuItem>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
@@ -247,8 +283,8 @@ const VehicleAssignmentsTab = ({ vehicle }: { vehicle: any }) => {
                 <SelectTrigger><SelectValue placeholder="Selecteer medewerker" /></SelectTrigger>
                 <SelectContent>
                   {(employees ?? []).map((e: any) => {
-                    const c = e.candidates as any;
-                    return <SelectItem key={e.id} value={e.id}>{c?.first_name} {c?.last_name}</SelectItem>;
+                    const c = workerPerson(e);
+                    return <SelectItem key={e.employee_id ?? e.id} value={e.employee_id ?? e.id}>{c?.first_name} {c?.last_name}</SelectItem>;
                   })}
                 </SelectContent>
               </Select>
@@ -272,7 +308,7 @@ const VehicleAssignmentsTab = ({ vehicle }: { vehicle: any }) => {
           {editingAssignment && (
             <div className="space-y-4 mt-6">
               <div className="p-3 rounded-lg bg-muted/50 border text-sm">
-                {editingAssignment.employees?.candidates?.first_name} {editingAssignment.employees?.candidates?.last_name}
+                {assignmentPerson(editingAssignment)?.first_name} {assignmentPerson(editingAssignment)?.last_name}
               </div>
               <div><Label>Startdatum *</Label><Input type="date" value={editForm.assigned_date} onChange={(e) => setEditForm(f => ({ ...f, assigned_date: e.target.value }))} /></div>
               <div><Label>Einddatum (leeg = nog actief)</Label><Input type="date" value={editForm.returned_date} onChange={(e) => setEditForm(f => ({ ...f, returned_date: e.target.value }))} /></div>
@@ -292,7 +328,7 @@ const VehicleAssignmentsTab = ({ vehicle }: { vehicle: any }) => {
       </Sheet>
 
       {/* Delete assignment confirm */}
-      <AlertDialog open={!!assignmentToDelete} onOpenChange={(o) => { if (!o) setAssignmentToDelete(null); }}>
+      <AlertDialog open={!isFacility && !!assignmentToDelete} onOpenChange={(o) => { if (!o) setAssignmentToDelete(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Toewijzing verwijderen?</AlertDialogTitle>

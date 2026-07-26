@@ -1,5 +1,5 @@
 import { Fragment, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { unwrap } from '@/lib/db';
 import { qk } from '@/lib/query-keys';
@@ -28,6 +28,8 @@ import { EntityLink } from '@/components/ui/entity-link';
 import { formatDate, formatEUR } from '@/lib/format';
 import { toast } from 'sonner';
 import type { Database } from '@/integrations/supabase/types';
+import { useAuth } from '@/contexts/AuthContext';
+import { fetchFacilityWorkerDirectory, isFacilityRole, saveFacilityOperationalEntity } from '@/lib/facility';
 
 type UnitStatus = Database['public']['Enums']['unit_status'];
 
@@ -53,6 +55,8 @@ interface BulkRow {
 const emptyBulkRow = (): BulkRow => ({ name: '', capacity: '1', floor: '', weekly_cost: '' });
 
 const UnitsTab = ({ property }: { property: any }) => {
+  const { role } = useAuth();
+  const isFacility = isFacilityRole(role);
   const orgId = useOrganizationId();
   const qc = useQueryClient();
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -64,6 +68,18 @@ const UnitsTab = ({ property }: { property: any }) => {
   const [bulkRows, setBulkRows] = useState<BulkRow[]>(() => [emptyBulkRow(), emptyBulkRow(), emptyBulkRow()]);
   const [view, setView] = useState<'cards' | 'list'>('list');
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  const { data: facilityDirectory = [] } = useQuery({
+    queryKey: ['facility-worker-directory'],
+    queryFn: fetchFacilityWorkerDirectory,
+    enabled: isFacility,
+  });
+  const assignmentName = (assignment: any) => {
+    if (!isFacility) return `${assignment.candidates?.first_name ?? ''} ${assignment.candidates?.last_name ?? ''}`.trim();
+    const worker = facilityDirectory.find((item: any) =>
+      item.candidate_id === assignment.candidate_id || item.employee_id === assignment.employee_id,
+    );
+    return [worker?.first_name, worker?.last_name].filter(Boolean).join(' ') || 'Medewerker';
+  };
 
   const openAdd = () => {
     setEditingId(null);
@@ -86,15 +102,25 @@ const UnitsTab = ({ property }: { property: any }) => {
 
   const saveUnit = useMutation({
     mutationFn: async () => {
-      const payload = {
+      let recordId: string | null = editingId;
+      const operationalPayload = {
         name: form.name,
         capacity: Number(form.capacity) || 1,
         floor: form.floor ? Number(form.floor) : null,
-        weekly_cost: form.weekly_cost ? Number(form.weekly_cost) : null,
         status: form.status,
+      };
+      const payload = {
+        ...operationalPayload,
+        weekly_cost: form.weekly_cost ? Number(form.weekly_cost) : null,
         notes: form.notes || null,
       };
-      if (editingId) {
+      if (isFacility) {
+        recordId = await saveFacilityOperationalEntity('unit', {
+          ...(editingId ? { id: editingId } : {}),
+          ...operationalPayload,
+          ...(!editingId ? { organization_id: orgId, property_id: property.id } : {}),
+        });
+      } else if (editingId) {
         await unwrap(supabase.from('units').update(payload).eq('id', editingId));
       } else {
         await unwrap(supabase.from('units').insert({
@@ -103,10 +129,12 @@ const UnitsTab = ({ property }: { property: any }) => {
           property_id: property.id,
         }));
       }
+      return recordId;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: qk.housing.property(property.id) });
       qc.invalidateQueries({ queryKey: ['properties'] });
+      if (isFacility) qc.invalidateQueries({ queryKey: ['facility-housing-snapshot'] });
       const wasEdit = editingId !== null;
       setSheetOpen(false);
       setEditingId(null);
@@ -161,21 +189,29 @@ const UnitsTab = ({ property }: { property: any }) => {
         throw new Error(`Kamer(s) bestaan al in dit pand: ${conflict.join(', ')}`);
       }
 
-      const payload = valid.map((r) => ({
+      const operationalPayload = valid.map((r) => ({
         organization_id: orgId,
         property_id: property.id,
         name: r.name,
         capacity: Number(r.capacity) || 1,
         floor: r.floor ? Number(r.floor) : null,
-        weekly_cost: r.weekly_cost ? Number(r.weekly_cost) : null,
         status: 'beschikbaar' as UnitStatus,
       }));
-      await unwrap(supabase.from('units').insert(payload));
-      return valid.length;
+      if (isFacility) {
+        await Promise.all(operationalPayload.map((row) => saveFacilityOperationalEntity('unit', row)));
+      } else {
+        const payload = operationalPayload.map((row, index) => ({
+          ...row,
+          weekly_cost: valid[index].weekly_cost ? Number(valid[index].weekly_cost) : null,
+        }));
+        await unwrap(supabase.from('units').insert(payload));
+      }
+      return { count: valid.length };
     },
-    onSuccess: (count) => {
+    onSuccess: ({ count }) => {
       qc.invalidateQueries({ queryKey: qk.housing.property(property.id) });
       qc.invalidateQueries({ queryKey: ['properties'] });
+      if (isFacility) qc.invalidateQueries({ queryKey: ['facility-housing-snapshot'] });
       setBulkOpen(false);
       setBulkRows([emptyBulkRow(), emptyBulkRow(), emptyBulkRow()]);
       toast.success(`${count} kamer${count === 1 ? '' : 's'} aangemaakt`);
@@ -220,15 +256,15 @@ const UnitsTab = ({ property }: { property: any }) => {
               Status wordt 'beschikbaar' — pas aan via de kamerkaart na opslaan.
             </p>
             <div className="space-y-2">
-              <div className="grid grid-cols-[1fr_80px_80px_120px_32px] gap-2 text-xs text-muted-foreground font-medium px-1">
+              <div className={`grid ${isFacility ? 'grid-cols-[1fr_80px_80px_32px]' : 'grid-cols-[1fr_80px_80px_120px_32px]'} gap-2 text-xs text-muted-foreground font-medium px-1`}>
                 <span>Naam *</span>
                 <span>Capaciteit</span>
                 <span>Verdieping</span>
-                <span>Weekprijs (€)</span>
+                {!isFacility && <span>Weekprijs (€)</span>}
                 <span></span>
               </div>
               {bulkRows.map((r, i) => (
-                <div key={i} className="grid grid-cols-[1fr_80px_80px_120px_32px] gap-2 items-center">
+                <div key={i} className={`grid ${isFacility ? 'grid-cols-[1fr_80px_80px_32px]' : 'grid-cols-[1fr_80px_80px_120px_32px]'} gap-2 items-center`}>
                   <Input
                     value={r.name}
                     onChange={(e) => updateBulkRow(i, { name: e.target.value })}
@@ -246,12 +282,14 @@ const UnitsTab = ({ property }: { property: any }) => {
                     onChange={(e) => updateBulkRow(i, { floor: e.target.value })}
                     placeholder="0=BG"
                   />
-                  <Input
-                    type="number"
-                    value={r.weekly_cost}
-                    onChange={(e) => updateBulkRow(i, { weekly_cost: e.target.value })}
-                    placeholder="optioneel"
-                  />
+                  {!isFacility && (
+                    <Input
+                      type="number"
+                      value={r.weekly_cost}
+                      onChange={(e) => updateBulkRow(i, { weekly_cost: e.target.value })}
+                      placeholder="optioneel"
+                    />
+                  )}
                   <Button
                     size="icon"
                     variant="ghost"
@@ -288,7 +326,7 @@ const UnitsTab = ({ property }: { property: any }) => {
               <div><Label>Capaciteit</Label><Input type="number" value={form.capacity} onChange={(e) => setForm(f => ({ ...f, capacity: e.target.value }))} /></div>
               <div><Label>Verdieping</Label><Input type="number" value={form.floor} onChange={(e) => setForm(f => ({ ...f, floor: e.target.value }))} /></div>
             </div>
-            <div><Label>Weekprijs (€)</Label><Input type="number" value={form.weekly_cost} onChange={(e) => setForm(f => ({ ...f, weekly_cost: e.target.value }))} className="max-w-xs" /></div>
+            {!isFacility && <div><Label>Weekprijs (€)</Label><Input type="number" value={form.weekly_cost} onChange={(e) => setForm(f => ({ ...f, weekly_cost: e.target.value }))} className="max-w-xs" /></div>}
             <div>
               <Label>Status</Label>
               <Select value={form.status} onValueChange={(v) => setForm(f => ({ ...f, status: v as UnitStatus }))}>
@@ -302,7 +340,7 @@ const UnitsTab = ({ property }: { property: any }) => {
                 </SelectContent>
               </Select>
             </div>
-            <div><Label>Notities</Label><Textarea value={form.notes} onChange={(e) => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} /></div>
+            {!isFacility && <div><Label>Notities</Label><Textarea value={form.notes} onChange={(e) => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} /></div>}
             <div className="flex justify-end gap-3 pt-4">
               <Button variant="ghost" onClick={() => { setSheetOpen(false); setEditingId(null); setForm(emptyForm); }}>Annuleren</Button>
               <Button onClick={() => saveUnit.mutate()} disabled={!form.name || saveUnit.isPending}>
@@ -333,13 +371,13 @@ const UnitsTab = ({ property }: { property: any }) => {
                       <Badge variant="secondary" className={`text-xs ${statusBadge[u.status] ?? ''}`}>{u.status}</Badge>
                     </div>
                     <p className="text-xs text-muted-foreground">{occupied}/{u.capacity} bezet</p>
-                    {u.weekly_cost && <p className="text-xs text-muted-foreground">{formatEUR(u.weekly_cost)}/week</p>}
+                    {!isFacility && u.weekly_cost && <p className="text-xs text-muted-foreground">{formatEUR(u.weekly_cost)}/week</p>}
                     {u.floor != null && <p className="text-xs text-muted-foreground">Verdieping {u.floor}</p>}
                     {occupants.length > 0 && (
                       <div className="mt-2 space-y-1">
                         {occupants.map((a: any) => (
                           <p key={a.id} className="text-xs">
-                            <EntityLink type="candidate" id={a.candidates?.id} className="font-medium text-foreground hover:text-stat-blue">{a.candidates?.first_name} {a.candidates?.last_name}</EntityLink>
+                            {isFacility ? <span className="font-medium text-foreground">{assignmentName(a)}</span> : <EntityLink type="candidate" id={a.candidates?.id} className="font-medium text-foreground hover:text-stat-blue">{assignmentName(a)}</EntityLink>}
                           </p>
                         ))}
                       </div>
@@ -356,7 +394,7 @@ const UnitsTab = ({ property }: { property: any }) => {
                     ) : (
                       assignments.map((a: any) => (
                         <div key={a.id} className="text-xs flex items-center justify-between">
-                          <span><EntityLink type="candidate" id={a.candidates?.id} className="font-medium text-foreground hover:text-stat-blue">{a.candidates?.first_name} {a.candidates?.last_name}</EntityLink></span>
+                          <span>{isFacility ? <span className="font-medium text-foreground">{assignmentName(a)}</span> : <EntityLink type="candidate" id={a.candidates?.id} className="font-medium text-foreground hover:text-stat-blue">{assignmentName(a)}</EntityLink>}</span>
                           <span className="text-muted-foreground">
                             {formatDate(a.check_in_date)} — {a.check_out_date ? formatDate(a.check_out_date) : 'heden'}
                             {' '}
@@ -368,14 +406,14 @@ const UnitsTab = ({ property }: { property: any }) => {
                       ))
                     )}
                     <div className="flex justify-end gap-2 pt-2 border-t">
-                      <Button
+                      {!isFacility && <Button
                         size="sm"
                         variant="ghost"
                         onClick={() => openEdit(u)}
                         className="h-7 gap-1.5 text-xs"
                       >
                         <Pencil className="h-3 w-3" /> Bewerken
-                      </Button>
+                      </Button>}
                       <Button
                         size="sm"
                         variant="ghost"
@@ -404,7 +442,7 @@ const UnitsTab = ({ property }: { property: any }) => {
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Bezet</TableHead>
                 <TableHead className="text-right">Verdieping</TableHead>
-                <TableHead className="text-right">Per week</TableHead>
+                {!isFacility && <TableHead className="text-right">Per week</TableHead>}
                 <TableHead>Bewoners</TableHead>
                 <TableHead className="text-right">Acties</TableHead>
               </TableRow>
@@ -433,27 +471,27 @@ const UnitsTab = ({ property }: { property: any }) => {
                       </TableCell>
                       <TableCell className="text-right text-sm">{occupied}/{u.capacity}</TableCell>
                       <TableCell className="text-right text-sm">{u.floor != null ? u.floor : '—'}</TableCell>
-                      <TableCell className="text-right text-sm">{u.weekly_cost ? formatEUR(u.weekly_cost) : '—'}</TableCell>
+                      {!isFacility && <TableCell className="text-right text-sm">{u.weekly_cost ? formatEUR(u.weekly_cost) : '—'}</TableCell>}
                       <TableCell className="text-sm">
                         {occupants.length === 0
                           ? <span className="text-muted-foreground">—</span>
                           : occupants.map((a: any, i: number) => (
                               <Fragment key={a.id}>
                                 {i > 0 && ', '}
-                                <EntityLink type="candidate" id={a.candidates?.id} className="font-medium text-foreground hover:text-stat-blue">{`${a.candidates?.first_name ?? ''} ${a.candidates?.last_name ?? ''}`.trim()}</EntityLink>
+                                {isFacility ? <span className="font-medium text-foreground">{assignmentName(a)}</span> : <EntityLink type="candidate" id={a.candidates?.id} className="font-medium text-foreground hover:text-stat-blue">{assignmentName(a)}</EntityLink>}
                               </Fragment>
                             ))}
                       </TableCell>
                       <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="flex justify-end gap-1">
-                          <Button
+                          {!isFacility && <Button
                             size="sm"
                             variant="ghost"
                             onClick={() => openEdit(u)}
                             className="h-7 gap-1.5 text-xs"
                           >
                             <Pencil className="h-3 w-3" /> Bewerken
-                          </Button>
+                          </Button>}
                           <Button
                             size="sm"
                             variant="ghost"
@@ -469,7 +507,7 @@ const UnitsTab = ({ property }: { property: any }) => {
                     </TableRow>
                     {isExpanded && (
                       <TableRow className="bg-muted/30 hover:bg-muted/30">
-                        <TableCell colSpan={7} className="py-3">
+                        <TableCell colSpan={isFacility ? 6 : 7} className="py-3">
                           <p className="text-xs font-medium text-muted-foreground uppercase mb-2">Toewijzingshistorie</p>
                           {assignments.length === 0 ? (
                             <p className="text-xs text-muted-foreground">Geen toewijzingen</p>
@@ -477,7 +515,7 @@ const UnitsTab = ({ property }: { property: any }) => {
                             <div className="space-y-1">
                               {assignments.map((a: any) => (
                                 <div key={a.id} className="text-xs flex items-center justify-between">
-                                  <span><EntityLink type="candidate" id={a.candidates?.id} className="font-medium text-foreground hover:text-stat-blue">{a.candidates?.first_name} {a.candidates?.last_name}</EntityLink></span>
+                                  <span>{isFacility ? <span className="font-medium text-foreground">{assignmentName(a)}</span> : <EntityLink type="candidate" id={a.candidates?.id} className="font-medium text-foreground hover:text-stat-blue">{assignmentName(a)}</EntityLink>}</span>
                                   <span className="text-muted-foreground">
                                     {formatDate(a.check_in_date)} — {a.check_out_date ? formatDate(a.check_out_date) : 'heden'}
                                     {' '}
@@ -502,7 +540,7 @@ const UnitsTab = ({ property }: { property: any }) => {
 
       {units.length === 0 && <p className="text-center text-muted-foreground py-8">Nog geen kamers. Voeg een kamer toe.</p>}
 
-      <AlertDialog open={!!unitToDelete} onOpenChange={(o) => !o && setUnitToDelete(null)}>
+      {!isFacility && <AlertDialog open={!!unitToDelete} onOpenChange={(o) => !o && setUnitToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Kamer "{unitToDelete?.name}" verwijderen?</AlertDialogTitle>
@@ -522,7 +560,7 @@ const UnitsTab = ({ property }: { property: any }) => {
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
-      </AlertDialog>
+      </AlertDialog>}
     </div>
   );
 };

@@ -136,12 +136,15 @@ export async function getAuthenticatedOrg(
 
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
-    .select("organization_id")
+    .select("organization_id, is_active")
     .eq("id", user.id)
     .single();
 
   if (profileError || !profile?.organization_id) {
     return jsonError("Organization not found", 403);
+  }
+  if (profile.is_active !== true) {
+    return jsonError("Account is disabled", 403);
   }
 
   return { orgId: profile.organization_id, userId: user.id };

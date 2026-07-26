@@ -14,6 +14,8 @@ import PropertySlideOver from '@/components/housing/PropertySlideOver';
 import AvailabilityChart from '@/components/housing/AvailabilityChart';
 import ExportPropertiesButton from '@/components/housing/ExportPropertiesButton';
 import { formatEUR } from '@/lib/format';
+import { useAuth } from '@/contexts/AuthContext';
+import { fetchFacilityHousingSnapshot, isFacilityRole } from '@/lib/facility';
 
 const ALL_CITIES = '__all__';
 const WEEKS_PER_MONTH = 4.33;
@@ -42,6 +44,8 @@ const SORT_LABELS: Record<SortKey, string> = {
 };
 
 const Housing = () => {
+  const { role } = useAuth();
+  const isFacility = isFacilityRole(role);
   const [search, setSearch] = useState('');
   const [city, setCity] = useState<string>(ALL_CITIES);
   const [sort, setSort] = useState<SortKey>('address_asc');
@@ -50,7 +54,13 @@ const Housing = () => {
 
   // Fetch alle panden eenmaal — filtering doen we client-side voor snappy UX en
   // omdat de tellers (capaciteit/bezetting) altijd over de complete set moeten.
-  const { data: allProperties = [], isLoading } = useQuery({
+  const { data: facilitySnapshot, isLoading: facilityLoading } = useQuery({
+    queryKey: ['facility-housing-snapshot'],
+    queryFn: () => fetchFacilityHousingSnapshot(),
+    enabled: isFacility,
+  });
+
+  const { data: internalProperties = [], isLoading: internalLoading } = useQuery({
     queryKey: ['properties'],
     queryFn: async () => {
       const { data, error } = await supabase.from('properties').select(`
@@ -76,9 +86,27 @@ const Housing = () => {
         return { ...p, totalCapacity, currentOccupancy, percentage, freeRooms };
       });
     },
+    enabled: !isFacility,
   });
 
-  const { data: cleaningTasks = [] } = useQuery({
+  const allProperties = useMemo(() => {
+    const source = isFacility ? (facilitySnapshot?.properties ?? []) : internalProperties;
+    return source.map((p: any) => {
+      const units = p.units ?? [];
+      const totalCapacity = units.reduce((s: number, u: any) => s + (u.capacity ?? 0), 0);
+      const currentOccupancy = units.reduce((s: number, u: any) =>
+        s + ((u.housing_assignments ?? []).filter((a: any) => a.status === 'ingecheckt').length), 0);
+      const percentage = totalCapacity > 0 ? Math.round((currentOccupancy / totalCapacity) * 100) : 0;
+      const freeRooms = units.filter((u: any) =>
+        (u.capacity ?? 0) > 0
+        && (u.housing_assignments ?? []).filter((a: any) => a.status === 'ingecheckt').length === 0
+      ).length;
+      return { ...p, units, totalCapacity, currentOccupancy, percentage, freeRooms };
+    });
+  }, [facilitySnapshot, internalProperties, isFacility]);
+  const isLoading = isFacility ? facilityLoading : internalLoading;
+
+  const { data: internalCleaningTasks = [] } = useQuery({
     queryKey: ['housing-cleaning-overview'],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -90,7 +118,11 @@ const Housing = () => {
       if (error) throw error;
       return data as any[];
     },
+    enabled: !isFacility,
   });
+  const cleaningTasks = isFacility
+    ? (facilitySnapshot?.cleaning_tasks ?? [])
+    : internalCleaningTasks;
 
   const cities = useMemo(() => {
     const set = new Set<string>();
@@ -159,6 +191,9 @@ const Housing = () => {
       + (Number(p.cost_municipal_tax) || 0)
       + (Number(p.cost_other) || 0);
   }, 0);
+  const chartAssignments = isFacility
+    ? allProperties.flatMap((p: any) => (p.units ?? []).flatMap((u: any) => u.housing_assignments ?? []))
+    : undefined;
 
   return (
     <div className="space-y-6">
@@ -168,10 +203,12 @@ const Housing = () => {
           <p className="text-muted-foreground text-sm mt-1">Beheer panden, kamers en toewijzingen</p>
         </div>
         <div className="flex items-center gap-2">
-          <ExportPropertiesButton
-            properties={properties}
-            filenameSuffix={city !== ALL_CITIES ? city : undefined}
-          />
+          {!isFacility && (
+            <ExportPropertiesButton
+              properties={properties}
+              filenameSuffix={city !== ALL_CITIES ? city : undefined}
+            />
+          )}
           <Button onClick={() => setSheetOpen(true)} className="gap-2">
             <Plus className="h-4 w-4" /> Nieuw pand
           </Button>
@@ -180,7 +217,7 @@ const Housing = () => {
 
       {/* Top KPIs — focus op vrije plekken (klant-wens 2026-04-25) */}
       {properties.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className={`grid grid-cols-1 md:grid-cols-2 ${isFacility ? 'lg:grid-cols-4' : 'lg:grid-cols-5'} gap-4`}>
           <Card>
             <CardContent className="pt-6 flex items-center gap-4">
               <div className="h-10 w-10 rounded-md bg-stat-green/10 flex items-center justify-center">
@@ -225,22 +262,24 @@ const Housing = () => {
               </div>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="pt-6 flex items-center gap-4">
-              <div className="h-10 w-10 rounded-md bg-purple-100 flex items-center justify-center">
-                <Wallet className="h-5 w-5 text-purple-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{formatEUR(totalMonthlyCost)}</p>
-                <p className="text-xs text-muted-foreground">Totale maandlasten · ~{formatEUR(totalMonthlyCost / WEEKS_PER_MONTH)}/wk</p>
-              </div>
-            </CardContent>
-          </Card>
+          {!isFacility && (
+            <Card>
+              <CardContent className="pt-6 flex items-center gap-4">
+                <div className="h-10 w-10 rounded-md bg-purple-100 flex items-center justify-center">
+                  <Wallet className="h-5 w-5 text-purple-600" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{formatEUR(totalMonthlyCost)}</p>
+                  <p className="text-xs text-muted-foreground">Totale maandlasten · ~{formatEUR(totalMonthlyCost / WEEKS_PER_MONTH)}/wk</p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
 
       {properties.length > 0 && totalCapacity > 0 && (
-        <AvailabilityChart totalCapacity={totalCapacity} />
+        <AvailabilityChart totalCapacity={totalCapacity} assignments={chartAssignments} />
       )}
 
       {cleaningTasks.length > 0 && (
@@ -252,7 +291,7 @@ const Housing = () => {
             </div>
             <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
               {cleaningTasks.map((task: any) => {
-                const property = task.properties;
+                const property = task.properties ?? allProperties.find((p: any) => p.id === task.property_id);
                 const label = property?.name || [property?.address_street, property?.address_city].filter(Boolean).join(', ');
                 return (
                   <Link key={task.id} to={`/huisvesting/${task.property_id}`} className="rounded-md border p-3 hover:bg-muted/50 transition">
@@ -261,7 +300,7 @@ const Housing = () => {
                         <p className="text-sm font-medium">{task.title}</p>
                         <p className="text-xs text-muted-foreground">{label || 'Pand'}</p>
                         <p className="text-xs text-muted-foreground">
-                          {task.assignee?.full_name || task.assignee?.email || 'Niet toegewezen'}
+                          {task.assignee?.full_name || task.assignee_name || (!isFacility ? task.assignee?.email : null) || 'Niet toegewezen'}
                         </p>
                       </div>
                       <Badge variant="secondary" className={task.priority === 'high' ? 'bg-red-100 text-red-700 border-0' : 'bg-yellow-100 text-yellow-700 border-0'}>

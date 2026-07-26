@@ -36,6 +36,7 @@ const SuperAdminUsers = () => {
   const roleColors: Record<string, string> = {
     admin: 'bg-red-900/50 text-red-400',
     intercedent: 'bg-blue-900/50 text-blue-400',
+    facility: 'bg-emerald-900/50 text-emerald-400',
     planner: 'bg-purple-900/50 text-purple-400',
     viewer: 'bg-zinc-700 text-zinc-300',
   };
