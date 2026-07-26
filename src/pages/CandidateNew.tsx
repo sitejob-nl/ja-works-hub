@@ -35,6 +35,7 @@ import {
 } from '@/lib/candidate-options';
 import { mergeCandidatePhoneFields, normalizeCandidatePhone } from '@/lib/phone';
 import { allowFileDrop, getDroppedFiles } from '@/lib/file-input';
+import { buildImportedCvDocumentRow } from '@/lib/candidate-cv';
 
 // Leest de JSON-foutmelding uit een mislukte supabase.functions.invoke (bv. 402-saldo).
 // FunctionsHttpError verbergt de body achter context (een Response).
@@ -331,6 +332,20 @@ const CandidateNew = () => {
           if (!uploadError) {
             const { data: urlData } = supabase.storage.from('documents').getPublicUrl(filePath);
             update.cv_file_url = urlData.publicUrl;
+
+            // Registreer het geïmporteerde CV ook als document, zodat het direct op het
+            // Documenten-tabblad van de nieuwe kandidaat staat.
+            const { error: documentError } = await supabase
+              .from('documents')
+              .insert(buildImportedCvDocumentRow({
+                organizationId: orgId,
+                candidateId: data.id,
+                fileName: cvFile.name,
+                filePath,
+              }));
+            if (documentError) {
+              console.warn('CV-document registreren mislukt (non-kritisch):', documentError);
+            }
           } else {
             console.warn('CV-upload mislukt (non-kritisch):', uploadError);
           }
