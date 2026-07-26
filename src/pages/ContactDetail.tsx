@@ -14,6 +14,7 @@ import PageHeader from '@/components/layout/PageHeader';
 import { PhoneLink } from '@/components/ui/contact-links';
 import { MailButton } from '@/components/ui/mail-button';
 import { toast } from 'sonner';
+import CandidateCommunicationTab from '@/components/candidates/tabs/CandidateCommunicationTab';
 
 const ContactDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -141,6 +142,7 @@ const ContactDetail = () => {
       <Tabs defaultValue="profiel" className="w-full">
         <TabsList>
           <TabsTrigger value="profiel">Profiel</TabsTrigger>
+          <TabsTrigger value="communicatie">Communicatie</TabsTrigger>
           <TabsTrigger value="taken">Taken ({tasks.length})</TabsTrigger>
         </TabsList>
 
@@ -224,6 +226,22 @@ const ContactDetail = () => {
               )}
             </div>
           )}
+        </TabsContent>
+
+        <TabsContent value="communicatie" className="mt-4">
+          <CandidateCommunicationTab
+            entityType="contact"
+            entityId={id!}
+            companyId={contact.company_id}
+            companyContactId={id!}
+            recipients={[{
+              id: `contact:${id}`,
+              label: contact.full_name,
+              email: contact.email,
+              phone: contact.phone,
+              companyContactId: id!,
+            }]}
+          />
         </TabsContent>
 
         <TabsContent value="taken" className="mt-4">

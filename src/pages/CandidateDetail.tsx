@@ -504,7 +504,12 @@ const CandidateDetail = () => {
         <TabsContent value="profiel"><CandidateProfileTab candidate={candidate} /></TabsContent>
         <TabsContent value="documenten"><CandidateDocumentsTab candidateId={id!} /></TabsContent>
         <TabsContent value="communicatie">
-          <CandidateCommunicationTab candidateId={id!} candidateEmail={candidate.email} />
+          <CandidateCommunicationTab
+            candidateId={id!}
+            candidateEmail={candidate.email}
+            candidatePhone={candidate.phone}
+            candidateName={[candidate.first_name, candidate.last_name].filter(Boolean).join(' ')}
+          />
         </TabsContent>
         <TabsContent value="matches"><CandidateMatchesTab candidateId={id!} candidate={candidate} /></TabsContent>
         <TabsContent value="vacatures"><CandidateVacancyMatchesTab candidateId={id!} candidate={candidate} /></TabsContent>

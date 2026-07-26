@@ -12,7 +12,10 @@ interface SendMessageParams {
   audio?: { link: string };
   document?: { link: string; caption?: string; filename?: string };
   reaction?: { message_id: string; emoji: string };
+  interactive?: Record<string, unknown>;
   candidate_id?: string;
+  company_id?: string;
+  company_contact_id?: string;
   context?: { message_id: string };
 }
 

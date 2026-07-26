@@ -10,6 +10,7 @@ interface ChatHeaderProps {
   showBackButton: boolean;
   onBack: () => void;
   onToggleContact: () => void;
+  showContactButton?: boolean;
 }
 
 export function ChatHeader({
@@ -19,6 +20,7 @@ export function ChatHeader({
   showBackButton,
   onBack,
   onToggleContact,
+  showContactButton = true,
 }: ChatHeaderProps) {
   return (
     <div className="flex items-center gap-3 px-4 py-3 border-b bg-card">
@@ -51,9 +53,11 @@ export function ChatHeader({
         </div>
       </div>
 
-      <Button variant="ghost" size="icon" onClick={onToggleContact} className="h-8 w-8">
-        <PanelRight className="h-4 w-4" />
-      </Button>
+      {showContactButton && (
+        <Button variant="ghost" size="icon" onClick={onToggleContact} className="h-8 w-8">
+          <PanelRight className="h-4 w-4" />
+        </Button>
+      )}
     </div>
   );
 }

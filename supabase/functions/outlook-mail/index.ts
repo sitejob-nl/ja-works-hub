@@ -3,6 +3,7 @@ import {
   graphJson,
   graphUrl,
   json,
+  cleanEmail,
   loadProviderForAccount,
   mailboxBasePath,
   type OutlookCapability,
@@ -11,10 +12,17 @@ import {
 import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
 import { persistMatchedInboundMail } from "../_shared/inbound-mail-persist.ts";
 
-type MailAction = "folders" | "list" | "detail" | "attachment" | "delete" | "mark_read" | "move";
+type MailAction = "folders" | "list" | "detail" | "thread" | "attachment" | "delete" | "mark_read" | "move";
 
 const WELL_KNOWN = new Set(["inbox", "sentitems", "drafts", "deleteditems", "archive", "junkemail"]);
 const MAX_TOP = 50;
+
+function participantSearchExpression(input: unknown): string | null {
+  if (!Array.isArray(input)) return null;
+  const emails = [...new Set(input.map(cleanEmail).filter((value): value is string => Boolean(value)))];
+  if (emails.length === 0) return null;
+  return emails.map((email) => `"participants:${email}"`).join(" OR ");
+}
 
 function folderSegment(input: unknown) {
   const raw = String(input || "inbox").trim();
@@ -56,6 +64,7 @@ function recipients(values: any[] | undefined) {
 function mapMessage(message: any) {
   return {
     id: message.id,
+    conversation_id: message.conversationId ?? null,
     folder_id: message.parentFolderId ?? null,
     subject: message.subject || "(Geen onderwerp)",
     from: recipient(message.from ?? message.sender),
@@ -68,6 +77,14 @@ function mapMessage(message: any) {
     has_attachments: Boolean(message.hasAttachments),
     importance: message.importance ?? "normal",
     web_link: message.webLink ?? null,
+  };
+}
+
+function mapDetailedMessage(message: any) {
+  return {
+    ...mapMessage(message),
+    body_html: message.body?.content ?? "",
+    body_type: message.body?.contentType ?? "html",
   };
 }
 
@@ -112,15 +129,17 @@ Deno.serve(async (req) => {
       const top = Math.min(Math.max(Number(body.top || 25), 1), MAX_TOP);
       const skip = Math.max(Number(body.skip || 0), 0);
       const search = String(body.search || "").trim();
+      const participantSearch = participantSearchExpression(body.participant_emails);
+      const searchExpression = participantSearch || (search ? `"${search.replace(/"/g, '\\"')}"` : null);
       const next = safeNextLink(body.next_link, base);
-      const url = next ?? (search
+      const url = next ?? (searchExpression
         ? graphUrl(`${base}/messages`, {
-          "$search": `"${search.replace(/"/g, '\\"')}"`,
-          "$select": "id,parentFolderId,subject,from,sender,toRecipients,ccRecipients,receivedDateTime,sentDateTime,isRead,bodyPreview,hasAttachments,importance,webLink",
+          "$search": searchExpression,
+          "$select": "id,conversationId,parentFolderId,subject,from,sender,toRecipients,ccRecipients,receivedDateTime,sentDateTime,isRead,bodyPreview,hasAttachments,importance,webLink",
           "$top": top,
         })
         : graphUrl(`${base}/mailFolders/${folderSegment(body.folder_id)}/messages`, {
-          "$select": "id,parentFolderId,subject,from,sender,toRecipients,ccRecipients,receivedDateTime,sentDateTime,isRead,bodyPreview,hasAttachments,importance,webLink",
+          "$select": "id,conversationId,parentFolderId,subject,from,sender,toRecipients,ccRecipients,receivedDateTime,sentDateTime,isRead,bodyPreview,hasAttachments,importance,webLink",
           "$top": top,
           "$skip": skip,
           "$orderby": String(body.folder_id || "").toLowerCase() === "sentitems" ? "sentDateTime desc" : "receivedDateTime desc",
@@ -147,7 +166,7 @@ Deno.serve(async (req) => {
       if (!body.message_id) return json({ error: "message_id_required" }, 400, corsHeaders);
       const messagePath = `${base}/messages/${encodeURIComponent(body.message_id)}`;
       const message = await graphJson<any>(admin, provider, graphUrl(messagePath, {
-        "$select": "id,parentFolderId,subject,from,sender,toRecipients,ccRecipients,receivedDateTime,sentDateTime,isRead,body,bodyPreview,hasAttachments,importance,webLink",
+        "$select": "id,conversationId,parentFolderId,subject,from,sender,toRecipients,ccRecipients,receivedDateTime,sentDateTime,isRead,body,bodyPreview,hasAttachments,importance,webLink",
       }), { headers: { Prefer: 'outlook.body-content-type="html"' } });
       const attachments = message.hasAttachments
         ? await graphJson<{ value?: any[] }>(admin, provider, graphUrl(`${messagePath}/attachments`, {
@@ -156,9 +175,7 @@ Deno.serve(async (req) => {
         : { value: [] };
       return json({
         message: {
-          ...mapMessage(message),
-          body_html: message.body?.content ?? "",
-          body_type: message.body?.contentType ?? "html",
+          ...mapDetailedMessage(message),
           attachments: (attachments.value ?? []).map((a: any) => ({
             id: a.id,
             name: a.name || "bijlage",
@@ -168,6 +185,48 @@ Deno.serve(async (req) => {
             is_inline: Boolean(a.isInline),
           })),
         },
+      }, 200, corsHeaders);
+    }
+
+    if (action === "thread") {
+      if (!body.message_id) return json({ error: "message_id_required" }, 400, corsHeaders);
+      const messagePath = `${base}/messages/${encodeURIComponent(body.message_id)}`;
+      const seed = await graphJson<any>(admin, provider, graphUrl(messagePath, {
+        "$select": "id,conversationId,parentFolderId,subject,from,sender,toRecipients,ccRecipients,receivedDateTime,sentDateTime,isRead,body,bodyPreview,hasAttachments,importance,webLink",
+      }), { headers: { Prefer: 'outlook.body-content-type="html"' } });
+      const conversationId = String(seed.conversationId || "").trim();
+
+      if (!conversationId) {
+        return json({ conversation_id: null, messages: [mapDetailedMessage(seed)], truncated: false }, 200, corsHeaders);
+      }
+
+      const escapedConversationId = conversationId.replace(/'/g, "''");
+      let next: URL | null = graphUrl(`${base}/messages`, {
+        "$filter": `conversationId eq '${escapedConversationId}'`,
+        "$select": "id,conversationId,parentFolderId,subject,from,sender,toRecipients,ccRecipients,receivedDateTime,sentDateTime,isRead,body,bodyPreview,hasAttachments,importance,webLink",
+        "$top": 50,
+      });
+      const threadMessages: any[] = [];
+
+      while (next && threadMessages.length < 200) {
+        const data: { value?: any[]; "@odata.nextLink"?: string } = await graphJson(admin, provider, next, {
+          headers: { Prefer: 'outlook.body-content-type="html"' },
+        });
+        threadMessages.push(...(data.value ?? []));
+        next = data["@odata.nextLink"] ? safeNextLink(data["@odata.nextLink"], base) : null;
+      }
+
+      if (threadMessages.length === 0) threadMessages.push(seed);
+      threadMessages.sort((a, b) => {
+        const aTime = Date.parse(a.sentDateTime ?? a.receivedDateTime ?? "") || 0;
+        const bTime = Date.parse(b.sentDateTime ?? b.receivedDateTime ?? "") || 0;
+        return aTime - bTime;
+      });
+
+      return json({
+        conversation_id: conversationId,
+        messages: threadMessages.slice(0, 200).map(mapDetailedMessage),
+        truncated: Boolean(next),
       }, 200, corsHeaders);
     }
 

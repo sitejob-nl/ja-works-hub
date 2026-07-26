@@ -846,16 +846,20 @@ export const RECRUITER_UI_DICTIONARY_EN: Record<string, string> = {
 
   // Communicatie, Outlook en WhatsApp
   'Alle berichten en communicatiehistorie': 'All messages and communication history',
-  'Communicatie en e-mailhistorie': 'Communication and email history',
-  'Outlook-historie met': 'Outlook history with',
-  'uit alle mailboxen waarvoor je leesrecht hebt.': 'from every mailbox you have permission to read.',
-  'Voeg een geldig e-mailadres toe om de Outlook-historie van deze kandidaat te zien.':
-    'Add a valid email address to view this candidate’s Outlook history.',
+  'E-mailhistorie': 'Email history',
+  'Dossiercommunicatie': 'File communication',
+  'Alle mail met': 'All email with',
+  'adressen': 'addresses',
+  'uit de mailboxen waarvoor je leesrecht hebt.': 'from the mailboxes you have permission to read.',
+  'Voeg een geldig e-mailadres toe om de Outlook-historie te zien.':
+    'Add a valid email address to view the Outlook history.',
+  'Notities, telefoongesprekken en overige dossiercontacten.':
+    'Notes, phone calls and other communication recorded in the file.',
   'E-mailhistorie vernieuwen': 'Refresh email history',
   'toegankelijke mailbox': 'accessible mailbox',
   'toegankelijke mailboxen': 'accessible mailboxes',
   'Geen leesbare Outlook-mailbox gekoppeld. Alleen vastgelegde dossiercommunicatie wordt getoond.':
-    'No readable Outlook mailbox is connected. Only communication recorded in the candidate file is shown.',
+    'No readable Outlook mailbox is connected. Only communication recorded in the file is shown.',
   'Niet alle toegankelijke mailboxen konden worden geladen. Vernieuw de historie of controleer de Outlook-koppeling.':
     'Not all accessible mailboxes could be loaded. Refresh the history or check the Outlook connection.',
   'Bericht laden...': 'Loading message...',
@@ -865,7 +869,29 @@ export const RECRUITER_UI_DICTIONARY_EN: Record<string, string> = {
   'Bericht inklappen': 'Collapse message',
   'Bericht uitklappen': 'Expand message',
   'Oudere e-mails laden': 'Load older emails',
-  'Nog geen communicatie of e-mailhistorie gevonden': 'No communication or email history found yet',
+  'Nog geen e-mailhistorie gevonden': 'No email history found yet',
+  'Nog geen dossiercommunicatie gevonden': 'No file communication found yet',
+  'Nieuwe e-mail': 'New email',
+  'Kies de ontvanger en stel je bericht op. De Outlook-handtekening wordt automatisch toegevoegd.':
+    'Select the recipient and compose your message. The Outlook signature is added automatically.',
+  'Kies ontvanger': 'Select recipient',
+  'Dossier': 'File',
+  'Voeg een telefoonnummer toe om vanuit dit dossier te WhatsAppen.':
+    'Add a phone number to use WhatsApp from this file.',
+  'Gesprek met': 'Conversation with',
+  'Kies een ontvanger': 'Select a recipient',
+  'Communicatie laden...': 'Loading communication...',
+  'Volledige e-mailthread uit': 'Full email thread from',
+  ', chronologisch van oud naar nieuw.': ', in chronological order from oldest to newest.',
+  'bericht': 'message',
+  'berichten': 'messages',
+  'Volledige thread laden...': 'Loading full thread...',
+  'De volledige thread kon niet worden geladen. Het geselecteerde bericht wordt als fallback getoond.':
+    'The full thread could not be loaded. The selected message is shown as a fallback.',
+  'Deze thread bevat meer dan 200 berichten; de eerste 200 worden getoond.':
+    'This thread contains more than 200 messages; the first 200 are shown.',
+  'Onbekende afzender': 'Unknown sender',
+  'Dit bericht heeft geen leesbare inhoud.': 'This message has no readable content.',
   'Nieuwe notitie': 'New note',
   'Telefoongesprek': 'Phone call',
   'Bijlage': 'Attachment',

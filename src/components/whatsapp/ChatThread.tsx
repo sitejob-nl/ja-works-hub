@@ -24,6 +24,7 @@ interface ChatThreadProps {
   onSendMedia: (file: File, type: string) => void;
   onOpenTemplates: () => void;
   onSendInteractive: (payload: InteractivePayload) => void;
+  showContactButton?: boolean;
 }
 
 export function ChatThread({
@@ -40,6 +41,7 @@ export function ChatThread({
   onSendMedia,
   onOpenTemplates,
   onSendInteractive,
+  showContactButton = true,
 }: ChatThreadProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -85,6 +87,7 @@ export function ChatThread({
         showBackButton={showBackButton}
         onBack={onBack}
         onToggleContact={onToggleContact}
+        showContactButton={showContactButton}
       />
 
       <ScrollArea className="flex-1 px-4 py-2">

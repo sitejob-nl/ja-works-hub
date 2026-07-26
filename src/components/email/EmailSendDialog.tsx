@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { useOutlookInvoke } from '@/hooks/useOutlookAccounts';
+import { useOutlookAccounts, useOutlookInvoke } from '@/hooks/useOutlookAccounts';
 import { useAuth } from '@/contexts/AuthContext';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -83,15 +83,25 @@ const EmailSendDialog = ({
   open, onOpenChange, candidateId, candidateEmail, candidateData, companyId, companyContactId, templateCategory, extraVariables, initialSubject, initialBodyHtml, onSent,
 }: EmailSendDialogProps) => {
   const callOutlook = useOutlookInvoke();
+  const outlook = useOutlookAccounts('mail_send');
   const { profile } = useAuth();
   const orgId = profile?.organization_id;
   const qc = useQueryClient();
 
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+  const [fromAccount, setFromAccount] = useState<string>('');
   const [toEmail, setToEmail] = useState(candidateEmail || '');
   const [subject, setSubject] = useState('');
   const [bodyText, setBodyText] = useState('');
   const previewHtml = useMemo(() => plaintextEmailToHtml(bodyText || 'Nog geen berichttekst.'), [bodyText]);
+
+  useEffect(() => {
+    if (!fromAccount && outlook.defaultAccountId) setFromAccount(outlook.defaultAccountId);
+  }, [fromAccount, outlook.defaultAccountId]);
+
+  useEffect(() => {
+    if (open) setToEmail(candidateEmail || '');
+  }, [candidateEmail, open]);
 
   // Fetch candidate if ID provided
   const { data: candidate } = useQuery({
@@ -166,6 +176,7 @@ const EmailSendDialog = ({
       if (!subject.trim()) throw new Error('Vul een onderwerp in');
 
       return callOutlook('outlook-send-mail', {
+        account_id: fromAccount || outlook.defaultAccountId,
         to: [toEmail.trim()],
         subject,
         html: plaintextEmailToHtml(bodyText),
@@ -190,9 +201,28 @@ const EmailSendDialog = ({
       <DialogContent className="sm:max-w-4xl max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>E-mail versturen</DialogTitle>
+          <DialogDescription>
+            Kies de ontvanger en stel je bericht op. De Outlook-handtekening wordt automatisch toegevoegd.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3 flex-1 overflow-y-auto">
+          {outlook.usableAccounts.length > 1 && (
+            <div className="space-y-1">
+              <Label>Van</Label>
+              <Select value={fromAccount || outlook.defaultAccountId} onValueChange={setFromAccount}>
+                <SelectTrigger><SelectValue placeholder="Kies een afzender-mailbox" /></SelectTrigger>
+                <SelectContent>
+                  {outlook.usableAccounts.map((account) => (
+                    <SelectItem key={account.account_id} value={account.account_id}>
+                      {account.name || account.email || account.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           {/* Template picker */}
           <div className="space-y-1">
             <Label>Template</Label>
