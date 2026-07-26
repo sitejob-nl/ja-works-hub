@@ -17,6 +17,18 @@ describe('qk.candidates', () => {
   });
 });
 
+describe('qk.communications', () => {
+  it('scopeert kandidaat- en Outlook-historie op organisatie en dossier', () => {
+    expect(qk.communications.forCandidate('org1', 'c1')).toEqual(['candidate-communications', 'org1', 'c1']);
+    expect(qk.communications.candidateOutlookPage('org1', 'c1', 'a1', 'mail@example.com', 2)).toEqual([
+      'candidate-outlook-history', 'org1', 'c1', 'a1', 'mail@example.com', 2,
+    ]);
+    expect(qk.communications.candidateOutlookDetail('org1', 'a1', 'm1')).toEqual([
+      'candidate-outlook-message', 'org1', 'a1', 'm1',
+    ]);
+  });
+});
+
 describe('qk.placements', () => {
   it('houdt de bestaande tokens verbatim', () => {
     expect(qk.placements.forEmployee('e1')).toEqual(['placements-for-employee', 'e1']);

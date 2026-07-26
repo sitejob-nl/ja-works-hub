@@ -28,6 +28,19 @@ export const qk = {
     /** Active-employee picker — intentionally NOT org-keyed (RLS-scoped); preserves the original key. */
     activeForTimesheet: () => ['candidates-active-for-timesheet'] as const,
   },
+  communications: {
+    forCandidate: (orgId: string, candidateId: string) =>
+      ['candidate-communications', orgId, candidateId] as const,
+    candidateOutlookPage: (
+      orgId: string,
+      candidateId: string,
+      accountId: string,
+      candidateEmail: string,
+      page: number,
+    ) => ['candidate-outlook-history', orgId, candidateId, accountId, candidateEmail, page] as const,
+    candidateOutlookDetail: (orgId: string, accountId: string, messageId: string) =>
+      ['candidate-outlook-message', orgId, accountId, messageId] as const,
+  },
   placements: {
     forEmployee: (employeeId: string) => ['placements-for-employee', employeeId] as const,
     workOrderOps: (placementId: string) => ['placement-workorder-ops', placementId] as const,

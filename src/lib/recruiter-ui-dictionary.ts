@@ -846,6 +846,36 @@ export const RECRUITER_UI_DICTIONARY_EN: Record<string, string> = {
 
   // Communicatie, Outlook en WhatsApp
   'Alle berichten en communicatiehistorie': 'All messages and communication history',
+  'Communicatie en e-mailhistorie': 'Communication and email history',
+  'Outlook-historie met': 'Outlook history with',
+  'uit alle mailboxen waarvoor je leesrecht hebt.': 'from every mailbox you have permission to read.',
+  'Voeg een geldig e-mailadres toe om de Outlook-historie van deze kandidaat te zien.':
+    'Add a valid email address to view this candidate’s Outlook history.',
+  'E-mailhistorie vernieuwen': 'Refresh email history',
+  'toegankelijke mailbox': 'accessible mailbox',
+  'toegankelijke mailboxen': 'accessible mailboxes',
+  'Geen leesbare Outlook-mailbox gekoppeld. Alleen vastgelegde dossiercommunicatie wordt getoond.':
+    'No readable Outlook mailbox is connected. Only communication recorded in the candidate file is shown.',
+  'Niet alle toegankelijke mailboxen konden worden geladen. Vernieuw de historie of controleer de Outlook-koppeling.':
+    'Not all accessible mailboxes could be loaded. Refresh the history or check the Outlook connection.',
+  'Bericht laden...': 'Loading message...',
+  'Het volledige bericht kon niet worden geladen; de Outlook-preview wordt getoond.':
+    'The full message could not be loaded; the Outlook preview is shown.',
+  'Inkomend': 'Incoming',
+  'Bericht inklappen': 'Collapse message',
+  'Bericht uitklappen': 'Expand message',
+  'Oudere e-mails laden': 'Load older emails',
+  'Nog geen communicatie of e-mailhistorie gevonden': 'No communication or email history found yet',
+  'Nieuwe notitie': 'New note',
+  'Telefoongesprek': 'Phone call',
+  'Bijlage': 'Attachment',
+  'Van:': 'From:',
+  'Aan:': 'To:',
+  'Door:': 'By:',
+  'Gespreksduur:': 'Call duration:',
+  'AI-samenvatting': 'AI summary',
+  'Transcriptie tonen': 'Show transcript',
+  'Transcriptie verbergen': 'Hide transcript',
   'Nieuw bericht': 'New message',
   'Kanaal': 'Channel',
   'Richting': 'Direction',
