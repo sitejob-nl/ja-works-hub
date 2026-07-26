@@ -1,27 +1,42 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { Link, useNavigate } from 'react-router-dom';
-import { UserRound, Search, Plus, Pencil } from 'lucide-react';
+import { UserRound, Search, Plus, Pencil, Trash2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { PhoneLink } from '@/components/ui/contact-links';
 import { MailButton } from '@/components/ui/mail-button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import ContactDialog from '@/components/contacts/ContactDialog';
+import { useAuth } from '@/contexts/AuthContext';
+import { unwrap, unwrapList } from '@/lib/db';
+import { logAudit } from '@/lib/audit';
+import { toFriendlyError } from '@/lib/errorMessages';
+import { toast } from 'sonner';
 
 const PAGE_SIZE = 20;
 
 const Contacts = () => {
   const orgId = useOrganizationId();
   const navigate = useNavigate();
+  const qc = useQueryClient();
+  const { role } = useAuth();
+  const canDelete = role === 'admin';
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingContact, setEditingContact] = useState<any>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const openNew = () => { setEditingContact(null); setDialogOpen(true); };
   const openEdit = (contact: any) => { setEditingContact(contact); setDialogOpen(true); };
@@ -52,6 +67,75 @@ const Contacts = () => {
   const contacts = data?.contacts ?? [];
   const total = data?.total ?? 0;
   const totalPages = Math.ceil(total / PAGE_SIZE);
+  const allOnPageSelected = contacts.length > 0 && contacts.every((contact: any) => selected.has(contact.id));
+
+  const toggleOne = (id: string) => {
+    setSelected((previous) => {
+      const next = new Set(previous);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    setSelected((previous) => {
+      const next = new Set(previous);
+      if (allOnPageSelected) contacts.forEach((contact: any) => next.delete(contact.id));
+      else contacts.forEach((contact: any) => next.add(contact.id));
+      return next;
+    });
+  };
+
+  const bulkDelete = useMutation({
+    mutationFn: async (ids: string[]) => {
+      // Communicatiegeschiedenis hoort bij de opdrachtgever en blokkeert daarom het
+      // verwijderen van een contactpersoon. Deze contacten worden veilig overgeslagen.
+      const communicationRows = await unwrapList(
+        supabase
+          .from('communications')
+          .select('company_contact_id')
+          .in('company_contact_id', ids),
+      );
+      const blocked = new Set(
+        communicationRows
+          .map((row) => row.company_contact_id)
+          .filter((id): id is string => Boolean(id)),
+      );
+      const deletable = ids.filter((id) => !blocked.has(id));
+
+      if (deletable.length > 0) {
+        await unwrap(supabase.from('company_contacts').delete().in('id', deletable));
+        const names = new Map(contacts.map((contact: any) => [contact.id, contact.full_name]));
+        await Promise.all(deletable.map((id) => logAudit({
+          action: 'delete',
+          tableName: 'company_contacts',
+          recordId: id,
+          oldValues: names.has(id) ? { full_name: names.get(id) } : undefined,
+          reason: 'bulk-delete',
+        })));
+      }
+
+      return { deleted: deletable, blockedCount: blocked.size };
+    },
+    onSuccess: ({ deleted, blockedCount }) => {
+      setSelected((previous) => {
+        const next = new Set(previous);
+        deleted.forEach((id) => next.delete(id));
+        return next;
+      });
+      setDeleteOpen(false);
+      qc.invalidateQueries({ queryKey: ['all-contacts'] });
+      qc.invalidateQueries({ queryKey: ['contacts'] });
+      qc.invalidateQueries({ queryKey: ['company-contacts'] });
+      if (blockedCount > 0) {
+        toast.warning(`${deleted.length} verwijderd, ${blockedCount} overgeslagen (gekoppelde communicatie)`);
+      } else {
+        toast.success(deleted.length === 1 ? '1 contactpersoon verwijderd' : `${deleted.length} contactpersonen verwijderd`);
+      }
+    },
+    onError: (error) => toast.error(toFriendlyError(error, 'Verwijderen mislukt')),
+  });
 
   return (
     <div className="space-y-6">
@@ -78,6 +162,44 @@ const Contacts = () => {
         <span className="text-sm text-muted-foreground">{total} contactpersonen</span>
       </div>
 
+      {canDelete && selected.size > 0 && (
+        <div className="bg-primary/5 border border-primary/20 rounded-lg px-4 py-2.5 flex items-center justify-between gap-3">
+          <span className="text-sm font-medium">{selected.size} geselecteerd</span>
+          <div className="flex gap-2">
+            <Button size="sm" variant="destructive" onClick={() => setDeleteOpen(true)} className="gap-1.5">
+              <Trash2 className="h-4 w-4" /> Verwijderen
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
+              Deselecteren
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {selected.size === 1 ? '1 contactpersoon verwijderen?' : `${selected.size} contactpersonen verwijderen?`}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Portaaluitnodigingen van deze contactpersonen worden mee verwijderd. Contactpersonen met
+              gekoppelde communicatiegeschiedenis worden veilig overgeslagen. Dit kan niet ongedaan worden gemaakt.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={bulkDelete.isPending}>Annuleer</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => { event.preventDefault(); bulkDelete.mutate(Array.from(selected)); }}
+              disabled={bulkDelete.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {bulkDelete.isPending ? 'Bezig…' : 'Verwijderen'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {!isLoading && contacts.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <UserRound className="h-12 w-12 text-muted-foreground/40 mb-4" />
@@ -93,6 +215,15 @@ const Contacts = () => {
             <Table>
               <TableHeader>
                 <TableRow>
+                  {canDelete && (
+                    <TableHead className="w-10">
+                      <Checkbox
+                        checked={allOnPageSelected}
+                        onCheckedChange={toggleAll}
+                        aria-label={allOnPageSelected ? 'Deselecteer alle contactpersonen op deze pagina' : 'Selecteer alle contactpersonen op deze pagina'}
+                      />
+                    </TableHead>
+                  )}
                   <TableHead>Naam</TableHead>
                   <TableHead>Functie</TableHead>
                   <TableHead>Bedrijf</TableHead>
@@ -109,6 +240,15 @@ const Contacts = () => {
                     className={`cursor-pointer ${i % 2 === 1 ? 'bg-background' : ''}`}
                     onClick={() => navigate(`/contacten/${c.id}`)}
                   >
+                    {canDelete && (
+                      <TableCell onClick={(event) => event.stopPropagation()}>
+                        <Checkbox
+                          checked={selected.has(c.id)}
+                          onCheckedChange={() => toggleOne(c.id)}
+                          aria-label={`Selecteer contactpersoon ${c.full_name}`}
+                        />
+                      </TableCell>
+                    )}
                     <TableCell>
                       <Link
                         to={`/contacten/${c.id}`}
