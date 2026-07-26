@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import TagInput from '@/components/ui/tag-input';
 import SkillMultiSelect from '@/components/shared/SkillMultiSelect';
 import { ChevronRight, Plus } from 'lucide-react';
@@ -51,7 +52,10 @@ const VacancyNew = () => {
     requires_drivers_license: false,
     notes: '',
     add_function_to_company: false,
+    // Website-/kandidaatteksten worden na het opslaan door AI geschreven (tab "SEO & website").
+    generate_texts: false,
   });
+  const [tab, setTab] = useState('algemeen');
 
   const { data: companies } = useQuery({
     queryKey: ['companies-active'],
@@ -196,7 +200,8 @@ const VacancyNew = () => {
           .then(() => qc.invalidateQueries({ queryKey: ['vacancy', data.id] }))
           .catch(() => { /* niet-blokkerend */ });
       }
-      navigate(`/vacatures/${data.id}`);
+      // Gekozen in de tab "SEO & website": meteen door naar de tekstgenerator.
+      navigate(form.generate_texts ? `/vacatures/${data.id}?tab=vacaturetekst&genereer=1` : `/vacatures/${data.id}`);
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -219,7 +224,41 @@ const VacancyNew = () => {
 
       <h1 className="text-2xl font-semibold">Nieuwe vacature</h1>
 
-      <div className="bg-card rounded-lg border p-6 max-w-3xl">
+      <Tabs value={tab} onValueChange={setTab} className="max-w-3xl">
+        <TabsList>
+          <TabsTrigger value="algemeen">Algemeen</TabsTrigger>
+          <TabsTrigger value="seo">{'SEO & website'}</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="seo" className="mt-4">
+          <div className="bg-card rounded-lg border p-6 space-y-4">
+            <div>
+              <h2 className="text-base font-medium">Teksten voor kandidaten en de website</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                Die schrijf je hier niet met de hand. Zodra de vacature is opgeslagen kan AI in één keer
+                de omschrijving voor kandidaten én de volledige SEO-set voor de website schrijven:
+                titel, meta description, slug, websitetekst, FAQ, social en vacaturebankvariant.
+              </p>
+            </div>
+            <div className="flex items-start gap-2 rounded-md border bg-muted/40 p-3">
+              <Checkbox
+                id="generate-texts"
+                checked={form.generate_texts}
+                onCheckedChange={(v) => set('generate_texts', !!v)}
+                className="mt-0.5"
+              />
+              <Label htmlFor="generate-texts" className="cursor-pointer text-sm font-normal">
+                Direct na opslaan de teksten laten schrijven
+                <span className="block text-xs text-muted-foreground mt-0.5">
+                  Je komt dan meteen in het scherm waar je de antwoorden controleert voordat AI begint.
+                </span>
+              </Label>
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="algemeen" className="mt-4">
+        <div className="bg-card rounded-lg border p-6">
         <div className="space-y-5">
           <div className="space-y-1.5">
             <Label>Opdrachtgever *</Label>
@@ -345,7 +384,9 @@ const VacancyNew = () => {
             </Button>
           </div>
         </div>
-      </div>
+        </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };

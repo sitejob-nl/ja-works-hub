@@ -8858,6 +8858,7 @@ export type Database = {
       }
       vacancies: {
         Row: {
+          candidate_description: string | null
           company_id: string
           created_at: string
           created_by: string | null
@@ -8887,6 +8888,7 @@ export type Database = {
           urgency: number
         }
         Insert: {
+          candidate_description?: string | null
           company_id: string
           created_at?: string
           created_by?: string | null
@@ -8916,6 +8918,7 @@ export type Database = {
           urgency?: number
         }
         Update: {
+          candidate_description?: string | null
           company_id?: string
           created_at?: string
           created_by?: string | null

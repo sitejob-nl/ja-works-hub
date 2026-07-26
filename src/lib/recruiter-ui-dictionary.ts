@@ -593,7 +593,9 @@ export const RECRUITER_UI_DICTIONARY_EN: Record<string, string> = {
   'Vacature bewerken': 'Edit vacancy',
   'Vacature vervulstatus': 'Vacancy fulfilment status',
   'Vervulstatus vacature': 'Vacancy fulfilment status',
-  'Vacaturetekst': 'Vacancy text',
+  // 'SEO & website' staat hier bewust niet in: identiek in het Engels.
+  'Omschrijving voor kandidaten': 'Description for candidates',
+  'Interne omschrijving': 'Internal description',
   'Eisen': 'Requirements',
   'Vereisten': 'Requirements',
   'Vaardigheden uit de vacaturetekst halen met AI': 'Extract skills from the vacancy text with AI',

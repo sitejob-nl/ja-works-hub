@@ -146,8 +146,12 @@ const PortalJobMarket = () => {
                           </span>
                         )}
                       </div>
-                      {v.description && (
-                        <p className="text-sm text-muted-foreground mt-2 line-clamp-2" data-no-translate="true">{v.description}</p>
+                      {/* De kandidaatomschrijving is de tekst die vóór de kandidaat geschreven is;
+                          `description` is een interne recruiternotitie en is hier slechts fallback. */}
+                      {(v.candidate_description || v.description) && (
+                        <p className="text-sm text-muted-foreground mt-2 line-clamp-3" data-no-translate="true">
+                          {v.candidate_description || v.description}
+                        </p>
                       )}
                       {v.requirements && (
                         <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
