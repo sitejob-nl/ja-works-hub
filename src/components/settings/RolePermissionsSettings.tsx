@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { useRolePermission, useRolePermissionMatrix } from '@/hooks/usePermissions';
 import { unwrap } from '@/lib/db';
@@ -11,9 +12,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import {
-  CONFIGURABLE_ROLES,
   DEFAULT_ROLE_PERMISSIONS,
   ROLE_LABELS,
+  ROLE_PERMISSION_DISPLAY_ROLES,
   permissionGroups,
   serializeRolePermissions,
   type PermissionKey,
@@ -22,6 +23,7 @@ import {
 } from '@/lib/permissions';
 
 const RolePermissionsSettings = () => {
+  const { profile } = useAuth();
   const orgId = useOrganizationId();
   const queryClient = useQueryClient();
   const { data, isLoading } = useRolePermissionMatrix();
@@ -46,6 +48,10 @@ const RolePermissionsSettings = () => {
 
   const setPermission = (targetRole: UserRole, permission: PermissionKey, enabled: boolean) => {
     if (!canManage) return;
+    if (targetRole === 'facility') {
+      toast.error('Facility heeft vaste operationele rechten');
+      return;
+    }
     if (targetRole === 'admin' && !enabled) {
       toast.error('Admin behoudt alle rechten');
       return;
@@ -68,7 +74,9 @@ const RolePermissionsSettings = () => {
             <CardTitle className="flex items-center gap-2 text-base">
               <ShieldCheck className="h-4 w-4" /> Rollen & rechten
             </CardTitle>
-            <CardDescription>Granulaire rechten per rol. Admin behoudt altijd alle rechten.</CardDescription>
+            <CardDescription>
+              Granulaire rechten per rol. Admin behoudt alle rechten; Facility heeft vaste operationele toegang.
+            </CardDescription>
           </div>
           <Button type="button" size="sm" variant="outline" onClick={resetDefaults} disabled={!canManage || saveMutation.isPending}>
             Standaard herstellen
@@ -76,6 +84,20 @@ const RolePermissionsSettings = () => {
         </div>
       </CardHeader>
       <CardContent className="space-y-5">
+        <div className="flex flex-col gap-3 rounded-md border bg-muted/40 p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="font-medium">Facility is een vaste rol</div>
+            <div className="text-muted-foreground">
+              Facility werkt uitsluitend met huisvesting, transport en operationele taken. Wijs de rol toe bij Gebruikers.
+            </div>
+          </div>
+          {profile?.role === 'admin' && (
+            <Button asChild type="button" size="sm" variant="outline" className="shrink-0">
+              <a href="/instellingen?tab=gebruikers">Naar Gebruikers</a>
+            </Button>
+          )}
+        </div>
+
         {!canManage && (
           <div className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
             Alleen admins kunnen rechten aanpassen. Je ziet hier de actieve matrix.
@@ -96,8 +118,13 @@ const RolePermissionsSettings = () => {
                   <thead className="bg-muted/50">
                     <tr>
                       <th className="w-[260px] px-3 py-2 text-left font-medium">Recht</th>
-                      {CONFIGURABLE_ROLES.map((item) => (
-                        <th key={item} className="px-3 py-2 text-center font-medium">{ROLE_LABELS[item]}</th>
+                      {ROLE_PERMISSION_DISPLAY_ROLES.map((item) => (
+                        <th key={item} className="px-3 py-2 text-center font-medium">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <span>{ROLE_LABELS[item]}</span>
+                            {item === 'facility' && <Badge variant="secondary" className="text-[10px]">Vast</Badge>}
+                          </div>
+                        </th>
                       ))}
                     </tr>
                   </thead>
@@ -108,11 +135,11 @@ const RolePermissionsSettings = () => {
                           <div className="font-medium">{permission.label}</div>
                           <div className="text-xs text-muted-foreground">{permission.description}</div>
                         </td>
-                        {CONFIGURABLE_ROLES.map((targetRole) => (
+                        {ROLE_PERMISSION_DISPLAY_ROLES.map((targetRole) => (
                           <td key={`${targetRole}-${permission.key}`} className="px-3 py-2 text-center">
                             <Switch
                               checked={matrix[targetRole][permission.key]}
-                              disabled={!canManage || saveMutation.isPending || targetRole === 'admin'}
+                              disabled={!canManage || saveMutation.isPending || targetRole === 'admin' || targetRole === 'facility'}
                               onCheckedChange={(enabled) => setPermission(targetRole, permission.key, enabled)}
                               aria-label={`${permission.label} voor ${ROLE_LABELS[targetRole]}`}
                             />
