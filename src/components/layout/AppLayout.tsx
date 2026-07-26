@@ -8,6 +8,16 @@ import RecentItemsBar from './RecentItemsBar';
 import { TranslationProvider } from '@/contexts/TranslationContext';
 import { isFacilityRole } from '@/lib/facility-access';
 
+const RECRUITER_TRANSLATION_ROOTS = [
+  '[data-translate-region]',
+  '[role="dialog"]',
+  '[role="alertdialog"]',
+  '[role="menu"]',
+  '[role="listbox"]',
+  '[role="tooltip"]',
+  '[data-sonner-toast]',
+];
+
 const AppLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { user, profile, role } = useAuth();
@@ -20,11 +30,11 @@ const AppLayout = () => {
     setObservabilityUser(user?.id, profile?.organization_id);
   }, [user?.id, profile?.organization_id]);
 
-  // Alleen de schil (navigatie + balk bovenin) wordt vertaald. De paginalichamen staan
-  // vol kandidaatnamen, notities en vrije tekst; die zetten we pas per scherm aan als ze
-  // zijn nagelopen op klantdata.
+  // De vertaler gebruikt uitsluitend vaste woordenboeksleutels. Ingevoerde tenantdata
+  // (namen, notities, vacatureteksten enz.) staat niet in dat woordenboek en blijft dus
+  // in de oorspronkelijke taal staan.
   return (
-    <TranslationProvider roots={['[data-translate-region]']}>
+    <TranslationProvider roots={RECRUITER_TRANSLATION_ROOTS}>
     <div className="flex h-screen w-full overflow-hidden">
       {/* Mobile overlay */}
       {sidebarOpen && (
@@ -46,7 +56,10 @@ const AppLayout = () => {
       <div className="flex-1 flex flex-col min-w-0 h-screen">
         <TopBar onMenuClick={() => setSidebarOpen(v => !v)} />
         {!facility && <RecentItemsBar />}
-        <main className="flex-1 p-3 sm:p-4 md:p-6 overflow-y-auto overflow-x-hidden">
+        <main
+          className="flex-1 p-3 sm:p-4 md:p-6 overflow-y-auto overflow-x-hidden"
+          data-translate-region
+        >
           <div className="max-w-[1400px] mx-auto">
             <Outlet />
           </div>

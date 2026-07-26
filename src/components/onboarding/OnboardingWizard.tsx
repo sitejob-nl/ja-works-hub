@@ -300,7 +300,11 @@ const OnboardingWizard = ({ open, onComplete, userName }: OnboardingWizardProps)
                 </div>
                 <div>
                   <h2 className="text-lg font-semibold leading-tight">
-                    {isFirst ? `Welkom${userName ? `, ${userName}` : ''}! 🎉` : current.title}
+                    {isFirst ? (
+                      <>
+                        Welkom{userName ? <>, <span data-no-translate="true">{userName}</span></> : null}! 🎉
+                      </>
+                    ) : current.title}
                   </h2>
                   <p className="text-sm text-muted-foreground">{current.subtitle}</p>
                 </div>

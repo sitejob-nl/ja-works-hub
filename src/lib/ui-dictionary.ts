@@ -1,3 +1,5 @@
+import { RECRUITER_UI_DICTIONARY_EN } from '@/lib/recruiter-ui-dictionary';
+
 /**
  * Vaste Nederlandse UI-teksten met hun Engelse vertaling.
  *
@@ -27,6 +29,7 @@
  * niet stuk.
  */
 export const UI_DICTIONARY_EN: Record<string, string> = {
+  ...RECRUITER_UI_DICTIONARY_EN,
   // --- Navigatie & chrome ---------------------------------------------------------
   'Uren': 'Hours',
   'Plaatsingen': 'Placements',
@@ -225,9 +228,10 @@ export const UI_DICTIONARY_EN: Record<string, string> = {
   'Opnieuw proberen': 'Try again',
   'Er ging iets mis': 'Something went wrong',
   'Bel': 'Call',
-  // --- Recruiter-omgeving: navigatie en balk bovenin --------------------------------
-  // Alleen de schil is vertaald; paginalichamen staan nog in het Nederlands. De
-  // vertaler draait daar dan ook alleen binnen [data-translate-region].
+  // --- Recruiter-omgeving: gedeelde navigatie --------------------------------------
+  // De interne paginalichamen gebruiken hetzelfde woordenboek via de centrale
+  // data-translate-region op AppLayout. Domeinspecifieke copy staat in
+  // recruiter-ui-dictionary.ts; tenantdata staat bewust niet in een woordenboek.
   'Relaties': 'Relations',
   'Werk': 'Work',
   'Vastgoed & Fleet': 'Property & fleet',

@@ -257,7 +257,7 @@ const FiscalMileageAnalysis = () => {
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <Calculator className="h-6 w-6" /> Fiscale kilometeranalyse
           </h1>
-          <p className="text-muted-foreground text-sm">{policy.warning_text}</p>
+          <p className="text-muted-foreground text-sm" data-no-translate="true">{policy.warning_text}</p>
         </div>
         <Button onClick={() => generateReviews.mutate()} disabled={generateReviews.isPending} className="gap-2">
           <RefreshCw className="h-4 w-4" /> Analyse draaien

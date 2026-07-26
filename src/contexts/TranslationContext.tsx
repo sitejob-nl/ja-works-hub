@@ -290,13 +290,16 @@ export function TranslationProvider({
   }, [language, scheduleTranslation]);
 
   useEffect(() => {
-    const root = document.getElementById('root');
-    if (!root) return;
+    // Radix/Shadcn rendert dialogs, menu's, select-lijsten en tooltips als portals
+    // direct onder <body>. Observeer daarom de body; rootsRef bepaalt nog steeds
+    // strikt welke delen daadwerkelijk vertaald mogen worden.
+    const observerRoot = document.body ?? document.getElementById('root');
+    if (!observerRoot) return;
 
     mutationObserverRef.current = new MutationObserver(() => {
       if (languageRef.current !== SOURCE_LANGUAGE) scheduleTranslation();
     });
-    mutationObserverRef.current.observe(root, {
+    mutationObserverRef.current.observe(observerRoot, {
       childList: true,
       subtree: true,
       characterData: true,

@@ -608,11 +608,15 @@ Drie dingen die je moet weten voordat je eraan werkt:
 | | scope | mechanisme |
 |---|---|---|
 | Portalen (`/portaal`, `/klantportaal`) | hele boom (`#root`) | klantdata is per stuk gemarkeerd met `data-no-translate="true"` |
-| Recruiter-omgeving | alleen `[data-translate-region]` (nu: zijbalk + topbar) | de rest wordt nooit aangeraakt |
+| Recruiter-omgeving | `[data-translate-region]` (AppLayout: zijbalk, topbar + interne paginacontent) | alleen hardcoded UI-copy staat in het woordenboek; tenantdata blijft onaangeraakt |
 
-De recruiter-omgeving is omgekeerd omdat daar ~1.800–2.800 vaste teksten over 292 componenten staan, met
-kandidaatnamen en notities door de tabellen heen. Wil je daar een scherm in het Engels: loop het na op
-klantdata, markeer die, en zet dan pas `data-translate-region` op de container.
+De recruiter-omgeving vertaalt de centrale paginacontainer, maar nog steeds alleen via exacte
+woordenboeksleutels. `RECRUITER_UI_DICTIONARY_EN` bevat uitsluitend vaste tekst die aantoonbaar als literal in
+de broncode staat; een unit-test bewaakt dit. Namen, notities, vacatureteksten en andere tenantdata worden niet
+aan het woordenboek toegevoegd en blijven daardoor in hun oorspronkelijke taal. Markeer database-inhoud met
+`data-no-translate="true"` wanneer die ooit exact met een UI-sleutel kan botsen.
+Radix-portals (dialogs, menu's, selects en tooltips) staan als aparte roots in `AppLayout`; daarom observeert de
+provider `<body>` en niet alleen `#root`.
 
 **Namen mangelen is de val hier.** Het matchen is exact, dus een sleutel die toevallig gelijk is aan een naam
 slaat toe — een medewerker "Bel" werd "Call", een inlener "Actief" werd "Active". Vandaar twee regels die door
