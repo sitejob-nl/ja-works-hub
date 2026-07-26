@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { formatDate } from '@/lib/format';
+import { toWhatsAppNumber } from '@/lib/phone';
 import {
   mergeProposalPageConfig,
   proposalListFromText,
@@ -288,7 +289,7 @@ const MatchResponse = () => {
   const managerName = data?.contact?.manager_name;
   const managerEmail = data?.contact?.manager_email;
   const managerPhone = data?.contact?.manager_phone;
-  const waPhone = managerPhone ? managerPhone.replace(/[^0-9]/g, '') : null;
+  const waPhone = toWhatsAppNumber(managerPhone);
   // Een accountmanager zonder eigen nummer (of mailadres) valt terug op de algemene
   // organisatielijn. Dat kanaal krijgt het label "algemeen", zodat het niet leest als
   // de directe lijn van de hierboven genoemde persoon. Vlaggen ontbreken bij een oude

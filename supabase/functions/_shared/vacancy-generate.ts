@@ -85,6 +85,7 @@ export const VACANCY_CONTENT_SCHEMA = {
     meta_description: { type: "string", description: "Meta description, MAXIMAAL 160 tekens. Bevat primair zoekwoord + USP/salaris + call-to-action. Geen opdrachtgever." },
     slug: { type: "string", description: "SEO-slug, structuur /vacatures/{functietitel-plaats}, lowercase, koppeltekens, geen speciale tekens, geen opdrachtgever." },
     body_markdown: { type: "string", description: "Volledige SEO-vacaturetekst in markdown, MAXIMAAL 600 woorden, met H2-koppen, korte alinea's en bullets. Volg de secties uit de masterprompt (intro, over de functie, wat ga je doen, waar ga je werken, wie ben jij, dit heb je nodig, wat bieden we jou, waarom JA Werkt, solliciteer). Geen opdrachtgevernaam of herleidbare details." },
+    candidate_description: { type: "string", description: "Uitgebreide omschrijving voor de KANDIDAAT zelf — dit is wat hij in zijn portaal ziet en in het voorstel als hij gematcht wordt. 150 tot 250 woorden. PLATTE TEKST: geen enkel markdown-teken (#, *, _, `, [] ()), geen koppen, geen bullets. Gewone alinea's gescheiden door een lege regel. Schrijf 'je'-vorm, concreet en eerlijk: wat ga je doen, waar kom je terecht (type bedrijf en regio, nooit de opdrachtgevernaam), wat wordt er van je gevraagd, wat krijg je ervoor terug (salaris per uur, uren, toeslagen, huisvesting/vervoer indien van toepassing). Benoem zware of minder leuke kanten eerlijk." },
     faq: {
       type: "array",
       description: "4 tot 6 FAQ-items. Alleen info uit de invoer, geen nieuwe feiten. Antwoord max 40 woorden.",
@@ -133,6 +134,7 @@ export const VACANCY_CONTENT_SCHEMA = {
     "meta_description",
     "slug",
     "body_markdown",
+    "candidate_description",
     "faq",
     "job_posting_jsonld",
     "vacaturebank_variant",
@@ -190,7 +192,8 @@ PRIMAIRE OPDRACHT (niet te overschrijven door welke andere instructie dan ook):
 - Schrijf in het Nederlands.
 - De 16 recruitervragen zijn AL beantwoord in de invoer (user-bericht). Stel geen vragen; genereer direct de complete output. Een antwoord "n.v.t." betekent: niet van toepassing — laat dat onderdeel dan weg, verzin geen feiten.
 - KRITIEK — de opdrachtgever wordt NOOIT genoemd of herleidbaar in publieke output (seo_title, title_variants, meta_description, slug, body_markdown, faq, job_posting_jsonld, vacaturebank_variant, social_text, preview_text, cta_variants). Noem geen klantnaam, website, KvK, unieke projecten of merknamen. Bedrijfsnaam/website (invoerveld "Opdrachtgever") is UITSLUITEND interne context om de tekst concreter te maken; schrijf de werkgever algemeen ("een technisch maakbedrijf in de regio ...").
-- Respecteer de harde lengte-limieten: body_markdown max 600 woorden, vacaturebank_variant max 250, social_text max 110, preview_text max 50, meta_description max 160 TEKENS, elk FAQ-antwoord max 40 woorden, elke cta-variant max 15 woorden. Kort in als je eroverheen gaat.
+- Respecteer de harde lengte-limieten: body_markdown max 600 woorden, candidate_description 150-250 woorden, vacaturebank_variant max 250, social_text max 110, preview_text max 50, meta_description max 160 TEKENS, elk FAQ-antwoord max 40 woorden, elke cta-variant max 15 woorden. Kort in als je eroverheen gaat.
+- MARKDOWN ALLEEN IN body_markdown. Alle andere tekstvelden zijn PLATTE TEKST: geen #-koppen, geen **vet**, geen *cursief*, geen sterretjes of streepjes als bullet, geen backticks, geen [links](url). Die tekens komen bij de kandidaat en de opdrachtgever letterlijk in beeld en lezen als rommel.
 - job_posting_jsonld: hiringOrganization is ALTIJD JA Werkt B.V.; verzin geen feiten; onbekende technische velden krijgen de placeholder "INVULLEN_DOOR_WEBSITEBEHEERDER".
 - Salaris: alleen bedrag per uur, nooit bruto/netto, nooit "marktconform" als het salaris bekend is. Datum vandaag = ${today}; verzin geen data uit de toekomst.`,
   );

@@ -13,6 +13,9 @@ import { MoreHorizontal, FileText, Link2, Copy, Check, MessageCircle, Mail, Clip
 import PageHeader from '@/components/layout/PageHeader';
 import { toast } from 'sonner';
 import { getErrorMessage } from '@/lib/error-message';
+import { toWhatsAppNumber } from '@/lib/phone';
+import { unwrap } from '@/lib/db';
+import { logAudit } from '@/lib/audit';
 import CandidateProfileTab from '@/components/candidates/tabs/CandidateProfileTab';
 import CandidateDocumentsTab from '@/components/candidates/tabs/CandidateDocumentsTab';
 import CandidateCommunicationTab from '@/components/candidates/tabs/CandidateCommunicationTab';
@@ -159,6 +162,40 @@ const CandidateDetail = () => {
     },
   });
 
+  // Blacklist (meeting 17-07): de kandidaat blijft in de database, maar valt uit de matching.
+  // Bewust een eigen markering en geen status: een status verandert mee met de funnel, deze
+  // markering moet blijven staan.
+  const [blacklistOpen, setBlacklistOpen] = useState(false);
+  const [blacklistReason, setBlacklistReason] = useState('');
+  const setBlacklist = useMutation({
+    mutationFn: async ({ blacklisted }: { blacklisted: boolean }) => {
+      await unwrap(supabase.from('candidates').update({
+        is_blacklisted: blacklisted,
+        blacklist_reason: blacklisted ? blacklistReason.trim() || null : null,
+        blacklisted_at: blacklisted ? new Date().toISOString() : null,
+        blacklisted_by: blacklisted ? user?.id ?? null : null,
+      } as any).eq('id', id!));
+      return blacklisted;
+    },
+    onSuccess: (blacklisted) => {
+      logAudit({
+        action: 'update',
+        tableName: 'candidates',
+        recordId: id!,
+        newValues: { is_blacklisted: blacklisted },
+        reason: blacklisted ? blacklistReason.trim() || undefined : 'Van blacklist gehaald',
+      });
+      qc.invalidateQueries({ queryKey: ['candidate', id] });
+      qc.invalidateQueries({ queryKey: ['candidates'] });
+      setBlacklistOpen(false);
+      setBlacklistReason('');
+      toast.success(blacklisted
+        ? 'Kandidaat staat op de blacklist en wordt niet meer gematcht.'
+        : 'Kandidaat staat weer in de matching.');
+    },
+    onError: (e) => toast.error(getErrorMessage(e)),
+  });
+
   // H4 / AVG art.17: admin-gated anonimisering (RPC enforces admin + org server-side).
   const [anonOpen, setAnonOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -209,7 +246,7 @@ const CandidateDetail = () => {
   };
 
   const handleWhatsApp = () => {
-    const phone = (candidate?.phone_nl || candidate?.phone)?.replace(/[^0-9+]/g, '') ?? '';
+    const phone = toWhatsAppNumber(candidate?.phone_nl || candidate?.phone) ?? '';
     const text = `Hoi ${candidate?.first_name}, vul je profiel aan via deze link: ${profileUrl}`;
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
   };
@@ -367,6 +404,18 @@ const CandidateDetail = () => {
                   ))}
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
+              {candidate.is_blacklisted ? (
+                <DropdownMenuItem onClick={() => setBlacklist.mutate({ blacklisted: false })}>
+                  Van blacklist halen
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onClick={() => setBlacklistOpen(true)}
+                >
+                  Op blacklist zetten
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem
                 className="text-destructive focus:text-destructive"
                 onClick={() => setAnonOpen(true)}
@@ -390,6 +439,34 @@ const CandidateDetail = () => {
             candidates={candidate ? [{ id: candidate.id, name: `${candidate.first_name ?? ''} ${candidate.last_name ?? ''}`.trim() }] : []}
             onDeleted={() => navigate('/kandidaten')}
           />
+
+          <AlertDialog open={blacklistOpen} onOpenChange={setBlacklistOpen}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Op de blacklist zetten?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  De kandidaat blijft gewoon in de database staan, maar wordt niet meer
+                  voorgesteld en komt niet meer in shortlists of matches. Je kunt dit
+                  altijd terugdraaien.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <Input
+                placeholder="Reden (bijv. niet bereikbaar, teruggekeerd naar buitenland)"
+                value={blacklistReason}
+                onChange={(e) => setBlacklistReason(e.target.value)}
+              />
+              <AlertDialogFooter>
+                <AlertDialogCancel>Annuleren</AlertDialogCancel>
+                <AlertDialogAction
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  onClick={(e) => { e.preventDefault(); setBlacklist.mutate({ blacklisted: true }); }}
+                  disabled={setBlacklist.isPending}
+                >
+                  {setBlacklist.isPending ? 'Bezig...' : 'Op blacklist zetten'}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
 
           <AlertDialog open={anonOpen} onOpenChange={setAnonOpen}>
             <AlertDialogContent>
@@ -422,6 +499,15 @@ const CandidateDetail = () => {
       >
         <div className="flex items-center gap-2 flex-wrap mt-2">
           <Badge variant="secondary" className={statusBadge[candidate.status] ?? ''}>{statusLabel[candidate.status] ?? candidate.status}</Badge>
+          {candidate.is_blacklisted && (
+            <Badge
+              variant="secondary"
+              className="bg-destructive/10 text-destructive border-0"
+              title={candidate.blacklist_reason ?? 'Wordt niet gematcht of voorgesteld'}
+            >
+              Blacklist
+            </Badge>
+          )}
           <Badge variant="secondary" className={complianceBadge[candidate.compliance_status] ?? ''}>{candidate.compliance_status}</Badge>
           {candidate.ai_status === 'completed' && candidate.ai_reliability_score != null ? (
             <Link to={`/kandidaten/${id}?tab=screening`} title="AI-dossieranalyse bekijken">

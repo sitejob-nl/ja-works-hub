@@ -3,8 +3,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { formatDate, formatEUR } from '@/lib/format';
 import { CheckCircle2, XCircle } from 'lucide-react';
+import VacancyCandidateDescriptionCard from '@/components/vacancies/VacancyCandidateDescriptionCard';
 
-const VacancyDetailsTab = ({ vacancy }: { vacancy: any }) => {
+const VacancyDetailsTab = ({ vacancy, canEdit = false }: { vacancy: any; canEdit?: boolean }) => {
   const company = vacancy.companies as any;
   const primaryContact = (vacancy.company_contacts as any[])?.find((c: any) => c.is_primary);
 
@@ -51,9 +52,14 @@ const VacancyDetailsTab = ({ vacancy }: { vacancy: any }) => {
         </Card>
       </div>
 
+      <VacancyCandidateDescriptionCard vacancy={vacancy} canEdit={canEdit} />
+
       {vacancy.description && (
         <Card>
-          <CardHeader><CardTitle className="text-base">Beschrijving</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle className="text-base">Interne omschrijving</CardTitle>
+            <p className="text-sm text-muted-foreground">Alleen voor collega's — kandidaten zien deze tekst niet.</p>
+          </CardHeader>
           <CardContent>
             <p className="text-sm whitespace-pre-wrap leading-relaxed">{vacancy.description}</p>
           </CardContent>

@@ -30,7 +30,7 @@ const normalizeCriteriaOptions = (value: unknown): MatchCriteriaOptions => {
 // MATCHABLE_CANDIDATE_STATUSES in _shared/matching-core.ts voor het waarom.
 const ACTIVE_STATUSES = [...MATCHABLE_CANDIDATE_STATUSES];
 const CANDIDATE_FIELDS =
-  "id, first_name, last_name, status, skills, certifications, languages, has_drivers_license, drivers_license_categories, has_dutch_address, compliance_status, address_city, address_lat, address_lng, available_from, available_until, arrival_date, availability_notes, ai_function_group, ai_target_functions, ai_classification, ai_reliability_score, most_recent_role, most_recent_role_year";
+  "id, first_name, last_name, status, is_blacklisted, skills, certifications, languages, has_drivers_license, drivers_license_categories, has_dutch_address, compliance_status, address_city, address_lat, address_lng, available_from, available_until, arrival_date, availability_notes, ai_function_group, ai_target_functions, ai_classification, ai_reliability_score, most_recent_role, most_recent_role_year, most_recent_role_months";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -93,6 +93,8 @@ Deno.serve(async (req) => {
       let q = userClient.from("candidates").select(CANDIDATE_FIELDS)
         .eq("organization_id", orgId)
         .in("status", ACTIVE_STATUSES as any)
+        // Blacklist er meteen uit: scheelt scoren én houdt de shortlist schoon (meeting 17-07).
+        .eq("is_blacklisted", false)
         .range(from, from + PAGE - 1);
       if (search) q = q.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%`);
       const { data, error } = await q;

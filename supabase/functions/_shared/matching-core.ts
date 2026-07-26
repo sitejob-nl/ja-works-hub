@@ -32,8 +32,9 @@ export type MatchCandidate = {
   languages?: string[] | null;
   has_drivers_license?: boolean | null;
   drivers_license_categories?: string[] | null; // B/BE/C/CE/D/... uit ai_analysis.mobiliteit.rijbewijs_types
-  most_recent_role?: string | null;       // functie van de meest recente werkgever (MG1 GAP2)
-  most_recent_role_year?: number | null;  // eindjaar van die rol (huidig jaar bij lopende rol)
+  most_recent_role?: string | null;        // functie van de meest recente werkgever (MG1 GAP2)
+  most_recent_role_year?: number | null;   // eindjaar van die rol (huidig jaar bij lopende rol)
+  most_recent_role_months?: number | null; // duur van die rol in maanden; null = onbekend
   has_dutch_address?: boolean | null;
   available_from?: string | null;
   available_until?: string | null;
@@ -43,6 +44,7 @@ export type MatchCandidate = {
   ai_target_functions?: string[] | null;
   ai_classification?: string | null; // 'specialist' | 'productie' (uit CV-analyse)
   ai_reliability_score?: number | null;
+  is_blacklisted?: boolean | null; // nooit voorstellen; staat los van status (zie Toelatingspoort)
   address_lat?: number | null;
   address_lng?: number | null;
 };
@@ -86,6 +88,11 @@ export type MatchCriteriaOptions = {
 
 // Een meest-recente rol telt als "recent" t.o.v. nu binnen dit venster (jaren).
 export const RECENCY_WINDOW_YEARS = 4;
+
+// Ondergrens waarboven een relevante rol als échte ervaring telt (meeting 17-07: een
+// aangeraakte functie van één maand is geen ervaring). Alleen van toepassing als de duur
+// bekend is — onbekend blijft onbekend en wordt nooit als "kort" gelezen.
+export const MIN_RELEVANT_ROLE_MONTHS = 3;
 
 // Genormaliseerde basis-weging (fit). Som van toepasselijke gewichten wordt naar 100 geschaald.
 export const FIT_WEIGHTS = {
@@ -464,6 +471,9 @@ export function scoreMatch(
   const reqSkillCount = asStrings(requiredSkills).length;
   const reqCertCount = requiredCerts.length;
 
+  // Blacklist wint van alles: deze kandidaat wordt sowieso niet uitgezonden, dus een fit-score
+  // is hier betekenisloos. Als harde blokker zakt hij ook uit `passesShortlist`.
+  if (candidate.is_blacklisted) hardBlocks.push("Kandidaat staat op de blacklist");
   if (reqSkillCount > 0 && skillMatches.length === 0) hardBlocks.push("Geen match op verplichte vaardigheden");
   if (missingCerts.length > 0) hardBlocks.push(`Mist certificaat: ${missingCerts.join(", ")}`);
   // Rijbewijs is GEEN harde blokker: de kandidaat-rijbewijsdata is onbetrouwbaar/leeg (zelden
@@ -508,15 +518,26 @@ export function scoreMatch(
   // eindigde recent (binnen het venster). Puur additief — oude relevante ervaring wordt nooit
   // bestraft (kandidaat blijft vindbaar), maar wie er recent in zat drijft bovenaan.
   // nowYear afwezig (bv. in unit-tests) → bonus uit, zodat de kern deterministisch blijft.
+  //
+  // Duur telt mee (meeting 17-07): wie een relevante functie maar één maand deed, heeft die
+  // ervaring aangeraakt, niet opgebouwd — geen pluspunt, wél een aandachtspunt voor de
+  // recruiter. Is de duur onbekend (oude dossiers, CV zonder periodes), dan blijft het gedrag
+  // zoals het was: bonus toekennen, want onbekend is geen bewijs van kort.
   let recencyBonus = 0;
   const nowYear = typeof options?.nowYear === "number" ? options.nowYear : null;
   const roleYear = candidate.most_recent_role_year;
+  const roleMonths = candidate.most_recent_role_months;
+  const roleIsShort = typeof roleMonths === "number" && roleMonths > 0 && roleMonths < MIN_RELEVANT_ROLE_MONTHS;
   if (nowYear != null && typeof roleYear === "number" && roleYear <= nowYear
       && (nowYear - roleYear) <= RECENCY_WINDOW_YEARS
       && roleAlignsWithVacancy(candidate.most_recent_role, vacancy)) {
-    recencyBonus = bonusPoints.recency;
-    bonus += recencyBonus;
-    bonuses.push(`Recent relevante ervaring: ${candidate.most_recent_role} (${roleYear})`);
+    if (roleIsShort) {
+      missing.push(`Recente relevante rol duurde kort: ${candidate.most_recent_role} (${roleMonths} mnd) — vakdiepte navragen`);
+    } else {
+      recencyBonus = bonusPoints.recency;
+      bonus += recencyBonus;
+      bonuses.push(`Recent relevante ervaring: ${candidate.most_recent_role} (${roleYear})`);
+    }
   }
 
   // ── Eindscore ─────────────────────────────────────────────────────────────
@@ -630,6 +651,16 @@ export const UNSCORABLE_CANDIDATE_STATUSES = ["afgewezen", "uitgeschreven", "nie
 
 export const isCandidateMatchable = (status: string | null | undefined) =>
   (MATCHABLE_CANDIDATE_STATUSES as readonly string[]).includes(status ?? "");
+
+/**
+ * Blacklist staat naast de toelatingspoort, niet erin: de poort gaat over "waar staat deze
+ * kandidaat in de funnel", de blacklist over "deze persoon zenden we sowieso niet uit"
+ * (meeting 17-07). Daarom een eigen kolom, die elke statuswijziging overleeft. Pool-query's
+ * filteren `is_blacklisted = false`; `scoreMatch` zet daarnaast een harde blokker, zodat een
+ * al bestaande match bij herberekenen alsnog dichtvalt.
+ */
+export const isCandidateBlacklisted = (candidate: Pick<MatchCandidate, "is_blacklisted">) =>
+  candidate.is_blacklisted === true;
 
 export const isCandidateScorable = (status: string | null | undefined) =>
   !(UNSCORABLE_CANDIDATE_STATUSES as readonly string[]).includes(status ?? "");

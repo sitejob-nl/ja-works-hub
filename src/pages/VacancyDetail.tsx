@@ -257,15 +257,15 @@ const VacancyDetail = () => {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">
           <TabsList className="w-max sm:w-auto">
-            <TabsTrigger value="details">Details</TabsTrigger>
-            <TabsTrigger value="vacaturetekst">Vacaturetekst</TabsTrigger>
+            <TabsTrigger value="details">Algemeen</TabsTrigger>
+            <TabsTrigger value="vacaturetekst">{'SEO & website'}</TabsTrigger>
             <TabsTrigger value="matches">Matches</TabsTrigger>
             <TabsTrigger value="plaatsingen">Plaatsingen</TabsTrigger>
             <TabsTrigger value="notities">Notities</TabsTrigger>
             <TabsTrigger value="taken">Taken</TabsTrigger>
           </TabsList>
         </div>
-        <TabsContent value="details"><VacancyDetailsTab vacancy={vacancy} /></TabsContent>
+        <TabsContent value="details"><VacancyDetailsTab vacancy={vacancy} canEdit={canEditVacancies} /></TabsContent>
         <TabsContent value="vacaturetekst"><VacancyTextTab vacancy={vacancy} canEdit={canEditVacancies} /></TabsContent>
         <TabsContent value="matches"><VacancyMatchesTab vacancy={vacancy} /></TabsContent>
         <TabsContent value="plaatsingen"><VacancyPlacementsTab vacancyId={vacancy.id} /></TabsContent>

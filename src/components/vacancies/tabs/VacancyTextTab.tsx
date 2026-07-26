@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,12 +8,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { Sparkles, Copy, Save, RotateCcw, FileText, Target } from 'lucide-react';
+import { Sparkles, Copy, Save, RotateCcw, FileText, Target, Eye } from 'lucide-react';
 import { toast } from 'sonner';
 import { unwrap, unwrapList } from '@/lib/db';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import SkillMultiSelect from '@/components/shared/SkillMultiSelect';
 import { mapTermsToCatalog } from '@/lib/vacancy-generator';
+import { markdownToBlocks, stripMarkdown } from '@/lib/rich-text';
 import VacancyTextGeneratorDialog from '@/components/vacancies/VacancyTextGeneratorDialog';
 
 interface Props {
@@ -21,11 +23,13 @@ interface Props {
 }
 
 // De 7 bewerkbare lange teksten (eerste-klas kolommen op vacancy_seo_content).
-const EDITABLE_FIELDS: Array<{ key: string; label: string; rows: number; maxChars?: number }> = [
+// `formatted` = dit veld mág opmaak bevatten (de websitetekst met koppen en bullets); daar
+// tonen we een weergave i.p.v. de ruwe opmaakcodes. De rest is platte tekst.
+const EDITABLE_FIELDS: Array<{ key: string; label: string; rows: number; maxChars?: number; formatted?: boolean; hint?: string }> = [
   { key: 'seo_title', label: 'SEO-titel (H1)', rows: 2 },
   { key: 'meta_description', label: 'Meta description', rows: 2, maxChars: 160 },
   { key: 'slug', label: 'Slug', rows: 1 },
-  { key: 'body_markdown', label: 'Volledige vacaturetekst (website)', rows: 16 },
+  { key: 'body_markdown', label: 'Volledige vacaturetekst (website)', rows: 16, formatted: true, hint: 'Met koppen en opsommingen voor de website. Kopiëren geeft schone tekst zonder opmaakcodes.' },
   { key: 'vacaturebank_variant', label: 'Vacaturebankvariant', rows: 8 },
   { key: 'social_text', label: 'Social media tekst', rows: 5 },
   { key: 'preview_text', label: 'Korte preview', rows: 3 },
@@ -36,11 +40,38 @@ const copy = (value: string) => {
   toast.success('Gekopieerd');
 };
 
-const CopyButton = ({ value }: { value: string }) => (
+const CopyButton = ({ value, label = 'Kopiëren' }: { value: string; label?: string }) => (
   <Button variant="ghost" size="sm" className="h-7 gap-1 px-2 text-xs" onClick={() => copy(value)}>
-    <Copy className="h-3.5 w-3.5" /> Kopiëren
+    <Copy className="h-3.5 w-3.5" /> {label}
   </Button>
 );
+
+/**
+ * De websitetekst is markdown; in een textarea lees je dan "## Wat ga je doen" en "**vet**".
+ * Deze weergave toont dezelfde tekst met echte koppen en opsommingen, zodat je ziet wat er
+ * straks op de site staat in plaats van de opmaakcodes (meeting 27-07).
+ */
+const RichTextPreview = ({ value }: { value: string }) => {
+  const blocks = markdownToBlocks(value);
+  if (blocks.length === 0) return <p className="text-sm text-muted-foreground">Nog geen tekst.</p>;
+  return (
+    <div className="space-y-3">
+      {blocks.map((block, i) => {
+        if (block.type === 'heading') {
+          return <h3 key={i} className="text-sm font-semibold">{block.text}</h3>;
+        }
+        if (block.type === 'list') {
+          return (
+            <ul key={i} className="list-disc space-y-1 pl-5 text-sm leading-relaxed">
+              {block.items.map((item, j) => <li key={j}>{item}</li>)}
+            </ul>
+          );
+        }
+        return <p key={i} className="text-sm leading-relaxed">{block.text}</p>;
+      })}
+    </div>
+  );
+};
 
 const asArray = (v: unknown): any[] => (Array.isArray(v) ? v : []);
 
@@ -48,6 +79,17 @@ const VacancyTextTab = ({ vacancy, canEdit }: Props) => {
   const qc = useQueryClient();
   const vacancyId = vacancy.id as string;
   const [dialogOpen, setDialogOpen] = useState(false);
+
+  // Vanaf "Nieuwe vacature" met de optie "direct laten schrijven": generator meteen openen.
+  // Eén keer — de parameter wordt uit de URL gehaald zodat een refresh 'm niet heropent.
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    if (!canEdit || searchParams.get('genereer') !== '1') return;
+    setDialogOpen(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete('genereer');
+    setSearchParams(next, { replace: true });
+  }, [canEdit, searchParams, setSearchParams]);
 
   const { data: seo, isLoading } = useQuery({
     queryKey: ['vacancy-seo', vacancyId],
@@ -72,6 +114,9 @@ const VacancyTextTab = ({ vacancy, canEdit }: Props) => {
 
   // Lokale bewerk-state voor de tekstvelden.
   const [fields, setFields] = useState<Record<string, string>>({});
+  // Per opmaak-veld: staat de ruwe tekst open (bewerken) of de weergave? Standaard weergave,
+  // zodat je niet als eerste tegen "## Wat ga je doen" aankijkt.
+  const [sourceFields, setSourceFields] = useState<Record<string, boolean>>({});
   useEffect(() => {
     if (!seo) return;
     const next: Record<string, string> = {};
@@ -171,6 +216,7 @@ const VacancyTextTab = ({ vacancy, canEdit }: Props) => {
       {/* Kopregel */}
       <div className="flex flex-wrap items-center gap-2">
         <p className="text-sm text-muted-foreground">
+          Teksten voor de website en vacaturebanken.{' '}
           {generatedAt ? `Gegenereerd op ${generatedAt}` : 'Gegenereerd'}
           {(seo as any).model ? ` · ${(seo as any).model}` : ''}
         </p>
@@ -197,20 +243,40 @@ const VacancyTextTab = ({ vacancy, canEdit }: Props) => {
       {EDITABLE_FIELDS.map((f) => {
         const value = fields[f.key] ?? '';
         const over = f.maxChars ? value.length > f.maxChars : false;
+        const showSource = f.formatted ? sourceFields[f.key] === true : true;
         return (
           <Card key={f.key}>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm">{f.label}</CardTitle>
-              <CopyButton value={value} />
+            <CardHeader className="space-y-1 pb-2">
+              <div className="flex flex-row items-center justify-between">
+                <CardTitle className="text-sm">{f.label}</CardTitle>
+                <div className="flex items-center gap-1">
+                  {f.formatted && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 gap-1 px-2 text-xs"
+                      onClick={() => setSourceFields((s) => ({ ...s, [f.key]: !showSource }))}
+                    >
+                      <Eye className="h-3.5 w-3.5" /> {showSource ? 'Weergave' : 'Bewerken'}
+                    </Button>
+                  )}
+                  <CopyButton value={f.formatted ? stripMarkdown(value) : value} />
+                </div>
+              </div>
+              {f.hint && <p className="text-xs text-muted-foreground">{f.hint}</p>}
             </CardHeader>
             <CardContent className="space-y-1">
-              <Textarea
-                value={value}
-                onChange={(e) => setFields((s) => ({ ...s, [f.key]: e.target.value }))}
-                rows={f.rows}
-                readOnly={!canEdit}
-                className="text-sm"
-              />
+              {showSource ? (
+                <Textarea
+                  value={value}
+                  onChange={(e) => setFields((s) => ({ ...s, [f.key]: e.target.value }))}
+                  rows={f.rows}
+                  readOnly={!canEdit}
+                  className="text-sm"
+                />
+              ) : (
+                <div className="rounded-md border bg-muted/30 p-3"><RichTextPreview value={value} /></div>
+              )}
               {f.maxChars && (
                 <p className={`text-xs ${over ? 'text-red-600 font-medium' : 'text-muted-foreground'}`}>
                   {value.length} / {f.maxChars} tekens

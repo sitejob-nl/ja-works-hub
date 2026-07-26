@@ -33,7 +33,7 @@ import {
   normalizeCountry,
   normalizeCandidateSource,
 } from '@/lib/candidate-options';
-import { mergeCandidatePhoneFields, normalizeCandidatePhone } from '@/lib/phone';
+import { mergeCandidatePhoneFields, normalizeCandidatePhone, toWhatsAppNumber } from '@/lib/phone';
 import { allowFileDrop, getDroppedFiles } from '@/lib/file-input';
 import { buildImportedCvDocumentRow } from '@/lib/candidate-cv';
 
@@ -403,7 +403,7 @@ const CandidateNew = () => {
   };
 
   const handleWhatsApp = () => {
-    const phone = createdCandidate?.phone?.replace(/[^0-9+]/g, '') ?? '';
+    const phone = toWhatsAppNumber(createdCandidate?.phone) ?? '';
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(whatsAppText)}`, '_blank');
   };
 

@@ -352,6 +352,49 @@ describe('matching-v3 core', () => {
     expect(afstandUit.matchPercent).toBeGreaterThan(ver.matchPercent);
   });
 
+  it('geeft geen recency-pluspunt op een relevante rol van één maand, maar wel een aandachtspunt', () => {
+    const vacancy = { title: 'TIG lasser', required_skills: ['TIG lassen'] };
+    const distance = { km: 10, status: 'estimated' as const };
+    const basis = { skills: ['TIG lassen'], most_recent_role: 'TIG lasser', most_recent_role_year: 2026 };
+
+    const lang = scoreMatch({ ...basis, most_recent_role_months: 30 }, vacancy, distance, undefined, { nowYear: 2026 });
+    const kort = scoreMatch({ ...basis, most_recent_role_months: 1 }, vacancy, distance, undefined, { nowYear: 2026 });
+    const onbekend = scoreMatch(basis, vacancy, distance, undefined, { nowYear: 2026 });
+
+    expect(lang.bonuses.some((b) => b.startsWith('Recent relevante ervaring'))).toBe(true);
+    expect(kort.bonuses.some((b) => b.startsWith('Recent relevante ervaring'))).toBe(false);
+    expect(kort.missing.some((m) => m.includes('duurde kort'))).toBe(true);
+    expect(kort.matchPercent).toBeLessThan(lang.matchPercent);
+
+    // Onbekende duur is geen bewijs van kort: gedrag blijft zoals het was.
+    expect(onbekend.matchPercent).toBe(lang.matchPercent);
+  });
+
+  it('blokkeert een geblacklviste kandidaat, ook bij een verder perfecte match', () => {
+    const candidate = {
+      skills: ['MIG-MAG lassen'],
+      certifications: ['VCA'],
+      languages: ['Nederlands'],
+      has_dutch_address: true,
+    };
+    const vacancy = {
+      title: 'MIG-MAG lasser',
+      required_skills: ['MIG-MAG lassen'],
+      required_certifications: ['VCA'],
+    };
+    const distance = { km: 8, durationMin: 24, status: 'ok' as const };
+
+    const zonder = scoreMatch(candidate, vacancy, distance);
+    expect(zonder.hardBlocks).toEqual([]);
+    expect(passesShortlist(zonder)).toBe(true);
+
+    const geblacklist = scoreMatch({ ...candidate, is_blacklisted: true }, vacancy, distance);
+    expect(geblacklist.hardBlocks).toContain('Kandidaat staat op de blacklist');
+    expect(geblacklist.label).toBe('rood');
+    expect(geblacklist.matchPercent).toBeLessThanOrEqual(30);
+    expect(passesShortlist(geblacklist)).toBe(false);
+  });
+
   it('haversineKm berekent een plausibele afstand en is null bij ontbrekende coords', () => {
     const eindhovenToTilburg = haversineKm(51.44, 5.47, 51.56, 5.09);
     expect(eindhovenToTilburg).toBeGreaterThan(20);

@@ -15,6 +15,7 @@ import {
   requireRolePermission,
 } from "../_shared/auth.ts";
 import { sanitizeOrgPrompt, VACANCY_PROMPT_MAX_LENGTH } from "../_shared/sanitize-org-prompt.ts";
+import { stripMarkdownInline } from "../_shared/rich-text.ts";
 import {
   anthropicPricingForModel,
   calculateCostCents,
@@ -40,6 +41,13 @@ function asString(v: unknown): string | null {
   if (typeof v !== "string") return null;
   const t = v.trim();
   return t.length > 0 ? t : null;
+}
+
+// Platte-tekstvelden: markdown-resten eruit vóór het opslaan. Het model krijgt de instructie
+// dat alleen body_markdown markdown mag zijn, maar zet er alsnog **vet** of een #-kop in —
+// en dat komt letterlijk in beeld bij kandidaat en opdrachtgever (meeting 27-07).
+function asPlainText(v: unknown): string | null {
+  return asString(stripMarkdownInline(v));
 }
 
 Deno.serve(async (req: Request) => {
@@ -152,13 +160,14 @@ Deno.serve(async (req: Request) => {
   const row = {
     vacancy_id: vacancyId,
     organization_id: orgId,
-    seo_title: asString(c.seo_title),
+    seo_title: asPlainText(c.seo_title),
     slug: asString(c.slug),
-    meta_description: asString(c.meta_description),
+    meta_description: asPlainText(c.meta_description),
+    // Enige veld waar markdown wél hoort: dit is de websitetekst met H2's en bullets.
     body_markdown: asString(c.body_markdown),
-    vacaturebank_variant: asString(c.vacaturebank_variant),
-    social_text: asString(c.social_text),
-    preview_text: asString(c.preview_text),
+    vacaturebank_variant: asPlainText(c.vacaturebank_variant),
+    social_text: asPlainText(c.social_text),
+    preview_text: asPlainText(c.preview_text),
     content: contentJson,
     input_answers: answers,
     provider: "anthropic",
@@ -171,6 +180,19 @@ Deno.serve(async (req: Request) => {
     .from("vacancy_seo_content")
     .upsert(row, { onConflict: "vacancy_id" });
   if (upsertErr) return json({ error: `Opslaan mislukt: ${upsertErr.message}` }, 500);
+
+  // De kandidaatomschrijving hoort op de vacature zelf, niet in de SEO-tabel: het portaal en
+  // het matchvoorstel lezen `vacancies`, niet `vacancy_seo_content`. Best-effort — een
+  // mislukte update mag de zojuist afgeschreven generatie niet ongeldig maken.
+  const candidateDescription = asPlainText(c.candidate_description);
+  if (candidateDescription) {
+    const { error: descErr } = await admin
+      .from("vacancies")
+      .update({ candidate_description: candidateDescription })
+      .eq("id", vacancyId)
+      .eq("organization_id", orgId);
+    if (descErr) console.error("candidate_description opslaan mislukt:", descErr.message);
+  }
 
   // --- Usage-log (best-effort) ---
   try {

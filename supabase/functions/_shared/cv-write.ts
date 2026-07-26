@@ -129,6 +129,12 @@ export async function writeCvAnalysisToCandidate(
   const recentRole = analysis?.werkhistorie?.werkgevers?.[0];
   const mostRecentRole = recentRole?.functie?.trim() || null;
   const mostRecentRoleYear = extractRoleEndYear(recentRole?.periode);
+  // Duur van die rol (meeting 17-07): één maand in een functie is aangeraakte ervaring, geen
+  // opgebouwde. De matcher gebruikt dit om het recency-pluspunt niet uit te delen op een
+  // flinterdunne rol. Onbekend blijft null — dat mag nooit als "kort" gelezen worden.
+  const mostRecentRoleMonths = typeof recentRole?.duur_maanden === "number" && recentRole.duur_maanden >= 0
+    ? Math.round(recentRole.duur_maanden)
+    : null;
   // ai_stability heeft een DB-CHECK op {jobhopper, gemiddeld, loyaal}. Het v2-schema
   // levert geen stabiliteits-enum meer, dus leiden we 'm af uit het gemiddelde
   // dienstverband (<12 mnd = jobhopper, 12-24 = gemiddeld, >24 = loyaal). Bij onbekend: null.
@@ -194,6 +200,7 @@ export async function writeCvAnalysisToCandidate(
   if (recentRole) {
     update.most_recent_role = mostRecentRole;
     update.most_recent_role_year = mostRecentRoleYear;
+    update.most_recent_role_months = mostRecentRoleMonths;
   }
 
   const { error } = await admin

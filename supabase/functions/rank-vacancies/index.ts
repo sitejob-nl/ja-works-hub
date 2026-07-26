@@ -26,7 +26,7 @@ const normalizeCriteriaOptions = (value: unknown): MatchCriteriaOptions => {
 };
 
 const CANDIDATE_FIELDS =
-  "id, organization_id, first_name, last_name, skills, certifications, languages, has_drivers_license, drivers_license_categories, has_dutch_address, address_lat, address_lng, available_from, available_until, arrival_date, availability_notes, ai_function_group, ai_target_functions, ai_classification, ai_reliability_score, most_recent_role, most_recent_role_year";
+  "id, organization_id, is_blacklisted, first_name, last_name, skills, certifications, languages, has_drivers_license, drivers_license_categories, has_dutch_address, address_lat, address_lng, available_from, available_until, arrival_date, availability_notes, ai_function_group, ai_target_functions, ai_classification, ai_reliability_score, most_recent_role, most_recent_role_year, most_recent_role_months";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });

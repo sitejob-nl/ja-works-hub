@@ -123,7 +123,7 @@ Deno.serve(async (req) => {
       .from("matches")
       .select(`id, status, organization_id,
         candidates:candidate_id(id, first_name, last_name, email),
-        vacancies:vacancy_id(id, title, location)`)
+        vacancies:vacancy_id(id, title, location, candidate_description)`)
       .eq("id", matchId)
       .eq("organization_id", orgId)
       .single();
@@ -133,7 +133,9 @@ Deno.serve(async (req) => {
     const vacancy = (match as any).vacancies;
     if (!candidate || !vacancy) return json({ error: "Match mist kandidaat of vacature" }, 400);
 
-    // Pitch uit de gegenereerde vacaturetekst; nette fallback zonder generator-output.
+    // Pitch: de kandidaatomschrijving gaat vóór (die is vóór de kandidaat geschreven, in
+    // gewone taal en zonder opmaakcodes). De SEO-teksten zijn voor de website geschreven en
+    // dienen alleen als terugval voor vacatures waarvoor nog geen omschrijving bestaat.
     const { data: seo } = await service
       .from("vacancy_seo_content")
       .select("vacaturebank_variant, preview_text, body_markdown")
@@ -141,7 +143,7 @@ Deno.serve(async (req) => {
       .maybeSingle();
     const pitchSource = typeof body.pitch === "string" && body.pitch.trim()
       ? body.pitch.trim()
-      : (seo?.vacaturebank_variant || seo?.preview_text || seo?.body_markdown || "").trim();
+      : (vacancy.candidate_description || seo?.vacaturebank_variant || seo?.preview_text || seo?.body_markdown || "").trim();
 
     const [theme, orgRes] = await Promise.all([
       loadBrandTheme(service, orgId),

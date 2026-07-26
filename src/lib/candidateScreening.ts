@@ -577,6 +577,11 @@ export const buildScreeningNoteContent = (data: ScreeningData): string => {
  * duurder dan ze niet vanaf dit tabblad kunnen legen. Een leeg conceptveld (nog niet
  * geladen, of per ongeluk gewist) mag daarom nooit een gevuld telefoonnummer of
  * e-mailadres op `null` zetten. Legen kan wel via het kandidaatprofiel zelf.
+ *
+ * Datzelfde geldt voor de dossiervelden die de screening alleen maar overneemt uit de
+ * AI-analyse (geboortedatum, nationaliteit, adres): vindt de analyse ze niet, dan blijft
+ * het conceptveld leeg — dat is "onbekend", niet "wissen". Zonder deze guard maakte een
+ * opgeslagen screening een compleet ingevuld profiel stilletjes leger dan het was.
  */
 const keepIfBlank = (next: string | null, current: unknown): string | null => {
   if (next) return next;
@@ -593,11 +598,11 @@ export const buildCandidateScreeningProfilePayload = (
     phone: keepIfBlank(stripPlaceholder(phones.phone) || null, current?.phone),
     phone_nl: keepIfBlank(stripPlaceholder(phones.phone_nl) || null, current?.phone_nl),
     email: keepIfBlank(stripPlaceholder(draft.email.trim()) || null, current?.email),
-    date_of_birth: draft.date_of_birth || null,
-    nationality: stripPlaceholder(draft.nationality.trim()) || null,
-    address_street: draft.address_street.trim() || null,
-    address_postal: draft.address_postal.trim() || null,
-    address_city: stripPlaceholder(draft.address_city.trim()) || null,
+    date_of_birth: keepIfBlank(draft.date_of_birth || null, current?.date_of_birth),
+    nationality: keepIfBlank(stripPlaceholder(draft.nationality.trim()) || null, current?.nationality),
+    address_street: keepIfBlank(draft.address_street.trim() || null, current?.address_street),
+    address_postal: keepIfBlank(draft.address_postal.trim() || null, current?.address_postal),
+    address_city: keepIfBlank(stripPlaceholder(draft.address_city.trim()) || null, current?.address_city),
     has_drivers_license: draft.has_drivers_license,
     drivers_license_expiry: draft.has_drivers_license && draft.drivers_license_expiry ? draft.drivers_license_expiry : null,
     skills: draft.skills,

@@ -19,7 +19,8 @@ interface PlacementTriggerInput {
   organizationId: string;
   startDate: string;
   functionName: string;
-  hourlyRate: number;
+  // Mag ontbreken: het uurtarief is optioneel op een plaatsing (meeting 17-07).
+  hourlyRate: number | null;
   candidatePhone?: string | null;
   candidateName?: string;
 }

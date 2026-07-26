@@ -252,7 +252,7 @@ const PlacementWizard = ({ open, onClose, match, vacancy, defaultCompanyId, lock
     start_date: form.start_date,
     end_date: form.end_date || null,
     expected_end_date: form.expected_end_date || null,
-    hourly_rate: form.hourly_rate ? parseFloat(form.hourly_rate) : 0,
+    hourly_rate: form.hourly_rate ? parseFloat(form.hourly_rate) : null,
     client_hourly_rate: form.client_hourly_rate ? parseFloat(form.client_hourly_rate) : null,
     overtime_rate: form.overtime_rate ? parseFloat(form.overtime_rate) : null,
     cao_hours: form.cao_hours ? parseFloat(form.cao_hours) : null,
@@ -279,7 +279,7 @@ const PlacementWizard = ({ open, onClose, match, vacancy, defaultCompanyId, lock
         p_function_name: form.function_name,
         p_start_date: form.start_date,
         p_end_date: form.end_date || null,
-        p_hourly_rate: parseFloat(form.hourly_rate),
+        p_hourly_rate: form.hourly_rate ? parseFloat(form.hourly_rate) : null,
         p_client_hourly_rate: form.client_hourly_rate ? parseFloat(form.client_hourly_rate) : null,
         p_overtime_rate: form.overtime_rate ? parseFloat(form.overtime_rate) : null,
         p_created_by: user?.id ?? null,
@@ -327,7 +327,8 @@ const PlacementWizard = ({ open, onClose, match, vacancy, defaultCompanyId, lock
       summary.timesheets = await generateTimesheetTemplates({
         placementId, candidateId: candidateId!, employeeId, companyId,
         organizationId: orgId, startDate: form.start_date,
-        functionName: form.function_name, hourlyRate: parseFloat(form.hourly_rate),
+        functionName: form.function_name,
+        hourlyRate: form.hourly_rate ? parseFloat(form.hourly_rate) : null,
       });
     } catch { /* non-blocking */ }
 
@@ -427,7 +428,9 @@ const PlacementWizard = ({ open, onClose, match, vacancy, defaultCompanyId, lock
   });
   const busy = mutation.isPending || overrideMutation.isPending;
 
-  const step0Valid = Boolean(candidateId && companyId && form.function_name && form.start_date && form.hourly_rate);
+  // Uurtarief zit hier bewust niet in: tarieven mogen buiten dit systeem worden bijgehouden
+  // (meeting 17-07), dus een plaatsing zonder tarief moet gewoon door kunnen.
+  const step0Valid = Boolean(candidateId && companyId && form.function_name && form.start_date);
   const missingEmail = !candidate?.email;
   const missingPhone = !candidate?.phone;
 
@@ -595,7 +598,7 @@ const PlacementWizard = ({ open, onClose, match, vacancy, defaultCompanyId, lock
                   <div className="rounded-lg border p-3">
                     <h3 className="text-sm font-medium">Tarieven</h3>
                     <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                      <div><Label>Uurtarief medewerker (€) *</Label><Input className="mt-1" type="number" step="0.01" value={form.hourly_rate} onChange={(e) => set('hourly_rate', e.target.value)} /></div>
+                      <div><Label>Uurtarief medewerker (€)</Label><Input className="mt-1" type="number" step="0.01" value={form.hourly_rate} onChange={(e) => set('hourly_rate', e.target.value)} placeholder="Optioneel" /></div>
                       <div><Label>Factuurtarief klant (€)</Label><Input className="mt-1" type="number" step="0.01" value={form.client_hourly_rate} onChange={(e) => set('client_hourly_rate', e.target.value)} placeholder="Verkooptarief" /></div>
                       <div><Label>Overwerktarief (€)</Label><Input className="mt-1" type="number" step="0.01" value={form.overtime_rate} onChange={(e) => set('overtime_rate', e.target.value)} /></div>
                     </div>
@@ -760,7 +763,7 @@ const PlacementWizard = ({ open, onClose, match, vacancy, defaultCompanyId, lock
                 <div><span className="text-muted-foreground">Kandidaat:</span> <strong>{candidateName}</strong></div>
                 <div><span className="text-muted-foreground">Opdrachtgever:</span> <strong>{companyName}</strong></div>
                 <div><span className="text-muted-foreground">Functie:</span> <strong>{form.function_name}</strong> per <strong>{form.start_date}</strong>{form.end_date ? ` t/m ${form.end_date}` : ''}</div>
-                <div><span className="text-muted-foreground">Tarief:</span> <strong>€{form.hourly_rate}</strong>{form.client_hourly_rate ? ` · klant €${form.client_hourly_rate}` : ''}</div>
+                <div><span className="text-muted-foreground">Tarief:</span> <strong>{form.hourly_rate ? `€${form.hourly_rate}` : 'Niet ingevuld'}</strong>{form.client_hourly_rate ? ` · klant €${form.client_hourly_rate}` : ''}</div>
                 {form.payroller && <div><span className="text-muted-foreground">Payroller:</span> <strong>{payrollers.find((p) => p.id === form.payroller)?.name ?? '—'}</strong></div>}
                 <div><span className="text-muted-foreground">Voertuig:</span> {vehicleId
                   ? <strong>{(availableVehicles as any[]).find((v) => v.id === vehicleId)?.license_plate ?? 'Geselecteerd'} vanaf {vehicleFrom || form.start_date}</strong>
