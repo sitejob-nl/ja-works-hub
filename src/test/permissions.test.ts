@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CONFIGURABLE_ROLES,
+  ROLE_PERMISSION_DISPLAY_ROLES,
   effectivePermissionDecision,
   normalizeRolePermissions,
   normalizeUserPermissionOverrides,
@@ -8,6 +10,19 @@ import {
 } from '@/lib/permissions';
 
 describe('role permissions', () => {
+  it('toont Facility in het rollenoverzicht zonder de vaste rol configureerbaar te maken', () => {
+    expect(ROLE_PERMISSION_DISPLAY_ROLES).toEqual([
+      'admin',
+      'intercedent',
+      'backoffice',
+      'finance',
+      'facility',
+      'medewerker',
+      'opdrachtgever',
+    ]);
+    expect(CONFIGURABLE_ROLES).not.toContain('facility');
+  });
+
   it('geeft admin standaard alle rechten en finance geen matchmutaties', () => {
     expect(roleHasPermission('admin', 'matching.drag_drop')).toBe(true);
     expect(roleHasPermission('admin', 'settings.permissions.manage')).toBe(true);

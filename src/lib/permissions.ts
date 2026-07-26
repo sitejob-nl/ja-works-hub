@@ -46,6 +46,19 @@ export const ROLE_LABELS: Record<UserRole, string> = {
 
 export const CONFIGURABLE_ROLES: UserRole[] = ['admin', 'intercedent', 'backoffice', 'finance', 'medewerker', 'opdrachtgever'];
 
+// Facility is visible in the permissions overview so admins can discover the
+// role, but remains deliberately absent from CONFIGURABLE_ROLES. Its access is
+// fixed by the Facility-specific route, RPC and RLS allowlists.
+export const ROLE_PERMISSION_DISPLAY_ROLES: readonly UserRole[] = [
+  'admin',
+  'intercedent',
+  'backoffice',
+  'finance',
+  'facility',
+  'medewerker',
+  'opdrachtgever',
+];
+
 export const PERMISSIONS: PermissionDefinition[] = [
   { key: 'candidates.view', label: 'Kandidaten bekijken', description: 'Kandidaatlijsten en dossiers openen.', group: 'Kandidaten' },
   { key: 'candidates.edit', label: 'Kandidaten bewerken', description: 'Profielvelden en kandidaatstatus aanpassen.', group: 'Kandidaten' },
