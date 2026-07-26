@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/command';
 import NotificationBell from './NotificationBell';
 import { LanguageToggle } from '@/components/translation/LanguageToggle';
+import { isFacilityRole } from '@/lib/facility-access';
 
 interface TopBarProps {
   onMenuClick?: () => void;
@@ -24,7 +25,8 @@ interface TopBarProps {
 const foldAccents = (s: string) => s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
 
 const TopBar = ({ onMenuClick }: TopBarProps) => {
-  const { profile, signOut } = useAuth();
+  const { profile, role, signOut } = useAuth();
+  const facility = isFacilityRole(role);
   const navigate = useNavigate();
   const orgId = profile?.organization_id;
   const firstName = profile?.full_name?.split(' ')[0] ?? '';
@@ -36,6 +38,7 @@ const TopBar = ({ onMenuClick }: TopBarProps) => {
 
   // Cmd+K shortcut
   useEffect(() => {
+    if (facility) return;
     const down = (e: KeyboardEvent) => {
       if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
@@ -44,10 +47,16 @@ const TopBar = ({ onMenuClick }: TopBarProps) => {
     };
     document.addEventListener('keydown', down);
     return () => document.removeEventListener('keydown', down);
-  }, []);
+  }, [facility]);
 
   // Debounced search
   useEffect(() => {
+    if (facility) {
+      setOpen(false);
+      setQuery('');
+      setResults({ candidates: [], employees: [], companies: [], vacancies: [], placements: [] });
+      return;
+    }
     const searchTerm = query.trim();
     if (!searchTerm || searchTerm.length < 2) {
       setResults({ candidates: [], employees: [], companies: [], vacancies: [], placements: [] });
@@ -107,7 +116,7 @@ const TopBar = ({ onMenuClick }: TopBarProps) => {
       });
     }, 300);
     return () => clearTimeout(timer);
-  }, [query, orgId]);
+  }, [facility, query, orgId]);
 
   const hasResults = results.candidates.length > 0 || results.employees.length > 0
     || results.companies.length > 0 || results.vacancies.length > 0 || results.placements.length > 0;
@@ -126,7 +135,7 @@ const TopBar = ({ onMenuClick }: TopBarProps) => {
         </Button>
 
         {/* Search trigger */}
-        <button
+        {!facility && <button
           onClick={() => setOpen(true)}
           className="relative max-w-md w-full hidden sm:flex items-center h-9 pl-9 pr-4 rounded-md bg-secondary text-sm text-muted-foreground hover:bg-muted transition-colors cursor-pointer"
         >
@@ -135,17 +144,19 @@ const TopBar = ({ onMenuClick }: TopBarProps) => {
           <kbd className="ml-auto pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
             ⌘K
           </kbd>
-        </button>
+        </button>}
       </div>
 
       {/* Right */}
       <div className="flex items-center gap-2 sm:gap-4 shrink-0">
         {/* Mobile search icon */}
-        <Button variant="ghost" size="icon" className="sm:hidden" onClick={() => setOpen(true)}>
-          <Search className="h-5 w-5" />
-        </Button>
+        {!facility && (
+          <Button variant="ghost" size="icon" className="sm:hidden" onClick={() => setOpen(true)}>
+            <Search className="h-5 w-5" />
+          </Button>
+        )}
 
-        <NotificationBell />
+        {!facility && <NotificationBell />}
 
         <LanguageToggle compact />
 
@@ -161,7 +172,7 @@ const TopBar = ({ onMenuClick }: TopBarProps) => {
       </div>
 
       {/* Command palette */}
-      <CommandDialog open={open} onOpenChange={setOpen}>
+      {!facility && <CommandDialog open={open} onOpenChange={setOpen}>
         <CommandInput placeholder="Zoek kandidaten, vacatures, opdrachtgevers..." value={query} onValueChange={setQuery} />
         <CommandList>
           <CommandEmpty>Geen resultaten gevonden.</CommandEmpty>
@@ -216,7 +227,7 @@ const TopBar = ({ onMenuClick }: TopBarProps) => {
             </CommandGroup>
           )}
         </CommandList>
-      </CommandDialog>
+      </CommandDialog>}
     </header>
   );
 };

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireRolePermission } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -21,16 +22,14 @@ serve(async (req) => {
       { global: { headers: { Authorization: authHeader } } }
     );
 
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
-    }
-    const userId = user.id;
+    const auth = await requireRolePermission(req, "candidates.view", corsHeaders);
+    if (auth instanceof Response) return auth;
+    const userId = auth.userId;
 
     // Get user's org
-    const { data: profile } = await supabase.from("profiles").select("organization_id, full_name").eq("id", userId).single();
+    const { data: profile } = await supabase.from("profiles").select("full_name").eq("id", userId).single();
     if (!profile) throw new Error("Profile not found");
-    const orgId = profile.organization_id;
+    const orgId = auth.organizationId;
 
     // Gather signals for AI prioritization
     const now = new Date().toISOString();

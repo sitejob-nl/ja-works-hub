@@ -31,7 +31,7 @@ import { useOutlookAccounts } from '@/hooks/useOutlookAccounts';
 import { supabase } from '@/integrations/supabase/client';
 import { ROLE_LABELS, type UserPermissionOverrides, type UserRole } from '@/lib/permissions';
 
-type InternalRole = 'admin' | 'intercedent' | 'backoffice' | 'finance';
+type InternalRole = 'admin' | 'intercedent' | 'backoffice' | 'finance' | 'facility';
 
 type InternalUser = PermissionManagedUser & {
   is_active: boolean;
@@ -60,7 +60,7 @@ type InviteResponse = {
   invites: InternalInvite[];
 };
 
-const INTERNAL_ROLES: InternalRole[] = ['admin', 'intercedent', 'backoffice', 'finance'];
+const INTERNAL_ROLES: InternalRole[] = ['admin', 'intercedent', 'backoffice', 'finance', 'facility'];
 
 const STATUS_LABELS: Record<InternalInviteStatus, string> = {
   created: 'Link aangemaakt',
@@ -393,8 +393,10 @@ const UserManagementSettings = () => {
                         </div>
                       </TableCell>
                       <TableCell>
-                        {user.role === 'admin' ? (
-                          <Badge variant="secondary">Altijd volledig</Badge>
+                        {user.role === 'admin' || user.role === 'facility' ? (
+                          <Badge variant="secondary">
+                            {user.role === 'admin' ? 'Altijd volledig' : 'Vaste operationele rechten'}
+                          </Badge>
                         ) : (
                           <Button
                             type="button"

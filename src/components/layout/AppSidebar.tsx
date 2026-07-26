@@ -11,6 +11,8 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { PermissionKey } from '@/lib/permissions';
+import { ROLE_LABELS } from '@/lib/permissions';
+import { fetchFacilityShellContext, isFacilityRole } from '@/lib/facility';
 import { useEffectivePermissions } from '@/hooks/usePermissions';
 import { useEffect } from 'react';
 
@@ -63,8 +65,8 @@ const navGroups: NavGroup[] = [
   {
     label: 'Vastgoed & Fleet',
     items: [
-      { label: 'Huisvesting', icon: Home, path: '/huisvesting', moduleKey: 'huisvesting', roles: ['intercedent', 'backoffice'] },
-      { label: 'Transport', icon: Car, path: '/transport', moduleKey: 'transport', roles: ['intercedent', 'backoffice'] },
+      { label: 'Huisvesting', icon: Home, path: '/huisvesting', moduleKey: 'huisvesting', roles: ['intercedent', 'backoffice', 'facility'] },
+      { label: 'Transport', icon: Car, path: '/transport', moduleKey: 'transport', roles: ['intercedent', 'backoffice', 'facility'] },
       { label: 'Tankpas analyse', icon: Fuel, path: '/tankpas-analyse', moduleKey: 'tankpas-analyse', roles: null, permission: 'finance.view' },
       { label: 'Kilometeranalyse', icon: Calculator, path: '/kilometeranalyse', moduleKey: 'tankpas-analyse', roles: null, permission: 'finance.view' },
     ],
@@ -95,16 +97,27 @@ const navGroups: NavGroup[] = [
 
 const AppSidebar = ({ onNavigate }: AppSidebarProps) => {
   const [collapsed, setCollapsed] = useState(false);
-  const { profile } = useAuth();
+  const { profile, role } = useAuth();
   const { hasPermission } = useEffectivePermissions();
   const location = useLocation();
 
   const firstName = profile?.full_name?.split(' ')[0] ?? '';
-  const roleLabel = profile?.role ?? '';
+  const facility = isFacilityRole(role);
+  const roleLabel = role ? ROLE_LABELS[role] : '';
 
   const { data: org } = useQuery({
-    queryKey: ['organization', profile?.organization_id],
+    queryKey: ['organization', profile?.organization_id, facility ? 'facility-shell' : 'full'],
     queryFn: async () => {
+      if (facility) {
+        const shell = await fetchFacilityShellContext();
+        return {
+          id: shell.id,
+          name: shell.name,
+          logo_url: shell.logo_url,
+          settings: shell.branding,
+          plan_id: null as string | null,
+        };
+      }
       const { data, error } = await supabase
         .from('organizations')
         .select('name, logo_url, settings, plan_id')
@@ -126,7 +139,7 @@ const AppSidebar = ({ onNavigate }: AppSidebarProps) => {
       if (error) throw error;
       return data;
     },
-    enabled: !!profile?.organization_id,
+    enabled: !!profile?.organization_id && !facility,
   });
 
   const { data: plan } = useQuery({
@@ -140,7 +153,7 @@ const AppSidebar = ({ onNavigate }: AppSidebarProps) => {
       if (error) throw error;
       return data;
     },
-    enabled: !!org?.plan_id,
+    enabled: !!org?.plan_id && !facility,
   });
 
   const { data: openTaskCount } = useQuery({
@@ -181,9 +194,10 @@ const AppSidebar = ({ onNavigate }: AppSidebarProps) => {
   const filteredGroups = navGroups
     .map(group => ({
       ...group,
-      items: group.items.filter(item =>
-        isModuleEnabled(item.moduleKey) && isRoleAllowed(item.roles) && isPermissionAllowed(item.permission)
-      ),
+      items: group.items.filter(item => {
+        if (facility && !['/taken', '/huisvesting', '/transport'].includes(item.path)) return false;
+        return isModuleEnabled(item.moduleKey) && isRoleAllowed(item.roles) && isPermissionAllowed(item.permission);
+      }),
     }))
     .filter(group => group.items.length > 0);
 
@@ -310,19 +324,21 @@ const AppSidebar = ({ onNavigate }: AppSidebarProps) => {
 
       {/* Bottom */}
       <div className="border-t border-sidebar-border px-2 py-3 space-y-0.5">
-        <NavLink
-          to="/mijn-outlook"
-          onClick={handleNavClick}
-          className={cn(
-            'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors',
-            location.pathname === '/mijn-outlook'
-              ? 'bg-sidebar-hover text-sidebar-active'
-              : 'text-sidebar-foreground hover:bg-sidebar-hover hover:text-sidebar-active'
-          )}
-        >
-          <Mail className="h-4 w-4 shrink-0" />
-          {!collapsed && <span>Mijn Outlook</span>}
-        </NavLink>
+        {!facility && (
+          <NavLink
+            to="/mijn-outlook"
+            onClick={handleNavClick}
+            className={cn(
+              'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors',
+              location.pathname === '/mijn-outlook'
+                ? 'bg-sidebar-hover text-sidebar-active'
+                : 'text-sidebar-foreground hover:bg-sidebar-hover hover:text-sidebar-active'
+            )}
+          >
+            <Mail className="h-4 w-4 shrink-0" />
+            {!collapsed && <span>Mijn Outlook</span>}
+          </NavLink>
+        )}
 
         {isPermissionAllowed('settings.manage') && (
           <NavLink
@@ -348,7 +364,7 @@ const AppSidebar = ({ onNavigate }: AppSidebarProps) => {
             </div>
             <div className="min-w-0">
               <p className="text-xs font-medium text-sidebar-active truncate">{profile.full_name}</p>
-              <p className="text-[10px] text-sidebar-foreground capitalize">{roleLabel}</p>
+              <p className="text-[10px] text-sidebar-foreground">{roleLabel}</p>
             </div>
           </div>
         )}

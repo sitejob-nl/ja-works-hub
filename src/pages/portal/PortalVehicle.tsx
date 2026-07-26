@@ -80,7 +80,9 @@ const PortalVehicle = () => {
       const uploadedPaths: string[] = [];
       for (const photo of photos) {
         const ext = photo.name.split('.').pop();
-        const path = `${orgId}/vehicle-damage/${crypto.randomUUID()}.${ext}`;
+        // Include the candidate id so Storage RLS can bind an upload to the
+        // authenticated resident instead of trusting only the organization folder.
+        const path = `${orgId}/vehicle-damage/${employeeId}/${crypto.randomUUID()}.${ext}`;
         const { error } = await supabase.storage.from('documents').upload(path, photo);
         if (error) throw error;
         uploadedPaths.push(path);

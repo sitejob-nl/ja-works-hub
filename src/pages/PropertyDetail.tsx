@@ -29,8 +29,13 @@ import CleaningTab from '@/components/housing/tabs/CleaningTab';
 import PropertyContractsTab from '@/components/housing/tabs/PropertyContractsTab';
 import TasksSection from '@/components/shared/TasksSection';
 import { useTabSearchParam } from '@/hooks/useTabSearchParam';
+import { useAuth } from '@/contexts/AuthContext';
+import { fetchFacilityHousingSnapshot, isFacilityRole, saveFacilityOperationalEntity } from '@/lib/facility';
+import { logAudit } from '@/lib/audit';
 
 const PropertyDetail = () => {
+  const { role } = useAuth();
+  const isFacility = isFacilityRole(role);
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -39,8 +44,12 @@ const PropertyDetail = () => {
   const [activeTab, setActiveTab] = useTabSearchParam('kamers');
 
   const { data: property, isLoading } = useQuery({
-    queryKey: ['property', id],
+    queryKey: ['property', id, isFacility ? 'facility' : 'internal'],
     queryFn: async () => {
+      if (isFacility) {
+        const snapshot = await fetchFacilityHousingSnapshot(id);
+        return snapshot.properties.find((item: any) => item.id === id) ?? null;
+      }
       const { data, error } = await supabase.from('properties').select(`
         *,
         property_owners(id, name, contact_person, email, phone, notes),
@@ -60,12 +69,18 @@ const PropertyDetail = () => {
 
   const deactivate = useMutation({
     mutationFn: async () => {
+      if (isFacility) {
+        await saveFacilityOperationalEntity('property', { id, is_active: false });
+        return;
+      }
       const { error } = await supabase.from('properties').update({ is_active: false }).eq('id', id!);
       if (error) throw error;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['property', id] });
       qc.invalidateQueries({ queryKey: ['properties'] });
+      if (isFacility) qc.invalidateQueries({ queryKey: ['facility-housing-snapshot'] });
+      if (isFacility) void logAudit({ action: 'update', tableName: 'properties', recordId: id!, newValues: { is_active: false } });
       toast.success('Pand gedeactiveerd');
     },
   });
@@ -132,10 +147,10 @@ const PropertyDetail = () => {
             <span className="text-sm font-medium">{pct}%</span>
           </div>
           <div className="flex items-center gap-4 mt-2 flex-wrap">
-            {property.property_owners?.name && (
+            {!isFacility && property.property_owners?.name && (
               <span className="text-xs text-muted-foreground">Eigenaar: <span className="text-foreground font-medium">{property.property_owners.name}</span></span>
             )}
-            {totalMaandlasten > 0 && (
+            {!isFacility && totalMaandlasten > 0 && (
               <span className="text-xs text-muted-foreground">Maandlasten: <span className="text-foreground font-medium">{formatEUR(totalMaandlasten)}</span></span>
             )}
           </div>
@@ -150,43 +165,50 @@ const PropertyDetail = () => {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => deactivate.mutate()}>Deactiveren</DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => setDeleteOpen(true)} className="text-destructive">
-                Verwijderen
-              </DropdownMenuItem>
+              {!isFacility && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => setDeleteOpen(true)} className="text-destructive">
+                    Verwijderen
+                  </DropdownMenuItem>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
+      <Tabs
+        value={isFacility && !['kamers', 'bewoners', 'schoonmaak', 'sleutels', 'inspecties'].includes(activeTab) ? 'kamers' : activeTab}
+        onValueChange={setActiveTab}
+      >
         <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">
           <TabsList className="w-max sm:w-auto">
             <TabsTrigger value="kamers">Kamers</TabsTrigger>
             <TabsTrigger value="bewoners">Bewoners</TabsTrigger>
-            <TabsTrigger value="kosten">Kosten</TabsTrigger>
+            {!isFacility && <TabsTrigger value="kosten">Kosten</TabsTrigger>}
             <TabsTrigger value="schoonmaak">Schoonmaak</TabsTrigger>
-            <TabsTrigger value="contracten">Contracten</TabsTrigger>
+            {!isFacility && <TabsTrigger value="contracten">Contracten</TabsTrigger>}
             <TabsTrigger value="sleutels">Sleutels</TabsTrigger>
             <TabsTrigger value="inspecties">Inspecties</TabsTrigger>
-            <TabsTrigger value="eigenaar">Eigenaar</TabsTrigger>
-            <TabsTrigger value="taken">Taken</TabsTrigger>
+            {!isFacility && <TabsTrigger value="eigenaar">Eigenaar</TabsTrigger>}
+            {!isFacility && <TabsTrigger value="taken">Taken</TabsTrigger>}
           </TabsList>
         </div>
         <TabsContent value="kamers"><UnitsTab property={property} /></TabsContent>
         <TabsContent value="bewoners"><ResidentsTab property={property} /></TabsContent>
-        <TabsContent value="kosten"><CostsTab property={property} /></TabsContent>
+        {!isFacility && <TabsContent value="kosten"><CostsTab property={property} /></TabsContent>}
         <TabsContent value="schoonmaak"><CleaningTab property={property} /></TabsContent>
-        <TabsContent value="contracten"><PropertyContractsTab property={property} /></TabsContent>
-        <TabsContent value="sleutels"><KeysTab propertyId={id!} /></TabsContent>
-        <TabsContent value="inspecties"><InspectionsTab propertyId={id!} /></TabsContent>
-        <TabsContent value="eigenaar"><OwnerTab property={property} /></TabsContent>
-        <TabsContent value="taken"><TasksSection entityId={id!} entityType="huis" /></TabsContent>
+        {!isFacility && <TabsContent value="contracten"><PropertyContractsTab property={property} /></TabsContent>}
+        <TabsContent value="sleutels"><KeysTab property={property} /></TabsContent>
+        <TabsContent value="inspecties"><InspectionsTab property={property} /></TabsContent>
+        {!isFacility && <TabsContent value="eigenaar"><OwnerTab property={property} /></TabsContent>}
+        {!isFacility && <TabsContent value="taken"><TasksSection entityId={id!} entityType="huis" /></TabsContent>}
       </Tabs>
 
       <PropertySlideOver open={editOpen} onOpenChange={setEditOpen} property={property} />
 
-      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+      {!isFacility && <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Pand verwijderen?</AlertDialogTitle>
@@ -207,7 +229,7 @@ const PropertyDetail = () => {
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
-      </AlertDialog>
+      </AlertDialog>}
     </div>
   );
 };

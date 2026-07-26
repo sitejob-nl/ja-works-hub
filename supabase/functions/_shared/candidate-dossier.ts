@@ -166,6 +166,24 @@ export function storagePathFromCvValue(value: string | null | undefined): string
   }
 }
 
+export function isCandidateDocumentPath(
+  value: string | null | undefined,
+  organizationId: string,
+  candidateId: string,
+): value is string {
+  if (!value || value.includes("://")) return false;
+  const parts = value.split("/");
+  if (parts.some((part) => !part || part === "." || part === "..")) return false;
+  if (parts[0] !== organizationId) return false;
+
+  return (parts[1] === candidateId && parts.length >= 3) ||
+    (
+      (parts[1] === "candidates" || parts[1] === "candidate-signups") &&
+      parts[2] === candidateId &&
+      parts.length >= 4
+    );
+}
+
 function detectPdfHasImages(buffer: Uint8Array): boolean {
   const slice = buffer.subarray(0, Math.min(buffer.length, 262144));
   const text = new TextDecoder("iso-8859-1").decode(slice);
@@ -279,7 +297,7 @@ async function resolveCandidateDocuments(
   const candidates: SelectedDocument[] = [];
   const cvFilePath = storagePathFromCvValue(candidate.cv_file_url);
 
-  if (cvFilePath) {
+  if (isCandidateDocumentPath(cvFilePath, candidate.organization_id, candidate.id)) {
     candidates.push({
       name: "CV uit kandidaatprofiel",
       file_path: cvFilePath,
@@ -302,7 +320,7 @@ async function resolveCandidateDocuments(
   if (error) throw new Error(`Kon documenten niet ophalen: ${error.message}`);
 
   for (const [index, doc] of ((docs ?? []) as Array<{ id: string; type: string | null; name: string | null; file_path: string | null; created_at: string | null }>).entries()) {
-    if (!doc.file_path) continue;
+    if (!isCandidateDocumentPath(doc.file_path, candidate.organization_id, candidate.id)) continue;
     const scored = scoreDocument(doc, index);
     if (scored.score < 2_000) continue;
     candidates.push({
@@ -338,7 +356,7 @@ async function resolveCvVisionFile(
   candidate: CandidateForDossier,
 ): Promise<{ file_path: string; mimeType: string } | null> {
   const cvFilePath = storagePathFromCvValue(candidate.cv_file_url);
-  if (cvFilePath) {
+  if (isCandidateDocumentPath(cvFilePath, candidate.organization_id, candidate.id)) {
     const mime = visionMimeForExt(cvFilePath);
     if (mime) return { file_path: cvFilePath, mimeType: mime };
   }
@@ -353,7 +371,7 @@ async function resolveCvVisionFile(
     .limit(30);
 
   for (const d of (docs ?? []) as Array<{ type: string | null; name: string | null; file_path: string | null }>) {
-    if (!d.file_path) continue;
+    if (!isCandidateDocumentPath(d.file_path, candidate.organization_id, candidate.id)) continue;
     const mime = visionMimeForExt(d.file_path);
     if (!mime) continue; // alleen afbeelding/pdf
     const isCv = d.type === "cv" || CV_NAME_PATTERN.test(`${d.name ?? ""} ${d.file_path}`);

@@ -5,6 +5,7 @@ import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { unwrap } from '@/lib/db';
 import {
   INDIVIDUALLY_CONFIGURABLE_ROLES,
+  DEFAULT_ROLE_PERMISSIONS,
   normalizeRolePermissions,
   normalizeUserPermissionOverrides,
   userHasPermission,
@@ -30,10 +31,12 @@ export function useEffectivePermissions() {
   const orgId = useOrganizationId();
   const { profile, role } = useAuth();
 
+  const isAdmin = role === 'admin';
+  const hasFixedRolePermissions = isAdmin || role === 'facility';
   const roleQuery = useQuery({
     queryKey: qk.permissions.roleMatrix(orgId),
     queryFn: () => fetchRolePermissionState(orgId),
-    enabled: !!orgId,
+    enabled: !!orgId && !hasFixedRolePermissions,
     staleTime: 30_000,
   });
 
@@ -55,10 +58,9 @@ export function useEffectivePermissions() {
     refetchInterval: supportsOverrides ? 30_000 : false,
   });
 
-  const isAdmin = role === 'admin';
-  const isLoading = isAdmin ? false : roleQuery.isLoading || (supportsOverrides && overrideQuery.isLoading);
-  const error = isAdmin ? null : roleQuery.error || (supportsOverrides ? overrideQuery.error : null);
-  const rolePermissions = roleQuery.data?.matrix;
+  const isLoading = hasFixedRolePermissions ? false : roleQuery.isLoading || (supportsOverrides && overrideQuery.isLoading);
+  const error = hasFixedRolePermissions ? null : roleQuery.error || (supportsOverrides ? overrideQuery.error : null);
+  const rolePermissions = role === 'facility' ? DEFAULT_ROLE_PERMISSIONS : roleQuery.data?.matrix;
   const userOverrides = overrideQuery.data ?? {};
 
   const hasPermission = (permission: PermissionKey): boolean => {

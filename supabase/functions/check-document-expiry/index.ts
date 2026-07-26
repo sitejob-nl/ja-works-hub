@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireInternalProfile } from "../_shared/auth.ts";
 import { sendOutboundWhatsApp } from "../_shared/whatsapp-utils.ts";
 import { getWhatsAppAutomationSettings, mergeTemplate } from "../_shared/whatsapp-automation-settings.ts";
 
@@ -127,29 +128,24 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Optional auth check — allow authenticated users and configured cron only.
+    // Allow the trusted cron or an active internal user. A valid JWT alone is
+    // insufficient because the work below intentionally uses the service role.
     const authHeader = req.headers.get("Authorization");
     const cronSecret = req.headers.get("X-Cron-Secret");
     const expectedCronSecret = Deno.env.get("CRON_SECRET");
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const isTrustedCron = !!expectedCronSecret && cronSecret === expectedCronSecret;
 
-    if (authHeader?.startsWith("Bearer ")) {
-      const anonClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
-        global: { headers: { Authorization: authHeader } },
-      });
-      const { error } = await anonClient.auth.getUser();
-      if (error) {
+    if (!isTrustedCron) {
+      if (!authHeader?.startsWith("Bearer ")) {
         return new Response(JSON.stringify({ error: "Unauthorized" }), {
           status: 401,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-    } else if (!expectedCronSecret || cronSecret !== expectedCronSecret) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      const auth = await requireInternalProfile(req, corsHeaders);
+      if (auth instanceof Response) return auth;
     }
 
     const adminClient = createClient(supabaseUrl, serviceRoleKey);

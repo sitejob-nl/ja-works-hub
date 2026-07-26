@@ -147,12 +147,15 @@ export async function getAuthenticatedProfile(
 
   const { data: profile, error: profileError } = await admin
     .from('profiles')
-    .select('id, organization_id, role')
+    .select('id, organization_id, role, is_active')
     .eq('id', userData.user.id)
     .maybeSingle();
 
   if (profileError || !profile?.organization_id) {
     return jsonResponse({ error: 'Geen geldig profiel gevonden' }, 403, corsHeaders);
+  }
+  if (profile.is_active !== true) {
+    return jsonResponse({ error: 'Account is uitgeschakeld' }, 403, corsHeaders);
   }
 
   return {

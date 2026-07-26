@@ -1,5 +1,5 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
+import { requireInternalProfile } from "../_shared/auth.ts";
 
 // Zoeken API zit op v2, Basisprofiel API op v1 — bewust gescheiden URLs.
 const KVK_ZOEKEN_URL = "https://api.kvk.nl/api/v2/zoeken";
@@ -20,19 +20,8 @@ Deno.serve(async (req) => {
       });
     }
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
-
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    const auth = await requireInternalProfile(req, corsHeaders);
+    if (auth instanceof Response) return auth;
 
     // Parse request
     const body = await req.json();

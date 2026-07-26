@@ -1,13 +1,14 @@
 // check-vehicle-apk — flags vehicles whose APK expires within 60 days as recruiter_tasks
 //
 // Modes:
-//   - **User mode** (default): authenticated user, scoped to own org.
+//   - **User mode** (default): active internal user, scoped to own org.
 //   - **Cron mode**: triggered by pg_cron with `x-cron-secret` header, loops all active orgs.
 //
 // Idempotent: skips creating a task if an open recruiter_task with the same
 // related_entity_id + category already exists.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireInternalProfile } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -117,23 +118,9 @@ Deno.serve(async (req) => {
       return json({ mode: "cron", results });
     }
 
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) return json({ error: "Unauthorized" }, 401);
-
-    const anon = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const { data: userData, error: userErr } = await anon.auth.getUser();
-    if (userErr || !userData?.user) return json({ error: "Unauthorized" }, 401);
-
-    const { data: profile } = await admin
-      .from("profiles")
-      .select("organization_id")
-      .eq("id", userData.user.id)
-      .single();
-    if (!profile?.organization_id) return json({ error: "No organization" }, 403);
-
-    const result = await runForOrg(admin, profile.organization_id);
+    const auth = await requireInternalProfile(req, corsHeaders);
+    if (auth instanceof Response) return auth;
+    const result = await runForOrg(admin, auth.organizationId);
     return json({ mode: "user", result });
   } catch (err: any) {
     console.error("check-vehicle-apk error:", err);

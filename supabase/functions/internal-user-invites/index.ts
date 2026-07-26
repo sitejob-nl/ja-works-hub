@@ -10,9 +10,9 @@ import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
 import { sendViaOutlookAccount } from "../_shared/outlook-send.ts";
 import { buildOrganizationPublicUrl } from "../_shared/public-url.ts";
 
-type InternalRole = "admin" | "intercedent" | "backoffice" | "finance";
+type InternalRole = "admin" | "intercedent" | "backoffice" | "finance" | "facility";
 
-const INTERNAL_ROLES: InternalRole[] = ["admin", "intercedent", "backoffice", "finance"];
+const INTERNAL_ROLES: InternalRole[] = ["admin", "intercedent", "backoffice", "finance", "facility"];
 const PERMISSION_KEY_SET = new Set<EdgePermissionKey>(EDGE_PERMISSION_KEYS);
 const ROLE_ONLY_PERMISSION_KEY_SET = new Set<EdgePermissionKey>(["candidates.edit", "finance.manage"]);
 const ROLE_LABELS: Record<InternalRole, string> = {
@@ -20,6 +20,7 @@ const ROLE_LABELS: Record<InternalRole, string> = {
   intercedent: "Intercedent",
   backoffice: "Backoffice",
   finance: "Finance",
+  facility: "Facility",
 };
 
 const json = (body: unknown, status = 200) => jsonResponse(body, status, corsHeaders);
@@ -288,7 +289,7 @@ Deno.serve(async (req) => {
         return json({ error: "Adminrechten kunnen niet individueel worden aangepast" }, 400);
       }
       if (!["intercedent", "backoffice", "finance"].includes(target.role)) {
-        return json({ error: "Alleen interne gebruikers ondersteunen individuele rechten" }, 400);
+        return json({ error: "Deze rol heeft vaste rechten en ondersteunt geen individuele uitzonderingen" }, 400);
       }
 
       const { data: savedOverrides, error: saveError } = await admin.rpc(
@@ -452,6 +453,16 @@ Deno.serve(async (req) => {
         .maybeSingle();
       if (!before) return json({ error: "Gebruiker niet gevonden" }, 404);
 
+      const changesActiveState = typeof updates.is_active === "boolean"
+        && updates.is_active !== before.is_active;
+      if (changesActiveState) {
+        const nextActive = updates.is_active as boolean;
+        const { error: authUpdateError } = await admin.auth.admin.updateUserById(profileId, {
+          ban_duration: nextActive ? "none" : "876000h",
+        });
+        if (authUpdateError) throw authUpdateError;
+      }
+
       const { data: user, error } = await admin
         .from("profiles")
         .update(updates)
@@ -459,7 +470,17 @@ Deno.serve(async (req) => {
         .eq("organization_id", auth.organizationId)
         .select("id, email, full_name, role, is_active, created_at, updated_at")
         .single();
-      if (error) throw error;
+      if (error) {
+        if (changesActiveState) {
+          const { error: rollbackError } = await admin.auth.admin.updateUserById(profileId, {
+            ban_duration: before.is_active ? "none" : "876000h",
+          });
+          if (rollbackError) {
+            console.error("Failed to roll back auth ban after profile update failure", rollbackError);
+          }
+        }
+        throw error;
+      }
 
       await writeAudit(admin, {
         organizationId: auth.organizationId,

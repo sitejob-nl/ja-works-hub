@@ -7,7 +7,10 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // GEEN BSN/IBAN, GEEN interne contactdata buiten de accountmanager voor "vraag stellen".
 
 import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
-import { storagePathFromCvValue } from "../_shared/candidate-dossier.ts";
+import {
+  isCandidateDocumentPath,
+  storagePathFromCvValue,
+} from "../_shared/candidate-dossier.ts";
 import { advanceMatchStatus, createMatchFollowUpTask, recordMatchProposalTokenResponse } from "../_shared/match-lifecycle.ts";
 import { resolveMatchContact } from "../_shared/match-contact.ts";
 import { clientSafeSummary, resolvePublicProposalPage } from "../_shared/proposal-page.ts";
@@ -180,6 +183,13 @@ Deno.serve(async (req) => {
       if (!cvPath && cvDoc?.file_path) {
         cvPath = storagePathFromCvValue(cvDoc.file_path);
         cvFileName = cvDoc.name ?? null;
+      }
+      if (
+        cvPath &&
+        (!candidate?.id || !isCandidateDocumentPath(cvPath, orgId, candidate.id))
+      ) {
+        cvPath = null;
+        cvFileName = null;
       }
       if (sectionEnabled("cv") && cvPath) {
         const { data: signed } = await service.storage.from("documents").createSignedUrl(cvPath, CV_SIGNED_TTL);

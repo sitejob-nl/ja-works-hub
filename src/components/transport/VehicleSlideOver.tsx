@@ -9,6 +9,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
+import { useAuth } from '@/contexts/AuthContext';
+import { isFacilityRole, saveFacilityOperationalEntity } from '@/lib/facility';
 
 interface Props {
   open: boolean;
@@ -26,6 +28,8 @@ const emptyForm = {
 
 const VehicleSlideOver = ({ open, onOpenChange, vehicle }: Props) => {
   const orgId = useOrganizationId();
+  const { role } = useAuth();
+  const isFacility = isFacilityRole(role);
   const qc = useQueryClient();
   const isEdit = !!vehicle;
   const [form, setForm] = useState(emptyForm);
@@ -54,7 +58,7 @@ const VehicleSlideOver = ({ open, onOpenChange, vehicle }: Props) => {
 
   const mutation = useMutation({
     mutationFn: async () => {
-      const payload = {
+      const payload: any = {
         license_plate: form.license_plate.toUpperCase(),
         brand: form.brand || null,
         model: form.model || null,
@@ -62,12 +66,16 @@ const VehicleSlideOver = ({ open, onOpenChange, vehicle }: Props) => {
         fuel_type: form.fuel_type || null,
         current_mileage: form.current_mileage ? parseInt(form.current_mileage) : null,
         tank_capacity_liters: form.tank_capacity_liters ? parseFloat(form.tank_capacity_liters) : null,
-        fuel_card_reference: form.fuel_card_reference || null,
-        avg_consumption_per_100km: form.avg_consumption_per_100km ? parseFloat(form.avg_consumption_per_100km) : null,
         status: form.status as any,
-        notes: form.notes || null,
       };
-      if (isEdit) {
+      if (!isFacility) {
+        payload.notes = form.notes || null;
+        payload.fuel_card_reference = form.fuel_card_reference || null;
+        payload.avg_consumption_per_100km = form.avg_consumption_per_100km ? parseFloat(form.avg_consumption_per_100km) : null;
+      }
+      if (isFacility) {
+        await saveFacilityOperationalEntity('vehicle', { ...(isEdit ? { id: vehicle.id } : {}), ...payload });
+      } else if (isEdit) {
         const { error } = await supabase.from('vehicles').update(payload).eq('id', vehicle.id);
         if (error) throw error;
       } else {
@@ -77,6 +85,7 @@ const VehicleSlideOver = ({ open, onOpenChange, vehicle }: Props) => {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['vehicles'] });
+      qc.invalidateQueries({ queryKey: ['facility-transport-snapshot'] });
       if (isEdit) qc.invalidateQueries({ queryKey: ['vehicle', vehicle.id] });
       toast.success(isEdit ? 'Voertuig bijgewerkt' : 'Voertuig aangemaakt');
       onOpenChange(false);
@@ -112,11 +121,11 @@ const VehicleSlideOver = ({ open, onOpenChange, vehicle }: Props) => {
           <div className="pt-2">
             <p className="text-sm font-medium text-muted-foreground mb-3">Tankgegevens</p>
             <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
+              <div className={isFacility ? '' : 'grid grid-cols-2 gap-3'}>
                 <div><Label>Tankcapaciteit (liter)</Label><Input type="number" value={form.tank_capacity_liters} onChange={(e) => set('tank_capacity_liters', e.target.value)} placeholder="bijv. 50" /></div>
-                <div><Label>Gem. verbruik (l/100km)</Label><Input type="number" step="0.1" value={form.avg_consumption_per_100km} onChange={(e) => set('avg_consumption_per_100km', e.target.value)} placeholder="bijv. 6.5" /></div>
+                {!isFacility && <div><Label>Gem. verbruik (l/100km)</Label><Input type="number" step="0.1" value={form.avg_consumption_per_100km} onChange={(e) => set('avg_consumption_per_100km', e.target.value)} placeholder="bijv. 6.5" /></div>}
               </div>
-              <div><Label>Tankpas referentie</Label><Input value={form.fuel_card_reference} onChange={(e) => set('fuel_card_reference', e.target.value)} placeholder="Q8 pasnummer" /></div>
+              {!isFacility && <div><Label>Tankpas referentie</Label><Input value={form.fuel_card_reference} onChange={(e) => set('fuel_card_reference', e.target.value)} placeholder="Q8 pasnummer" /></div>}
             </div>
           </div>
 
@@ -131,7 +140,7 @@ const VehicleSlideOver = ({ open, onOpenChange, vehicle }: Props) => {
               </SelectContent>
             </Select>
           </div>
-          <div><Label>Notities</Label><Textarea value={form.notes} onChange={(e) => set('notes', e.target.value)} rows={3} /></div>
+          {!isFacility && <div><Label>Notities</Label><Textarea value={form.notes} onChange={(e) => set('notes', e.target.value)} rows={3} /></div>}
           <div className="flex justify-end gap-3 pt-4">
             <Button variant="ghost" onClick={() => onOpenChange(false)}>Annuleren</Button>
             <Button onClick={() => mutation.mutate()} disabled={!form.license_plate || mutation.isPending}>

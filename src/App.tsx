@@ -15,6 +15,7 @@ import { ClientPortalProvider } from "@/contexts/ClientPortalContext";
 import { TranslationProvider } from "@/contexts/TranslationContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import PermissionRoute from "@/components/PermissionRoute";
+import FacilityRouteScope from "@/components/FacilityRouteScope";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import TenantHostGuard from "@/components/TenantHostGuard";
 import AppLayout from "@/components/layout/AppLayout";
@@ -168,9 +169,11 @@ const App = () => (
                 <AuthProvider>
                   <ProtectedRoute>
                     <RecentItemsProvider>
-                      <TenantHostGuard>
-                        <AppLayout />
-                      </TenantHostGuard>
+                      <FacilityRouteScope>
+                        <TenantHostGuard>
+                          <AppLayout />
+                        </TenantHostGuard>
+                      </FacilityRouteScope>
                     </RecentItemsProvider>
                   </ProtectedRoute>
                 </AuthProvider>

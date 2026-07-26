@@ -14,6 +14,7 @@ import { priorityConfig, entityLinks, entityTypeLabels } from '@/lib/tasks';
 import { cn } from '@/lib/utils';
 import { unwrapList } from '@/lib/db';
 import TaskEditorSheet from '@/components/shared/TaskEditorSheet';
+import { isFacilityRole, setFacilityTaskStatus } from '@/lib/facility';
 
 const Tasks = () => {
   const { user, role } = useAuth();
@@ -26,6 +27,7 @@ const Tasks = () => {
   const [deadlineFilter, setDeadlineFilter] = useState('all');
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<any>(null);
+  const facility = isFacilityRole(role);
   const canFilterAssignee = role === 'admin' || role === 'intercedent' || role === 'backoffice';
 
   const { data: assignees = [] } = useQuery({
@@ -46,7 +48,7 @@ const Tasks = () => {
     queryFn: async () => {
       let q = supabase
         .from('recruiter_tasks' as any)
-        .select('*, profiles:assigned_to(full_name, email)')
+        .select(facility ? '*' : '*, profiles:assigned_to(full_name, email)')
         .eq('organization_id', orgId)
         .order('created_at', { ascending: false });
       if (viewMode === 'mine') q = q.eq('assigned_to', user!.id);
@@ -60,6 +62,13 @@ const Tasks = () => {
 
   const updateTask = useMutation({
     mutationFn: async ({ id, updates }: { id: string; updates: Record<string, any> }) => {
+      if (facility) {
+        if (updates.status !== 'open' && updates.status !== 'done') {
+          throw new Error('Facility kan een taak alleen afronden of heropenen');
+        }
+        await setFacilityTaskStatus(id, updates.status);
+        return;
+      }
       const { error } = await supabase.from('recruiter_tasks' as any).update(updates).eq('id', id);
       if (error) throw error;
     },
@@ -159,14 +168,16 @@ const Tasks = () => {
             {filteredActive.length} openstaand{filteredClosed.length > 0 && `, ${filteredClosed.length} gesloten in filter`}
           </p>
         </div>
-        <Button size="sm" onClick={openNew} className="gap-1.5">
-          <Plus className="h-4 w-4" />Taak toevoegen
-        </Button>
+        {!facility && (
+          <Button size="sm" onClick={openNew} className="gap-1.5">
+            <Plus className="h-4 w-4" />Taak toevoegen
+          </Button>
+        )}
       </div>
 
       {/* Filters */}
       <div className="flex flex-wrap gap-2">
-        <div className="flex rounded-md border overflow-hidden">
+        {!facility && <div className="flex rounded-md border overflow-hidden">
           <button
             className={cn('px-3 py-1.5 text-sm transition-colors border-r', viewMode === 'mine' ? 'bg-primary text-primary-foreground' : 'bg-background hover:bg-muted')}
             onClick={() => changeViewMode('mine')}
@@ -179,7 +190,7 @@ const Tasks = () => {
             className={cn('px-3 py-1.5 text-sm transition-colors', viewMode === 'all' ? 'bg-primary text-primary-foreground' : 'bg-background hover:bg-muted')}
             onClick={() => changeViewMode('all')}
           >Alle taken</button>
-        </div>
+        </div>}
         {canFilterAssignee && viewMode === 'all' && (
           <Select value={assigneeFilter} onValueChange={setAssigneeFilter}>
             <SelectTrigger aria-label="Filter op toegewezene" className="w-[190px] h-8 text-sm">
@@ -280,7 +291,7 @@ const Tasks = () => {
                   onCheckedChange={() => handleComplete(task.id)}
                   className="mt-0.5"
                 />
-                <button type="button" onClick={() => openEdit(task)} className="flex-1 min-w-0 text-left">
+                <button type="button" disabled={facility} onClick={() => openEdit(task)} className="flex-1 min-w-0 text-left">
                   <span className="text-sm">{task.title}</span>
                   {task.description && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{task.description}</p>}
                   <div className="flex items-center gap-2 mt-1 flex-wrap">
@@ -306,9 +317,11 @@ const Tasks = () => {
                     )}
                   </div>
                 </button>
-                <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground shrink-0" onClick={() => handleDismiss(task.id)}>
-                  <X className="h-3.5 w-3.5" />
-                </Button>
+                {!facility && (
+                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground shrink-0" onClick={() => handleDismiss(task.id)}>
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                )}
               </div>
             );
           })}
@@ -329,7 +342,7 @@ const Tasks = () => {
                 onCheckedChange={() => handleReopen(task.id)}
                 className="mt-0.5"
               />
-              <button type="button" onClick={() => openEdit(task)} className="flex-1 min-w-0 text-left">
+              <button type="button" disabled={facility} onClick={() => openEdit(task)} className="flex-1 min-w-0 text-left">
                 <span className="text-sm line-through text-muted-foreground">{task.title}</span>
               </button>
             </div>
@@ -337,11 +350,13 @@ const Tasks = () => {
         </div>
       )}
 
-      <TaskEditorSheet
-        open={editorOpen}
-        onOpenChange={setEditorOpen}
-        task={editingTask ?? undefined}
-      />
+      {!facility && (
+        <TaskEditorSheet
+          open={editorOpen}
+          onOpenChange={setEditorOpen}
+          task={editingTask ?? undefined}
+        />
+      )}
     </div>
   );
 };

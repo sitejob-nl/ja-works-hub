@@ -6,10 +6,12 @@ import AppSidebar from './AppSidebar';
 import TopBar from './TopBar';
 import RecentItemsBar from './RecentItemsBar';
 import { TranslationProvider } from '@/contexts/TranslationContext';
+import { isFacilityRole } from '@/lib/facility-access';
 
 const AppLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { user, profile } = useAuth();
+  const { user, profile, role } = useAuth();
+  const facility = isFacilityRole(role);
 
   // Eén mountpunt voor de Sentry user-context (AppLayout rendert eenmaal voor de
   // ingelogde shell; AuthProvider zit meerdere keren in de routeboom). Alleen id +
@@ -43,7 +45,7 @@ const AppLayout = () => {
 
       <div className="flex-1 flex flex-col min-w-0 h-screen">
         <TopBar onMenuClick={() => setSidebarOpen(v => !v)} />
-        <RecentItemsBar />
+        {!facility && <RecentItemsBar />}
         <main className="flex-1 p-3 sm:p-4 md:p-6 overflow-y-auto overflow-x-hidden">
           <div className="max-w-[1400px] mx-auto">
             <Outlet />

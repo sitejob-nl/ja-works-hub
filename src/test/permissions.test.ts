@@ -18,6 +18,29 @@ describe('role permissions', () => {
     expect(roleHasPermission('backoffice', 'vacancies.edit')).toBe(false);
   });
 
+  it('houdt Facility hard op nul rechten, ook bij organisatie- en gebruikersoverrides', () => {
+    const rolePermissions = {
+      facility: {
+        'candidates.view': true,
+        'vacancies.view': true,
+        'placements.view': true,
+        'finance.view': true,
+        'settings.manage': true,
+      },
+    };
+    const userOverrides = {
+      'candidates.view': true,
+      'finance.view': true,
+      'settings.manage': true,
+    };
+
+    expect(normalizeRolePermissions(rolePermissions).facility['candidates.view']).toBe(false);
+    expect(roleHasPermission('facility', 'vacancies.view', rolePermissions)).toBe(false);
+    expect(userHasPermission('facility', 'placements.view', rolePermissions, userOverrides)).toBe(false);
+    expect(userHasPermission('facility', 'finance.view', rolePermissions, userOverrides)).toBe(false);
+    expect(userHasPermission('facility', 'settings.manage', rolePermissions, userOverrides)).toBe(false);
+  });
+
   it('kan rechten per rol overschrijven vanuit organization settings', () => {
     const matrix = normalizeRolePermissions({
       finance: {

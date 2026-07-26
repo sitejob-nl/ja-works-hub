@@ -103,11 +103,15 @@ Deno.serve(async (req) => {
       const userClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: authHeader } } });
       const { data: { user }, error } = await userClient.auth.getUser();
       if (error || !user) return json({ error: "Ongeldige sessie" }, 401);
+      const { data: profile } = await admin.from("profiles")
+        .select("organization_id, role, is_active")
+        .eq("id", user.id)
+        .maybeSingle();
+      if (profile?.is_active === false) return json({ error: "Account is uitgeschakeld" }, 403);
       const { data: isSuper } = await userClient.rpc("is_superadmin");
       if (isSuper) { if (!orgId) return json({ error: "organization_id verplicht voor superadmin" }, 400); }
       else {
-        const { data: profile } = await admin.from("profiles").select("organization_id, role").eq("id", user.id).single();
-        if (!profile || profile.role !== "admin") return json({ error: "Alleen admins of superadmins" }, 403);
+        if (!profile || profile.is_active !== true || profile.role !== "admin") return json({ error: "Alleen admins of superadmins" }, 403);
         orgId = profile.organization_id;
       }
     }

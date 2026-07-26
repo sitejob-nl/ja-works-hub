@@ -27,6 +27,8 @@ import VehicleFinesTab from '@/components/transport/tabs/VehicleFinesTab';
 import VehicleDamageTab from '@/components/transport/tabs/VehicleDamageTab';
 import TasksSection from '@/components/shared/TasksSection';
 import { useTabSearchParam } from '@/hooks/useTabSearchParam';
+import { useAuth } from '@/contexts/AuthContext';
+import { fetchFacilityTransportSnapshot, isFacilityRole, saveFacilityOperationalEntity } from '@/lib/facility';
 
 const statusBadge: Record<string, string> = {
   beschikbaar: 'bg-stat-green/10 text-stat-green border-0',
@@ -42,12 +44,22 @@ const VehicleDetail = () => {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const { role, profile } = useAuth();
+  const isFacility = isFacilityRole(role);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [activeTab, setActiveTab] = useTabSearchParam('gegevens');
+  const visibleTab = isFacility && !['gegevens', 'toewijzingen', 'schade'].includes(activeTab) ? 'gegevens' : activeTab;
 
   const { data: vehicle, isLoading } = useQuery({
-    queryKey: qk.vehicles.detail(id),
-    queryFn: () => unwrap(supabase.from('vehicles').select(`
+    queryKey: isFacility ? ['facility-transport-snapshot', profile?.organization_id, id] : qk.vehicles.detail(id),
+    queryFn: async () => {
+      if (isFacility) {
+        const snapshot = await fetchFacilityTransportSnapshot(id);
+        const safeVehicle = snapshot.vehicles.find((item: any) => item.id === id);
+        if (!safeVehicle) throw new Error('Voertuig niet gevonden');
+        return safeVehicle;
+      }
+      return unwrap(supabase.from('vehicles').select(`
         *,
         vehicle_assignments!vehicle_assignments_vehicle_id_fkey(
           id, assigned_date, returned_date, start_mileage, end_mileage,
@@ -55,17 +67,23 @@ const VehicleDetail = () => {
             id, candidates!employees_candidate_id_fkey(first_name, last_name)
           )
         )
-      `).eq('id', id!).single()),
+      `).eq('id', id!).single());
+    },
     enabled: !!id,
   });
 
   const statusMutation = useMutation({
     mutationFn: async (status: string) => {
-      await unwrap(supabase.from('vehicles').update({ status } as any).eq('id', id!));
+      if (isFacility) {
+        await saveFacilityOperationalEntity('vehicle', { id: id!, status });
+      } else {
+        await unwrap(supabase.from('vehicles').update({ status } as any).eq('id', id!));
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: qk.vehicles.detail(id) });
       qc.invalidateQueries({ queryKey: ['vehicles'] });
+      qc.invalidateQueries({ queryKey: ['facility-transport-snapshot'] });
       toast.success('Status bijgewerkt');
     },
     onError: (e: any) => toast.error(e.message),
@@ -94,7 +112,7 @@ const VehicleDetail = () => {
         finePhotos,
       };
     },
-    enabled: deleteOpen && !!id,
+    enabled: !isFacility && deleteOpen && !!id,
   });
 
   const hardDelete = useMutation({
@@ -139,8 +157,8 @@ const VehicleDetail = () => {
 
   if (isLoading || !vehicle) return <div className="p-8 text-muted-foreground">Laden...</div>;
 
-  const activeAssignment = (vehicle.vehicle_assignments as any[])?.find((a: any) => !a.returned_date);
-  const assignee = activeAssignment?.employees?.candidates as any;
+  const activeAssignment = ((vehicle.assignments ?? vehicle.vehicle_assignments) as any[])?.find((a: any) => !a.returned_date);
+  const assignee = activeAssignment?.employees?.candidates ?? activeAssignment?.worker ?? activeAssignment;
 
   return (
     <div className="space-y-4 sm:space-y-6 min-w-0">
@@ -160,7 +178,7 @@ const VehicleDetail = () => {
           </div>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <Button variant="outline" size="sm" onClick={() => navigate(`/transport/${id}/bewerken`)} className="gap-1"><Edit className="h-4 w-4" /> Bewerken</Button>
+          {!isFacility && <Button variant="outline" size="sm" onClick={() => navigate(`/transport/${id}/bewerken`)} className="gap-1"><Edit className="h-4 w-4" /> Bewerken</Button>}
           <DropdownMenu>
             <DropdownMenuTrigger asChild><Button variant="outline" size="sm">Status</Button></DropdownMenuTrigger>
             <DropdownMenuContent>
@@ -169,20 +187,22 @@ const VehicleDetail = () => {
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => setDeleteOpen(true)} className="text-destructive">
-                <Trash2 className="h-3.5 w-3.5 mr-2" /> Voertuig verwijderen
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {!isFacility && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setDeleteOpen(true)} className="text-destructive">
+                  <Trash2 className="h-3.5 w-3.5 mr-2" /> Voertuig verwijderen
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       </div>
 
-      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+      <AlertDialog open={!isFacility && deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Voertuig {vehicle.license_plate} verwijderen?</AlertDialogTitle>
@@ -215,23 +235,23 @@ const VehicleDetail = () => {
         </AlertDialogContent>
       </AlertDialog>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
+      <Tabs value={visibleTab} onValueChange={setActiveTab}>
         <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">
           <TabsList className="w-max sm:w-auto">
             <TabsTrigger value="gegevens">Gegevens</TabsTrigger>
             <TabsTrigger value="toewijzingen">Toewijzingen</TabsTrigger>
-            <TabsTrigger value="kilometers">Kilometers</TabsTrigger>
-            <TabsTrigger value="boetes">Boetes</TabsTrigger>
+            {!isFacility && <TabsTrigger value="kilometers">Kilometers</TabsTrigger>}
+            {!isFacility && <TabsTrigger value="boetes">Boetes</TabsTrigger>}
             <TabsTrigger value="schade">Schade</TabsTrigger>
-            <TabsTrigger value="taken">Taken</TabsTrigger>
+            {!isFacility && <TabsTrigger value="taken">Taken</TabsTrigger>}
           </TabsList>
         </div>
         <TabsContent value="gegevens"><VehicleInfoTab vehicle={vehicle} activeAssignment={activeAssignment} /></TabsContent>
         <TabsContent value="toewijzingen"><VehicleAssignmentsTab vehicle={vehicle} /></TabsContent>
-        <TabsContent value="kilometers"><VehicleMileageTab vehicle={vehicle} /></TabsContent>
-        <TabsContent value="boetes"><VehicleFinesTab vehicle={vehicle} /></TabsContent>
+        {!isFacility && <TabsContent value="kilometers"><VehicleMileageTab vehicle={vehicle} /></TabsContent>}
+        {!isFacility && <TabsContent value="boetes"><VehicleFinesTab vehicle={vehicle} /></TabsContent>}
         <TabsContent value="schade"><VehicleDamageTab vehicle={vehicle} /></TabsContent>
-        <TabsContent value="taken"><TasksSection entityId={vehicle.id} entityType="auto" /></TabsContent>
+        {!isFacility && <TabsContent value="taken"><TasksSection entityId={vehicle.id} entityType="auto" /></TabsContent>}
       </Tabs>
     </div>
   );

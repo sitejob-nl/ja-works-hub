@@ -1,6 +1,6 @@
 import type { Database } from '@/integrations/supabase/types';
 
-export type UserRole = Database['public']['Enums']['user_role'];
+export type UserRole = Database['public']['Enums']['user_role'] | 'facility';
 
 export type PermissionKey =
   | 'candidates.view'
@@ -39,6 +39,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   intercedent: 'Intercedent',
   backoffice: 'Backoffice',
   finance: 'Finance',
+  facility: 'Facility',
   medewerker: 'Medewerkerportaal',
   opdrachtgever: 'Opdrachtgeverportaal',
 };
@@ -122,6 +123,7 @@ export const DEFAULT_ROLE_PERMISSIONS: RolePermissionMatrix = {
     'finance.view',
     'finance.manage',
   ]),
+  facility: defaults([]),
   medewerker: defaults([]),
   opdrachtgever: defaults([]),
 };
@@ -137,7 +139,7 @@ export function normalizeRolePermissions(raw: unknown): RolePermissionMatrix {
 
   for (const [role, permissions] of Object.entries(raw as Record<string, unknown>)) {
     if (!isRole(role)) continue;
-    if (role === 'admin') continue;
+    if (role === 'admin' || role === 'facility') continue;
 
     if (Array.isArray(permissions)) {
       const enabled = new Set(permissions.filter((permission): permission is PermissionKey => typeof permission === 'string' && isPermission(permission)));

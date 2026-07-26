@@ -34,6 +34,12 @@ import { PhoneLink } from '@/components/ui/contact-links';
 import { MailButton } from '@/components/ui/mail-button';
 import { DAMAGE_ROUTE_STATUS_LABELS, DAMAGE_TYPES, damageTypeIsUrgent, damageTypeLabel } from '@/lib/damage';
 import { normalizeDamageContactSettings } from '@/lib/engagement';
+import {
+  fetchFacilityTransportSnapshot,
+  fetchFacilityWorkerDirectory,
+  isFacilityRole,
+  saveFacilityOperationalEntity,
+} from '@/lib/facility';
 
 const typeBadgeClass: Record<string, string> = {
   lekke_band: 'bg-orange-100 text-orange-700 border-0',
@@ -51,10 +57,13 @@ const typeBadgeClass: Record<string, string> = {
 
 const assignableEmployeeStatuses = new Set(['onboarding', 'actief', 'ziek']);
 const isStoredUrl = (path: string) => /^https?:\/\//i.test(path);
+const reportPerson = (report: any) => report?.employees?.candidates ?? report?.worker ?? report;
+const workerPerson = (worker: any) => worker?.candidates ?? worker;
 
 const VehicleDamageTab = ({ vehicle }: { vehicle: any }) => {
   const orgId = useOrganizationId();
   const { profile } = useAuth();
+  const isFacility = isFacilityRole(profile?.role);
   const qc = useQueryClient();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editingReport, setEditingReport] = useState<any | null>(null);
@@ -62,14 +71,22 @@ const VehicleDamageTab = ({ vehicle }: { vehicle: any }) => {
   const [lightbox, setLightbox] = useState<string | null>(null);
 
   const { data: reports = [] } = useQuery({
-    queryKey: qk.transport.damage(vehicle.id),
-    queryFn: () => unwrapList<any>(
-      supabase
-        .from('vehicle_damage_reports')
-        .select('*, employees(id, candidates(first_name, last_name, phone, email))')
-        .eq('vehicle_id', vehicle.id)
-        .order('reported_at', { ascending: false }),
-    ),
+    queryKey: [...qk.transport.damage(vehicle.id), orgId, isFacility ? 'facility' : 'internal'],
+    queryFn: async () => {
+      if (isFacility) {
+        const snapshot = await fetchFacilityTransportSnapshot(vehicle.id);
+        return (snapshot.damage_reports ?? [])
+          .filter((report: any) => report.vehicle_id === vehicle.id)
+          .sort((a: any, b: any) => String(b.reported_at ?? '').localeCompare(String(a.reported_at ?? '')));
+      }
+      return unwrapList<any>(
+        supabase
+          .from('vehicle_damage_reports')
+          .select('*, employees(id, candidates(first_name, last_name, phone, email))')
+          .eq('vehicle_id', vehicle.id)
+          .order('reported_at', { ascending: false }),
+      );
+    },
   });
 
   const damagePhotoPaths = useMemo(
@@ -100,30 +117,35 @@ const VehicleDamageTab = ({ vehicle }: { vehicle: any }) => {
     queryFn: () => unwrap(
       supabase.from('organizations').select('settings').eq('id', orgId).single(),
     ),
-    enabled: !!orgId,
+    enabled: !!orgId && !isFacility,
   });
 
   const damageSettings = normalizeDamageContactSettings((org?.settings as any)?.damage_contact_settings);
-  const canSeeDriverContact = damageSettings.show_driver_contact_to_roles.includes(profile?.role ?? '');
+  const canSeeDriverContact = !isFacility && damageSettings.show_driver_contact_to_roles.includes(profile?.role ?? '');
 
   const resolveMutation = useMutation({
     mutationFn: async (id: string) => {
-      await unwrap(supabase.from('vehicle_damage_reports')
-        .update({ resolved: true, resolved_at: new Date().toISOString() } as any)
-        .eq('id', id));
+      const update = { resolved: true, resolved_at: new Date().toISOString() };
+      if (isFacility) await saveFacilityOperationalEntity('vehicle_damage_report', { id, ...update });
+      else await unwrap(supabase.from('vehicle_damage_reports').update(update as any).eq('id', id));
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: qk.transport.damage(vehicle.id) }); toast.success('Markeerd als opgelost'); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: qk.transport.damage(vehicle.id) });
+      qc.invalidateQueries({ queryKey: ['facility-transport-snapshot'] });
+      toast.success('Gemarkeerd als opgelost');
+    },
   });
 
   const reopenMutation = useMutation({
     mutationFn: async (id: string) => {
-      await unwrap(supabase.from('vehicle_damage_reports')
-        .update({ resolved: false, resolved_at: null } as any)
-        .eq('id', id));
+      const update = { resolved: false, resolved_at: null };
+      if (isFacility) await saveFacilityOperationalEntity('vehicle_damage_report', { id, ...update });
+      else await unwrap(supabase.from('vehicle_damage_reports').update(update as any).eq('id', id));
     },
     onSuccess: (_, id) => {
       qc.invalidateQueries({ queryKey: qk.transport.damage(vehicle.id) });
-      logAudit({ action: 'status_change', tableName: 'vehicle_damage_reports', recordId: id, newValues: { resolved: false } });
+      qc.invalidateQueries({ queryKey: ['facility-transport-snapshot'] });
+      if (!isFacility) logAudit({ action: 'status_change', tableName: 'vehicle_damage_reports', recordId: id, newValues: { resolved: false } });
       toast.success('Schademelding heropend');
     },
   });
@@ -176,7 +198,7 @@ const VehicleDamageTab = ({ vehicle }: { vehicle: any }) => {
         </div>
       ) : (
         reports.map(r => {
-          const emp = r.employees?.candidates;
+          const emp = reportPerson(r);
           const empName = emp ? `${emp.first_name} ${emp.last_name}` : '—';
           const typeLabel = damageTypeLabel(r.damage_type);
 
@@ -187,17 +209,17 @@ const VehicleDamageTab = ({ vehicle }: { vehicle: any }) => {
                 <div className="flex flex-wrap items-center gap-2 text-sm">
                   <span className="font-medium">{formatDate(r.reported_at)}</span>
                   <span className="text-muted-foreground">·</span>
-                  <EntityLink type="employee" id={r.employees?.id}>{empName}</EntityLink>
+                  {isFacility ? <span>{empName}</span> : <EntityLink type="employee" id={r.employees?.id}>{empName}</EntityLink>}
                   <Badge variant="secondary" className={typeBadgeClass[r.damage_type] ?? typeBadgeClass.overig}>{typeLabel}</Badge>
                   {r.urgency === 'urgent' && <Badge variant="secondary" className="bg-destructive/10 text-destructive border-0">Urgent</Badge>}
-                  <Badge variant="outline">{DAMAGE_ROUTE_STATUS_LABELS[r.route_status] ?? r.route_status ?? 'Interne regie'}</Badge>
+                  {!isFacility && <Badge variant="outline">{DAMAGE_ROUTE_STATUS_LABELS[r.route_status] ?? r.route_status ?? 'Interne regie'}</Badge>}
                   <Badge variant="secondary" className={r.resolved ? 'bg-primary/10 text-stat-blue border-0' : 'bg-destructive/10 text-destructive border-0'}>
                     {r.resolved ? 'Opgelost' : 'Open'}
                   </Badge>
                 </div>
 
                 {/* Description */}
-                <p className="text-sm">{r.description}</p>
+                {!isFacility && <p className="text-sm">{r.description}</p>}
                 {canSeeDriverContact && emp && (
                   <p className="text-xs text-muted-foreground inline-flex flex-wrap items-center gap-1">
                     Contact bestuurder: <PhoneLink phone={emp.phone} />{emp.email && <><span>·</span><MailButton email={emp.email} asText /></>}
@@ -232,12 +254,12 @@ const VehicleDamageTab = ({ vehicle }: { vehicle: any }) => {
                 )}
 
                 {/* Cost */}
-                {r.cost_estimate != null && (
+                {!isFacility && r.cost_estimate != null && (
                   <p className="text-sm text-muted-foreground">Geschatte kosten: <span className="font-medium text-foreground">{formatEUR(r.cost_estimate)}</span></p>
                 )}
 
                 {/* Internal routing */}
-                {r.garage_notified || r.route_status === 'internal_notified' ? (
+                {!isFacility && (r.garage_notified || r.route_status === 'internal_notified' ? (
                   <p className="text-xs text-stat-blue">✓ Interne regie geïnformeerd op {formatDate(r.garage_notified_at)}</p>
                 ) : (
                   !r.resolved && (
@@ -245,10 +267,10 @@ const VehicleDamageTab = ({ vehicle }: { vehicle: any }) => {
                       <Bell className="h-3.5 w-3.5 mr-1" /> Interne regie informeren
                     </Button>
                   )
-                )}
+                ))}
 
                 {/* Resolution notes */}
-                {r.resolution_notes && <p className="text-xs text-muted-foreground bg-muted rounded p-2">{r.resolution_notes}</p>}
+                {!isFacility && r.resolution_notes && <p className="text-xs text-muted-foreground bg-muted rounded p-2">{r.resolution_notes}</p>}
 
                 {/* Actions */}
                 <div className="flex items-center gap-1 flex-wrap">
@@ -261,7 +283,7 @@ const VehicleDamageTab = ({ vehicle }: { vehicle: any }) => {
                       <RotateCcw className="h-3.5 w-3.5 mr-1" /> Heropenen
                     </Button>
                   )}
-                  <DropdownMenu>
+                  {!isFacility && <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button size="icon" variant="ghost" className="h-8 w-8 ml-auto"><MoreHorizontal className="h-4 w-4" /></Button>
                     </DropdownMenuTrigger>
@@ -269,12 +291,14 @@ const VehicleDamageTab = ({ vehicle }: { vehicle: any }) => {
                       <DropdownMenuItem onClick={() => setEditingReport(r)}>
                         <Pencil className="h-3.5 w-3.5 mr-2" /> Bewerken
                       </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => setReportToDelete(r)} className="text-destructive">
-                        <Trash2 className="h-3.5 w-3.5 mr-2" /> Verwijderen
-                      </DropdownMenuItem>
+                      {!isFacility && <DropdownMenuSeparator />}
+                      {!isFacility && (
+                        <DropdownMenuItem onClick={() => setReportToDelete(r)} className="text-destructive">
+                          <Trash2 className="h-3.5 w-3.5 mr-2" /> Verwijderen
+                        </DropdownMenuItem>
+                      )}
                     </DropdownMenuContent>
-                  </DropdownMenu>
+                  </DropdownMenu>}
                 </div>
               </CardContent>
             </Card>
@@ -296,8 +320,12 @@ const VehicleDamageTab = ({ vehicle }: { vehicle: any }) => {
         onOpenChange={setSheetOpen}
         vehicleId={vehicle.id}
         orgId={orgId}
-        defaultInternalEmail={damageSettings.internal_email}
-        onDone={() => qc.invalidateQueries({ queryKey: qk.transport.damage(vehicle.id) })}
+        defaultInternalEmail={isFacility ? null : damageSettings.internal_email}
+        isFacility={isFacility}
+        onDone={() => {
+          qc.invalidateQueries({ queryKey: qk.transport.damage(vehicle.id) });
+          qc.invalidateQueries({ queryKey: ['facility-transport-snapshot'] });
+        }}
       />
 
       {/* Edit existing report sheet */}
@@ -306,12 +334,16 @@ const VehicleDamageTab = ({ vehicle }: { vehicle: any }) => {
         onOpenChange={(o) => { if (!o) setEditingReport(null); }}
         vehicleId={vehicle.id}
         orgId={orgId}
-        defaultInternalEmail={damageSettings.internal_email}
-        onDone={() => qc.invalidateQueries({ queryKey: qk.transport.damage(vehicle.id) })}
+        defaultInternalEmail={isFacility ? null : damageSettings.internal_email}
+        onDone={() => {
+          qc.invalidateQueries({ queryKey: qk.transport.damage(vehicle.id) });
+          qc.invalidateQueries({ queryKey: ['facility-transport-snapshot'] });
+        }}
         existing={editingReport}
+        isFacility={isFacility}
       />
 
-      <AlertDialog open={!!reportToDelete} onOpenChange={(o) => { if (!o) setReportToDelete(null); }}>
+      <AlertDialog open={!isFacility && !!reportToDelete} onOpenChange={(o) => { if (!o) setReportToDelete(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Schademelding verwijderen?</AlertDialogTitle>
@@ -339,9 +371,9 @@ const VehicleDamageTab = ({ vehicle }: { vehicle: any }) => {
 
 /* ─── Damage Sheet (create + edit) ─────────────────────── */
 
-const DamageSheet = ({ open, onOpenChange, vehicleId, orgId, onDone, existing, defaultInternalEmail }: {
+const DamageSheet = ({ open, onOpenChange, vehicleId, orgId, onDone, existing, defaultInternalEmail, isFacility }: {
   open: boolean; onOpenChange: (o: boolean) => void; vehicleId: string; orgId: string | null; onDone: () => void;
-  existing?: any; defaultInternalEmail?: string | null;
+  existing?: any; defaultInternalEmail?: string | null; isFacility: boolean;
 }) => {
   const isEdit = !!existing;
   const [form, setForm] = useState({ employee_id: '', damage_type: 'overig', description: '', internal_contact_email: '', external_contact_email: '', cost_estimate: '' });
@@ -356,22 +388,28 @@ const DamageSheet = ({ open, onOpenChange, vehicleId, orgId, onDone, existing, d
         employee_id: existing.employee_id ?? '',
         damage_type: existing.damage_type ?? 'overig',
         description: existing.description ?? '',
-        internal_contact_email: existing.internal_contact_email ?? existing.garage_email ?? '',
-        external_contact_email: existing.external_contact_email ?? '',
-        cost_estimate: existing.cost_estimate != null ? String(existing.cost_estimate) : '',
+        internal_contact_email: isFacility ? '' : existing.internal_contact_email ?? existing.garage_email ?? '',
+        external_contact_email: isFacility ? '' : existing.external_contact_email ?? '',
+        cost_estimate: isFacility ? '' : existing.cost_estimate != null ? String(existing.cost_estimate) : '',
       });
     } else {
-      setForm({ employee_id: '', damage_type: 'overig', description: '', internal_contact_email: defaultInternalEmail ?? '', external_contact_email: '', cost_estimate: '' });
+      setForm({ employee_id: '', damage_type: 'overig', description: '', internal_contact_email: isFacility ? '' : defaultInternalEmail ?? '', external_contact_email: '', cost_estimate: '' });
     }
     setFiles([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, existing?.id, defaultInternalEmail]);
+  }, [open, existing?.id, defaultInternalEmail, isFacility]);
 
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
 
   const { data: employees = [] } = useQuery({
-    queryKey: qk.transport.damageAssignableEmployees(orgId, existing?.employee_id),
+    queryKey: [...qk.transport.damageAssignableEmployees(orgId, existing?.employee_id), isFacility ? 'facility' : 'internal'],
     queryFn: async () => {
+      if (isFacility) {
+        const workers = await fetchFacilityWorkerDirectory();
+        return workers
+          .filter((worker: any) => assignableEmployeeStatuses.has(worker.employee_status ?? worker.status) || worker.employee_id === existing?.employee_id)
+          .sort((a: any, b: any) => `${a.last_name ?? ''} ${a.first_name ?? ''}`.localeCompare(`${b.last_name ?? ''} ${b.first_name ?? ''}`, 'nl'));
+      }
       const rows = await unwrapList<any>(
         supabase.from('employees')
           .select('id, candidate_id, status, candidates!employees_candidate_id_fkey(first_name, last_name, employee_status, employee_number)')
@@ -412,22 +450,24 @@ const DamageSheet = ({ open, onOpenChange, vehicleId, orgId, onDone, existing, d
         newPhotoPaths.push(path);
       }
 
-      const selectedEmployee = employees.find((employee: any) => employee.id === form.employee_id) as any;
+      const selectedEmployee = employees.find((employee: any) => (employee.employee_id ?? employee.id) === form.employee_id) as any;
 
       const corePayload: any = {
         employee_id: form.employee_id,
         candidate_id: selectedEmployee?.candidate_id ?? existing?.candidate_id ?? null,
         damage_type: form.damage_type,
         description: form.description,
-        garage_email: form.internal_contact_email || null,
-        internal_contact_email: form.internal_contact_email || null,
-        external_contact_email: form.external_contact_email || null,
-        contact_route: 'internal_fleet',
-        route_status: 'pending_internal',
         urgency: damageTypeIsUrgent(form.damage_type) ? 'urgent' : 'normal',
-        contact_phone_shared: false,
-        cost_estimate: form.cost_estimate ? parseFloat(form.cost_estimate) : null,
       };
+      if (!isFacility) {
+        corePayload.contact_route = 'internal_fleet';
+        corePayload.route_status = 'pending_internal';
+        corePayload.contact_phone_shared = false;
+        corePayload.garage_email = form.internal_contact_email || null;
+        corePayload.internal_contact_email = form.internal_contact_email || null;
+        corePayload.external_contact_email = form.external_contact_email || null;
+        corePayload.cost_estimate = form.cost_estimate ? parseFloat(form.cost_estimate) : null;
+      }
 
       let reportId: string | null = null;
 
@@ -438,26 +478,38 @@ const DamageSheet = ({ open, onOpenChange, vehicleId, orgId, onDone, existing, d
           ...corePayload,
           photos: [...existingPhotos, ...newPhotoPaths],
         };
-        await unwrap(supabase.from('vehicle_damage_reports').update(updatePayload).eq('id', existing.id));
+        if (isFacility) {
+          await saveFacilityOperationalEntity('vehicle_damage_report', { id: existing.id, ...updatePayload });
+        } else {
+          await unwrap(supabase.from('vehicle_damage_reports').update(updatePayload).eq('id', existing.id));
+        }
         reportId = existing.id;
-        logAudit({ action: 'update', tableName: 'vehicle_damage_reports', recordId: existing.id });
+        if (!isFacility) logAudit({ action: 'update', tableName: 'vehicle_damage_reports', recordId: existing.id });
       } else {
-        const insertPayload = {
+        const insertPayload: any = {
           ...corePayload,
-          organization_id: orgId,
           vehicle_id: vehicleId,
           photos: newPhotoPaths,
           garage_notified: false,
           garage_notified_at: null,
         };
-        const inserted = await unwrap<{ id: string } | null>(
-          supabase.from('vehicle_damage_reports').insert(insertPayload).select('id').single(),
-        );
-        reportId = inserted?.id ?? null;
-        logAudit({ action: 'create', tableName: 'vehicle_damage_reports', recordId: reportId ?? 'new' });
+        if (isFacility) {
+          reportId = await saveFacilityOperationalEntity('vehicle_damage_report', {
+            ...corePayload,
+            vehicle_id: vehicleId,
+            photos: newPhotoPaths,
+          });
+        } else {
+          insertPayload.organization_id = orgId;
+          const inserted = await unwrap<{ id: string } | null>(
+            supabase.from('vehicle_damage_reports').insert(insertPayload).select('id').single(),
+          );
+          reportId = inserted?.id ?? null;
+        }
+        if (!isFacility) logAudit({ action: 'create', tableName: 'vehicle_damage_reports', recordId: reportId ?? 'new' });
       }
 
-      if (notifyGarage && reportId && form.internal_contact_email) {
+      if (!isFacility && notifyGarage && reportId && form.internal_contact_email) {
         const { data: notifyData, error: notifyErr } = await supabase.functions.invoke('send-damage-report', {
           body: { report_id: reportId, target: 'internal' },
         });
@@ -474,7 +526,7 @@ const DamageSheet = ({ open, onOpenChange, vehicleId, orgId, onDone, existing, d
       toast.success(isEdit ? 'Schademelding bijgewerkt' : 'Schademelding opgeslagen');
       onDone();
       onOpenChange(false);
-      setForm({ employee_id: '', damage_type: 'overig', description: '', internal_contact_email: defaultInternalEmail ?? '', external_contact_email: '', cost_estimate: '' });
+      setForm({ employee_id: '', damage_type: 'overig', description: '', internal_contact_email: isFacility ? '' : defaultInternalEmail ?? '', external_contact_email: '', cost_estimate: '' });
       setFiles([]);
     } catch (e: any) {
       toast.error(e.message);
@@ -496,9 +548,9 @@ const DamageSheet = ({ open, onOpenChange, vehicleId, orgId, onDone, existing, d
               <SelectTrigger><SelectValue placeholder="Selecteer medewerker" /></SelectTrigger>
               <SelectContent>
                 {employees.map((e: any) => (
-                  <SelectItem key={e.id} value={e.id}>
-                    {e.candidates?.first_name} {e.candidates?.last_name}
-                    {e.candidates?.employee_number ? ` #${e.candidates.employee_number}` : ''}
+                  <SelectItem key={e.employee_id ?? e.id} value={e.employee_id ?? e.id}>
+                    {workerPerson(e)?.first_name} {workerPerson(e)?.last_name}
+                    {workerPerson(e)?.employee_number ? ` #${workerPerson(e).employee_number}` : ''}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -533,27 +585,27 @@ const DamageSheet = ({ open, onOpenChange, vehicleId, orgId, onDone, existing, d
             {!hasPhotoEvidence && <p className="text-xs text-destructive mt-1">Minimaal één foto is verplicht.</p>}
           </div>
 
-          <div>
+          {!isFacility && <div>
             <Label>Interne melding naar (optioneel)</Label>
             <Input type="email" value={form.internal_contact_email} onChange={e => set('internal_contact_email', e.target.value)} placeholder="fleet@bedrijf.nl" />
             <p className="text-xs text-muted-foreground mt-1">Default is interne regie; bestuurdergegevens worden niet automatisch extern gedeeld.</p>
-          </div>
+          </div>}
 
-          <div>
+          {!isFacility && <div>
             <Label>Extern contact voor opvolging (optioneel)</Label>
             <Input type="email" value={form.external_contact_email} onChange={e => set('external_contact_email', e.target.value)} placeholder="garage@voorbeeld.nl" />
-          </div>
+          </div>}
 
-          <div>
+          {!isFacility && <div>
             <Label>Geschatte kosten (€)</Label>
             <Input type="number" value={form.cost_estimate} onChange={e => set('cost_estimate', e.target.value)} placeholder="0.00" />
-          </div>
+          </div>}
 
           <div className="flex flex-col gap-2 pt-4">
             <Button onClick={() => handleSave(false)} disabled={!form.employee_id || !form.description || !hasPhotoEvidence || saving}>
               {saving ? 'Opslaan...' : 'Opslaan'}
             </Button>
-            {form.internal_contact_email && (
+            {!isFacility && form.internal_contact_email && (
               <Button variant="outline" onClick={() => handleSave(true)} disabled={!form.employee_id || !form.description || !hasPhotoEvidence || saving}>
                 <Bell className="h-4 w-4 mr-1" /> Opslaan & interne regie informeren
               </Button>

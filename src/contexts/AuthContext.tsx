@@ -1,13 +1,12 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
-import type { Database, Tables } from '@/integrations/supabase/types';
+import type { Tables } from '@/integrations/supabase/types';
+import type { UserRole } from '@/lib/permissions';
 import { useSessionIdleTimeout } from '@/hooks/useSessionIdleTimeout';
 import { signOutAndRedirect } from '@/lib/session-security';
 
 type Profile = Tables<'profiles'>;
-
-type UserRole = Database['public']['Enums']['user_role'];
 
 interface AuthContextType {
   session: Session | null;
@@ -57,6 +56,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return data;
   };
 
+  const applyProfile = async (nextProfile: Profile | null) => {
+    if (nextProfile && nextProfile.is_active !== true) {
+      setProfile(null);
+      setSession(null);
+      setUser(null);
+      setLoading(false);
+      await signOutAndRedirect('/login?reason=account-disabled');
+      return;
+    }
+
+    setProfile(nextProfile);
+    setLoading(false);
+  };
+
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       setSession(session);
@@ -66,8 +79,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Use setTimeout to avoid potential deadlock with Supabase auth
         setTimeout(async () => {
           const p = await fetchProfile(session.user.id);
-          setProfile(p);
-          setLoading(false);
+          await applyProfile(p);
         }, 0);
       } else {
         setProfile(null);
@@ -80,8 +92,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(session?.user ?? null);
       if (session?.user) {
         fetchProfile(session.user.id).then((p) => {
-          setProfile(p);
-          setLoading(false);
+          void applyProfile(p);
         });
       } else {
         setLoading(false);

@@ -1,7 +1,7 @@
 // Refresh dynamische talentpools op basis van filter_criteria.
 //
 // Twee modes:
-//   - { talentpool_id }      → één pool (handmatig, vereist user-JWT)
+//   - { talentpool_id }      → één pool (handmatig, vereist actieve interne user + candidates.edit)
 //   - { mode: "cron", frequency: "daily"|"weekly" }  → alle dynamische pools
 //                              met die frequency (vereist CRON_SECRET header)
 //
@@ -12,6 +12,7 @@
 //   - last_refreshed_at + last_refresh_meta updaten
 
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireRolePermission } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -182,26 +183,21 @@ Deno.serve(async (req) => {
       if (error) throw error;
       poolsToRefresh = (data ?? []) as Pool[];
     } else {
-      // Single-pool mode: vereist user-JWT met toegang tot deze pool
+      // Single-pool mode: vereist candidates.edit én RLS-toegang tot deze pool.
       const authHeader = req.headers.get("Authorization");
       if (!authHeader?.startsWith("Bearer ")) {
         return new Response(JSON.stringify({ error: "Niet geautoriseerd" }), {
           status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
+      const auth = await requireRolePermission(req, "candidates.edit", corsHeaders);
+      if (auth instanceof Response) return auth;
 
       const userClient = createClient(
         Deno.env.get("SUPABASE_URL")!,
         Deno.env.get("SUPABASE_ANON_KEY")!,
         { global: { headers: { Authorization: authHeader } } },
       );
-
-      const { data: { user }, error: authErr } = await userClient.auth.getUser();
-      if (authErr || !user) {
-        return new Response(JSON.stringify({ error: "Ongeldige sessie" }), {
-          status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
 
       const talentpoolId = body.talentpool_id;
       if (!talentpoolId) {

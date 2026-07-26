@@ -73,7 +73,9 @@ const PortalHousing = () => {
       // Sla het storage-PAD op (niet getPublicUrl op de privé bucket); de weergave tekent signed-URLs.
       const uploadOne = async (file: File): Promise<string> => {
         const ext = file.name.split('.').pop() || 'jpg';
-        const path = `${orgId}/checkin/${assignment.id}/${crypto.randomUUID()}.${ext}`;
+        // Include the candidate id so Storage RLS can prove this is the
+        // resident's own upload before the inspection row exists.
+        const path = `${orgId}/checkin/${employeeId}/${assignment.id}/${crypto.randomUUID()}.${ext}`;
         const { error } = await supabase.storage.from('documents').upload(path, file, { upsert: false });
         if (error) throw error;
         return path;
@@ -137,7 +139,7 @@ const PortalHousing = () => {
       const uploadedPaths: string[] = [];
       for (const photo of photos) {
         const ext = photo.name.split('.').pop();
-        const path = `${orgId}/inspections/${crypto.randomUUID()}.${ext}`;
+        const path = `${orgId}/inspections/${employeeId}/${crypto.randomUUID()}.${ext}`;
         const { error } = await supabase.storage.from('documents').upload(path, photo);
         if (error) throw error;
         uploadedPaths.push(path);

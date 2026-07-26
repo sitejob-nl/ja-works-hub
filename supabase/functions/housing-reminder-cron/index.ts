@@ -6,13 +6,14 @@
 //   3. Active properties older than 90 days whose monthly cost fields are still empty.
 //
 // Modes:
-//   - **User mode** (default): caller is an authenticated user, runs only for their org.
+//   - **User mode** (default): caller is an active internal user, runs only for their org.
 //   - **Cron mode**: triggered by pg_cron with `x-cron-secret` header, runs over all orgs.
 //
 // Idempotent: skips creating a task if an open recruiter_task with the same
 // related_entity_id + category already exists.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireInternalProfile } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -212,24 +213,9 @@ Deno.serve(async (req) => {
     }
 
     // User mode: require auth + scope to user's org
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return json({ error: "Unauthorized" }, 401);
-    }
-    const anon = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const { data: userData, error: userErr } = await anon.auth.getUser();
-    if (userErr || !userData?.user) return json({ error: "Unauthorized" }, 401);
-
-    const { data: profile } = await admin
-      .from("profiles")
-      .select("organization_id")
-      .eq("id", userData.user.id)
-      .single();
-    if (!profile?.organization_id) return json({ error: "No organization" }, 403);
-
-    const result = await runForOrg(admin, profile.organization_id);
+    const auth = await requireInternalProfile(req, corsHeaders);
+    if (auth instanceof Response) return auth;
+    const result = await runForOrg(admin, auth.organizationId);
     return json({ mode: "user", result });
   } catch (err: any) {
     console.error("housing-reminder-cron error:", err);

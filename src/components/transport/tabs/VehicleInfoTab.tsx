@@ -13,9 +13,13 @@ import { logAudit } from '@/lib/audit';
 import { lookupRdw, normalizeRdwFuel, yearFromRdwDate } from '@/lib/rdw';
 import { toast } from 'sonner';
 import { Car, Check, X } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { isFacilityRole, saveFacilityOperationalEntity } from '@/lib/facility';
 
 const VehicleInfoTab = ({ vehicle, activeAssignment }: { vehicle: any; activeAssignment: any }) => {
-  const assignee = activeAssignment?.employees?.candidates as any;
+  const { role } = useAuth();
+  const isFacility = isFacilityRole(role);
+  const assignee = activeAssignment?.employees?.candidates ?? activeAssignment?.worker ?? activeAssignment;
   const [rdwPreview, setRdwPreview] = useState<any>(null);
   const qc = useQueryClient();
 
@@ -49,12 +53,17 @@ const VehicleInfoTab = ({ vehicle, activeAssignment }: { vehicle: any; activeAss
       if (rdwPreview.seats) payload.seats = rdwPreview.seats;
       if (rdwPreview.doors != null) payload.doors = rdwPreview.doors;
       if (rdwPreview.weight) payload.weight = rdwPreview.weight;
-      if (rdwPreview.fuel_consumption != null) payload.avg_consumption_per_100km = rdwPreview.fuel_consumption;
-      await unwrap(supabase.from('vehicles').update(payload).eq('id', vehicle.id));
+      if (!isFacility && rdwPreview.fuel_consumption != null) payload.avg_consumption_per_100km = rdwPreview.fuel_consumption;
+      if (isFacility) {
+        await saveFacilityOperationalEntity('vehicle', { id: vehicle.id, ...payload });
+      } else {
+        await unwrap(supabase.from('vehicles').update(payload).eq('id', vehicle.id));
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: qk.vehicles.detail(vehicle.id) });
-      logAudit({ action: 'update', tableName: 'vehicles', recordId: vehicle.id, newValues: { source: 'rdw_enrichment', license_plate: vehicle.license_plate } });
+      qc.invalidateQueries({ queryKey: ['facility-transport-snapshot'] });
+      if (!isFacility) logAudit({ action: 'update', tableName: 'vehicles', recordId: vehicle.id, newValues: { source: 'rdw_enrichment', license_plate: vehicle.license_plate } });
       setRdwPreview(null);
       toast.success('RDW-gegevens overgenomen');
     },
@@ -83,7 +92,7 @@ const VehicleInfoTab = ({ vehicle, activeAssignment }: { vehicle: any; activeAss
             {rdwPreview.last_registration && <div><span className="text-muted-foreground">Laatste tenaamstelling:</span> {formatDate(rdwPreview.last_registration)}</div>}
             {!rdwPreview.last_registration && rdwPreview.first_registration_nl && <div><span className="text-muted-foreground">Tenaamstelling NL:</span> {formatDate(rdwPreview.first_registration_nl)}</div>}
             {rdwPreview.apk_expiry && <div><span className="text-muted-foreground">APK vervalt:</span> {formatDate(rdwPreview.apk_expiry)}</div>}
-            {rdwPreview.fuel_consumption != null && <div><span className="text-muted-foreground">Gemengd verbruik:</span> {rdwPreview.fuel_consumption} l/100km</div>}
+            {!isFacility && rdwPreview.fuel_consumption != null && <div><span className="text-muted-foreground">Gemengd verbruik:</span> {rdwPreview.fuel_consumption} l/100km</div>}
             {rdwPreview.seats && <div><span className="text-muted-foreground">Zitplaatsen:</span> {rdwPreview.seats}</div>}
             {rdwPreview.doors != null && <div><span className="text-muted-foreground">Deuren:</span> {rdwPreview.doors}</div>}
             {rdwPreview.co2_emission && <div><span className="text-muted-foreground">CO2:</span> {rdwPreview.co2_emission} g/km</div>}
@@ -129,8 +138,8 @@ const VehicleInfoTab = ({ vehicle, activeAssignment }: { vehicle: any; activeAss
           </div>
           <div className="flex justify-between"><span className="text-muted-foreground">Kilometerstand</span><span>{vehicle.current_mileage != null ? vehicle.current_mileage.toLocaleString('nl-NL') + ' km' : '—'}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">Tankcapaciteit</span><span>{vehicle.tank_capacity_liters != null ? vehicle.tank_capacity_liters + ' liter' : '—'}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Tankpas referentie</span><span>{vehicle.fuel_card_reference ?? '—'}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Gemengd verbruik</span><span>{vehicle.avg_consumption_per_100km != null ? vehicle.avg_consumption_per_100km + ' l/100km' : '—'}</span></div>
+          {!isFacility && <div className="flex justify-between"><span className="text-muted-foreground">Tankpas referentie</span><span>{vehicle.fuel_card_reference ?? '—'}</span></div>}
+          {!isFacility && <div className="flex justify-between"><span className="text-muted-foreground">Gemengd verbruik</span><span>{vehicle.avg_consumption_per_100km != null ? vehicle.avg_consumption_per_100km + ' l/100km' : '—'}</span></div>}
         </CardContent>
       </Card>
 
@@ -141,9 +150,13 @@ const VehicleInfoTab = ({ vehicle, activeAssignment }: { vehicle: any; activeAss
             <>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Medewerker</span>
-                <Link to={`/medewerkers/${activeAssignment.employees?.id}`} className="hover:underline">
-                  {assignee?.first_name} {assignee?.last_name}
-                </Link>
+                {isFacility ? (
+                  <span>{assignee?.first_name} {assignee?.last_name}</span>
+                ) : (
+                  <Link to={`/medewerkers/${activeAssignment.employees?.id}`} className="hover:underline">
+                    {assignee?.first_name} {assignee?.last_name}
+                  </Link>
+                )}
               </div>
               <div className="flex justify-between"><span className="text-muted-foreground">Startdatum</span><span>{formatDate(activeAssignment.assigned_date)}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Begin km</span><span>{activeAssignment.start_mileage?.toLocaleString('nl-NL') ?? '—'}</span></div>

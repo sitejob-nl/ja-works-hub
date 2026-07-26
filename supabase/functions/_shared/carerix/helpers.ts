@@ -62,11 +62,11 @@ export async function getCallerProfile(req: Request): Promise<{
 
   const { data: profile } = await admin
     .from('profiles')
-    .select('id, organization_id, role')
+    .select('id, organization_id, role, is_active')
     .eq('id', userData.user.id)
     .single();
 
-  if (!profile) return null;
+  if (!profile || profile.is_active !== true) return null;
   return { userId: userData.user.id, profile };
 }
 

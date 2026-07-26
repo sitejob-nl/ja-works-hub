@@ -44,6 +44,15 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       .eq('id', userId)
       .maybeSingle();
 
+    if (prof && prof.is_active !== true) {
+      setProfile(null);
+      setEmployee(null);
+      setCandidate(null);
+      setLoading(false);
+      await signOutAndRedirect('/portaal/login?reason=account-disabled');
+      return;
+    }
+
     if (!prof || prof.role !== 'medewerker') {
       // Not a medewerker, redirect to admin
       navigate('/', { replace: true });

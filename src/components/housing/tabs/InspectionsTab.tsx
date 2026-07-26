@@ -28,6 +28,12 @@ import { formatDate } from '@/lib/format';
 import { EntityLink } from '@/components/ui/entity-link';
 import { toast } from 'sonner';
 import { logAudit } from '@/lib/audit';
+import {
+  fetchFacilityHousingSnapshot,
+  fetchFacilityWorkerDirectory,
+  isFacilityRole,
+  updateFacilityInspection,
+} from '@/lib/facility';
 
 type InspectionType = 'check_in' | 'check_out' | 'periodiek' | 'onderhoud' | 'klacht';
 
@@ -65,9 +71,11 @@ const StarRating = ({ value, onChange }: { value: number; onChange: (v: number) 
   </div>
 );
 
-const InspectionsTab = ({ propertyId }: { propertyId: string }) => {
+const InspectionsTab = ({ property }: { property: any }) => {
+  const propertyId = property.id as string;
   const orgId = useOrganizationId();
-  const { user } = useAuth();
+  const { user, role } = useAuth();
+  const isFacility = isFacilityRole(role);
   const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -98,6 +106,15 @@ const InspectionsTab = ({ propertyId }: { propertyId: string }) => {
   const { data: inspections = [] } = useQuery({
     queryKey: ['inspections', propertyId],
     queryFn: async () => {
+      if (isFacility) {
+        const snapshot = await fetchFacilityHousingSnapshot(propertyId);
+        return (snapshot.inspections ?? []).map((inspection: any) => ({
+          ...inspection,
+          units: inspection.units ?? {
+            name: (property.units ?? []).find((unit: any) => unit.id === inspection.unit_id)?.name,
+          },
+        }));
+      }
       const { data, error } = await supabase.from('housing_inspections')
         .select(`*, units!housing_inspections_unit_id_fkey(name),
           housing_assignments!housing_inspections_housing_assignment_id_fkey(
@@ -115,6 +132,7 @@ const InspectionsTab = ({ propertyId }: { propertyId: string }) => {
   const { data: units = [] } = useQuery({
     queryKey: ['property-units-inspections', propertyId],
     queryFn: async () => {
+      if (isFacility) return (property.units ?? []).map((unit: any) => ({ id: unit.id, name: unit.name }));
       const { data, error } = await supabase.from('units').select('id, name').eq('property_id', propertyId);
       if (error) throw error;
       return data;
@@ -125,6 +143,13 @@ const InspectionsTab = ({ propertyId }: { propertyId: string }) => {
   const { data: assignments = [] } = useQuery({
     queryKey: ['property-assignments-inspections', propertyId],
     queryFn: async () => {
+      if (isFacility) {
+        return (property.units ?? []).flatMap((unit: any) =>
+          (unit.housing_assignments ?? [])
+            .filter((assignment: any) => ['ingecheckt', 'gereserveerd'].includes(assignment.status))
+            .map((assignment: any) => ({ ...assignment, units: { name: unit.name } })),
+        );
+      }
       const { data, error } = await supabase.from('housing_assignments')
         .select(`id, status, unit_id, employees!housing_assignments_employee_id_fkey(
           id, candidates!employees_candidate_id_fkey(first_name, last_name)
@@ -137,6 +162,12 @@ const InspectionsTab = ({ propertyId }: { propertyId: string }) => {
       return (data ?? []).filter((a: any) => unitIds.includes(a.unit_id));
     },
     enabled: sheetOpen && isCheckInOut && units.length > 0,
+  });
+
+  const { data: facilityDirectory = [] } = useQuery({
+    queryKey: ['facility-worker-directory'],
+    queryFn: fetchFacilityWorkerDirectory,
+    enabled: isFacility,
   });
 
   // Open/close helpers
@@ -219,6 +250,12 @@ const InspectionsTab = ({ propertyId }: { propertyId: string }) => {
 
   const saveInspection = useMutation({
     mutationFn: async () => {
+      // Facility evidence is append-only after creation. Status transitions use
+      // the dedicated RPC below; content/photo edits stay with internal staff.
+      if (isFacility && editingId) {
+        throw new Error('Facility kan bestaand inspectiebewijs niet bewerken');
+      }
+
       const newPhotoPaths: string[] = [];
       const newPhotoColumns: Record<string, string | null> = {};
 
@@ -244,22 +281,28 @@ const InspectionsTab = ({ propertyId }: { propertyId: string }) => {
         // Update: append new generic photos to existing array; replace specific slots if new file uploaded
         const existing = inspections.find((i: any) => i.id === editingId);
         const existingPhotos: string[] = existing?.photos ?? [];
-        const merged: any = {
-          unit_id: form.unit_id || null,
+        const operationalUpdate: any = {
           inspection_date: form.inspection_date,
           description: form.description,
-          notes: form.notes || null,
+          notes: isFacility ? null : (form.notes || null),
           inspection_type: form.inspection_type,
-          housing_assignment_id: isCheckInOut && form.housing_assignment_id ? form.housing_assignment_id : null,
           condition_rating: isCheckInOut && form.condition_rating > 0 ? form.condition_rating : null,
-          condition_notes: isCheckInOut && form.condition_notes ? form.condition_notes : null,
+          condition_notes: !isFacility && isCheckInOut && form.condition_notes ? form.condition_notes : null,
           photos: isCheckInOut
             ? existingPhotos
             : [...existingPhotos, ...newPhotoPaths],
           ...newPhotoColumns,
         };
-        const { error } = await supabase.from('housing_inspections').update(merged).eq('id', editingId);
-        if (error) throw error;
+        if (isFacility) {
+          await updateFacilityInspection(editingId, operationalUpdate);
+        } else {
+          const { error } = await supabase.from('housing_inspections').update({
+            ...operationalUpdate,
+            unit_id: form.unit_id || null,
+            housing_assignment_id: isCheckInOut && form.housing_assignment_id ? form.housing_assignment_id : null,
+          }).eq('id', editingId);
+          if (error) throw error;
+        }
       } else {
         const { error } = await supabase.from('housing_inspections').insert({
           organization_id: orgId,
@@ -267,13 +310,13 @@ const InspectionsTab = ({ propertyId }: { propertyId: string }) => {
           unit_id: form.unit_id || null,
           inspection_date: form.inspection_date,
           description: form.description,
-          notes: form.notes || null,
+          notes: isFacility ? null : (form.notes || null),
           inspected_by: user?.id ?? null,
           photos: newPhotoPaths.length > 0 ? newPhotoPaths : null,
           inspection_type: form.inspection_type,
           housing_assignment_id: isCheckInOut && form.housing_assignment_id ? form.housing_assignment_id : null,
           condition_rating: isCheckInOut && form.condition_rating > 0 ? form.condition_rating : null,
-          condition_notes: isCheckInOut && form.condition_notes ? form.condition_notes : null,
+          condition_notes: !isFacility && isCheckInOut && form.condition_notes ? form.condition_notes : null,
           ...newPhotoColumns,
         });
         if (error) throw error;
@@ -281,12 +324,15 @@ const InspectionsTab = ({ propertyId }: { propertyId: string }) => {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['inspections', propertyId] });
-      logAudit({
-        action: editingId ? 'update' : 'create',
-        tableName: 'housing_inspections',
-        recordId: editingId ?? 'new',
-        newValues: { type: form.inspection_type, description: form.description },
-      });
+      if (isFacility) qc.invalidateQueries({ queryKey: ['facility-housing-snapshot'] });
+      if (!isFacility) {
+        logAudit({
+          action: editingId ? 'update' : 'create',
+          tableName: 'housing_inspections',
+          recordId: editingId ?? 'new',
+          newValues: { type: form.inspection_type, description: form.description },
+        });
+      }
       toast.success(editingId ? 'Inspectie bijgewerkt' : 'Inspectie aangemaakt');
       resetSheet();
     },
@@ -295,28 +341,38 @@ const InspectionsTab = ({ propertyId }: { propertyId: string }) => {
 
   const resolve = useMutation({
     mutationFn: async (inspectionId: string) => {
-      const { error } = await supabase.from('housing_inspections')
-        .update({ resolved: true, resolved_at: new Date().toISOString() })
-        .eq('id', inspectionId);
-      if (error) throw error;
+      if (isFacility) {
+        await updateFacilityInspection(inspectionId, { resolved: true });
+      } else {
+        const { error } = await supabase.from('housing_inspections')
+          .update({ resolved: true, resolved_at: new Date().toISOString() })
+          .eq('id', inspectionId);
+        if (error) throw error;
+      }
     },
     onSuccess: (_, id) => {
       qc.invalidateQueries({ queryKey: ['inspections', propertyId] });
-      logAudit({ action: 'status_change', tableName: 'housing_inspections', recordId: id, newValues: { resolved: true } });
+      if (isFacility) qc.invalidateQueries({ queryKey: ['facility-housing-snapshot'] });
+      if (!isFacility) logAudit({ action: 'status_change', tableName: 'housing_inspections', recordId: id, newValues: { resolved: true } });
       toast.success('Inspectie opgelost');
     },
   });
 
   const reopen = useMutation({
     mutationFn: async (inspectionId: string) => {
-      const { error } = await supabase.from('housing_inspections')
-        .update({ resolved: false, resolved_at: null })
-        .eq('id', inspectionId);
-      if (error) throw error;
+      if (isFacility) {
+        await updateFacilityInspection(inspectionId, { resolved: false });
+      } else {
+        const { error } = await supabase.from('housing_inspections')
+          .update({ resolved: false, resolved_at: null })
+          .eq('id', inspectionId);
+        if (error) throw error;
+      }
     },
     onSuccess: (_, id) => {
       qc.invalidateQueries({ queryKey: ['inspections', propertyId] });
-      logAudit({ action: 'status_change', tableName: 'housing_inspections', recordId: id, newValues: { resolved: false } });
+      if (isFacility) qc.invalidateQueries({ queryKey: ['facility-housing-snapshot'] });
+      if (!isFacility) logAudit({ action: 'status_change', tableName: 'housing_inspections', recordId: id, newValues: { resolved: false } });
       toast.success('Inspectie heropend');
     },
   });
@@ -345,6 +401,14 @@ const InspectionsTab = ({ propertyId }: { propertyId: string }) => {
   });
 
   const getResidentName = (insp: any) => {
+    if (isFacility) {
+      const assignment = (property.units ?? []).flatMap((unit: any) => unit.housing_assignments ?? [])
+        .find((item: any) => item.id === insp.housing_assignment_id);
+      const worker = facilityDirectory.find((item: any) =>
+        item.candidate_id === assignment?.candidate_id || item.employee_id === assignment?.employee_id,
+      );
+      return [worker?.first_name, worker?.last_name].filter(Boolean).join(' ') || null;
+    }
     const c = insp.housing_assignments?.employees?.candidates;
     if (!c) return null;
     return `${c.first_name} ${c.last_name}`;
@@ -391,7 +455,7 @@ const InspectionsTab = ({ propertyId }: { propertyId: string }) => {
 
             <div>
               <Label>Kamer (optioneel)</Label>
-              <Select value={form.unit_id} onValueChange={(v) => set('unit_id', v)}>
+              <Select value={form.unit_id} onValueChange={(v) => set('unit_id', v)} disabled={isFacility && !!editingId}>
                 <SelectTrigger><SelectValue placeholder="Heel pand" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="">Heel pand</SelectItem>
@@ -405,12 +469,17 @@ const InspectionsTab = ({ propertyId }: { propertyId: string }) => {
                 <Separator />
                 <div>
                   <Label>Bewoner</Label>
-                  <Select value={form.housing_assignment_id} onValueChange={(v) => set('housing_assignment_id', v)}>
+                  <Select value={form.housing_assignment_id} onValueChange={(v) => set('housing_assignment_id', v)} disabled={isFacility && !!editingId}>
                     <SelectTrigger><SelectValue placeholder="Selecteer bewoner..." /></SelectTrigger>
                     <SelectContent>
                       {assignments.map((a: any) => (
                         <SelectItem key={a.id} value={a.id}>
-                          {a.employees?.candidates?.first_name} {a.employees?.candidates?.last_name} — {a.units?.name}
+                          {isFacility
+                            ? (() => {
+                                const worker = facilityDirectory.find((item: any) => item.candidate_id === a.candidate_id || item.employee_id === a.employee_id);
+                                return `${[worker?.first_name, worker?.last_name].filter(Boolean).join(' ') || 'Medewerker'} — ${a.units?.name ?? 'Kamer'}`;
+                              })()
+                            : `${a.employees?.candidates?.first_name ?? ''} ${a.employees?.candidates?.last_name ?? ''} — ${a.units?.name ?? ''}`}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -422,7 +491,7 @@ const InspectionsTab = ({ propertyId }: { propertyId: string }) => {
                   <StarRating value={form.condition_rating} onChange={(v) => set('condition_rating', v)} />
                 </div>
 
-                <div><Label>Conditie notities</Label><Textarea value={form.condition_notes} onChange={(e) => set('condition_notes', e.target.value)} rows={2} /></div>
+                {!isFacility && <div><Label>Conditie notities</Label><Textarea value={form.condition_notes} onChange={(e) => set('condition_notes', e.target.value)} rows={2} /></div>}
 
                 <Separator />
                 <p className="text-sm font-medium text-foreground">Foto's</p>
@@ -450,7 +519,7 @@ const InspectionsTab = ({ propertyId }: { propertyId: string }) => {
             )}
 
             <div><Label>Beschrijving *</Label><Textarea value={form.description} onChange={(e) => set('description', e.target.value)} rows={3} /></div>
-            <div><Label>Notities</Label><Textarea value={form.notes} onChange={(e) => set('notes', e.target.value)} rows={2} /></div>
+            {!isFacility && <div><Label>Notities</Label><Textarea value={form.notes} onChange={(e) => set('notes', e.target.value)} rows={2} /></div>}
 
             {editingId && isCheckInOut && (
               <p className="text-xs text-muted-foreground italic">
@@ -498,11 +567,13 @@ const InspectionsTab = ({ propertyId }: { propertyId: string }) => {
                     </div>
 
                     {residentName && (
-                      <p className="text-xs text-muted-foreground">Bewoner: <span className="font-medium text-foreground"><EntityLink type="employee" id={insp.housing_assignments?.employees?.id}>{residentName}</EntityLink></span></p>
+                      <p className="text-xs text-muted-foreground">Bewoner: <span className="font-medium text-foreground">
+                        {isFacility ? residentName : <EntityLink type="employee" id={insp.housing_assignments?.employees?.id}>{residentName}</EntityLink>}
+                      </span></p>
                     )}
 
                     <p className="text-sm">{insp.description}</p>
-                    {insp.notes && <p className="text-xs text-muted-foreground">{insp.notes}</p>}
+                    {!isFacility && insp.notes && <p className="text-xs text-muted-foreground">{insp.notes}</p>}
 
                     {insp.condition_rating && (
                       <div className="flex gap-0.5">
@@ -511,7 +582,7 @@ const InspectionsTab = ({ propertyId }: { propertyId: string }) => {
                         ))}
                       </div>
                     )}
-                    {insp.condition_notes && (
+                    {!isFacility && insp.condition_notes && (
                       <p className="text-xs text-muted-foreground italic">{insp.condition_notes}</p>
                     )}
 
@@ -567,7 +638,7 @@ const InspectionsTab = ({ propertyId }: { propertyId: string }) => {
                         <RotateCcw className="h-3 w-3" /> Heropenen
                       </Button>
                     )}
-                    <DropdownMenu>
+                    {!isFacility && <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button size="icon" variant="ghost" className="h-8 w-8">
                           <MoreHorizontal className="h-4 w-4" />
@@ -582,7 +653,7 @@ const InspectionsTab = ({ propertyId }: { propertyId: string }) => {
                           <Trash2 className="h-3.5 w-3.5 mr-2" /> Verwijderen
                         </DropdownMenuItem>
                       </DropdownMenuContent>
-                    </DropdownMenu>
+                    </DropdownMenu>}
                   </div>
                 </div>
               </div>
@@ -591,7 +662,7 @@ const InspectionsTab = ({ propertyId }: { propertyId: string }) => {
         </div>
       )}
 
-      <AlertDialog open={!!inspectionToDelete} onOpenChange={(o) => { if (!o) setInspectionToDelete(null); }}>
+      {!isFacility && <AlertDialog open={!!inspectionToDelete} onOpenChange={(o) => { if (!o) setInspectionToDelete(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Inspectie verwijderen?</AlertDialogTitle>
@@ -611,7 +682,7 @@ const InspectionsTab = ({ propertyId }: { propertyId: string }) => {
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
-      </AlertDialog>
+      </AlertDialog>}
     </div>
   );
 };
