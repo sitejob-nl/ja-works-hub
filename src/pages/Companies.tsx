@@ -171,9 +171,9 @@ const Companies = () => {
       if (deletable.length > 0) {
         await unwrap(supabase.from('companies').delete().in('id', deletable));
         const names = new Map(companies.map((c: any) => [c.id, c.name]));
-        deletable.forEach((id) =>
+        await Promise.all(deletable.map((id) =>
           logAudit({ action: 'delete', tableName: 'companies', recordId: id, oldValues: names.has(id) ? { name: names.get(id) } : undefined, reason: 'bulk-delete' })
-        );
+        ));
       }
       return { deleted: deletable, blockedCount: blocked.size };
     },

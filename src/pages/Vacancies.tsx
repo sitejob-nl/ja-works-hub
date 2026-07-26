@@ -128,9 +128,9 @@ const Vacancies = () => {
       if (deletable.length > 0) {
         await unwrap(supabase.from('vacancies').delete().in('id', deletable));
         const titles = new Map(vacancies.map((v: any) => [v.id, v.title]));
-        deletable.forEach((id) =>
+        await Promise.all(deletable.map((id) =>
           logAudit({ action: 'delete', tableName: 'vacancies', recordId: id, oldValues: titles.has(id) ? { title: titles.get(id) } : undefined, reason: 'bulk-delete' })
-        );
+        ));
       }
       return { deleted: deletable, blockedCount: blocked.size };
     },
