@@ -231,9 +231,11 @@ Deno.serve(async (req) => {
           updatePayload[field] = value;
         }
 
-        // Update status from 'nieuw' to 'in_behandeling'
-        // Only if currently 'nieuw' to avoid overwriting more advanced statuses
-        if (existingCandidate?.status === "nieuw") {
+        // Wie zijn profiellink invult, schuift door naar 'In behandeling' op de instroomfunnel.
+        // Beide beginstatussen tellen: 'lead' is website-instroom (candidate-signup), 'nieuw' is
+        // een handmatig of via Carerix aangemaakt dossier. Alleen vanaf die twee — een kandidaat
+        // die al in screening of toegelaten is, mag hier niet teruggezet worden.
+        if (existingCandidate?.status === "nieuw" || existingCandidate?.status === "lead") {
           updatePayload.status = "in_behandeling";
         }
 

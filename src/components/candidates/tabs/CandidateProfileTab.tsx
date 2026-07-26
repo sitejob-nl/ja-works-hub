@@ -14,7 +14,7 @@ import { useOutlookAccounts } from '@/hooks/useOutlookAccounts';
 import { useAuth } from '@/contexts/AuthContext';
 import { logAudit } from '@/lib/audit';
 import { CANDIDATE_SOURCES, includeCurrentOption, normalizeCandidateSource } from '@/lib/candidate-options';
-import { normalizeCandidatePhone } from '@/lib/phone';
+import { normalizeCandidatePhone, toWhatsAppNumber } from '@/lib/phone';
 import CustomFieldsSection from '@/components/shared/CustomFieldsSection';
 import UnsavedChangesGuard from '@/components/shared/UnsavedChangesGuard';
 import { InlineTextField, InlineSensitiveField, InlineBooleanField, InlineTagsField, InlineSkillsField, InlineLanguagesField, InlineNationalityField } from '@/components/shared/InlineFields';
@@ -167,7 +167,7 @@ const CandidateProfileTab = ({ candidate }: { candidate: any }) => {
   };
 
   const handleWhatsApp = () => {
-    const phone = (candidate.phone_nl || candidate.phone)?.replace(/[^0-9+]/g, '') ?? '';
+    const phone = toWhatsAppNumber(candidate.phone_nl || candidate.phone) ?? '';
     const text = `Hoi ${candidate.first_name}, vul je profiel aan via deze link: ${profileUrl}`;
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
   };

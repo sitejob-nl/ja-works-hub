@@ -871,6 +871,9 @@ export type Database = {
           bank_account_holder: string | null
           birth_country: string | null
           birth_place: string | null
+          blacklist_reason: string | null
+          blacklisted_at: string | null
+          blacklisted_by: string | null
           bsn: string | null
           certifications: string[] | null
           compliance_status: Database["public"]["Enums"]["compliance_status"]
@@ -903,11 +906,13 @@ export type Database = {
           id_document_type: string | null
           id_document_valid_until: string | null
           initials: string | null
+          is_blacklisted: boolean
           languages: string[] | null
           last_name: string
           marital_status: string | null
           middle_name: string | null
           most_recent_role: string | null
+          most_recent_role_months: number | null
           most_recent_role_year: number | null
           nationality: string | null
           notes: string | null
@@ -962,6 +967,9 @@ export type Database = {
           bank_account_holder?: string | null
           birth_country?: string | null
           birth_place?: string | null
+          blacklist_reason?: string | null
+          blacklisted_at?: string | null
+          blacklisted_by?: string | null
           bsn?: string | null
           certifications?: string[] | null
           compliance_status?: Database["public"]["Enums"]["compliance_status"]
@@ -994,11 +1002,13 @@ export type Database = {
           id_document_type?: string | null
           id_document_valid_until?: string | null
           initials?: string | null
+          is_blacklisted?: boolean
           languages?: string[] | null
           last_name: string
           marital_status?: string | null
           middle_name?: string | null
           most_recent_role?: string | null
+          most_recent_role_months?: number | null
           most_recent_role_year?: number | null
           nationality?: string | null
           notes?: string | null
@@ -1053,6 +1063,9 @@ export type Database = {
           bank_account_holder?: string | null
           birth_country?: string | null
           birth_place?: string | null
+          blacklist_reason?: string | null
+          blacklisted_at?: string | null
+          blacklisted_by?: string | null
           bsn?: string | null
           certifications?: string[] | null
           compliance_status?: Database["public"]["Enums"]["compliance_status"]
@@ -1085,11 +1098,13 @@ export type Database = {
           id_document_type?: string | null
           id_document_valid_until?: string | null
           initials?: string | null
+          is_blacklisted?: boolean
           languages?: string[] | null
           last_name?: string
           marital_status?: string | null
           middle_name?: string | null
           most_recent_role?: string | null
+          most_recent_role_months?: number | null
           most_recent_role_year?: number | null
           nationality?: string | null
           notes?: string | null
@@ -7096,7 +7111,7 @@ export type Database = {
           end_date: string | null
           expected_end_date: string | null
           function_name: string
-          hourly_rate: number
+          hourly_rate: number | null
           housing_assignment_id: string | null
           housing_payment_type: string | null
           id: string
@@ -7139,7 +7154,7 @@ export type Database = {
           end_date?: string | null
           expected_end_date?: string | null
           function_name: string
-          hourly_rate: number
+          hourly_rate?: number | null
           housing_assignment_id?: string | null
           housing_payment_type?: string | null
           id?: string
@@ -7182,7 +7197,7 @@ export type Database = {
           end_date?: string | null
           expected_end_date?: string | null
           function_name?: string
-          hourly_rate?: number
+          hourly_rate?: number | null
           housing_assignment_id?: string | null
           housing_payment_type?: string | null
           id?: string
@@ -9838,6 +9853,10 @@ export type Database = {
       }
     }
     Functions: {
+      activate_portal_account: {
+        Args: { p_language: string; p_token: string; p_user_id: string }
+        Returns: string
+      }
       admin_adjust_loyalty_points: {
         Args: {
           p_candidate_id: string
@@ -9922,6 +9941,56 @@ export type Database = {
       }
       encrypt_sensitive: { Args: { plaintext: string }; Returns: string }
       f_unaccent: { Args: { "": string }; Returns: string }
+      facility_employee_candidate_matches: {
+        Args: { p_candidate_id: string; p_employee_id: string }
+        Returns: boolean
+      }
+      facility_housing_snapshot: {
+        Args: { p_property_id?: string }
+        Returns: Json
+      }
+      facility_org_id: { Args: never; Returns: string }
+      facility_profile_directory: {
+        Args: never
+        Returns: {
+          full_name: string
+          id: string
+          role: string
+        }[]
+      }
+      facility_reference_is_in_org: {
+        Args: { p_id: string; p_kind: string }
+        Returns: boolean
+      }
+      facility_save_operational_entity: {
+        Args: { p_entity: string; p_values: Json }
+        Returns: string
+      }
+      facility_set_task_status: {
+        Args: { p_status: string; p_task_id: string }
+        Returns: undefined
+      }
+      facility_shell_context: { Args: never; Returns: Json }
+      facility_transport_snapshot: {
+        Args: { p_vehicle_id?: string }
+        Returns: Json
+      }
+      facility_update_inspection: {
+        Args: { p_inspection_id: string; p_values: Json }
+        Returns: undefined
+      }
+      facility_worker_directory: {
+        Args: never
+        Returns: {
+          candidate_id: string
+          employee_id: string
+          employee_number: string
+          employee_status: string
+          first_name: string
+          last_name: string
+          status: string
+        }[]
+      }
       find_duplicate_candidates: {
         Args: never
         Returns: {
@@ -10013,6 +10082,7 @@ export type Database = {
           decrypted_iban: string
         }[]
       }
+      get_portal_org_id: { Args: never; Returns: string }
       get_portal_org_info: {
         Args: never
         Returns: {
@@ -10050,6 +10120,7 @@ export type Database = {
       }
       has_role_permission: { Args: { p_permission: string }; Returns: boolean }
       is_employee_user: { Args: never; Returns: boolean }
+      is_facility_user: { Args: never; Returns: boolean }
       is_internal_user: { Args: never; Returns: boolean }
       is_superadmin: { Args: never; Returns: boolean }
       merge_candidate_records: {
@@ -10307,6 +10378,7 @@ export type Database = {
         | "finance"
         | "medewerker"
         | "opdrachtgever"
+        | "facility"
       vacancy_status: "open" | "on_hold" | "vervuld" | "gesloten"
       vehicle_status: "beschikbaar" | "toegewezen" | "onderhoud" | "uit_dienst"
     }
@@ -10560,6 +10632,7 @@ export const Constants = {
         "finance",
         "medewerker",
         "opdrachtgever",
+        "facility",
       ],
       vacancy_status: ["open", "on_hold", "vervuld", "gesloten"],
       vehicle_status: ["beschikbaar", "toegewezen", "onderhoud", "uit_dienst"],

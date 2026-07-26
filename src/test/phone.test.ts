@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { mergeCandidatePhoneFields, normalizeCandidatePhone, normalizeDutchMobilePhone } from '@/lib/phone';
+import {
+  mergeCandidatePhoneFields,
+  normalizeCandidatePhone,
+  normalizeDutchMobilePhone,
+  toWhatsAppNumber,
+} from '@/lib/phone';
 
 describe('normalizeDutchMobilePhone', () => {
   it('normaliseert Nederlandse mobiele notaties naar E.164', () => {
@@ -36,5 +41,28 @@ describe('mergeCandidatePhoneFields', () => {
       phone: '+48 600 100 200',
       phone_nl: '',
     });
+  });
+});
+
+describe('toWhatsAppNumber', () => {
+  it('zet een Nederlands nummer zonder landcode om naar 31…', () => {
+    // De oude implementatie ("alleen niet-cijfers strippen") maakte hier 0612345678 van,
+    // wat WhatsApp als onbekend nummer leest.
+    expect(toWhatsAppNumber('06-12345678')).toBe('31612345678');
+    expect(toWhatsAppNumber('040 123 4567')).toBe('31401234567');
+    expect(toWhatsAppNumber('6 12345678')).toBe('31612345678');
+  });
+
+  it('houdt internationale notaties intact', () => {
+    expect(toWhatsAppNumber('+31 6 12345678')).toBe('31612345678');
+    expect(toWhatsAppNumber('0031612345678')).toBe('31612345678');
+    expect(toWhatsAppNumber('+48 600 100 200')).toBe('48600100200');
+  });
+
+  it('geeft null als de landcode niet te bepalen is', () => {
+    expect(toWhatsAppNumber(null)).toBeNull();
+    expect(toWhatsAppNumber('')).toBeNull();
+    expect(toWhatsAppNumber('12345')).toBeNull();
+    expect(toWhatsAppNumber('toestel 204')).toBeNull();
   });
 });

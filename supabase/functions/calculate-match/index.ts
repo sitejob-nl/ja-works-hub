@@ -122,7 +122,7 @@ Deno.serve(async (req) => {
 
     const { data: candidate, error: candidateError } = await userClient
       .from("candidates")
-      .select("id, organization_id, status, first_name, last_name, skills, certifications, languages, has_drivers_license, drivers_license_categories, has_dutch_address, address_city, address_lat, address_lng, available_from, available_until, arrival_date, availability_notes, ai_function_group, ai_target_functions, ai_classification, ai_reliability_score, most_recent_role, most_recent_role_year")
+      .select("id, organization_id, status, is_blacklisted, first_name, last_name, skills, certifications, languages, has_drivers_license, drivers_license_categories, has_dutch_address, address_city, address_lat, address_lng, available_from, available_until, arrival_date, availability_notes, ai_function_group, ai_target_functions, ai_classification, ai_reliability_score, most_recent_role, most_recent_role_year, most_recent_role_months")
       .eq("id", candidate_id)
       .single();
     if (candidateError) throw candidateError;
