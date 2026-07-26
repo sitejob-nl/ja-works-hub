@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildOutlookParticipantSearch,
+  mergeCommunicationHistory,
   mergeCandidateHistory,
   normalizeCandidateEmail,
   type CandidateCommunicationRecord,
@@ -53,6 +54,16 @@ describe('candidate email history', () => {
       mailbox_label: 'Recruitment',
       from: 'candidate@example.com',
     });
+  });
+
+  it('herkent inkomende mail op ieder adres van een bedrijf of contactpersoon', () => {
+    const result = mergeCommunicationHistory(
+      [],
+      [outlookMessage({ from: { address: 'finance@example.com' } })],
+      ['info@example.com', ' FINANCE@example.com '],
+    );
+
+    expect(result[0]).toMatchObject({ direction: 'inbound', from: 'finance@example.com' });
   });
 
   it('ontdubbelt een opgeslagen Outlook-bericht op Graph message-id', () => {

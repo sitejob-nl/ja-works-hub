@@ -29,6 +29,20 @@ export const qk = {
     activeForTimesheet: () => ['candidates-active-for-timesheet'] as const,
   },
   communications: {
+    forEntity: (orgId: string, entityType: string, entityId: string) =>
+      ['entity-communications', orgId, entityType, entityId] as const,
+    entityOutlookPage: (
+      orgId: string,
+      entityType: string,
+      entityId: string,
+      accountId: string,
+      emailKey: string,
+      page: number,
+    ) => ['entity-outlook-history', orgId, entityType, entityId, accountId, emailKey, page] as const,
+    entityOutlookDetail: (orgId: string, accountId: string, messageId: string) =>
+      ['entity-outlook-message', orgId, accountId, messageId] as const,
+    entityOutlookThread: (orgId: string, accountId: string, messageId: string) =>
+      ['entity-outlook-thread', orgId, accountId, messageId] as const,
     forCandidate: (orgId: string, candidateId: string) =>
       ['candidate-communications', orgId, candidateId] as const,
     candidateOutlookPage: (

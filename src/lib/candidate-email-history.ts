@@ -16,6 +16,7 @@ export type CandidateCommunicationRecord = {
 
 export type CandidateOutlookMessage = {
   id: string;
+  conversation_id?: string | null;
   account_id: string;
   mailbox_label: string;
   mailbox_email: string | null;
@@ -55,6 +56,14 @@ export function normalizeCandidateEmail(email: string | null | undefined): strin
   return EMAIL_RE.test(normalized) ? normalized : null;
 }
 
+export function normalizeCommunicationEmails(
+  emails: Array<string | null | undefined>,
+): string[] {
+  return [...new Set(emails.flatMap((value) => String(value ?? '').split(/[,;]/))
+    .map(normalizeCandidateEmail)
+    .filter((value): value is string => Boolean(value)))];
+}
+
 /**
  * Microsoft Graph gebruikt Advanced Query Syntax voor `$search` op berichten.
  * `participants:` doorzoekt afzender, aan, cc en bcc zonder de volledige mailbox op
@@ -77,9 +86,9 @@ function addressList(values: CandidateOutlookMessage['to'] | CandidateOutlookMes
   return (values ?? []).map((value) => String(value.address ?? '').trim()).filter(Boolean);
 }
 
-function directionForOutlook(message: CandidateOutlookMessage, candidateEmail: string | null): 'inbound' | 'outbound' {
+function directionForOutlook(message: CandidateOutlookMessage, targetEmails: Set<string>): 'inbound' | 'outbound' {
   const from = String(message.from?.address ?? '').trim().toLowerCase();
-  return candidateEmail && from === candidateEmail ? 'inbound' : 'outbound';
+  return targetEmails.has(from) ? 'inbound' : 'outbound';
 }
 
 function directionForCommunication(record: CandidateCommunicationRecord): 'inbound' | 'outbound' {
@@ -103,12 +112,12 @@ function isLikelyLoggedCopy(record: CandidateCommunicationRecord, message: Candi
   return Math.abs(loggedAt - outlookAt) <= DEDUPE_WINDOW_MS;
 }
 
-export function mergeCandidateHistory(
+export function mergeCommunicationHistory(
   communications: CandidateCommunicationRecord[],
   outlookMessages: CandidateOutlookMessage[],
-  candidateEmail: string | null | undefined,
+  emails: Array<string | null | undefined>,
 ): CandidateHistoryItem[] {
-  const normalizedEmail = normalizeCandidateEmail(candidateEmail);
+  const targetEmails = new Set(normalizeCommunicationEmails(emails));
   const seenOutlook = new Set<string>();
   const outlookItems: CandidateHistoryItem[] = [];
 
@@ -123,7 +132,7 @@ export function mergeCandidateHistory(
       channel: 'email',
       subject: message.subject ?? null,
       body: message.preview ?? null,
-      direction: directionForOutlook(message, normalizedEmail),
+      direction: directionForOutlook(message, targetEmails),
       occurred_at: message.sent_at ?? message.received_at ?? null,
       from: message.from?.address ?? null,
       to: addressList(message.to),
@@ -161,4 +170,12 @@ export function mergeCandidateHistory(
   return [...outlookItems, ...communicationItems].sort((a, b) => (
     (timestamp(b.occurred_at) ?? 0) - (timestamp(a.occurred_at) ?? 0)
   ));
+}
+
+export function mergeCandidateHistory(
+  communications: CandidateCommunicationRecord[],
+  outlookMessages: CandidateOutlookMessage[],
+  candidateEmail: string | null | undefined,
+): CandidateHistoryItem[] {
+  return mergeCommunicationHistory(communications, outlookMessages, [candidateEmail]);
 }

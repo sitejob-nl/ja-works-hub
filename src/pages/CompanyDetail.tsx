@@ -159,7 +159,7 @@ const CompanyDetail = () => {
         <TabsContent value="contacten"><ContactsTab companyId={id!} /></TabsContent>
         <TabsContent value="functies"><CompanyFunctionsTab companyId={id!} /></TabsContent>
         <TabsContent value="tarieven"><RateAgreementsTab companyId={id!} /></TabsContent>
-        <TabsContent value="communicatie"><CommunicationTab companyId={id!} /></TabsContent>
+        <TabsContent value="communicatie"><CommunicationTab company={company} /></TabsContent>
         <TabsContent value="vacatures"><CompanyVacanciesTab companyId={id!} /></TabsContent>
         <TabsContent value="plaatsingen"><PlacementsTab companyId={id!} companyName={company.name} /></TabsContent>
         <TabsContent value="notities"><NotesSection entityId={id!} entityType="opdrachtgever" /></TabsContent>

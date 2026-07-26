@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -33,12 +34,17 @@ import { qk } from '@/lib/query-keys';
 import { sanitizeHtml } from '@/lib/sanitize-html';
 import {
   buildOutlookParticipantSearch,
-  mergeCandidateHistory,
+  mergeCommunicationHistory,
+  normalizeCommunicationEmails,
   type CandidateCommunicationRecord,
   type CandidateHistoryItem,
   type CandidateOutlookMessage,
 } from '@/lib/candidate-email-history';
 import type { Database } from '@/integrations/supabase/types';
+import EmailSendDialog from '@/components/email/EmailSendDialog';
+import { EntityWhatsAppPanel } from '@/components/communications/EntityWhatsAppPanel';
+import { EmailThreadDialog } from '@/components/communications/EmailThreadDialog';
+import type { CommunicationEntityType, CommunicationRecipient } from '@/components/communications/types';
 
 type Channel = Database['public']['Enums']['communication_channel'];
 
@@ -129,49 +135,101 @@ function MessageBody({ body }: { body: string }) {
 const CandidateCommunicationTab = ({
   candidateId,
   candidateEmail,
+  candidateName,
+  candidatePhone,
+  entityType = 'candidate',
+  entityId,
+  companyId,
+  companyContactId,
+  recipients = [],
 }: {
-  candidateId: string;
+  candidateId?: string;
   candidateEmail?: string | null;
+  candidateName?: string | null;
+  candidatePhone?: string | null;
+  entityType?: CommunicationEntityType;
+  entityId?: string;
+  companyId?: string | null;
+  companyContactId?: string | null;
+  recipients?: CommunicationRecipient[];
 }) => {
+  const resolvedEntityId = entityId || candidateId || '';
   const orgId = useOrganizationId();
   const { user } = useAuth();
   const qc = useQueryClient();
   const callOutlook = useOutlookInvoke();
   const outlook = useOutlookAccounts('mail_read');
-  const participantSearch = buildOutlookParticipantSearch(candidateEmail);
+  const allRecipients = [
+    ...(candidateId ? [{
+      id: `candidate:${candidateId}`,
+      label: candidateName || 'Kandidaat',
+      email: candidateEmail,
+      phone: candidatePhone,
+    }] : []),
+    ...recipients,
+  ];
+  const targetEmails = normalizeCommunicationEmails(allRecipients.map((recipient) => recipient.email));
+  const emailKey = targetEmails.join('|');
+  const emailRecipients = allRecipients.filter((recipient) => (
+    normalizeCommunicationEmails([recipient.email]).length > 0
+  ));
+  const whatsappRecipients = allRecipients.filter((recipient) => Boolean(recipient.phone?.trim()));
+  const [channelTab, setChannelTab] = useState<'email' | 'whatsapp' | 'dossier'>('email');
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
+  const [selectedEmailRecipientId, setSelectedEmailRecipientId] = useState(emailRecipients[0]?.id ?? '');
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({ channel: 'notitie' as Channel, subject: '', body: '' });
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [readerItem, setReaderItem] = useState<CandidateHistoryItem | null>(null);
   const [expandedTranscription, setExpandedTranscription] = useState<string | null>(null);
   const [outlookPageCount, setOutlookPageCount] = useState(1);
 
   useEffect(() => {
     setOutlookPageCount(1);
     setExpandedId(null);
-  }, [candidateId, participantSearch]);
+  }, [resolvedEntityId, emailKey]);
+
+  useEffect(() => {
+    if (!emailRecipients.some((recipient) => recipient.id === selectedEmailRecipientId)) {
+      setSelectedEmailRecipientId(emailRecipients[0]?.id ?? '');
+    }
+  }, [emailRecipients, selectedEmailRecipientId]);
 
   const { data: comms = [], isLoading: commsLoading } = useQuery({
-    queryKey: qk.communications.forCandidate(orgId, candidateId),
-    queryFn: () => unwrapList(
-      supabase
+    queryKey: qk.communications.forEntity(orgId, entityType, resolvedEntityId),
+    queryFn: () => {
+      let query = supabase
         .from('communications')
         .select('*, profiles:sent_by(full_name)')
-        .eq('candidate_id', candidateId)
-        .order('sent_at', { ascending: false }),
-    ),
+        .eq('organization_id', orgId);
+
+      if (entityType === 'candidate') {
+        query = query.eq('candidate_id', candidateId!);
+      } else if (entityType === 'contact') {
+        query = query.eq('company_contact_id', companyContactId!);
+      } else {
+        const contactIds = recipients.map((recipient) => recipient.companyContactId).filter(Boolean);
+        query = contactIds.length > 0
+          ? query.or(`company_id.eq.${companyId},company_contact_id.in.(${contactIds.join(',')})`)
+          : query.eq('company_id', companyId!);
+      }
+
+      return unwrapList(query.order('sent_at', { ascending: false }));
+    },
+    enabled: Boolean(orgId && resolvedEntityId),
   });
 
-  const normalizedCandidateEmail = candidateEmail?.trim().toLowerCase() ?? '';
-  const outlookTargets: OutlookTarget[] = participantSearch
+  const outlookTargets: OutlookTarget[] = targetEmails.length > 0
     ? outlook.usableAccounts.flatMap((account) => (
       Array.from({ length: outlookPageCount }, (_, page) => {
         const previousPage = page - 1;
         const nextLink = page === 0 ? null : qc.getQueryData<OutlookListResponse>(
-          qk.communications.candidateOutlookPage(
+          qk.communications.entityOutlookPage(
             orgId,
-            candidateId,
+            entityType,
+            resolvedEntityId,
             account.account_id,
-            normalizedCandidateEmail,
+            emailKey,
             previousPage,
           ),
         )?.next_link ?? null;
@@ -189,11 +247,12 @@ const CandidateCommunicationTab = ({
 
   const outlookQueries = useQueries({
     queries: outlookTargets.map((target) => ({
-      queryKey: qk.communications.candidateOutlookPage(
+      queryKey: qk.communications.entityOutlookPage(
         orgId,
-        candidateId,
+        entityType,
+        resolvedEntityId,
         target.accountId,
-        normalizedCandidateEmail,
+        emailKey,
         target.page,
       ),
       queryFn: () => callOutlook<OutlookListResponse>('outlook-mail', {
@@ -201,9 +260,13 @@ const CandidateCommunicationTab = ({
         account_id: target.accountId,
         ...(target.nextLink
           ? { next_link: target.nextLink }
-          : { search: participantSearch, top: PAGE_SIZE }),
+          : {
+              participant_emails: targetEmails,
+              search: buildOutlookParticipantSearch(targetEmails[0]),
+              top: PAGE_SIZE,
+            }),
       }),
-      enabled: Boolean(participantSearch && (target.page === 0 || target.nextLink)),
+      enabled: Boolean(targetEmails.length > 0 && (target.page === 0 || target.nextLink)),
       staleTime: 30_000,
       retry: 1,
     })),
@@ -220,16 +283,16 @@ const CandidateCommunicationTab = ({
     }));
   });
 
-  const history = mergeCandidateHistory(
+  const history = mergeCommunicationHistory(
     comms as CandidateCommunicationRecord[],
     outlookMessages,
-    candidateEmail,
+    targetEmails,
   );
   const expandedItem = history.find((item) => item.id === expandedId) ?? null;
   const expandedOutlook = expandedItem?.outlook ?? null;
 
   const { data: outlookDetail, isLoading: outlookDetailLoading, isError: outlookDetailError } = useQuery({
-    queryKey: qk.communications.candidateOutlookDetail(
+    queryKey: qk.communications.entityOutlookDetail(
       orgId,
       expandedOutlook?.account_id ?? 'none',
       expandedOutlook?.id ?? 'none',
@@ -250,7 +313,9 @@ const CandidateCommunicationTab = ({
   const add = useMutation({
     mutationFn: async () => {
       await unwrap(supabase.from('communications').insert({
-        candidate_id: candidateId,
+        candidate_id: candidateId || null,
+        company_id: companyId || null,
+        company_contact_id: companyContactId || null,
         organization_id: orgId,
         channel: form.channel,
         subject: form.subject || null,
@@ -259,7 +324,7 @@ const CandidateCommunicationTab = ({
       }));
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: qk.communications.forCandidate(orgId, candidateId) });
+      qc.invalidateQueries({ queryKey: qk.communications.forEntity(orgId, entityType, resolvedEntityId) });
       setAdding(false);
       setForm({ channel: 'notitie', subject: '', body: '' });
       toast.success('Communicatie toegevoegd');
@@ -284,6 +349,26 @@ const CandidateCommunicationTab = ({
     outlookQueries.forEach((query) => query.refetch());
   };
 
+  useEffect(() => {
+    if (!orgId || !resolvedEntityId) return;
+    const realtime = supabase
+      .channel(`entity-comms-${entityType}-${resolvedEntityId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'communications', filter: `organization_id=eq.${orgId}` },
+        () => qc.invalidateQueries({ queryKey: qk.communications.forEntity(orgId, entityType, resolvedEntityId) }),
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(realtime); };
+  }, [entityType, orgId, qc, resolvedEntityId]);
+
+  const displayedHistory = channelTab === 'email'
+    ? history.filter((item) => item.channel === 'email')
+    : history.filter((item) => item.channel !== 'email' && item.channel !== 'whatsapp');
+  const selectedEmailRecipient = emailRecipients.find((recipient) => recipient.id === selectedEmailRecipientId)
+    ?? emailRecipients[0]
+    ?? null;
+
   const renderExpandedBody = (item: CandidateHistoryItem) => {
     if (item.source === 'outlook' && outlookDetailLoading) {
       return <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Bericht laden...</div>;
@@ -302,19 +387,53 @@ const CandidateCommunicationTab = ({
 
   return (
     <div className="space-y-4">
+      <Tabs value={channelTab} onValueChange={(value) => setChannelTab(value as typeof channelTab)}>
+        <TabsList className="grid w-full max-w-lg grid-cols-3">
+          <TabsTrigger value="email" className="gap-2"><Mail className="h-4 w-4" />E-mail</TabsTrigger>
+          <TabsTrigger value="whatsapp" className="gap-2"><MessageSquare className="h-4 w-4" />WhatsApp</TabsTrigger>
+          <TabsTrigger value="dossier" className="gap-2"><StickyNote className="h-4 w-4" />Dossier</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      {channelTab === 'whatsapp' ? (
+        <EntityWhatsAppPanel
+          recipients={whatsappRecipients}
+          candidateId={candidateId}
+          companyId={companyId}
+        />
+      ) : (
+        <>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h3 className="font-medium">Communicatie en e-mailhistorie</h3>
-          {participantSearch ? (
+          <h3 className="font-medium">{channelTab === 'email' ? 'E-mailhistorie' : 'Dossiercommunicatie'}</h3>
+          {channelTab === 'email' && targetEmails.length > 0 ? (
             <p className="text-sm text-muted-foreground">
-              Outlook-historie met <span data-no-translate="true">{candidateEmail}</span> uit alle mailboxen waarvoor je leesrecht hebt.
+              Alle mail met {targetEmails.length === 1 ? (
+                <span data-no-translate="true">{targetEmails[0]}</span>
+              ) : (
+                <><span data-no-translate="true">{targetEmails.length}</span> adressen</>
+              )} uit de mailboxen waarvoor je leesrecht hebt.
             </p>
+          ) : channelTab === 'email' ? (
+            <p className="text-sm text-muted-foreground">Voeg een geldig e-mailadres toe om de Outlook-historie te zien.</p>
           ) : (
-            <p className="text-sm text-muted-foreground">Voeg een geldig e-mailadres toe om de Outlook-historie van deze kandidaat te zien.</p>
+            <p className="text-sm text-muted-foreground">Notities, telefoongesprekken en overige dossiercontacten.</p>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          {participantSearch && (
+        <div className="flex flex-wrap items-center gap-2">
+          {channelTab === 'email' && emailRecipients.length > 1 && (
+            <Select value={selectedEmailRecipient?.id} onValueChange={setSelectedEmailRecipientId}>
+              <SelectTrigger className="h-9 w-[220px]"><SelectValue placeholder="Kies ontvanger" /></SelectTrigger>
+              <SelectContent>
+                {emailRecipients.map((recipient) => (
+                  <SelectItem key={recipient.id} value={recipient.id}>
+                    {recipient.label} · {normalizeCommunicationEmails([recipient.email])[0]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          {channelTab === 'email' && targetEmails.length > 0 && (
             <Button
               size="icon"
               variant="ghost"
@@ -327,13 +446,19 @@ const CandidateCommunicationTab = ({
               <RefreshCw className={`h-4 w-4 ${outlookFetching ? 'animate-spin' : ''}`} />
             </Button>
           )}
-          <Button size="sm" variant="outline" onClick={() => setAdding(true)} className="gap-1">
-            <Plus className="h-3.5 w-3.5" />Nieuwe notitie
-          </Button>
+          {channelTab === 'email' ? (
+            <Button size="sm" onClick={() => setEmailDialogOpen(true)} className="gap-1" disabled={!selectedEmailRecipient}>
+              <Mail className="h-3.5 w-3.5" />Nieuwe e-mail
+            </Button>
+          ) : (
+            <Button size="sm" variant="outline" onClick={() => setAdding(true)} className="gap-1">
+              <Plus className="h-3.5 w-3.5" />Nieuwe notitie
+            </Button>
+          )}
         </div>
       </div>
 
-      {participantSearch && !outlook.isLoading && outlook.usableAccounts.length > 0 && (
+      {channelTab === 'email' && targetEmails.length > 0 && !outlook.isLoading && outlook.usableAccounts.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <Badge variant="secondary">
             <span data-no-translate="true">{outlook.usableAccounts.length}</span>&nbsp;
@@ -347,7 +472,7 @@ const CandidateCommunicationTab = ({
         </div>
       )}
 
-      {participantSearch && !outlook.isLoading && outlook.usableAccounts.length === 0 && (
+      {channelTab === 'email' && targetEmails.length > 0 && !outlook.isLoading && outlook.usableAccounts.length === 0 && (
         <Alert>
           <Mail className="h-4 w-4" />
           <AlertDescription>
@@ -356,7 +481,7 @@ const CandidateCommunicationTab = ({
         </Alert>
       )}
 
-      {failedAccountIds.size > 0 && (
+      {channelTab === 'email' && failedAccountIds.size > 0 && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>
@@ -365,14 +490,14 @@ const CandidateCommunicationTab = ({
         </Alert>
       )}
 
-      {adding && (
+      {channelTab === 'dossier' && adding && (
         <div className="bg-card rounded-lg border p-4 space-y-3">
           <div>
             <Label>Kanaal</Label>
             <Select value={form.channel} onValueChange={(value) => setForm((current) => ({ ...current, channel: value as Channel }))}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                {(Object.keys(channelLabels) as Channel[]).map((channel) => (
+                {(['notitie', 'voip', 'sms'] as Channel[]).map((channel) => (
                   <SelectItem key={channel} value={channel}>{channelLabels[channel]}</SelectItem>
                 ))}
               </SelectContent>
@@ -395,13 +520,13 @@ const CandidateCommunicationTab = ({
         </div>
       )}
 
-      {(commsLoading || outlookLoading) && history.length === 0 ? (
+      {(commsLoading || (channelTab === 'email' && outlookLoading)) && displayedHistory.length === 0 ? (
         <div className="space-y-3">
           {[0, 1, 2].map((key) => <Skeleton key={key} className="h-24 w-full" />)}
         </div>
       ) : (
         <div className="space-y-3">
-          {history.map((item) => {
+          {displayedHistory.map((item) => {
             const communication = item.communication;
             const channel = item.channel as Channel;
             const Icon = channelIcons[channel] ?? MessageSquare;
@@ -414,7 +539,20 @@ const CandidateCommunicationTab = ({
             );
 
             return (
-              <div key={item.id} className="bg-card rounded-lg border p-4 flex gap-3">
+              <div
+                key={item.id}
+                className={`bg-card rounded-lg border p-4 flex gap-3 ${item.channel === 'email' ? 'cursor-pointer transition-colors hover:border-primary/40 hover:bg-muted/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring' : ''}`}
+                role={item.channel === 'email' ? 'button' : undefined}
+                tabIndex={item.channel === 'email' ? 0 : undefined}
+                onClick={item.channel === 'email' ? () => setReaderItem(item) : undefined}
+                onKeyDown={item.channel === 'email' ? (event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    setReaderItem(item);
+                  }
+                } : undefined}
+                aria-label={item.channel === 'email' ? `E-mail openen: ${item.subject || 'zonder onderwerp'}` : undefined}
+              >
                 <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center shrink-0">
                   <Icon className="h-4 w-4 text-muted-foreground" />
                 </div>
@@ -442,7 +580,7 @@ const CandidateCommunicationTab = ({
                       <span className="text-xs text-muted-foreground" data-no-translate="true">
                         {formatCommunicationDate(item.occurred_at)}
                       </span>
-                      {hasDetails && (
+                      {hasDetails && item.channel !== 'email' && (
                         <Button
                           type="button"
                           variant="ghost"
@@ -515,13 +653,15 @@ const CandidateCommunicationTab = ({
             );
           })}
 
-          {history.length === 0 && !adding && (
-            <p className="text-center text-muted-foreground py-8">Nog geen communicatie of e-mailhistorie gevonden</p>
+          {displayedHistory.length === 0 && !adding && (
+            <p className="text-center text-muted-foreground py-8">
+              {channelTab === 'email' ? 'Nog geen e-mailhistorie gevonden' : 'Nog geen dossiercommunicatie gevonden'}
+            </p>
           )}
         </div>
       )}
 
-      {hasOlderOutlookMail && (
+      {channelTab === 'email' && hasOlderOutlookMail && (
         <div className="flex justify-center">
           <Button
             variant="outline"
@@ -534,6 +674,27 @@ const CandidateCommunicationTab = ({
           </Button>
         </div>
       )}
+        </>
+      )}
+
+      <EmailSendDialog
+        open={emailDialogOpen}
+        onOpenChange={setEmailDialogOpen}
+        candidateId={candidateId}
+        candidateEmail={normalizeCommunicationEmails([selectedEmailRecipient?.email])[0] || ''}
+        companyId={companyId || undefined}
+        companyContactId={selectedEmailRecipient?.companyContactId || companyContactId || undefined}
+        onSent={async () => {
+          await qc.invalidateQueries({ queryKey: qk.communications.forEntity(orgId, entityType, resolvedEntityId) });
+          refreshOutlook();
+        }}
+      />
+      <EmailThreadDialog
+        item={readerItem}
+        targetEmails={targetEmails}
+        open={Boolean(readerItem)}
+        onOpenChange={(open) => { if (!open) setReaderItem(null); }}
+      />
     </div>
   );
 };
