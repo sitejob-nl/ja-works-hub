@@ -33,7 +33,12 @@ function safeNextLink(input: unknown, basePath: string) {
   const url = new URL(String(input));
   if (url.origin !== "https://graph.microsoft.com") throw new Error("invalid_graph_next_link");
   const path = url.pathname.replace(/^\/v1\.0/, "");
-  if (!path.startsWith(`${basePath}/mailFolders/`) || !path.includes("/messages")) throw new Error("invalid_graph_next_link");
+  const isMailboxMessages = path === `${basePath}/messages`;
+  const folderPath = path.startsWith(`${basePath}/mailFolders/`)
+    ? path.slice(`${basePath}/mailFolders/`.length).split("/")
+    : [];
+  const isFolderMessages = folderPath.length === 2 && Boolean(folderPath[0]) && folderPath[1] === "messages";
+  if (!isMailboxMessages && !isFolderMessages) throw new Error("invalid_graph_next_link");
   return url;
 }
 
@@ -111,12 +116,11 @@ Deno.serve(async (req) => {
       const url = next ?? (search
         ? graphUrl(`${base}/messages`, {
           "$search": `"${search.replace(/"/g, '\\"')}"`,
-          "$select": "id,parentFolderId,subject,from,sender,toRecipients,receivedDateTime,sentDateTime,isRead,bodyPreview,hasAttachments,importance,webLink",
+          "$select": "id,parentFolderId,subject,from,sender,toRecipients,ccRecipients,receivedDateTime,sentDateTime,isRead,bodyPreview,hasAttachments,importance,webLink",
           "$top": top,
-          "$skip": skip,
         })
         : graphUrl(`${base}/mailFolders/${folderSegment(body.folder_id)}/messages`, {
-          "$select": "id,parentFolderId,subject,from,sender,toRecipients,receivedDateTime,sentDateTime,isRead,bodyPreview,hasAttachments,importance,webLink",
+          "$select": "id,parentFolderId,subject,from,sender,toRecipients,ccRecipients,receivedDateTime,sentDateTime,isRead,bodyPreview,hasAttachments,importance,webLink",
           "$top": top,
           "$skip": skip,
           "$orderby": String(body.folder_id || "").toLowerCase() === "sentitems" ? "sentDateTime desc" : "receivedDateTime desc",
