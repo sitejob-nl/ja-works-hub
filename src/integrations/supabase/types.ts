@@ -10089,6 +10089,7 @@ export type Database = {
       get_portal_org_info: {
         Args: never
         Returns: {
+          accent_color: string
           logo_url: string
           name: string
           welcome_video_url: string

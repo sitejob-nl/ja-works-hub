@@ -1,11 +1,16 @@
 import { createAdminClient, jsonResponse, requireRolePermission } from "../_shared/auth.ts";
 import { cleanEmail } from "../_shared/outlook-accounts.ts";
+import {
+  buildInstructionText,
+  dnsInstructions,
+  type DnsRecord,
+  type DomainType,
+} from "../_shared/domain-instructions.ts";
 import { sendViaOutlookAccount } from "../_shared/outlook-send.ts";
 import { type BrandTheme, escapeHtml, loadBrandTheme, renderBrandedEmail } from "../_shared/email-layout.ts";
 
 import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
 
-type DomainType = "exact" | "wildcard";
 type DomainStatus = "pending" | "verified" | "misconfigured" | "error" | "removed";
 
 type VercelProjectDomain = {
@@ -153,33 +158,6 @@ function statusFromVercel(
   return "pending";
 }
 
-function dnsInstructions(domain: string, domainType: DomainType, primaryHostname: string, projectDomain: VercelProjectDomain | null) {
-  const verification = Array.isArray(projectDomain?.verification) ? projectDomain?.verification : [];
-  const base = domain.replace(/^\*\./, "");
-
-  if (domainType === "wildcard") {
-    return {
-      kind: "wildcard",
-      records: [
-        { type: "CNAME", name: `*.${base}`, value: "cname.vercel-dns.com", purpose: "Route alle subdomeinen naar Vercel" },
-        { type: "CNAME", name: primaryHostname, value: "cname.vercel-dns.com", purpose: "Primaire app-hostname" },
-      ],
-      verification,
-      warning:
-        "Voor wildcard-certificaten heeft Vercel DNS-controle nodig. Gebruik Vercel nameservers of de door Vercel gevraagde _acme-challenge NS/TXT-records. Let op: nameservers wijzigen kan bestaande DNS zoals mail beïnvloeden.",
-    };
-  }
-
-  const isSubdomain = domain.split(".").length > 2;
-  return {
-    kind: "exact",
-    records: isSubdomain
-      ? [{ type: "CNAME", name: domain, value: "cname.vercel-dns.com", purpose: "Route dit subdomein naar Vercel" }]
-      : [{ type: "A", name: "@", value: "76.76.21.21", purpose: "Route apex-domein naar Vercel" }],
-    verification,
-  };
-}
-
 async function syncDomainStatus(admin: ReturnType<typeof createAdminClient>, row: any, doVerify: boolean) {
   const vercelDomain = doVerify ? await verifyProjectDomain(row.domain) : await getProjectDomain(row.domain);
   const dnsConfig = await getDomainConfig(row.domain);
@@ -191,7 +169,7 @@ async function syncDomainStatus(admin: ReturnType<typeof createAdminClient>, row
     vercel_project_domain: vercelDomain ?? {},
     dns_config: {
       ...(typeof dnsConfig === "object" && dnsConfig ? dnsConfig : {}),
-      instructions: dnsInstructions(row.domain, row.domain_type, row.primary_hostname, vercelDomain),
+      instructions: dnsInstructions(row.domain, row.domain_type, row.primary_hostname, vercelDomain, dnsConfig),
     },
     verification: { records: vercelDomain?.verification ?? [] },
     last_checked_at: now,
@@ -208,7 +186,99 @@ async function syncDomainStatus(admin: ReturnType<typeof createAdminClient>, row
   return data;
 }
 
-type DnsRecord = { type?: string; name?: string; value?: string; purpose?: string };
+/** Bovengrens per sweep, zodat één run niet in een timeout loopt bij veel domeinen. */
+const SWEEP_LIMIT = 100;
+const CATEGORY_DOMAIN_DNS = "domein_dns";
+
+/**
+ * Hercontroleert alle actieve domeinen tegen Vercel. Zonder deze sweep verandert een
+ * domeinstatus alleen wanneer een admin handmatig op Check klikt — een domein dat later
+ * omvalt (DNS gewijzigd, record verwijderd) zou dan `verified` blijven en de basis voor
+ * links in uitgaande mail blijven vormen.
+ *
+ * Bij een terugval van `verified` naar iets anders wordt een taak aangemaakt, want dat is
+ * het geval dat iemand moet zien: de organisatie valt vanaf dat moment terug op de
+ * platform-URL en klanten zien een ander domein dan ze gewend zijn.
+ */
+async function runDomainStatusSweep(admin: ReturnType<typeof createAdminClient>) {
+  const { data: rows, error } = await admin
+    .from("organization_domains")
+    .select("*")
+    .is("removed_at", null)
+    .neq("status", "removed")
+    .order("last_checked_at", { ascending: true, nullsFirst: true })
+    .limit(SWEEP_LIMIT);
+  if (error) throw error;
+
+  const { count: totalActive } = await admin
+    .from("organization_domains")
+    .select("id", { count: "exact", head: true })
+    .is("removed_at", null)
+    .neq("status", "removed");
+
+  const checked: Array<{ domain: string; from: string; to: string }> = [];
+  const failed: Array<{ domain: string; error: string }> = [];
+  let tasksCreated = 0;
+
+  for (const row of (rows ?? []) as any[]) {
+    try {
+      const updated = await syncDomainStatus(admin, row, false);
+      if (updated.status !== row.status) {
+        checked.push({ domain: row.domain, from: row.status, to: updated.status });
+      }
+
+      const regressed = row.status === "verified" && updated.status !== "verified";
+      if (!regressed) continue;
+
+      // Idempotent: zolang de vorige melding nog open staat geen tweede aanmaken.
+      const { data: existing } = await admin
+        .from("recruiter_tasks")
+        .select("id")
+        .eq("organization_id", row.organization_id)
+        .eq("related_entity_type", "domein")
+        .eq("related_entity_id", row.id)
+        .eq("category", CATEGORY_DOMAIN_DNS)
+        .eq("status", "open")
+        .maybeSingle();
+      if (existing) continue;
+
+      await admin.from("recruiter_tasks").insert({
+        organization_id: row.organization_id,
+        title: `Domein onbereikbaar: ${row.domain}`,
+        description:
+          `De DNS van ${row.domain} wijst niet meer correct naar de hosting, dus het domein is ` +
+          `niet meer actief. Links in uitgaande e-mail vallen tot die tijd terug op de standaard ` +
+          `platform-URL. Controleer de DNS-records via Instellingen → Domeinen; daar staat ook ` +
+          `de knop om de instructies naar de beheerder van de zone te mailen.`,
+        category: CATEGORY_DOMAIN_DNS,
+        priority: row.is_primary ? "high" : "medium",
+        status: "open",
+        related_entity_type: "domein",
+        related_entity_id: row.id,
+        ai_generated: true,
+        ai_reasoning: `Auto-gegenereerd door domain-management sweep (status ${row.status} → ${updated.status}).`,
+      } as any);
+      tasksCreated++;
+    } catch (err) {
+      // Eén onbereikbaar domein mag de rest van de sweep niet stoppen.
+      failed.push({ domain: row.domain, error: (err as Error).message });
+    }
+  }
+
+  const skipped = Math.max(0, (totalActive ?? 0) - (rows?.length ?? 0));
+  if (skipped > 0) {
+    console.warn(`domain sweep: ${skipped} domeinen niet gecontroleerd (limiet ${SWEEP_LIMIT} per run)`);
+  }
+
+  return {
+    scanned: rows?.length ?? 0,
+    total_active: totalActive ?? 0,
+    not_scanned_this_run: skipped,
+    status_changes: checked,
+    tasks_created: tasksCreated,
+    failed,
+  };
+}
 
 /**
  * Eén record als kaart met veld-labels, in plaats van een brede tabel. Mailclients op
@@ -251,63 +321,37 @@ function recordCards(records: DnsRecord[], theme: BrandTheme): string {
   return records.map((record, index) => recordCard(record, index, records.length, theme)).join("");
 }
 
+/**
+ * Nameservers krijgen een eigen blok en niet de record-kaart: ze worden bij de registrar
+ * gewijzigd, niet als record in de zone toegevoegd. Dat verschil is precies waar het
+ * misgaat als je het als "NS-record" presenteert.
+ */
+function nameserverBlock(nameservers: string[], theme: BrandTheme): string {
+  const mono = "font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace";
+  const rows = nameservers
+    .map(
+      (ns) =>
+        `<tr><td style="padding:5px 0;${mono};font-size:13px;color:${theme.textHex};word-break:break-all;">${escapeHtml(ns)}</td></tr>`,
+    )
+    .join("");
+
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;margin:0 0 12px;border:1px solid #e2e8f0;border-radius:8px;">
+    <tr><td style="padding:14px 16px;">
+      <p style="margin:0 0 10px;color:${theme.navyHex};font-size:13px;font-weight:700;">Nameservers</p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows}</table>
+      <p style="margin:10px 0 0;padding-top:10px;border-top:1px solid #eef2f7;color:${theme.mutedHex};font-size:12px;line-height:1.5;">
+        Deze wijziging gebeurt bij de <strong>registrar</strong> van het domein, niet in de
+        DNS-zone zelf. De huidige nameservers worden volledig vervangen.
+      </p>
+    </td></tr>
+  </table>`;
+}
+
 function sectionHeading(step: string | null, title: string, theme: BrandTheme): string {
   const badge = step
     ? `<span style="display:inline-block;padding:2px 8px;border-radius:4px;background:${theme.navyHex};color:#ffffff;font-size:10px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;margin-right:8px;vertical-align:middle;">${escapeHtml(step)}</span>`
     : "";
   return `<h3 style="margin:26px 0 12px;color:${theme.navyHex};font-size:15px;line-height:1.4;">${badge}${escapeHtml(title)}</h3>`;
-}
-
-/**
- * Platte-tekstversie van dezelfde instructies. Bedoeld om te kopiëren naar een ticket,
- * WhatsApp of Teams — kanalen waar de HTML-mail niet past maar de developer wél zit.
- */
-function buildInstructionText(row: any, orgName: string): string {
-  const instructions = row.dns_config?.instructions ?? {};
-  const records: DnsRecord[] = Array.isArray(instructions.records) ? instructions.records : [];
-  const verification: DnsRecord[] = Array.isArray(instructions.verification) ? instructions.verification : [];
-  const zone = row.apex_domain || row.domain;
-
-  const lines: string[] = [
-    `DNS-instelling voor ${row.domain}`,
-    "",
-    `${orgName} gaat de software gebruiken op ${row.primary_hostname}.`,
-    `Daarvoor moet in de DNS-zone van ${zone} het volgende worden toegevoegd:`,
-    "",
-  ];
-
-  const renderRecords = (list: DnsRecord[]) => {
-    list.forEach((record, index) => {
-      lines.push(`${list.length > 1 ? `${index + 1}. ` : ""}${record.type ?? "RECORD"}-record`);
-      lines.push(`   Naam:   ${record.name ?? ""}`);
-      lines.push(`   Waarde: ${record.value ?? ""}`);
-      lines.push(`   TTL:    standaard (of 3600)`);
-      if (record.purpose) lines.push(`   Doel:   ${record.purpose}`);
-      lines.push("");
-    });
-  };
-
-  renderRecords(records);
-
-  if (verification.length) {
-    lines.push("Extra verificatie-record(s) om het eigendom van het domein te bevestigen:", "");
-    renderRecords(verification);
-  }
-
-  lines.push(
-    "Let op: staat het domein achter een proxy of CDN (bij Cloudflare de oranje wolk),",
-    "zet die dan uit voor deze hostname — het verkeer moet rechtstreeks doorgezet worden.",
-    "",
-    "Bestaande records voor de website en e-mail van dit domein blijven ongewijzigd.",
-    "Het TLS-certificaat wordt automatisch aangevraagd zodra de records actief zijn;",
-    "er hoeft niets geïnstalleerd of geconfigureerd te worden op een server.",
-    "",
-    "Een bevestiging dat de records staan is genoeg — daarna controleren wij de koppeling.",
-  );
-
-  if (instructions.warning) lines.push("", `Let op: ${instructions.warning}`);
-
-  return lines.join("\n");
 }
 
 function buildDnsInstructionEmail(data: {
@@ -320,6 +364,7 @@ function buildDnsInstructionEmail(data: {
   const instructions = row.dns_config?.instructions ?? {};
   const records: DnsRecord[] = Array.isArray(instructions.records) ? instructions.records : [];
   const verification: DnsRecord[] = Array.isArray(instructions.verification) ? instructions.verification : [];
+  const nameservers: string[] = Array.isArray(instructions.nameservers) ? instructions.nameservers : [];
   const isWildcard = row.domain_type === "wildcard";
   const zone = row.apex_domain || row.domain;
 
@@ -356,25 +401,34 @@ function buildDnsInstructionEmail(data: {
     <p style="margin:0 0 18px;color:${theme.textHex};font-size:14px;line-height:1.6;">
       ${escapeHtml(theme.orgName)} gaat de personeelssoftware gebruiken op
       <strong style="color:${theme.navyHex};">${escapeHtml(row.primary_hostname)}</strong>.
-      Om dat te laten werken moet in de DNS-zone van
-      <strong style="color:${theme.navyHex};">${escapeHtml(zone)}</strong> het onderstaande worden
-      toegevoegd. Er is geen server-configuratie nodig.
+      ${isWildcard
+        ? `Omdat het om een wildcard (<strong>${escapeHtml(row.domain)}</strong>) gaat, moeten de
+           nameservers van <strong style="color:${theme.navyHex};">${escapeHtml(zone)}</strong>
+           naar Vercel wijzen — dat is de enige manier waarop een wildcard-certificaat kan worden
+           uitgegeven.`
+        : `Om dat te laten werken moet in de DNS-zone van
+           <strong style="color:${theme.navyHex};">${escapeHtml(zone)}</strong> het onderstaande
+           worden toegevoegd. Er is geen server-configuratie nodig.`}
     </p>
 
     ${note}
 
-    ${sectionHeading("Stap 1", `Record${records.length === 1 ? "" : "s"} toevoegen`, theme)}
-    ${records.length
-      ? recordCards(records, theme)
-      : `<p style="margin:0 0 20px;color:${theme.mutedHex};font-size:13px;">Geen records beschikbaar — neem contact op met de afzender van deze mail.</p>`}
+    ${sectionHeading("Stap 1", isWildcard ? "Nameservers wijzigen" : `Record${records.length === 1 ? "" : "s"} toevoegen`, theme)}
+    ${isWildcard
+      ? nameserverBlock(nameservers, theme)
+      : records.length
+        ? recordCards(records, theme)
+        : `<p style="margin:0 0 20px;color:${theme.mutedHex};font-size:13px;">Geen records beschikbaar — neem contact op met de afzender van deze mail.</p>`}
 
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 4px;"><tr>
+    ${isWildcard
+      ? ""
+      : `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 4px;"><tr>
       <td style="padding:12px 14px;background:#f1f5f9;border-radius:6px;color:${theme.textHex};font-size:13px;line-height:1.55;">
         <strong style="color:${theme.navyHex};">Proxy of CDN uitzetten</strong><br>
         Staat deze hostname achter een proxy (bij Cloudflare de oranje wolk), zet die dan uit —
         het verkeer moet rechtstreeks doorgezet worden. Anders ontstaat er een redirect-lus.
       </td></tr>
-    </table>
+    </table>`}
 
     ${warning}
     ${verificationBlock}
@@ -387,9 +441,12 @@ function buildDnsInstructionEmail(data: {
     </p>
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:18px 0 0;"><tr>
-      <td style="padding:12px 14px;border:1px solid #e2e8f0;border-radius:6px;color:${theme.mutedHex};font-size:12px;line-height:1.55;">
+      <td style="padding:12px 14px;border:1px solid ${isWildcard ? "#fdba74" : "#e2e8f0"};border-radius:6px;color:${isWildcard ? "#9a3412" : theme.mutedHex};font-size:12px;line-height:1.55;">
         ${isWildcard
-          ? "Let op: dit is een wildcard-koppeling. Bestaande records die specifieker zijn dan de wildcard blijven voorgaan."
+          ? "<strong>Belangrijk:</strong> bij een nameserver-wijziging vervalt de huidige DNS-zone volledig. " +
+            "Alle bestaande records moeten eerst in Vercel DNS staan — MX plus SPF, DKIM en DMARC voor " +
+            "e-mail, bestaande subdomeinen en verificatie-records. Ontbreken die op het moment dat de " +
+            "wijziging doorwerkt, dan valt e-mail op dit domein uit."
           : "Bestaande records voor de website en e-mail van dit domein blijven ongewijzigd — er wordt alleen één hostname toegevoegd."}
       </td></tr>
     </table>
@@ -412,6 +469,15 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
 
   try {
+    // Cron-modus (pg_cron): hercontroleert alle domeinen over alle organisaties. Staat
+    // vóór de gebruikersauthenticatie omdat er geen JWT bij een cron-aanroep zit.
+    const cronSecret = Deno.env.get("CRON_SECRET");
+    const providedSecret = req.headers.get("x-cron-secret");
+    if (cronSecret && providedSecret === cronSecret) {
+      const result = await runDomainStatusSweep(createAdminClient());
+      return json({ mode: "cron", ...result });
+    }
+
     const auth = await requireRolePermission(req, "settings.manage", corsHeaders);
     if (auth instanceof Response) return auth;
 
@@ -467,7 +533,7 @@ Deno.serve(async (req) => {
           vercel_project_domain: projectDomain,
           dns_config: {
             ...(typeof dnsConfig === "object" && dnsConfig ? dnsConfig : {}),
-            instructions: dnsInstructions(domain, domainType, primaryHostname, projectDomain),
+            instructions: dnsInstructions(domain, domainType, primaryHostname, projectDomain, dnsConfig),
           },
           verification: { records: projectDomain?.verification ?? [] },
           last_checked_at: new Date().toISOString(),

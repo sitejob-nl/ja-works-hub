@@ -3,6 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { applyBranding, type BrandingSettings } from '@/lib/branding';
+import { applyOrgManifest } from '@/lib/pwa-manifest';
 import { useQuery } from '@tanstack/react-query';
 import {
   LayoutDashboard, Building2, Users, UserCheck, UserRound, Home, Briefcase,
@@ -206,6 +207,9 @@ const AppSidebar = ({ onNavigate }: AppSidebarProps) => {
     if (!org) return;
     const s = (org.settings as Record<string, string> | null) ?? {};
     applyBranding(s as BrandingSettings);
+    // Ook het PWA-manifest volgt de organisatie, zodat de app op een eigen domein
+    // niet als "SiteJob" installeert. Faalt stil terug op de standaard-iconen.
+    void applyOrgManifest({ name: org.name, logoUrl: org.logo_url, accentColor: s.accent_color });
   }, [org]);
 
   const handleNavClick = () => {
