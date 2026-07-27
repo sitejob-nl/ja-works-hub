@@ -25,6 +25,7 @@ import CustomFieldsSettings from '@/components/settings/CustomFieldsSettings';
 import OutlookSettings from '@/components/settings/OutlookSettings';
 import VoysSettings from '@/components/settings/VoysSettings';
 import PropertyOwnersSettings from '@/components/settings/PropertyOwnersSettings';
+import HousingSettings from '@/components/settings/HousingSettings';
 import AiCvProviderSettings from '@/components/settings/AiCvProviderSettings';
 import VacancyPromptSettings from '@/components/settings/VacancyPromptSettings';
 import EngagementSettings from '@/components/settings/EngagementSettings';
@@ -579,6 +580,7 @@ const Settings = () => {
               <ContractTemplatesSettings />
               <OnboardingFormSettings />
               <TerminationReasonsSettings />
+              <HousingSettings />
               <PropertyOwnersSettings />
             </TabsContent>
 
