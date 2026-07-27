@@ -28,6 +28,7 @@ import { formatDate, formatEUR } from '@/lib/format';
 import { toast } from 'sonner';
 import { logAudit } from '@/lib/audit';
 import { resolveEmployeeId } from '@/lib/assignments';
+import { sendRegulationsForAssignment } from '@/lib/regulation-dispatch';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   fetchFacilityHousingSnapshot,
@@ -119,7 +120,7 @@ const InternalResidentsTab = ({ property }: { property: any }) => {
     mutationFn: async () => {
       const deductionNum = form.deduction_amount ? Number(form.deduction_amount) : null;
       const employeeId = await resolveEmployeeId(selectedEmployee, orgId!, form.check_in_date);
-      await unwrap(supabase.from('housing_assignments').insert({
+      const assignment = await unwrap(supabase.from('housing_assignments').insert({
         organization_id: orgId,
         unit_id: selectedUnit.id,
         employee_id: employeeId,
@@ -129,7 +130,13 @@ const InternalResidentsTab = ({ property }: { property: any }) => {
         deduction_amount: deductionNum,
         payment_frequency: form.payment_frequency,
         monthly_deduction: form.payment_frequency === 'maandelijks' ? deductionNum : (deductionNum ? Math.round(deductionNum * 4.33 * 100) / 100 : null),
-      }));
+      }).select('id').single());
+      // Huisregels meesturen (instelbaar per reglement). Non-blocking.
+      await sendRegulationsForAssignment({
+        candidateId: selectedEmployee.id,
+        category: 'huisvesting',
+        contextId: (assignment as any)?.id,
+      });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: qk.housing.property(property.id) });

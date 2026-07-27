@@ -26,6 +26,7 @@ import {
 import { toast } from 'sonner';
 import { formatDate } from '@/lib/format';
 import { logAudit } from '@/lib/audit';
+import { sendRegulationsForAssignment } from '@/lib/regulation-dispatch';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchFacilityTransportSnapshot, fetchFacilityWorkerDirectory, isFacilityRole, saveFacilityOperationalEntity } from '@/lib/facility';
 
@@ -90,20 +91,25 @@ const VehicleAssignmentsTab = ({ vehicle }: { vehicle: any }) => {
   const assignMutation = useMutation({
     mutationFn: async () => {
       const selectedEmployee = (employees ?? []).find((employee: any) => (employee.employee_id ?? employee.id) === employeeId) as any;
-      const { error } = await supabase.from('vehicle_assignments').insert({
+      const candidateId = selectedEmployee?.candidate_id ?? null;
+      const { data: inserted, error } = await supabase.from('vehicle_assignments').insert({
         organization_id: orgId,
         vehicle_id: vehicle.id,
         employee_id: employeeId,
-        candidate_id: selectedEmployee?.candidate_id ?? null,
+        candidate_id: candidateId,
         assigned_date: assignedDate,
         start_mileage: startMileage ? parseInt(startMileage) : null,
-      });
+      }).select('id').single();
       if (error) throw error;
       if (isFacility) {
         await saveFacilityOperationalEntity('vehicle', { id: vehicle.id, status: 'toegewezen' });
       } else {
         const { error: vErr } = await supabase.from('vehicles').update({ status: 'toegewezen' as any }).eq('id', vehicle.id);
         if (vErr) throw vErr;
+      }
+      // Autoregels meesturen (instelbaar per reglement). Non-blocking: de toewijzing staat al.
+      if (candidateId) {
+        await sendRegulationsForAssignment({ candidateId, category: 'voertuig', contextId: inserted?.id });
       }
     },
     onSuccess: () => {

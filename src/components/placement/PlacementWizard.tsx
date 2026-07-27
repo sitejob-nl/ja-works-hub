@@ -28,6 +28,7 @@ import {
   sendPlacementConfirmation, type HousingSuggestion, type PlacementConfirmationResult,
   type PlacementMailEdits,
 } from './PlacementTriggers';
+import { sendRegulationsForAssignment } from '@/lib/regulation-dispatch';
 import PlacementMailEditor from './PlacementMailEditor';
 import type { Database } from '@/integrations/supabase/types';
 
@@ -352,6 +353,7 @@ const PlacementWizard = ({ open, onClose, match, vacancy, defaultCompanyId, lock
           newValues: { unit_id: selectedSuggestion.unitId, unit_name: selectedSuggestion.unitName, candidate_id: candidateId },
         });
         summary.housing = `${selectedSuggestion.unitName} — ${selectedSuggestion.propertyName}`;
+        await sendRegulationsForAssignment({ candidateId: candidateId!, category: 'huisvesting', contextId: assignment.id });
       } catch (e: any) {
         toast.warning(`Huisvesting toewijzen mislukt: ${e.message}`);
       }
@@ -367,6 +369,7 @@ const PlacementWizard = ({ open, onClose, match, vacancy, defaultCompanyId, lock
         });
         const v = (availableVehicles as any[]).find((x) => x.id === vehicleId);
         summary.vehicle = v ? `${v.license_plate}${v.brand ? ` — ${v.brand} ${v.model ?? ''}` : ''}` : 'Toegewezen';
+        await sendRegulationsForAssignment({ candidateId: candidateId!, category: 'voertuig' });
       } catch (e: any) {
         toast.warning(`Voertuig niet toegewezen: ${e.message}`);
       }
