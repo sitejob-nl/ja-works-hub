@@ -14,6 +14,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { EntityLink } from '@/components/ui/entity-link';
 import { resolveEmployeeId } from '@/lib/assignments';
 import { vehicleFreeOn } from '@/lib/vehicle-availability';
+import { sendRegulationsForAssignment } from '@/lib/regulation-dispatch';
+import RegulationStatus from '@/components/shared/RegulationStatus';
 import { formatDate, formatEUR } from '@/lib/format';
 import { toast } from 'sonner';
 
@@ -71,20 +73,22 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
         .single();
       if (candErr) throw candErr;
       const employeeId = await resolveEmployeeId(candidate, orgId, assignedDate);
-      const { error } = await supabase.from('vehicle_assignments').insert({
+      const { data: inserted, error } = await supabase.from('vehicle_assignments').insert({
         organization_id: orgId,
         vehicle_id: vehicleId,
         employee_id: employeeId,
         candidate_id: candidateId,
         assigned_date: assignedDate,
         start_mileage: startMileage ? parseInt(startMileage) : null,
-      });
+      }).select('id').single();
       if (error) throw error;
       const { error: vErr } = await supabase.from('vehicles')
         .update({ status: 'toegewezen' as any })
         .eq('organization_id', orgId)
         .eq('id', vehicleId);
       if (vErr) throw vErr;
+      // Autoregels meesturen (instelbaar per reglement). Non-blocking.
+      await sendRegulationsForAssignment({ candidateId, category: 'voertuig', contextId: inserted?.id });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['vehicle-assignment', orgId, candidateId] });
@@ -144,6 +148,9 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
         ) : (
           <p className="text-sm text-muted-foreground">Geen voertuig toegewezen</p>
         )}
+        <div className="mt-4">
+          <RegulationStatus candidateId={candidateId} category="voertuig" />
+        </div>
       </div>
 
       {/* Mileage */}

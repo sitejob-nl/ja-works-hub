@@ -17,6 +17,7 @@ import { EntityLink } from '@/components/ui/entity-link';
 import { resolveEmployeeId } from '@/lib/assignments';
 import { roomHasFreeBedOn } from '@/lib/housing-availability';
 import { formatDate, formatEUR } from '@/lib/format';
+import RegulationStatus from '@/components/shared/RegulationStatus';
 import { toast } from 'sonner';
 
 const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
@@ -148,6 +149,9 @@ const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
         {!active && !reserved && (
           <p className="text-sm text-muted-foreground">Geen huisvesting toegewezen</p>
         )}
+        <div className="mt-4">
+          <RegulationStatus candidateId={candidateId} category="huisvesting" />
+        </div>
       </div>
 
       <div className="bg-card rounded-lg border p-6">

@@ -37,6 +37,10 @@ import {
 
 type InspectionType = 'check_in' | 'check_out' | 'periodiek' | 'onderhoud' | 'klacht';
 
+// Radix Select verbiedt value="" op een Item (lege string wist de selectie). Sentinel voor
+// "geen kamer gekozen"; wordt bij opslaan weer naar '' → null vertaald.
+const WHOLE_PROPERTY = '__whole_property__';
+
 const TYPE_LABELS: Record<InspectionType, string> = {
   check_in: 'Check-in',
   check_out: 'Check-out',
@@ -455,10 +459,14 @@ const InspectionsTab = ({ property }: { property: any }) => {
 
             <div>
               <Label>Kamer (optioneel)</Label>
-              <Select value={form.unit_id} onValueChange={(v) => set('unit_id', v)} disabled={isFacility && !!editingId}>
+              <Select
+                value={form.unit_id || WHOLE_PROPERTY}
+                onValueChange={(v) => set('unit_id', v === WHOLE_PROPERTY ? '' : v)}
+                disabled={isFacility && !!editingId}
+              >
                 <SelectTrigger><SelectValue placeholder="Heel pand" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Heel pand</SelectItem>
+                  <SelectItem value={WHOLE_PROPERTY}>Heel pand</SelectItem>
                   {units.map((u: any) => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
                 </SelectContent>
               </Select>

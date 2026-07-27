@@ -139,6 +139,14 @@ verify_jwt = false
 [functions.send-portal-invite]
 verify_jwt = false
 
+# Stuurt de reglementen die bij een toewijzing horen (self-auth: interne gebruiker).
+[functions.send-regulations]
+verify_jwt = false
+
+# Publiek (token-based, service-role validatie + IP-rate-limit — zoals match-response).
+[functions.regulation-accept]
+verify_jwt = false
+
 [functions.automated-messages]
 verify_jwt = false
 

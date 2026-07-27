@@ -12,11 +12,40 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
-import { ScrollText, Plus, Eye, Pencil } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ScrollText, Plus, Eye, Pencil, Paperclip, Send } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDate } from '@/lib/format';
 import { unwrap } from '@/lib/db';
 import { qk } from '@/lib/query-keys';
+
+const CATEGORY_LABELS: Record<string, string> = {
+  algemeen: 'Algemeen',
+  voertuig: 'Voertuig',
+  huisvesting: 'Huisvesting',
+};
+
+/** Bij welke gebeurtenis een categorie automatisch verstuurd wordt — puur voor de uitleg in de UI. */
+const CATEGORY_TRIGGER: Record<string, string> = {
+  algemeen: 'wordt niet automatisch verstuurd — alleen bij onboarding',
+  voertuig: 'wordt verstuurd zodra iemand een auto toegewezen krijgt',
+  huisvesting: 'wordt verstuurd zodra iemand een kamer toegewezen krijgt',
+};
+
+type RegulationForm = {
+  title: string;
+  content: string;
+  version: number;
+  category: string;
+  auto_send: boolean;
+  requires_acknowledgement: boolean;
+  file_url: string | null;
+};
+
+const emptyForm: RegulationForm = {
+  title: '', content: '', version: 1,
+  category: 'algemeen', auto_send: false, requires_acknowledgement: true, file_url: null,
+};
 
 const RegulationsSettings = () => {
   const orgId = useOrganizationId();
@@ -24,8 +53,10 @@ const RegulationsSettings = () => {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
-  const [form, setForm] = useState({ title: '', content: '', version: 1 });
+  const [form, setForm] = useState<RegulationForm>(emptyForm);
   const [viewContent, setViewContent] = useState<string | null>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   const { data: regulations = [] } = useQuery({
     queryKey: qk.regulations.list(orgId),
@@ -40,18 +71,41 @@ const RegulationsSettings = () => {
 
   const save = useMutation({
     mutationFn: async () => {
+      // Nieuw bestand vervangt het oude pad; zonder nieuw bestand blijft file_url ongemoeid.
+      let fileUrl = form.file_url;
+      if (file) {
+        setUploading(true);
+        try {
+          const ext = file.name.split('.').pop();
+          const path = `${orgId}/regulations/${crypto.randomUUID()}.${ext}`;
+          const { error } = await supabase.storage.from('documents').upload(path, file);
+          if (error) throw error;
+          fileUrl = path;
+        } finally {
+          setUploading(false);
+        }
+      }
+
+      const payload = {
+        title: form.title,
+        content: form.content,
+        version: form.version,
+        category: form.category,
+        // Alleen voertuig/huisvesting kennen een verzendmoment; 'algemeen' kan dus niet
+        // per ongeluk op automatisch blijven staan na het wisselen van categorie.
+        auto_send: form.category === 'algemeen' ? false : form.auto_send,
+        requires_acknowledgement: form.requires_acknowledgement,
+        file_url: fileUrl,
+      };
+
       if (editing) {
-        const { error } = await supabase.from('regulations')
-          .update({ title: form.title, content: form.content, version: form.version })
-          .eq('id', editing.id);
+        const { error } = await supabase.from('regulations').update(payload).eq('id', editing.id);
         if (error) throw error;
       } else {
         const { error } = await supabase.from('regulations').insert({
           organization_id: orgId,
-          title: form.title,
-          content: form.content,
-          version: form.version,
           created_by: user?.id ?? null,
+          ...payload,
         });
         if (error) throw error;
       }
@@ -60,7 +114,8 @@ const RegulationsSettings = () => {
       qc.invalidateQueries({ queryKey: ['regulations'] });
       setOpen(false);
       setEditing(null);
-      setForm({ title: '', content: '', version: 1 });
+      setForm(emptyForm);
+      setFile(null);
       toast.success(editing ? 'Reglement bijgewerkt' : 'Reglement aangemaakt');
     },
     onError: (e: any) => toast.error(e.message),
@@ -79,15 +134,28 @@ const RegulationsSettings = () => {
 
   const openEdit = (reg: any) => {
     setEditing(reg);
-    setForm({ title: reg.title, content: reg.content, version: reg.version });
+    setForm({
+      title: reg.title,
+      content: reg.content ?? '',
+      version: reg.version,
+      category: reg.category ?? 'algemeen',
+      auto_send: !!reg.auto_send,
+      requires_acknowledgement: reg.requires_acknowledgement !== false,
+      file_url: reg.file_url ?? null,
+    });
+    setFile(null);
     setOpen(true);
   };
 
   const openNew = () => {
     setEditing(null);
-    setForm({ title: '', content: '', version: 1 });
+    setForm(emptyForm);
+    setFile(null);
     setOpen(true);
   };
+
+  // Een reglement moet íets te tonen hebben: een PDF, of tekst.
+  const hasDocument = !!file || !!form.file_url || !!form.content.trim();
 
   return (
     <Card>
@@ -112,6 +180,7 @@ const RegulationsSettings = () => {
             <TableHeader>
               <TableRow>
                 <TableHead>Titel</TableHead>
+                <TableHead>Hoort bij</TableHead>
                 <TableHead>Versie</TableHead>
                 <TableHead>Getekend</TableHead>
                 <TableHead>Status</TableHead>
@@ -122,7 +191,29 @@ const RegulationsSettings = () => {
             <TableBody>
               {regulations.map((r: any) => (
                 <TableRow key={r.id}>
-                  <TableCell className="font-medium">{r.title}</TableCell>
+                  <TableCell className="font-medium">
+                    <div className="flex items-center gap-1.5">
+                      {r.title}
+                      {r.file_url && <Paperclip className="h-3 w-3 text-muted-foreground" aria-label="PDF bijgevoegd" />}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1.5">
+                      <Badge variant="outline" className="text-xs">{CATEGORY_LABELS[r.category] ?? r.category}</Badge>
+                      {r.auto_send && (
+                        <Badge
+                          variant="secondary"
+                          className="gap-1 border-0 bg-stat-green/10 text-xs text-stat-green"
+                          title={r.requires_acknowledgement
+                            ? 'Wordt automatisch verstuurd en moet bevestigd worden'
+                            : 'Wordt automatisch verstuurd, ter informatie'}
+                        >
+                          <Send className="h-2.5 w-2.5" />
+                          {r.requires_acknowledgement ? 'auto + bevestiging' : 'auto'}
+                        </Badge>
+                      )}
+                    </div>
+                  </TableCell>
                   <TableCell>v{r.version}</TableCell>
                   <TableCell>{r.regulation_acknowledgements?.[0]?.count ?? 0}×</TableCell>
                   <TableCell>
@@ -167,18 +258,74 @@ const RegulationsSettings = () => {
               </div>
             </div>
             <div>
-              <Label>Inhoud</Label>
+              <Label>Hoort bij</Label>
+              <Select value={form.category} onValueChange={(v) => setForm(f => ({ ...f, category: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {Object.entries(CATEGORY_LABELS).map(([key, label]) => (
+                    <SelectItem key={key} value={key}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="mt-1 text-xs text-muted-foreground">{CATEGORY_TRIGGER[form.category]}</p>
+            </div>
+
+            <div>
+              <Label>Document (PDF)</Label>
+              <Input type="file" accept="application/pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+              {file
+                ? <p className="mt-1 text-xs text-muted-foreground">Nieuw bestand: {file.name}</p>
+                : form.file_url
+                  ? <p className="mt-1 text-xs text-muted-foreground">Er staat al een PDF. Kies een bestand om die te vervangen.</p>
+                  : <p className="mt-1 text-xs text-muted-foreground">Nog geen PDF. Zonder PDF wordt de tekst hieronder getoond.</p>}
+            </div>
+
+            <div>
+              <Label>Inhoud {form.file_url || file ? '(optionele toelichting bij de PDF)' : ''}</Label>
               <Textarea
                 value={form.content}
                 onChange={e => setForm(f => ({ ...f, content: e.target.value }))}
-                rows={12}
-                placeholder="Volledige tekst van het reglement..."
+                rows={form.file_url || file ? 4 : 12}
+                placeholder={form.file_url || file
+                  ? 'Korte toelichting in de mail, bijvoorbeeld waaróm ze dit krijgen...'
+                  : 'Volledige tekst van het reglement...'}
               />
             </div>
+
+            {form.category !== 'algemeen' && (
+              <div className="space-y-3 rounded-md border bg-muted/30 p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <Label htmlFor="auto-send">Automatisch meesturen</Label>
+                    <p className="text-xs text-muted-foreground">{CATEGORY_TRIGGER[form.category]}.</p>
+                  </div>
+                  <Switch
+                    id="auto-send"
+                    checked={form.auto_send}
+                    onCheckedChange={(v) => setForm(f => ({ ...f, auto_send: v }))}
+                  />
+                </div>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <Label htmlFor="requires-ack">Bevestiging vereist</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Ontvanger moet het document doorlopen tot de laatste pagina en bevestigen.
+                      Uit = alleen ter informatie meesturen.
+                    </p>
+                  </div>
+                  <Switch
+                    id="requires-ack"
+                    checked={form.requires_acknowledgement}
+                    onCheckedChange={(v) => setForm(f => ({ ...f, requires_acknowledgement: v }))}
+                  />
+                </div>
+              </div>
+            )}
+
             <div className="flex justify-end gap-2">
               <Button variant="ghost" onClick={() => setOpen(false)}>Annuleren</Button>
-              <Button onClick={() => save.mutate()} disabled={!form.title || !form.content || save.isPending}>
-                {save.isPending ? 'Opslaan...' : 'Opslaan'}
+              <Button onClick={() => save.mutate()} disabled={!form.title || !hasDocument || save.isPending || uploading}>
+                {uploading ? 'Uploaden...' : save.isPending ? 'Opslaan...' : 'Opslaan'}
               </Button>
             </div>
           </div>

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Link } from 'react-router-dom';
-import { Home, Plus, Search, LayoutGrid, List, Bed, Building2, ArrowUpDown, CheckCircle2, Wallet, DoorOpen } from 'lucide-react';
+import { Home, Plus, Search, LayoutGrid, List, Bed, Building2, ArrowUpDown, CheckCircle2, Wallet, DoorOpen, Wrench } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -14,6 +14,7 @@ import PropertySlideOver from '@/components/housing/PropertySlideOver';
 import AvailabilityChart from '@/components/housing/AvailabilityChart';
 import ExportPropertiesButton from '@/components/housing/ExportPropertiesButton';
 import { formatEUR } from '@/lib/format';
+import { unwrapList } from '@/lib/db';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchFacilityHousingSnapshot, isFacilityRole } from '@/lib/facility';
 
@@ -123,6 +124,20 @@ const Housing = () => {
   const cleaningTasks = isFacility
     ? (facilitySnapshot?.cleaning_tasks ?? [])
     : internalCleaningTasks;
+
+  // Open meldingen uit het medewerkersportaal ("Onderhoud melden"). Die landden voorheen alleen in
+  // de Inspecties-tab van één pand, waar niemand uit zichzelf kijkt — vandaar hier bovenaan.
+  const { data: openComplaints = [] } = useQuery({
+    queryKey: ['housing-open-complaints'],
+    queryFn: () => unwrapList(supabase
+      .from('housing_inspections')
+      .select('id, description, inspection_date, photos, property_id, unit_id, units(name), properties(name, address_street, address_city)')
+      .eq('inspection_type', 'klacht')
+      .eq('resolved', false)
+      .order('inspection_date', { ascending: false })
+      .limit(6)),
+    enabled: !isFacility,
+  });
 
   const cities = useMemo(() => {
     const set = new Set<string>();
@@ -280,6 +295,41 @@ const Housing = () => {
 
       {properties.length > 0 && totalCapacity > 0 && (
         <AvailabilityChart totalCapacity={totalCapacity} assignments={chartAssignments} />
+      )}
+
+      {openComplaints.length > 0 && (
+        <Card className="border-orange-200">
+          <CardContent className="pt-5">
+            <div className="flex items-center gap-2 mb-3">
+              <Wrench className="h-4 w-4 text-orange-600" />
+              <h2 className="text-sm font-semibold">Open meldingen</h2>
+              <Badge variant="secondary" className="bg-orange-100 text-orange-700 border-0">{openComplaints.length}</Badge>
+            </div>
+            <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
+              {openComplaints.map((complaint: any) => {
+                const property = complaint.properties;
+                const label = property?.name || [property?.address_street, property?.address_city].filter(Boolean).join(', ');
+                const photoCount = (complaint.photos ?? []).length;
+                return (
+                  <Link
+                    key={complaint.id}
+                    to={`/huisvesting/${complaint.property_id}?tab=inspecties`}
+                    className="rounded-md border p-3 hover:bg-muted/50 transition"
+                  >
+                    <p className="text-sm font-medium line-clamp-2">{complaint.description || 'Melding zonder omschrijving'}</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {[label || 'Pand', complaint.units?.name].filter(Boolean).join(' — ')}
+                    </p>
+                    <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
+                      <span>{new Date(complaint.inspection_date).toLocaleDateString('nl-NL')}</span>
+                      {photoCount > 0 && <span>· {photoCount} foto{photoCount === 1 ? '' : "'s"}</span>}
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {cleaningTasks.length > 0 && (

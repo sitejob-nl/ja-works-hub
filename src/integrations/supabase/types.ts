@@ -7927,39 +7927,115 @@ export type Database = {
           },
         ]
       }
+      regulation_send_tokens: {
+        Row: {
+          candidate_id: string
+          context_id: string | null
+          context_type: string | null
+          created_at: string
+          expires_at: string
+          id: string
+          organization_id: string
+          regulation_id: string
+          sent_at: string
+          token_hash: string
+          used_at: string | null
+        }
+        Insert: {
+          candidate_id: string
+          context_id?: string | null
+          context_type?: string | null
+          created_at?: string
+          expires_at?: string
+          id?: string
+          organization_id: string
+          regulation_id: string
+          sent_at?: string
+          token_hash: string
+          used_at?: string | null
+        }
+        Update: {
+          candidate_id?: string
+          context_id?: string | null
+          context_type?: string | null
+          created_at?: string
+          expires_at?: string
+          id?: string
+          organization_id?: string
+          regulation_id?: string
+          sent_at?: string
+          token_hash?: string
+          used_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "regulation_send_tokens_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "regulation_send_tokens_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "regulation_send_tokens_regulation_id_fkey"
+            columns: ["regulation_id"]
+            isOneToOne: false
+            referencedRelation: "regulations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       regulations: {
         Row: {
+          auto_send: boolean
+          category: string
           content: string
           created_at: string
           created_by: string | null
+          file_url: string | null
           id: string
           is_active: boolean
           organization_id: string
           published_at: string | null
+          requires_acknowledgement: boolean
           title: string
           updated_at: string
           version: number
         }
         Insert: {
-          content: string
+          auto_send?: boolean
+          category?: string
+          content?: string
           created_at?: string
           created_by?: string | null
+          file_url?: string | null
           id?: string
           is_active?: boolean
           organization_id: string
           published_at?: string | null
+          requires_acknowledgement?: boolean
           title: string
           updated_at?: string
           version?: number
         }
         Update: {
+          auto_send?: boolean
+          category?: string
           content?: string
           created_at?: string
           created_by?: string | null
+          file_url?: string | null
           id?: string
           is_active?: boolean
           organization_id?: string
           published_at?: string | null
+          requires_acknowledgement?: boolean
           title?: string
           updated_at?: string
           version?: number
@@ -10164,6 +10240,7 @@ export type Database = {
         }
         Returns: Json
       }
+      resolve_housing_owner: { Args: { p_org_id: string }; Returns: string }
       resolve_organization_domain: {
         Args: { p_host: string }
         Returns: {
