@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, CheckCircle2, Copy, Globe2, Loader2, RefreshCw, ShieldCheck, Star, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -12,50 +11,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
+import SendDnsInstructionsDialog from '@/components/settings/SendDnsInstructionsDialog';
 import { defaultPrimaryHostname, normalizeDomainInput, type DomainType } from '@/lib/public-url';
-
-type OrganizationDomain = {
-  id: string;
-  domain: string;
-  apex_domain: string;
-  domain_type: DomainType;
-  primary_hostname: string;
-  is_primary: boolean;
-  status: 'pending' | 'verified' | 'misconfigured' | 'error' | 'removed';
-  dns_config: any;
-  verification: any;
-  last_checked_at: string | null;
-  verified_at: string | null;
-  created_at: string;
-};
-
-async function invokeDomainManagement<T>(body: Record<string, unknown>): Promise<T> {
-  const { data, error } = await supabase.functions.invoke('domain-management', { body });
-  if (error) {
-    const response = (error as any).context;
-    if (response?.clone) {
-      try {
-        const payload = await response.clone().json();
-        throw new Error(payload?.error || error.message);
-      } catch (parseError) {
-        if (parseError instanceof Error && parseError.message !== error.message) throw parseError;
-      }
-    }
-    throw new Error(error.message || 'Domeinactie mislukt');
-  }
-  if ((data as any)?.error) throw new Error((data as any).error);
-  return data as T;
-}
+import { invokeDomainManagement, recordLabel, type OrganizationDomain } from '@/lib/domains';
 
 function statusBadge(domain: OrganizationDomain) {
   if (domain.status === 'verified') return <Badge className="gap-1 bg-stat-green/10 text-stat-green border-0"><CheckCircle2 className="h-3 w-3" /> Actief</Badge>;
   if (domain.status === 'misconfigured') return <Badge className="gap-1 bg-orange-100 text-orange-700 border-0"><AlertTriangle className="h-3 w-3" /> DNS controleren</Badge>;
   if (domain.status === 'error') return <Badge variant="destructive">Fout</Badge>;
   return <Badge variant="secondary">In afwachting</Badge>;
-}
-
-function recordLabel(record: any) {
-  return [record.type, record.name, record.value].filter(Boolean).join(' ');
 }
 
 export default function DomainSettings() {
@@ -218,6 +182,7 @@ export default function DomainSettings() {
                     <Button variant="outline" size="sm" onClick={() => runAction.mutate({ action: 'verify', id: domain.id })} disabled={runAction.isPending} className="gap-2">
                       <ShieldCheck className="h-3.5 w-3.5" /> Verifieer
                     </Button>
+                    <SendDnsInstructionsDialog domain={domain} onSent={invalidate} />
                     {!domain.is_primary && domain.status === 'verified' && (
                       <Button variant="outline" size="sm" onClick={() => runAction.mutate({ action: 'set_primary', id: domain.id })} disabled={runAction.isPending}>
                         Maak primair

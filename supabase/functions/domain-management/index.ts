@@ -1,4 +1,7 @@
 import { createAdminClient, jsonResponse, requireRolePermission } from "../_shared/auth.ts";
+import { cleanEmail } from "../_shared/outlook-accounts.ts";
+import { sendViaOutlookAccount } from "../_shared/outlook-send.ts";
+import { type BrandTheme, escapeHtml, loadBrandTheme, renderBrandedEmail } from "../_shared/email-layout.ts";
 
 import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
 
@@ -132,9 +135,21 @@ async function getDomainConfig(domain: string) {
   }
 }
 
-function statusFromVercel(projectDomain: VercelProjectDomain | null, dnsConfig: Record<string, unknown>): DomainStatus {
+// Vercel kent twee losse begrippen die makkelijk verward worden:
+//   projectDomain.verified  -> eigendom van het domein is bevestigd
+//   dnsConfig.misconfigured -> de DNS wijst (niet) naar Vercel
+// Alleen het tweede zegt of het domein daadwerkelijk bereikbaar is. Voor een domein
+// waarvoor Vercel geen TXT-challenge vraagt is `verified` direct true, dus wanneer dat
+// eerst wordt getoetst staat een domein zonder enkel DNS-record al op "Actief".
+// Faalt de config-call, dan weten we niets over de DNS en houden we de huidige status.
+function statusFromVercel(
+  projectDomain: VercelProjectDomain | null,
+  dnsConfig: Record<string, unknown>,
+  currentStatus?: DomainStatus,
+): DomainStatus {
+  if (dnsConfig?.error) return currentStatus ?? "pending";
+  if (dnsConfig?.misconfigured === true) return "misconfigured";
   if (projectDomain?.verified) return "verified";
-  if (dnsConfig && dnsConfig.misconfigured === true) return "misconfigured";
   return "pending";
 }
 
@@ -168,7 +183,7 @@ function dnsInstructions(domain: string, domainType: DomainType, primaryHostname
 async function syncDomainStatus(admin: ReturnType<typeof createAdminClient>, row: any, doVerify: boolean) {
   const vercelDomain = doVerify ? await verifyProjectDomain(row.domain) : await getProjectDomain(row.domain);
   const dnsConfig = await getDomainConfig(row.domain);
-  const status = statusFromVercel(vercelDomain, dnsConfig);
+  const status = statusFromVercel(vercelDomain, dnsConfig, row.status as DomainStatus);
   const now = new Date().toISOString();
 
   const updates = {
@@ -191,6 +206,107 @@ async function syncDomainStatus(admin: ReturnType<typeof createAdminClient>, row
     .single();
   if (error) throw error;
   return data;
+}
+
+type DnsRecord = { type?: string; name?: string; value?: string; purpose?: string };
+
+function recordTable(records: DnsRecord[], theme: BrandTheme): string {
+  const head = ["Type", "Naam", "Waarde"]
+    .map((label) =>
+      `<th align="left" style="padding:8px 10px;border-bottom:2px solid ${theme.navyHex};color:${theme.navyHex};font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">${label}</th>`
+    )
+    .join("");
+
+  const rows = records.map((record) => {
+    const cell = (value: unknown, mono = true) =>
+      `<td style="padding:10px;border-bottom:1px solid #e2e8f0;font-size:13px;${mono ? "font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;" : ""}color:${theme.textHex};word-break:break-all;">${escapeHtml(value ?? "")}</td>`;
+    const purpose = record.purpose
+      ? `<tr><td colspan="3" style="padding:0 10px 10px;border-bottom:1px solid #e2e8f0;color:${theme.mutedHex};font-size:12px;">${escapeHtml(record.purpose)}</td></tr>`
+      : "";
+    return `<tr>${cell(record.type)}${cell(record.name)}${cell(record.value)}</tr>${purpose}`;
+  }).join("");
+
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;margin:0 0 20px;">
+    <thead><tr>${head}</tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+function buildDnsInstructionEmail(data: {
+  row: any;
+  theme: BrandTheme;
+  note?: string | null;
+  requestedBy?: string | null;
+}): string {
+  const { row, theme } = data;
+  const instructions = row.dns_config?.instructions ?? {};
+  const records: DnsRecord[] = Array.isArray(instructions.records) ? instructions.records : [];
+  const verification: DnsRecord[] = Array.isArray(instructions.verification) ? instructions.verification : [];
+  const isWildcard = row.domain_type === "wildcard";
+  const zone = row.apex_domain || row.domain;
+
+  const note = data.note?.trim()
+    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px;"><tr>
+        <td style="padding:12px 14px;background:#f8fafc;border-left:3px solid ${theme.accentHex};color:${theme.textHex};font-size:13px;">
+          ${escapeHtml(data.note.trim()).replace(/\n/g, "<br>")}
+        </td></tr></table>`
+    : "";
+
+  const warning = instructions.warning
+    ? `<p style="margin:0 0 20px;padding:12px 14px;background:#fff7ed;border-left:3px solid #f97316;color:#9a3412;font-size:13px;">
+        <strong>Let op:</strong> ${escapeHtml(instructions.warning)}
+      </p>`
+    : "";
+
+  const verificationBlock = verification.length
+    ? `<h3 style="margin:24px 0 8px;color:${theme.navyHex};font-size:15px;">Extra verificatie-records</h3>
+       <p style="margin:0 0 12px;color:${theme.textHex};font-size:14px;">
+         Vercel vraagt daarnaast om onderstaande record(s) om het eigendom van het domein te bevestigen.
+       </p>
+       ${recordTable(verification, theme)}`
+    : "";
+
+  const content = `<h2 style="margin:0 0 16px;color:${theme.navyHex};font-size:18px;">DNS-instellingen voor ${escapeHtml(row.domain)}</h2>
+
+    <p style="margin:0 0 16px;color:${theme.textHex};font-size:14px;">
+      ${escapeHtml(theme.orgName)} gaat de software gebruiken op
+      <strong>${escapeHtml(row.primary_hostname)}</strong>. Om dat te laten werken moet in de DNS-zone van
+      <strong>${escapeHtml(zone)}</strong> onderstaande instelling worden toegevoegd.
+    </p>
+
+    ${note}
+
+    <h3 style="margin:24px 0 8px;color:${theme.navyHex};font-size:15px;">Toe te voegen record${records.length === 1 ? "" : "s"}</h3>
+    ${records.length ? recordTable(records, theme) : `<p style="margin:0 0 20px;color:${theme.mutedHex};font-size:13px;">Geen records beschikbaar — neem contact op met de afzender van deze mail.</p>`}
+
+    <p style="margin:0 0 20px;color:${theme.mutedHex};font-size:13px;">
+      TTL: laat op de standaardwaarde staan (of 3600). Proxy/CDN-opties van de DNS-provider
+      moeten uit — het verkeer moet rechtstreeks naar de hosting gaan.
+    </p>
+
+    ${warning}
+    ${verificationBlock}
+
+    <h3 style="margin:24px 0 8px;color:${theme.navyHex};font-size:15px;">Daarna</h3>
+    <p style="margin:0 0 16px;color:${theme.textHex};font-size:14px;">
+      Zodra het record actief is, wordt het TLS-certificaat automatisch aangevraagd — dat duurt
+      meestal een paar minuten. Er hoeft niets geïnstalleerd of geconfigureerd te worden op een server.
+      ${isWildcard ? "" : "Bestaande records voor de website en e-mail van dit domein blijven ongewijzigd."}
+    </p>
+    <p style="margin:0 0 16px;color:${theme.textHex};font-size:14px;">
+      Een bevestiging dat het record staat is genoeg — daarna controleren wij de koppeling aan onze kant.
+    </p>
+
+    <p style="margin:20px 0 0;color:${theme.textHex};font-size:14px;">
+      Met vriendelijke groet,<br><strong>${escapeHtml(data.requestedBy || theme.orgName)}</strong>
+    </p>`;
+
+  return renderBrandedEmail({
+    theme,
+    contentHtml: content,
+    preheader: `DNS-record voor ${row.domain}`,
+    footerNote: "Deze mail bevat geen inloggegevens en geen persoonsgegevens.",
+  });
 }
 
 Deno.serve(async (req) => {
@@ -276,7 +392,7 @@ Deno.serve(async (req) => {
       return json({ domain: data });
     }
 
-    if (["check", "verify", "set_primary", "remove"].includes(action)) {
+    if (["check", "verify", "set_primary", "remove", "send_instructions"].includes(action)) {
       const { data: row, error } = await admin
         .from("organization_domains")
         .select("*")
@@ -290,6 +406,68 @@ Deno.serve(async (req) => {
       if (action === "check" || action === "verify") {
         const domain = await syncDomainStatus(admin, row, action === "verify");
         return json({ domain });
+      }
+
+      // Mailt de DNS-instructies naar de partij die de zone beheert (vaak een externe
+      // developer of hostingpartij). Bewust vanaf een gekoppelde mailbox van de
+      // organisatie, zodat de ontvanger een afzender ziet die hij herkent.
+      if (action === "send_instructions") {
+        const to = cleanEmail(body.to);
+        if (!to) return json({ error: "Vul een geldig e-mailadres in" }, 400);
+
+        const cc = (Array.isArray(body.cc) ? body.cc : [body.cc])
+          .map((value: unknown) => cleanEmail(value))
+          .filter((value: string | null): value is string => Boolean(value) && value !== to);
+
+        // Verse stand ophalen, zodat de developer nooit verouderde records krijgt —
+        // en de admin meteen ziet of het domein inmiddels al goed staat.
+        const domain = await syncDomainStatus(admin, row, false);
+
+        const { data: profile } = await admin
+          .from("profiles")
+          .select("full_name")
+          .eq("id", auth.userId)
+          .maybeSingle();
+
+        const theme = await loadBrandTheme(admin, auth.organizationId);
+        const html = buildDnsInstructionEmail({
+          row: domain,
+          theme,
+          note: typeof body.note === "string" ? body.note : null,
+          requestedBy: profile?.full_name ?? null,
+        });
+
+        const sendResult = await sendViaOutlookAccount({
+          orgId: auth.organizationId,
+          to,
+          cc: cc.length ? cc : undefined,
+          subject: `DNS-instelling voor ${domain.domain}`,
+          htmlBody: html,
+          accountId: typeof body.account_id === "string" ? body.account_id : null,
+          sentBy: auth.userId,
+          senderName: null,
+          require: "mail_send",
+        });
+
+        if (!sendResult.success) {
+          return json({
+            sent: false,
+            error: sendResult.error ?? "Versturen mislukt",
+            communication_paused: sendResult.communicationPaused ?? false,
+            domain,
+          }, sendResult.communicationPaused ? 200 : 502);
+        }
+
+        await admin.from("audit_log").insert({
+          organization_id: auth.organizationId,
+          user_id: auth.userId,
+          action: "update",
+          table_name: "organization_domains",
+          record_id: domain.id,
+          new_values: { sent_dns_instructions_to: to, cc, domain: domain.domain },
+        });
+
+        return json({ sent: true, to, cc, from: sendResult.from ?? null, domain });
       }
 
       if (action === "set_primary") {
