@@ -8,7 +8,19 @@ type DomainRow = {
   status: string;
 };
 
+/**
+ * Laatste vangnet wanneer een organisatie geen eigen domein heeft en `SITE_URL` niet
+ * gezet is. Blijft bewust de Vercel-project-URL: die is altijd bereikbaar, ook als een
+ * nieuw platformdomein nog niet door DNS is geactiveerd.
+ */
 export const DEFAULT_PUBLIC_BASE_URL = "https://ja-works-hub.vercel.app";
+
+/**
+ * Het beoogde platformdomein. Wordt de daadwerkelijke default zodra de `SITE_URL`
+ * secret hierop gezet is — dat gebeurt pas nadat het domein bij Vercel geverifieerd is,
+ * zodat links nooit naar een hostname wijzen die nog niet resolveert.
+ */
+export const PLATFORM_BASE_URL = "https://ats.sitejob.nl";
 
 function sanitizeHostname(value: string | null | undefined): string {
   return String(value ?? "")

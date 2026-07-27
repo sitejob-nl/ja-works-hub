@@ -1,6 +1,6 @@
 import { createAdminClient, requireInternalProfile } from "../_shared/auth.ts";
 import { OUTLOOK_ADMIN_CONSENT_SCOPES, OUTLOOK_SCOPES, json } from "../_shared/outlook-accounts.ts";
-import { DEFAULT_PUBLIC_BASE_URL, defaultPublicBaseUrl, getOrganizationPublicBaseUrl } from "../_shared/public-url.ts";
+import { DEFAULT_PUBLIC_BASE_URL, PLATFORM_BASE_URL, defaultPublicBaseUrl, getOrganizationPublicBaseUrl } from "../_shared/public-url.ts";
 
 import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
 
@@ -51,6 +51,9 @@ async function safeReturnTo(
     const allowed = [
       new URL(fallback).origin,
       new URL(DEFAULT_PUBLIC_BASE_URL).origin,
+      // Het platformdomein blijft geldig ongeacht of SITE_URL er al op staat, zodat de
+      // koppeling niet halverwege een migratie naar een ander domein terugspringt.
+      new URL(PLATFORM_BASE_URL).origin,
       "http://localhost:8080",
       "http://127.0.0.1:8080",
     ];
