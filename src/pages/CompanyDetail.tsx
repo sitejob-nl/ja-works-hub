@@ -23,6 +23,7 @@ import CompanyVacanciesTab from '@/components/companies/tabs/CompanyVacanciesTab
 import PlacementsTab from '@/components/companies/tabs/PlacementsTab';
 import { useTrackPageVisit } from '@/hooks/useTrackPageVisit';
 import { useTabSearchParam } from '@/hooks/useTabSearchParam';
+import { useRolePermission } from '@/hooks/usePermissions';
 
 const CompanyDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -30,6 +31,8 @@ const CompanyDetail = () => {
   const navigate = useNavigate();
   const { profile } = useAuth();
   const isAdmin = profile?.role === 'admin';
+  // Tariefafspraken zijn financiële data — RLS geeft ze zonder 'finance.view' niet vrij.
+  const canViewFinance = useRolePermission('finance.view');
   const [activeTab, setActiveTab] = useTabSearchParam('gegevens');
   const [deleteOpen, setDeleteOpen] = useState(false);
 
@@ -147,7 +150,7 @@ const CompanyDetail = () => {
             <TabsTrigger value="gegevens">Gegevens</TabsTrigger>
             <TabsTrigger value="contacten">Contacten</TabsTrigger>
             <TabsTrigger value="functies">Functies</TabsTrigger>
-            <TabsTrigger value="tarieven">Tarieven</TabsTrigger>
+            {canViewFinance && <TabsTrigger value="tarieven">Tarieven</TabsTrigger>}
             <TabsTrigger value="communicatie">Comm.</TabsTrigger>
             <TabsTrigger value="vacatures">Vacatures</TabsTrigger>
             <TabsTrigger value="plaatsingen">Plaatsingen</TabsTrigger>
@@ -158,7 +161,7 @@ const CompanyDetail = () => {
         <TabsContent value="gegevens"><CompanyInfoTab company={company} /></TabsContent>
         <TabsContent value="contacten"><ContactsTab companyId={id!} /></TabsContent>
         <TabsContent value="functies"><CompanyFunctionsTab companyId={id!} /></TabsContent>
-        <TabsContent value="tarieven"><RateAgreementsTab companyId={id!} /></TabsContent>
+        {canViewFinance && <TabsContent value="tarieven"><RateAgreementsTab companyId={id!} /></TabsContent>}
         <TabsContent value="communicatie"><CommunicationTab company={company} /></TabsContent>
         <TabsContent value="vacatures"><CompanyVacanciesTab companyId={id!} /></TabsContent>
         <TabsContent value="plaatsingen"><PlacementsTab companyId={id!} companyName={company.name} /></TabsContent>
