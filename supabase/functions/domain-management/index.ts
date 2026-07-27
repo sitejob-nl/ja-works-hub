@@ -132,9 +132,21 @@ async function getDomainConfig(domain: string) {
   }
 }
 
-function statusFromVercel(projectDomain: VercelProjectDomain | null, dnsConfig: Record<string, unknown>): DomainStatus {
+// Vercel kent twee losse begrippen die makkelijk verward worden:
+//   projectDomain.verified  -> eigendom van het domein is bevestigd
+//   dnsConfig.misconfigured -> de DNS wijst (niet) naar Vercel
+// Alleen het tweede zegt of het domein daadwerkelijk bereikbaar is. Voor een domein
+// waarvoor Vercel geen TXT-challenge vraagt is `verified` direct true, dus wanneer dat
+// eerst wordt getoetst staat een domein zonder enkel DNS-record al op "Actief".
+// Faalt de config-call, dan weten we niets over de DNS en houden we de huidige status.
+function statusFromVercel(
+  projectDomain: VercelProjectDomain | null,
+  dnsConfig: Record<string, unknown>,
+  currentStatus?: DomainStatus,
+): DomainStatus {
+  if (dnsConfig?.error) return currentStatus ?? "pending";
+  if (dnsConfig?.misconfigured === true) return "misconfigured";
   if (projectDomain?.verified) return "verified";
-  if (dnsConfig && dnsConfig.misconfigured === true) return "misconfigured";
   return "pending";
 }
 
@@ -168,7 +180,7 @@ function dnsInstructions(domain: string, domainType: DomainType, primaryHostname
 async function syncDomainStatus(admin: ReturnType<typeof createAdminClient>, row: any, doVerify: boolean) {
   const vercelDomain = doVerify ? await verifyProjectDomain(row.domain) : await getProjectDomain(row.domain);
   const dnsConfig = await getDomainConfig(row.domain);
-  const status = statusFromVercel(vercelDomain, dnsConfig);
+  const status = statusFromVercel(vercelDomain, dnsConfig, row.status as DomainStatus);
   const now = new Date().toISOString();
 
   const updates = {
