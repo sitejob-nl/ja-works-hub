@@ -4,10 +4,19 @@ import { Badge } from '@/components/ui/badge';
 import { formatDate, formatEUR } from '@/lib/format';
 import { CheckCircle2, XCircle } from 'lucide-react';
 import VacancyCandidateDescriptionCard from '@/components/vacancies/VacancyCandidateDescriptionCard';
+import RichText from '@/components/shared/RichText';
+import { splitGeneratedVacancyDescription } from '@/lib/rich-text';
 
 const VacancyDetailsTab = ({ vacancy, canEdit = false }: { vacancy: any; canEdit?: boolean }) => {
   const company = vacancy.companies as any;
   const primaryContact = (vacancy.company_contacts as any[])?.find((c: any) => c.is_primary);
+
+  // Oudere vacatures hebben de complete AI-output in `description` staan. De vacaturetekst
+  // daaruit hoort bij de kandidaatkaart hierboven; alleen het interne deel (matchingprofiel,
+  // zoekwoorden, controlelijst) blijft hier staan — en dan opgemaakt, niet als ruwe ##-tekst.
+  const split = splitGeneratedVacancyDescription(vacancy.description);
+  const legacyDump = split.isGenerated;
+  const internalDescription = legacyDump ? split.internalText : split.candidateText;
 
   return (
     <div className="space-y-6 mt-4">
@@ -54,14 +63,18 @@ const VacancyDetailsTab = ({ vacancy, canEdit = false }: { vacancy: any; canEdit
 
       <VacancyCandidateDescriptionCard vacancy={vacancy} canEdit={canEdit} />
 
-      {vacancy.description && (
+      {internalDescription && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Interne omschrijving</CardTitle>
-            <p className="text-sm text-muted-foreground">Alleen voor collega's — kandidaten zien deze tekst niet.</p>
+            <p className="text-sm text-muted-foreground">
+              {legacyDump
+                ? 'Matchingprofiel, zoekwoorden en controlepunten uit een eerdere generatie. Alleen voor collega’s.'
+                : 'Alleen voor collega’s — kandidaten zien deze tekst niet.'}
+            </p>
           </CardHeader>
           <CardContent>
-            <p className="text-sm whitespace-pre-wrap leading-relaxed">{vacancy.description}</p>
+            <RichText value={internalDescription} />
           </CardContent>
         </Card>
       )}

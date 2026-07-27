@@ -124,6 +124,47 @@ export function stripMarkdownInline(input: string | null | undefined): string {
     .trim();
 }
 
+/**
+ * Vóór de SEO-tab bestond, plakten recruiters de héle AI-output in `vacancies.description`:
+ * de websitetekst, het matchingprofiel, de zoekwoorden én de interne eindcontrole-checklist,
+ * gescheiden door `## `-koppen. Die vacatures bestaan nog (26 in productie op 2026-07-27).
+ *
+ * Deze functie knipt zo'n dump op de eerste kop na de vacaturetekst doormidden:
+ *   - `candidateText` — de tekst die vóór de kandidaat geschreven is
+ *   - `internalText`  — matchingprofiel, zoekwoorden, checklist: nooit richting kandidaat
+ *
+ * Is het geen dump (gewone korte omschrijving), dan komt alles in `candidateText` en is
+ * `isGenerated` false — de aanroeper hoeft dan niets bijzonders te doen.
+ */
+export function splitGeneratedVacancyDescription(input: string | null | undefined): {
+  isGenerated: boolean;
+  candidateText: string;
+  internalText: string;
+} {
+  const text = (input ?? '').replace(/\r\n/g, '\n');
+  if (!text.trim()) return { isGenerated: false, candidateText: '', internalText: '' };
+
+  const lines = text.split('\n');
+  const headingIndexes = lines
+    .map((line, i) => (isHeading(line) ? i : -1))
+    .filter((i) => i >= 0);
+
+  // Een dump herken je aan meerdere secties waarvan er één de vacaturetekst is.
+  const vacancyHeading = headingIndexes.find((i) => /vacaturetekst|seo/i.test(lines[i]));
+  if (headingIndexes.length < 2 || vacancyHeading === undefined) {
+    return { isGenerated: false, candidateText: text.trim(), internalText: '' };
+  }
+
+  const nextHeading = headingIndexes.find((i) => i > vacancyHeading);
+  const candidateText = lines
+    .slice(vacancyHeading + 1, nextHeading ?? lines.length)
+    .join('\n')
+    .trim();
+  const internalText = nextHeading === undefined ? '' : lines.slice(nextHeading).join('\n').trim();
+
+  return { isGenerated: true, candidateText, internalText };
+}
+
 /** Bevat deze tekst nog markdown-syntax? Voor een waarschuwing in de UI. */
 export function looksLikeMarkdown(input: string | null | undefined): boolean {
   const text = input ?? '';

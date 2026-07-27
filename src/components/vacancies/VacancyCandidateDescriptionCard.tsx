@@ -7,7 +7,7 @@ import { Sparkles, Save, RotateCcw, Users, Eraser } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { unwrap } from '@/lib/db';
-import { stripMarkdownInline, looksLikeMarkdown } from '@/lib/rich-text';
+import { stripMarkdownInline, looksLikeMarkdown, splitGeneratedVacancyDescription } from '@/lib/rich-text';
 import VacancyTextGeneratorDialog from '@/components/vacancies/VacancyTextGeneratorDialog';
 
 interface Props {
@@ -30,6 +30,12 @@ const VacancyCandidateDescriptionCard = ({ vacancy, canEdit }: Props) => {
 
   const dirty = text !== saved;
   const hasMarkdown = looksLikeMarkdown(text);
+
+  // Oudere vacatures hebben de vacaturetekst nog in `description` staan, samen met het
+  // interne materiaal. Is er nog geen kandidaatomschrijving, dan bieden we die tekst aan
+  // in plaats van de recruiter 'm te laten overtypen.
+  const legacy = splitGeneratedVacancyDescription(vacancy.description);
+  const suggestion = !saved && legacy.isGenerated ? stripMarkdownInline(legacy.candidateText) : '';
 
   const save = useMutation({
     mutationFn: async () => {
@@ -78,6 +84,17 @@ const VacancyCandidateDescriptionCard = ({ vacancy, canEdit }: Props) => {
             />
           ) : (
             <p className="text-sm text-muted-foreground">Nog geen omschrijving voor kandidaten.</p>
+          )}
+
+          {canEdit && suggestion && !dirty && (
+            <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-xs">
+              <span className="flex-1">
+                De vacaturetekst staat nog bij de interne omschrijving. Overnemen als tekst voor kandidaten?
+              </span>
+              <Button variant="outline" size="sm" className="h-7 gap-1 px-2 text-xs" onClick={() => setText(suggestion)}>
+                <Users className="h-3 w-3" /> Overnemen
+              </Button>
+            </div>
           )}
 
           {hasMarkdown && (
