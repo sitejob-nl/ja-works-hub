@@ -113,7 +113,7 @@ export const RECRUITER_UI_DICTIONARY_EN: Record<string, string> = {
   'In uitvoering': 'In progress',
   'Vandaag afgerond': 'Completed today',
   'Kritiek': 'Critical',
-  'Hoge prioriteit': 'High priority',
+  'Achterstallig': 'Overdue',
   'Aandacht': 'Attention',
   'Laag': 'Low',
   'Normaal': 'Normal',
@@ -155,6 +155,12 @@ export const RECRUITER_UI_DICTIONARY_EN: Record<string, string> = {
     'Open vacancies with urgency 3 and positions still to fill',
   'Klik op "AI Prioriteiten" om taken te genereren op basis van actuele signalen':
     'Click “AI priorities” to generate tasks based on current signals',
+  'Vandaag oppakken': 'To do today',
+  'Niets urgents voor vandaag': 'Nothing urgent for today',
+  'Categorie:': 'Category:',
+  'Taak afronden': 'Complete task',
+  'Taak heropenen': 'Reopen task',
+  'Taak negeren': 'Dismiss task',
 
   // Rondleiding (Radix-dialog buiten de gewone routecontainer)
   'Welkom': 'Welcome',

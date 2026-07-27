@@ -1,10 +1,85 @@
-import { AlertTriangle, ArrowUpCircle, CircleDot, Clock } from 'lucide-react';
+import {
+  AlertTriangle, ArrowUpCircle, Briefcase, Building2, CircleDot, Clock, FileSignature,
+  Heart, Mail, Shield, UserCheck,
+} from 'lucide-react';
+import type { QueryClient } from '@tanstack/react-query';
 
 export const priorityConfig: Record<string, { label: string; color: string; icon: typeof AlertTriangle; order: number }> = {
   critical: { label: 'Kritiek', color: 'bg-destructive/10 text-destructive border-destructive/20', icon: AlertTriangle, order: 0 },
   high: { label: 'Hoog', color: 'bg-orange-100 text-orange-700 border-orange-200', icon: ArrowUpCircle, order: 1 },
   medium: { label: 'Medium', color: 'bg-yellow-100 text-yellow-700 border-yellow-200', icon: CircleDot, order: 2 },
   low: { label: 'Laag', color: 'bg-muted text-muted-foreground border-border', icon: Clock, order: 3 },
+};
+
+/**
+ * Categorieën die schrijvers van taken gebruiken. `recruiter-priorities` levert de eerste
+ * vijf, `PlacementTriggers` plaatsing/contract/administratie en de e-mailtriage schrijft
+ * vrije tekst. Onbekende waarden krijgen daarom een fallback in `categoryLabel()` — nooit
+ * stilweg wegfilteren, anders verdwijnt een taak uit elk overzicht.
+ */
+export const categoryConfig: Record<string, { label: string; icon: typeof AlertTriangle }> = {
+  compliance: { label: 'Compliance', icon: Shield },
+  opvolging: { label: 'Opvolging', icon: Clock },
+  matching: { label: 'Matching', icon: Briefcase },
+  onboarding: { label: 'Onboarding', icon: UserCheck },
+  ziekte: { label: 'Ziekte', icon: Heart },
+  plaatsing: { label: 'Plaatsing', icon: UserCheck },
+  contract: { label: 'Contract', icon: FileSignature },
+  administratie: { label: 'Administratie', icon: Building2 },
+  'email triage': { label: 'E-mailtriage', icon: Mail },
+  'cv intake': { label: 'CV-intake', icon: Mail },
+  klantvraag: { label: 'Klantvraag', icon: Mail },
+  overig: { label: 'Overig', icon: CircleDot },
+};
+
+/** Label voor een categorie; onbekende (vrije-tekst) waarden worden getoond zoals ze zijn. */
+export const categoryLabel = (category?: string | null): string => {
+  if (!category) return categoryConfig.overig.label;
+  return categoryConfig[category]?.label ?? category.charAt(0).toUpperCase() + category.slice(1);
+};
+
+export const categoryIcon = (category?: string | null) =>
+  (category && categoryConfig[category]?.icon) || CircleDot;
+
+/** Een taak telt als open zolang hij niet is afgerond of genegeerd. */
+export const isTaskOpen = (task: { status?: string | null }): boolean =>
+  task.status !== 'done' && task.status !== 'dismissed';
+
+/**
+ * `YYYY-MM-DD` van vandaag in **lokale** tijd. due_date is een date-kolom zonder tijdzone,
+ * dus een UTC-datum zet een deadline in NL tussen middernacht en 02:00 een dag verkeerd.
+ */
+export const todayISO = (): string => {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${now.getFullYear()}-${month}-${day}`;
+};
+
+/** Is dit tijdstempel van vandaag (lokale dag)? Voor `completed_at` e.d. */
+export const isToday = (timestamp?: string | null): boolean =>
+  !!timestamp && new Date(timestamp).toDateString() === new Date().toDateString();
+
+export const isTaskOverdue = (dueDate?: string | null, today = todayISO()): boolean =>
+  !!dueDate && dueDate < today;
+
+/** Prioriteit eerst (kritiek → laag), daarbinnen nieuwste eerst. */
+export const byPriorityThenRecency = (a: any, b: any): number => {
+  const pa = priorityConfig[a.priority]?.order ?? 99;
+  const pb = priorityConfig[b.priority]?.order ?? 99;
+  if (pa !== pb) return pa - pb;
+  return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+};
+
+/**
+ * Taken staan in vier caches tegelijk (takenlijst, workbench, entiteit-tab, sidebar-teller).
+ * Eén helper zodat een nieuwe schrijver er nooit één vergeet.
+ */
+export const invalidateTaskQueries = (qc: QueryClient): void => {
+  qc.invalidateQueries({ queryKey: ['tasks-overview'] });
+  qc.invalidateQueries({ queryKey: ['recruiter-tasks'] });
+  qc.invalidateQueries({ queryKey: ['entity-tasks'] });
+  qc.invalidateQueries({ queryKey: ['open-task-count'] });
 };
 
 export const entityLinks: Record<string, (id: string) => string> = {
