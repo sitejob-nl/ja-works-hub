@@ -13,6 +13,14 @@ import { Briefcase, MapPin, Building2, Search, Clock, CheckCircle2 } from 'lucid
 import { formatDate } from '@/lib/format';
 import { toast } from 'sonner';
 import { createMatch } from '@/lib/match-lifecycle';
+import { splitGeneratedVacancyDescription, stripMarkdownInline } from '@/lib/rich-text';
+
+/** Wat deze kandidaat van de vacature te zien krijgt — nooit interne of ruwe markdown-tekst. */
+const candidateText = (vacancy: any): string => {
+  if (vacancy.candidate_description) return stripMarkdownInline(vacancy.candidate_description);
+  const split = splitGeneratedVacancyDescription(vacancy.description);
+  return stripMarkdownInline(split.candidateText);
+};
 
 const PortalJobMarket = () => {
   const { employee, candidate } = usePortal();
@@ -146,11 +154,14 @@ const PortalJobMarket = () => {
                           </span>
                         )}
                       </div>
-                      {/* De kandidaatomschrijving is de tekst die vóór de kandidaat geschreven is;
-                          `description` is een interne recruiternotitie en is hier slechts fallback. */}
-                      {(v.candidate_description || v.description) && (
+                      {/* De kandidaatomschrijving is de tekst die vóór de kandidaat geschreven is.
+                          Terugval op `description` mag alleen ná opsplitsen: bij oudere vacatures
+                          staat daar de complete AI-dump in, inclusief matchingprofiel en interne
+                          controlelijst. Die mag een kandidaat nooit te zien krijgen. Markdown gaat
+                          er sowieso uit — anders leest hij hier "## Volledige SEO-vacaturetekst". */}
+                      {candidateText(v) && (
                         <p className="text-sm text-muted-foreground mt-2 line-clamp-3" data-no-translate="true">
-                          {v.candidate_description || v.description}
+                          {candidateText(v)}
                         </p>
                       )}
                       {v.requirements && (

@@ -1,5 +1,30 @@
 import { describe, expect, it } from 'vitest';
-import { markdownToBlocks, stripMarkdown, stripMarkdownInline, looksLikeMarkdown } from '@/lib/rich-text';
+import {
+  markdownToBlocks,
+  stripMarkdown,
+  stripMarkdownInline,
+  looksLikeMarkdown,
+  splitGeneratedVacancyDescription,
+} from '@/lib/rich-text';
+
+// Verkorte versie van wat er in productie in `vacancies.description` staat bij de 26
+// vacatures die vóór de SEO-tab zijn gemaakt.
+const LEGACY_DUMP = `## Volledige SEO-vacaturetekst
+Productiemedewerker Food - Helmond | Fulltime werk in dagdienst
+
+Als Productiemedewerker Food in Helmond sta jij niet stil.
+
+## AI matchingprofiel op basis van de vacature
+Ideale kandidaat
+
+Een fysiek fitte productiemedewerker.
+
+## Zoekwoorden voor vacaturebanken en AI matching
+Food, productie, Helmond
+
+Eindcontrole
+
+De opdrachtgever wordt nergens genoemd`;
 
 const SAMPLE = `## Wat ga je doen als MIG-MAG lasser?
 
@@ -56,6 +81,34 @@ describe('stripMarkdownInline', () => {
   it('is leeg bij lege invoer', () => {
     expect(stripMarkdownInline(null)).toBe('');
     expect(stripMarkdownInline('   ')).toBe('');
+  });
+});
+
+describe('splitGeneratedVacancyDescription', () => {
+  it('scheidt de vacaturetekst van het interne materiaal', () => {
+    const out = splitGeneratedVacancyDescription(LEGACY_DUMP);
+    expect(out.isGenerated).toBe(true);
+    expect(out.candidateText).toContain('Productiemedewerker Food - Helmond');
+    expect(out.candidateText).toContain('sta jij niet stil');
+    // Alles wat intern is mag hier absoluut niet in zitten.
+    expect(out.candidateText).not.toContain('matchingprofiel');
+    expect(out.candidateText).not.toContain('Zoekwoorden');
+    expect(out.candidateText).not.toContain('Eindcontrole');
+    expect(out.internalText).toContain('AI matchingprofiel');
+    expect(out.internalText).toContain('Eindcontrole');
+  });
+
+  it('laat een gewone korte omschrijving met rust', () => {
+    const out = splitGeneratedVacancyDescription('Lasser gezocht voor dagdienst in Helmond.');
+    expect(out.isGenerated).toBe(false);
+    expect(out.candidateText).toBe('Lasser gezocht voor dagdienst in Helmond.');
+    expect(out.internalText).toBe('');
+  });
+
+  it('is leeg bij lege invoer', () => {
+    expect(splitGeneratedVacancyDescription(null)).toEqual({
+      isGenerated: false, candidateText: '', internalText: '',
+    });
   });
 });
 
