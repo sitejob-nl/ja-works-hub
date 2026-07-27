@@ -136,53 +136,86 @@ Deno.serve(async (req) => {
     const admin = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
     const body = await req.json().catch(() => ({})) as Record<string, unknown>;
+    const idList = (v: unknown) =>
+      Array.isArray(v)
+        ? Array.from(new Set(v.filter((x): x is string => typeof x === "string"))).slice(0, MAX_CANDIDATES)
+        : [];
+    // Twee richtingen op dezelfde kern. Vooruit (vanaf de vacature): 1 vacature × N kandidaten.
+    // Achteruit (vanaf het kandidaatdossier): 1 kandidaat × N vacatures. De cache zit op het paar
+    // (vacature × kandidaat), dus beide richtingen warmen elkaar op.
     const vacancyId = typeof body.vacancy_id === "string" ? body.vacancy_id : null;
-    const candidateIds: string[] = Array.isArray(body.candidate_ids)
-      ? Array.from(new Set(body.candidate_ids.filter((x): x is string => typeof x === "string"))).slice(0, MAX_CANDIDATES)
-      : [];
+    const candidateId = typeof body.candidate_id === "string" ? body.candidate_id : null;
+    const candidateIds = idList(body.candidate_ids);
+    const vacancyIds = idList(body.vacancy_ids);
+    const reverse = !vacancyId && !!candidateId;
     const force = body.force === true;
     const model = (typeof body.model === "string" && body.model) || Deno.env.get("GEMINI_MODEL") || GEMINI_DEFAULT_MODEL;
-    if (!vacancyId) return json({ error: "vacancy_id required" }, 400);
-    if (candidateIds.length === 0) return json({ error: "candidate_ids required" }, 400);
+    if (!vacancyId && !candidateId) return json({ error: "vacancy_id or candidate_id required" }, 400);
+    if (!reverse && candidateIds.length === 0) return json({ error: "candidate_ids required" }, 400);
+    if (reverse && vacancyIds.length === 0) return json({ error: "vacancy_ids required" }, 400);
 
-    // Vacature via RLS (eigen org) → impliciete autorisatie.
-    const { data: vacancy, error: vacErr } = await userClient
-      .from("vacancies")
-      .select("id, organization_id, title, description, location, required_skills, required_certifications, requires_drivers_license")
-      .eq("id", vacancyId)
-      .single();
-    if (vacErr || !vacancy) return json({ error: "Vacancy not found" }, 404);
-    const orgId = vacancy.organization_id;
+    const VACANCY_FIELDS =
+      "id, organization_id, title, description, location, required_skills, required_certifications, requires_drivers_license";
+    const CANDIDATE_FIELDS =
+      "id, organization_id, first_name, last_name, skills, certifications, languages, ai_function_group, ai_target_functions, ai_classification, availability_notes, address_city, ai_analysis, ai_summary, ai_positive_signals, ai_red_flags, ai_risk_factors";
+
+    // Anker (de "1"-kant) via RLS ophalen → impliciete autorisatie + org-context.
+    // deno-lint-ignore no-explicit-any
+    let vacancyRows: any[] = [];
+    // deno-lint-ignore no-explicit-any
+    let candidates: any[] = [];
+    let orgId: string;
+
+    if (reverse) {
+      const { data: cand, error: candErr } = await userClient
+        .from("candidates").select(CANDIDATE_FIELDS).eq("id", candidateId).single();
+      if (candErr || !cand) return json({ error: "Candidate not found" }, 404);
+      orgId = cand.organization_id;
+      candidates = [cand];
+      const { data: vacs, error: vacErr } = await userClient
+        .from("vacancies").select(VACANCY_FIELDS).eq("organization_id", orgId).in("id", vacancyIds);
+      if (vacErr) return json({ error: "Kon vacatures niet laden" }, 500);
+      vacancyRows = vacs ?? [];
+      if (vacancyRows.length === 0) return json({ error: "Geen toegankelijke vacatures" }, 404);
+    } else {
+      const { data: vacancy, error: vacErr } = await userClient
+        .from("vacancies").select(VACANCY_FIELDS).eq("id", vacancyId).single();
+      if (vacErr || !vacancy) return json({ error: "Vacancy not found" }, 404);
+      orgId = vacancy.organization_id;
+      vacancyRows = [vacancy];
+      const { data: cands, error: candErr } = await userClient
+        .from("candidates").select(CANDIDATE_FIELDS).eq("organization_id", orgId).in("id", candidateIds);
+      if (candErr) return json({ error: "Kon kandidaten niet laden" }, 500);
+      candidates = cands ?? [];
+      if (candidates.length === 0) return json({ error: "Geen toegankelijke kandidaten" }, 404);
+    }
+
     // AI-gegenereerde vacaturetekst (1:1, RLS eigen org) — verrijkt de rerank-context indien aanwezig.
     // Gated: zonder body blijft vacancyText (en dus input_hash/cache) identiek.
-    const { data: seo } = await userClient
+    const { data: seoRows } = await userClient
       .from("vacancy_seo_content")
-      .select("body_markdown")
-      .eq("vacancy_id", vacancyId)
-      .maybeSingle();
-    const vacancyText = buildVacancyText({ ...vacancy, body_markdown: seo?.body_markdown ?? null });
+      .select("vacancy_id, body_markdown")
+      .in("vacancy_id", vacancyRows.map((v) => v.id));
+    const seoByVacancy = new Map((seoRows ?? []).map((r) => [r.vacancy_id, r.body_markdown]));
+    const vacancyTextById = new Map(
+      vacancyRows.map((v) => [v.id, buildVacancyText({ ...v, body_markdown: seoByVacancy.get(v.id) ?? null })]),
+    );
 
-    // Kandidaten via RLS (eigen org).
-    const { data: cands, error: candErr } = await userClient
-      .from("candidates")
-      .select("id, first_name, last_name, skills, certifications, languages, ai_function_group, ai_target_functions, ai_classification, availability_notes, address_city, ai_analysis, ai_summary, ai_positive_signals, ai_red_flags, ai_risk_factors")
-      .eq("organization_id", orgId)
-      .in("id", candidateIds);
-    if (candErr) return json({ error: "Kon kandidaten niet laden" }, 500);
-    const candidates = cands ?? [];
-    if (candidates.length === 0) return json({ error: "Geen toegankelijke kandidaten" }, 404);
+    // Eén vlakke lijst (vacature × kandidaat) zodat beide richtingen dezelfde kern doorlopen.
+    const jobs = vacancyRows.flatMap((v) => candidates.map((c) => ({ vacancy: v, candidate: c })));
 
     const pricing = geminiPricingForModel(model);
 
-    // Bestaande cache in één keer ophalen.
+    // Bestaande cache in één keer ophalen, gesleuteld op het paar (vacature × kandidaat).
     const { data: cacheRows } = await admin
       .from("match_rerank_cache")
-      .select("candidate_id, input_hash, fit_score, verdict, reasoning, strengths, concerns")
-      .eq("vacancy_id", vacancyId)
-      .in("candidate_id", candidateIds);
+      .select("vacancy_id, candidate_id, input_hash, fit_score, verdict, reasoning, strengths, concerns")
+      .in("vacancy_id", vacancyRows.map((v) => v.id))
+      .in("candidate_id", candidates.map((c) => c.id));
+    const pairKey = (vId: string, cId: string) => `${vId}:${cId}`;
     // deno-lint-ignore no-explicit-any
-    const cacheByCand = new Map<string, any>();
-    for (const r of cacheRows ?? []) cacheByCand.set(r.candidate_id, r);
+    const cacheByPair = new Map<string, any>();
+    for (const r of cacheRows ?? []) cacheByPair.set(pairKey(r.vacancy_id, r.candidate_id), r);
 
     const started = Date.now();
     let costTotal = 0, geminiCalls = 0, cachedCount = 0, failed = 0;
@@ -191,14 +224,21 @@ Deno.serve(async (req) => {
     const results: any[] = [];
 
     // deno-lint-ignore no-explicit-any
-    async function processOne(c: any): Promise<void> {
+    async function processOne(job: { vacancy: any; candidate: any }): Promise<void> {
+      const c = job.candidate;
+      const vId = job.vacancy.id as string;
+      const vacancyText = vacancyTextById.get(vId)!;
+      const ident = {
+        vacancy_id: vId, vacancy_title: job.vacancy.title,
+        candidate_id: c.id, first_name: c.first_name, last_name: c.last_name,
+      };
       const dossier = buildDossier(c);
       const inputHash = await sha256Hex(`${model}\n${vacancyText}\n${dossier}`);
-      const cached = cacheByCand.get(c.id);
+      const cached = cacheByPair.get(pairKey(vId, c.id));
       if (!force && cached && cached.input_hash === inputHash) {
         cachedCount++;
         results.push({
-          candidate_id: c.id, first_name: c.first_name, last_name: c.last_name,
+          ...ident,
           fit_score: cached.fit_score, verdict: cached.verdict, reasoning: cached.reasoning,
           strengths: cached.strengths ?? [], concerns: cached.concerns ?? [], cached: true,
         });
@@ -213,7 +253,7 @@ Deno.serve(async (req) => {
         r = await rerankCandidateFit(vacancyText, dossier, GEMINI_API_KEY!, model);
       } catch (e) {
         failed++;
-        results.push({ candidate_id: c.id, first_name: c.first_name, last_name: c.last_name, error: (e as Error).message.slice(0, 200) });
+        results.push({ ...ident, error: (e as Error).message.slice(0, 200) });
         return;
       }
 
@@ -224,7 +264,7 @@ Deno.serve(async (req) => {
       costTotal += costCents; geminiCalls++;
 
       await admin.from("match_rerank_cache").upsert({
-        organization_id: orgId, vacancy_id: vacancyId, candidate_id: c.id, input_hash: inputHash,
+        organization_id: orgId, vacancy_id: vId, candidate_id: c.id, input_hash: inputHash,
         fit_score: r.fitScore, verdict: r.verdict, reasoning: r.reasoning, strengths: r.strengths, concerns: r.concerns,
         model: r.model, updated_at: new Date().toISOString(),
       }, { onConflict: "vacancy_id,candidate_id" });
@@ -237,22 +277,24 @@ Deno.serve(async (req) => {
       } catch (_e) { /* usage-log mag de flow niet breken */ }
 
       results.push({
-        candidate_id: c.id, first_name: c.first_name, last_name: c.last_name,
+        ...ident,
         fit_score: r.fitScore, verdict: r.verdict, reasoning: r.reasoning,
         strengths: r.strengths, concerns: r.concerns, cached: false,
       });
     }
 
-    for (let i = 0; i < candidates.length; i += CONCURRENCY) {
+    for (let i = 0; i < jobs.length; i += CONCURRENCY) {
       if (Date.now() - started > SOFT_DEADLINE_MS) { stopped = true; break; }
-      await Promise.all(candidates.slice(i, i + CONCURRENCY).map(processOne));
+      await Promise.all(jobs.slice(i, i + CONCURRENCY).map(processOne));
       if (stopped) break;
     }
 
     results.sort((a, b) => (b.fit_score ?? -1) - (a.fit_score ?? -1));
     return json({
-      vacancy_id: vacancyId, model,
-      requested: candidateIds.length, scored: results.length,
+      vacancy_id: reverse ? null : vacancyId,
+      candidate_id: reverse ? candidateId : null,
+      model,
+      requested: jobs.length, scored: results.length,
       gemini_calls: geminiCalls, cached: cachedCount, failed,
       cost_cents: costTotal, stopped, results,
     });

@@ -64,6 +64,10 @@ interface RuleForm {
 
 const emptyForm: RuleForm = { name: '', sector: '', contract_type: '', required_documents: [], required_fields: [], description: '', is_active: true };
 
+// Radix Select verbiedt value="" op een Item. Sentinel voor "geldt voor alles"; wordt bij
+// opslaan weer naar '' → null vertaald.
+const ANY_VALUE = '__any__';
+
 const ComplianceRulesSettings = () => {
   const orgId = useOrganizationId();
   const qc = useQueryClient();
@@ -204,20 +208,26 @@ const ComplianceRulesSettings = () => {
             <div><Label>Naam *</Label><Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} /></div>
             <div>
               <Label>Sector</Label>
-              <Select value={form.sector} onValueChange={v => setForm(f => ({ ...f, sector: v }))}>
+              <Select
+                value={form.sector || ANY_VALUE}
+                onValueChange={v => setForm(f => ({ ...f, sector: v === ANY_VALUE ? '' : v }))}
+              >
                 <SelectTrigger><SelectValue placeholder="Alle sectoren" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Alle sectoren</SelectItem>
+                  <SelectItem value={ANY_VALUE}>Alle sectoren</SelectItem>
                   {SECTOR_OPTIONS.map(s => <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div>
               <Label>Contracttype</Label>
-              <Select value={form.contract_type} onValueChange={v => setForm(f => ({ ...f, contract_type: v }))}>
+              <Select
+                value={form.contract_type || ANY_VALUE}
+                onValueChange={v => setForm(f => ({ ...f, contract_type: v === ANY_VALUE ? '' : v }))}
+              >
                 <SelectTrigger><SelectValue placeholder="Alle contracttypes" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Alle types</SelectItem>
+                  <SelectItem value={ANY_VALUE}>Alle types</SelectItem>
                   {CONTRACT_OPTIONS.map(c => <SelectItem key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</SelectItem>)}
                 </SelectContent>
               </Select>
