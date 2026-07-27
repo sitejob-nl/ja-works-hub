@@ -1,30 +1,44 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, X } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import { formatDate } from '@/lib/format';
-import { priorityConfig, entityLinks, entityTypeLabels } from '@/lib/tasks';
+import { Plus } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import {
+  byPriorityThenRecency, categoryIcon, categoryLabel, isTaskOpen, priorityConfig, todayISO,
+} from '@/lib/tasks';
 import { cn } from '@/lib/utils';
 import { unwrapList } from '@/lib/db';
+import { useTaskActions } from '@/hooks/useTaskActions';
+import TaskCard from '@/components/shared/TaskCard';
 import TaskEditorSheet from '@/components/shared/TaskEditorSheet';
 import { isFacilityRole, setFacilityTaskStatus } from '@/lib/facility';
+
+const VIEW_MODES = ['mine', 'created', 'all'] as const;
+const STATUS_FILTERS = ['open', 'overdue', 'done', 'dismissed', 'all'];
+
+/** Alleen bekende waarden overnemen — een onzinnige URL mag geen lege lijst opleveren. */
+const seedFromUrl = <T extends string>(value: string | null, allowed: readonly string[], fallback: T): T =>
+  value && allowed.includes(value) ? (value as T) : fallback;
 
 const Tasks = () => {
   const { user, role } = useAuth();
   const orgId = useOrganizationId();
-  const qc = useQueryClient();
-  const [viewMode, setViewMode] = useState<'mine' | 'created' | 'all'>('mine');
+  // De Workbench linkt hierheen met een voorgevulde selectie (bv. ?status=overdue).
+  const [searchParams] = useSearchParams();
+  const [viewMode, setViewMode] = useState<'mine' | 'created' | 'all'>(
+    () => seedFromUrl(searchParams.get('weergave'), VIEW_MODES, 'mine'));
   const [assigneeFilter, setAssigneeFilter] = useState('all');
-  const [statusFilter, setStatusFilter] = useState('open');
-  const [priorityFilter, setPriorityFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState<string>(
+    () => seedFromUrl(searchParams.get('status'), STATUS_FILTERS, 'open'));
+  const [priorityFilter, setPriorityFilter] = useState<string>(
+    () => seedFromUrl(searchParams.get('prioriteit'), Object.keys(priorityConfig), 'all'));
   const [deadlineFilter, setDeadlineFilter] = useState('all');
+  const [categoryFilter, setCategoryFilter] = useState('all');
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<any>(null);
   const facility = isFacilityRole(role);
@@ -60,25 +74,8 @@ const Tasks = () => {
     enabled: !!orgId && !!user,
   });
 
-  const updateTask = useMutation({
-    mutationFn: async ({ id, updates }: { id: string; updates: Record<string, any> }) => {
-      if (facility) {
-        if (updates.status !== 'open' && updates.status !== 'done') {
-          throw new Error('Facility kan een taak alleen afronden of heropenen');
-        }
-        await setFacilityTaskStatus(id, updates.status);
-        return;
-      }
-      const { error } = await supabase.from('recruiter_tasks' as any).update(updates).eq('id', id);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['tasks-overview'] });
-      qc.invalidateQueries({ queryKey: ['recruiter-tasks'] });
-      qc.invalidateQueries({ queryKey: ['entity-tasks'] });
-      qc.invalidateQueries({ queryKey: ['open-task-count'] });
-    },
-  });
+  const { toggle: handleToggle, dismiss: handleDismiss } = useTaskActions(
+    facility ? { writeStatus: setFacilityTaskStatus } : {});
 
   const openNew = () => { setEditingTask(null); setEditorOpen(true); };
   const openEdit = (task: any) => { setEditingTask(task); setEditorOpen(true); };
@@ -95,38 +92,29 @@ const Tasks = () => {
     return assignee?.full_name || assignee?.email || null;
   })();
 
-  const handleComplete = (id: string) => {
-    updateTask.mutate({ id, updates: { status: 'done', completed_at: new Date().toISOString() } });
-  };
-
-  const handleReopen = (id: string) => {
-    updateTask.mutate({ id, updates: { status: 'open', completed_at: null } });
-  };
-
-  const handleDismiss = (id: string) => {
-    updateTask.mutate({ id, updates: { status: 'dismissed' } });
-  };
-
   // Filter & sort
   const now = new Date();
-  const todayStr = now.toISOString().split('T')[0];
+  const todayStr = todayISO();
   const weekFromNow = new Date(now.getTime() + 7 * 86400000).toISOString().split('T')[0];
 
-  const activeTasks = tasks.filter((t: any) => t.status !== 'done' && t.status !== 'dismissed');
+  const activeTasks = tasks.filter(isTaskOpen);
 
   const applyFilters = (list: any[]) => {
     let filtered = list;
     if (statusFilter === 'open') {
-      filtered = filtered.filter((t: any) => t.status !== 'done' && t.status !== 'dismissed');
+      filtered = filtered.filter(isTaskOpen);
     } else if (statusFilter === 'done') {
       filtered = filtered.filter((t: any) => t.status === 'done');
     } else if (statusFilter === 'dismissed') {
       filtered = filtered.filter((t: any) => t.status === 'dismissed');
     } else if (statusFilter === 'overdue') {
-      filtered = filtered.filter((t: any) => t.status !== 'done' && t.status !== 'dismissed' && t.due_date && t.due_date < todayStr);
+      filtered = filtered.filter((t: any) => isTaskOpen(t) && t.due_date && t.due_date < todayStr);
     }
     if (priorityFilter !== 'all') {
       filtered = filtered.filter((t: any) => t.priority === priorityFilter);
+    }
+    if (categoryFilter !== 'all') {
+      filtered = filtered.filter((t: any) => (t.category || 'overig') === categoryFilter);
     }
     if (deadlineFilter === 'today') {
       filtered = filtered.filter((t: any) => t.due_date && t.due_date <= todayStr);
@@ -139,15 +127,19 @@ const Tasks = () => {
   };
 
   const filteredTasks = applyFilters(tasks);
-  const filteredActive = filteredTasks.filter((t: any) => t.status !== 'done' && t.status !== 'dismissed').sort((a: any, b: any) => {
-    const pa = priorityConfig[a.priority]?.order ?? 99;
-    const pb = priorityConfig[b.priority]?.order ?? 99;
-    if (pa !== pb) return pa - pb;
-    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-  });
+  const filteredActive = filteredTasks.filter(isTaskOpen).sort(byPriorityThenRecency);
   const filteredClosed = filteredTasks
-    .filter((t: any) => t.status === 'done' || t.status === 'dismissed')
+    .filter((t: any) => !isTaskOpen(t))
     .sort((a: any, b: any) => new Date(b.completed_at ?? b.created_at).getTime() - new Date(a.completed_at ?? a.created_at).getTime());
+
+  // Categorie-chips volgen de data: taken uit e-mailtriage e.d. gebruiken vrije tekst,
+  // een vaste lijst zou die onbereikbaar maken.
+  const categoryCounts = activeTasks.reduce<Record<string, number>>((acc, task: any) => {
+    const key = task.category || 'overig';
+    acc[key] = (acc[key] ?? 0) + 1;
+    return acc;
+  }, {});
+  const categoryKeys = Object.keys(categoryCounts).sort((a, b) => categoryCounts[b] - categoryCounts[a]);
 
   const workload = assignees.map((assignee) => ({
     assignee,
@@ -156,8 +148,6 @@ const Tasks = () => {
   })).filter((item) => item.count > 0 || item.overdue > 0);
   const unassignedCount = activeTasks.filter((task: any) => !task.assigned_to).length;
   const unassignedOverdue = activeTasks.filter((task: any) => !task.assigned_to && task.due_date && task.due_date < todayStr).length;
-
-  const isOverdue = (date: string | null) => date && date < todayStr;
 
   return (
     <div className="space-y-4 sm:space-y-6 min-w-0">
@@ -242,6 +232,37 @@ const Tasks = () => {
         )}
       </div>
 
+      {categoryKeys.length > 1 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm text-muted-foreground">Categorie:</span>
+          <button
+            onClick={() => setCategoryFilter('all')}
+            className={cn(
+              'text-xs px-3 py-1.5 rounded-full border transition-colors',
+              categoryFilter === 'all' ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted border-border hover:bg-muted/80',
+            )}
+          >
+            Alles ({activeTasks.length})
+          </button>
+          {categoryKeys.map((key) => {
+            const Icon = categoryIcon(key);
+            return (
+              <button
+                key={key}
+                onClick={() => setCategoryFilter(key)}
+                className={cn(
+                  'text-xs px-3 py-1.5 rounded-full border transition-colors flex items-center gap-1.5',
+                  categoryFilter === key ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted border-border hover:bg-muted/80',
+                )}
+              >
+                <Icon className="h-3 w-3" />
+                {categoryLabel(key)} ({categoryCounts[key]})
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {canFilterAssignee && viewMode === 'all' && assigneeFilter === 'all' && (
         <div className="rounded-lg border bg-card p-3">
           <div className="mb-2 text-xs font-medium uppercase text-muted-foreground">Werkvoorraad per medewerker</div>
@@ -281,50 +302,16 @@ const Tasks = () => {
         <p className="text-center text-muted-foreground py-8">Laden...</p>
       ) : (
         <div className="space-y-2">
-          {filteredActive.map((task: any) => {
-            const prio = priorityConfig[task.priority] ?? priorityConfig.medium;
-            const linkFn = task.related_entity_id && task.related_entity_type ? entityLinks[task.related_entity_type] : null;
-            return (
-              <div key={task.id} className="flex items-start gap-3 bg-card rounded-lg border p-3">
-                <Checkbox
-                  checked={false}
-                  onCheckedChange={() => handleComplete(task.id)}
-                  className="mt-0.5"
-                />
-                <button type="button" disabled={facility} onClick={() => openEdit(task)} className="flex-1 min-w-0 text-left">
-                  <span className="text-sm">{task.title}</span>
-                  {task.description && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{task.description}</p>}
-                  <div className="flex items-center gap-2 mt-1 flex-wrap">
-                    <Badge variant="secondary" className={cn('text-[10px]', prio.color)}>{prio.label}</Badge>
-                    {task.due_date && (
-                      <span className={cn('text-[10px]', isOverdue(task.due_date) ? 'text-destructive font-medium' : 'text-muted-foreground')}>
-                        Deadline: {formatDate(task.due_date)}
-                      </span>
-                    )}
-                    {viewMode === 'all' && (
-                      <span className="text-[10px] text-muted-foreground">
-                        → {task.profiles?.full_name || task.profiles?.email || 'Nog niet toegewezen'}
-                      </span>
-                    )}
-                    {linkFn && task.related_entity_type && (
-                      <Link
-                        to={linkFn(task.related_entity_id)}
-                        onClick={(e) => e.stopPropagation()}
-                        className="text-[10px] hover:underline"
-                      >
-                        {entityTypeLabels[task.related_entity_type] ?? task.related_entity_type}
-                      </Link>
-                    )}
-                  </div>
-                </button>
-                {!facility && (
-                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground shrink-0" onClick={() => handleDismiss(task.id)}>
-                    <X className="h-3.5 w-3.5" />
-                  </Button>
-                )}
-              </div>
-            );
-          })}
+          {filteredActive.map((task: any) => (
+            <TaskCard
+              key={task.id}
+              task={task}
+              onToggle={handleToggle}
+              onEdit={facility ? undefined : openEdit}
+              onDismiss={facility ? undefined : handleDismiss}
+              showAssignee={viewMode === 'all'}
+            />
+          ))}
           {filteredActive.length === 0 && (
             <p className="text-center text-muted-foreground py-8">Geen openstaande taken</p>
           )}
@@ -336,16 +323,12 @@ const Tasks = () => {
         <div className="space-y-2">
           <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Gesloten ({filteredClosed.length})</p>
           {filteredClosed.slice(0, 10).map((task: any) => (
-            <div key={task.id} className="flex items-start gap-3 bg-card rounded-lg border p-3 opacity-60">
-              <Checkbox
-                checked={task.status === 'done'}
-                onCheckedChange={() => handleReopen(task.id)}
-                className="mt-0.5"
-              />
-              <button type="button" disabled={facility} onClick={() => openEdit(task)} className="flex-1 min-w-0 text-left">
-                <span className="text-sm line-through text-muted-foreground">{task.title}</span>
-              </button>
-            </div>
+            <TaskCard
+              key={task.id}
+              task={task}
+              onToggle={handleToggle}
+              onEdit={facility ? undefined : openEdit}
+            />
           ))}
         </div>
       )}

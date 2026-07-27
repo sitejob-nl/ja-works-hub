@@ -1,13 +1,11 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Plus, Paperclip } from 'lucide-react';
-import { formatDate } from '@/lib/format';
-import { priorityConfig, type TaskEntityType } from '@/lib/tasks';
-import { cn } from '@/lib/utils';
+import { Plus } from 'lucide-react';
+import { isTaskOpen, type TaskEntityType } from '@/lib/tasks';
+import { useTaskActions } from '@/hooks/useTaskActions';
+import TaskCard from '@/components/shared/TaskCard';
 import TaskEditorSheet from '@/components/shared/TaskEditorSheet';
 
 interface TasksSectionProps {
@@ -16,7 +14,6 @@ interface TasksSectionProps {
 }
 
 const TasksSection = ({ entityId, entityType }: TasksSectionProps) => {
-  const qc = useQueryClient();
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<any>(null);
 
@@ -34,29 +31,13 @@ const TasksSection = ({ entityId, entityType }: TasksSectionProps) => {
     },
   });
 
-  const toggleTask = useMutation({
-    mutationFn: async (task: any) => {
-      const isDone = task.status === 'done';
-      const { error } = await supabase
-        .from('recruiter_tasks' as any)
-        .update(isDone ? { status: 'open', completed_at: null } : { status: 'done', completed_at: new Date().toISOString() })
-        .eq('id', task.id);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['entity-tasks', entityType, entityId] });
-      qc.invalidateQueries({ queryKey: ['recruiter-tasks'] });
-      qc.invalidateQueries({ queryKey: ['open-task-count'] });
-    },
-  });
+  const { toggle: toggleTask } = useTaskActions();
 
   const openNew = () => { setEditingTask(null); setEditorOpen(true); };
   const openEdit = (task: any) => { setEditingTask(task); setEditorOpen(true); };
 
-  const activeTasks = tasks.filter((t: any) => t.status !== 'done' && t.status !== 'dismissed');
+  const activeTasks = tasks.filter(isTaskOpen);
   const completedTasks = tasks.filter((t: any) => t.status === 'done');
-  const isOverdue = (date: string | null) => date && new Date(date) < new Date();
-  const attachmentCount = (t: any) => t.task_attachments?.[0]?.count ?? 0;
 
   return (
     <div className="space-y-4">
@@ -68,55 +49,30 @@ const TasksSection = ({ entityId, entityType }: TasksSectionProps) => {
       </div>
 
       <div className="space-y-2">
-        {activeTasks.map((task: any) => {
-          const prio = priorityConfig[task.priority] ?? priorityConfig.medium;
-          const files = attachmentCount(task);
-          return (
-            <div key={task.id} className="flex items-start gap-3 bg-card rounded-lg border p-3">
-              <Checkbox
-                checked={false}
-                onCheckedChange={() => toggleTask.mutate(task)}
-                className="mt-0.5"
-              />
-              <button type="button" onClick={() => openEdit(task)} className="flex-1 min-w-0 text-left">
-                <span className="text-sm">{task.title}</span>
-                {task.description && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{task.description}</p>}
-                <div className="flex items-center gap-2 mt-1 flex-wrap">
-                  <Badge variant="secondary" className={cn('text-[10px]', prio.color)}>{prio.label}</Badge>
-                  {task.due_date && (
-                    <span className={cn('text-[10px]', isOverdue(task.due_date) ? 'text-destructive font-medium' : 'text-muted-foreground')}>
-                      Deadline: {formatDate(task.due_date)}
-                    </span>
-                  )}
-                  {task.profiles?.full_name && (
-                    <span className="text-[10px] text-muted-foreground">→ {task.profiles.full_name}</span>
-                  )}
-                  {files > 0 && (
-                    <span className="text-[10px] text-muted-foreground inline-flex items-center gap-0.5">
-                      <Paperclip className="h-3 w-3" />{files}
-                    </span>
-                  )}
-                </div>
-              </button>
-            </div>
-          );
-        })}
+        {activeTasks.map((task: any) => (
+          <TaskCard
+            key={task.id}
+            task={task}
+            onToggle={toggleTask}
+            onEdit={openEdit}
+            showAssignee
+            // De taak hangt al aan deze entiteit — een link terug naar hier is ruis.
+            showEntityLink={false}
+          />
+        ))}
       </div>
 
       {completedTasks.length > 0 && (
         <div className="space-y-2">
           <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Afgerond ({completedTasks.length})</p>
           {completedTasks.map((task: any) => (
-            <div key={task.id} className="flex items-start gap-3 bg-card rounded-lg border p-3 opacity-60">
-              <Checkbox
-                checked={true}
-                onCheckedChange={() => toggleTask.mutate(task)}
-                className="mt-0.5"
-              />
-              <button type="button" onClick={() => openEdit(task)} className="flex-1 min-w-0 text-left">
-                <span className="text-sm line-through text-muted-foreground">{task.title}</span>
-              </button>
-            </div>
+            <TaskCard
+              key={task.id}
+              task={task}
+              onToggle={toggleTask}
+              onEdit={openEdit}
+              showEntityLink={false}
+            />
           ))}
         </div>
       )}
