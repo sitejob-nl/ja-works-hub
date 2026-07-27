@@ -132,12 +132,24 @@ export default function DomainSettings() {
         </div>
 
         {domainType === 'wildcard' && (
-          <Alert>
+          <Alert variant="destructive">
             <AlertTriangle className="h-4 w-4" />
-            <AlertTitle>Wildcard DNS</AlertTitle>
-            <AlertDescription>
-              Voor wildcard-certificaten heeft Vercel extra DNS-controle nodig. Gebruik Vercel nameservers of de gevraagde
-              _acme-challenge records. Controleer bestaande mail- en website-records voordat nameservers worden gewijzigd.
+            <AlertTitle>Een wildcard vraagt de nameservers van het hele domein</AlertTitle>
+            <AlertDescription className="space-y-2">
+              <p>
+                Een wildcard-certificaat kan alleen worden uitgegeven als de nameservers van het
+                domein naar Vercel wijzen. Losse CNAME-records zijn niet genoeg — daarmee komt er
+                nooit een certificaat.
+              </p>
+              <p>
+                Daarbij vervalt de huidige DNS-zone volledig. Alle bestaande records moeten eerst
+                in Vercel DNS staan: MX plus SPF, DKIM en DMARC voor e-mail, bestaande subdomeinen
+                en verificatie-records. Ontbreken die, dan valt e-mail op dit domein uit.
+              </p>
+              <p className="font-medium">
+                Wil je alleen één app-adres, kies dan Exact domein. Dat vraagt één CNAME en laat de
+                rest van de zone ongemoeid.
+              </p>
             </AlertDescription>
           </Alert>
         )}
@@ -162,6 +174,7 @@ export default function DomainSettings() {
             const instructions = domain.dns_config?.instructions;
             const records = Array.isArray(instructions?.records) ? instructions.records : [];
             const verification = Array.isArray(instructions?.verification) ? instructions.verification : [];
+            const nameservers: string[] = Array.isArray(instructions?.nameservers) ? instructions.nameservers : [];
             return (
               <div key={domain.id} className="rounded-lg border p-4 space-y-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -207,6 +220,26 @@ export default function DomainSettings() {
                         </Button>
                       </div>
                     ))}
+                  </div>
+                )}
+
+                {nameservers.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Nameservers — te wijzigen bij de registrar
+                    </p>
+                    {nameservers.map((ns) => (
+                      <div key={ns} className="flex items-center justify-between gap-2 rounded-md bg-muted p-2 text-sm">
+                        <span className="font-mono break-all">{ns}</span>
+                        <Button type="button" variant="ghost" size="icon" onClick={() => copy(ns)}>
+                          <Copy className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    ))}
+                    <p className="text-xs text-muted-foreground">
+                      Deze vervangen de huidige nameservers volledig. Zet eerst alle bestaande
+                      records over naar Vercel DNS — anders valt e-mail op dit domein uit.
+                    </p>
                   </div>
                 )}
 

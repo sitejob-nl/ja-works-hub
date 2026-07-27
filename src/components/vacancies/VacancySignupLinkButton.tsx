@@ -3,6 +3,7 @@ import { Copy, Link2, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
+import { usePublicUrl } from '@/hooks/usePublicUrl';
 import { Button } from '@/components/ui/button';
 
 const slugify = (value: string) =>
@@ -14,25 +15,24 @@ const slugify = (value: string) =>
     .replace(/^-+|-+$/g, '')
     .slice(0, 48) || 'vacature';
 
-const publicSignupUrl = (slug: string) => {
-  const origin = typeof window === 'undefined' ? '' : window.location.origin;
-  return `${origin}/solliciteren/${slug}`;
-};
-
-const copyToClipboard = async (slug: string) => {
-  const url = publicSignupUrl(slug);
-  try {
-    await navigator.clipboard.writeText(url);
-    toast.success('Sollicitatielink gekopieerd');
-  } catch {
-    toast.info(url);
-  }
-};
-
 const VacancySignupLinkButton = ({ vacancy }: { vacancy: any }) => {
   const orgId = useOrganizationId();
   const qc = useQueryClient();
   const companyName = (vacancy.companies as any)?.name ?? null;
+
+  // Deze link gaat naar sollicitanten, dus hij moet het eigen domein van de organisatie
+  // gebruiken — niet het domein waarop de intercedent nu toevallig werkt.
+  const { buildUrl } = usePublicUrl();
+
+  const copyToClipboard = async (slug: string) => {
+    const url = buildUrl(`/solliciteren/${slug}`);
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success('Sollicitatielink gekopieerd');
+    } catch {
+      toast.info(url);
+    }
+  };
 
   const { data: existingLink, isLoading } = useQuery({
     queryKey: ['vacancy-signup-link', orgId, vacancy.id],

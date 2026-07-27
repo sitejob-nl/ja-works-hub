@@ -1,6 +1,8 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { NavLink, Outlet } from 'react-router-dom';
 import { usePortal } from '@/contexts/PortalContext';
+import { applyOrgManifest } from '@/lib/pwa-manifest';
 import { Home, Clock, FileText, Building, MoreHorizontal, LogOut, MapPin, Briefcase } from 'lucide-react';
 import PortalNotifications from '@/components/portal/PortalNotifications';
 import { Button } from '@/components/ui/button';
@@ -35,6 +37,25 @@ const PortalLayout = () => {
   const { profile, candidate, signOut } = usePortal();
   const firstName = candidate?.first_name ?? profile?.full_name?.split(' ')[0] ?? '';
   const initials = firstName.charAt(0).toUpperCase();
+
+  // Medewerkers installeren de app op hun telefoon, dus juist hier moet het PWA-manifest
+  // de organisatie volgen in plaats van "SiteJob". Zelfde queryKey als de welkomstvideo,
+  // dus dit kost geen extra request. Medewerkers mogen `organizations` niet lezen — de RPC
+  // geeft alleen de publieke portaalvelden terug.
+  const { data: org } = useQuery({
+    queryKey: ['portal-org-info'],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('get_portal_org_info');
+      if (error) throw error;
+      return data?.[0] ?? null;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  useEffect(() => {
+    if (!org?.name) return;
+    void applyOrgManifest({ name: org.name, logoUrl: org.logo_url, accentColor: org.accent_color });
+  }, [org]);
   const persistLanguage = useCallback((language: PlatformLanguage) => {
     if (!candidate?.id) return;
 
