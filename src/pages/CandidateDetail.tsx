@@ -46,6 +46,7 @@ import { useTrackPageVisit } from '@/hooks/useTrackPageVisit';
 import { useTabSearchParam } from '@/hooks/useTabSearchParam';
 import { usePublicUrl } from '@/hooks/usePublicUrl';
 import { useOutlookAccounts } from '@/hooks/useOutlookAccounts';
+import { useRolePermission } from '@/hooks/usePermissions';
 import { useAuth, useHasRole } from '@/contexts/AuthContext';
 import DeleteCandidateDialog from '@/components/candidates/DeleteCandidateDialog';
 import type { Database } from '@/integrations/supabase/types';
@@ -99,6 +100,10 @@ const HR_TABS: { value: string; label: string }[] = [
   { value: 'portaal', label: 'Portaal' },
 ];
 
+// Uren en inhoudingen zijn financiële subtabs: RLS blokkeert de onderliggende
+// tabellen zonder 'finance.view', dus tonen we ze dan ook niet.
+const FINANCE_HR_TABS = ['uren', 'inhoudingen'];
+
 const CandidateDetail = () => {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
@@ -115,6 +120,8 @@ const CandidateDetail = () => {
   const { buildUrl } = usePublicUrl();
   const { hasUsableAccounts } = useOutlookAccounts('mail_send');
   const { user } = useAuth();
+  const canViewFinance = useRolePermission('finance.view');
+  const hrTabs = HR_TABS.filter((t) => canViewFinance || !FINANCE_HR_TABS.includes(t.value));
 
   const { data: candidate, isLoading } = useQuery({
     queryKey: ['candidate', id],
@@ -625,7 +632,7 @@ const CandidateDetail = () => {
               {/* Sub-navigatie binnen de Dienstverband-groep */}
               <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">
                 <div className="inline-flex w-max gap-1 rounded-lg bg-muted p-1">
-                  {HR_TABS.map((t) => (
+                  {hrTabs.map((t) => (
                     <button
                       key={t.value}
                       type="button"
@@ -642,11 +649,11 @@ const CandidateDetail = () => {
                 </div>
               </div>
               {activeTab === 'onboarding' ? <EmployeeOnboardingTab candidateId={id!} candidate={candidate} />
-                : activeTab === 'inhoudingen' ? <EmployeeDeductionsTab candidateId={id!} />
+                : activeTab === 'inhoudingen' && canViewFinance ? <EmployeeDeductionsTab candidateId={id!} />
                 : activeTab === 'reserveringen' ? <EmployeeReservationsTab candidateId={id!} />
                 : activeTab === 'subsidies' ? <EmployeeSubsidiesTab candidateId={id!} />
                 : activeTab === 'contracten' ? <EmployeeContractsTab candidateId={id!} candidate={candidate} employment={currentEmployment} />
-                : activeTab === 'uren' ? <EmployeeTimesheetsTab candidateId={id!} />
+                : activeTab === 'uren' && canViewFinance ? <EmployeeTimesheetsTab candidateId={id!} />
                 : activeTab === 'ziekte' ? <EmployeeSickTab candidateId={id!} candidate={candidate} />
                 : activeTab === 'reglementen' ? <EmployeeRegulationsTab candidateId={id!} />
                 : activeTab === 'portaal' ? <EmployeePortalTab candidateId={id!} candidate={candidate} />

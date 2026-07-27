@@ -12,6 +12,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { formatDate, formatRelativeTime } from '@/lib/format';
 import { entityPath } from '@/lib/entity-routes';
+import { cn } from '@/lib/utils';
+import { useRolePermission } from '@/hooks/usePermissions';
 import { toast } from 'sonner';
 import KpiDashboard from '@/components/dashboard/KpiDashboard';
 import OnboardingWizard from '@/components/onboarding/OnboardingWizard';
@@ -90,6 +92,9 @@ const Dashboard = () => {
   const { profile, user } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  // Uren, omzet en marge zijn financiële data: dezelfde sleutel als /uren, /facturatie en /omzet.
+  // Zonder dit recht blokkeert RLS de timesheets-queries — dan liever niets tonen dan een stille 0.
+  const canViewFinance = useRolePermission('finance.view');
   const [stats, setStats] = useState({
     activeEmployees: 0,
     openVacancies: 0,
@@ -149,7 +154,9 @@ const Dashboard = () => {
         supabase.from('employees').select('id', { count: 'exact', head: true }).eq('status', 'actief'),
         supabase.from('vacancies').select('id', { count: 'exact', head: true }).eq('status', 'open'),
         supabase.from('v_unit_occupancy').select('capacity, current_occupancy'),
-        supabase.from('timesheets').select('hours').gte('work_date', format(startOfWeek(lastWeek, { weekStartsOn: 1 }), 'yyyy-MM-dd')).lte('work_date', format(endOfWeek(lastWeek, { weekStartsOn: 1 }), 'yyyy-MM-dd')),
+        canViewFinance
+          ? supabase.from('timesheets').select('hours').gte('work_date', format(startOfWeek(lastWeek, { weekStartsOn: 1 }), 'yyyy-MM-dd')).lte('work_date', format(endOfWeek(lastWeek, { weekStartsOn: 1 }), 'yyyy-MM-dd'))
+          : Promise.resolve({ data: [] as { hours: number | null }[] }),
       ]);
 
       const totalCap = unitRes.data?.reduce((s, u) => s + (u.capacity ?? 0), 0) ?? 0;
@@ -165,7 +172,7 @@ const Dashboard = () => {
       });
     };
     fetchStats();
-  }, []);
+  }, [canViewFinance]);
 
   // ─── Signaleringen queries ───
   const { data: expiringDocs = [] } = useQuery({
@@ -253,6 +260,7 @@ const Dashboard = () => {
 
   const { data: attentionTimesheets = [] } = useQuery({
     queryKey: ['alerts-attention-timesheets'],
+    enabled: canViewFinance,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('timesheets')
@@ -394,15 +402,17 @@ const Dashboard = () => {
       <GettingStartedCard onStartTour={() => setShowOnboarding(true)} />
 
       {/* Stat cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <div className={cn('grid grid-cols-2 gap-3 sm:gap-4', canViewFinance ? 'lg:grid-cols-4' : 'lg:grid-cols-3')}>
         <StatCard icon={UserCheck} label="Actieve medewerkers" value={stats.activeEmployees} colorClass="text-stat-blue" bgClass="bg-stat-blue/10" to="/medewerkers" />
         <StatCard icon={Briefcase} label="Open vacatures" value={stats.openVacancies} colorClass="text-stat-orange" bgClass="bg-stat-orange/10" to="/vacatures?status=open" />
         <StatCard icon={Home} label="Huisvestingsbezetting" value={stats.occupancyRate} colorClass="text-stat-green" bgClass="bg-stat-green/10" to="/huisvesting" />
-        <StatCard icon={Clock} label={`Gewerkte uren wk ${prevWeekNr}`} value={stats.weeklyHours} colorClass="text-stat-purple" bgClass="bg-stat-purple/10" to="/uren" />
+        {canViewFinance && (
+          <StatCard icon={Clock} label={`Gewerkte uren wk ${prevWeekNr}`} value={stats.weeklyHours} colorClass="text-stat-purple" bgClass="bg-stat-purple/10" to="/uren" />
+        )}
       </div>
 
-      {/* KPI Dashboard for management */}
-      {profile?.role === 'admin' && (
+      {/* Omzet, marge en omzet per klant — zelfde recht als de facturatiepagina's */}
+      {canViewFinance && (
         <KpiDashboard />
       )}
 
@@ -413,7 +423,7 @@ const Dashboard = () => {
         <MissingDocumentsCard />
         <ContractStatusChart />
         <BirthdaysCard />
-        <PendingHoursCard />
+        {canViewFinance && <PendingHoursCard />}
         <ApkExpiryWidget />
       </div>
 
