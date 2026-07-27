@@ -210,26 +210,104 @@ async function syncDomainStatus(admin: ReturnType<typeof createAdminClient>, row
 
 type DnsRecord = { type?: string; name?: string; value?: string; purpose?: string };
 
-function recordTable(records: DnsRecord[], theme: BrandTheme): string {
-  const head = ["Type", "Naam", "Waarde"]
-    .map((label) =>
-      `<th align="left" style="padding:8px 10px;border-bottom:2px solid ${theme.navyHex};color:${theme.navyHex};font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">${label}</th>`
-    )
-    .join("");
+/**
+ * Eén record als kaart met veld-labels, in plaats van een brede tabel. Mailclients op
+ * mobiel knijpen een 3-koloms tabel met lange TXT-waarden onleesbaar samen; deze vorm
+ * blijft leesbaar en houdt de waarde in één selecteerbaar blok, zodat de ontvanger hem
+ * in één keer kan kopiëren.
+ */
+function recordCard(record: DnsRecord, index: number, total: number, theme: BrandTheme): string {
+  const mono = "font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace";
+  const field = (label: string, value: unknown, emphasise = false) => `
+    <tr>
+      <td width="70" valign="top" style="padding:4px 10px 4px 0;color:${theme.mutedHex};font-size:11px;text-transform:uppercase;letter-spacing:0.6px;white-space:nowrap;">${escapeHtml(label)}</td>
+      <td valign="top" style="padding:4px 0;${mono};font-size:${emphasise ? "13px" : "13px"};color:${theme.textHex};word-break:break-all;line-height:1.5;">${escapeHtml(value ?? "")}</td>
+    </tr>`;
 
-  const rows = records.map((record) => {
-    const cell = (value: unknown, mono = true) =>
-      `<td style="padding:10px;border-bottom:1px solid #e2e8f0;font-size:13px;${mono ? "font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;" : ""}color:${theme.textHex};word-break:break-all;">${escapeHtml(value ?? "")}</td>`;
-    const purpose = record.purpose
-      ? `<tr><td colspan="3" style="padding:0 10px 10px;border-bottom:1px solid #e2e8f0;color:${theme.mutedHex};font-size:12px;">${escapeHtml(record.purpose)}</td></tr>`
-      : "";
-    return `<tr>${cell(record.type)}${cell(record.name)}${cell(record.value)}</tr>${purpose}`;
-  }).join("");
+  const counter = total > 1
+    ? `<span style="display:inline-block;min-width:20px;height:20px;line-height:20px;text-align:center;border-radius:10px;background:${theme.accentHex};color:#ffffff;font-size:11px;font-weight:700;${mono};margin-right:8px;">${index + 1}</span>`
+    : "";
 
-  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;margin:0 0 20px;">
-    <thead><tr>${head}</tr></thead>
-    <tbody>${rows}</tbody>
+  const purpose = record.purpose
+    ? `<p style="margin:10px 0 0;padding-top:10px;border-top:1px solid #eef2f7;color:${theme.mutedHex};font-size:12px;line-height:1.5;">${escapeHtml(record.purpose)}</p>`
+    : "";
+
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;margin:0 0 12px;border:1px solid #e2e8f0;border-radius:8px;">
+    <tr><td style="padding:14px 16px;">
+      <p style="margin:0 0 10px;color:${theme.navyHex};font-size:13px;font-weight:700;">
+        ${counter}${escapeHtml(record.type ?? "RECORD")}-record
+      </p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+        ${field("Naam", record.name)}
+        ${field("Waarde", record.value, true)}
+        ${field("TTL", "standaard (of 3600)")}
+      </table>
+      ${purpose}
+    </td></tr>
   </table>`;
+}
+
+function recordCards(records: DnsRecord[], theme: BrandTheme): string {
+  return records.map((record, index) => recordCard(record, index, records.length, theme)).join("");
+}
+
+function sectionHeading(step: string | null, title: string, theme: BrandTheme): string {
+  const badge = step
+    ? `<span style="display:inline-block;padding:2px 8px;border-radius:4px;background:${theme.navyHex};color:#ffffff;font-size:10px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;margin-right:8px;vertical-align:middle;">${escapeHtml(step)}</span>`
+    : "";
+  return `<h3 style="margin:26px 0 12px;color:${theme.navyHex};font-size:15px;line-height:1.4;">${badge}${escapeHtml(title)}</h3>`;
+}
+
+/**
+ * Platte-tekstversie van dezelfde instructies. Bedoeld om te kopiëren naar een ticket,
+ * WhatsApp of Teams — kanalen waar de HTML-mail niet past maar de developer wél zit.
+ */
+function buildInstructionText(row: any, orgName: string): string {
+  const instructions = row.dns_config?.instructions ?? {};
+  const records: DnsRecord[] = Array.isArray(instructions.records) ? instructions.records : [];
+  const verification: DnsRecord[] = Array.isArray(instructions.verification) ? instructions.verification : [];
+  const zone = row.apex_domain || row.domain;
+
+  const lines: string[] = [
+    `DNS-instelling voor ${row.domain}`,
+    "",
+    `${orgName} gaat de software gebruiken op ${row.primary_hostname}.`,
+    `Daarvoor moet in de DNS-zone van ${zone} het volgende worden toegevoegd:`,
+    "",
+  ];
+
+  const renderRecords = (list: DnsRecord[]) => {
+    list.forEach((record, index) => {
+      lines.push(`${list.length > 1 ? `${index + 1}. ` : ""}${record.type ?? "RECORD"}-record`);
+      lines.push(`   Naam:   ${record.name ?? ""}`);
+      lines.push(`   Waarde: ${record.value ?? ""}`);
+      lines.push(`   TTL:    standaard (of 3600)`);
+      if (record.purpose) lines.push(`   Doel:   ${record.purpose}`);
+      lines.push("");
+    });
+  };
+
+  renderRecords(records);
+
+  if (verification.length) {
+    lines.push("Extra verificatie-record(s) om het eigendom van het domein te bevestigen:", "");
+    renderRecords(verification);
+  }
+
+  lines.push(
+    "Let op: staat het domein achter een proxy of CDN (bij Cloudflare de oranje wolk),",
+    "zet die dan uit voor deze hostname — het verkeer moet rechtstreeks doorgezet worden.",
+    "",
+    "Bestaande records voor de website en e-mail van dit domein blijven ongewijzigd.",
+    "Het TLS-certificaat wordt automatisch aangevraagd zodra de records actief zijn;",
+    "er hoeft niets geïnstalleerd of geconfigureerd te worden op een server.",
+    "",
+    "Een bevestiging dat de records staan is genoeg — daarna controleren wij de koppeling.",
+  );
+
+  if (instructions.warning) lines.push("", `Let op: ${instructions.warning}`);
+
+  return lines.join("\n");
 }
 
 function buildDnsInstructionEmail(data: {
@@ -258,53 +336,74 @@ function buildDnsInstructionEmail(data: {
       </p>`
     : "";
 
+  const totalSteps = verification.length ? 3 : 2;
   const verificationBlock = verification.length
-    ? `<h3 style="margin:24px 0 8px;color:${theme.navyHex};font-size:15px;">Extra verificatie-records</h3>
-       <p style="margin:0 0 12px;color:${theme.textHex};font-size:14px;">
-         Vercel vraagt daarnaast om onderstaande record(s) om het eigendom van het domein te bevestigen.
+    ? `${sectionHeading("Stap 2", `Verificatie-record${verification.length === 1 ? "" : "s"}`, theme)}
+       <p style="margin:0 0 14px;color:${theme.textHex};font-size:14px;line-height:1.6;">
+         Daarnaast is onderstaand record nodig om te bevestigen dat het domein van
+         ${escapeHtml(theme.orgName)} is. Dit record kan blijven staan.
        </p>
-       ${recordTable(verification, theme)}`
+       ${recordCards(verification, theme)}`
     : "";
 
-  const content = `<h2 style="margin:0 0 16px;color:${theme.navyHex};font-size:18px;">DNS-instellingen voor ${escapeHtml(row.domain)}</h2>
+  const content = `<h2 style="margin:0 0 6px;color:${theme.navyHex};font-size:19px;line-height:1.35;">
+      DNS-instelling voor ${escapeHtml(row.domain)}
+    </h2>
+    <p style="margin:0 0 18px;color:${theme.mutedHex};font-size:13px;">
+      ${totalSteps} ${totalSteps === 2 ? "korte stappen" : "korte stappen"} · circa 5 minuten werk
+    </p>
 
-    <p style="margin:0 0 16px;color:${theme.textHex};font-size:14px;">
-      ${escapeHtml(theme.orgName)} gaat de software gebruiken op
-      <strong>${escapeHtml(row.primary_hostname)}</strong>. Om dat te laten werken moet in de DNS-zone van
-      <strong>${escapeHtml(zone)}</strong> onderstaande instelling worden toegevoegd.
+    <p style="margin:0 0 18px;color:${theme.textHex};font-size:14px;line-height:1.6;">
+      ${escapeHtml(theme.orgName)} gaat de personeelssoftware gebruiken op
+      <strong style="color:${theme.navyHex};">${escapeHtml(row.primary_hostname)}</strong>.
+      Om dat te laten werken moet in de DNS-zone van
+      <strong style="color:${theme.navyHex};">${escapeHtml(zone)}</strong> het onderstaande worden
+      toegevoegd. Er is geen server-configuratie nodig.
     </p>
 
     ${note}
 
-    <h3 style="margin:24px 0 8px;color:${theme.navyHex};font-size:15px;">Toe te voegen record${records.length === 1 ? "" : "s"}</h3>
-    ${records.length ? recordTable(records, theme) : `<p style="margin:0 0 20px;color:${theme.mutedHex};font-size:13px;">Geen records beschikbaar — neem contact op met de afzender van deze mail.</p>`}
+    ${sectionHeading("Stap 1", `Record${records.length === 1 ? "" : "s"} toevoegen`, theme)}
+    ${records.length
+      ? recordCards(records, theme)
+      : `<p style="margin:0 0 20px;color:${theme.mutedHex};font-size:13px;">Geen records beschikbaar — neem contact op met de afzender van deze mail.</p>`}
 
-    <p style="margin:0 0 20px;color:${theme.mutedHex};font-size:13px;">
-      TTL: laat op de standaardwaarde staan (of 3600). Proxy/CDN-opties van de DNS-provider
-      moeten uit — het verkeer moet rechtstreeks naar de hosting gaan.
-    </p>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 4px;"><tr>
+      <td style="padding:12px 14px;background:#f1f5f9;border-radius:6px;color:${theme.textHex};font-size:13px;line-height:1.55;">
+        <strong style="color:${theme.navyHex};">Proxy of CDN uitzetten</strong><br>
+        Staat deze hostname achter een proxy (bij Cloudflare de oranje wolk), zet die dan uit —
+        het verkeer moet rechtstreeks doorgezet worden. Anders ontstaat er een redirect-lus.
+      </td></tr>
+    </table>
 
     ${warning}
     ${verificationBlock}
 
-    <h3 style="margin:24px 0 8px;color:${theme.navyHex};font-size:15px;">Daarna</h3>
-    <p style="margin:0 0 16px;color:${theme.textHex};font-size:14px;">
-      Zodra het record actief is, wordt het TLS-certificaat automatisch aangevraagd — dat duurt
-      meestal een paar minuten. Er hoeft niets geïnstalleerd of geconfigureerd te worden op een server.
-      ${isWildcard ? "" : "Bestaande records voor de website en e-mail van dit domein blijven ongewijzigd."}
-    </p>
-    <p style="margin:0 0 16px;color:${theme.textHex};font-size:14px;">
-      Een bevestiging dat het record staat is genoeg — daarna controleren wij de koppeling aan onze kant.
+    ${sectionHeading(`Stap ${totalSteps}`, "Laten weten dat het staat", theme)}
+    <p style="margin:0 0 14px;color:${theme.textHex};font-size:14px;line-height:1.6;">
+      Een kort berichtje terug is genoeg — daarna controleren wij de koppeling aan onze kant.
+      Het TLS-certificaat wordt automatisch aangevraagd zodra de records actief zijn; dat duurt
+      meestal een paar minuten.
     </p>
 
-    <p style="margin:20px 0 0;color:${theme.textHex};font-size:14px;">
-      Met vriendelijke groet,<br><strong>${escapeHtml(data.requestedBy || theme.orgName)}</strong>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:18px 0 0;"><tr>
+      <td style="padding:12px 14px;border:1px solid #e2e8f0;border-radius:6px;color:${theme.mutedHex};font-size:12px;line-height:1.55;">
+        ${isWildcard
+          ? "Let op: dit is een wildcard-koppeling. Bestaande records die specifieker zijn dan de wildcard blijven voorgaan."
+          : "Bestaande records voor de website en e-mail van dit domein blijven ongewijzigd — er wordt alleen één hostname toegevoegd."}
+      </td></tr>
+    </table>
+
+    <p style="margin:22px 0 0;color:${theme.textHex};font-size:14px;line-height:1.6;">
+      Met vriendelijke groet,<br>
+      <strong style="color:${theme.navyHex};">${escapeHtml(data.requestedBy || theme.orgName)}</strong>
+      ${data.requestedBy ? `<br><span style="color:${theme.mutedHex};font-size:13px;">${escapeHtml(theme.orgName)}</span>` : ""}
     </p>`;
 
   return renderBrandedEmail({
     theme,
     contentHtml: content,
-    preheader: `DNS-record voor ${row.domain}`,
+    preheader: `Eén DNS-record voor ${row.primary_hostname} — circa 5 minuten werk`,
     footerNote: "Deze mail bevat geen inloggegevens en geen persoonsgegevens.",
   });
 }
@@ -412,15 +511,17 @@ Deno.serve(async (req) => {
       // developer of hostingpartij). Bewust vanaf een gekoppelde mailbox van de
       // organisatie, zodat de ontvanger een afzender ziet die hij herkent.
       if (action === "send_instructions") {
+        const preview = body.preview === true;
         const to = cleanEmail(body.to);
-        if (!to) return json({ error: "Vul een geldig e-mailadres in" }, 400);
+        if (!to && !preview) return json({ error: "Vul een geldig e-mailadres in" }, 400);
 
         const cc = (Array.isArray(body.cc) ? body.cc : [body.cc])
           .map((value: unknown) => cleanEmail(value))
           .filter((value: string | null): value is string => Boolean(value) && value !== to);
 
         // Verse stand ophalen, zodat de developer nooit verouderde records krijgt —
-        // en de admin meteen ziet of het domein inmiddels al goed staat.
+        // en de admin meteen ziet of het domein inmiddels al goed staat. Ook in
+        // preview-modus, zodat wat je ziet exact is wat er verstuurd wordt.
         const domain = await syncDomainStatus(admin, row, false);
 
         const { data: profile } = await admin
@@ -436,12 +537,23 @@ Deno.serve(async (req) => {
           note: typeof body.note === "string" ? body.note : null,
           requestedBy: profile?.full_name ?? null,
         });
+        const subject = `DNS-instelling voor ${domain.domain}`;
+
+        if (preview) {
+          return json({
+            preview: true,
+            subject,
+            html,
+            text: buildInstructionText(domain, theme.orgName),
+            domain,
+          });
+        }
 
         const sendResult = await sendViaOutlookAccount({
           orgId: auth.organizationId,
-          to,
+          to: to!,
           cc: cc.length ? cc : undefined,
-          subject: `DNS-instelling voor ${domain.domain}`,
+          subject,
           htmlBody: html,
           accountId: typeof body.account_id === "string" ? body.account_id : null,
           sentBy: auth.userId,

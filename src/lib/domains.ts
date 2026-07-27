@@ -23,16 +23,6 @@ export type DnsRecord = {
   purpose?: string;
 };
 
-/** DNS-records zoals de edge function ze op de rij heeft gezet, plus de wildcard-waarschuwing. */
-export function domainInstructions(domain: Pick<OrganizationDomain, 'dns_config'>) {
-  const instructions = domain.dns_config?.instructions;
-  return {
-    records: (Array.isArray(instructions?.records) ? instructions.records : []) as DnsRecord[],
-    verification: (Array.isArray(instructions?.verification) ? instructions.verification : []) as DnsRecord[],
-    warning: typeof instructions?.warning === 'string' ? instructions.warning : null,
-  };
-}
-
 export function recordLabel(record: DnsRecord) {
   return [record.type, record.name, record.value].filter(Boolean).join(' ');
 }
