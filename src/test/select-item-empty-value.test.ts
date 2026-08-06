@@ -55,7 +55,9 @@ function findEmptySelectItemValues(): string[] {
     fs.readdirSync(directory, { withFileTypes: true }).forEach((entry) => {
       const fullPath = path.join(directory, entry.name);
       if (entry.isDirectory()) walk(fullPath);
-      else if (entry.name.endsWith('.tsx')) visitFile(fullPath);
+      // Tests mogen wél een lege value renderen — select-item-guard.test.tsx pint juist
+      // vast dat het runtime-vangnet zo'n optie overslaat in plaats van te crashen.
+      else if (entry.name.endsWith('.tsx') && !entry.name.endsWith('.test.tsx')) visitFile(fullPath);
     });
   };
 
