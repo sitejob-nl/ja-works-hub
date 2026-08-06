@@ -3,6 +3,7 @@ import * as SelectPrimitive from "@radix-ui/react-select";
 import { Check, ChevronDown, ChevronUp } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { captureAppException } from "@/lib/observability";
 
 const Select = SelectPrimitive.Root;
 
@@ -98,27 +99,58 @@ const SelectLabel = React.forwardRef<
 ));
 SelectLabel.displayName = SelectPrimitive.Label.displayName;
 
+// Eén melding per unieke label-tekst per paginabezoek: een lege optie in een lijst van
+// honderd rijen mag geen Sentry-storm worden.
+const reportedInvalidItems = new Set<string>();
+
+export function reportInvalidSelectItem(value: unknown, children: React.ReactNode) {
+  try {
+    const label = typeof children === 'string' ? children : '(geen tekstlabel)';
+    if (reportedInvalidItems.has(label)) return;
+    reportedInvalidItems.add(label);
+    // Label alleen naar de console (kan een naam bevatten), niet naar Sentry.
+    console.warn(`[SelectItem] optie overgeslagen: value is ${value === '' ? 'leeg' : typeof value} — "${label}"`);
+    captureAppException(new Error('SelectItem zonder bruikbare value overgeslagen'), {
+      valueType: value === '' ? 'empty-string' : typeof value,
+    });
+  } catch {
+    // Melden mag nooit zelf de render slopen.
+  }
+}
+
+// Radix gooit hard wanneer een Item `value=""` krijgt (lege string = "selectie wissen"),
+// wat de héle pagina wit maakt via de ErrorBoundary. Dat gebeurde drie keer op de
+// inspectietab van een pand (Sentry JA-WERKT-3). Vaker komt het uit data: een vrij-tekst
+// kolom, een CSV-header of een org-optie die leeg is. Eén kapotte optie mag geen scherm
+// slopen — we slaan 'm over en melden 'm, zodat de rest van het formulier blijft werken.
 const SelectItem = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Item>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Item>
->(({ className, children, ...props }, ref) => (
-  <SelectPrimitive.Item
-    ref={ref}
-    className={cn(
-      "relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 focus:bg-accent focus:text-accent-foreground",
-      className,
-    )}
-    {...props}
-  >
-    <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
-      <SelectPrimitive.ItemIndicator>
-        <Check className="h-4 w-4" />
-      </SelectPrimitive.ItemIndicator>
-    </span>
+>(({ className, children, ...props }, ref) => {
+  if (typeof props.value !== 'string' || props.value === '') {
+    reportInvalidSelectItem(props.value, children);
+    return null;
+  }
 
-    <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
-  </SelectPrimitive.Item>
-));
+  return (
+    <SelectPrimitive.Item
+      ref={ref}
+      className={cn(
+        "relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 focus:bg-accent focus:text-accent-foreground",
+        className,
+      )}
+      {...props}
+    >
+      <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+        <SelectPrimitive.ItemIndicator>
+          <Check className="h-4 w-4" />
+        </SelectPrimitive.ItemIndicator>
+      </span>
+
+      <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
+    </SelectPrimitive.Item>
+  );
+});
 SelectItem.displayName = SelectPrimitive.Item.displayName;
 
 const SelectSeparator = React.forwardRef<
