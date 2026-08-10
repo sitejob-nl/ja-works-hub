@@ -49,6 +49,7 @@ import {
   phoneKey,
   splitCREmployeeProfileNotes,
 } from './mappers.ts';
+import { spamReason } from './spam-filter.ts';
 
 export interface PageStats {
   totalElements: number;
@@ -351,6 +352,27 @@ async function findExistingCandidate(
   return [...matches][0];
 }
 
+// Bot-registraties uit de Carerix-bron overslaan. Ze tellen als `skipped`, niet
+// als fout — het is geen storing maar ruis in de bron. Er wordt bewust géén
+// external_mappings-rij weggeschreven: wordt een regel later te streng bevonden,
+// dan haalt de eerstvolgende sync de kandidaat alsnog gewoon binnen.
+function skipIfSpam(
+  payload: Record<string, unknown>,
+  carerixId: string,
+  stats: PageStats,
+): boolean {
+  const reason = spamReason({
+    firstName: payload.first_name as string | null,
+    lastName: payload.last_name as string | null,
+    email: payload.email as string | null,
+  });
+  if (!reason) return false;
+
+  stats.skipped++;
+  console.warn(`[carerix] spam-registratie overgeslagen (carerix=${carerixId}): ${reason}`);
+  return true;
+}
+
 async function insertIfNew<T extends Record<string, unknown>>(
   ctx: RunnerContext,
   table: string,
@@ -537,6 +559,8 @@ export async function runCandidatesPage(
       const existingId = ctx.idMapper.get('candidate', String(emp._id));
       if (existingId) {
         enrichBatch.push({ candidateId: existingId, payload });
+      } else if (skipIfSpam(payload, String(emp._id), stats)) {
+        continue;
       } else {
         await insertIfNew(ctx, 'candidates', 'candidate', String(emp._id), payload, stats, {
           name: `${emp.firstName ?? ''} ${emp.lastName ?? ''}`.trim(),
@@ -561,6 +585,7 @@ export async function runCandidatesPage(
   const stats = emptyStats(pageData.totalElements);
   for (const candidate of pageData.items) {
     const payload = mapCandidate(candidate, ctx.organizationId);
+    if (skipIfSpam(payload, String(candidate._id), stats)) continue;
     await insertIfNew(ctx, 'candidates', 'candidate', String(candidate._id), payload, stats, {
       name: `${candidate.firstName ?? ''} ${candidate.lastName ?? ''}`.trim(),
     });
