@@ -16,6 +16,8 @@ interface StartBody {
   only?: EntityName[];
   skip?: EntityName[];
   modified_since?: string | null;
+  // Dry-run-job waarvan de record-selectie gerespecteerd moet worden.
+  preview_job_id?: string | null;
 }
 
 async function triggerWorker(jobId: string): Promise<void> {
@@ -68,6 +70,32 @@ Deno.serve(async (req) => {
     .maybeSingle();
   if (!cfg?.is_connected) return jsonError('Carerix is niet gekoppeld', 400);
 
+  // Een selectie mag alleen van een afgeronde dry-run van de eigen organisatie
+  // komen. Zonder deze controle zou een live run de selectie van een andere
+  // tenant kunnen aanhalen, of die van een run die nog niet klaar is en dus een
+  // onvolledige voorvertoning heeft.
+  let previewJobId: string | null = null;
+  if (body.preview_job_id) {
+    if (mode !== 'live') return jsonError('Een selectie geldt alleen voor een live import', 400);
+
+    const { data: previewJob } = await admin
+      .from('carerix_import_jobs')
+      .select('id, mode, status, organization_id')
+      .eq('id', body.preview_job_id)
+      .maybeSingle();
+
+    if (!previewJob || previewJob.organization_id !== orgId) {
+      return jsonError('Onbekende dry-run', 404);
+    }
+    if (previewJob.mode !== 'dry_run') {
+      return jsonError('De geselecteerde job is geen dry-run', 400);
+    }
+    if (previewJob.status !== 'completed') {
+      return jsonError('De dry-run is nog niet afgerond', 400);
+    }
+    previewJobId = previewJob.id as string;
+  }
+
   // Create job
   const { data: job, error: jobErr } = await admin
     .from('carerix_import_jobs')
@@ -79,6 +107,7 @@ Deno.serve(async (req) => {
       only_entities: only,
       skip_entities: skip,
       modified_since: body.modified_since ?? null,
+      preview_job_id: previewJobId,
     })
     .select('id')
     .single();

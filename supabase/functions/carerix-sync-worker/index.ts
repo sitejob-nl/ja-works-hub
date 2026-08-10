@@ -15,6 +15,13 @@ import { CarerixGraphQLClient } from '../_shared/carerix/client.ts';
 import { IdMapper } from '../_shared/carerix/id-mapper.ts';
 import { ENTITY_RUNNERS, type RunnerContext } from '../_shared/carerix/runner.ts';
 import {
+  applyApprovedUpdates,
+  buildUpdatePreviews,
+  loadPreviewSelection,
+  type PreviewSelection,
+  UPDATE_TARGETS,
+} from '../_shared/carerix/preview.ts';
+import {
   ALL_ENTITIES,
   ENTITY_DEPENDENCIES,
   SUPPORTED_ENTITIES,
@@ -163,6 +170,30 @@ Deno.serve(async (req) => {
     return jsonOk({ ok: true, entity_failed: nextEntity, error: msg });
   }
 
+  // Live run gekoppeld aan een dry-run: laad wat de gebruiker daar heeft
+  // uitgevinkt. Mislukt dat, dan stoppen we deze entiteit — doorgaan zou records
+  // importeren die bewust waren weggevinkt.
+  let previewSelection: PreviewSelection | null = null;
+  if (job.mode !== 'dry_run' && job.preview_job_id) {
+    try {
+      previewSelection = await loadPreviewSelection(admin, job.preview_job_id as string);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      await admin
+        .from('carerix_import_entity_runs')
+        .update({
+          status: 'failed',
+          last_error: msg,
+          finished_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('job_id', job_id)
+        .eq('entity', nextEntity);
+      runBackgroundTask(selfTrigger(job_id), 'carerix worker self-trigger');
+      return jsonOk({ ok: true, entity_failed: nextEntity, error: msg });
+    }
+  }
+
   const ctx: RunnerContext = {
     admin,
     gql,
@@ -171,6 +202,7 @@ Deno.serve(async (req) => {
     dryRun: job.mode === 'dry_run',
     modifiedSince: job.modified_since ?? null,
     createdByUserId: job.created_by ?? null,
+    previewSelection,
   };
 
   const { data: run } = await admin
@@ -186,6 +218,54 @@ Deno.serve(async (req) => {
       .update({ status: 'running', started_at: new Date().toISOString() })
       .eq('job_id', job_id)
       .eq('entity', nextEntity);
+
+    // Aangevinkte update-regels uit de dry-run toepassen — één keer per
+    // entiteit, vóór de eerste pagina. Dit is preview-gestuurd (los van de
+    // Carerix-paginering): de gebruiker heeft die exacte waarden goedgekeurd.
+    if (job.mode !== 'dry_run' && job.preview_job_id && UPDATE_TARGETS[nextEntity]) {
+      try {
+        const result = await applyApprovedUpdates(
+          admin,
+          job.preview_job_id as string,
+          UPDATE_TARGETS[nextEntity],
+          orgId,
+        );
+        if (result.failures.length > 0) {
+          await admin.from('carerix_import_failures').insert(
+            result.failures.map((f) => ({
+              job_id,
+              entity: nextEntity,
+              carerix_id: f.carerix_id,
+              error: f.error,
+              payload: null,
+            })),
+          );
+        }
+        if (result.applied > 0 || result.failures.length > 0) {
+          await admin
+            .from('carerix_import_entity_runs')
+            .update({
+              changed: result.applied,
+              failed: result.failures.length,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('job_id', job_id)
+            .eq('entity', nextEntity);
+        }
+      } catch (err) {
+        // Niet stil doorgaan: de gebruiker rekent op zijn goedgekeurde
+        // updates. Zichtbaar maken als failure-regel, de import zelf mag door.
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`[carerix] goedgekeurde updates toepassen mislukt (${nextEntity}): ${msg}`);
+        await admin.from('carerix_import_failures').insert({
+          job_id,
+          entity: nextEntity,
+          carerix_id: 'preview-updates',
+          error: `goedgekeurde updates toepassen mislukt: ${msg}`,
+          payload: null,
+        });
+      }
+    }
   }
 
   let pageCursor = run?.page_cursor ?? 0;
@@ -223,6 +303,49 @@ Deno.serve(async (req) => {
       return jsonOk({ ok: true, entity_failed: nextEntity, error: msg });
     }
 
+    // Update-voorvertoning: bereken in bulk de veld-diffs voor de bestaande
+    // records op deze pagina. Best-effort — een mislukte diff-berekening mag
+    // de dry-run zelf niet laten stranden.
+    let changedThisPage = 0;
+    let previewRows = stats.previews;
+    if (ctx.dryRun && stats.updates.length > 0) {
+      try {
+        const updateRows = await buildUpdatePreviews(admin, stats.updates);
+        changedThisPage = updateRows.length;
+        previewRows = [...stats.previews, ...updateRows];
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`[carerix] update-voorvertoning berekenen mislukt: ${msg}`);
+      }
+    }
+
+    // Voorvertoning van deze pagina. `upsert` met ignoreDuplicates omdat de
+    // worker een pagina opnieuw kan verwerken na een zelf-trigger of hervatting;
+    // de unieke sleutel (job, entiteit, carerix-id) vangt dat af.
+    if (previewRows.length > 0) {
+      const { error: previewErr } = await admin
+        .from('carerix_import_previews')
+        .upsert(
+          previewRows.map((p) => ({
+            job_id,
+            organization_id: orgId,
+            entity: p.entity,
+            carerix_id: p.carerix_id,
+            action: p.action,
+            label: p.label,
+            details: p.details,
+            diff: p.diff,
+            existing_id: p.existing_id,
+            spam_reason: p.spam_reason,
+            excluded: p.excluded,
+          })),
+          { onConflict: 'job_id,entity,carerix_id', ignoreDuplicates: true },
+        );
+      if (previewErr) {
+        console.warn(`[carerix] preview wegschrijven mislukt: ${previewErr.message}`);
+      }
+    }
+
     if (stats.failures.length > 0) {
       await admin.from('carerix_import_failures').insert(
         stats.failures.map((f) => ({
@@ -244,7 +367,7 @@ Deno.serve(async (req) => {
 
     const { data: current } = await admin
       .from('carerix_import_entity_runs')
-      .select('created, skipped, failed, found')
+      .select('created, skipped, failed, found, changed')
       .eq('job_id', job_id)
       .eq('entity', nextEntity)
       .single();
@@ -257,6 +380,7 @@ Deno.serve(async (req) => {
         created: (current?.created ?? 0) + stats.created,
         skipped: (current?.skipped ?? 0) + stats.skipped,
         failed: (current?.failed ?? 0) + stats.failed,
+        changed: (current?.changed ?? 0) + changedThisPage,
         found: Math.max(current?.found ?? 0, stats.totalElements),
         status: skipped ? 'skipped' : done ? 'completed' : 'running',
         last_error: stats.skipReason ?? null,
@@ -303,7 +427,7 @@ async function pickNextEntity(
 async function finalizeJob(admin: ReturnType<typeof createAdminClient>, jobId: string) {
   const { data: runs } = await admin
     .from('carerix_import_entity_runs')
-    .select('entity, created, skipped, failed, found, status, last_error')
+    .select('entity, created, skipped, failed, changed, found, status, last_error')
     .eq('job_id', jobId);
 
   const anyFailed = runs?.some((r) => r.status === 'failed') ?? false;
@@ -325,6 +449,9 @@ async function finalizeJob(admin: ReturnType<typeof createAdminClient>, jobId: s
       created: r.created,
       skipped: r.skipped,
       failed: r.failed,
+      // Dry-run: aantal records met afwijkende Carerix-data in de voorvertoning.
+      // Live run: aantal daadwerkelijk toegepaste (aangevinkte) updates.
+      changed: r.changed ?? 0,
       missing_scope: errorText.includes('scope') || errorText.includes('query rejected'),
       dependency_missing: errorText.includes('dependency not imported') || errorText.includes('not yet imported'),
       top_failure_reasons: topFailureReasons,

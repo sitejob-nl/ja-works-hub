@@ -15,6 +15,8 @@ import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { CheckCircle2, XCircle, Loader2, RefreshCw, Plug, PlugZap, Play, OctagonX, Download, AlertTriangle, FileCheck2 } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import ImportPreviewPanel from '@/components/carerix/ImportPreviewPanel';
+import { unwrap } from '@/lib/db';
 
 const ENTITIES = [
   'companies',
@@ -132,6 +134,8 @@ interface EntityRun {
   created: number;
   skipped: number;
   failed: number;
+  // Dry-run: gevonden afwijkende records; live run: toegepaste updates.
+  changed: number | null;
   last_error: string | null;
   started_at: string | null;
   finished_at: string | null;
@@ -425,6 +429,30 @@ function ImportTab() {
     refetchInterval: (q) => (q.state.data ? 3000 : 5000),
   });
 
+  // Laatste afgeronde dry-run: die draagt de voorvertoning waaruit een live
+  // import gestart kan worden. Alleen relevant als er nu niets loopt.
+  const { data: lastDryRun } = useQuery({
+    queryKey: ['carerix-last-dry-run', orgId],
+    queryFn: () =>
+      unwrap<{
+        id: string;
+        finished_at: string | null;
+        only_entities: string[] | null;
+        modified_since: string | null;
+      } | null>(
+        supabase
+          .from('carerix_import_jobs' as any)
+          .select('id, finished_at, only_entities, modified_since')
+          .eq('organization_id', orgId)
+          .eq('mode', 'dry_run')
+          .eq('status', 'completed')
+          .order('finished_at', { ascending: false })
+          .limit(1)
+          .maybeSingle() as never,
+      ),
+    enabled: !activeJob,
+  });
+
   const startMut = useMutation({
     mutationFn: async () => {
       const modifiedSinceIso = modifiedSince
@@ -487,6 +515,7 @@ function ImportTab() {
   }
 
   return (
+    <div className="space-y-4">
     <Card>
       <CardHeader>
         <CardTitle>Nieuwe import starten</CardTitle>
@@ -552,6 +581,17 @@ function ImportTab() {
         </Button>
       </CardContent>
     </Card>
+
+    {lastDryRun && (
+      <ImportPreviewPanel
+        job={lastDryRun}
+        onStarted={() => {
+          queryClient.invalidateQueries({ queryKey: ['carerix-active-job'] });
+          queryClient.invalidateQueries({ queryKey: ['carerix-last-dry-run'] });
+        }}
+      />
+    )}
+    </div>
   );
 }
 
@@ -603,6 +643,7 @@ function ProgressPanel({ jobId }: { jobId: string }) {
             </div>
             <div className="w-56 text-xs text-muted-foreground tabular-nums">
               <StatusBadge status={run?.status ?? 'queued'} /> {done}/{total || '?'} · +{run?.created ?? 0} ={run?.skipped ?? 0} ✕{run?.failed ?? 0}
+              {(run?.changed ?? 0) > 0 ? ` ✎${run.changed}` : ''}
             </div>
           </div>
         );
