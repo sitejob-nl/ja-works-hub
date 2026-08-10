@@ -141,8 +141,27 @@ Deno.serve(async (req) => {
   }
   const gql = new CarerixGraphQLClient(token);
 
+  // Een onvolledige preload zou elke bestaande koppeling als "nieuw" laten
+  // tellen — in een live run dus duplicaten. Faalt hij, markeer dan deze entiteit
+  // als failed en ga door naar de volgende, i.p.v. de job te laten hangen.
   const idMapper = new IdMapper(admin, orgId);
-  await idMapper.preload(REQUIRED_MAPPINGS[nextEntity]);
+  try {
+    await idMapper.preload(REQUIRED_MAPPINGS[nextEntity]);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    await admin
+      .from('carerix_import_entity_runs')
+      .update({
+        status: 'failed',
+        last_error: msg,
+        finished_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('job_id', job_id)
+      .eq('entity', nextEntity);
+    runBackgroundTask(selfTrigger(job_id), 'carerix worker self-trigger');
+    return jsonOk({ ok: true, entity_failed: nextEntity, error: msg });
+  }
 
   const ctx: RunnerContext = {
     admin,
