@@ -1,0 +1,12 @@
+[Unit]
+Description=Timer voor de dagelijkse JA Werkt-backup (04:20)
+
+[Timer]
+# 04:20 — na de Supabase-crons (02:30/02:45/03:15) en na de srv1-borgrun (03:30),
+# zodat de Storage Box niet twee borg-sessies tegelijk krijgt.
+OnCalendar=*-*-* 04:20:00
+RandomizedDelaySec=10m
+Persistent=true
+
+[Install]
+WantedBy=timers.target
