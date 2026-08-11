@@ -14,6 +14,13 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireInternalProfile } from "../_shared/auth.ts";
+import { captureEdgeException, withCronMonitor } from "../_shared/sentry.ts";
+
+const FN = "housing-reminder-cron";
+// pg_cron leest de crontab in de Postgres-tijdzone, en die staat op productie op UTC.
+// Sentry moet dus óók UTC krijgen (de helper default is Europe/Amsterdam) — anders staat
+// de monitor 1-2 uur scheef en meldt Sentry runs als 'gemist' die gewoon gedraaid zijn.
+const CRON_TZ = "UTC";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -190,6 +197,9 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Buiten de try zodat het catch-blok weet of withCronMonitor de fout al heeft gemeld.
+  let reportedByMonitor = false;
+
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -200,16 +210,30 @@ Deno.serve(async (req) => {
     const isCron = !!cronSecret && provided === cronSecret;
 
     if (isCron) {
-      // Cron mode: loop all active organizations
-      const { data: orgs } = await admin
-        .from("organizations")
-        .select("id")
-        .eq("is_active", true);
-      const results: CheckResult[] = [];
-      for (const o of (orgs ?? []) as any[]) {
-        results.push(await runForOrg(admin, o.id));
-      }
-      return json({ mode: "cron", results });
+      // Cron mode: loop all active organizations. Alleen dit pad krijgt een check-in-monitor;
+      // een handmatige aanroep uit de UI is geen geplande run.
+      reportedByMonitor = true;
+      return await withCronMonitor(
+        {
+          monitorSlug: "housing-reminder-daily",
+          schedule: "30 2 * * *",
+          timezone: CRON_TZ,
+          maxRuntimeMinutes: 10,
+          checkinMarginMinutes: 5,
+          fn: FN,
+        },
+        async () => {
+          const { data: orgs } = await admin
+            .from("organizations")
+            .select("id")
+            .eq("is_active", true);
+          const results: CheckResult[] = [];
+          for (const o of (orgs ?? []) as any[]) {
+            results.push(await runForOrg(admin, o.id));
+          }
+          return json({ mode: "cron", results });
+        },
+      );
     }
 
     // User mode: require auth + scope to user's org
@@ -219,6 +243,10 @@ Deno.serve(async (req) => {
     return json({ mode: "user", result });
   } catch (err: any) {
     console.error("housing-reminder-cron error:", err);
+    // withCronMonitor rapporteert de fouten van het werk dat het omhult al zelf.
+    if (!reportedByMonitor) {
+      await captureEdgeException(err, { fn: FN });
+    }
     return json({ error: err.message ?? String(err) }, 500);
   }
 });

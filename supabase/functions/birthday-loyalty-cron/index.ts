@@ -1,6 +1,13 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendViaOutlookAccount } from "../_shared/outlook-send.ts";
 import { requireInternalProfile } from "../_shared/auth.ts";
+import { captureEdgeException, withCronMonitor } from "../_shared/sentry.ts";
+
+const FN = "birthday-loyalty-cron";
+// pg_cron leest de crontab in de Postgres-tijdzone, en die staat op productie op UTC.
+// Sentry moet dus óók UTC krijgen (de helper default is Europe/Amsterdam) — anders staat
+// de monitor 1-2 uur scheef en meldt Sentry runs als 'gemist' die gewoon gedraaid zijn.
+const CRON_TZ = "UTC";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -158,6 +165,9 @@ async function awardBirthdayPoints(admin: any, orgId: string, candidate: any, po
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  // Buiten de try zodat het catch-blok weet of withCronMonitor de fout al heeft gemeld.
+  let reportedByMonitor = false;
+
   try {
     const admin = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -171,157 +181,184 @@ Deno.serve(async (req) => {
     const todayIso = amsterdamToday();
     const nowTime = amsterdamTime();
     const isCronRun = isAuthorizedCronRequest(req);
-    const results: any[] = [];
 
-    for (const orgId of orgIds) {
-      const { data: org } = await admin
-        .from("organizations")
-        .select("id, name, settings")
-        .eq("id", orgId)
-        .maybeSingle();
-      if (!org) continue;
+    const runBirthdaySweep = async (): Promise<Response> => {
+      const results: any[] = [];
 
-      const settings = org.settings?.engagement_settings ?? {};
-      if (settings.birthday_enabled === false) {
-        results.push({ org_id: orgId, status: "skipped", reason: "birthday_disabled" });
-        continue;
-      }
-      const sendTime = normalizeSendTime(settings.birthday_send_time);
-      const birthdayDate = isCronRun ? cronWindowBirthdayDate(sendTime, nowTime, todayIso) : todayIso;
-      if (!birthdayDate) {
-        results.push({ org_id: orgId, status: "skipped", reason: "outside_send_time", send_time: sendTime, now_time: nowTime });
-        continue;
-      }
-
-      const bonusPoints = Number(settings.birthday_bonus_points ?? 120);
-      const emailEnabled = settings.birthday_email_enabled !== false;
-      const pushEnabled = settings.birthday_push_enabled !== false;
-
-      const { data: template } = settings.birthday_email_template_id
-        ? await admin
-          .from("email_templates")
-          .select("id, subject, body_html")
-          .eq("id", settings.birthday_email_template_id)
-          .eq("organization_id", orgId)
-          .maybeSingle()
-        : { data: null };
-
-      const { data: candidates, error: candidateError } = await admin
-        .from("candidates")
-        .select("id, first_name, last_name, email, date_of_birth, employee_status")
-        .eq("organization_id", orgId)
-        .not("date_of_birth", "is", null)
-        .in("employee_status", ["actief", "onboarding"]);
-
-      if (candidateError) throw candidateError;
-
-      let completed = 0;
-      let skipped = 0;
-      let failed = 0;
-
-      for (const candidate of candidates ?? []) {
-        if (!birthdayMatches(candidate.date_of_birth, birthdayDate)) continue;
-
-        const { data: existingLog } = await admin
-          .from("birthday_campaign_logs")
-          .select("id")
-          .eq("organization_id", orgId)
-          .eq("candidate_id", candidate.id)
-          .eq("birthday_date", birthdayDate)
+      for (const orgId of orgIds) {
+        const { data: org } = await admin
+          .from("organizations")
+          .select("id, name, settings")
+          .eq("id", orgId)
           .maybeSingle();
-        if (existingLog) {
-          skipped++;
+        if (!org) continue;
+
+        const settings = org.settings?.engagement_settings ?? {};
+        if (settings.birthday_enabled === false) {
+          results.push({ org_id: orgId, status: "skipped", reason: "birthday_disabled" });
+          continue;
+        }
+        const sendTime = normalizeSendTime(settings.birthday_send_time);
+        const birthdayDate = isCronRun ? cronWindowBirthdayDate(sendTime, nowTime, todayIso) : todayIso;
+        if (!birthdayDate) {
+          results.push({ org_id: orgId, status: "skipped", reason: "outside_send_time", send_time: sendTime, now_time: nowTime });
           continue;
         }
 
-        try {
-          const vars = {
-            voornaam: candidate.first_name ?? "",
-            achternaam: candidate.last_name ?? "",
-            naam: `${candidate.first_name ?? ""} ${candidate.last_name ?? ""}`.trim(),
-            punten: String(bonusPoints),
-            leeftijd: String(ageOnBirthday(candidate.date_of_birth, birthdayDate)),
-            organisatie: org.name ?? "JA Werkt",
-          };
+        const bonusPoints = Number(settings.birthday_bonus_points ?? 120);
+        const emailEnabled = settings.birthday_email_enabled !== false;
+        const pushEnabled = settings.birthday_push_enabled !== false;
 
-          const subject = mergeText(template?.subject ?? settings.birthday_subject ?? "Gefeliciteerd {{voornaam}}!", vars);
-          const message = mergeText(settings.birthday_message ?? "", vars);
-          const html = template?.body_html ? mergeText(template.body_html, vars) : defaultBirthdayHtml(message);
+        const { data: template } = settings.birthday_email_template_id
+          ? await admin
+            .from("email_templates")
+            .select("id, subject, body_html")
+            .eq("id", settings.birthday_email_template_id)
+            .eq("organization_id", orgId)
+            .maybeSingle()
+          : { data: null };
 
-          const transactionId = await awardBirthdayPoints(admin, orgId, candidate, bonusPoints, birthdayDate);
+        const { data: candidates, error: candidateError } = await admin
+          .from("candidates")
+          .select("id, first_name, last_name, email, date_of_birth, employee_status")
+          .eq("organization_id", orgId)
+          .not("date_of_birth", "is", null)
+          .in("employee_status", ["actief", "onboarding"]);
 
-          let notificationId: string | null = null;
-          if (pushEnabled) {
-            const { data: notification } = await admin
-              .from("employee_notifications")
-              .insert({
-                organization_id: orgId,
-                candidate_id: candidate.id,
-                type: "verjaardag",
-                title: `Gefeliciteerd ${candidate.first_name}!`,
-                message: bonusPoints > 0 ? `${bonusPoints} punten staan klaar in je portaal.` : "Van harte gefeliciteerd met je verjaardag.",
-                severity: "info",
-                reference_table: "loyalty_accounts",
-                reference_id: candidate.id,
-              })
-              .select("id")
-              .single();
-            notificationId = notification?.id ?? null;
+        if (candidateError) throw candidateError;
+
+        let completed = 0;
+        let skipped = 0;
+        let failed = 0;
+
+        for (const candidate of candidates ?? []) {
+          if (!birthdayMatches(candidate.date_of_birth, birthdayDate)) continue;
+
+          const { data: existingLog } = await admin
+            .from("birthday_campaign_logs")
+            .select("id")
+            .eq("organization_id", orgId)
+            .eq("candidate_id", candidate.id)
+            .eq("birthday_date", birthdayDate)
+            .maybeSingle();
+          if (existingLog) {
+            skipped++;
+            continue;
           }
 
-          if (emailEnabled && candidate.email) {
-            const sendResult = await sendViaOutlookAccount({
-              orgId,
-              to: candidate.email,
-              subject,
-              htmlBody: html,
-              candidateId: candidate.id,
-              senderName: null,
-            });
+          try {
+            const vars = {
+              voornaam: candidate.first_name ?? "",
+              achternaam: candidate.last_name ?? "",
+              naam: `${candidate.first_name ?? ""} ${candidate.last_name ?? ""}`.trim(),
+              punten: String(bonusPoints),
+              leeftijd: String(ageOnBirthday(candidate.date_of_birth, birthdayDate)),
+              organisatie: org.name ?? "JA Werkt",
+            };
 
-            if (!sendResult.success && !sendResult.communicationPaused) {
-              await admin.from("communications").insert({
-                organization_id: orgId,
-                candidate_id: candidate.id,
-                channel: "email",
-                direction: "outbound",
-                subject,
-                body: html,
-                email_to: [candidate.email],
-                message_type: "birthday",
-              } as any);
+            const subject = mergeText(template?.subject ?? settings.birthday_subject ?? "Gefeliciteerd {{voornaam}}!", vars);
+            const message = mergeText(settings.birthday_message ?? "", vars);
+            const html = template?.body_html ? mergeText(template.body_html, vars) : defaultBirthdayHtml(message);
+
+            const transactionId = await awardBirthdayPoints(admin, orgId, candidate, bonusPoints, birthdayDate);
+
+            let notificationId: string | null = null;
+            if (pushEnabled) {
+              const { data: notification } = await admin
+                .from("employee_notifications")
+                .insert({
+                  organization_id: orgId,
+                  candidate_id: candidate.id,
+                  type: "verjaardag",
+                  title: `Gefeliciteerd ${candidate.first_name}!`,
+                  message: bonusPoints > 0 ? `${bonusPoints} punten staan klaar in je portaal.` : "Van harte gefeliciteerd met je verjaardag.",
+                  severity: "info",
+                  reference_table: "loyalty_accounts",
+                  reference_id: candidate.id,
+                })
+                .select("id")
+                .single();
+              notificationId = notification?.id ?? null;
             }
-          }
 
-          await admin.from("birthday_campaign_logs").insert({
-            organization_id: orgId,
-            candidate_id: candidate.id,
-            birthday_date: birthdayDate,
-            email_template_id: template?.id ?? null,
-            notification_id: notificationId,
-            loyalty_transaction_id: transactionId,
-            points_awarded: transactionId ? bonusPoints : 0,
-            status: "completed",
-          });
-          completed++;
-        } catch (error) {
-          failed++;
-          await admin.from("birthday_campaign_logs").insert({
-            organization_id: orgId,
-            candidate_id: candidate.id,
-            birthday_date: birthdayDate,
-            status: "failed",
-            error: (error as any)?.message ?? "Unknown error",
-          }).then(() => {});
+            if (emailEnabled && candidate.email) {
+              const sendResult = await sendViaOutlookAccount({
+                orgId,
+                to: candidate.email,
+                subject,
+                htmlBody: html,
+                candidateId: candidate.id,
+                senderName: null,
+              });
+
+              if (!sendResult.success && !sendResult.communicationPaused) {
+                await admin.from("communications").insert({
+                  organization_id: orgId,
+                  candidate_id: candidate.id,
+                  channel: "email",
+                  direction: "outbound",
+                  subject,
+                  body: html,
+                  email_to: [candidate.email],
+                  message_type: "birthday",
+                } as any);
+              }
+            }
+
+            await admin.from("birthday_campaign_logs").insert({
+              organization_id: orgId,
+              candidate_id: candidate.id,
+              birthday_date: birthdayDate,
+              email_template_id: template?.id ?? null,
+              notification_id: notificationId,
+              loyalty_transaction_id: transactionId,
+              points_awarded: transactionId ? bonusPoints : 0,
+              status: "completed",
+            });
+            completed++;
+          } catch (error) {
+            failed++;
+            await admin.from("birthday_campaign_logs").insert({
+              organization_id: orgId,
+              candidate_id: candidate.id,
+              birthday_date: birthdayDate,
+              status: "failed",
+              error: (error as any)?.message ?? "Unknown error",
+            }).then(() => {});
+          }
         }
+
+        results.push({ org_id: orgId, completed, skipped, failed });
       }
 
-      results.push({ org_id: orgId, completed, skipped, failed });
-    }
+      return json({ date: todayIso, results });
+    };
 
-    return json({ date: todayIso, results });
+    // Alleen het cron-pad krijgt een check-in-monitor; een handmatige aanroep uit de UI
+    // is geen geplande run. LET OP: de pg_cron-job heet 'daily' maar draait UURLIJKS —
+    // de functie kiest zelf per org het juiste verzendvenster. Het schema hieronder moet
+    // de échte cadans volgen, anders meldt Sentry 23 van de 24 runs als onverwacht.
+    if (isCronRun) {
+      reportedByMonitor = true;
+      return await withCronMonitor(
+        {
+          monitorSlug: "birthday-loyalty-daily",
+          schedule: "0 * * * *",
+          timezone: CRON_TZ,
+          maxRuntimeMinutes: 10,
+          checkinMarginMinutes: 5,
+          fn: FN,
+        },
+        runBirthdaySweep,
+      );
+    }
+    return await runBirthdaySweep();
   } catch (error) {
     console.error("birthday-loyalty-cron error", error);
+    // withCronMonitor rapporteert de fouten van het werk dat het omhult al zelf.
+    if (!reportedByMonitor) {
+      await captureEdgeException(error, { fn: FN });
+    }
     return json({ error: (error as any)?.message ?? "Unknown error" }, 500);
   }
 });
