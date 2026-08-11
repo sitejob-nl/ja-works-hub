@@ -562,6 +562,17 @@ function ImportTab() {
           <Label htmlFor="dry-run">Dry-run (niets wegschrijven)</Label>
         </div>
 
+        {!dryRun && lastDryRun && (
+          <p className="flex items-start gap-2 text-sm text-amber-600 dark:text-amber-500">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>
+              Let op: deze knop importeert álles en negeert de selectie uit de voorvertoning
+              hieronder. Wil je alleen je aangevinkte records importeren, gebruik dan de knop
+              "Importeren" in het voorvertoningspaneel.
+            </span>
+          </p>
+        )}
+
         <div className="max-w-xs space-y-2">
           <Label htmlFor="modified_since">Delta vanaf (optioneel)</Label>
           <Input

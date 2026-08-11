@@ -4,6 +4,7 @@ import {
   computeUpdateDiff,
   deriveDetails,
   deriveLabel,
+  dropStaleFields,
   normalizeForCompare,
   selectionKey,
 } from '../../supabase/functions/_shared/carerix/preview.ts';
@@ -201,5 +202,53 @@ describe('buildUpdatePatch', () => {
     expect(buildUpdatePatch({ email: 'plat' }, 'candidate')).toEqual({});
     expect(buildUpdatePatch({ email: { van: 'a' } }, 'candidate')).toEqual({});
     expect(buildUpdatePatch({ email: { naar: 'b@x.nl' } }, 'onbekend-type')).toEqual({});
+  });
+});
+
+describe('dropStaleFields (stale-guard bij toepassen)', () => {
+  const diff = {
+    phone: { van: '0611111111', naar: '0622222222' },
+    address_city: { van: 'Eindhoven', naar: 'Venlo' },
+  };
+
+  it('past toe wanneer het platform nog de "van"-waarde heeft', () => {
+    const { patch, dropped } = dropStaleFields(
+      diff,
+      { phone: '06 11 11 11 11', address_city: 'Eindhoven' },
+      'candidate',
+    );
+    expect(patch).toEqual({ phone: '0622222222', address_city: 'Venlo' });
+    expect(dropped).toEqual([]);
+  });
+
+  it('laat een veld vallen dat sinds de dry-run lokaal is gewijzigd', () => {
+    // Collega verifieerde intussen een dérde nummer: dat wint, stil overschrijven mag niet.
+    const { patch, dropped } = dropStaleFields(
+      diff,
+      { phone: '0633333333', address_city: 'Eindhoven' },
+      'candidate',
+    );
+    expect(patch).toEqual({ address_city: 'Venlo' });
+    expect(dropped).toEqual(['phone']);
+  });
+
+  it('slaat al toegepaste velden stil over (idempotente retry)', () => {
+    const { patch, dropped } = dropStaleFields(
+      diff,
+      { phone: '0622222222', address_city: 'Venlo' },
+      'candidate',
+    );
+    expect(patch).toEqual({});
+    expect(dropped).toEqual([]);
+  });
+
+  it('respecteert de whitelist ook hier', () => {
+    const { patch, dropped } = dropStaleFields(
+      { bsn: { van: null, naar: '123456782' } },
+      { bsn: null },
+      'candidate',
+    );
+    expect(patch).toEqual({});
+    expect(dropped).toEqual([]);
   });
 });

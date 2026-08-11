@@ -10,7 +10,9 @@
 --
 -- Twee soorten regels:
 --   action='create' — records die de dry-run zou AANMAKEN (standaard aangevinkt;
---     spam standaard uitgevinkt).
+--     spam standaard uitgevinkt). Een gekoppelde live run behandelt deze set
+--     als WHITELIST: alleen aangevinkte regels komen binnen; records zonder
+--     regel (bv. pas ná de dry-run in Carerix ontstaan) worden overgeslagen.
 --   action='update' — al gekoppelde records waarvan Carerix ándere gegevens
 --     heeft dan het platform (veld-diff in `diff`). Standaard uitgevinkt: een
 --     lokale wijziging overschrijven is opt-in, per record.
@@ -48,13 +50,10 @@ create table if not exists public.carerix_import_previews (
   unique (job_id, entity, carerix_id)
 );
 
+-- Dekt alle leespatronen: de whitelist-load van de live run (job + action),
+-- de update-apply (job + entiteit + action), de UI-lijst en de upsert-conflictsleutel.
 create index if not exists idx_carerix_previews_job_entity
   on public.carerix_import_previews (job_id, entity);
-
--- De live run laadt alleen de uitgesloten en de door spam geraakte regels.
-create index if not exists idx_carerix_previews_selection
-  on public.carerix_import_previews (job_id)
-  where excluded or spam_reason is not null;
 
 alter table public.carerix_import_previews enable row level security;
 

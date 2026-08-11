@@ -232,6 +232,7 @@ const SELECT_CHUNK = 200;
 export async function buildUpdatePreviews(
   admin: SupabaseClient,
   items: UpdateQueueItem[],
+  organizationId: string,
 ): Promise<PreviewRow[]> {
   const rows: PreviewRow[] = [];
   if (items.length === 0) return rows;
@@ -254,9 +255,13 @@ export async function buildUpdatePreviews(
     for (let from = 0; from < groupItems.length; from += SELECT_CHUNK) {
       const chunk = groupItems.slice(from, from + SELECT_CHUNK);
       const ids = [...new Set(chunk.map((i) => i.existingId))];
+      // Service-role omzeilt RLS; het org-filter is defense-in-depth zodat een
+      // (hoe dan ook) verkeerde existing_id nooit data van een andere tenant
+      // in een previewregel kan trekken.
       const { data, error } = await admin
         .from(table)
         .select(`id, ${fields.join(', ')}`)
+        .eq('organization_id', organizationId)
         .in('id', ids);
       if (error) {
         throw new Error(`update-voorvertoning: ${table} lezen mislukt: ${error.message}`);
@@ -316,9 +321,42 @@ export interface ApplyUpdatesResult {
 }
 
 /**
+ * Stale-guard bij het toepassen: een veld wordt alléén overschreven als het
+ * platform nog de waarde heeft die de gebruiker in de voorvertoning als "van"
+ * te zien kreeg. Is het veld intussen lokaal gewijzigd (bv. door een collega
+ * ná de dry-run), dan vervalt dat veld — de nieuwste handmatige waarde wint en
+ * de regel wordt zichtbaar gerapporteerd in plaats van stil overschreven.
+ */
+export function dropStaleFields(
+  diff: unknown,
+  current: Record<string, unknown>,
+  entityType: string,
+): { patch: Record<string, unknown>; dropped: string[] } {
+  const full = buildUpdatePatch(diff, entityType);
+  const patch: Record<string, unknown> = {};
+  const dropped: string[] = [];
+
+  for (const [field, naar] of Object.entries(full)) {
+    const van = (diff as Record<string, { van?: unknown }>)[field]?.van;
+    const cur = normalizeForCompare(field, current[field]);
+    if (cur === normalizeForCompare(field, naar)) {
+      // Al toegepast (bv. retry na een crash): stil overslaan, geen ruis.
+      continue;
+    }
+    if (cur === normalizeForCompare(field, van)) {
+      patch[field] = naar;
+    } else {
+      dropped.push(field);
+    }
+  }
+  return { patch, dropped };
+}
+
+/**
  * Past de door de gebruiker AANGEVINKTE update-regels uit de dry-run toe.
  * Draait één keer per entiteit, aan het begin van de live run. Idempotent:
- * dezelfde patch nogmaals toepassen verandert niets meer.
+ * dezelfde patch nogmaals toepassen verandert niets meer (en een al toegepast
+ * veld matcht de stale-guard niet meer, dus een herhaalde run doet niets).
  */
 export async function applyApprovedUpdates(
   admin: SupabaseClient,
@@ -328,6 +366,7 @@ export async function applyApprovedUpdates(
 ): Promise<ApplyUpdatesResult> {
   let applied = 0;
   const failures: Array<{ carerix_id: string; error: string }> = [];
+  const fields = COMPARE_FIELDS[target.entityType] ?? [];
 
   let from = 0;
   while (true) {
@@ -344,25 +383,56 @@ export async function applyApprovedUpdates(
     if (!data || data.length === 0) break;
 
     const rows = data as Array<{ carerix_id: unknown; existing_id: unknown; diff: unknown }>;
+
+    // Huidige platformwaarden in bulk ophalen voor de stale-guard.
+    const ids = [...new Set(rows.map((r) => r.existing_id).filter((v): v is string => typeof v === 'string'))];
+    const currentById = new Map<string, Record<string, unknown>>();
+    for (let cFrom = 0; cFrom < ids.length; cFrom += SELECT_CHUNK) {
+      const chunk = ids.slice(cFrom, cFrom + SELECT_CHUNK);
+      const { data: currentRows, error: curErr } = await admin
+        .from(target.table)
+        .select(`id, ${fields.join(', ')}`)
+        .eq('organization_id', organizationId)
+        .in('id', chunk);
+      if (curErr) throw new Error(`huidige waarden laden mislukt: ${curErr.message}`);
+      for (const row of (currentRows ?? []) as unknown as Array<Record<string, unknown>>) {
+        if (typeof row.id === 'string') currentById.set(row.id, row);
+      }
+    }
+
     const results = await Promise.all(
       rows.map(async (row) => {
         const carerixId = String(row.carerix_id);
-        const patch = buildUpdatePatch(row.diff, target.entityType);
-        if (typeof row.existing_id !== 'string' || Object.keys(patch).length === 0) {
-          return { carerixId, error: null, applied: false };
+        if (typeof row.existing_id !== 'string') {
+          return { carerixId, error: null, applied: false, dropped: [] as string[] };
+        }
+        const current = currentById.get(row.existing_id);
+        if (!current) {
+          // Record bestaat niet (meer) binnen deze org — niets overschrijven.
+          return { carerixId, error: 'record niet gevonden in deze organisatie', applied: false, dropped: [] as string[] };
+        }
+        const { patch, dropped } = dropStaleFields(row.diff, current, target.entityType);
+        if (Object.keys(patch).length === 0) {
+          return { carerixId, error: null, applied: false, dropped };
         }
         const { error: upErr } = await admin
           .from(target.table)
           .update(patch)
           .eq('id', row.existing_id)
           .eq('organization_id', organizationId);
-        return { carerixId, error: upErr?.message ?? null, applied: !upErr };
+        return { carerixId, error: upErr?.message ?? null, applied: !upErr, dropped };
       }),
     );
 
     for (const r of results) {
       if (r.error) failures.push({ carerix_id: r.carerixId, error: `update: ${r.error}` });
       else if (r.applied) applied++;
+      if (r.dropped.length > 0) {
+        failures.push({
+          carerix_id: r.carerixId,
+          error: `update deels overgeslagen: ${r.dropped.join(', ')} — lokaal gewijzigd sinds de dry-run`,
+        });
+      }
     }
 
     if (data.length < PAGE_SIZE) break;
@@ -373,25 +443,23 @@ export async function applyApprovedUpdates(
 }
 
 /**
- * Laadt de records waarover de gebruiker een beslissing heeft genomen: alle
- * uitgevinkte creates, plus alles wat het spamfilter markeerde (want dat kan
- * juist bewust wél zijn aangevinkt). Update-regels lopen niet via deze map —
- * die worden apart toegepast via applyApprovedUpdates. De rest van de preview
- * is niet interessant voor een live run: die records worden gewoon geïmporteerd.
+ * Laadt ALLE create-regels van de dry-run: de voorvertoning is een whitelist.
+ * Een live run die aan een dry-run gekoppeld is importeert uitsluitend records
+ * die in de voorvertoning stonden én aangevinkt zijn. Records die pas ná de
+ * dry-run in Carerix ontstonden hebben geen regel en worden overgeslagen — die
+ * zijn nooit beoordeeld en komen bij de volgende dry-run gewoon in beeld.
+ * Update-regels lopen niet via deze map; die worden apart toegepast via
+ * applyApprovedUpdates.
  *
  * Net als bij de id-mapper geldt: half laden is hier erger dan niet laden. Een
- * gemiste uitsluiting importeert stilzwijgend iets wat de gebruiker had
- * weggevinkt, dus we tellen vooraf en falen hard als we dat aantal niet halen.
+ * gemiste regel zou een aangevinkt record laten overslaan (of andersom), dus we
+ * tellen vooraf en falen hard als we dat aantal niet halen.
  */
 export async function loadPreviewSelection(
   admin: SupabaseClient,
   previewJobId: string,
 ): Promise<PreviewSelection> {
-  const filter = (q: any) =>
-    q
-      .eq('job_id', previewJobId)
-      .eq('action', 'create')
-      .or('excluded.eq.true,spam_reason.not.is.null');
+  const filter = (q: any) => q.eq('job_id', previewJobId).eq('action', 'create');
 
   const { count, error: countError } = await filter(
     admin.from('carerix_import_previews').select('id', { count: 'exact', head: true }),

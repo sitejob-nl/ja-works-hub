@@ -431,13 +431,19 @@ async function insertIfNew<T extends Record<string, unknown>>(
     return existing;
   }
 
-  // Uitgevinkt in de voorvertoning waar deze live run aan gekoppeld is. Vóór de
-  // dedup-fallback, zodat we geen database-werk doen voor een record dat de
-  // gebruiker niet wil. Er wordt geen mapping weggeschreven: een volgende run
-  // biedt het record gewoon opnieuw aan.
-  if (!ctx.dryRun && ctx.previewSelection?.get(selectionKey(entityType, carerixId))?.excluded) {
-    stats.skipped++;
-    return null;
+  // Whitelist uit de voorvertoning waar deze live run aan gekoppeld is: alleen
+  // records die in de dry-run stonden ÉN aangevinkt zijn komen erin. Uitgevinkt
+  // óf afwezig (bv. pas ná de dry-run in Carerix ontstaan, of een pagina die de
+  // gebruiker nooit te zien kreeg) → overslaan; de volgende dry-run biedt ze
+  // gewoon opnieuw aan. Vóór de dedup-fallback, zodat we geen database-werk
+  // doen voor een record dat de gebruiker niet wil. Er wordt geen mapping
+  // weggeschreven.
+  if (!ctx.dryRun && ctx.previewSelection) {
+    const decision = ctx.previewSelection.get(selectionKey(entityType, carerixId));
+    if (!decision || decision.excluded) {
+      stats.skipped++;
+      return null;
+    }
   }
 
   // Dedup-fallback: alleen kandidaten, en alleen wanneer er nog geen Carerix-ID-mapping is.
@@ -463,12 +469,26 @@ async function insertIfNew<T extends Record<string, unknown>>(
 
   if (ctx.dryRun) {
     stats.created++;
+    let details = deriveDetails(payload as Record<string, unknown>);
+    // Eerlijk voorspellen wat de live run doet: vindt de dedup-fallback een
+    // bestaande persoon, dan wordt dit géén nieuw dossier maar een koppeling
+    // aan het bestaande dossier (+ aanvullen van lege velden). Zonder deze
+    // hint zou de preview "nieuw" beloven en de live run iets anders doen.
+    if (entityType === 'candidate') {
+      const match = await findExistingCandidate(ctx, payload as Record<string, unknown>);
+      if (typeof match === 'string' && match !== 'AMBIGUOUS') {
+        details = {
+          ...(details ?? {}),
+          koppeling: 'Bestaat al in het platform — wordt gekoppeld aan het bestaande dossier',
+        };
+      }
+    }
     stats.previews.push({
       entity: entityType,
       carerix_id: carerixId,
       action: 'create',
       label: deriveLabel(payload as Record<string, unknown>, failureMeta),
-      details: deriveDetails(payload as Record<string, unknown>),
+      details,
       diff: null,
       existing_id: null,
       spam_reason: null,
@@ -539,8 +559,26 @@ export async function runContactsPage(
       continue;
     }
 
+    // Whitelist-check VÓÓR het fallback-bedrijf: anders zou een uitgevinkt (of
+    // nooit beoordeeld) contact eerst nog een bedrijf + mapping aanmaken die
+    // de gebruiker nergens in de voorvertoning heeft gezien.
+    if (!ctx.dryRun && ctx.previewSelection) {
+      const decision = ctx.previewSelection.get(selectionKey('contact', String(contact._id)));
+      if (!decision || decision.excluded) {
+        stats.skipped++;
+        continue;
+      }
+    }
+
     let companyJaWerktId = ctx.idMapper.get('company', carerixCompanyId);
     if (!companyJaWerktId) {
+      // In een selectie-run nooit stilletjes een fallback-bedrijf aanmaken: als
+      // de mapping ontbreekt is het bedrijf uitgevinkt, mislukt of nooit
+      // beoordeeld — dan hoort dit contact ook niet binnen te komen.
+      if (!ctx.dryRun && ctx.previewSelection) {
+        stats.skipped++;
+        continue;
+      }
       companyJaWerktId = await createFallbackCompanyForContact(ctx, contact, carerixCompanyId);
       if (!companyJaWerktId) {
         stats.failed++;

@@ -96,6 +96,21 @@ Deno.serve(async (req) => {
     previewJobId = previewJob.id as string;
   }
 
+  // Retentie: previewregels bevatten persoonsgegevens (naam, e-mail, diffs) en
+  // alleen de nieuwste afgeronde dry-run is via de UI bereikbaar. Bij het
+  // starten van een nieuwe dry-run ruimen we alle oude previewregels van deze
+  // org op. Veilig: de 409-guard hierboven garandeert dat er geen lopende job
+  // is die nog uit een oude voorvertoning leest.
+  if (mode === 'dry_run') {
+    const { error: cleanupErr } = await admin
+      .from('carerix_import_previews')
+      .delete()
+      .eq('organization_id', orgId);
+    if (cleanupErr) {
+      console.warn(`[carerix] oude previews opruimen mislukt: ${cleanupErr.message}`);
+    }
+  }
+
   // Create job
   const { data: job, error: jobErr } = await admin
     .from('carerix_import_jobs')

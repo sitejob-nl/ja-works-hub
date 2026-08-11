@@ -97,35 +97,85 @@ export default function ImportPreviewPanel({
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const queryKey = useMemo(() => ['carerix-preview', job.id], [job.id]);
 
+  // Gepagineerd inladen tot een korte pagina: PostgREST capt een enkele select
+  // op 1000 rijen en dat gebeurt STIL. Een half geladen voorvertoning zou
+  // records buiten beeld houden (en "Alles uitvinken" zou ze overslaan) — zelfde
+  // les als de id-mapper-preload aan de serverkant.
   const { data: rows, isLoading, error, refetch } = useQuery({
     queryKey,
+    queryFn: async () => {
+      const all: PreviewRow[] = [];
+      const PAGE = 1000;
+      for (let from = 0; ; from += PAGE) {
+        const page = await unwrapList<PreviewRow>(
+          supabase
+            .from('carerix_import_previews' as any)
+            .select('id, entity, carerix_id, action, label, details, diff, spam_reason, excluded')
+            .eq('job_id', job.id)
+            .order('entity', { ascending: true })
+            .order('carerix_id', { ascending: true })
+            .range(from, from + PAGE - 1) as never,
+        );
+        all.push(...page);
+        if (page.length < PAGE) break;
+      }
+      return all;
+    },
+  });
+
+  // Is deze voorvertoning al gebruikt voor een live import? Dan niet nogmaals
+  // aanbieden: de selectie is al uitgevoerd en opnieuw draaien zou oude
+  // goedgekeurde updates herhalen op mogelijk inmiddels gewijzigde data.
+  const { data: usedBy } = useQuery({
+    queryKey: ['carerix-preview-used', job.id],
     queryFn: () =>
-      unwrapList<PreviewRow>(
+      unwrap<{ id: string; status: string; started_at: string | null } | null>(
         supabase
-          .from('carerix_import_previews' as any)
-          .select('id, entity, carerix_id, action, label, details, diff, spam_reason, excluded')
-          .eq('job_id', job.id)
-          .order('entity', { ascending: true })
-          .order('carerix_id', { ascending: true }) as never,
+          .from('carerix_import_jobs' as any)
+          .select('id, status, started_at')
+          .eq('preview_job_id', job.id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle() as never,
       ),
   });
 
   const setExcluded = useMutation({
-    mutationFn: async ({ ids, excluded }: { ids: string[]; excluded: boolean }) => {
-      if (ids.length === 0) return;
-      await unwrap(
-        supabase
-          .from('carerix_import_previews' as any)
-          .update({ excluded })
-          .in('id', ids) as never,
-      );
+    // Hele entiteitsgroep via een server-side filter op (job, entiteit); losse
+    // rijen via ids in stukken van 100 — duizend UUID's in één URL proppen
+    // loopt tegen de URL-lengtelimiet van de gateway aan.
+    mutationFn: async (vars: { ids?: string[]; entity?: string; excluded: boolean }) => {
+      if (vars.entity) {
+        await unwrap(
+          supabase
+            .from('carerix_import_previews' as any)
+            .update({ excluded: vars.excluded })
+            .eq('job_id', job.id)
+            .eq('entity', vars.entity) as never,
+        );
+        return;
+      }
+      const ids = vars.ids ?? [];
+      const CHUNK = 100;
+      for (let i = 0; i < ids.length; i += CHUNK) {
+        await unwrap(
+          supabase
+            .from('carerix_import_previews' as any)
+            .update({ excluded: vars.excluded })
+            .in('id', ids.slice(i, i + CHUNK)) as never,
+        );
+      }
     },
-    onMutate: async ({ ids, excluded }) => {
+    onMutate: async (vars) => {
       await queryClient.cancelQueries({ queryKey });
       const previous = queryClient.getQueryData<PreviewRow[]>(queryKey);
-      const idSet = new Set(ids);
+      const idSet = new Set(vars.ids ?? []);
       queryClient.setQueryData<PreviewRow[]>(queryKey, (old) =>
-        (old ?? []).map((r) => (idSet.has(r.id) ? { ...r, excluded } : r)),
+        (old ?? []).map((r) =>
+          (vars.entity ? r.entity === vars.entity : idSet.has(r.id))
+            ? { ...r, excluded: vars.excluded }
+            : r,
+        ),
       );
       return { previous };
     },
@@ -155,6 +205,15 @@ export default function ImportPreviewPanel({
     },
     onError: (err) => toast.error(toFriendlyError(err)),
   });
+
+  // "Alles aan/uitvinken" werkt op wat de gebruiker ZIET: zonder actief filter
+  // de hele entiteitsgroep (server-side filter, één verzoek), mét zoekterm of
+  // typefilter alleen de getoonde rijen (chunked ids).
+  const bulkToggle = (entity: string, visibleRows: PreviewRow[], excluded: boolean) => {
+    const unfiltered = search.trim() === '' && typeFilter === 'alles';
+    if (unfiltered) setExcluded.mutate({ entity, excluded });
+    else setExcluded.mutate({ ids: visibleRows.map((r) => r.id), excluded });
+  };
 
   const grouped = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -205,6 +264,23 @@ export default function ImportPreviewPanel({
 
   if (error) {
     return <ErrorState title="Voorvertoning kon niet geladen worden" error={error} onRetry={() => refetch()} />;
+  }
+
+  if (usedBy) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Voorvertoning al gebruikt</CardTitle>
+          <CardDescription>
+            De dry-run van{' '}
+            {job.finished_at ? new Date(job.finished_at).toLocaleString('nl-NL') : '—'} is al gebruikt
+            voor een import
+            {usedBy.started_at ? ` (gestart ${new Date(usedBy.started_at).toLocaleString('nl-NL')})` : ''}.
+            Draai een nieuwe dry-run om opnieuw te kunnen kiezen wat je importeert.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    );
   }
 
   if (!rows || rows.length === 0) {
@@ -259,6 +335,7 @@ export default function ImportPreviewPanel({
                 key={chip.key}
                 variant={typeFilter === chip.key ? 'secondary' : 'ghost'}
                 size="sm"
+                aria-pressed={typeFilter === chip.key}
                 onClick={() => setTypeFilter(chip.key)}
                 disabled={chip.count === 0 && chip.key !== 'alles'}
               >
@@ -271,8 +348,9 @@ export default function ImportPreviewPanel({
         {totals.gewijzigd > 0 && (
           <p className="text-sm text-muted-foreground">
             Gewijzigde records staan standaard <strong>uitgevinkt</strong>: vink je ze aan, dan
-            overschrijft de import de platformwaarden met de getoonde Carerix-waarden. Lege velden
-            worden sowieso automatisch aangevuld — hier gaat het alleen om echte verschillen.
+            overschrijft de import de platformwaarden met de getoonde Carerix-waarden. Bij
+            kandidaten vult de import lege velden sowieso automatisch aan; wat je hier ziet zijn de
+            overige verschillen.
           </p>
         )}
 
@@ -298,9 +376,7 @@ export default function ImportPreviewPanel({
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() =>
-                      setExcluded.mutate({ ids: entityRows.map((r) => r.id), excluded: false })
-                    }
+                    onClick={() => bulkToggle(entity, entityRows, false)}
                     disabled={setExcluded.isPending || selectedCount === entityRows.length}
                   >
                     Alles aanvinken
@@ -308,9 +384,7 @@ export default function ImportPreviewPanel({
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() =>
-                      setExcluded.mutate({ ids: entityRows.map((r) => r.id), excluded: true })
-                    }
+                    onClick={() => bulkToggle(entity, entityRows, true)}
                     disabled={setExcluded.isPending || selectedCount === 0}
                   >
                     Alles uitvinken
@@ -403,9 +477,10 @@ export default function ImportPreviewPanel({
             {totals.selectedUpdates > 0 && <>, {totals.selectedUpdates} bijwerken</>})
           </Button>
           <p className="text-sm text-muted-foreground">
-            Uitgevinkte nieuwe records worden overgeslagen en krijgen geen koppeling — een volgende
-            import biedt ze gewoon opnieuw aan. Uitgevinkte wijzigingen blijven zoals ze in het
-            platform staan.
+            Alleen wat in deze voorvertoning staat én aangevinkt is, wordt geïmporteerd. Uitgevinkte
+            records worden overgeslagen (geen koppeling) en records die ná de dry-run in Carerix
+            zijn bijgekomen wachten op de volgende dry-run. Uitgevinkte wijzigingen blijven zoals ze
+            in het platform staan.
           </p>
         </div>
       </CardContent>
@@ -419,8 +494,10 @@ function DiffList({ diff }: { diff: Record<string, DiffEntry> }) {
       {Object.entries(diff).map(([field, change]) => (
         <div key={field} className="flex flex-wrap items-center gap-1 text-xs">
           <span className="font-medium text-foreground">{FIELD_LABEL[field] ?? field}:</span>
+          <span className="sr-only">was</span>
           <span className="line-through">{formatDiffValue(change.van)}</span>
-          <ArrowRight className="h-3 w-3 shrink-0" />
+          <ArrowRight className="h-3 w-3 shrink-0" aria-hidden="true" />
+          <span className="sr-only">wordt</span>
           <span className="text-foreground">{formatDiffValue(change.naar)}</span>
         </div>
       ))}

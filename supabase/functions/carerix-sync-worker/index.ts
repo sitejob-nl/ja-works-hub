@@ -213,15 +213,13 @@ Deno.serve(async (req) => {
     .single();
 
   if (run?.status === 'queued') {
-    await admin
-      .from('carerix_import_entity_runs')
-      .update({ status: 'running', started_at: new Date().toISOString() })
-      .eq('job_id', job_id)
-      .eq('entity', nextEntity);
-
     // Aangevinkte update-regels uit de dry-run toepassen — één keer per
     // entiteit, vóór de eerste pagina. Dit is preview-gestuurd (los van de
     // Carerix-paginering): de gebruiker heeft die exacte waarden goedgekeurd.
+    // Bewust VÓÓR de statuswissel naar 'running': crasht de worker middenin,
+    // dan staat de entiteit nog op 'queued' en wordt de (idempotente) apply
+    // bij de herstart gewoon opnieuw gedaan — stil verlies is hier het
+    // gevaarlijkst.
     if (job.mode !== 'dry_run' && job.preview_job_id && UPDATE_TARGETS[nextEntity]) {
       try {
         const result = await applyApprovedUpdates(
@@ -266,6 +264,12 @@ Deno.serve(async (req) => {
         });
       }
     }
+
+    await admin
+      .from('carerix_import_entity_runs')
+      .update({ status: 'running', started_at: new Date().toISOString() })
+      .eq('job_id', job_id)
+      .eq('entity', nextEntity);
   }
 
   let pageCursor = run?.page_cursor ?? 0;
@@ -303,47 +307,61 @@ Deno.serve(async (req) => {
       return jsonOk({ ok: true, entity_failed: nextEntity, error: msg });
     }
 
-    // Update-voorvertoning: bereken in bulk de veld-diffs voor de bestaande
-    // records op deze pagina. Best-effort — een mislukte diff-berekening mag
-    // de dry-run zelf niet laten stranden.
+    // Voorvertoning van deze pagina persistent maken. Dit pad spiegelt de
+    // id-mapper-les uit PR #230: half wegschrijven is erger dan hard falen.
+    // Een dry-run die als 'completed' eindigt terwijl er pagina's previewregels
+    // ontbreken, laat de gekoppelde live run records ongezien passeren — dus
+    // elke schrijffout hier markeert de entiteit als failed, waarna de dry-run
+    // niet als selectiebron gebruikt kan worden (sync-start eist 'completed').
     let changedThisPage = 0;
-    let previewRows = stats.previews;
-    if (ctx.dryRun && stats.updates.length > 0) {
-      try {
-        const updateRows = await buildUpdatePreviews(admin, stats.updates);
+    try {
+      let previewRows = stats.previews;
+      if (ctx.dryRun && stats.updates.length > 0) {
+        const updateRows = await buildUpdatePreviews(admin, stats.updates, orgId);
         changedThisPage = updateRows.length;
         previewRows = [...stats.previews, ...updateRows];
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        console.warn(`[carerix] update-voorvertoning berekenen mislukt: ${msg}`);
       }
-    }
 
-    // Voorvertoning van deze pagina. `upsert` met ignoreDuplicates omdat de
-    // worker een pagina opnieuw kan verwerken na een zelf-trigger of hervatting;
-    // de unieke sleutel (job, entiteit, carerix-id) vangt dat af.
-    if (previewRows.length > 0) {
-      const { error: previewErr } = await admin
-        .from('carerix_import_previews')
-        .upsert(
-          previewRows.map((p) => ({
-            job_id,
-            organization_id: orgId,
-            entity: p.entity,
-            carerix_id: p.carerix_id,
-            action: p.action,
-            label: p.label,
-            details: p.details,
-            diff: p.diff,
-            existing_id: p.existing_id,
-            spam_reason: p.spam_reason,
-            excluded: p.excluded,
-          })),
-          { onConflict: 'job_id,entity,carerix_id', ignoreDuplicates: true },
-        );
-      if (previewErr) {
-        console.warn(`[carerix] preview wegschrijven mislukt: ${previewErr.message}`);
+      // `upsert` met ignoreDuplicates omdat de worker een pagina opnieuw kan
+      // verwerken na een crash vóór de cursor-update; de unieke sleutel
+      // (job, entiteit, carerix-id) vangt dat af.
+      if (previewRows.length > 0) {
+        const { error: previewErr } = await admin
+          .from('carerix_import_previews')
+          .upsert(
+            previewRows.map((p) => ({
+              job_id,
+              organization_id: orgId,
+              entity: p.entity,
+              carerix_id: p.carerix_id,
+              action: p.action,
+              label: p.label,
+              details: p.details,
+              diff: p.diff,
+              existing_id: p.existing_id,
+              spam_reason: p.spam_reason,
+              excluded: p.excluded,
+            })),
+            { onConflict: 'job_id,entity,carerix_id', ignoreDuplicates: true },
+          );
+        if (previewErr) {
+          throw new Error(`voorvertoning wegschrijven mislukt: ${previewErr.message}`);
+        }
       }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      await admin
+        .from('carerix_import_entity_runs')
+        .update({
+          status: 'failed',
+          last_error: msg,
+          finished_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('job_id', job_id)
+        .eq('entity', nextEntity);
+      runBackgroundTask(selfTrigger(job_id), 'carerix worker self-trigger');
+      return jsonOk({ ok: true, entity_failed: nextEntity, error: msg });
     }
 
     if (stats.failures.length > 0) {
@@ -372,6 +390,21 @@ Deno.serve(async (req) => {
       .eq('entity', nextEntity)
       .single();
 
+    // Bij afronden van een dry-run-entiteit: de teller vervangen door het échte
+    // aantal previewregels. De per-pagina-accumulatie kan driften (een record
+    // dat door Carerix-paginatieverschuiving twee keer voorbijkomt wordt door
+    // de upsert gededupt maar zou dubbel tellen).
+    let changedFinal = (current?.changed ?? 0) + changedThisPage;
+    if (done && ctx.dryRun && UPDATE_TARGETS[nextEntity]) {
+      const { count } = await admin
+        .from('carerix_import_previews')
+        .select('id', { count: 'exact', head: true })
+        .eq('job_id', job_id)
+        .eq('entity', UPDATE_TARGETS[nextEntity].entityType)
+        .eq('action', 'update');
+      if (typeof count === 'number') changedFinal = count;
+    }
+
     await admin
       .from('carerix_import_entity_runs')
       .update({
@@ -380,7 +413,7 @@ Deno.serve(async (req) => {
         created: (current?.created ?? 0) + stats.created,
         skipped: (current?.skipped ?? 0) + stats.skipped,
         failed: (current?.failed ?? 0) + stats.failed,
-        changed: (current?.changed ?? 0) + changedThisPage,
+        changed: changedFinal,
         found: Math.max(current?.found ?? 0, stats.totalElements),
         status: skipped ? 'skipped' : done ? 'completed' : 'running',
         last_error: stats.skipReason ?? null,
