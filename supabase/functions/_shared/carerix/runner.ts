@@ -50,6 +50,18 @@ import {
   splitCREmployeeProfileNotes,
 } from './mappers.ts';
 import { spamReason } from './spam-filter.ts';
+import {
+  COMPARE_FIELDS,
+  deriveDetails,
+  deriveLabel,
+  ENRICH_FIELDS,
+  isBlankValue,
+  isEnrichableValue,
+  type PreviewRow,
+  type PreviewSelection,
+  selectionKey,
+  type UpdateQueueItem,
+} from './preview.ts';
 
 export interface PageStats {
   totalElements: number;
@@ -57,6 +69,13 @@ export interface PageStats {
   skipped: number;
   failed: number;
   failures: Array<{ carerix_id: string; error: string; payload?: unknown }>;
+  // In dry-run-mode: de records die deze pagina zou aanmaken. De worker schrijft
+  // ze per pagina weg, zoals hij dat met `failures` doet.
+  previews: PreviewRow[];
+  // In dry-run-mode: bestaande records op deze pagina waarvan de Carerix-data
+  // kán afwijken. De worker berekent er in bulk de echte veld-diffs voor
+  // (buildUpdatePreviews) en schrijft alleen de records mét verschil weg.
+  updates: UpdateQueueItem[];
   // Set when the cr*Page-query was rejected (scope/permission). Worker marks
   // the entity run as `skipped`.
   skipReason?: string;
@@ -74,6 +93,9 @@ export interface RunnerContext {
   dryRun: boolean;
   modifiedSince?: string | null;
   createdByUserId?: string | null;
+  // Alleen in een live run: de beslissingen uit de dry-run waar deze job aan
+  // gekoppeld is. Leeg/afwezig betekent "geen selectie, alles importeren".
+  previewSelection?: PreviewSelection | null;
 }
 
 const emptyStats = (total = 0): PageStats => ({
@@ -82,6 +104,8 @@ const emptyStats = (total = 0): PageStats => ({
   skipped: 0,
   failed: 0,
   failures: [],
+  previews: [],
+  updates: [],
 });
 
 // Helper: marks `stats.done` based on Carerix' `last` flag on the page response.
@@ -124,44 +148,8 @@ async function tryQuery<T>(ctx: RunnerContext, gql: string): Promise<QueryResult
 // page, daarna parallel UPDATE-calls (Promise.all) voor candidates die echt
 // een NULL-veld hebben dat we kunnen vullen. Veel sneller dan per-candidate
 // SELECT+UPDATE — voorkomt soft-deadline timeouts.
-const ENRICH_FIELDS = [
-  'employee_number',
-  'email',
-  'phone',
-  'phone_nl',
-  'date_of_birth',
-  'nationality',
-  'languages',
-  'address_street',
-  'address_city',
-  'address_postal',
-  'address_country',
-  'birth_country',
-  'notes',
-];
-
-// Velden die naast NULL óók bij hun kolom-default als "leeg" gelden: de
-// migratie-default 'NL' is geen echte data en mag door Carerix overschreven
-// worden. 'Dossier' is vervuiling van de oude label-fallback-bug (zie
-// mappers.ts dataNodeValue). Geldt alleen voor Carerix-gemapte kandidaten.
-const ENRICH_DEFAULT_AS_BLANK: Record<string, unknown[]> = {
-  address_country: ['NL'],
-  birth_country: ['NL'],
-  nationality: ['Dossier'],
-};
-
-function isBlankValue(value: unknown): boolean {
-  if (value === null || value === undefined) return true;
-  if (typeof value === 'string') return value.trim() === '';
-  if (Array.isArray(value)) return value.length === 0;
-  return false;
-}
-
-function isEnrichableValue(field: string, value: unknown): boolean {
-  if (isBlankValue(value)) return true;
-  const defaults = ENRICH_DEFAULT_AS_BLANK[field];
-  return Boolean(defaults?.includes(value));
-}
+// NB: ENRICH_FIELDS + de default-als-leeg-uitzonderingen leven in preview.ts —
+// de diff-voorvertoning moet weten welke velden dit pad al automatisch vult.
 
 async function maybeEnrichSensitiveCandidate(
   ctx: RunnerContext,
@@ -188,12 +176,26 @@ async function maybeEnrichSensitiveCandidate(
 
 async function bulkEnrichCandidates(
   ctx: RunnerContext,
-  items: Array<{ candidateId: string; payload: Record<string, unknown> }>,
+  items: Array<{ candidateId: string; payload: Record<string, unknown>; carerixId?: string }>,
   stats: PageStats,
 ): Promise<void> {
   if (items.length === 0) return;
   if (ctx.dryRun) {
+    // Bestaande kandidaten: geen enrichment in een dry-run, wél kandidaat voor
+    // de update-voorvertoning. De worker berekent per pagina in bulk de echte
+    // veld-diffs; velden die de enrichment tóch al vult blijven daarbuiten.
     stats.skipped += items.length;
+    for (const item of items) {
+      if (!item.carerixId) continue;
+      stats.updates.push({
+        table: 'candidates',
+        entityType: 'candidate',
+        carerixId: item.carerixId,
+        existingId: item.candidateId,
+        payload: item.payload,
+        label: deriveLabel(item.payload),
+      });
+    }
     return;
   }
 
@@ -356,10 +358,18 @@ async function findExistingCandidate(
 // als fout — het is geen storing maar ruis in de bron. Er wordt bewust géén
 // external_mappings-rij weggeschreven: wordt een regel later te streng bevonden,
 // dan haalt de eerstvolgende sync de kandidaat alsnog gewoon binnen.
+//
+// In een dry-run belandt zo'n record wél in de voorvertoning — uitgevinkt en
+// mét reden. Het filter is daarmee een standaardkeuze, geen eindoordeel: ziet de
+// gebruiker een echte kandidaat tussen de bots staan, dan vinkt hij die aan en
+// haalt de live run hem alsnog binnen.
 function skipIfSpam(
-  payload: Record<string, unknown>,
+  ctx: RunnerContext,
+  entityType: string,
   carerixId: string,
+  payload: Record<string, unknown>,
   stats: PageStats,
+  meta?: Record<string, unknown>,
 ): boolean {
   const reason = spamReason({
     firstName: payload.first_name as string | null,
@@ -368,7 +378,26 @@ function skipIfSpam(
   });
   if (!reason) return false;
 
+  const decision = ctx.previewSelection?.get(selectionKey(entityType, carerixId));
+  if (!ctx.dryRun && decision && !decision.excluded) {
+    console.log(`[carerix] spam-markering handmatig opgeheven (carerix=${carerixId})`);
+    return false;
+  }
+
   stats.skipped++;
+  if (ctx.dryRun) {
+    stats.previews.push({
+      entity: entityType,
+      carerix_id: carerixId,
+      action: 'create',
+      label: deriveLabel(payload, meta),
+      details: deriveDetails(payload),
+      diff: null,
+      existing_id: null,
+      spam_reason: reason,
+      excluded: true,
+    });
+  }
   console.warn(`[carerix] spam-registratie overgeslagen (carerix=${carerixId}): ${reason}`);
   return true;
 }
@@ -386,7 +415,35 @@ async function insertIfNew<T extends Record<string, unknown>>(
   const existing = ctx.idMapper.get(entityType, carerixId);
   if (existing) {
     stats.skipped++;
+    // Al gekoppeld: in een dry-run kandidaat voor de update-voorvertoning
+    // (alleen entiteiten met vergelijkingsvelden). Kandidaten lopen in het
+    // CR-pad via de enrich-batch en komen hier alleen via de v1-fallback.
+    if (ctx.dryRun && COMPARE_FIELDS[entityType]) {
+      stats.updates.push({
+        table,
+        entityType,
+        carerixId,
+        existingId: existing,
+        payload: payload as Record<string, unknown>,
+        label: deriveLabel(payload as Record<string, unknown>, failureMeta),
+      });
+    }
     return existing;
+  }
+
+  // Whitelist uit de voorvertoning waar deze live run aan gekoppeld is: alleen
+  // records die in de dry-run stonden ÉN aangevinkt zijn komen erin. Uitgevinkt
+  // óf afwezig (bv. pas ná de dry-run in Carerix ontstaan, of een pagina die de
+  // gebruiker nooit te zien kreeg) → overslaan; de volgende dry-run biedt ze
+  // gewoon opnieuw aan. Vóór de dedup-fallback, zodat we geen database-werk
+  // doen voor een record dat de gebruiker niet wil. Er wordt geen mapping
+  // weggeschreven.
+  if (!ctx.dryRun && ctx.previewSelection) {
+    const decision = ctx.previewSelection.get(selectionKey(entityType, carerixId));
+    if (!decision || decision.excluded) {
+      stats.skipped++;
+      return null;
+    }
   }
 
   // Dedup-fallback: alleen kandidaten, en alleen wanneer er nog geen Carerix-ID-mapping is.
@@ -412,6 +469,31 @@ async function insertIfNew<T extends Record<string, unknown>>(
 
   if (ctx.dryRun) {
     stats.created++;
+    let details = deriveDetails(payload as Record<string, unknown>);
+    // Eerlijk voorspellen wat de live run doet: vindt de dedup-fallback een
+    // bestaande persoon, dan wordt dit géén nieuw dossier maar een koppeling
+    // aan het bestaande dossier (+ aanvullen van lege velden). Zonder deze
+    // hint zou de preview "nieuw" beloven en de live run iets anders doen.
+    if (entityType === 'candidate') {
+      const match = await findExistingCandidate(ctx, payload as Record<string, unknown>);
+      if (typeof match === 'string' && match !== 'AMBIGUOUS') {
+        details = {
+          ...(details ?? {}),
+          koppeling: 'Bestaat al in het platform — wordt gekoppeld aan het bestaande dossier',
+        };
+      }
+    }
+    stats.previews.push({
+      entity: entityType,
+      carerix_id: carerixId,
+      action: 'create',
+      label: deriveLabel(payload as Record<string, unknown>, failureMeta),
+      details,
+      diff: null,
+      existing_id: null,
+      spam_reason: null,
+      excluded: false,
+    });
     return null;
   }
 
@@ -477,8 +559,26 @@ export async function runContactsPage(
       continue;
     }
 
+    // Whitelist-check VÓÓR het fallback-bedrijf: anders zou een uitgevinkt (of
+    // nooit beoordeeld) contact eerst nog een bedrijf + mapping aanmaken die
+    // de gebruiker nergens in de voorvertoning heeft gezien.
+    if (!ctx.dryRun && ctx.previewSelection) {
+      const decision = ctx.previewSelection.get(selectionKey('contact', String(contact._id)));
+      if (!decision || decision.excluded) {
+        stats.skipped++;
+        continue;
+      }
+    }
+
     let companyJaWerktId = ctx.idMapper.get('company', carerixCompanyId);
     if (!companyJaWerktId) {
+      // In een selectie-run nooit stilletjes een fallback-bedrijf aanmaken: als
+      // de mapping ontbreekt is het bedrijf uitgevinkt, mislukt of nooit
+      // beoordeeld — dan hoort dit contact ook niet binnen te komen.
+      if (!ctx.dryRun && ctx.previewSelection) {
+        stats.skipped++;
+        continue;
+      }
       companyJaWerktId = await createFallbackCompanyForContact(ctx, contact, carerixCompanyId);
       if (!companyJaWerktId) {
         stats.failed++;
@@ -553,13 +653,17 @@ export async function runCandidatesPage(
     const stats = emptyStats(pageData.totalElements);
     // Verzamel bestaande candidates voor één bulk-enrich aan einde van page
     // (was per-candidate SELECT+UPDATE — leverde page-tijd > soft-deadline op).
-    const enrichBatch: Array<{ candidateId: string; payload: Record<string, unknown> }> = [];
+    const enrichBatch: Array<{ candidateId: string; payload: Record<string, unknown>; carerixId?: string }> = [];
     for (const emp of pageData.items) {
       const payload = mapCREmployee(emp, ctx.organizationId);
       const existingId = ctx.idMapper.get('candidate', String(emp._id));
       if (existingId) {
-        enrichBatch.push({ candidateId: existingId, payload });
-      } else if (skipIfSpam(payload, String(emp._id), stats)) {
+        enrichBatch.push({ candidateId: existingId, payload, carerixId: String(emp._id) });
+      } else if (
+        skipIfSpam(ctx, 'candidate', String(emp._id), payload, stats, {
+          name: `${emp.firstName ?? ''} ${emp.lastName ?? ''}`.trim(),
+        })
+      ) {
         continue;
       } else {
         await insertIfNew(ctx, 'candidates', 'candidate', String(emp._id), payload, stats, {
@@ -585,7 +689,11 @@ export async function runCandidatesPage(
   const stats = emptyStats(pageData.totalElements);
   for (const candidate of pageData.items) {
     const payload = mapCandidate(candidate, ctx.organizationId);
-    if (skipIfSpam(payload, String(candidate._id), stats)) continue;
+    if (
+      skipIfSpam(ctx, 'candidate', String(candidate._id), payload, stats, {
+        name: `${candidate.firstName ?? ''} ${candidate.lastName ?? ''}`.trim(),
+      })
+    ) continue;
     await insertIfNew(ctx, 'candidates', 'candidate', String(candidate._id), payload, stats, {
       name: `${candidate.firstName ?? ''} ${candidate.lastName ?? ''}`.trim(),
     });
@@ -678,7 +786,9 @@ export async function runMatchesPage(
     }
 
     const payload = mapCRMatch(match, candidateId, vacancyId, ctx.organizationId);
-    await insertIfNew(ctx, 'matches', 'match', String(match._id), payload, stats);
+    await insertIfNew(ctx, 'matches', 'match', String(match._id), payload, stats, {
+      name: `kandidaat ${carerixCandidateId} → vacature ${carerixVacancyId}`,
+    });
   }
   markDone(stats, pageData);
   return stats;
