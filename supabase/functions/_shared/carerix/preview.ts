@@ -100,7 +100,12 @@ export function isEnrichableValue(field: string, value: unknown): boolean {
 //   - status/compliance_status (lokale workflow is leidend, Carerix is bevroren),
 //   - notes (wordt als losse notities geïmporteerd),
 //   - FK's zoals company_id (re-parenting is geen "veldje bijwerken"),
-//   - vacancy.description (lokaal opgeschoond; zou elke run als diff terugkomen).
+//   - vacancy.description (lokaal opgeschoond; zou elke run als diff terugkomen),
+//   - languages: het platform draagt AI-verrijkte niveau-annotaties ("Engels -
+//     B1", "Roemeens - moedertaal"); Carerix heeft alleen kale taalnamen en
+//     valt soms terug op de accounttaal. Carerix kan hier nooit beter zijn —
+//     de dry-run van 2026-08-11 gaf 1.645 van 1.655 kandidaat-diffs op alléén
+//     dit veld. Lege taallijsten vult het enrich-pad al automatisch.
 export const COMPARE_FIELDS: Record<string, string[]> = {
   candidate: [
     'first_name',
@@ -111,7 +116,6 @@ export const COMPARE_FIELDS: Record<string, string[]> = {
     'date_of_birth',
     'nationality',
     'employee_number',
-    'languages',
     'address_street',
     'address_city',
     'address_postal',

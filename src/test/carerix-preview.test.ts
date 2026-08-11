@@ -171,6 +171,18 @@ describe('computeUpdateDiff', () => {
     expect(computeUpdateDiff('placement', { status: 'actief' }, { status: 'afgerond' })).toBeNull();
   });
 
+  it('vergelijkt talen nooit — Carerix kan de AI-niveau-annotaties niet verbeteren', () => {
+    // Lokaal "Engels - B1" (AI-verrijkt) vs Carerix "Engels": geen diff. De
+    // dry-run van 2026-08-11 gaf hier 1.645 ruis-regels op vóór deze uitsluiting.
+    expect(
+      computeUpdateDiff(
+        'candidate',
+        { languages: ['Engels'] },
+        { languages: ['Engels - B1', 'Roemeens - moedertaal'] },
+      ),
+    ).toBeNull();
+  });
+
   it('negeert telefoonnotatie maar ziet een echt ander nummer', () => {
     expect(
       computeUpdateDiff('candidate', { phone: '+31 6 12345678' }, { phone: '0612345678' }),
