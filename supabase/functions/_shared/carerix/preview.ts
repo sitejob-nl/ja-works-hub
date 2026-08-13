@@ -64,7 +64,10 @@ export const ENRICH_FIELDS = [
   'address_postal',
   'address_country',
   'birth_country',
-  'notes',
+  // 'notes' hoort hier bewust NIET meer bij: dezelfde Carerix-vrijetekst wordt al
+  // opgeknipt als losse notitierijen geïmporteerd (processCREmployeeProfileNotes),
+  // dus verrijken van candidates.notes zette elk dossier dubbel op het scherm én
+  // liet een opschoning bij de volgende sync terugkomen.
 ];
 
 // Velden die naast NULL óók bij hun kolom-default als "leeg" gelden: de

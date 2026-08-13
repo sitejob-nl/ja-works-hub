@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { unwrap, unwrapList } from '@/lib/db';
+import { unwrap, unwrapDeleted, unwrapList } from '@/lib/db';
+import { toFriendlyError } from '@/lib/errorMessages';
 import { qk } from '@/lib/query-keys';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { Link } from 'react-router-dom';
@@ -206,7 +207,11 @@ const InternalResidentsTab = ({ property }: { property: any }) => {
       if (assignment.status === 'ingecheckt') {
         throw new Error('Bewoner is ingecheckt — eerst uitchecken voordat de toewijzing verwijderd kan worden.');
       }
-      await unwrap(supabase.from('housing_assignments').delete().eq('id', assignment.id));
+      // Rowcount-check: een door RLS geweigerde delete geeft geen error, alleen 0 rijen.
+      await unwrapDeleted(
+        supabase.from('housing_assignments').delete().eq('id', assignment.id),
+        'Deze bewonerstoewijzing kon niet worden verwijderd — je hebt hiervoor mogelijk beheerdersrechten nodig.',
+      );
       return assignment;
     },
     onSuccess: (assignment) => {
@@ -221,7 +226,7 @@ const InternalResidentsTab = ({ property }: { property: any }) => {
       setAssignmentToDelete(null);
     },
     onError: (e: any) => {
-      toast.error(e.message);
+      toast.error(toFriendlyError(e, 'Verwijderen mislukt'));
       setAssignmentToDelete(null);
     },
   });

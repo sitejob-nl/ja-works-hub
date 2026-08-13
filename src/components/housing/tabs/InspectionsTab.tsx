@@ -1,6 +1,8 @@
 import { useState, useRef, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { unwrapDeleted } from '@/lib/db';
+import { toFriendlyError } from '@/lib/errorMessages';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { useAuth } from '@/contexts/AuthContext';
 import { Badge } from '@/components/ui/badge';
@@ -387,12 +389,17 @@ const InspectionsTab = ({ property }: { property: any }) => {
         ...((insp.photos ?? []) as string[]),
         ...PHOTO_FIELDS.map((f) => insp[f.key]).filter(Boolean) as string[],
       ];
+      // Rowcount-check: een door RLS geweigerde delete geeft geen error, alleen 0 rijen.
+      // Eerst de rij, dan pas de foto's — anders zijn bij een geweigerde delete de foto's
+      // weg terwijl de inspectie blijft staan.
+      await unwrapDeleted(
+        supabase.from('housing_inspections').delete().eq('id', insp.id),
+        'Deze inspectie kon niet worden verwijderd — je hebt hiervoor mogelijk beheerdersrechten nodig.',
+      );
       // Best-effort cleanup; don't block delete on storage error
       if (photoPaths.length > 0) {
         await supabase.storage.from('documents').remove(photoPaths);
       }
-      const { error } = await supabase.from('housing_inspections').delete().eq('id', insp.id);
-      if (error) throw error;
       return insp;
     },
     onSuccess: (insp) => {
@@ -401,7 +408,7 @@ const InspectionsTab = ({ property }: { property: any }) => {
       toast.success('Inspectie verwijderd');
       setInspectionToDelete(null);
     },
-    onError: (e: any) => { toast.error(e.message); setInspectionToDelete(null); },
+    onError: (e: any) => { toast.error(toFriendlyError(e, 'Verwijderen mislukt')); setInspectionToDelete(null); },
   });
 
   const getResidentName = (insp: any) => {

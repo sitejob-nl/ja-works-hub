@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { unwrap, unwrapList } from '@/lib/db';
+import { unwrap, unwrapDeleted, unwrapList } from '@/lib/db';
 import { qk } from '@/lib/query-keys';
+import { toFriendlyError } from '@/lib/errorMessages';
 import { ChevronRight, Edit, MoreHorizontal, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -117,6 +118,15 @@ const VehicleDetail = () => {
 
   const hardDelete = useMutation({
     mutationFn: async () => {
+      // Rechten-precheck vóór élke delete. De child-tabellen staan op is_internal_user(),
+      // maar `vehicles` zelf is admin-only: zonder deze poort wist een intercedent eerst de
+      // tankpas-, schade- en toewijzingshistorie en strandt daarna op het voertuig — een
+      // half uitgevoerde, onomkeerbare actie met een foutmelding die suggereert dat er
+      // niets is gebeurd. De FK's zijn RESTRICT/NO ACTION, dus omkeren van de volgorde kan niet.
+      if (role !== 'admin') {
+        throw new Error('Alleen een beheerder kan een voertuig definitief verwijderen.');
+      }
+
       // Pre-check: weiger als er een actieve toewijzing is
       const active = await unwrapList<any>(supabase
         .from('vehicle_assignments')
@@ -128,21 +138,28 @@ const VehicleDetail = () => {
         throw new Error('Voertuig heeft een actieve toewijzing — eerst inleveren voordat je kunt verwijderen.');
       }
 
-      // Cleanup foto's uit damage reports (best-effort)
+      // Delete child rijen die niet via CASCADE gaan (RESTRICT / NO ACTION).
+      // Geen rowcount-check: een voertuig zónder ritten/boetes/schades is normaal.
+      await unwrap(supabase.from('fuel_card_transactions').delete().eq('vehicle_id', id!));
+      await unwrap(supabase.from('vehicle_damage_reports').delete().eq('vehicle_id', id!));
+      await unwrap(supabase.from('vehicle_assignments').delete().eq('vehicle_id', id!));
+
+      // Vehicle delete cascadeert mileage_entries + vehicle_fines via FK.
+      // Wél een rowcount-check: raakt deze delete 0 rijen (RLS weigert stil), dan meldde de
+      // UI eerder 'Voertuig verwijderd' + navigeerde weg terwijl het voertuig bleef bestaan.
+      await unwrapDeleted(
+        supabase.from('vehicles').delete().eq('id', id!),
+        'Dit voertuig kon niet worden verwijderd — je hebt hiervoor mogelijk beheerdersrechten nodig.',
+      );
+
+      // Foto's pas opruimen als de rij écht weg is; anders zijn bij een geweigerde delete
+      // de foto's verdwenen en staat het voertuig er nog.
       if (deleteImpact?.damagePhotos && deleteImpact.damagePhotos.length > 0) {
         await supabase.storage.from('documents').remove(deleteImpact.damagePhotos);
       }
       if (deleteImpact?.finePhotos && deleteImpact.finePhotos.length > 0) {
         await supabase.storage.from('documents').remove(deleteImpact.finePhotos);
       }
-
-      // Delete child rijen die niet via CASCADE gaan (RESTRICT / NO ACTION)
-      await unwrap(supabase.from('fuel_card_transactions').delete().eq('vehicle_id', id!));
-      await unwrap(supabase.from('vehicle_damage_reports').delete().eq('vehicle_id', id!));
-      await unwrap(supabase.from('vehicle_assignments').delete().eq('vehicle_id', id!));
-
-      // Vehicle delete cascadeert mileage_entries + vehicle_fines via FK
-      await unwrap(supabase.from('vehicles').delete().eq('id', id!));
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['vehicles'] });
@@ -150,7 +167,7 @@ const VehicleDetail = () => {
       navigate('/transport');
     },
     onError: (e: any) => {
-      toast.error(e.message || 'Verwijderen mislukt');
+      toast.error(toFriendlyError(e, 'Verwijderen mislukt'));
       setDeleteOpen(false);
     },
   });
@@ -187,7 +204,9 @@ const VehicleDetail = () => {
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
-          {!isFacility && (
+          {/* Alleen admin: de vehicles-DELETE-policy is admin-only en de cascade is niet
+              atomair, dus de actie tonen aan wie hem niet kan afmaken is destructief. */}
+          {!isFacility && role === 'admin' && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>

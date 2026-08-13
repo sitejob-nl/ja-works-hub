@@ -12,6 +12,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Upload, ExternalLink, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { logAudit } from '@/lib/audit';
+import { unwrapDeleted } from '@/lib/db';
+import { toFriendlyError } from '@/lib/errorMessages';
 import { allowFileDrop, getDroppedFiles } from '@/lib/file-input';
 
 const CONTRACT_TYPE_LABELS: Record<string, string> = {
@@ -72,16 +74,21 @@ export default function PropertyContractsTab({ property }: { property: any }) {
 
   const remove = useMutation({
     mutationFn: async (contract: any) => {
+      // Rowcount-check: een door RLS geweigerde delete geeft geen error, alleen 0 rijen.
+      // Eerst de rij, dan pas het bestand — anders is bij een geweigerde delete het PDF weg
+      // terwijl het contract in de lijst blijft staan.
+      await unwrapDeleted(
+        supabase.from('property_contracts' as any).delete().eq('id', contract.id),
+        'Dit contract kon niet worden verwijderd — je hebt hiervoor mogelijk beheerdersrechten nodig.',
+      );
       await supabase.storage.from('property-contracts').remove([contract.file_path]);
-      const { error } = await supabase.from('property_contracts' as any).delete().eq('id', contract.id);
-      if (error) throw error;
       logAudit({ action: 'delete', tableName: 'property_contracts', recordId: contract.id });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['property-contracts', property.id] });
       toast.success('Contract verwijderd');
     },
-    onError: (e: any) => toast.error(e.message ?? 'Verwijderen mislukt'),
+    onError: (e: any) => toast.error(toFriendlyError(e, 'Verwijderen mislukt')),
   });
 
   const openContract = async (path: string) => {

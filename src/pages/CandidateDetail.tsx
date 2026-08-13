@@ -308,7 +308,9 @@ const CandidateDetail = () => {
   if (isLoading) return <div className="p-8 text-muted-foreground">Laden...</div>;
   if (!candidate) return <div className="p-8 text-muted-foreground">Niet gevonden</div>;
 
-  const pinnedCandidateNotes: Array<{ id: string; title: string; body: string; sourceLabel: string }> = [];
+  const pinnedCandidateNotes: Array<{
+    id: string; title: string; body: string; sourceLabel: string; dedupeAgainstNotes?: boolean;
+  }> = [];
   const profileNotes = candidate.notes?.trim();
   const availabilityNotes = stripGeneratedAvailabilityNotes(candidate.availability_notes);
   if (profileNotes) {
@@ -317,6 +319,9 @@ const CandidateDetail = () => {
       title: 'Profielnotities',
       body: profileNotes,
       sourceLabel: 'Profiel',
+      // De Carerix-import schrijft dezelfde vrije tekst zowel hierheen als opgeknipt naar
+      // de notitierijen; zonder ontdubbeling staat vrijwel elk geïmporteerd dossier dubbel.
+      dedupeAgainstNotes: true,
     });
   }
   if (availabilityNotes) {

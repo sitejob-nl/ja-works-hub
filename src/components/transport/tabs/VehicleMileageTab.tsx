@@ -1,6 +1,8 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { unwrapDeleted } from '@/lib/db';
+import { toFriendlyError } from '@/lib/errorMessages';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { startOfMonth, endOfMonth, format } from 'date-fns';
 import { Plus, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
@@ -149,8 +151,11 @@ const VehicleMileageTab = ({ vehicle }: { vehicle: any }) => {
 
   const deleteMutation = useMutation({
     mutationFn: async (entryId: string) => {
-      const { error } = await supabase.from('mileage_entries').delete().eq('id', entryId);
-      if (error) throw error;
+      // Rowcount-check: een door RLS geweigerde delete geeft geen error, alleen 0 rijen.
+      await unwrapDeleted(
+        supabase.from('mileage_entries').delete().eq('id', entryId),
+        'Deze rit kon niet worden verwijderd — je hebt hiervoor mogelijk beheerdersrechten nodig.',
+      );
     },
     onSuccess: (_, entryId) => {
       qc.invalidateQueries({ queryKey: ['mileage-entries', vehicle.id] });
@@ -158,7 +163,7 @@ const VehicleMileageTab = ({ vehicle }: { vehicle: any }) => {
       toast.success('Rit verwijderd');
       setEntryToDelete(null);
     },
-    onError: (e: any) => { toast.error(e.message); setEntryToDelete(null); },
+    onError: (e: any) => { toast.error(toFriendlyError(e, 'Verwijderen mislukt')); setEntryToDelete(null); },
   });
 
   return (

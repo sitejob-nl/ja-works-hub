@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { unwrap, unwrapList } from '@/lib/db';
+import { unwrap, unwrapDeleted, unwrapList } from '@/lib/db';
 import { qk } from '@/lib/query-keys';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { FileText, MoreHorizontal, Pencil, Plus, Trash2, Upload } from 'lucide-react';
@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { formatDate, formatEUR } from '@/lib/format';
+import { toFriendlyError } from '@/lib/errorMessages';
 import { logAudit } from '@/lib/audit';
 import { differenceInCalendarDays, parseISO } from 'date-fns';
 import { EntityLink } from '@/components/ui/entity-link';
@@ -211,10 +212,15 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
 
   const deleteMutation = useMutation({
     mutationFn: async (fine: any) => {
+      // Eerst de rij, dan pas de foto's: raakt de delete 0 rijen (RLS weigert stil), dan
+      // zouden bij de oude volgorde de foto's weg zijn terwijl de boete blijft staan.
+      await unwrapDeleted(
+        supabase.from('vehicle_fines').delete().eq('id', fine.id),
+        'Deze boete kon niet worden verwijderd — je hebt hiervoor mogelijk beheerdersrechten nodig.',
+      );
       if (fine.photos?.length > 0) {
         await supabase.storage.from('documents').remove(fine.photos);
       }
-      await unwrap(supabase.from('vehicle_fines').delete().eq('id', fine.id));
       return fine;
     },
     onSuccess: (fine) => {
@@ -224,7 +230,7 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
       toast.success('Boete verwijderd');
       setFineToDelete(null);
     },
-    onError: (e: any) => { toast.error(e.message); setFineToDelete(null); },
+    onError: (e: any) => { toast.error(toFriendlyError(e, 'Verwijderen mislukt')); setFineToDelete(null); },
   });
 
   const paidMutation = useMutation({

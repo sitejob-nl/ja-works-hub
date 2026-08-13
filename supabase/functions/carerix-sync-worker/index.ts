@@ -493,39 +493,132 @@ async function finalizeJob(admin: ReturnType<typeof createAdminClient>, jobId: s
 
   const { data: job } = await admin
     .from('carerix_import_jobs')
-    .select('organization_id')
+    .select('organization_id, mode')
     .eq('id', jobId)
     .single();
 
+  // Bytes-fase: de sync-worker maakt alleen document-metadata (file_path NULL);
+  // de bytes komen uit carerix-attachment-download. Die functie werd door niets
+  // aangeroepen, waardoor kandidaten documentrijen kregen die je niet kon openen
+  // ("Bestand nog niet gedownload uit bron"). Daarom starten we hem hier.
+  let shouldTriggerBytes = false;
   if (job?.organization_id) {
-    const { data: docs } = await admin
-      .from('v_carerix_document_validation')
-      .select('download_status')
-      .eq('organization_id', job.organization_id);
-
-    const documentBytes = {
-      downloaded: 0,
-      pending: 0,
-      failed: 0,
-      total: docs?.length ?? 0,
+    // Tellen met head+count, niet door rijen op te halen: PostgREST kapt een gewone
+    // select STIL af op 1000 rijen. Deze view heeft er bij JA Werkt al 4.238, dus een
+    // rijen-telling gaf `total: 1000` en een willekeurige `pending` — waardoor de
+    // trigger hieronder kon uitblijven terwijl er honderden documenten zonder bestand
+    // stonden. Dat is precies de bug die deze code moet oplossen.
+    const countByStatus = async (status?: string) => {
+      let query = admin
+        .from('v_carerix_document_validation')
+        .select('*', { count: 'exact', head: true })
+        .eq('organization_id', job.organization_id);
+      if (status) query = query.eq('download_status', status);
+      const { count } = await query;
+      return count ?? 0;
     };
-    for (const d of docs ?? []) {
-      if (d.download_status === 'downloaded') documentBytes.downloaded += 1;
-      else if (d.download_status === 'failed') documentBytes.failed += 1;
-      else documentBytes.pending += 1;
+
+    const [total, downloaded, failed] = await Promise.all([
+      countByStatus(),
+      countByStatus('downloaded'),
+      countByStatus('failed'),
+    ]);
+
+    const documentBytes: {
+      downloaded: number;
+      pending: number;
+      failed: number;
+      total: number;
+      trigger_started_at?: string;
+    } = {
+      downloaded,
+      // Alles wat niet downloaded of failed is, wacht nog op bytes. Afgeleid i.p.v.
+      // apart geteld, zodat een extra statuswaarde in de view niet stil wegvalt.
+      pending: Math.max(0, total - downloaded - failed),
+      failed,
+      total,
+    };
+
+    // Alleen bij een live import: `pending` wordt org-breed geteld (niet per job),
+    // dus een dry-run zou anders een echte byte-download over de hele organisatie
+    // starten — precies wat een voorvertoning niet mag doen.
+    shouldTriggerBytes = job.mode === 'live' && documentBytes.pending > 0;
+    if (shouldTriggerBytes) {
+      documentBytes.trigger_started_at = new Date().toISOString();
     }
 
     summary._document_bytes = documentBytes;
   }
 
-  await admin
+  // Deze update is tegelijk de claim: finalizeJob draait bij elke worker-invocatie
+  // die geen volgende entiteit vindt, en carerix-attachment-download claimt zelf
+  // geen documentrijen. Zonder `.is('finished_at', null)` zouden twee gelijktijdige
+  // ketens dezelfde batch pakken → dubbele Carerix-calls. Alleen de invocatie die
+  // de job daadwerkelijk van niet-afgerond naar afgerond zet, mag triggeren.
+  const { data: claimed } = await admin
     .from('carerix_import_jobs')
     .update({
       status: anyFailed ? 'failed' : 'completed',
       finished_at: new Date().toISOString(),
       summary,
     })
-    .eq('id', jobId);
+    .eq('id', jobId)
+    .is('finished_at', null)
+    .select('id');
+
+  const justFinalized = (claimed?.length ?? 0) > 0;
+  if (justFinalized && shouldTriggerBytes && job?.organization_id) {
+    runBackgroundTask(
+      triggerAttachmentDownload(admin, jobId, job.organization_id as string),
+      'carerix attachment download trigger',
+    );
+  }
+}
+
+// Start de byte-download non-blocking; een falende download mag de
+// job-finalisatie niet omverhalen, maar moet wel zichtbaar zijn in de summary.
+async function triggerAttachmentDownload(
+  admin: ReturnType<typeof createAdminClient>,
+  jobId: string,
+  orgId: string,
+): Promise<void> {
+  const url = `${Deno.env.get('SUPABASE_URL')}/functions/v1/carerix-attachment-download`;
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+        ...internalFunctionHeaders(),
+      },
+      body: JSON.stringify({ organization_id: orgId }),
+    });
+    if (!res.ok) {
+      await recordBytesTriggerError(admin, jobId, `${res.status}: ${(await res.text()).slice(0, 300)}`);
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    await recordBytesTriggerError(admin, jobId, msg.slice(0, 300));
+  }
+}
+
+async function recordBytesTriggerError(
+  admin: ReturnType<typeof createAdminClient>,
+  jobId: string,
+  message: string,
+): Promise<void> {
+  const { data: job } = await admin
+    .from('carerix_import_jobs')
+    .select('summary')
+    .eq('id', jobId)
+    .single();
+  if (!job) return;
+
+  const summary = (job.summary ?? {}) as Record<string, unknown>;
+  const bytes = (summary._document_bytes ?? {}) as Record<string, unknown>;
+  summary._document_bytes = { ...bytes, trigger_error: message };
+
+  await admin.from('carerix_import_jobs').update({ summary }).eq('id', jobId);
 }
 
 function summarizeFailureReasons(errors: string[]) {
