@@ -17,6 +17,8 @@ import { CheckCircle2, XCircle, Loader2, RefreshCw, Plug, PlugZap, Play, Octagon
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import ImportPreviewPanel from '@/components/carerix/ImportPreviewPanel';
 import { unwrap } from '@/lib/db';
+import { toFriendlyError } from '@/lib/errorMessages';
+import { useAuth } from '@/contexts/AuthContext';
 
 const ENTITIES = [
   'companies',
@@ -723,6 +725,7 @@ function IntrospectButton() {
 function AcceptanceTab({ config }: { config: CarerixConfig | null | undefined }) {
   const orgId = useOrganizationId();
   const queryClient = useQueryClient();
+  const { role } = useAuth();
 
   const { data: organizationSettings } = useQuery({
     queryKey: ['carerix-acceptance-settings', orgId],
@@ -894,6 +897,30 @@ function AcceptanceTab({ config }: { config: CarerixConfig | null | undefined })
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // Vangnet: de sync-worker start de byte-download nu automatisch, maar blijven er
+  // documentrijen zonder bestand staan (mislukte trigger, oude import), dan kun je
+  // 'm hier alsnog handmatig starten. carerix-attachment-download weigert elke rol
+  // behalve admin met een 403, dus tonen we de knop alleen aan admins.
+  const canDownloadAttachments = role === 'admin';
+  const downloadAttachments = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke('carerix-attachment-download');
+      if (error) throw error;
+      return data as { downloaded?: number; failed?: number; continued?: boolean } | null;
+    },
+    onSuccess: (data) => {
+      const downloaded = data?.downloaded ?? 0;
+      toast.success(
+        data?.continued
+          ? `${downloaded} bijlagen opgehaald, de rest loopt door op de achtergrond`
+          : `${downloaded} bijlagen opgehaald${data?.failed ? ` · ${data.failed} mislukt` : ''}`,
+      );
+      queryClient.invalidateQueries({ queryKey: ['carerix-document-validation', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['carerix-acceptance-latest-job', orgId] });
+    },
+    onError: (e: unknown) => toast.error(toFriendlyError(e)),
+  });
+
   const exportFailures = () => {
     const header = ['entity', 'carerix_id', 'error'];
     const lines = failures.map((f) => [f.entity, f.carerix_id ?? '', f.error].map(csvCell).join(','));
@@ -1031,11 +1058,34 @@ function AcceptanceTab({ config }: { config: CarerixConfig | null | undefined })
           <div className="flex items-center justify-between gap-3">
             <div>
               <CardTitle className="text-base flex items-center gap-2"><FileCheck2 className="h-4 w-4" /> Documentvalidatie</CardTitle>
-              <CardDescription>{documentStats.total} Carerix-documenten · {documentStats.cv} CV's</CardDescription>
+              <CardDescription className="flex flex-wrap items-center gap-2">
+                <span>{documentStats.total} Carerix-documenten · {documentStats.cv} CV's</span>
+                {documentStats.pending > 0 && (
+                  <Badge variant="secondary" className="bg-yellow-100 text-yellow-700 border-0">
+                    {documentStats.pending} zonder bestand
+                  </Badge>
+                )}
+              </CardDescription>
             </div>
-            <Button variant="outline" size="sm" onClick={exportFailures} disabled={failures.length === 0} className="gap-1.5">
-              <Download className="h-3.5 w-3.5" /> Failure CSV
-            </Button>
+            <div className="flex items-center gap-2">
+              {canDownloadAttachments && documentStats.pending > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => downloadAttachments.mutate()}
+                  disabled={downloadAttachments.isPending}
+                  className="gap-1.5"
+                >
+                  {downloadAttachments.isPending
+                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    : <Download className="h-3.5 w-3.5" />}
+                  Bijlagen alsnog ophalen
+                </Button>
+              )}
+              <Button variant="outline" size="sm" onClick={exportFailures} disabled={failures.length === 0} className="gap-1.5">
+                <Download className="h-3.5 w-3.5" /> Failure CSV
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>

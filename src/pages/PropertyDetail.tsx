@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { unwrapDeleted } from '@/lib/db';
+import { toFriendlyError } from '@/lib/errorMessages';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -96,9 +98,13 @@ const PropertyDetail = () => {
       if ((count ?? 0) > 0) {
         throw new Error(`Pand heeft nog ${count} bewoner-record(s). Verwijder die eerst of gebruik 'Deactiveren'.`);
       }
-      // Cascades naar units, housing_inspections, key_registrations via FK
-      const { error } = await supabase.from('properties').delete().eq('id', id!);
-      if (error) throw error;
+      // Cascades naar units, housing_inspections, key_registrations via FK.
+      // Rowcount-check: een door RLS geweigerde delete geeft geen error, alleen 0 rijen —
+      // zonder deze check meldde de UI 'Pand verwijderd' en navigeerde weg terwijl het bleef staan.
+      await unwrapDeleted(
+        supabase.from('properties').delete().eq('id', id!),
+        'Dit pand kon niet worden verwijderd — je hebt hiervoor mogelijk beheerdersrechten nodig.',
+      );
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['properties'] });
@@ -106,7 +112,7 @@ const PropertyDetail = () => {
       navigate('/huisvesting');
     },
     onError: (err: Error) => {
-      toast.error(err.message || 'Verwijderen mislukt');
+      toast.error(toFriendlyError(err, 'Verwijderen mislukt'));
       setDeleteOpen(false);
     },
   });

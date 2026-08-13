@@ -1,7 +1,8 @@
 import { Fragment, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { unwrap } from '@/lib/db';
+import { unwrap, unwrapDeleted } from '@/lib/db';
+import { toFriendlyError } from '@/lib/errorMessages';
 import { qk } from '@/lib/query-keys';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { Badge } from '@/components/ui/badge';
@@ -156,8 +157,12 @@ const UnitsTab = ({ property }: { property: any }) => {
       if ((count ?? 0) > 0) {
         throw new Error(`Kamer heeft nog ${count} bewoner-record(s). Deze blokkeren de verwijdering.`);
       }
-      // Cascades naar housing_inspections + key_registrations via FK
-      await unwrap(supabase.from('units').delete().eq('id', unitId));
+      // Cascades naar housing_inspections + key_registrations via FK.
+      // Rowcount-check: een door RLS geweigerde delete geeft geen error, alleen 0 rijen.
+      await unwrapDeleted(
+        supabase.from('units').delete().eq('id', unitId),
+        'Deze kamer kon niet worden verwijderd — je hebt hiervoor mogelijk beheerdersrechten nodig.',
+      );
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: qk.housing.property(property.id) });
@@ -166,7 +171,7 @@ const UnitsTab = ({ property }: { property: any }) => {
       setUnitToDelete(null);
     },
     onError: (e: any) => {
-      toast.error(e.message);
+      toast.error(toFriendlyError(e, 'Verwijderen mislukt'));
       setUnitToDelete(null);
     },
   });

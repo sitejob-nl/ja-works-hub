@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { unwrapDeleted } from '@/lib/db';
+import { toFriendlyError } from '@/lib/errorMessages';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { EntityLink } from '@/components/ui/entity-link';
@@ -160,8 +162,11 @@ const InternalKeysTab = ({ propertyId }: { propertyId: string }) => {
 
   const deleteKey = useMutation({
     mutationFn: async (keyId: string) => {
-      const { error } = await supabase.from('key_registrations').delete().eq('id', keyId);
-      if (error) throw error;
+      // Rowcount-check: een door RLS geweigerde delete geeft geen error, alleen 0 rijen.
+      await unwrapDeleted(
+        supabase.from('key_registrations').delete().eq('id', keyId),
+        'Deze sleutelregistratie kon niet worden verwijderd — je hebt hiervoor mogelijk beheerdersrechten nodig.',
+      );
     },
     onSuccess: (_, keyId) => {
       qc.invalidateQueries({ queryKey: ['property-keys', propertyId] });
@@ -169,7 +174,7 @@ const InternalKeysTab = ({ propertyId }: { propertyId: string }) => {
       toast.success('Sleutelregistratie verwijderd');
       setKeyToDelete(null);
     },
-    onError: (e: any) => { toast.error(e.message); setKeyToDelete(null); },
+    onError: (e: any) => { toast.error(toFriendlyError(e, 'Verwijderen mislukt')); setKeyToDelete(null); },
   });
 
   const getStatus = (k: any): { label: string; cls: string } => {

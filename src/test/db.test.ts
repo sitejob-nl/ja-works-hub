@@ -3,7 +3,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const errorSpy = vi.fn();
 vi.mock('sonner', () => ({ toast: { error: (msg: string) => errorSpy(msg) } }));
 
-import { unwrap, unwrapList, toastError } from '@/lib/db';
+import { unwrap, unwrapList, unwrapDeleted, toastError } from '@/lib/db';
+
+/** Bootst een PostgREST delete-builder na: `.select(cols)` levert het resultaat. */
+const deleteBuilder = (result: { data: unknown[] | null; error: any }) => {
+  const select = vi.fn(() => Promise.resolve(result));
+  return { builder: { select } as any, select };
+};
 
 describe('unwrap', () => {
   it('returns data when there is no error', async () => {
@@ -33,6 +39,36 @@ describe('unwrapList', () => {
   it('throws on error', async () => {
     const error = { message: 'nope' } as any;
     await expect(unwrapList(Promise.resolve({ data: null, error }))).rejects.toBe(error);
+  });
+});
+
+describe('unwrapDeleted', () => {
+  it('vraagt zelf de geraakte rijen op, zodat een call-site dat niet kan vergeten', async () => {
+    const { builder, select } = deleteBuilder({ data: [{ id: '1' }], error: null });
+    await unwrapDeleted(builder);
+    expect(select).toHaveBeenCalledWith('id');
+  });
+
+  it('geeft het aantal verwijderde rijen terug', async () => {
+    const { builder } = deleteBuilder({ data: [{ id: '1' }, { id: '2' }], error: null });
+    expect(await unwrapDeleted(builder)).toBe(2);
+  });
+
+  // De kern van de bug: RLS weigert stil, PostgREST geeft geen error maar 0 rijen.
+  it('throwt wanneer de delete 0 rijen raakte', async () => {
+    const { builder } = deleteBuilder({ data: [], error: null });
+    await expect(unwrapDeleted(builder, 'Niet toegestaan')).rejects.toThrow('Niet toegestaan');
+  });
+
+  it('throwt ook bij null data', async () => {
+    const { builder } = deleteBuilder({ data: null, error: null });
+    await expect(unwrapDeleted(builder)).rejects.toThrow();
+  });
+
+  it('throwt de postgrest error ongewijzigd door', async () => {
+    const error = { message: 'boom' } as any;
+    const { builder } = deleteBuilder({ data: null, error });
+    await expect(unwrapDeleted(builder)).rejects.toBe(error);
   });
 });
 

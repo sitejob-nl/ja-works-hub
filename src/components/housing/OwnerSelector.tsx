@@ -10,6 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Plus, Settings2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { toFriendlyError } from '@/lib/errorMessages';
+import { useRolePermission } from '@/hooks/usePermissions';
 
 const NEW_OWNER = '__new__';
 
@@ -40,6 +42,9 @@ interface Props {
 const OwnerSelector = ({ value, onChange, showManageLink }: Props) => {
   const orgId = useOrganizationId();
   const qc = useQueryClient();
+  // /instellingen zit achter PermissionRoute permission="settings.manage" — zonder die
+  // permissie is 'Eigenaren beheren' een dode link (juist voor de rollen die hier komen).
+  const canManageSettings = useRolePermission('settings.manage');
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState<OwnerForm>({ name: '', contact_person: '', email: '', phone: '', notes: '' });
   const [touched, setTouched] = useState<{ [k: string]: boolean }>({});
@@ -84,7 +89,10 @@ const OwnerSelector = ({ value, onChange, showManageLink }: Props) => {
       setTouched({});
       toast.success('Eigenaar aangemaakt');
     },
-    onError: (e: any) => toast.error(e.message ?? 'Aanmaken mislukt'),
+    // Geen rauwe Postgres-tekst in de toast: een geweigerde insert kwam binnen als
+    // "Onvoldoende rechten voor insert op property_owner" — onbegrijpelijk voor de gebruiker.
+    onError: (e: unknown) =>
+      toast.error(toFriendlyError(e, 'Eigenaar aanmaken is niet gelukt. Probeer het opnieuw.')),
   });
 
   const handleSelect = (v: string) => {
@@ -114,8 +122,10 @@ const OwnerSelector = ({ value, onChange, showManageLink }: Props) => {
             </SelectItem>
           </SelectContent>
         </Select>
-        {showManageLink && (
-          <a href="/instellingen?tab=eigenaren" className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
+        {/* Eigenarenbeheer woont in het HR-tabblad; 'eigenaren' bestaat niet als tab-waarde
+            en gaf een lege Instellingen-pagina. */}
+        {showManageLink && canManageSettings && (
+          <a href="/instellingen?tab=hr" className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
             <Settings2 className="h-3 w-3" /> Eigenaren beheren
           </a>
         )}

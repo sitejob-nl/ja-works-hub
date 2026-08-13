@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { unwrapDeleted } from '@/lib/db';
+import { toFriendlyError } from '@/lib/errorMessages';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -14,6 +16,10 @@ import { toast } from 'sonner';
 
 type EntityType = 'kandidaat' | 'opdrachtgever' | 'vacature' | 'plaatsing';
 
+// De importer trimt elk segment apart, dus alleen een witruimte-loze vergelijking
+// laat de opgeknipte notitierijen weer op de oorspronkelijke blob aansluiten.
+const squash = (s?: string | null) => (s ?? '').replace(/\s+/g, '');
+
 interface NotesSectionProps {
   entityId: string;
   entityType: EntityType;
@@ -22,6 +28,9 @@ interface NotesSectionProps {
     title: string;
     body: string;
     sourceLabel?: string;
+    /** Alleen aanzetten voor een bron die dezelfde tekst kán bevatten als de notitierijen
+     *  (candidates.notes vs. de Carerix-import). Zonder deze vlag wordt er niets verborgen. */
+    dedupeAgainstNotes?: boolean;
   }>;
 }
 
@@ -113,33 +122,83 @@ const NotesSection = ({ entityId, entityType, pinnedNotes = [] }: NotesSectionPr
       setForm({ body: '', is_internal: true });
       toast.success('Notitie toegevoegd');
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => toast.error(toFriendlyError(e)),
   });
 
   const update = useMutation({
     mutationFn: async ({ id, body }: { id: string; body: string }) => {
-      const { error } = await supabase.from('notes').update({ body, updated_at: new Date().toISOString() }).eq('id', id);
+      // Een door RLS geblokkeerde update geeft geen error maar een lege set terug:
+      // zonder deze rijentelling meldde de UI 'bijgewerkt' terwijl er niets veranderde.
+      const { data, error } = await supabase
+        .from('notes')
+        .update({ body, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .select('id');
       if (error) throw error;
+      if (!data || data.length === 0) {
+        throw new Error('Bijwerken niet toegestaan — je kunt alleen je eigen notities aanpassen.');
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['notes', entityType, entityId] });
       setEditingId(null);
       toast.success('Notitie bijgewerkt');
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => toast.error(toFriendlyError(e)),
   });
 
   const remove = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('notes').delete().eq('id', id);
-      if (error) throw error;
+      // unwrapDeleted zet zelf .select('id') en throwt bij 0 geraakte rijen — anders
+      // meldt de UI 'verwijderd' terwijl RLS de delete stil heeft tegengehouden.
+      await unwrapDeleted(
+        supabase.from('notes').delete().eq('id', id),
+        'Verwijderen niet toegestaan — je kunt alleen je eigen notities verwijderen.',
+      );
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['notes', entityType, entityId] });
       toast.success('Notitie verwijderd');
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => toast.error(toFriendlyError(e)),
   });
+
+  // Carerix schrijft dezelfde vrije tekst twee keer weg: als hele blob in
+  // candidates.notes (die hier als vastgepinde kaart binnenkomt) én opgeknipt per
+  // [XX dd-mm-jjjj uu:mm]-marker als losse notitierijen. Zonder dit filter staat
+  // vrijwel elk geïmporteerd dossier dubbel op het scherm. We verbergen daarom de
+  // stukken van de pinned kaart die al als notitierij bestaan; is er niets
+  // gedekt (of zijn er geen notitierijen), dan verandert er niets.
+  const squashedNotes = useMemo(() => notes.map((n: any) => squash(n.body)).filter(Boolean), [notes]);
+
+  // De query sorteert created_at DESC; de importer knipte de blob chronologisch op, dus
+  // alleen de omgekeerde volgorde levert een aaneenschakeling die op de naden aansluit.
+  const notesBlob = useMemo(() => [...squashedNotes].reverse().join(''), [squashedNotes]);
+
+  const visiblePinnedNotes = useMemo(() => {
+    if (!notesBlob) return pinnedNotes;
+    return pinnedNotes
+      .map((note) => {
+        if (!note.dedupeAgainstNotes) return note;
+        const segments = (note.body ?? '')
+          .split(/\n\s*\n/)
+          .map((segment) => segment.trim())
+          .filter(Boolean);
+        const remaining = segments.filter((segment) => {
+          const needle = squash(segment);
+          // Ondergrens: hele korte zinnetjes ("nog niet besproken") komen toevallig in een
+          // notitierij voor en zouden dan onterecht uit beeld verdwijnen.
+          if (needle.length < 25) return true;
+          // Twee toetsen: per losse notitierij (volgorde-onafhankelijk — de markerdatums
+          // staan niet altijd chronologisch in de blob) én tegen de aaneenschakeling, voor
+          // segmenten die over de naad van twee rijen heen lopen.
+          if (squashedNotes.some((body) => body.includes(needle))) return false;
+          return !notesBlob.includes(needle);
+        });
+        return { ...note, body: remaining.join('\n\n') };
+      })
+      .filter((note) => note.body.length > 0);
+  }, [pinnedNotes, notesBlob, squashedNotes]);
 
   return (
     <div className="space-y-4">
@@ -174,7 +233,7 @@ const NotesSection = ({ entityId, entityType, pinnedNotes = [] }: NotesSectionPr
       )}
 
       <div className="space-y-3">
-        {pinnedNotes.map((note) => (
+        {visiblePinnedNotes.map((note) => (
           <div key={note.id} className="bg-muted/30 rounded-lg border p-4">
             <div className="flex items-center gap-2 mb-2">
               <span className="text-sm font-medium">{note.title}</span>
@@ -229,7 +288,7 @@ const NotesSection = ({ entityId, entityType, pinnedNotes = [] }: NotesSectionPr
             </div>
           );
         })}
-        {notes.length === 0 && pinnedNotes.length === 0 && !adding && (
+        {notes.length === 0 && visiblePinnedNotes.length === 0 && !adding && (
           <p className="text-center text-muted-foreground py-8">Nog geen notities</p>
         )}
       </div>
