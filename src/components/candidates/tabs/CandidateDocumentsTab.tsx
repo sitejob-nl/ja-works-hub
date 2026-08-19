@@ -2,6 +2,7 @@ import { useState, useRef, type DragEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
+import { useHasRole } from '@/contexts/AuthContext';
 import { logAudit } from '@/lib/audit';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -10,7 +11,13 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { Plus, CreditCard, Car, Award, FileText, FileCheck, File, Download, FileSignature, ClipboardCheck, GraduationCap, Camera, UserSquare, Upload } from 'lucide-react';
+import { Plus, CreditCard, Car, Award, FileText, FileCheck, File, Download, FileSignature, ClipboardCheck, GraduationCap, Camera, UserSquare, Upload, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { unwrap, unwrapDeleted } from '@/lib/db';
 import { formatDate } from '@/lib/format';
 import { toast } from 'sonner';
 import type { Database } from '@/integrations/supabase/types';
@@ -43,9 +50,17 @@ const statusBadge: Record<string, string> = {
 
 const CandidateDocumentsTab = ({ candidateId }: { candidateId: string }) => {
   const orgId = useOrganizationId();
+  // De DELETE-policy op documents is admin-only (ID-kopieën weggooien is onomkeerbaar
+  // en AVG-gevoelig). Andere rollen krijgen de knop dus niet te zien in plaats van een
+  // foutmelding achteraf. Bewerken mag wél elke interne rol.
+  const canDeleteDocuments = useHasRole(['admin']);
   const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
   const [adding, setAdding] = useState(false);
+  // Punt 3b — "We kunnen de toegevoegde documenten niet bewerken". Na uploaden waren
+  // soort, naam en verloopdatum niet meer te wijzigen, en verwijderen kon ook niet.
+  const [editingDoc, setEditingDoc] = useState<any | null>(null);
+  const [docToDelete, setDocToDelete] = useState<any | null>(null);
   const [form, setForm] = useState({ type: 'overig' as DocType, name: '', issued_date: '', expiry_date: '', notes: '' });
   const [file, setFile] = useState<File | null>(null);
 
@@ -147,6 +162,60 @@ const CandidateDocumentsTab = ({ candidateId }: { candidateId: string }) => {
     onError: (e: any) => toast.error(e.message),
   });
 
+  const startEdit = (doc: any) => {
+    setForm({
+      type: doc.type as DocType,
+      name: doc.name ?? '',
+      issued_date: doc.issued_date ?? '',
+      expiry_date: doc.expiry_date ?? '',
+      notes: doc.notes ?? '',
+    });
+    setFile(null);
+    setEditingDoc(doc);
+  };
+
+  const save = useMutation({
+    mutationFn: async () => {
+      await unwrap(supabase.from('documents').update({
+        type: form.type,
+        name: form.name,
+        issued_date: form.issued_date || null,
+        expiry_date: form.expiry_date || null,
+        notes: form.notes || null,
+      }).eq('id', editingDoc.id));
+    },
+    onSuccess: () => {
+      logAudit({
+        action: 'update', tableName: 'documents', recordId: editingDoc.id,
+        oldValues: { type: editingDoc.type, name: editingDoc.name, expiry_date: editingDoc.expiry_date },
+        newValues: { type: form.type, name: form.name, expiry_date: form.expiry_date || null },
+      });
+      qc.invalidateQueries({ queryKey: ['documents', candidateId] });
+      setEditingDoc(null);
+      toast.success('Document bijgewerkt');
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const remove = useMutation({
+    mutationFn: async (doc: any) => {
+      // Eerst de rij: als de policy de delete weigert raakt unwrapDeleted 0 rijen en
+      // gooit hij, zodat het bestand in de opslag blijft staan. Andersom zou een
+      // geweigerde delete het bestand alsnog wissen.
+      await unwrapDeleted(supabase.from('documents').delete().eq('id', doc.id));
+      if (doc.file_path) {
+        await supabase.storage.from('documents').remove([doc.file_path]);
+      }
+    },
+    onSuccess: (_data, doc: any) => {
+      logAudit({ action: 'delete', tableName: 'documents', recordId: doc.id, oldValues: { name: doc.name, type: doc.type } });
+      qc.invalidateQueries({ queryKey: ['documents', candidateId] });
+      setDocToDelete(null);
+      toast.success('Document verwijderd');
+    },
+    onError: (e: any) => { setDocToDelete(null); toast.error(e.message); },
+  });
+
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
@@ -197,18 +266,62 @@ const CandidateDocumentsTab = ({ candidateId }: { candidateId: string }) => {
         </SheetContent>
       </Sheet>
 
+      {/* Punt 3b — bewerken van een bestaand document: soort, naam, datums, notitie.
+          Het bestand zelf blijft staan; vervangen doe je met een nieuwe upload. */}
+      <Sheet open={!!editingDoc} onOpenChange={(open) => { if (!open) setEditingDoc(null); }}>
+        <SheetContent className="sm:max-w-md overflow-y-auto">
+          <SheetHeader><SheetTitle>Document bewerken</SheetTitle></SheetHeader>
+          <div className="space-y-4 mt-6">
+            <div>
+              <Label>Type</Label>
+              <Select value={form.type} onValueChange={(v) => setForm(f => ({ ...f, type: v as DocType }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {(Object.keys(typeLabels) as DocType[]).map(t => <SelectItem key={t} value={t}>{typeLabels[t]}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div><Label>Naam</Label><Input value={form.name} onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))} /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>Uitgiftedatum</Label><Input type="date" value={form.issued_date} onChange={(e) => setForm(f => ({ ...f, issued_date: e.target.value }))} /></div>
+              <div><Label>Verloopdatum</Label><Input type="date" value={form.expiry_date} onChange={(e) => setForm(f => ({ ...f, expiry_date: e.target.value }))} /></div>
+            </div>
+            <div><Label>Notities</Label><Textarea value={form.notes} onChange={(e) => setForm(f => ({ ...f, notes: e.target.value }))} rows={3} /></div>
+            <div className="flex justify-end gap-3 pt-4">
+              <Button variant="ghost" onClick={() => setEditingDoc(null)}>Annuleren</Button>
+              <Button onClick={() => save.mutate()} disabled={!form.name || save.isPending}>{save.isPending ? 'Opslaan...' : 'Opslaan'}</Button>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      <AlertDialog open={!!docToDelete} onOpenChange={(open) => { if (!open) setDocToDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Document verwijderen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              "{docToDelete?.name}" wordt verwijderd, samen met het bestand. Dit is niet terug te draaien.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuleren</AlertDialogCancel>
+            <AlertDialogAction onClick={() => remove.mutate(docToDelete)}>Verwijderen</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {docs.map((d: any) => {
           const Icon = typeIcons[d.type as DocType] ?? File;
           const hasFile = Boolean(d.file_path);
           const previewUrl = isImagePath(d.file_path) ? previewMap[d.file_path] : undefined;
           return (
+            <div key={d.id} className="bg-card rounded-lg border p-3 flex gap-3 transition hover:border-primary/40 hover:shadow-sm">
             <button
-              key={d.id}
               type="button"
               onClick={() => openDoc(d.file_path)}
               disabled={!hasFile}
-              className="bg-card rounded-lg border p-3 flex gap-3 text-left transition hover:border-primary/40 hover:shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+              className="flex flex-1 min-w-0 gap-3 text-left disabled:opacity-60 disabled:cursor-not-allowed"
               title={hasFile ? 'Open document' : 'Bestand nog niet gedownload uit bron'}
             >
               <div className="h-16 w-16 rounded-md bg-muted flex items-center justify-center shrink-0 overflow-hidden">
@@ -236,6 +349,24 @@ const CandidateDocumentsTab = ({ candidateId }: { candidateId: string }) => {
               </div>
               {hasFile && <Download className="h-4 w-4 text-muted-foreground shrink-0 self-start mt-1" />}
             </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" aria-label={`Acties voor ${d.name}`}>
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => startEdit(d)}>
+                  <Pencil className="h-4 w-4 mr-2" /> Bewerken
+                </DropdownMenuItem>
+                {canDeleteDocuments && (
+                  <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setDocToDelete(d)}>
+                    <Trash2 className="h-4 w-4 mr-2" /> Verwijderen
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            </div>
           );
         })}
       </div>
