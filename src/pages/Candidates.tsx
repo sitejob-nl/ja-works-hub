@@ -419,9 +419,17 @@ const Candidates = () => {
             </>
           )}
           {activeTab === 'in-dienst' && canEditCandidates && (
-            <Button size="sm" onClick={() => navigate('/medewerkers/new')} className="gap-1.5">
-              <UserPlus className="h-4 w-4" /> In dienst nemen
-            </Button>
+            <>
+              {/* Punt 15 — het samenvoegscherm stond alleen op het tabblad "Alle kandidaten".
+                  Wie vanuit Medewerkers werkt (dat is dit tabblad) kwam er dus nooit langs,
+                  terwijl juist daar om dubbelen werd gevraagd. */}
+              <Button variant="outline" size="sm" onClick={() => navigate('/kandidaten/duplicaten')} className="gap-1.5 hidden md:flex">
+                <Copy className="h-4 w-4" /> Duplicaten
+              </Button>
+              <Button size="sm" onClick={() => navigate('/medewerkers/new')} className="gap-1.5">
+                <UserPlus className="h-4 w-4" /> In dienst nemen
+              </Button>
+            </>
           )}
         </div>
       </div>
