@@ -16,6 +16,7 @@ import { differenceInCalendarDays, parseISO } from 'date-fns';
 import TransportFinesTab from '@/components/transport/TransportFinesTab';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchFacilityTransportSnapshot, isFacilityRole } from '@/lib/facility';
+import { vehicleDisplayStatus } from '@/lib/vehicle-availability';
 
 
 const PAGE_SIZE = 10;
@@ -23,12 +24,18 @@ const PAGE_SIZE = 10;
 const statusBadge: Record<string, string> = {
   beschikbaar: 'bg-stat-green/10 text-stat-green border-0',
   toegewezen: 'bg-blue-100 text-blue-700 border-0',
+  gereserveerd: 'bg-purple-100 text-purple-700 border-0',
   onderhoud: 'bg-orange-100 text-orange-600 border-0',
   uit_dienst: 'bg-muted text-muted-foreground border-0',
 };
+// 'Non-Actief' i.p.v. 'Uit dienst' (punt 18): die term is bij een medewerker het
+// einde van het dienstverband en betekent bij een auto iets heel anders.
+// 'gereserveerd' is afgeleid (zie vehicleDisplayStatus) en staat niet in de enum,
+// dus ook niet in het statusfilter hieronder.
 const statusLabel: Record<string, string> = {
-  beschikbaar: 'Beschikbaar', toegewezen: 'Toegewezen', onderhoud: 'Onderhoud', uit_dienst: 'Uit dienst',
+  beschikbaar: 'Beschikbaar', toegewezen: 'Toegewezen', onderhoud: 'Onderhoud', uit_dienst: 'Non-Actief',
 };
+const displayStatusLabel: Record<string, string> = { ...statusLabel, gereserveerd: 'Gereserveerd' };
 
 const Transport = () => {
   const navigate = useNavigate();
@@ -37,6 +44,7 @@ const Transport = () => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [page, setPage] = useState(0);
+  const todayStr = new Date().toISOString().slice(0, 10);
 
   const { data: facilitySnapshot, isLoading: isFacilityLoading } = useQuery({
     queryKey: ['facility-transport-snapshot', profile?.organization_id],
@@ -50,7 +58,7 @@ const Transport = () => {
       let query = supabase.from('vehicles').select(`
         *,
         vehicle_assignments!vehicle_assignments_vehicle_id_fkey(
-          id, returned_date,
+          id, assigned_date, returned_date,
           employees!vehicle_assignments_employee_id_fkey(
             id,
             candidates!employees_candidate_id_fkey(first_name, last_name)
@@ -257,7 +265,21 @@ const Transport = () => {
                             })()}
                           </TableCell>
                           {!isFacility && <TableCell className="font-mono text-xs">{v.fuel_card_reference ?? '—'}</TableCell>}
-                          <TableCell><Badge variant="secondary" className={statusBadge[v.status] ?? ''}>{statusLabel[v.status] ?? v.status}</Badge></TableCell>
+                          <TableCell>
+                            {(() => {
+                              const display = vehicleDisplayStatus(v, todayStr);
+                              return (
+                                <span className="flex items-center gap-1.5">
+                                  <Badge variant="secondary" className={statusBadge[display.key] ?? ''}>
+                                    {displayStatusLabel[display.key] ?? display.key}
+                                  </Badge>
+                                  {display.reservedFrom && (
+                                    <span className="text-[10px] text-muted-foreground whitespace-nowrap">vanaf {formatDate(display.reservedFrom)}</span>
+                                  )}
+                                </span>
+                              );
+                            })()}
+                          </TableCell>
                           <TableCell>{assignee ? (
                             isFacility
                               ? <span>{assignee.first_name} {assignee.last_name}</span>

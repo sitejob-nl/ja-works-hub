@@ -93,11 +93,16 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
         created_by: user?.id ?? null,
       }).select('id').single();
       if (error) throw error;
-      const { error: vErr } = await supabase.from('vehicles')
-        .update({ status: 'toegewezen' as any })
-        .eq('organization_id', orgId)
-        .eq('id', vehicleId);
-      if (vErr) throw vErr;
+      // Punt 17 — een toewijzing die in de toekomst begint is een reservering: het
+      // voertuig blijft tot die datum gewoon beschikbaar. De status 'Gereserveerd'
+      // wordt afgeleid uit de datums (vehicleDisplayStatus), niet opgeslagen.
+      if (assignedDate <= new Date().toISOString().slice(0, 10)) {
+        const { error: vErr } = await supabase.from('vehicles')
+          .update({ status: 'toegewezen' as any })
+          .eq('organization_id', orgId)
+          .eq('id', vehicleId);
+        if (vErr) throw vErr;
+      }
       // Autoregels meesturen (instelbaar per reglement). Non-blocking.
       await sendRegulationsForAssignment({ candidateId, category: 'voertuig', contextId: inserted?.id });
     },
@@ -278,7 +283,10 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
                 value={assignedDate}
                 onChange={(e) => { setAssignedDate(e.target.value); setVehicleId(''); }}
               />
-              <p className="text-xs text-muted-foreground mt-1">Standaard nu beschikbaar. Kies een toekomstige datum om voertuigen te tonen die dan vrij zijn.</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Standaard nu beschikbaar. Kies een toekomstige datum om voertuigen te tonen die dan vrij zijn.
+                {assignedDate > todayStr && ' Het voertuig komt op Gereserveerd te staan en blijft tot die datum beschikbaar.'}
+              </p>
             </div>
             <div>
               <Label>Voertuig *</Label>

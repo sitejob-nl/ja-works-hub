@@ -3,6 +3,8 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { unwrap, unwrapDeleted, unwrapList } from '@/lib/db';
+import { formatDate } from '@/lib/format';
+import { vehicleDisplayStatus } from '@/lib/vehicle-availability';
 import { qk } from '@/lib/query-keys';
 import { toFriendlyError } from '@/lib/errorMessages';
 import { ChevronRight, Edit, MoreHorizontal, Trash2 } from 'lucide-react';
@@ -34,12 +36,15 @@ import { fetchFacilityTransportSnapshot, isFacilityRole, saveFacilityOperational
 const statusBadge: Record<string, string> = {
   beschikbaar: 'bg-stat-green/10 text-stat-green border-0',
   toegewezen: 'bg-blue-100 text-blue-700 border-0',
+  gereserveerd: 'bg-purple-100 text-purple-700 border-0',
   onderhoud: 'bg-orange-100 text-orange-600 border-0',
   uit_dienst: 'bg-muted text-muted-foreground border-0',
 };
+// 'Non-Actief' i.p.v. 'Uit dienst' (punt 18) — zie Transport.tsx.
 const statusLabel: Record<string, string> = {
-  beschikbaar: 'Beschikbaar', toegewezen: 'Toegewezen', onderhoud: 'Onderhoud', uit_dienst: 'Uit dienst',
+  beschikbaar: 'Beschikbaar', toegewezen: 'Toegewezen', onderhoud: 'Onderhoud', uit_dienst: 'Non-Actief',
 };
+const displayStatusLabel: Record<string, string> = { ...statusLabel, gereserveerd: 'Gereserveerd' };
 
 const VehicleDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -175,6 +180,12 @@ const VehicleDetail = () => {
   if (isLoading || !vehicle) return <div className="p-8 text-muted-foreground">Laden...</div>;
 
   const activeAssignment = ((vehicle.assignments ?? vehicle.vehicle_assignments) as any[])?.find((a: any) => !a.returned_date);
+  // Punt 17 — een reservering is een toewijzing die later begint; de status wordt
+  // daaruit afgeleid zodat hij niet kan verouderen.
+  const displayStatus = vehicleDisplayStatus(
+    { status: vehicle.status, vehicle_assignments: (vehicle.assignments ?? vehicle.vehicle_assignments) as any[] },
+    new Date().toISOString().slice(0, 10),
+  );
   const assignee = activeAssignment?.employees?.candidates ?? activeAssignment?.worker ?? activeAssignment;
 
   return (
@@ -190,7 +201,10 @@ const VehicleDetail = () => {
           <h1 className="text-xl sm:text-2xl font-semibold">{vehicle.license_plate}</h1>
           <p className="text-sm text-muted-foreground">{[vehicle.brand, vehicle.model].filter(Boolean).join(' ')}</p>
           <div className="flex items-center gap-2 mt-2 flex-wrap">
-            <Badge variant="secondary" className={statusBadge[vehicle.status] ?? ''}>{statusLabel[vehicle.status] ?? vehicle.status}</Badge>
+            <Badge variant="secondary" className={statusBadge[displayStatus.key] ?? ''}>{displayStatusLabel[displayStatus.key] ?? displayStatus.key}</Badge>
+            {displayStatus.reservedFrom && (
+              <span className="text-xs text-muted-foreground">vanaf {formatDate(displayStatus.reservedFrom)}</span>
+            )}
             {assignee && <span className="text-sm text-muted-foreground">Toegewezen aan {assignee.first_name} {assignee.last_name}</span>}
           </div>
         </div>

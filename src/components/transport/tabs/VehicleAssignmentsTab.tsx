@@ -180,11 +180,15 @@ const VehicleAssignmentsTab = ({ vehicle }: { vehicle: any }) => {
         created_by: user?.id ?? null,
       }).select('id').single();
       if (error) throw error;
-      if (isFacility) {
-        await saveFacilityOperationalEntity('vehicle', { id: vehicle.id, status: 'toegewezen' });
-      } else {
-        const { error: vErr } = await supabase.from('vehicles').update({ status: 'toegewezen' as any }).eq('id', vehicle.id);
-        if (vErr) throw vErr;
+      // Punt 17 — een toewijzing met een toekomstige begindatum is een reservering; het
+      // voertuig blijft tot die datum beschikbaar en de status blijft dus ongemoeid.
+      if (assignedDate <= new Date().toISOString().slice(0, 10)) {
+        if (isFacility) {
+          await saveFacilityOperationalEntity('vehicle', { id: vehicle.id, status: 'toegewezen' });
+        } else {
+          const { error: vErr } = await supabase.from('vehicles').update({ status: 'toegewezen' as any }).eq('id', vehicle.id);
+          if (vErr) throw vErr;
+        }
       }
       // Autoregels meesturen (instelbaar per reglement). Non-blocking: de toewijzing staat al.
       if (candidateId) {
@@ -444,7 +448,13 @@ const VehicleAssignmentsTab = ({ vehicle }: { vehicle: any }) => {
                 </p>
               )}
             </div>
-            <div><Label>Startdatum *</Label><Input type="date" value={assignedDate} onChange={(e) => setAssignedDate(e.target.value)} /></div>
+            <div>
+              <Label>Startdatum *</Label>
+              <Input type="date" value={assignedDate} onChange={(e) => setAssignedDate(e.target.value)} />
+              {assignedDate > new Date().toISOString().slice(0, 10) && (
+                <p className="text-xs text-muted-foreground mt-1">Toekomstige datum: het voertuig staat tot dan op Gereserveerd en blijft beschikbaar.</p>
+              )}
+            </div>
             <div><Label>Begin kilometerstand</Label><Input type="number" value={startMileage} onChange={(e) => setStartMileage(e.target.value)} /></div>
             <div className="flex justify-end gap-3 pt-4">
               <Button variant="ghost" onClick={() => setAssignOpen(false)}>Annuleren</Button>

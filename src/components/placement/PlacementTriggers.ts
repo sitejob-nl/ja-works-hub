@@ -371,7 +371,10 @@ export async function assignVehicleOnPlacement(input: {
     created_by: input.createdBy ?? null,
   } as any);
   if (error) throw error;
-  await supabase.from('vehicles').update({ status: 'toegewezen' as any }).eq('id', input.vehicleId);
+  // Toewijzing die later ingaat = reservering; status pas omzetten als hij is ingegaan.
+  if (input.startDate <= new Date().toISOString().slice(0, 10)) {
+    await supabase.from('vehicles').update({ status: 'toegewezen' as any }).eq('id', input.vehicleId);
+  }
 }
 
 // Interne opvolg-taken bij een plaatsing (accountmanager, contract-eigenaar "Maria", administratie).
