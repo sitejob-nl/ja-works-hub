@@ -2505,7 +2505,8 @@ export type Database = {
       documents: {
         Row: {
           ai_verification_result: Json | null
-          candidate_id: string
+          candidate_id: string | null
+          company_id: string | null
           created_at: string
           employee_id: string | null
           expiry_date: string | null
@@ -2524,7 +2525,8 @@ export type Database = {
         }
         Insert: {
           ai_verification_result?: Json | null
-          candidate_id: string
+          candidate_id?: string | null
+          company_id?: string | null
           created_at?: string
           employee_id?: string | null
           expiry_date?: string | null
@@ -2543,7 +2545,8 @@ export type Database = {
         }
         Update: {
           ai_verification_result?: Json | null
-          candidate_id?: string
+          candidate_id?: string | null
+          company_id?: string | null
           created_at?: string
           employee_id?: string | null
           expiry_date?: string | null
@@ -2566,6 +2569,13 @@ export type Database = {
             columns: ["candidate_id"]
             isOneToOne: false
             referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "documents_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
             referencedColumns: ["id"]
           },
           {
