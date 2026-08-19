@@ -46,17 +46,20 @@ const PaginationLink = ({ className, isActive, size = "icon", ...props }: Pagina
 );
 PaginationLink.displayName = "PaginationLink";
 
+// Nederlandse labels: dit is shadcn-standaardmarkup, en die staat in het Engels. In een
+// verder volledig Nederlandse lijst vielen "Previous"/"Next" op. Het portaal vertaalt via
+// een eigen woordenboek, de recruiteromgeving heeft hardcoded Nederlandse brontekst.
 const PaginationPrevious = ({ className, ...props }: React.ComponentProps<typeof PaginationLink>) => (
-  <PaginationLink aria-label="Go to previous page" size="default" className={cn("gap-1 pl-2.5", className)} {...props}>
+  <PaginationLink aria-label="Ga naar de vorige pagina" size="default" className={cn("gap-1 pl-2.5", className)} {...props}>
     <ChevronLeft className="h-4 w-4" />
-    <span>Previous</span>
+    <span>Vorige</span>
   </PaginationLink>
 );
 PaginationPrevious.displayName = "PaginationPrevious";
 
 const PaginationNext = ({ className, ...props }: React.ComponentProps<typeof PaginationLink>) => (
-  <PaginationLink aria-label="Go to next page" size="default" className={cn("gap-1 pr-2.5", className)} {...props}>
-    <span>Next</span>
+  <PaginationLink aria-label="Ga naar de volgende pagina" size="default" className={cn("gap-1 pr-2.5", className)} {...props}>
+    <span>Volgende</span>
     <ChevronRight className="h-4 w-4" />
   </PaginationLink>
 );

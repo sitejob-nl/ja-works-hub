@@ -144,6 +144,7 @@ const Candidates = () => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [employeeStatusFilter, setEmployeeStatusFilter] = useState('all');
+  const hasEmployeeFilter = search.trim() !== '' || employeeStatusFilter !== 'all';
   const [complianceFilter, setComplianceFilter] = useState('all');
   const [nameSort, setNameSort] = useState<'none' | 'asc' | 'desc'>('none');
   const [page, setPage] = useState(0);
@@ -788,11 +789,25 @@ const Candidates = () => {
           ) : employees.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <Users className="h-12 w-12 text-muted-foreground/40 mb-4" />
-              <p className="text-lg font-medium text-muted-foreground">Nog geen kandidaten in dienst</p>
-              {canEditCandidates && (
-                <Button onClick={() => navigate('/medewerkers/new')} variant="outline" className="mt-4 gap-2">
-                  <UserPlus className="h-4 w-4" /> Kandidaat in dienst nemen
-                </Button>
+              {/* Zie Transport: nul resultaten na filteren is iets anders dan niemand
+                  in dienst. Eerst stond hier "Kandidaat in dienst nemen" bij 22 mensen. */}
+              {hasEmployeeFilter ? (
+                <>
+                  <p className="text-lg font-medium text-muted-foreground">Geen medewerkers gevonden</p>
+                  <p className="text-sm text-muted-foreground mt-1">Er zijn wel medewerkers, maar geen enkele past bij deze zoekopdracht of dit filter.</p>
+                  <Button variant="outline" className="mt-4" onClick={() => { setSearch(''); setEmployeeStatusFilter('all'); setPage(0); }}>
+                    Filters wissen
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <p className="text-lg font-medium text-muted-foreground">Nog geen kandidaten in dienst</p>
+                  {canEditCandidates && (
+                    <Button onClick={() => navigate('/medewerkers/new')} variant="outline" className="mt-4 gap-2">
+                      <UserPlus className="h-4 w-4" /> Kandidaat in dienst nemen
+                    </Button>
+                  )}
+                </>
               )}
             </div>
           ) : (

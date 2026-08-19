@@ -41,7 +41,10 @@ const VehicleEdit = () => {
         brand: vehicle.brand ?? '',
         model: vehicle.model ?? '',
         year: vehicle.year?.toString() ?? '',
-        fuel_type: vehicle.fuel_type ?? '',
+        // Opgeslagen waarden zijn niet altijd kleingeschreven ("Diesel" uit een oudere
+        // import). De keuzelijst is dat wél, dus zonder normalisatie vindt Radix geen
+        // match en toont het veld leeg — alsof brandstof niet is ingevuld.
+        fuel_type: normalizeRdwFuel(vehicle.fuel_type) ?? '',
         current_mileage: vehicle.current_mileage?.toString() ?? '',
         tank_capacity_liters: vehicle.tank_capacity_liters?.toString() ?? '',
         fuel_card_reference: vehicle.fuel_card_reference ?? '',

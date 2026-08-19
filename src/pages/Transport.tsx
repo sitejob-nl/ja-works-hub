@@ -47,6 +47,7 @@ const Transport = () => {
   const [statusFilter, setStatusFilter] = useState('all');
   const [page, setPage] = useState(0);
   const todayStr = new Date().toISOString().slice(0, 10);
+  const hasActiveFilter = search.trim() !== '' || statusFilter !== 'all';
 
   const { data: facilitySnapshot, isLoading: isFacilityLoading } = useQuery({
     queryKey: ['facility-transport-snapshot', profile?.organization_id],
@@ -236,8 +237,22 @@ const Transport = () => {
           {!isLoading && vehicles.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <Car className="h-12 w-12 text-muted-foreground/40 mb-4" />
-              <p className="text-lg font-medium text-muted-foreground">Nog geen voertuigen</p>
-              {!isFacility && <Button onClick={() => navigate('/transport/new')} variant="outline" className="mt-4 gap-2"><Plus className="h-4 w-4" /> Voeg je eerste voertuig toe</Button>}
+              {/* Filteren tot nul resultaten is iets anders dan een leeg wagenpark. Eerst
+                  stond hier "Voeg je eerste voertuig toe" terwijl er 49 voertuigen zijn. */}
+              {hasActiveFilter ? (
+                <>
+                  <p className="text-lg font-medium text-muted-foreground">Geen voertuigen gevonden</p>
+                  <p className="text-sm text-muted-foreground mt-1">Er zijn wel voertuigen, maar geen enkele past bij deze zoekopdracht of dit filter.</p>
+                  <Button variant="outline" className="mt-4" onClick={() => { setSearch(''); setStatusFilter('all'); setPage(0); }}>
+                    Filters wissen
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <p className="text-lg font-medium text-muted-foreground">Nog geen voertuigen</p>
+                  {!isFacility && <Button onClick={() => navigate('/transport/new')} variant="outline" className="mt-4 gap-2"><Plus className="h-4 w-4" /> Voeg je eerste voertuig toe</Button>}
+                </>
+              )}
             </div>
           ) : (
             <>
@@ -269,7 +284,7 @@ const Transport = () => {
                           </TableCell>
                           <TableCell>{[v.brand, v.model].filter(Boolean).join(' ') || '—'}</TableCell>
                           <TableCell>{v.year ?? '—'}</TableCell>
-                          <TableCell>{v.fuel_type ?? '—'}</TableCell>
+                          <TableCell className="capitalize">{v.fuel_type ?? '—'}</TableCell>
                           <TableCell className="text-right">{v.doors ?? '—'}</TableCell>
                           <TableCell className="text-right">{v.current_mileage != null ? v.current_mileage.toLocaleString('nl-NL') : '—'}</TableCell>
                           <TableCell>
