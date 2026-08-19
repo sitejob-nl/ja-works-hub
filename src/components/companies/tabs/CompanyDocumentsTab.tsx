@@ -174,7 +174,7 @@ const CompanyDocumentsTab = ({ companyId }: { companyId: string }) => {
   });
 
   const fields = (
-    <div className="space-y-4 mt-6">
+    <div className="space-y-4">
       <div>
         <Label>Type</Label>
         <Select value={form.type} onValueChange={(v) => setForm((f) => ({ ...f, type: v as DocType }))}>
@@ -185,7 +185,7 @@ const CompanyDocumentsTab = ({ companyId }: { companyId: string }) => {
         </Select>
       </div>
       <div><Label>Naam</Label><Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} /></div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div><Label>Ingangsdatum</Label><Input type="date" value={form.issued_date} onChange={(e) => setForm((f) => ({ ...f, issued_date: e.target.value }))} /></div>
         <div><Label>Verloopdatum</Label><Input type="date" value={form.expiry_date} onChange={(e) => setForm((f) => ({ ...f, expiry_date: e.target.value }))} /></div>
       </div>
@@ -205,8 +205,8 @@ const CompanyDocumentsTab = ({ companyId }: { companyId: string }) => {
       <Sheet open={adding} onOpenChange={setAdding}>
         <SheetContent className="sm:max-w-md overflow-y-auto">
           <SheetHeader><SheetTitle>Nieuw document</SheetTitle></SheetHeader>
-          {fields}
-          <div className="space-y-4">
+          <div className="space-y-4 mt-6">
+            {fields}
             <div>
               <Label>Bestand</Label>
               <div
@@ -236,7 +236,7 @@ const CompanyDocumentsTab = ({ companyId }: { companyId: string }) => {
       <Sheet open={!!editingDoc} onOpenChange={(open) => { if (!open) setEditingDoc(null); }}>
         <SheetContent className="sm:max-w-md overflow-y-auto">
           <SheetHeader><SheetTitle>Document bewerken</SheetTitle></SheetHeader>
-          {fields}
+          <div className="mt-6">{fields}</div>
           <div className="flex justify-end gap-3 pt-4">
             <Button variant="ghost" onClick={() => setEditingDoc(null)}>Annuleren</Button>
             <Button onClick={() => save.mutate()} disabled={!form.name || save.isPending}>
@@ -256,7 +256,12 @@ const CompanyDocumentsTab = ({ companyId }: { companyId: string }) => {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Annuleren</AlertDialogCancel>
-            <AlertDialogAction onClick={() => remove.mutate(docToDelete)}>Verwijderen</AlertDialogAction>
+            <AlertDialogAction
+              onClick={() => remove.mutate(docToDelete)}
+              className="bg-transparent border border-destructive text-destructive hover:bg-destructive/10 hover:text-destructive"
+            >
+              Verwijderen
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

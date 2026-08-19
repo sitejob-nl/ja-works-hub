@@ -48,6 +48,8 @@ const statusBadge: Record<string, string> = {
   ongeldig: 'bg-muted text-muted-foreground border-0',
 };
 
+const emptyForm = { type: 'overig' as DocType, name: '', issued_date: '', expiry_date: '', notes: '' };
+
 const CandidateDocumentsTab = ({ candidateId }: { candidateId: string }) => {
   const orgId = useOrganizationId();
   // De DELETE-policy op documents is admin-only (ID-kopieën weggooien is onomkeerbaar
@@ -61,7 +63,7 @@ const CandidateDocumentsTab = ({ candidateId }: { candidateId: string }) => {
   // soort, naam en verloopdatum niet meer te wijzigen, en verwijderen kon ook niet.
   const [editingDoc, setEditingDoc] = useState<any | null>(null);
   const [docToDelete, setDocToDelete] = useState<any | null>(null);
-  const [form, setForm] = useState({ type: 'overig' as DocType, name: '', issued_date: '', expiry_date: '', notes: '' });
+  const [form, setForm] = useState(emptyForm);
   const [file, setFile] = useState<File | null>(null);
 
   const { data: docs = [] } = useQuery({
@@ -155,7 +157,7 @@ const CandidateDocumentsTab = ({ candidateId }: { candidateId: string }) => {
       logAudit({ action: 'create', tableName: 'documents', recordId: candidateId, newValues: { type: form.type, name: form.name } });
       qc.invalidateQueries({ queryKey: ['documents', candidateId] });
       setAdding(false);
-      setForm({ type: 'overig', name: '', issued_date: '', expiry_date: '', notes: '' });
+      setForm(emptyForm);
       setFile(null);
       toast.success('Document geüpload');
     },
@@ -220,7 +222,10 @@ const CandidateDocumentsTab = ({ candidateId }: { candidateId: string }) => {
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h3 className="font-medium">Documenten</h3>
-        <Button size="sm" variant="outline" onClick={() => setAdding(true)} className="gap-1"><Plus className="h-3.5 w-3.5" />Nieuw document</Button>
+        {/* Bewust resetten: startEdit() schrijft in dezelfde form-state, dus zonder deze
+            reset opende "Nieuw document" ná een bewerksessie met de soort en naam van dát
+            document — met een geüpload bestand onder de verkeerde naam als gevolg. */}
+        <Button size="sm" variant="outline" onClick={() => { setForm(emptyForm); setFile(null); setAdding(true); }} className="gap-1"><Plus className="h-3.5 w-3.5" />Nieuw document</Button>
       </div>
 
       <Sheet open={adding} onOpenChange={setAdding}>
@@ -237,7 +242,7 @@ const CandidateDocumentsTab = ({ candidateId }: { candidateId: string }) => {
               </Select>
             </div>
             <div><Label>Naam</Label><Input value={form.name} onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))} /></div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div><Label>Uitgiftedatum</Label><Input type="date" value={form.issued_date} onChange={(e) => setForm(f => ({ ...f, issued_date: e.target.value }))} /></div>
               <div><Label>Verloopdatum</Label><Input type="date" value={form.expiry_date} onChange={(e) => setForm(f => ({ ...f, expiry_date: e.target.value }))} /></div>
             </div>
@@ -282,7 +287,7 @@ const CandidateDocumentsTab = ({ candidateId }: { candidateId: string }) => {
               </Select>
             </div>
             <div><Label>Naam</Label><Input value={form.name} onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))} /></div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div><Label>Uitgiftedatum</Label><Input type="date" value={form.issued_date} onChange={(e) => setForm(f => ({ ...f, issued_date: e.target.value }))} /></div>
               <div><Label>Verloopdatum</Label><Input type="date" value={form.expiry_date} onChange={(e) => setForm(f => ({ ...f, expiry_date: e.target.value }))} /></div>
             </div>
@@ -305,7 +310,12 @@ const CandidateDocumentsTab = ({ candidateId }: { candidateId: string }) => {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Annuleren</AlertDialogCancel>
-            <AlertDialogAction onClick={() => remove.mutate(docToDelete)}>Verwijderen</AlertDialogAction>
+            <AlertDialogAction
+              onClick={() => remove.mutate(docToDelete)}
+              className="bg-transparent border border-destructive text-destructive hover:bg-destructive/10 hover:text-destructive"
+            >
+              Verwijderen
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

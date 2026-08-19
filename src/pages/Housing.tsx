@@ -17,6 +17,7 @@ import { formatEUR } from '@/lib/format';
 import { unwrapList } from '@/lib/db';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchFacilityHousingSnapshot, isFacilityRole } from '@/lib/facility';
+import { totalMonthlyPropertyCosts } from '@/lib/housing-costs';
 
 const ALL_CITIES = '__all__';
 const WEEKS_PER_MONTH = 4.33;
@@ -197,15 +198,7 @@ const Housing = () => {
   const totalAvailable = totalCapacity - totalOccupancy;
   const totalFreeRooms = properties.reduce((s: number, p: any) => s + (p.freeRooms ?? 0), 0);
   const overallPct = totalCapacity > 0 ? Math.round((totalOccupancy / totalCapacity) * 100) : 0;
-  const totalMonthlyCost = properties.reduce((sum: number, p: any) => {
-    return sum
-      + (Number(p.monthly_rent) || 0)
-      + (Number(p.cost_gas) || 0)
-      + (Number(p.cost_water) || 0)
-      + (Number(p.cost_electra) || 0)
-      + (Number(p.cost_municipal_tax) || 0)
-      + (Number(p.cost_other) || 0);
-  }, 0);
+  const totalMonthlyCost = totalMonthlyPropertyCosts(properties);
   const chartAssignments = isFacility
     ? allProperties.flatMap((p: any) => (p.units ?? []).flatMap((u: any) => u.housing_assignments ?? []))
     : undefined;

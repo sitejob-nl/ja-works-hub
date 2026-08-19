@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { unwrap, unwrapList } from '@/lib/db';
 import { qk } from '@/lib/query-keys';
+import { foldAccents, sanitizeSearchTerm } from '@/lib/search';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { useAuth } from '@/contexts/AuthContext';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -190,10 +191,15 @@ const PlacementWizard = ({ open, onClose, match, vacancy, defaultCompanyId, lock
         .order('first_name')
         .limit(50);
 
-      const search = empSearch.trim();
+      const search = sanitizeSearchTerm(empSearch);
       if (search) {
-        const term = search.replace(/[%,]/g, ' ');
-        query = query.or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%,employee_number.ilike.%${term}%`);
+        // Via search_unaccent (naam+stad+email+telefoon aan elkaar), niet los op
+        // first_name/last_name: dat laatste gaf 0 treffers zodra je een volledige naam
+        // typte, omdat "Milan Kowalski" in geen van beide losse kolommen voorkomt.
+        // Personeelsnummer zit niet in die kolom en blijft daarom een eigen tak.
+        query = query.or(
+          `search_unaccent.ilike.%${foldAccents(search)}%,employee_number.ilike.%${search}%`,
+        );
       }
       return unwrapList<any>(query);
     },
@@ -569,9 +575,7 @@ const PlacementWizard = ({ open, onClose, match, vacancy, defaultCompanyId, lock
                       <p className="p-4 text-sm text-muted-foreground text-center">
                         {candidatesLoading
                           ? 'Zoeken...'
-                          : empSearch.trim()
-                            ? 'Geen kandidaat gevonden. Probeer een deel van de achternaam.'
-                            : 'Typ een naam om te zoeken.'}
+                          : 'Geen kandidaat gevonden. Probeer een deel van de naam of het personeelsnummer.'}
                       </p>
                     ) : (
                       selectableCandidates.map((c) => (

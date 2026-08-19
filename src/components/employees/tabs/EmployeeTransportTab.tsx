@@ -20,6 +20,9 @@ import RegulationStatus from '@/components/shared/RegulationStatus';
 import { formatDate, formatEUR } from '@/lib/format';
 import { toast } from 'sonner';
 
+const formatKm = (value: number | null | undefined) =>
+  value == null ? '—' : Number(value).toLocaleString('nl-NL');
+
 const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
   const orgId = useOrganizationId();
   const canAssignVehicle = useHasRole(['admin', 'intercedent', 'backoffice']);
@@ -158,7 +161,7 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
             <div><p className="text-xs text-muted-foreground">Merk</p><p className="text-sm">{assignment.vehicles?.brand ?? '—'}</p></div>
             <div><p className="text-xs text-muted-foreground">Model</p><p className="text-sm">{assignment.vehicles?.model ?? '—'}</p></div>
             <div><p className="text-xs text-muted-foreground">Toewijsdatum</p><p className="text-sm">{formatDate(assignment.assigned_date)}</p></div>
-            <div><p className="text-xs text-muted-foreground">Begin km</p><p className="text-sm">{assignment.start_mileage ?? '—'}</p></div>
+            <div><p className="text-xs text-muted-foreground">Begin km</p><p className="text-sm">{formatKm(assignment.start_mileage)}</p></div>
             <div><p className="text-xs text-muted-foreground">Toegewezen door</p><p className="text-sm">{assignment.profiles?.full_name ?? '—'}</p></div>
           </div>
         ) : (
@@ -192,8 +195,8 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
                   </TableCell>
                   <TableCell>{[a.vehicles?.brand, a.vehicles?.model].filter(Boolean).join(' ') || '—'}</TableCell>
                   <TableCell>{formatDate(a.assigned_date)} – {formatDate(a.returned_date)}</TableCell>
-                  <TableCell className="text-right">{a.start_mileage ?? '—'}</TableCell>
-                  <TableCell className="text-right">{a.end_mileage ?? '—'}</TableCell>
+                  <TableCell className="text-right tabular-nums">{formatKm(a.start_mileage)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{formatKm(a.end_mileage)}</TableCell>
                   <TableCell className="text-muted-foreground">{a.profiles?.full_name ?? '—'}</TableCell>
                 </TableRow>
               ))}
