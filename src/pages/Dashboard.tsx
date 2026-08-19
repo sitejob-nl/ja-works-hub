@@ -151,7 +151,9 @@ const Dashboard = () => {
       // de huidige week is nog onvolledig en geeft een vertekend beeld.
       const lastWeek = subWeeks(new Date(), 1);
       const [empRes, vacRes, unitRes, tsRes] = await Promise.all([
-        supabase.from('employees').select('id', { count: 'exact', head: true }).eq('status', 'actief'),
+        // Actieve medewerkers via candidates; de legacy employees-tabel bevat alleen
+        // koppelrijen en telde daardoor structureel te laag.
+        supabase.from('candidates').select('id', { count: 'exact', head: true }).eq('employee_status', 'actief' as any),
         supabase.from('vacancies').select('id', { count: 'exact', head: true }).eq('status', 'open'),
         supabase.from('v_unit_occupancy').select('capacity, current_occupancy'),
         canViewFinance
