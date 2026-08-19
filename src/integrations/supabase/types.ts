@@ -1209,6 +1209,7 @@ export type Database = {
       }
       carerix_import_entity_runs: {
         Row: {
+          changed: number
           created: number
           entity: string
           failed: number
@@ -1224,6 +1225,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          changed?: number
           created?: number
           entity: string
           failed?: number
@@ -1239,6 +1241,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          changed?: number
           created?: number
           entity?: string
           failed?: number
@@ -1312,6 +1315,7 @@ export type Database = {
           modified_since: string | null
           only_entities: string[] | null
           organization_id: string
+          preview_job_id: string | null
           skip_entities: string[] | null
           started_at: string | null
           status: string
@@ -1327,6 +1331,7 @@ export type Database = {
           modified_since?: string | null
           only_entities?: string[] | null
           organization_id: string
+          preview_job_id?: string | null
           skip_entities?: string[] | null
           started_at?: string | null
           status?: string
@@ -1342,6 +1347,7 @@ export type Database = {
           modified_since?: string | null
           only_entities?: string[] | null
           organization_id?: string
+          preview_job_id?: string | null
           skip_entities?: string[] | null
           started_at?: string | null
           status?: string
@@ -1357,6 +1363,76 @@ export type Database = {
           },
           {
             foreignKeyName: "carerix_import_jobs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "carerix_import_jobs_preview_job_id_fkey"
+            columns: ["preview_job_id"]
+            isOneToOne: false
+            referencedRelation: "carerix_import_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      carerix_import_previews: {
+        Row: {
+          action: string
+          carerix_id: string
+          created_at: string
+          details: Json | null
+          diff: Json | null
+          entity: string
+          excluded: boolean
+          existing_id: string | null
+          id: string
+          job_id: string
+          label: string | null
+          organization_id: string
+          spam_reason: string | null
+        }
+        Insert: {
+          action?: string
+          carerix_id: string
+          created_at?: string
+          details?: Json | null
+          diff?: Json | null
+          entity: string
+          excluded?: boolean
+          existing_id?: string | null
+          id?: string
+          job_id: string
+          label?: string | null
+          organization_id: string
+          spam_reason?: string | null
+        }
+        Update: {
+          action?: string
+          carerix_id?: string
+          created_at?: string
+          details?: Json | null
+          diff?: Json | null
+          entity?: string
+          excluded?: boolean
+          existing_id?: string | null
+          id?: string
+          job_id?: string
+          label?: string | null
+          organization_id?: string
+          spam_reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "carerix_import_previews_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "carerix_import_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "carerix_import_previews_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
@@ -3858,7 +3934,9 @@ export type Database = {
           check_in_date: string
           check_out_date: string | null
           created_at: string
+          created_by: string | null
           deduction_amount: number | null
+          deposit_amount: number | null
           deposit_paid: boolean
           employee_id: string
           id: string
@@ -3876,7 +3954,9 @@ export type Database = {
           check_in_date: string
           check_out_date?: string | null
           created_at?: string
+          created_by?: string | null
           deduction_amount?: number | null
+          deposit_amount?: number | null
           deposit_paid?: boolean
           employee_id: string
           id?: string
@@ -3894,7 +3974,9 @@ export type Database = {
           check_in_date?: string
           check_out_date?: string | null
           created_at?: string
+          created_by?: string | null
           deduction_amount?: number | null
+          deposit_amount?: number | null
           deposit_paid?: boolean
           employee_id?: string
           id?: string
@@ -3913,6 +3995,13 @@ export type Database = {
             columns: ["candidate_id"]
             isOneToOne: false
             referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "housing_assignments_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
@@ -7432,9 +7521,11 @@ export type Database = {
           address_street: string
           cost_electra: number | null
           cost_gas: number | null
+          cost_internet: number | null
           cost_municipal_tax: number | null
           cost_other: number | null
           cost_price: number | null
+          cost_waste: number | null
           cost_water: number | null
           created_at: string
           energy_wizard_id: string | null
@@ -7442,6 +7533,7 @@ export type Database = {
           has_rental_permit: boolean | null
           has_snf_certificate: boolean | null
           id: string
+          indexation_date: string | null
           is_active: boolean
           max_persons_permit: number | null
           monthly_rent: number | null
@@ -7469,9 +7561,11 @@ export type Database = {
           address_street: string
           cost_electra?: number | null
           cost_gas?: number | null
+          cost_internet?: number | null
           cost_municipal_tax?: number | null
           cost_other?: number | null
           cost_price?: number | null
+          cost_waste?: number | null
           cost_water?: number | null
           created_at?: string
           energy_wizard_id?: string | null
@@ -7479,6 +7573,7 @@ export type Database = {
           has_rental_permit?: boolean | null
           has_snf_certificate?: boolean | null
           id?: string
+          indexation_date?: string | null
           is_active?: boolean
           max_persons_permit?: number | null
           monthly_rent?: number | null
@@ -7506,9 +7601,11 @@ export type Database = {
           address_street?: string
           cost_electra?: number | null
           cost_gas?: number | null
+          cost_internet?: number | null
           cost_municipal_tax?: number | null
           cost_other?: number | null
           cost_price?: number | null
+          cost_waste?: number | null
           cost_water?: number | null
           created_at?: string
           energy_wizard_id?: string | null
@@ -7516,6 +7613,7 @@ export type Database = {
           has_rental_permit?: boolean | null
           has_snf_certificate?: boolean | null
           id?: string
+          indexation_date?: string | null
           is_active?: boolean
           max_persons_permit?: number | null
           monthly_rent?: number | null
@@ -9190,6 +9288,7 @@ export type Database = {
           assigned_date: string
           candidate_id: string | null
           created_at: string
+          created_by: string | null
           employee_id: string
           end_mileage: number | null
           id: string
@@ -9203,6 +9302,7 @@ export type Database = {
           assigned_date: string
           candidate_id?: string | null
           created_at?: string
+          created_by?: string | null
           employee_id: string
           end_mileage?: number | null
           id?: string
@@ -9216,6 +9316,7 @@ export type Database = {
           assigned_date?: string
           candidate_id?: string | null
           created_at?: string
+          created_by?: string | null
           employee_id?: string
           end_mileage?: number | null
           id?: string
@@ -9231,6 +9332,13 @@ export type Database = {
             columns: ["candidate_id"]
             isOneToOne: false
             referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_assignments_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
