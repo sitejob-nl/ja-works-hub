@@ -32,6 +32,7 @@ import PropertyContractsTab from '@/components/housing/tabs/PropertyContractsTab
 import TasksSection from '@/components/shared/TasksSection';
 import { useTabSearchParam } from '@/hooks/useTabSearchParam';
 import { useTrackPageVisit } from '@/hooks/useTrackPageVisit';
+import { totalMonthlyPropertyCost } from '@/lib/housing-costs';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchFacilityHousingSnapshot, isFacilityRole, saveFacilityOperationalEntity } from '@/lib/facility';
 import { logAudit } from '@/lib/audit';
@@ -136,10 +137,7 @@ const PropertyDetail = () => {
   const pct = totalCapacity > 0 ? Math.round((currentOccupancy / totalCapacity) * 100) : 0;
   const barColor = pct >= 90 ? 'bg-red-500' : pct >= 70 ? 'bg-orange-500' : 'bg-stat-green';
 
-  const totalMaandlasten = [
-    property.monthly_rent, property.cost_gas, property.cost_water,
-    property.cost_electra, property.cost_municipal_tax, property.cost_other,
-  ].reduce((s: number, v: any) => s + (Number(v) || 0), 0);
+  const totalMaandlasten = totalMonthlyPropertyCost(property);
 
   return (
     <div className="space-y-4 sm:space-y-6 min-w-0">

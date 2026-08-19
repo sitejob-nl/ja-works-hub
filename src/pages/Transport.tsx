@@ -20,6 +20,8 @@ import { vehicleDisplayStatus } from '@/lib/vehicle-availability';
 
 
 const PAGE_SIZE = 10;
+// Bovengrens voor het afgeleide 'Gereserveerd'-filter, dat client-side moet filteren.
+const DERIVED_FILTER_SCAN_LIMIT = 500;
 
 const statusBadge: Record<string, string> = {
   beschikbaar: 'bg-stat-green/10 text-stat-green border-0',
@@ -53,7 +55,7 @@ const Transport = () => {
   });
 
   const { data: internalData, isLoading: isInternalLoading } = useQuery({
-    queryKey: ['vehicles', search, statusFilter, page],
+    queryKey: ['vehicles', search, statusFilter, page, todayStr],
     queryFn: async () => {
       let query = supabase.from('vehicles').select(`
         *,
@@ -67,12 +69,31 @@ const Transport = () => {
       `, { count: 'exact' });
 
       if (search) query = query.or(`license_plate.ilike.%${search}%,brand.ilike.%${search}%,model.ilike.%${search}%`);
-      if (statusFilter !== 'all') query = query.eq('status', statusFilter as any);
 
-      query = query.order('license_plate').range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+      // "Gereserveerd" is een afgeleide status (een toewijzing die later begint) en staat
+      // dus niet in de kolom. Zo'n voertuig heeft in de database gewoon 'beschikbaar', dus
+      // die halen we op en filteren en pagineren we hier. Alle andere filters blijven
+      // server-side met paginering.
+      const isDerivedFilter = statusFilter === 'gereserveerd';
+      if (statusFilter !== 'all') {
+        query = query.eq('status', (isDerivedFilter ? 'beschikbaar' : statusFilter) as any);
+      }
+      query = query.order('license_plate');
+      query = isDerivedFilter
+        ? query.limit(DERIVED_FILTER_SCAN_LIMIT)
+        : query.range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+
       const { data, count, error } = await query;
       if (error) throw error;
-      return { vehicles: data ?? [], total: count ?? 0 };
+      if (!isDerivedFilter) return { vehicles: data ?? [], total: count ?? 0 };
+
+      const reserved = (data ?? []).filter(
+        (v: any) => vehicleDisplayStatus(v, todayStr).key === 'gereserveerd',
+      );
+      return {
+        vehicles: reserved.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE),
+        total: reserved.length,
+      };
     },
     enabled: !isFacility,
   });
@@ -206,7 +227,7 @@ const Transport = () => {
               <SelectTrigger className="w-40"><SelectValue placeholder="Status" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Alle statussen</SelectItem>
-                {Object.entries(statusLabel).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
+                {Object.entries(displayStatusLabel).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
               </SelectContent>
             </Select>
             <span className="text-sm text-muted-foreground">{total} voertuigen</span>

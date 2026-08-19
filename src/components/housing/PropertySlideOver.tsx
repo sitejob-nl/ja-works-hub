@@ -18,6 +18,8 @@ import { resolveAddressCoordinates } from '@/lib/pdok';
 import OwnerSelector from '@/components/housing/OwnerSelector';
 import { Upload } from 'lucide-react';
 import { isFacilityRole, saveFacilityOperationalEntity } from '@/lib/facility';
+import { totalMonthlyPropertyCost } from '@/lib/housing-costs';
+import { formatEUR } from '@/lib/format';
 
 interface Props {
   open: boolean;
@@ -107,12 +109,7 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
 
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
 
-  const totalCosts = useMemo(() => {
-    const vals = [form.monthly_rent, form.cost_gas, form.cost_water, form.cost_electra,
-      form.cost_municipal_tax, form.cost_waste, form.cost_internet, form.cost_other];
-    return vals.reduce((s, v) => s + (v ? Number(v) : 0), 0);
-  }, [form.monthly_rent, form.cost_gas, form.cost_water, form.cost_electra,
-    form.cost_municipal_tax, form.cost_waste, form.cost_internet, form.cost_other]);
+  const totalCosts = useMemo(() => totalMonthlyPropertyCost(form), [form]);
 
   const uploadRentalContract = async (propertyId: string) => {
     if (!rentalContractFile) return false;
@@ -345,7 +342,8 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
             </div>
             <div className="flex items-center justify-between rounded-md bg-muted px-4 py-2">
               <span className="text-sm font-medium text-foreground">Totale maandlasten</span>
-              <span className="text-sm font-bold text-foreground">€ {totalCosts.toFixed(2)}</span>
+              {/* formatEUR i.p.v. toFixed(2): dit toonde "€ 2260.00" naast "€ 2.260,00" elders */}
+              <span className="text-sm font-bold text-foreground">{formatEUR(totalCosts)}</span>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>

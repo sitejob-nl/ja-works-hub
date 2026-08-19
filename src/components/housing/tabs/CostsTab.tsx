@@ -14,6 +14,7 @@ import { Separator } from '@/components/ui/separator';
 import { formatEUR } from '@/lib/format';
 import { toast } from 'sonner';
 import { Zap } from 'lucide-react';
+import { totalMonthlyPropertyCost } from '@/lib/housing-costs';
 
 const WEEKS_PER_MONTH = 4.33;
 
@@ -51,10 +52,9 @@ const CostsTab = ({ property }: { property: any }) => {
     { label: 'Overig', value: property.cost_other },
   ], [property]);
 
-  const totalPandkostenMaand = useMemo(
-    () => costItems.reduce((s, c) => s + (Number(c.value) || 0), 0),
-    [costItems]
-  );
+  // Bewust via de gedeelde helper en niet via costItems: dan telt dit scherm gegarandeerd
+  // hetzelfde als de kop van de pandpagina en de KPI op de huisvestingslijst.
+  const totalPandkostenMaand = useMemo(() => totalMonthlyPropertyCost(property), [property]);
   const totalPandkostenWeek = totalPandkostenMaand / WEEKS_PER_MONTH;
 
   const nettoWeek = totalWeeklyDeductions - totalPandkostenWeek;
@@ -187,7 +187,8 @@ const CostsTab = ({ property }: { property: any }) => {
           <span className="text-sm font-medium text-foreground">Omgerekend per week</span>
           <span className="flex items-baseline gap-2">
             <span className="text-sm font-bold text-foreground">{formatEUR(totalPandkostenWeek)}</span>
-            <span className="text-xs text-muted-foreground">({WEEKS_PER_MONTH} weken per maand)</span>
+            {/* nl-NL: komma, anders staat "4.33" naast bedragen als "€ 1.234,56" */}
+            <span className="text-xs text-muted-foreground">({WEEKS_PER_MONTH.toLocaleString('nl-NL')} weken per maand)</span>
           </span>
         </div>
       </div>

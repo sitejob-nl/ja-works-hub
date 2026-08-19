@@ -59,8 +59,15 @@ export function useUnsavedCloseGuard(
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
+          {/* Rollen bewust ongewijzigd: Radix zet de focus op Cancel en laat Escape daarop
+              uitkomen, dus "Verder bewerken" moet de Cancel blijven — anders gooit één keer
+              Enter of Escape je werk weg. Alleen het accent verschuift: weggooien krijgt de
+              rode omlijning in plaats van de uitnodigende primaire knop. */}
           <AlertDialogCancel onClick={() => setConfirmOpen(false)}>Verder bewerken</AlertDialogCancel>
-          <AlertDialogAction onClick={() => { setConfirmOpen(false); onOpenChange(false); }}>
+          <AlertDialogAction
+            onClick={() => { setConfirmOpen(false); onOpenChange(false); }}
+            className="bg-transparent border border-destructive text-destructive hover:bg-destructive/10 hover:text-destructive"
+          >
             Sluiten zonder opslaan
           </AlertDialogAction>
         </AlertDialogFooter>

@@ -65,6 +65,7 @@ const InternalResidentsTab = ({ property }: { property: any }) => {
     check_in_date: '',
     deduction_amount: '',
     payment_frequency: 'wekelijks' as 'wekelijks' | 'maandelijks',
+    deposit_amount: '',
   });
 
   // Move assignment state
@@ -186,6 +187,7 @@ const InternalResidentsTab = ({ property }: { property: any }) => {
         deduction_amount: deductionNum,
         payment_frequency: editForm.payment_frequency,
         monthly_deduction: monthly,
+        deposit_amount: editForm.deposit_amount.trim() === '' ? null : Number(editForm.deposit_amount),
       };
       await unwrap(supabase.from('housing_assignments').update(update).eq('id', editingAssignment.id));
       return update;
@@ -311,6 +313,7 @@ const InternalResidentsTab = ({ property }: { property: any }) => {
       check_in_date: a.check_in_date ?? '',
       deduction_amount: a.deduction_amount != null ? String(a.deduction_amount) : '',
       payment_frequency: (a.payment_frequency ?? 'wekelijks') as 'wekelijks' | 'maandelijks',
+      deposit_amount: a.deposit_amount != null ? String(a.deposit_amount) : '',
     });
   };
 
@@ -476,6 +479,10 @@ const InternalResidentsTab = ({ property }: { property: any }) => {
                 <Label>{editForm.payment_frequency === 'wekelijks' ? 'Wekelijkse' : 'Maandelijkse'} inhouding (€)</Label>
                 <Input type="number" value={editForm.deduction_amount} onChange={(e) => setEditForm(f => ({ ...f, deduction_amount: e.target.value }))} />
               </div>
+              <div>
+                <Label>Betaalde borg (€)</Label>
+                <Input type="number" step="0.01" value={editForm.deposit_amount} onChange={(e) => setEditForm(f => ({ ...f, deposit_amount: e.target.value }))} />
+              </div>
               <div className="flex justify-end gap-3 pt-4">
                 <Button variant="ghost" onClick={() => setEditingAssignment(null)}>Annuleren</Button>
                 <Button onClick={() => editAssignment.mutate()} disabled={!editForm.check_in_date || editAssignment.isPending}>
@@ -609,6 +616,7 @@ const InternalResidentsTab = ({ property }: { property: any }) => {
                 <TableHead>Check-in</TableHead>
                 <TableHead>Inhouding</TableHead>
                 <TableHead>Borg</TableHead>
+                <TableHead>Borgbedrag</TableHead>
                 <TableHead>Huur tot</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead></TableHead>
@@ -636,6 +644,14 @@ const InternalResidentsTab = ({ property }: { property: any }) => {
                       )}
                     </TableCell>
                     <TableCell>{a.deposit_paid ? <Check className="h-4 w-4 text-stat-green" /> : <X className="h-4 w-4 text-red-500" />}</TableCell>
+                    {/* Het bedrag hoort naast het vinkje te staan. Het stond alleen op de
+                        Kosten-tab, terwijl bewoners hier beheerd worden. Alleen tonen —
+                        wijzigen gebeurt via "Toewijzing bewerken" in het rijmenu. */}
+                    <TableCell>
+                      {a.deposit_amount != null
+                        ? formatEUR(a.deposit_amount)
+                        : <span className="text-muted-foreground">—</span>}
+                    </TableCell>
                     <TableCell className={rentOverdue ? 'text-red-600 font-medium' : ''}>{formatDate(a.rent_paid_until)}</TableCell>
                     <TableCell>
                       <Badge variant="secondary" className={`text-xs ${a.status === 'ingecheckt' ? 'bg-stat-green/10 text-stat-green border-0' : 'bg-blue-100 text-blue-700 border-0'}`}>

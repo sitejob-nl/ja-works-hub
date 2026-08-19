@@ -107,7 +107,10 @@ const KpiDashboard = () => {
       // Vehicles
       const vehicles = vehicleRes.data ?? [];
       const availableCars = vehicles.filter((v: any) => v.status === 'beschikbaar').length;
-      const inUseCars = vehicles.filter((v: any) => v.status === 'in_gebruik').length;
+      // 'in_gebruik' bestaat niet in de enum vehicle_status (beschikbaar | toegewezen |
+      // onderhoud | uit_dienst), dus deze telde structureel 0 en de donut miste alle
+      // toegewezen auto's — 39 + 0 + 1 bij een wagenpark van 49.
+      const inUseCars = vehicles.filter((v: any) => v.status === 'toegewezen').length;
       const maintenanceCars = vehicles.filter((v: any) => v.status === 'onderhoud').length;
 
       return {
