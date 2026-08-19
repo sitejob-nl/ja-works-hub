@@ -66,7 +66,7 @@ const licenseIssue = (person: any): 'ontbreekt' | 'verlopen' | null => {
 
 const VehicleAssignmentsTab = ({ vehicle }: { vehicle: any }) => {
   const orgId = useOrganizationId();
-  const { role } = useAuth();
+  const { role, user } = useAuth();
   const isFacility = isFacilityRole(role);
   const qc = useQueryClient();
   const [assignOpen, setAssignOpen] = useState(false);
@@ -177,6 +177,7 @@ const VehicleAssignmentsTab = ({ vehicle }: { vehicle: any }) => {
         candidate_id: candidateId,
         assigned_date: assignedDate,
         start_mileage: startMileage ? parseInt(startMileage) : null,
+        created_by: user?.id ?? null,
       }).select('id').single();
       if (error) throw error;
       if (isFacility) {

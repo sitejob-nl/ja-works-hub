@@ -373,6 +373,7 @@ const PlacementWizard = ({ open, onClose, match, vacancy, defaultCompanyId, lock
           deduction_amount: selectedSuggestion.weeklyCost ?? selectedSuggestion.monthlyCost,
           payment_frequency: selectedSuggestion.weeklyCost ? 'wekelijks' : 'maandelijks',
           monthly_deduction: selectedSuggestion.monthlyCost,
+          created_by: user?.id ?? null,
         } as any).select('id').single());
         await supabase.from('placements').update({ housing_assignment_id: assignment.id }).eq('id', placementId);
         logAudit({
@@ -393,6 +394,7 @@ const PlacementWizard = ({ open, onClose, match, vacancy, defaultCompanyId, lock
           organizationId: orgId, vehicleId, employeeId, candidateId: candidateId!,
           startDate: vehicleFrom || form.start_date,
           startMileage: startMileage ? parseInt(startMileage, 10) : null,
+          createdBy: user?.id ?? null,
         });
         const v = (availableVehicles as any[]).find((x) => x.id === vehicleId);
         summary.vehicle = v ? `${v.license_plate}${v.brand ? ` — ${v.brand} ${v.model ?? ''}` : ''}` : 'Toegewezen';

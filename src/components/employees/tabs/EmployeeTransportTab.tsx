@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
-import { useHasRole } from '@/contexts/AuthContext';
+import { useAuth, useHasRole } from '@/contexts/AuthContext';
 import { Plus } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -22,21 +22,31 @@ import { toast } from 'sonner';
 const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
   const orgId = useOrganizationId();
   const canAssignVehicle = useHasRole(['admin', 'intercedent', 'backoffice']);
+  const { user } = useAuth();
   const qc = useQueryClient();
 
-  const { data: assignment } = useQuery({
-    queryKey: ['vehicle-assignment', orgId, candidateId],
+  // Punt 6 — de hele toewijzingshistorie, niet alleen de lopende. Dit haalde eerder
+  // uitsluitend de rij zonder returned_date op, waardoor ingeleverde auto's nergens
+  // meer terug te vinden waren.
+  const { data: assignments = [] } = useQuery({
+    queryKey: ['vehicle-assignments-candidate', orgId, candidateId],
     queryFn: async () => {
       const { data, error } = await supabase.from('vehicle_assignments')
-        .select('*, vehicles!vehicle_assignments_vehicle_id_fkey(license_plate, brand, model)')
+        .select(`
+          *,
+          vehicles!vehicle_assignments_vehicle_id_fkey(license_plate, brand, model),
+          profiles!vehicle_assignments_created_by_fkey(full_name)
+        `)
         .eq('organization_id', orgId)
         .eq('candidate_id', candidateId)
-        .is('returned_date', null)
-        .maybeSingle();
+        .order('assigned_date', { ascending: false });
       if (error) throw error;
-      return data;
+      return data ?? [];
     },
   });
+
+  const assignment = (assignments as any[]).find((a) => !a.returned_date) ?? null;
+  const pastAssignments = (assignments as any[]).filter((a) => a.returned_date);
 
   const [assignOpen, setAssignOpen] = useState(false);
   const [vehicleId, setVehicleId] = useState('');
@@ -80,6 +90,7 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
         candidate_id: candidateId,
         assigned_date: assignedDate,
         start_mileage: startMileage ? parseInt(startMileage) : null,
+        created_by: user?.id ?? null,
       }).select('id').single();
       if (error) throw error;
       const { error: vErr } = await supabase.from('vehicles')
@@ -91,7 +102,7 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
       await sendRegulationsForAssignment({ candidateId, category: 'voertuig', contextId: inserted?.id });
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['vehicle-assignment', orgId, candidateId] });
+      qc.invalidateQueries({ queryKey: ['vehicle-assignments-candidate', orgId, candidateId] });
       qc.invalidateQueries({ queryKey: ['vehicles'] });
       toast.success('Voertuig toegewezen');
       setAssignOpen(false);
@@ -144,6 +155,7 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
             <div><p className="text-xs text-muted-foreground">Model</p><p className="text-sm">{assignment.vehicles?.model ?? '—'}</p></div>
             <div><p className="text-xs text-muted-foreground">Toewijsdatum</p><p className="text-sm">{formatDate(assignment.assigned_date)}</p></div>
             <div><p className="text-xs text-muted-foreground">Begin km</p><p className="text-sm">{assignment.start_mileage ?? '—'}</p></div>
+            <div><p className="text-xs text-muted-foreground">Toegewezen door</p><p className="text-sm">{assignment.profiles?.full_name ?? '—'}</p></div>
           </div>
         ) : (
           <p className="text-sm text-muted-foreground">Geen voertuig toegewezen</p>
@@ -152,6 +164,39 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
           <RegulationStatus candidateId={candidateId} category="voertuig" />
         </div>
       </div>
+
+      {/* Punt 6 — eerdere voertuigen */}
+      {pastAssignments.length > 0 && (
+        <div className="bg-card rounded-lg border p-6">
+          <h3 className="font-medium mb-4">Eerdere voertuigen</h3>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Kenteken</TableHead>
+                <TableHead>Voertuig</TableHead>
+                <TableHead>Periode</TableHead>
+                <TableHead className="text-right">Begin km</TableHead>
+                <TableHead className="text-right">Eind km</TableHead>
+                <TableHead>Toegewezen door</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {pastAssignments.map((a: any) => (
+                <TableRow key={a.id}>
+                  <TableCell className="font-medium">
+                    <EntityLink type="vehicle" id={a.vehicle_id}>{a.vehicles?.license_plate ?? '—'}</EntityLink>
+                  </TableCell>
+                  <TableCell>{[a.vehicles?.brand, a.vehicles?.model].filter(Boolean).join(' ') || '—'}</TableCell>
+                  <TableCell>{formatDate(a.assigned_date)} – {formatDate(a.returned_date)}</TableCell>
+                  <TableCell className="text-right">{a.start_mileage ?? '—'}</TableCell>
+                  <TableCell className="text-right">{a.end_mileage ?? '—'}</TableCell>
+                  <TableCell className="text-muted-foreground">{a.profiles?.full_name ?? '—'}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
 
       {/* Mileage */}
       <div className="bg-card rounded-lg border p-6">

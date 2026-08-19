@@ -359,6 +359,7 @@ export async function assignVehicleOnPlacement(input: {
   candidateId: string;
   startDate: string;
   startMileage?: number | null;
+  createdBy?: string | null;
 }): Promise<void> {
   const { error } = await supabase.from('vehicle_assignments').insert({
     organization_id: input.organizationId,
@@ -367,6 +368,7 @@ export async function assignVehicleOnPlacement(input: {
     candidate_id: input.candidateId,
     assigned_date: input.startDate,
     start_mileage: input.startMileage ?? null,
+    created_by: input.createdBy ?? null,
   } as any);
   if (error) throw error;
   await supabase.from('vehicles').update({ status: 'toegewezen' as any }).eq('id', input.vehicleId);
