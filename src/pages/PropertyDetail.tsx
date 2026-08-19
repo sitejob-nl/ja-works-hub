@@ -58,7 +58,7 @@ const PropertyDetail = () => {
         units!units_property_id_fkey(
           id, name, capacity, status, floor, weekly_cost, notes,
           housing_assignments!housing_assignments_unit_id_fkey(
-            id, status, check_in_date, check_out_date, monthly_deduction, deduction_amount, payment_frequency, deposit_paid, rent_paid_until,
+            id, status, check_in_date, check_out_date, monthly_deduction, deduction_amount, payment_frequency, deposit_paid, deposit_amount, rent_paid_until,
             candidates!housing_assignments_candidate_id_fkey(id, first_name, last_name)
           )
         )
