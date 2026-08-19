@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { unwrapList } from '@/lib/db';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { useAuth, useHasRole } from '@/contexts/AuthContext';
 import { Plus } from 'lucide-react';
@@ -30,8 +31,8 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
   // meer terug te vinden waren.
   const { data: assignments = [] } = useQuery({
     queryKey: ['vehicle-assignments-candidate', orgId, candidateId],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('vehicle_assignments')
+    queryFn: () => unwrapList<any>(
+      supabase.from('vehicle_assignments')
         .select(`
           *,
           vehicles!vehicle_assignments_vehicle_id_fkey(license_plate, brand, model),
@@ -39,10 +40,8 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
         `)
         .eq('organization_id', orgId)
         .eq('candidate_id', candidateId)
-        .order('assigned_date', { ascending: false });
-      if (error) throw error;
-      return data ?? [];
-    },
+        .order('assigned_date', { ascending: false }),
+    ),
   });
 
   const assignment = (assignments as any[]).find((a) => !a.returned_date) ?? null;
