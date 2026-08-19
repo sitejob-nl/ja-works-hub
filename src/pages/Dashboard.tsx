@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
+import { unwrapList } from '@/lib/db';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   UserCheck, Briefcase, Home, Clock, CheckCircle2,
@@ -195,19 +196,20 @@ const Dashboard = () => {
     },
   });
 
+  // Onboarding staat op de kandidaat (employee_status + onboarding_completed); de legacy
+  // employees-tabel bevat alleen koppelrijen en kende de meeste medewerkers niet.
+  // candidates heeft geen start_date — de startdatum komt uit het dienstverband.
   const { data: incompleteOnboarding = [] } = useQuery({
     queryKey: ['alerts-incomplete-onboarding'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('employees')
-        .select(`id, candidates!employees_candidate_id_fkey(first_name, last_name), onboarding_completed, start_date`)
-        .eq('status', 'onboarding' as any)
-        .eq('onboarding_completed', false)
-        .order('start_date')
-        .limit(10);
-      if (error) throw error;
-      return data ?? [];
-    },
+    queryFn: () => unwrapList<any>(
+      supabase
+        .from('candidates')
+        .select('id, first_name, last_name, onboarding_completed, candidate_employment!candidate_employment_candidate_id_fkey(start_date, is_current)')
+        .eq('employee_status', 'onboarding' as any)
+        .not('onboarding_completed', 'is', true)
+        .order('created_at')
+        .limit(10),
+    ),
   });
 
   const { data: overdueRent = [] } = useQuery({
@@ -333,14 +335,16 @@ const Dashboard = () => {
   }
 
   for (const emp of incompleteOnboarding) {
-    const cand = (emp as any).candidates;
+    const employment = ((emp as any).candidate_employment ?? []).find((e: any) => e.is_current)
+      ?? ((emp as any).candidate_employment ?? [])[0];
+    const started = employment?.start_date ? ` (gestart ${formatDate(employment.start_date)})` : '';
     alerts.push({
       id: `onb-${emp.id}`,
       severity: 'orange',
       icon: UserX,
-      description: `${cand?.first_name} ${cand?.last_name} — onboarding niet afgerond (gestart ${formatDate(emp.start_date)})`,
+      description: `${(emp as any).first_name} ${(emp as any).last_name} — onboarding niet afgerond${started}`,
       category: 'Onboarding',
-      link: `/medewerkers/${emp.id}`,
+      link: `/kandidaten/${emp.id}`,
     });
   }
 

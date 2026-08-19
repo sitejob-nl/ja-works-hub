@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { unwrapList } from '@/lib/db';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import EntityLink from '@/components/ui/entity-link';
 import { Badge } from '@/components/ui/badge';
@@ -22,22 +23,24 @@ export const ExpiringContractsCard = () => {
   const thirtyDays = format(addDays(new Date(), 30), 'yyyy-MM-dd');
   const today = format(new Date(), 'yyyy-MM-dd');
 
-  const { data: employees = [] } = useQuery({
+  // Leest candidate_employment — de tabel waar de Dienstverband-tab naartoe schrijft.
+  // Dit las eerder de legacy employees-tabel, die alleen koppelrijen bevat (19 stuks bij
+  // JA Werkt) en waar geen enkele einddatum in stond.
+  const { data: employments = [] } = useQuery({
     queryKey: ['dashboard-expiring-contracts'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('employees')
-        .select('id, end_date, candidates!employees_candidate_id_fkey(first_name, last_name)')
+    queryFn: () => unwrapList<any>(
+      supabase
+        .from('candidate_employment')
+        .select('id, end_date, candidate_id, candidates!candidate_employment_candidate_id_fkey(first_name, last_name, employee_status)')
         .not('end_date', 'is', null)
         .lte('end_date', thirtyDays)
         .gte('end_date', today)
-        .neq('status', 'uit_dienst' as any)
         .order('end_date')
-        .limit(10);
-      if (error) throw error;
-      return data ?? [];
-    },
+        .limit(10),
+    ),
   });
+
+  const employees = (employments as any[]).filter((e) => e.candidates?.employee_status !== 'uit_dienst');
 
   return (
     <Card>
@@ -57,7 +60,7 @@ export const ExpiringContractsCard = () => {
               return (
                 <button
                   key={emp.id}
-                  onClick={() => navigate(`/medewerkers/${emp.id}`)}
+                  onClick={() => navigate(`/kandidaten/${emp.candidate_id}`)}
                   className="w-full flex items-center justify-between p-2 rounded-md hover:bg-muted/50 text-left text-sm"
                 >
                   <span className="font-medium">
@@ -85,26 +88,26 @@ export const ContractRenewalsCard = () => {
   const fourteenDays = format(addDays(new Date(), 14), 'yyyy-MM-dd');
   const today = format(new Date(), 'yyyy-MM-dd');
 
-  const { data: employees = [] } = useQuery({
+  // Zie ExpiringContractsCard: candidate_employment is de bron, niet de legacy tabel.
+  const { data: employments = [] } = useQuery({
     queryKey: ['dashboard-contract-renewals'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('employees')
-        .select('id, end_date, candidates!employees_candidate_id_fkey(first_name, last_name)')
+    queryFn: () => unwrapList<any>(
+      supabase
+        .from('candidate_employment')
+        .select('id, end_date, candidate_id, candidates!candidate_employment_candidate_id_fkey(first_name, last_name, employee_status)')
         .not('end_date', 'is', null)
         .lte('end_date', fourteenDays)
         .gte('end_date', today)
-        .neq('status', 'uit_dienst' as any)
         .order('end_date')
-        .limit(10);
-      if (error) throw error;
-      return data ?? [];
-    },
+        .limit(10),
+    ),
   });
 
-  const handleRenew = (empId: string, e: React.MouseEvent) => {
+  const employees = (employments as any[]).filter((e) => e.candidates?.employee_status !== 'uit_dienst');
+
+  const handleRenew = (candidateId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    navigate(`/medewerkers/${empId}`);
+    navigate(`/kandidaten/${candidateId}`);
     toast.info('Open het medewerker dossier om het contract te verlengen');
   };
 
@@ -128,7 +131,7 @@ export const ContractRenewalsCard = () => {
                 </span>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-muted-foreground">{formatDate(emp.end_date)}</span>
-                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={(e) => handleRenew(emp.id, e)}>
+                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={(e) => handleRenew(emp.candidate_id, e)}>
                     Verleng
                   </Button>
                 </div>
@@ -149,16 +152,18 @@ export const MissingDocumentsCard = () => {
   const { data: employees = [] } = useQuery({
     queryKey: ['dashboard-missing-docs'],
     queryFn: async () => {
-      // Get active employees with their documents
-      const { data: emps, error } = await supabase
-        .from('employees')
-        .select('id, candidate_id, candidates!employees_candidate_id_fkey(first_name, last_name)')
-        .in('status', ['actief', 'onboarding'] as any[])
-        .limit(200);
-      if (error) throw error;
-      if (!emps?.length) return [];
+      // Kandidaten met een dienstverband; dit las de legacy employees-tabel en scande
+      // daardoor 19 mensen in plaats van de 123 met een lopende plaatsing.
+      const emps = await unwrapList<any>(
+        supabase
+          .from('candidates')
+          .select('id, first_name, last_name, employee_status')
+          .in('employee_status', ['actief', 'onboarding'] as any[])
+          .limit(200),
+      );
+      if (!emps.length) return [];
 
-      const candidateIds = emps.map((e) => e.candidate_id);
+      const candidateIds = emps.map((e: any) => e.id);
       const { data: docs } = await supabase
         .from('documents')
         .select('candidate_id, type')
@@ -173,9 +178,13 @@ export const MissingDocumentsCard = () => {
 
       return emps
         .map((emp: any) => {
-          const existing = docMap.get(emp.candidate_id) ?? new Set();
+          const existing = docMap.get(emp.id) ?? new Set();
           const missing = requiredTypes.filter((t) => !existing.has(t));
-          return missing.length > 0 ? { ...emp, missing } : null;
+          // candidates: platte naamvelden. De render verwacht emp.candidates.<naam>,
+          // dus die vorm houden we aan zodat de kaart ongewijzigd blijft.
+          return missing.length > 0
+            ? { id: emp.id, candidate_id: emp.id, candidates: { first_name: emp.first_name, last_name: emp.last_name }, missing }
+            : null;
         })
         .filter(Boolean)
         .slice(0, 10);

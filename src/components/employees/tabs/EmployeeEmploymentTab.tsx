@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { unwrap } from '@/lib/db';
+import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -38,6 +40,7 @@ const endReasonOptions = [
 
 const EmployeeEmploymentTab = ({ candidateId, candidate, employment }: { candidateId: string; candidate: any; employment?: any }) => {
   const qc = useQueryClient();
+  const orgId = useOrganizationId();
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<any>({});
 
@@ -65,30 +68,46 @@ const EmployeeEmploymentTab = ({ candidateId, candidate, employment }: { candida
   const save = useMutation({
     mutationFn: async () => {
       // Update employee_number on the candidate
-      const { error: e1 } = await supabase.from('candidates').update({
+      await unwrap(supabase.from('candidates').update({
         employee_number: form.employee_number || null,
-      }).eq('id', candidateId);
-      if (e1) throw e1;
+      }).eq('id', candidateId).select('id').single());
 
-      // Update employment details on candidate_employment
+      // Dienstverbandgegevens op candidate_employment.
+      //
+      // Dit stond achter `if (employment?.id)`: had de kandidaat nog geen rij, dan werd
+      // het hele blok overgeslagen terwijl de melding "Dienstverband bijgewerkt" gewoon
+      // verscheen. Contracttype, einddatum, vakantiedagen en pensioen verdwenen dus stil.
+      // Bij JA Werkt had niemand zo'n rij (de tabel was org-breed leeg), dus dit veld
+      // was in de praktijk niet in te vullen. Nu een insert wanneer de rij ontbreekt.
+      const payload = {
+        start_date: form.start_date || null,
+        end_date: form.end_date || null,
+        end_reason: form.end_reason || null,
+        contract_type: form.contract_type || null,
+        contract_hours: form.contract_hours ? parseFloat(form.contract_hours) : null,
+        pay_frequency: form.pay_frequency || null,
+        pension_scheme: form.pension_scheme || null,
+        pension_start_date: form.pension_start_date || null,
+        vacation_days_total: form.vacation_days_total ? parseInt(form.vacation_days_total) : null,
+        vacation_days_used: form.vacation_days_used ? parseInt(form.vacation_days_used) : null,
+        vacation_money_percentage: form.vacation_money_percentage ? parseFloat(form.vacation_money_percentage) : null,
+        senior_days: form.senior_days ? parseInt(form.senior_days) : null,
+        insurance_type: form.insurance_type || null,
+        insurance_notes: form.insurance_notes || null,
+      };
+
       if (employment?.id) {
-        const { error } = await supabase.from('candidate_employment').update({
-          start_date: form.start_date,
-          end_date: form.end_date || null,
-          end_reason: form.end_reason || null,
-          contract_type: form.contract_type || null,
-          contract_hours: form.contract_hours ? parseFloat(form.contract_hours) : null,
-          pay_frequency: form.pay_frequency || null,
-          pension_scheme: form.pension_scheme || null,
-          pension_start_date: form.pension_start_date || null,
-          vacation_days_total: form.vacation_days_total ? parseInt(form.vacation_days_total) : null,
-          vacation_days_used: form.vacation_days_used ? parseInt(form.vacation_days_used) : null,
-          vacation_money_percentage: form.vacation_money_percentage ? parseFloat(form.vacation_money_percentage) : null,
-          senior_days: form.senior_days ? parseInt(form.senior_days) : null,
-          insurance_type: form.insurance_type || null,
-          insurance_notes: form.insurance_notes || null,
-        }).eq('id', employment.id);
-        if (error) throw error;
+        await unwrap(supabase.from('candidate_employment').update(payload).eq('id', employment.id).select('id').single());
+      } else {
+        if (!orgId) throw new Error('Geen organisatie gevonden voor dit dienstverband.');
+        await unwrap(supabase.from('candidate_employment').insert({
+          ...payload,
+          organization_id: orgId,
+          candidate_id: candidateId,
+          // start_date is verplicht in de tabel; zonder ingevulde datum nemen we vandaag.
+          start_date: payload.start_date || new Date().toISOString().slice(0, 10),
+          is_current: true,
+        }).select('id').single());
       }
     },
     onSuccess: () => {

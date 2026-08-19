@@ -66,7 +66,11 @@ function findEmptySelectItemValues(): string[] {
 }
 
 describe('Radix SelectItem', () => {
+  // Deze test parseert elke .tsx in src/ met de TypeScript-compiler; dat duurt zo'n vijf
+  // seconden en zat daarmee precies op de standaardlimiet van vitest. Onder belasting
+  // (volledige suite, parallel) tikte hij er willekeurig overheen — een timeout die eruit
+  // ziet als een echte fout. Expliciete ruimte, de assertie blijft ongewijzigd.
   it('gebruikt nergens een lege string als value (crasht de dropdown bij openen)', () => {
     expect(findEmptySelectItemValues()).toEqual([]);
-  });
+  }, 30_000);
 });
