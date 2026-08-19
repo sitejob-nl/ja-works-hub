@@ -4,6 +4,7 @@
 //   1. Properties whose `rental_contract_end_date` is within 90 days from today.
 //   2. Units whose `current_occupancy` exceeds `capacity` (overbooking).
 //   3. Active properties older than 90 days whose monthly cost fields are still empty.
+//   4. Properties whose `indexation_date` falls within 14 days (punt 22 van de buglijst).
 //
 // Modes:
 //   - **User mode** (default): caller is an active internal user, runs only for their org.
@@ -27,13 +28,17 @@ const json = (body: unknown, status = 200) =>
   });
 
 const REMINDER_WINDOW_DAYS = 90;
+// Punt 22 — "melding 2 weken voordat de indexatie plaats zou moeten vinden".
+const INDEXATION_WINDOW_DAYS = 14;
 const CATEGORY_CONTRACT = "huisvesting_huurcontract";
+const CATEGORY_INDEXATION = "huisvesting_indexatie";
 const CATEGORY_OVERBOOKING = "huisvesting_overbezetting";
 const CATEGORY_MISSING_COSTS = "huisvesting_kosten_ontbreken";
 
 interface CheckResult {
   org_id: string;
   contract_tasks_created: number;
+  indexation_tasks_created: number;
   overbooking_tasks_created: number;
   missing_cost_tasks_created: number;
   skipped_existing: number;
@@ -44,8 +49,12 @@ async function runForOrg(admin: any, orgId: string): Promise<CheckResult> {
   const cutoff = new Date(today);
   cutoff.setDate(cutoff.getDate() + REMINDER_WINDOW_DAYS);
   const cutoffStr = cutoff.toISOString().split("T")[0];
+  const indexationCutoff = new Date(today);
+  indexationCutoff.setDate(indexationCutoff.getDate() + INDEXATION_WINDOW_DAYS);
+  const indexationCutoffStr = indexationCutoff.toISOString().split("T")[0];
 
   let contractTasks = 0;
+  let indexationTasks = 0;
   let overbookingTasks = 0;
   let missingCostTasks = 0;
   let skipped = 0;
@@ -88,6 +97,46 @@ async function runForOrg(admin: any, orgId: string): Promise<CheckResult> {
       ai_reasoning: `Auto-gegenereerd door housing-reminder-cron (huurcontract <= ${REMINDER_WINDOW_DAYS} dagen).`,
     } as any);
     contractTasks++;
+  }
+
+  // 1b) Indexatiedatum binnen twee weken (punt 22)
+  const { data: indexationProps } = await admin
+    .from("properties")
+    .select("id, name, address_street, address_city, indexation_date")
+    .eq("organization_id", orgId)
+    .eq("is_active", true)
+    .not("indexation_date", "is", null)
+    .lte("indexation_date", indexationCutoffStr);
+
+  for (const p of (indexationProps ?? []) as any[]) {
+    const { data: existing } = await admin
+      .from("recruiter_tasks")
+      .select("id")
+      .eq("organization_id", orgId)
+      .eq("related_entity_type", "property")
+      .eq("related_entity_id", p.id)
+      .eq("category", CATEGORY_INDEXATION)
+      .eq("status", "open")
+      .maybeSingle();
+    if (existing) {
+      skipped++;
+      continue;
+    }
+    const label = p.name?.trim() || `${p.address_street}, ${p.address_city}`;
+    await admin.from("recruiter_tasks").insert({
+      organization_id: orgId,
+      title: `Huurindexatie komt eraan: ${label}`,
+      description: `De huur van pand "${label}" wordt geindexeerd op ${p.indexation_date}. Stem het nieuwe bedrag af met de eigenaar en pas daarna de maandlasten en de inhoudingen aan.`,
+      category: CATEGORY_INDEXATION,
+      priority: "medium",
+      status: "open",
+      related_entity_type: "property",
+      related_entity_id: p.id,
+      due_date: p.indexation_date,
+      ai_generated: true,
+      ai_reasoning: `Auto-gegenereerd door housing-reminder-cron (indexatie <= ${INDEXATION_WINDOW_DAYS} dagen).`,
+    } as any);
+    indexationTasks++;
   }
 
   // 2) Overbooked units (current_occupancy > capacity)
@@ -179,6 +228,7 @@ async function runForOrg(admin: any, orgId: string): Promise<CheckResult> {
   return {
     org_id: orgId,
     contract_tasks_created: contractTasks,
+    indexation_tasks_created: indexationTasks,
     overbooking_tasks_created: overbookingTasks,
     missing_cost_tasks_created: missingCostTasks,
     skipped_existing: skipped,

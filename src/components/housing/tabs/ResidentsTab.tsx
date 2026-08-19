@@ -51,6 +51,7 @@ const isAssignableHousingCandidate = (candidate: any) => {
 const InternalResidentsTab = ({ property }: { property: any }) => {
   const orgId = useOrganizationId();
   const qc = useQueryClient();
+  const { user } = useAuth();
   const [assigning, setAssigning] = useState(false);
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [empSearch, setEmpSearch] = useState('');
@@ -131,6 +132,7 @@ const InternalResidentsTab = ({ property }: { property: any }) => {
         deduction_amount: deductionNum,
         payment_frequency: form.payment_frequency,
         monthly_deduction: form.payment_frequency === 'maandelijks' ? deductionNum : (deductionNum ? Math.round(deductionNum * 4.33 * 100) / 100 : null),
+        created_by: user?.id ?? null,
       }).select('id').single());
       // Huisregels meesturen (instelbaar per reglement). Non-blocking.
       await sendRegulationsForAssignment({

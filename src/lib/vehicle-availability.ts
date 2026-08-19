@@ -28,3 +28,51 @@ export function vehicleFreeOn(
 ): boolean {
   return !vehicleAssignedOn(vehicle.vehicle_assignments, dateStr);
 }
+
+/**
+ * Eerstvolgende toewijzing die ná `dateStr` begint en dan nog niet is ingeleverd —
+ * oftewel: de reservering. Geeft de begindatum terug, of null.
+ */
+export function vehicleReservedFrom(
+  assignments: VehicleAssignmentLite[] | null | undefined,
+  dateStr: string,
+): string | null {
+  const upcoming = (assignments ?? [])
+    .filter((a) => !!a.assigned_date && a.assigned_date! > dateStr)
+    .filter((a) => a.returned_date == null || a.returned_date! > a.assigned_date!)
+    .map((a) => a.assigned_date!)
+    .sort();
+  return upcoming[0] ?? null;
+}
+
+export type VehicleDisplayStatus = {
+  /** Sleutel voor label/badge. 'gereserveerd' is afgeleid, geen databasewaarde. */
+  key: 'beschikbaar' | 'toegewezen' | 'gereserveerd' | 'onderhoud' | 'uit_dienst' | string;
+  /** Gevuld bij 'gereserveerd': vanaf wanneer de auto vergeven is. */
+  reservedFrom: string | null;
+};
+
+/**
+ * Punt 17 — "We willen een auto niet alleen kunnen toewijzen maar ook reserveren."
+ *
+ * De status die de gebruiker ziet wordt afgeleid uit de toewijzingsdatums in plaats
+ * van uit een extra enum-waarde: een reservering ís een toewijzing die later begint.
+ * Zo kan de status niet verouderen — er is geen nachtelijke sweep nodig om
+ * 'gereserveerd' op de ingangsdatum om te zetten naar 'toegewezen'.
+ *
+ * onderhoud/uit_dienst zijn handmatige standen en winnen altijd.
+ */
+export function vehicleDisplayStatus(
+  vehicle: { status?: string | null; vehicle_assignments?: VehicleAssignmentLite[] | null },
+  dateStr: string,
+): VehicleDisplayStatus {
+  if (vehicle.status === 'onderhoud' || vehicle.status === 'uit_dienst') {
+    return { key: vehicle.status, reservedFrom: null };
+  }
+  if (vehicleAssignedOn(vehicle.vehicle_assignments, dateStr)) {
+    return { key: 'toegewezen', reservedFrom: null };
+  }
+  const reservedFrom = vehicleReservedFrom(vehicle.vehicle_assignments, dateStr);
+  if (reservedFrom) return { key: 'gereserveerd', reservedFrom };
+  return { key: vehicle.status ?? 'beschikbaar', reservedFrom: null };
+}

@@ -510,9 +510,10 @@ const CandidateProfile = () => {
           )}
         </div>
 
-        {/* Section 3: Werk & beschikbaarheid */}
+        {/* Punt 16 — rijbewijs en beschikbaarheid stonden onder één kopje pal onder
+            elkaar, waardoor de twee verloopdatums door elkaar liepen. Nu twee blokken. */}
         <div className="bg-card border rounded-xl p-6 space-y-4">
-          <h2 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">Werk & beschikbaarheid</h2>
+          <h2 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">Rijbewijs</h2>
 
           <div className="space-y-3">
             <div className="flex items-center gap-2">
@@ -527,13 +528,17 @@ const CandidateProfile = () => {
               <Label htmlFor="drivers-license" className="cursor-pointer">Ik heb een rijbewijs</Label>
             </div>
             {form.has_drivers_license && (
-              <div className="space-y-1.5" id={fieldAnchorId('drivers_license_expiry')}>
+              <div className="space-y-1.5 sm:max-w-xs" id={fieldAnchorId('drivers_license_expiry')}>
                 <RequiredLabel>Verloopdatum rijbewijs</RequiredLabel>
                 <Input type="date" value={form.drivers_license_expiry} onChange={(e) => set('drivers_license_expiry', e.target.value)} className="h-12 text-base" aria-invalid={!!errors.drivers_license_expiry} />
                 <FieldError message={errors.drivers_license_expiry} />
               </div>
             )}
           </div>
+        </div>
+
+        <div className="bg-card border rounded-xl p-6 space-y-4">
+          <h2 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">Beschikbaarheid</h2>
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5" id={fieldAnchorId('available_from')}>

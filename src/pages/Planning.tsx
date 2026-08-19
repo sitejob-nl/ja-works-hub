@@ -95,7 +95,8 @@ const Planning = () => {
   const { data: activeEmployees } = useQuery({
     queryKey: ['active-employees-count'],
     queryFn: async () => {
-      const { count, error } = await supabase.from('employees').select('id', { count: 'exact', head: true }).eq('status', 'actief' as any);
+      // Zie KpiDashboard: tellen op candidates, niet op de legacy employees-koppeltabel.
+      const { count, error } = await supabase.from('candidates').select('id', { count: 'exact', head: true }).eq('employee_status', 'actief' as any);
       if (error) throw error;
       return count ?? 0;
     },

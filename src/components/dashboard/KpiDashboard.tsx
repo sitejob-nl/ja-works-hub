@@ -57,8 +57,10 @@ const KpiDashboard = () => {
         supabase.from('vehicles').select('id, status, license_plate'),
         // Active companies
         supabase.from('companies').select('id', { count: 'exact', head: true }).eq('is_active', true),
-        // Active employees
-        supabase.from('employees').select('id', { count: 'exact', head: true }).eq('status', 'actief' as any),
+        // Actieve medewerkers — telt kandidaten, niet de legacy employees-koppeltabel.
+        // Die bevat alleen rijen die bij een toewijzing zijn aangemaakt (19 bij JA Werkt),
+        // waardoor deze KPI een fractie van de werkelijke bezetting liet zien.
+        supabase.from('candidates').select('id', { count: 'exact', head: true }).eq('employee_status', 'actief' as any),
       ]);
 
       const tsWeek = tsWeekRes.data ?? [];

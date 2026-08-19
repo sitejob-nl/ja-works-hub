@@ -46,6 +46,8 @@ const CostsTab = ({ property }: { property: any }) => {
     { label: 'Water', value: property.cost_water },
     { label: 'Elektra', value: property.cost_electra, energy: true },
     { label: 'Gem. belasting', value: property.cost_municipal_tax },
+    { label: 'Afval', value: property.cost_waste },
+    { label: 'Internet', value: property.cost_internet },
     { label: 'Overig', value: property.cost_other },
   ], [property]);
 
@@ -64,7 +66,9 @@ const CostsTab = ({ property }: { property: any }) => {
     const rentMonth = Number(property.monthly_rent) || 0;
     const gwlMonth = (Number(property.cost_gas) || 0) + (Number(property.cost_water) || 0) + (Number(property.cost_electra) || 0);
     const taxMonth = Number(property.cost_municipal_tax) || 0;
-    const otherMonth = Number(property.cost_other) || 0;
+    const otherMonth = (Number(property.cost_other) || 0)
+      + (Number(property.cost_waste) || 0)
+      + (Number(property.cost_internet) || 0);
 
     return [...units]
       .sort((a, b) => String(a.name ?? '').localeCompare(String(b.name ?? ''), undefined, { numeric: true }))
@@ -99,7 +103,8 @@ const CostsTab = ({ property }: { property: any }) => {
           marginByRoom,
         };
       });
-  }, [units, property.monthly_rent, property.cost_gas, property.cost_water, property.cost_electra, property.cost_municipal_tax, property.cost_other]);
+  }, [units, property.monthly_rent, property.cost_gas, property.cost_water, property.cost_electra,
+    property.cost_municipal_tax, property.cost_waste, property.cost_internet, property.cost_other]);
 
   const perUnitTotals = useMemo(() => perUnitRows.reduce(
     (acc, r) => ({
@@ -129,6 +134,19 @@ const CostsTab = ({ property }: { property: any }) => {
     },
   });
 
+  // Punt 20 — naast het ja/nee-vinkje ook het daadwerkelijk betaalde bedrag.
+  const updateDepositAmount = useMutation({
+    mutationFn: async ({ id, amount }: { id: string; amount: string }) => {
+      const value = amount.trim() === '' ? null : Number(amount);
+      await unwrap(supabase.from('housing_assignments').update({ deposit_amount: value }).eq('id', id));
+    },
+    onSuccess: (_data, variables) => {
+      logAudit({ action: 'update', tableName: 'housing_assignments', recordId: variables.id, newValues: { deposit_amount: variables.amount } });
+      qc.invalidateQueries({ queryKey: qk.housing.property(property.id) });
+      toast.success('Borgbedrag bijgewerkt');
+    },
+  });
+
   const updateRentPaid = useMutation({
     mutationFn: async ({ id, date }: { id: string; date: string }) => {
       await unwrap(supabase.from('housing_assignments').update({ rent_paid_until: date || null }).eq('id', id));
@@ -142,9 +160,10 @@ const CostsTab = ({ property }: { property: any }) => {
 
   return (
     <div className="space-y-6">
-      {/* Pandkosten KPI cards — per week */}
+      {/* Punt 19 — de kosten worden per maand ingevoerd en opgeslagen, dus tonen we ze
+          ook per maand. De omrekening naar week staat in één balk eronder. */}
       <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3">Pandkosten per week</h3>
+        <h3 className="text-sm font-semibold text-foreground mb-3">Pandkosten per maand</h3>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
           {costItems.map((c) => (
             <Card key={c.label} className="p-4">
@@ -156,15 +175,20 @@ const CostsTab = ({ property }: { property: any }) => {
                   </Badge>
                 )}
               </div>
-              <p className="text-xl font-semibold mt-1">{formatEUR((Number(c.value) || 0) / WEEKS_PER_MONTH)}</p>
-              <p className="text-[10px] text-muted-foreground mt-0.5">{formatEUR(c.value)}/mnd</p>
+              <p className="text-xl font-semibold mt-1">{formatEUR(c.value)}</p>
             </Card>
           ))}
           <Card className="p-4 bg-primary/5 border-primary/20">
-            <p className="text-xs text-muted-foreground font-medium">Totaal per week</p>
-            <p className="text-xl font-bold mt-1 text-foreground">{formatEUR(totalPandkostenWeek)}</p>
-            <p className="text-[10px] text-muted-foreground mt-0.5">{formatEUR(totalPandkostenMaand)}/mnd</p>
+            <p className="text-xs text-muted-foreground font-medium">Totaal per maand</p>
+            <p className="text-xl font-bold mt-1 text-foreground">{formatEUR(totalPandkostenMaand)}</p>
           </Card>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/50 px-4 py-2.5">
+          <span className="text-sm font-medium text-foreground">Omgerekend per week</span>
+          <span className="flex items-baseline gap-2">
+            <span className="text-sm font-bold text-foreground">{formatEUR(totalPandkostenWeek)}</span>
+            <span className="text-xs text-muted-foreground">({WEEKS_PER_MONTH} weken per maand)</span>
+          </span>
         </div>
       </div>
 
@@ -288,6 +312,7 @@ const CostsTab = ({ property }: { property: any }) => {
                   <TableHead>Kamer</TableHead>
                   <TableHead>Per week</TableHead>
                   <TableHead>Borg</TableHead>
+                  <TableHead>Borgbedrag</TableHead>
                   <TableHead>Huur betaald tot</TableHead>
                 </TableRow>
               </TableHeader>
@@ -314,6 +339,20 @@ const CostsTab = ({ property }: { property: any }) => {
                           {a.deposit_paid ? 'Betaald' : 'Niet betaald'}
                         </Badge>
                       </Button>
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        className="h-8 w-28"
+                        placeholder="—"
+                        defaultValue={a.deposit_amount ?? ''}
+                        onBlur={(e) => {
+                          const next = e.target.value;
+                          const current = a.deposit_amount == null ? '' : String(a.deposit_amount);
+                          if (next !== current) updateDepositAmount.mutate({ id: a.id, amount: next });
+                        }}
+                      />
                     </TableCell>
                     <TableCell>
                       <Input

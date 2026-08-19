@@ -5,6 +5,7 @@ import { unwrap } from '@/lib/db';
 import { useAuth } from '@/contexts/AuthContext';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { useUnsavedCloseGuard } from '@/components/shared/UnsavedCloseGuard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -39,7 +40,9 @@ const createDefaultPropertyForm = () => ({
   max_persons_permit: '',
   // costs
   monthly_rent: '', cost_gas: '', cost_water: '', cost_electra: '',
-  cost_municipal_tax: '', cost_other: '',
+  cost_municipal_tax: '', cost_waste: '', cost_internet: '', cost_other: '',
+  // indexatie (punt 22) — housing-reminder-cron waarschuwt twee weken vooraf
+  indexation_date: '',
   // energy
   energy_wizard_id: '', energy_wizard_linked: false,
   // other
@@ -55,10 +58,12 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
 
   const [form, setForm] = useState(createDefaultPropertyForm);
   const [rentalContractFile, setRentalContractFile] = useState<File | null>(null);
+  // Punt 21 — momentopname bij openen; alles wat daarna afwijkt telt als onopgeslagen.
+  const [pristine, setPristine] = useState(createDefaultPropertyForm);
 
   useEffect(() => {
     if (property) {
-      setForm({
+      const next = {
         name: property.name ?? '', address_street: property.address_street ?? '',
         address_postal: property.address_postal ?? '', address_city: property.address_city ?? '',
         address_lat: property.address_lat ?? null, address_lng: property.address_lng ?? null,
@@ -77,24 +82,37 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
         cost_gas: num(property.cost_gas), cost_water: num(property.cost_water),
         cost_electra: num(property.cost_electra),
         cost_municipal_tax: num(property.cost_municipal_tax),
+        cost_waste: num(property.cost_waste),
+        cost_internet: num(property.cost_internet),
         cost_other: num(property.cost_other),
+        indexation_date: property.indexation_date ?? '',
         energy_wizard_id: property.energy_wizard_id ?? '',
         energy_wizard_linked: property.energy_wizard_linked ?? false,
         total_capacity: num(property.total_capacity),
         notes: property.notes ?? '',
-      });
+      };
+      setForm(next);
+      setPristine(next);
     } else {
-      setForm(createDefaultPropertyForm());
+      const blank = createDefaultPropertyForm();
+      setForm(blank);
+      setPristine(blank);
     }
     setRentalContractFile(null);
   }, [property, open]);
 
+  // Punt 21 — "als je wegklikt zonder op opslaan te klikken, geef dan een melding".
+  const isDirty = JSON.stringify(form) !== JSON.stringify(pristine) || !!rentalContractFile;
+  const closeGuard = useUnsavedCloseGuard(isDirty, onOpenChange);
+
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
 
   const totalCosts = useMemo(() => {
-    const vals = [form.monthly_rent, form.cost_gas, form.cost_water, form.cost_electra, form.cost_municipal_tax, form.cost_other];
+    const vals = [form.monthly_rent, form.cost_gas, form.cost_water, form.cost_electra,
+      form.cost_municipal_tax, form.cost_waste, form.cost_internet, form.cost_other];
     return vals.reduce((s, v) => s + (v ? Number(v) : 0), 0);
-  }, [form.monthly_rent, form.cost_gas, form.cost_water, form.cost_electra, form.cost_municipal_tax, form.cost_other]);
+  }, [form.monthly_rent, form.cost_gas, form.cost_water, form.cost_electra,
+    form.cost_municipal_tax, form.cost_waste, form.cost_internet, form.cost_other]);
 
   const uploadRentalContract = async (propertyId: string) => {
     if (!rentalContractFile) return false;
@@ -166,7 +184,10 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
         cost_water: toNum(form.cost_water),
         cost_electra: toNum(form.cost_electra),
         cost_municipal_tax: toNum(form.cost_municipal_tax),
+        cost_waste: toNum(form.cost_waste),
+        cost_internet: toNum(form.cost_internet),
         cost_other: toNum(form.cost_other),
+        indexation_date: form.indexation_date || null,
         cost_price: totalCosts || null,
         energy_wizard_id: form.energy_wizard_id || null,
         energy_wizard_linked: form.energy_wizard_linked,
@@ -198,7 +219,7 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
       toast.success(uploadedContract
         ? (isEdit ? 'Pand bijgewerkt en contract geüpload' : 'Pand aangemaakt en contract geüpload')
         : (isEdit ? 'Pand bijgewerkt' : 'Pand aangemaakt'));
-      onOpenChange(false);
+      closeGuard.closeWithoutPrompt();
     },
     onError: (e: any) => toast.error(e.message ?? 'Opslaan of uploaden mislukt'),
   });
@@ -208,7 +229,7 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
   );
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet open={open} onOpenChange={closeGuard.handleOpenChange}>
       <SheetContent className="sm:max-w-2xl overflow-y-auto">
         <SheetHeader><SheetTitle>{isEdit ? 'Pand bewerken' : 'Nieuw pand'}</SheetTitle></SheetHeader>
         <div className="space-y-6 mt-6">
@@ -316,11 +337,22 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
             <div className="grid grid-cols-3 gap-3">
               <div><Label>Elektra (€)</Label><Input type="number" value={form.cost_electra} onChange={(e) => set('cost_electra', e.target.value)} /></div>
               <div><Label>Gemeentelijke belasting (€)</Label><Input type="number" value={form.cost_municipal_tax} onChange={(e) => set('cost_municipal_tax', e.target.value)} /></div>
+              <div><Label>Afvalkosten (€)</Label><Input type="number" value={form.cost_waste} onChange={(e) => set('cost_waste', e.target.value)} /></div>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div><Label>Internet (€)</Label><Input type="number" value={form.cost_internet} onChange={(e) => set('cost_internet', e.target.value)} /></div>
               <div><Label>Overige kosten (€)</Label><Input type="number" value={form.cost_other} onChange={(e) => set('cost_other', e.target.value)} /></div>
             </div>
             <div className="flex items-center justify-between rounded-md bg-muted px-4 py-2">
               <span className="text-sm font-medium text-foreground">Totale maandlasten</span>
               <span className="text-sm font-bold text-foreground">€ {totalCosts.toFixed(2)}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Indexatiedatum</Label>
+                <Input type="date" value={form.indexation_date} onChange={(e) => set('indexation_date', e.target.value)} />
+                <p className="text-xs text-muted-foreground mt-1">Je krijgt twee weken vooraf een taak.</p>
+              </div>
             </div>
           </div>}
 
@@ -348,13 +380,14 @@ const PropertySlideOver = ({ open, onOpenChange, property }: Props) => {
           </div>
 
           <div className="flex justify-end gap-3 pt-4">
-            <Button variant="ghost" onClick={() => onOpenChange(false)}>Annuleren</Button>
+            <Button variant="ghost" onClick={() => closeGuard.handleOpenChange(false)}>Annuleren</Button>
             <Button onClick={() => mutation.mutate()} disabled={!form.address_street || !form.address_postal || !form.address_city || mutation.isPending}>
               {mutation.isPending ? 'Opslaan...' : 'Opslaan'}
             </Button>
           </div>
         </div>
       </SheetContent>
+      {closeGuard.dialog}
     </Sheet>
   );
 };

@@ -1,7 +1,11 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 
-export type RecentItemType = 'kandidaat' | 'opdrachtgever' | 'medewerker' | 'vacature' | 'plaatsing';
+// Punt 7 — "hier mag je ook de historie van andere eenheden laten zien zoals:
+// huisvesting, bedrijven en voertuigen."
+export type RecentItemType =
+  | 'kandidaat' | 'opdrachtgever' | 'medewerker' | 'vacature' | 'plaatsing'
+  | 'pand' | 'voertuig';
 
 export interface RecentItem {
   id: string;

@@ -17,6 +17,7 @@ import ContactsTab from '@/components/companies/tabs/ContactsTab';
 import CompanyFunctionsTab from '@/components/companies/tabs/CompanyFunctionsTab';
 import RateAgreementsTab from '@/components/companies/tabs/RateAgreementsTab';
 import CommunicationTab from '@/components/companies/tabs/CommunicationTab';
+import CompanyDocumentsTab from '@/components/companies/tabs/CompanyDocumentsTab';
 import NotesSection from '@/components/shared/NotesSection';
 import TasksSection from '@/components/shared/TasksSection';
 import CompanyVacanciesTab from '@/components/companies/tabs/CompanyVacanciesTab';
@@ -154,6 +155,7 @@ const CompanyDetail = () => {
             <TabsTrigger value="communicatie">Comm.</TabsTrigger>
             <TabsTrigger value="vacatures">Vacatures</TabsTrigger>
             <TabsTrigger value="plaatsingen">Plaatsingen</TabsTrigger>
+            <TabsTrigger value="documenten">Documenten</TabsTrigger>
             <TabsTrigger value="notities">Notities</TabsTrigger>
             <TabsTrigger value="taken">Taken</TabsTrigger>
           </TabsList>
@@ -165,6 +167,7 @@ const CompanyDetail = () => {
         <TabsContent value="communicatie"><CommunicationTab company={company} /></TabsContent>
         <TabsContent value="vacatures"><CompanyVacanciesTab companyId={id!} /></TabsContent>
         <TabsContent value="plaatsingen"><PlacementsTab companyId={id!} companyName={company.name} /></TabsContent>
+        <TabsContent value="documenten"><CompanyDocumentsTab companyId={id!} /></TabsContent>
         <TabsContent value="notities"><NotesSection entityId={id!} entityType="opdrachtgever" /></TabsContent>
         <TabsContent value="taken"><TasksSection entityId={id!} entityType="opdrachtgever" /></TabsContent>
       </Tabs>

@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Link, useNavigate } from 'react-router-dom';
 import { useSearchParamState } from '@/hooks/useSearchParamState';
-import { UserCheck, UserPlus, Search, Check, X } from 'lucide-react';
+import { UserCheck, UserPlus, Search, Check, X, Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -75,9 +75,16 @@ const Employees = () => {
           <h1 className="text-2xl font-semibold">Medewerkers</h1>
           <p className="text-muted-foreground text-sm mt-1">Beheer actieve medewerkers</p>
         </div>
-        <Button onClick={() => navigate('/medewerkers/new')} className="gap-2 bg-primary text-primary-foreground">
-          <UserPlus className="h-4 w-4" /> Kandidaat in dienst nemen
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* Punt 15 — het samenvoegscherm bestond al, maar was alleen bereikbaar vanaf
+              de kandidatenlijst. Medewerkers en kandidaten zijn dezelfde tabel. */}
+          <Button variant="outline" onClick={() => navigate('/kandidaten/duplicaten')} className="gap-2 hidden md:flex">
+            <Copy className="h-4 w-4" /> Duplicaten
+          </Button>
+          <Button onClick={() => navigate('/medewerkers/new')} className="gap-2 bg-primary text-primary-foreground">
+            <UserPlus className="h-4 w-4" /> Kandidaat in dienst nemen
+          </Button>
+        </div>
       </div>
 
       <div className="flex items-center gap-3 flex-wrap">

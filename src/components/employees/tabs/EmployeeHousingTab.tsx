@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { unwrap, unwrapList } from '@/lib/db';
 import { qk } from '@/lib/query-keys';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
-import { useHasRole } from '@/contexts/AuthContext';
+import { useAuth, useHasRole } from '@/contexts/AuthContext';
 import { Plus } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -20,16 +20,25 @@ import { formatDate, formatEUR } from '@/lib/format';
 import RegulationStatus from '@/components/shared/RegulationStatus';
 import { toast } from 'sonner';
 
+const HOUSING_STATUS_LABELS: Record<string, string> = {
+  gereserveerd: 'Gereserveerd', ingecheckt: 'Ingecheckt', uitgecheckt: 'Uitgecheckt',
+};
+
 const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
   const orgId = useOrganizationId();
   const canAssignHousing = useHasRole(['admin', 'intercedent', 'backoffice']);
+  const { user } = useAuth();
   const qc = useQueryClient();
 
   const { data: assignments = [] } = useQuery({
     queryKey: qk.employees.housingAssignments(orgId, candidateId),
     queryFn: async () => {
       return unwrapList<any>(supabase.from('housing_assignments')
-        .select('*, units!housing_assignments_unit_id_fkey(id, name, properties!units_property_id_fkey(id, name, address_street, address_city))')
+        .select(`
+          *,
+          units!housing_assignments_unit_id_fkey(id, name, properties!units_property_id_fkey(id, name, address_street, address_city)),
+          profiles!housing_assignments_created_by_fkey(full_name)
+        `)
         .eq('organization_id', orgId)
         .eq('candidate_id', candidateId)
         .order('check_in_date', { ascending: false }));
@@ -99,6 +108,7 @@ const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
         deduction_amount: deductionNum,
         payment_frequency: paymentFrequency,
         monthly_deduction: paymentFrequency === 'maandelijks' ? deductionNum : (deductionNum ? Math.round(deductionNum * 4.33 * 100) / 100 : null),
+        created_by: user?.id ?? null,
       }));
     },
     onSuccess: () => {
@@ -112,6 +122,9 @@ const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
 
   const active = assignments.find((a: any) => a.status === 'ingecheckt');
   const reserved = assignments.find((a: any) => a.status === 'gereserveerd');
+  // Punt 6 — de historie werd wél opgehaald maar nooit getoond: alles behalve de
+  // lopende en de gereserveerde toewijzing verdween uit beeld.
+  const pastAssignments = assignments.filter((a: any) => a !== active && a !== reserved);
   const hasActiveHousing = !!active || !!reserved;
 
   return (
@@ -131,6 +144,7 @@ const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
             <div><p className="text-xs text-muted-foreground">Maandelijkse inhouding</p><p className="text-sm">{formatEUR(active.monthly_deduction)}</p></div>
             <div><p className="text-xs text-muted-foreground">Borg betaald</p><p className="text-sm">{active.deposit_paid ? 'Ja' : 'Nee'}</p></div>
             <div><p className="text-xs text-muted-foreground">Huur betaald tot</p><p className="text-sm">{formatDate(active.rent_paid_until)}</p></div>
+            <div><p className="text-xs text-muted-foreground">Toegewezen door</p><p className="text-sm">{(active as any).profiles?.full_name ?? '—'}</p></div>
           </div>
         )}
         {reserved && (
@@ -153,6 +167,36 @@ const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
           <RegulationStatus candidateId={candidateId} category="huisvesting" />
         </div>
       </div>
+
+      {pastAssignments.length > 0 && (
+        <div className="bg-card rounded-lg border p-6">
+          <h3 className="font-medium mb-4">Eerdere huisvesting</h3>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Pand</TableHead>
+                <TableHead>Kamer</TableHead>
+                <TableHead>Periode</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Toegewezen door</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {pastAssignments.map((a: any) => (
+                <TableRow key={a.id}>
+                  <TableCell className="font-medium">
+                    <EntityLink type="property" id={a.units?.properties?.id}>{propertyLabel(a.units?.properties)}</EntityLink>
+                  </TableCell>
+                  <TableCell>{a.units?.name ?? '—'}</TableCell>
+                  <TableCell>{formatDate(a.check_in_date)} – {a.check_out_date ? formatDate(a.check_out_date) : '—'}</TableCell>
+                  <TableCell><Badge variant="secondary" className="text-xs border-0">{HOUSING_STATUS_LABELS[a.status] ?? a.status}</Badge></TableCell>
+                  <TableCell className="text-muted-foreground">{a.profiles?.full_name ?? '—'}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
 
       <div className="bg-card rounded-lg border p-6">
         <h3 className="font-medium mb-4">Sleutelregistratie</h3>

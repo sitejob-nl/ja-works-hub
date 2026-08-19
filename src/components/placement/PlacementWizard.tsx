@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { unwrap, unwrapList } from '@/lib/db';
+import { qk } from '@/lib/query-keys';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { useAuth } from '@/contexts/AuthContext';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -33,6 +34,19 @@ import PlacementMailEditor from './PlacementMailEditor';
 import type { Database } from '@/integrations/supabase/types';
 
 type HousingAssignmentStatus = Database['public']['Enums']['housing_assignment_status'];
+
+// Gespiegeld aan de kandidaatkeuze bij voertuig- en huisvestingstoewijzing: iemand die
+// uit dienst of afgeschreven is hoort niet in de keuzelijst voor een nieuwe plaatsing.
+const EXCLUDED_CANDIDATE_STATUSES = ['inactief', 'afgewezen', 'uitgeschreven', 'niet_beschikbaar'];
+
+const isPlaceableCandidate = (candidate: any) => {
+  if (candidate?.employee_status === 'uit_dienst') return false;
+  return !EXCLUDED_CANDIDATE_STATUSES.includes(candidate?.status);
+};
+
+const EMPLOYEE_STATUS_LABELS: Record<string, string> = {
+  actief: 'Actief', onboarding: 'Onboarding', ziek: 'Ziek',
+};
 
 const DAYS = ['ma', 'di', 'wo', 'do', 'vr', 'za', 'zo'];
 const STEPS = ['Basis', 'Vervoer', 'Huisvesting', 'Controle'] as const;
@@ -104,8 +118,8 @@ const PlacementWizard = ({ open, onClose, match, vacancy, defaultCompanyId, lock
   const [showComplianceWarning, setShowComplianceWarning] = useState(false);
   const [success, setSuccess] = useState<SuccessSummary | null>(null);
 
-  const candidateId: string | null = matchMode ? match.candidate_id : selectedEmployee?.candidate_id ?? null;
-  const candidate = matchMode ? (match?.candidates as any) : (selectedEmployee?.candidates as any);
+  const candidateId: string | null = matchMode ? match.candidate_id : selectedEmployee?.id ?? null;
+  const candidate = matchMode ? (match?.candidates as any) : (selectedEmployee as any);
   const candidateName = `${candidate?.first_name ?? ''} ${candidate?.last_name ?? ''}`.trim();
   const companyId: string = matchMode ? vacancy.company_id : form.company_id;
 
@@ -160,17 +174,36 @@ const PlacementWizard = ({ open, onClose, match, vacancy, defaultCompanyId, lock
     setPayrollerInitialized(true);
   }, [open, payrollers, payrollerInitialized]);
 
-  const { data: employees = [] } = useQuery({
-    queryKey: ['employees-active-planning'],
-    queryFn: () => unwrapList(
-      supabase
-        .from('employees')
-        .select('id, candidate_id, status, candidates!employees_candidate_id_fkey(id, first_name, last_name, phone, email)')
-        .eq('status', 'actief' as any)
-        .order('created_at', { ascending: false }),
-    ),
-    enabled: open && !matchMode,
+  // Rechtstreeks op `candidates` met zoeken op de server. Dit las eerst de legacy
+  // `employees`-tabel: die bevat alleen koppelrijen (19 stuks bij JA Werkt tegenover
+  // 2.123 kandidaten), waardoor de lijst vrijwel leeg was en zoeken niets opleverde.
+  // Zelfde fix als bij de voertuigtoewijzing (VehicleAssignmentsTab).
+  const { data: candidateResults = [], isFetching: candidatesLoading } = useQuery({
+    queryKey: qk.candidates.list(orgId, { scope: 'placement-wizard', search: empSearch }),
+    queryFn: () => {
+      let query = supabase
+        .from('candidates')
+        .select('id, first_name, last_name, phone, email, employee_number, employee_status, status')
+        .eq('organization_id', orgId)
+        .is('anonymized_at', null)
+        .order('last_name')
+        .order('first_name')
+        .limit(50);
+
+      const search = empSearch.trim();
+      if (search) {
+        const term = search.replace(/[%,]/g, ' ');
+        query = query.or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%,employee_number.ilike.%${term}%`);
+      }
+      return unwrapList<any>(query);
+    },
+    enabled: open && !matchMode && !!orgId,
   });
+
+  const selectableCandidates = useMemo(
+    () => (candidateResults as any[]).filter(isPlaceableCandidate),
+    [candidateResults],
+  );
 
   const { data: companies = [] } = useQuery({
     queryKey: ['companies-list'],
@@ -182,12 +215,6 @@ const PlacementWizard = ({ open, onClose, match, vacancy, defaultCompanyId, lock
     ? (vacancy.companies as any)?.name ?? ''
     : lockedCompanyName ?? (companies as any[]).find((c) => c.id === form.company_id)?.name ?? '';
 
-  const filteredEmps = useMemo(() => {
-    if (!empSearch) return employees;
-    const s = empSearch.toLowerCase();
-    return (employees as any[]).filter((e) =>
-      `${e.candidates?.first_name ?? ''} ${e.candidates?.last_name ?? ''}`.toLowerCase().includes(s));
-  }, [employees, empSearch]);
 
   // Compliance zodra de kandidaat bekend is — als strip op stap 1 én eindcheck bij plaatsen.
   const { data: compliance, isFetching: complianceLoading } = useQuery<ComplianceResult>({
@@ -346,6 +373,7 @@ const PlacementWizard = ({ open, onClose, match, vacancy, defaultCompanyId, lock
           deduction_amount: selectedSuggestion.weeklyCost ?? selectedSuggestion.monthlyCost,
           payment_frequency: selectedSuggestion.weeklyCost ? 'wekelijks' : 'maandelijks',
           monthly_deduction: selectedSuggestion.monthlyCost,
+          created_by: user?.id ?? null,
         } as any).select('id').single());
         await supabase.from('placements').update({ housing_assignment_id: assignment.id }).eq('id', placementId);
         logAudit({
@@ -366,6 +394,7 @@ const PlacementWizard = ({ open, onClose, match, vacancy, defaultCompanyId, lock
           organizationId: orgId, vehicleId, employeeId, candidateId: candidateId!,
           startDate: vehicleFrom || form.start_date,
           startMileage: startMileage ? parseInt(startMileage, 10) : null,
+          createdBy: user?.id ?? null,
         });
         const v = (availableVehicles as any[]).find((x) => x.id === vehicleId);
         summary.vehicle = v ? `${v.license_plate}${v.brand ? ` — ${v.brand} ${v.model ?? ''}` : ''}` : 'Toegewezen';
@@ -533,20 +562,32 @@ const PlacementWizard = ({ open, onClose, match, vacancy, defaultCompanyId, lock
                 <>
                   <div>
                     <Label>Zoek medewerker</Label>
-                    <Input placeholder="Zoek op naam..." value={empSearch} onChange={(e) => setEmpSearch(e.target.value)} className="mt-1" />
+                    <Input placeholder="Zoek op naam of personeelsnummer..." value={empSearch} onChange={(e) => setEmpSearch(e.target.value)} className="mt-1" />
                   </div>
                   <div className="border rounded-md max-h-[320px] overflow-y-auto divide-y">
-                    {(filteredEmps as any[]).length === 0 ? (
-                      <p className="p-4 text-sm text-muted-foreground text-center">Geen actieve medewerkers gevonden</p>
+                    {selectableCandidates.length === 0 ? (
+                      <p className="p-4 text-sm text-muted-foreground text-center">
+                        {candidatesLoading
+                          ? 'Zoeken...'
+                          : empSearch.trim()
+                            ? 'Geen kandidaat gevonden. Probeer een deel van de achternaam.'
+                            : 'Typ een naam om te zoeken.'}
+                      </p>
                     ) : (
-                      (filteredEmps as any[]).map((e) => (
-                        <button key={e.id} className="w-full p-3 text-left hover:bg-muted transition-colors flex items-center justify-between" onClick={() => setSelectedEmployee(e)}>
-                          <span className="font-medium text-sm">{e.candidates?.first_name} {e.candidates?.last_name}</span>
-                          <Badge variant="outline" className="text-xs">Actief</Badge>
+                      selectableCandidates.map((c) => (
+                        <button key={c.id} className="w-full p-3 text-left hover:bg-muted transition-colors flex items-center justify-between gap-3" onClick={() => setSelectedEmployee(c)}>
+                          <span className="font-medium text-sm">{c.first_name} {c.last_name}</span>
+                          <span className="flex items-center gap-2 shrink-0">
+                            {c.employee_number && <span className="text-xs text-muted-foreground">{c.employee_number}</span>}
+                            <Badge variant="outline" className="text-xs">{EMPLOYEE_STATUS_LABELS[c.employee_status] ?? 'Kandidaat'}</Badge>
+                          </span>
                         </button>
                       ))
                     )}
                   </div>
+                  {selectableCandidates.length === 50 && (
+                    <p className="text-xs text-muted-foreground">Eerste 50 resultaten. Verfijn de zoekterm voor de rest.</p>
+                  )}
                 </>
               )}
 
