@@ -1,5 +1,5 @@
 import { useNavigate, useLocation } from 'react-router-dom';
-import { X, User, Building2, UserCheck, Briefcase, MapPin } from 'lucide-react';
+import { X, User, Building2, UserCheck, Briefcase, MapPin, Home, Car } from 'lucide-react';
 import { useRecentItems, type RecentItemType } from '@/contexts/RecentItemsContext';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 
@@ -9,6 +9,8 @@ const typeConfig: Record<RecentItemType, { icon: typeof User; color: string; act
   medewerker:     { icon: UserCheck, color: 'bg-purple-50 text-purple-700 hover:bg-purple-100', activeRing: 'ring-2 ring-purple-400', label: 'Medewerker' },
   vacature:       { icon: Briefcase, color: 'bg-orange-50 text-orange-700 hover:bg-orange-100', activeRing: 'ring-2 ring-orange-400', label: 'Vacature' },
   plaatsing:      { icon: MapPin,    color: 'bg-teal-50 text-teal-700 hover:bg-teal-100',       activeRing: 'ring-2 ring-teal-400',   label: 'Plaatsing' },
+  pand:           { icon: Home,      color: 'bg-amber-50 text-amber-700 hover:bg-amber-100',    activeRing: 'ring-2 ring-amber-400',  label: 'Pand' },
+  voertuig:       { icon: Car,       color: 'bg-sky-50 text-sky-700 hover:bg-sky-100',          activeRing: 'ring-2 ring-sky-400',    label: 'Voertuig' },
 };
 
 const RecentItemsBar = () => {

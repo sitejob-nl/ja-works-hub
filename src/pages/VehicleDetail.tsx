@@ -32,6 +32,7 @@ import TasksSection from '@/components/shared/TasksSection';
 import { useTabSearchParam } from '@/hooks/useTabSearchParam';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchFacilityTransportSnapshot, isFacilityRole, saveFacilityOperationalEntity } from '@/lib/facility';
+import { useTrackPageVisit } from '@/hooks/useTrackPageVisit';
 
 const statusBadge: Record<string, string> = {
   beschikbaar: 'bg-stat-green/10 text-stat-green border-0',
@@ -175,6 +176,14 @@ const VehicleDetail = () => {
       toast.error(toFriendlyError(e, 'Verwijderen mislukt'));
       setDeleteOpen(false);
     },
+  });
+
+  // Punt 7 — voertuigen ook in de balk met recent bekeken items.
+  useTrackPageVisit({
+    id,
+    type: 'voertuig',
+    label: vehicle?.license_plate ?? undefined,
+    sublabel: [vehicle?.brand, vehicle?.model].filter(Boolean).join(' ') || undefined,
   });
 
   if (isLoading || !vehicle) return <div className="p-8 text-muted-foreground">Laden...</div>;

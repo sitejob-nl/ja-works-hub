@@ -338,9 +338,18 @@ const CandidateProfileTab = ({ candidate }: { candidate: any }) => {
             </SelectContent>
           </Select>
         </div>
-        <div className="pt-2 border-t">
-          <InlineTextField id="notes" label="Notities" value={candidate.notes} multiline onSave={(value) => saveField('Notities', { notes: value })} onDirtyChange={setEditorDirty} />
-        </div>
+        {/* Punt 9 — "We willen geen dubbele notities bij Profieltab en bij Notitietab."
+            Dit veld was de tweede plek om hetzelfde op te schrijven. Notities schrijf je
+            nu alleen nog op de Notities-tab (met auteur en datum); de tekst die hier ooit
+            is ingevuld staat daar bovenaan vastgezet onder "Profielnotities". Alleen-lezen
+            zodat er niets verdwijnt, maar er ook niets nieuws bij kan komen. */}
+        {candidate.notes?.trim() && (
+          <div className="pt-2 border-t space-y-1.5">
+            <p className="text-xs text-muted-foreground">Profielnotities (uit de conversie)</p>
+            <p className="text-sm whitespace-pre-wrap text-foreground">{candidate.notes}</p>
+            <p className="text-xs text-muted-foreground">Nieuwe notities schrijf je op de Notities-tab.</p>
+          </div>
+        )}
         {updateCandidate.isPending && (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />

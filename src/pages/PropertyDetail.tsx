@@ -31,6 +31,7 @@ import CleaningTab from '@/components/housing/tabs/CleaningTab';
 import PropertyContractsTab from '@/components/housing/tabs/PropertyContractsTab';
 import TasksSection from '@/components/shared/TasksSection';
 import { useTabSearchParam } from '@/hooks/useTabSearchParam';
+import { useTrackPageVisit } from '@/hooks/useTrackPageVisit';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchFacilityHousingSnapshot, isFacilityRole, saveFacilityOperationalEntity } from '@/lib/facility';
 import { logAudit } from '@/lib/audit';
@@ -115,6 +116,14 @@ const PropertyDetail = () => {
       toast.error(toFriendlyError(err, 'Verwijderen mislukt'));
       setDeleteOpen(false);
     },
+  });
+
+  // Punt 7 — panden ook in de balk met recent bekeken items.
+  useTrackPageVisit({
+    id,
+    type: 'pand',
+    label: property?.name || [property?.address_street, property?.address_city].filter(Boolean).join(', ') || undefined,
+    sublabel: property?.address_city ?? undefined,
   });
 
   if (isLoading) return <div className="p-8 text-muted-foreground">Laden...</div>;
