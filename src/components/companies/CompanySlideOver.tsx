@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import { logAudit } from '@/lib/audit';
 import AddressAutocomplete from '@/components/shared/AddressAutocomplete';
 import { resolveAddressCoordinates } from '@/lib/pdok';
+import { GuardedSheet, useDirtyForm } from '@/components/shared/UnsavedCloseGuard';
 
 interface Props {
   open: boolean;
@@ -23,7 +24,7 @@ const CompanySlideOver = ({ open, onOpenChange, company }: Props) => {
   const qc = useQueryClient();
   const isEdit = !!company;
 
-  const [form, setForm] = useState({
+  const [form, setForm, formDirty] = useDirtyForm({
     name: company?.name ?? '',
     kvk_number: company?.kvk_number ?? '',
     btw_number: company?.btw_number ?? '',
@@ -92,7 +93,7 @@ const CompanySlideOver = ({ open, onOpenChange, company }: Props) => {
   });
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <GuardedSheet open={open} onOpenChange={onOpenChange} dirty={formDirty}>
       <SheetContent className="sm:max-w-lg overflow-y-auto">
         <SheetHeader>
           <SheetTitle>{isEdit ? 'Opdrachtgever bewerken' : 'Nieuwe opdrachtgever'}</SheetTitle>
@@ -139,7 +140,7 @@ const CompanySlideOver = ({ open, onOpenChange, company }: Props) => {
           </div>
         </div>
       </SheetContent>
-    </Sheet>
+    </GuardedSheet>
   );
 };
 

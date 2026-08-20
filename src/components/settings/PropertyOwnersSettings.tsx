@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Plus, Pencil, Trash2, Building } from 'lucide-react';
 import { toast } from 'sonner';
+import { GuardedDialog, useDirtyForm } from '@/components/shared/UnsavedCloseGuard';
 import { logAudit } from '@/lib/audit';
 
 type Owner = {
@@ -29,7 +30,7 @@ const PropertyOwnersSettings = () => {
   const qc = useQueryClient();
   const [editing, setEditing] = useState<Owner | null>(null);
   const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm, formDirty] = useDirtyForm(emptyForm);
 
   const { data: owners = [], isLoading } = useQuery({
     queryKey: ['property-owners', orgId],
@@ -199,7 +200,7 @@ const PropertyOwnersSettings = () => {
         )}
       </CardContent>
 
-      <Dialog open={formOpen} onOpenChange={(v) => !v && closeAll()}>
+      <GuardedDialog open={formOpen} dirty={formDirty} onOpenChange={(v) => !v && closeAll()}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{editing ? 'Eigenaar bewerken' : 'Nieuwe eigenaar'}</DialogTitle>
@@ -221,7 +222,7 @@ const PropertyOwnersSettings = () => {
             </Button>
           </DialogFooter>
         </DialogContent>
-      </Dialog>
+      </GuardedDialog>
     </Card>
   );
 };

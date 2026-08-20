@@ -8,13 +8,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { priorityConfig, entityTypeLabels, TASK_ENTITY_TYPES, type TaskEntityType } from '@/lib/tasks';
 import EntityPicker, { type EntitySelection } from '@/components/shared/EntityPicker';
 import TaskAttachments from '@/components/shared/TaskAttachments';
 import { uploadTaskFiles } from '@/lib/taskAttachments';
+import { GuardedSheet, useDirtyForm } from '@/components/shared/UnsavedCloseGuard';
 
 interface TaskEditorSheetProps {
   open: boolean;
@@ -38,7 +39,7 @@ const TaskEditorSheet = ({ open, onOpenChange, task, lockedEntity, onSaved }: Ta
   const qc = useQueryClient();
   const isEdit = !!task;
 
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm, formDirty] = useDirtyForm(emptyForm);
   const [entityType, setEntityType] = useState<TaskEntityType | 'none'>('none');
   const [entitySel, setEntitySel] = useState<EntitySelection | null>(null);
   const [staged, setStaged] = useState<File[]>([]);
@@ -136,7 +137,7 @@ const TaskEditorSheet = ({ open, onOpenChange, task, lockedEntity, onSaved }: Ta
   const assignedValue = form.assigned_to || 'unassigned';
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <GuardedSheet open={open} onOpenChange={onOpenChange} dirty={formDirty}>
       <SheetContent className="sm:max-w-md overflow-y-auto">
         <SheetHeader>
           <SheetTitle>{isEdit ? 'Taak bewerken' : 'Nieuwe taak'}</SheetTitle>
@@ -224,7 +225,7 @@ const TaskEditorSheet = ({ open, onOpenChange, task, lockedEntity, onSaved }: Ta
           </div>
         </div>
       </SheetContent>
-    </Sheet>
+    </GuardedSheet>
   );
 };
 

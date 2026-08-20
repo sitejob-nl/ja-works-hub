@@ -6,17 +6,18 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Plus } from 'lucide-react';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { formatEUR, formatDate } from '@/lib/format';
 import { toast } from 'sonner';
+import { GuardedSheet, useDirtyForm } from '@/components/shared/UnsavedCloseGuard';
 
 const RateAgreementsTab = ({ companyId }: { companyId: string }) => {
   const orgId = useOrganizationId();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ function_name: '', hourly_rate: '', overtime_rate: '', valid_from: '', valid_until: '' });
+  const [form, setForm, formDirty] = useDirtyForm({ function_name: '', hourly_rate: '', overtime_rate: '', valid_from: '', valid_until: '' });
 
   const { data: rates = [] } = useQuery({
     queryKey: ['rates', companyId],
@@ -90,7 +91,7 @@ const RateAgreementsTab = ({ companyId }: { companyId: string }) => {
         </Table>
       </div>
 
-      <Sheet open={open} onOpenChange={setOpen}>
+      <GuardedSheet open={open} onOpenChange={setOpen} dirty={formDirty}>
         <SheetContent className="sm:max-w-md">
           <SheetHeader><SheetTitle>Nieuw tarief</SheetTitle></SheetHeader>
           <div className="space-y-4 mt-6">
@@ -109,7 +110,7 @@ const RateAgreementsTab = ({ companyId }: { companyId: string }) => {
             </div>
           </div>
         </SheetContent>
-      </Sheet>
+      </GuardedSheet>
     </div>
   );
 };

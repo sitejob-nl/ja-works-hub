@@ -53,3 +53,6 @@ Auto:benzine/
 .vercel
 jawerkt materiaal/
 test vacatures/
+
+# QA-screenshots van lokale testruns
+scripts/.qa/

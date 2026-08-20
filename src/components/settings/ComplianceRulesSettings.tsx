@@ -8,11 +8,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { Plus, ShieldCheck, Trash2, Pencil } from 'lucide-react';
+import { GuardedSheet, useDirtyForm } from '@/components/shared/UnsavedCloseGuard';
 
 const DOCUMENT_TYPES = [
   { value: 'id_bewijs', label: 'ID Bewijs' },
@@ -72,7 +73,7 @@ const ComplianceRulesSettings = () => {
   const orgId = useOrganizationId();
   const qc = useQueryClient();
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [form, setForm] = useState<RuleForm>(emptyForm);
+  const [form, setForm, formDirty] = useDirtyForm<RuleForm>(emptyForm);
 
   const { data: rules = [], isLoading } = useQuery({
     queryKey: ['compliance-rules', orgId],
@@ -201,7 +202,7 @@ const ComplianceRulesSettings = () => {
       </CardContent>
 
       {/* Edit Sheet */}
-      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+      <GuardedSheet open={sheetOpen} onOpenChange={setSheetOpen} dirty={formDirty}>
         <SheetContent className="sm:max-w-md overflow-y-auto">
           <SheetHeader><SheetTitle>{form.id ? 'Regel bewerken' : 'Nieuwe compliance regel'}</SheetTitle></SheetHeader>
           <div className="space-y-4 mt-6">
@@ -282,7 +283,7 @@ const ComplianceRulesSettings = () => {
             </div>
           </div>
         </SheetContent>
-      </Sheet>
+      </GuardedSheet>
     </Card>
   );
 };

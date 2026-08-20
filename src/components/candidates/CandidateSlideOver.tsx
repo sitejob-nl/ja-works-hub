@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,6 +19,7 @@ import SkillMultiSelect from '@/components/shared/SkillMultiSelect';
 import LanguageMultiSelect from '@/components/shared/LanguageMultiSelect';
 import { CANDIDATE_SOURCES, includeCurrentOption, normalizeCandidateSource } from '@/lib/candidate-options';
 import { mergeCandidatePhoneFields } from '@/lib/phone';
+import { GuardedSheet, useDirtyForm } from '@/components/shared/UnsavedCloseGuard';
 
 interface Props {
   open: boolean;
@@ -40,7 +41,7 @@ const CandidateSlideOver = ({ open, onOpenChange, candidate }: Props) => {
   const qc = useQueryClient();
   const isEdit = !!candidate;
 
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm, formDirty] = useDirtyForm(emptyForm);
 
   useEffect(() => {
     if (candidate) {
@@ -129,7 +130,7 @@ const CandidateSlideOver = ({ open, onOpenChange, candidate }: Props) => {
   });
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <GuardedSheet open={open} onOpenChange={onOpenChange} dirty={formDirty}>
       <SheetContent className="sm:max-w-lg overflow-y-auto">
         <SheetHeader>
           <SheetTitle>{isEdit ? 'Kandidaat bewerken' : 'Nieuwe kandidaat'}</SheetTitle>
@@ -198,7 +199,7 @@ const CandidateSlideOver = ({ open, onOpenChange, candidate }: Props) => {
           </div>
         </div>
       </SheetContent>
-    </Sheet>
+    </GuardedSheet>
   );
 };
 

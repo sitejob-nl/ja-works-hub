@@ -1,4 +1,4 @@
-import { useState, type DragEvent } from 'react';
+import { useEffect, useState, type DragEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -12,7 +12,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Upload, ExternalLink, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { logAudit } from '@/lib/audit';
-import { unwrapDeleted } from '@/lib/db';
+import { unwrap, unwrapDeleted } from '@/lib/db';
+import { formatEUR } from '@/lib/format';
 import { toFriendlyError } from '@/lib/errorMessages';
 import { allowFileDrop, getDroppedFiles } from '@/lib/file-input';
 
@@ -38,6 +39,45 @@ export default function PropertyContractsTab({ property }: { property: any }) {
       if (error) throw error;
       return data as any[];
     },
+  });
+
+  // Borg van het pand: wat JA Werkt aan de verhuurder heeft betaald voor de woning als
+  // geheel. Hoort bij het huurcontract en niet bij de bewonerskosten — dat is de borg die
+  // een bewoner betaalt, een ander bedrag en een andere tegenpartij. Op `properties` en
+  // niet op een contractrij, omdat een contractrij een geüpload bestand vereist en de borg
+  // ook bekend is zonder pdf.
+  const [deposit, setDeposit] = useState({
+    amount: property.deposit_amount == null ? '' : String(property.deposit_amount),
+    paidDate: property.deposit_paid_date ?? '',
+  });
+
+  useEffect(() => {
+    setDeposit({
+      amount: property.deposit_amount == null ? '' : String(property.deposit_amount),
+      paidDate: property.deposit_paid_date ?? '',
+    });
+  }, [property.id, property.deposit_amount, property.deposit_paid_date]);
+
+  const depositDirty =
+    deposit.amount !== (property.deposit_amount == null ? '' : String(property.deposit_amount))
+    || deposit.paidDate !== (property.deposit_paid_date ?? '');
+
+  const saveDeposit = useMutation({
+    mutationFn: async () => {
+      const payload = {
+        deposit_amount: deposit.amount === '' ? null : Number(deposit.amount),
+        deposit_paid_date: deposit.paidDate || null,
+      };
+      await unwrap(supabase.from('properties').update(payload as any).eq('id', property.id).select('id').single());
+      return payload;
+    },
+    onSuccess: (payload) => {
+      qc.invalidateQueries({ queryKey: ['property', property.id] });
+      qc.invalidateQueries({ queryKey: ['properties'] });
+      logAudit({ action: 'update', tableName: 'properties', recordId: property.id, newValues: payload });
+      toast.success('Borg opgeslagen');
+    },
+    onError: (e: any) => toast.error(toFriendlyError(e)),
   });
 
   const upload = useMutation({
@@ -107,6 +147,40 @@ export default function PropertyContractsTab({ property }: { property: any }) {
 
   return (
     <div className="space-y-4">
+      <Card>
+        <CardHeader><CardTitle className="text-base">Borg pand</CardTitle></CardHeader>
+        <CardContent className="grid gap-4 md:grid-cols-3 md:items-end">
+          <div className="space-y-1.5">
+            <Label>Borgbedrag</Label>
+            <Input
+              type="number"
+              step="0.01"
+              placeholder="0,00"
+              value={deposit.amount}
+              onChange={(e) => setDeposit((d) => ({ ...d, amount: e.target.value }))}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Betaald op</Label>
+            <Input
+              type="date"
+              value={deposit.paidDate}
+              onChange={(e) => setDeposit((d) => ({ ...d, paidDate: e.target.value }))}
+            />
+          </div>
+          <div className="flex justify-start md:justify-end">
+            <Button onClick={() => saveDeposit.mutate()} disabled={!depositDirty || saveDeposit.isPending}>
+              Opslaan
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground md:col-span-3">
+            Het bedrag dat aan de verhuurder is betaald voor dit pand
+            {property.deposit_amount != null && ` (nu ${formatEUR(property.deposit_amount)})`}.
+            De borg die bewoners betalen staat per bewoner op de Bewoners-tab.
+          </p>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader><CardTitle className="text-base">Nieuw huurcontract</CardTitle></CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">

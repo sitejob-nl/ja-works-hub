@@ -28,6 +28,7 @@ import { toast } from 'sonner';
 import { formatDate, formatEUR } from '@/lib/format';
 import { toFriendlyError } from '@/lib/errorMessages';
 import { logAudit } from '@/lib/audit';
+import { GuardedSheet, useDirtyForm } from '@/components/shared/UnsavedCloseGuard';
 import { differenceInCalendarDays, parseISO } from 'date-fns';
 import { EntityLink } from '@/components/ui/entity-link';
 
@@ -62,7 +63,7 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingFine, setEditingFine] = useState<any | null>(null);
-  const [form, setForm] = useState(emptyFine);
+  const [form, setForm, formDirty] = useDirtyForm(emptyFine);
   const [files, setFiles] = useState<File[]>([]);
   const [fineToDelete, setFineToDelete] = useState<any | null>(null);
 
@@ -356,7 +357,7 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
         </Table>
       </div>
 
-      <Sheet open={sheetOpen} onOpenChange={(o) => { if (!o) closeSheet(); else setSheetOpen(o); }}>
+      <GuardedSheet open={sheetOpen} dirty={formDirty} onOpenChange={(o) => { if (!o) closeSheet(); else setSheetOpen(o); }}>
         <SheetContent className="sm:max-w-md">
           <SheetHeader><SheetTitle>{editingId ? 'Boete bewerken' : 'Nieuwe boete'}</SheetTitle></SheetHeader>
           <div className="space-y-4 mt-6">
@@ -394,7 +395,7 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
             </div>
           </div>
         </SheetContent>
-      </Sheet>
+      </GuardedSheet>
 
       <AlertDialog open={!!fineToDelete} onOpenChange={(o) => { if (!o) setFineToDelete(null); }}>
         <AlertDialogContent>

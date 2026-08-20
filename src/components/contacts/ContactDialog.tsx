@@ -7,10 +7,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { toast } from 'sonner';
 import type { Database } from '@/integrations/supabase/types';
 import EntityPicker, { type EntitySelection } from '@/components/shared/EntityPicker';
+import { GuardedSheet, useDirtyForm } from '@/components/shared/UnsavedCloseGuard';
 
 type ContactRole = Database['public']['Enums']['contact_role'];
 
@@ -46,7 +47,7 @@ const ContactDialog = ({ open, onOpenChange, contact, lockedCompany, onSaved }: 
   const qc = useQueryClient();
   const isEdit = !!contact;
 
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm, formDirty] = useDirtyForm(emptyForm);
   const [company, setCompany] = useState<EntitySelection | null>(null);
 
   useEffect(() => {
@@ -120,7 +121,7 @@ const ContactDialog = ({ open, onOpenChange, contact, lockedCompany, onSaved }: 
   const canSave = !!hasName && !!company?.id && !save.isPending;
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <GuardedSheet open={open} onOpenChange={onOpenChange} dirty={formDirty}>
       <SheetContent className="sm:max-w-md overflow-y-auto">
         <SheetHeader>
           <SheetTitle>{isEdit ? 'Contact bewerken' : 'Nieuw contact'}</SheetTitle>
@@ -164,7 +165,7 @@ const ContactDialog = ({ open, onOpenChange, contact, lockedCompany, onSaved }: 
           </div>
         </div>
       </SheetContent>
-    </Sheet>
+    </GuardedSheet>
   );
 };
 

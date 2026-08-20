@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { useAuth } from '@/contexts/AuthContext';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import TagInput from '@/components/ui/tag-input';
 import SkillMultiSelect from '@/components/shared/SkillMultiSelect';
 import { toast } from 'sonner';
+import { GuardedSheet, useDirtyForm } from '@/components/shared/UnsavedCloseGuard';
 
 interface Props {
   open: boolean;
@@ -41,7 +42,7 @@ const VacancySlideOver = ({ open, onOpenChange, vacancy }: Props) => {
   const { user } = useAuth();
   const qc = useQueryClient();
   const isEdit = !!vacancy;
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm, formDirty] = useDirtyForm(emptyForm);
 
   const { data: companies } = useQuery({
     queryKey: ['companies-active'],
@@ -112,7 +113,7 @@ const VacancySlideOver = ({ open, onOpenChange, vacancy }: Props) => {
   });
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <GuardedSheet open={open} onOpenChange={onOpenChange} dirty={formDirty}>
       <SheetContent className="sm:max-w-lg overflow-y-auto">
         <SheetHeader>
           <SheetTitle>{isEdit ? 'Vacature bewerken' : 'Nieuwe vacature'}</SheetTitle>
@@ -169,7 +170,7 @@ const VacancySlideOver = ({ open, onOpenChange, vacancy }: Props) => {
           </div>
         </div>
       </SheetContent>
-    </Sheet>
+    </GuardedSheet>
   );
 };
 

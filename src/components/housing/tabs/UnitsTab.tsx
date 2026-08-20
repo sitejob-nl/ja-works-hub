@@ -28,6 +28,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { EntityLink } from '@/components/ui/entity-link';
 import { formatDate, formatEUR } from '@/lib/format';
 import { toast } from 'sonner';
+import { GuardedSheet, useDirtyForm } from '@/components/shared/UnsavedCloseGuard';
 import type { Database } from '@/integrations/supabase/types';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchFacilityWorkerDirectory, isFacilityRole, saveFacilityOperationalEntity } from '@/lib/facility';
@@ -64,7 +65,7 @@ const UnitsTab = ({ property }: { property: any }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [expandedUnit, setExpandedUnit] = useState<string | null>(null);
   const [unitToDelete, setUnitToDelete] = useState<{ id: string; name: string } | null>(null);
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm, formDirty] = useDirtyForm(emptyForm);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkRows, setBulkRows] = useState<BulkRow[]>(() => [emptyBulkRow(), emptyBulkRow(), emptyBulkRow()]);
   const [view, setView] = useState<'cards' | 'list'>('list');
@@ -322,7 +323,7 @@ const UnitsTab = ({ property }: { property: any }) => {
         </SheetContent>
       </Sheet>
 
-      <Sheet open={sheetOpen} onOpenChange={(o) => { if (!o) { setEditingId(null); setForm(emptyForm); } setSheetOpen(o); }}>
+      <GuardedSheet open={sheetOpen} dirty={formDirty} onOpenChange={(o) => { if (!o) { setEditingId(null); setForm(emptyForm); } setSheetOpen(o); }}>
         <SheetContent className="sm:max-w-md overflow-y-auto">
           <SheetHeader><SheetTitle>{editingId ? 'Kamer bewerken' : 'Nieuwe kamer'}</SheetTitle></SheetHeader>
           <div className="space-y-4 mt-6">
@@ -354,7 +355,7 @@ const UnitsTab = ({ property }: { property: any }) => {
             </div>
           </div>
         </SheetContent>
-      </Sheet>
+      </GuardedSheet>
 
       {view === 'cards' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

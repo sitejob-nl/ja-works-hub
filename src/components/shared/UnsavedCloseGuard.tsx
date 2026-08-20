@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -9,6 +9,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { Sheet } from '@/components/ui/sheet';
+import { Dialog } from '@/components/ui/dialog';
 
 /**
  * Tegenhanger van UnsavedChangesGuard voor panelen en dialogen.
@@ -76,4 +78,87 @@ export function useUnsavedCloseGuard(
   ), [confirmOpen, onOpenChange, options?.title, options?.description]);
 
   return { handleOpenChange, closeWithoutPrompt, dialog };
+}
+
+
+/**
+ * `useState` voor een formulier, met een dirty-vlag erbij.
+ *
+ * De vlag leunt op een patroon dat overal in deze codebase geldt: een formulier
+ * *vullen* gebeurt met een kant-en-klaar object (`setForm(emptyForm)`,
+ * `setForm({ ...uit de database })`), terwijl een gebruiker die iets *wijzigt* altijd
+ * via de functievorm gaat (`setForm(f => ({ ...f, naam: waarde }))`). Het eerste zet de
+ * vlag dus terug op schoon, het tweede zet hem aan.
+ *
+ * Daarmee hoeft een scherm geen aparte kopie van de begintoestand bij te houden en
+ * blijft de rest van de component ongewijzigd: alleen de regel met `useState` verandert.
+ */
+export function useDirtyForm<T>(initial: T): [T, Dispatch<SetStateAction<T>>, boolean, () => void] {
+  const [form, setFormState] = useState<T>(initial);
+  const [dirty, setDirty] = useState(false);
+
+  const setForm = useCallback<Dispatch<SetStateAction<T>>>((value) => {
+    setDirty(typeof value === 'function');
+    setFormState(value);
+  }, []);
+
+  const markClean = useCallback(() => setDirty(false), []);
+
+  return [form, setForm, dirty, markClean];
+}
+
+/**
+ * Een `Sheet` die niet zomaar dichtgaat terwijl je nog aan het typen bent.
+ *
+ * Vangt de wegen waarlangs een paneel per ongeluk sluit — naast het paneel klikken,
+ * Escape, het kruisje. Opslaan en Annuleren roepen `onOpenChange` rechtstreeks aan en
+ * lopen hier dus bewust langs: dat zijn bedoelde acties, die horen niet te vragen.
+ */
+export function GuardedSheet({
+  open,
+  onOpenChange,
+  dirty,
+  children,
+  title,
+  description,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  dirty: boolean;
+  children: ReactNode;
+  title?: string;
+  description?: string;
+}) {
+  const guard = useUnsavedCloseGuard(dirty, onOpenChange, { title, description });
+  return (
+    <>
+      <Sheet open={open} onOpenChange={guard.handleOpenChange}>{children}</Sheet>
+      {guard.dialog}
+    </>
+  );
+}
+
+/** Zelfde bescherming als {@link GuardedSheet}, voor schermen die een dialoog gebruiken. */
+export function GuardedDialog({
+  open,
+  onOpenChange,
+  dirty,
+  children,
+  title,
+  description,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  dirty: boolean;
+  children: ReactNode;
+  title?: string;
+  description?: string;
+}) {
+  const guard = useUnsavedCloseGuard(dirty, onOpenChange, { title, description });
+  return (
+    <>
+      <Dialog open={open} onOpenChange={guard.handleOpenChange}>{children}</Dialog>
+      {guard.dialog}
+    </>
+  );
 }

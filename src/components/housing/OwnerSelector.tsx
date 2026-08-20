@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Plus, Settings2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { GuardedDialog, useDirtyForm } from '@/components/shared/UnsavedCloseGuard';
 import { toFriendlyError } from '@/lib/errorMessages';
 import { useRolePermission } from '@/hooks/usePermissions';
 
@@ -46,7 +47,7 @@ const OwnerSelector = ({ value, onChange, showManageLink }: Props) => {
   // permissie is 'Eigenaren beheren' een dode link (juist voor de rollen die hier komen).
   const canManageSettings = useRolePermission('settings.manage');
   const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState<OwnerForm>({ name: '', contact_person: '', email: '', phone: '', notes: '' });
+  const [form, setForm, formDirty] = useDirtyForm<OwnerForm>({ name: '', contact_person: '', email: '', phone: '', notes: '' });
   const [touched, setTouched] = useState<{ [k: string]: boolean }>({});
   const errors = validateOwner(form);
   const hasErrors = Object.keys(errors).length > 0;
@@ -131,7 +132,7 @@ const OwnerSelector = ({ value, onChange, showManageLink }: Props) => {
         )}
       </div>
 
-      <Dialog open={creating} onOpenChange={setCreating}>
+      <GuardedDialog open={creating} dirty={formDirty} onOpenChange={setCreating}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader><DialogTitle>Nieuwe eigenaar</DialogTitle></DialogHeader>
           <div className="space-y-3 mt-4">
@@ -176,7 +177,7 @@ const OwnerSelector = ({ value, onChange, showManageLink }: Props) => {
             </Button>
           </DialogFooter>
         </DialogContent>
-      </Dialog>
+      </GuardedDialog>
     </>
   );
 };

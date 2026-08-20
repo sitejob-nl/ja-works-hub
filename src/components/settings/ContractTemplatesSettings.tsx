@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Switch } from '@/components/ui/switch';
 import { AlertTriangle, CheckCircle2, FileText, Plus, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
+import { GuardedDialog, useDirtyForm } from '@/components/shared/UnsavedCloseGuard';
 import { formatDate } from '@/lib/format';
 import {
   CONTRACT_TEMPLATE_SAMPLE_VALUES,
@@ -56,7 +57,7 @@ const ContractTemplatesSettings = () => {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
-  const [form, setForm] = useState({ name: '', template_type: 'employment_contract', template_status: 'concept', is_placeholder: false, content: '' });
+  const [form, setForm, formDirty] = useDirtyForm({ name: '', template_type: 'employment_contract', template_status: 'concept', is_placeholder: false, content: '' });
   const formValidation = validateContractTemplateDefinition(form.content);
   const preview = renderContractTemplate(form.content, CONTRACT_TEMPLATE_SAMPLE_VALUES);
   const activeTemplateBlocked = form.template_status === 'actief' && (
@@ -265,7 +266,7 @@ const ContractTemplatesSettings = () => {
         )}
       </CardContent>
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <GuardedDialog open={open} dirty={formDirty} onOpenChange={setOpen}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle>{editing ? 'Template bewerken' : 'Nieuw contracttemplate'}</DialogTitle>
@@ -357,7 +358,7 @@ const ContractTemplatesSettings = () => {
             </div>
           </div>
         </DialogContent>
-      </Dialog>
+      </GuardedDialog>
     </Card>
   );
 };

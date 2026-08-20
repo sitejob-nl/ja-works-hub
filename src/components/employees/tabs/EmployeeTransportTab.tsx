@@ -13,7 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { EntityLink } from '@/components/ui/entity-link';
-import { resolveEmployeeId } from '@/lib/assignments';
+import { formatAssignedBy, resolveEmployeeId } from '@/lib/assignments';
 import { vehicleFreeOn } from '@/lib/vehicle-availability';
 import { sendRegulationsForAssignment } from '@/lib/regulation-dispatch';
 import RegulationStatus from '@/components/shared/RegulationStatus';
@@ -162,7 +162,7 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
             <div><p className="text-xs text-muted-foreground">Model</p><p className="text-sm">{assignment.vehicles?.model ?? '—'}</p></div>
             <div><p className="text-xs text-muted-foreground">Toewijsdatum</p><p className="text-sm">{formatDate(assignment.assigned_date)}</p></div>
             <div><p className="text-xs text-muted-foreground">Begin km</p><p className="text-sm">{formatKm(assignment.start_mileage)}</p></div>
-            <div><p className="text-xs text-muted-foreground">Toegewezen door</p><p className="text-sm">{assignment.profiles?.full_name ?? '—'}</p></div>
+            <div><p className="text-xs text-muted-foreground">Toegewezen door</p><p className="text-sm">{formatAssignedBy(assignment)}</p></div>
           </div>
         ) : (
           <p className="text-sm text-muted-foreground">Geen voertuig toegewezen</p>
@@ -197,7 +197,7 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
                   <TableCell>{formatDate(a.assigned_date)} – {formatDate(a.returned_date)}</TableCell>
                   <TableCell className="text-right tabular-nums">{formatKm(a.start_mileage)}</TableCell>
                   <TableCell className="text-right tabular-nums">{formatKm(a.end_mileage)}</TableCell>
-                  <TableCell className="text-muted-foreground">{a.profiles?.full_name ?? '—'}</TableCell>
+                  <TableCell className="text-muted-foreground">{formatAssignedBy(a)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
