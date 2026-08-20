@@ -134,19 +134,6 @@ const CostsTab = ({ property }: { property: any }) => {
     },
   });
 
-  // Punt 20 — naast het ja/nee-vinkje ook het daadwerkelijk betaalde bedrag.
-  const updateDepositAmount = useMutation({
-    mutationFn: async ({ id, amount }: { id: string; amount: string }) => {
-      const value = amount.trim() === '' ? null : Number(amount);
-      await unwrap(supabase.from('housing_assignments').update({ deposit_amount: value }).eq('id', id));
-    },
-    onSuccess: (_data, variables) => {
-      logAudit({ action: 'update', tableName: 'housing_assignments', recordId: variables.id, newValues: { deposit_amount: variables.amount } });
-      qc.invalidateQueries({ queryKey: qk.housing.property(property.id) });
-      toast.success('Borgbedrag bijgewerkt');
-    },
-  });
-
   const updateRentPaid = useMutation({
     mutationFn: async ({ id, date }: { id: string; date: string }) => {
       await unwrap(supabase.from('housing_assignments').update({ rent_paid_until: date || null }).eq('id', id));
@@ -313,7 +300,6 @@ const CostsTab = ({ property }: { property: any }) => {
                   <TableHead>Kamer</TableHead>
                   <TableHead>Per week</TableHead>
                   <TableHead>Borg</TableHead>
-                  <TableHead>Borgbedrag</TableHead>
                   <TableHead>Huur betaald tot</TableHead>
                 </TableRow>
               </TableHeader>
@@ -340,20 +326,6 @@ const CostsTab = ({ property }: { property: any }) => {
                           {a.deposit_paid ? 'Betaald' : 'Niet betaald'}
                         </Badge>
                       </Button>
-                    </TableCell>
-                    <TableCell>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        className="h-8 w-28"
-                        placeholder="—"
-                        defaultValue={a.deposit_amount ?? ''}
-                        onBlur={(e) => {
-                          const next = e.target.value;
-                          const current = a.deposit_amount == null ? '' : String(a.deposit_amount);
-                          if (next !== current) updateDepositAmount.mutate({ id: a.id, amount: next });
-                        }}
-                      />
                     </TableCell>
                     <TableCell>
                       <Input

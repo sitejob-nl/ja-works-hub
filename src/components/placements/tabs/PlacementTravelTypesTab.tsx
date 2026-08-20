@@ -6,10 +6,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { GuardedSheet, useDirtyForm } from '@/components/shared/UnsavedCloseGuard';
 
 interface Props { placementId: string; organizationId: string }
 
@@ -17,7 +18,7 @@ const PlacementTravelTypesTab = ({ placementId, organizationId }: Props) => {
   const qc = useQueryClient();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
-  const [form, setForm] = useState({ code: '', description: '', rate_per_km: '', fixed_amount: '', max_km_per_day: '', is_taxable: true, sort_order: '0' });
+  const [form, setForm, formDirty] = useDirtyForm({ code: '', description: '', rate_per_km: '', fixed_amount: '', max_km_per_day: '', is_taxable: true, sort_order: '0' });
 
   const { data: types = [] } = useQuery({
     queryKey: ['placement-travel-types', placementId],
@@ -105,7 +106,7 @@ const PlacementTravelTypesTab = ({ placementId, organizationId }: Props) => {
         </div>
       )}
 
-      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+      <GuardedSheet open={sheetOpen} onOpenChange={setSheetOpen} dirty={formDirty}>
         <SheetContent className="sm:max-w-md overflow-y-auto">
           <SheetHeader><SheetTitle>{editing ? 'Reistype bewerken' : 'Reistype toevoegen'}</SheetTitle></SheetHeader>
           <div className="space-y-4 mt-6">
@@ -126,7 +127,7 @@ const PlacementTravelTypesTab = ({ placementId, organizationId }: Props) => {
             </div>
           </div>
         </SheetContent>
-      </Sheet>
+      </GuardedSheet>
     </div>
   );
 };

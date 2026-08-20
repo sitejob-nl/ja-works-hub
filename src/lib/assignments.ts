@@ -1,4 +1,25 @@
 import { supabase } from '@/integrations/supabase/client';
+import { formatDate } from '@/lib/format';
+
+/**
+ * "Toegewezen door" met de datum erbij.
+ *
+ * De naam alleen (punt 13) liet nog open wánneer de toewijzing is vastgelegd,
+ * terwijl juist die datum antwoord geeft op "sinds wanneer rijdt hij hierin".
+ * `created_at` is bewust de registratiedatum en niet `assigned_date`/`check_in_date`:
+ * die twee staan al apart in beeld en kunnen in de toekomst liggen.
+ *
+ * Toewijzingen van vóór augustus 2026 hebben geen `created_by` — die vallen terug
+ * op een streepje in plaats van een halve regel.
+ */
+export function formatAssignedBy(
+  row: { profiles?: { full_name?: string | null } | null; created_at?: string | null } | null | undefined,
+): string {
+  const name = row?.profiles?.full_name?.trim();
+  if (!name) return '—';
+  const date = row?.created_at ? formatDate(row.created_at) : null;
+  return date ? `${name} · ${date}` : name;
+}
 
 /**
  * Vindt de legacy `employees`-rij voor een kandidaat, of maakt hem aan als die

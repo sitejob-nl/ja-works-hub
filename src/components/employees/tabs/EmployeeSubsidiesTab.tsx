@@ -10,10 +10,11 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Plus, Pencil } from 'lucide-react';
 import { formatDate, formatEUR } from '@/lib/format';
 import { toast } from 'sonner';
+import { GuardedSheet, useDirtyForm } from '@/components/shared/UnsavedCloseGuard';
 
 const typeOptions = [
   { value: 'liv', label: 'LIV' },
@@ -42,7 +43,7 @@ const EmployeeSubsidiesTab = ({ candidateId }: { candidateId: string }) => {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editItem, setEditItem] = useState<any>(null);
-  const [form, setForm] = useState<any>(emptyForm);
+  const [form, setForm, formDirty] = useDirtyForm<any>(emptyForm);
 
   const { data: subsidies = [] } = useQuery({
     queryKey: ['subsidies', candidateId],
@@ -132,7 +133,7 @@ const EmployeeSubsidiesTab = ({ candidateId }: { candidateId: string }) => {
         </div>
       )}
 
-      <Sheet open={open} onOpenChange={setOpen}>
+      <GuardedSheet open={open} onOpenChange={setOpen} dirty={formDirty}>
         <SheetContent className="sm:max-w-md overflow-y-auto">
           <SheetHeader><SheetTitle>{editItem ? 'Subsidie bewerken' : 'Nieuwe subsidie'}</SheetTitle></SheetHeader>
           <div className="space-y-4 mt-6">
@@ -164,7 +165,7 @@ const EmployeeSubsidiesTab = ({ candidateId }: { candidateId: string }) => {
             </div>
           </div>
         </SheetContent>
-      </Sheet>
+      </GuardedSheet>
     </div>
   );
 };

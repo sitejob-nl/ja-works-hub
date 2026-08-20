@@ -6,10 +6,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
 import { Plus, Copy, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { GuardedSheet, useDirtyForm } from '@/components/shared/UnsavedCloseGuard';
 
 interface Props { placementId: string; organizationId: string }
 
@@ -38,7 +39,7 @@ const PlacementHourTypesTab = ({ placementId, organizationId }: Props) => {
     },
   });
 
-  const [form, setForm] = useState({ code: '', description: '', multiplier: '1', surcharge_amount: '0', is_default: false, sort_order: '0' });
+  const [form, setForm, formDirty] = useDirtyForm({ code: '', description: '', multiplier: '1', surcharge_amount: '0', is_default: false, sort_order: '0' });
 
   const openNew = () => {
     setEditing(null);
@@ -137,7 +138,7 @@ const PlacementHourTypesTab = ({ placementId, organizationId }: Props) => {
         </div>
       )}
 
-      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+      <GuardedSheet open={sheetOpen} onOpenChange={setSheetOpen} dirty={formDirty}>
         <SheetContent className="sm:max-w-md overflow-y-auto">
           <SheetHeader><SheetTitle>{editing ? 'Uurtype bewerken' : 'Uurtype toevoegen'}</SheetTitle></SheetHeader>
           <div className="space-y-4 mt-6">
@@ -158,7 +159,7 @@ const PlacementHourTypesTab = ({ placementId, organizationId }: Props) => {
             </div>
           </div>
         </SheetContent>
-      </Sheet>
+      </GuardedSheet>
     </div>
   );
 };

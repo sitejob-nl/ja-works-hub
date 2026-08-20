@@ -8,11 +8,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import TagInput from '@/components/ui/tag-input';
 import { Plus, Pencil } from 'lucide-react';
 import { formatEUR } from '@/lib/format';
 import { toast } from 'sonner';
+import { GuardedSheet, useDirtyForm } from '@/components/shared/UnsavedCloseGuard';
 
 const emptyForm = {
   name: '',
@@ -37,7 +38,7 @@ const CompanyFunctionsTab = ({ companyId }: { companyId: string }) => {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editItem, setEditItem] = useState<any>(null);
-  const [form, setForm] = useState<any>(emptyForm);
+  const [form, setForm, formDirty] = useDirtyForm<any>(emptyForm);
 
   const { data: functions = [] } = useQuery({
     queryKey: ['company-functions', companyId],
@@ -143,7 +144,7 @@ const CompanyFunctionsTab = ({ companyId }: { companyId: string }) => {
         </div>
       )}
 
-      <Sheet open={open} onOpenChange={setOpen}>
+      <GuardedSheet open={open} onOpenChange={setOpen} dirty={formDirty}>
         <SheetContent className="sm:max-w-md overflow-y-auto">
           <SheetHeader><SheetTitle>{editItem ? 'Functie bewerken' : 'Nieuwe functie'}</SheetTitle></SheetHeader>
           <div className="space-y-4 mt-6">
@@ -177,7 +178,7 @@ const CompanyFunctionsTab = ({ companyId }: { companyId: string }) => {
             </div>
           </div>
         </SheetContent>
-      </Sheet>
+      </GuardedSheet>
     </div>
   );
 };

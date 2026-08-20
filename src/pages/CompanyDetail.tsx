@@ -53,6 +53,20 @@ const CompanyDetail = () => {
     label: company?.name,
   });
 
+  // Punt 9 — het vrije notitieveld op de Gegevens-tab is weg; de tekst die daar al in
+  // stond zetten we hier bovenaan vast, zodat notities op één plek te lezen zijn zonder
+  // dat er iets verdwijnt. Alleen-lezen: nieuwe notities komen als losse rij binnen.
+  const companyProfileNotes = (company as any)?.notes?.trim();
+  const pinnedCompanyNotes = companyProfileNotes
+    ? [{
+        id: 'company-profile-notes',
+        title: 'Profielnotities',
+        body: companyProfileNotes,
+        sourceLabel: 'Gegevens',
+        dedupeAgainstNotes: true,
+      }]
+    : [];
+
   const toggleActive = useMutation({
     mutationFn: async () => {
       const { error } = await supabase.from('companies').update({ is_active: !company?.is_active }).eq('id', id!);
@@ -168,7 +182,7 @@ const CompanyDetail = () => {
         <TabsContent value="vacatures"><CompanyVacanciesTab companyId={id!} /></TabsContent>
         <TabsContent value="plaatsingen"><PlacementsTab companyId={id!} companyName={company.name} /></TabsContent>
         <TabsContent value="documenten"><CompanyDocumentsTab companyId={id!} /></TabsContent>
-        <TabsContent value="notities"><NotesSection entityId={id!} entityType="opdrachtgever" /></TabsContent>
+        <TabsContent value="notities"><NotesSection entityId={id!} entityType="opdrachtgever" pinnedNotes={pinnedCompanyNotes} /></TabsContent>
         <TabsContent value="taken"><TasksSection entityId={id!} entityType="opdrachtgever" /></TabsContent>
       </Tabs>
     </div>

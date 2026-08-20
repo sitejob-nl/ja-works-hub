@@ -468,11 +468,23 @@ export const RECRUITER_UI_DICTIONARY_EN: Record<string, string> = {
   'Behoud deze': 'Keep this one',
   'Behouden': 'Keep',
   'Duplicatenbeheer': 'Duplicate management',
-  'Mogelijke dubbele kandidaten op basis van e-mail, telefoonnummer of geboortedatum + achternaam. Kies per groep welk profiel je behoudt; de rest wordt erin samengevoegd.':
-    'Potential duplicate candidates based on email, phone number or date of birth + surname. Choose which profile to keep in each group; the others will be merged into it.',
+  'Mogelijke dubbele kandidaten op basis van telefoonnummer of geboortedatum + achternaam, gesorteerd op hoe zeker het is. Kies per groep welk profiel je behoudt; de rest wordt erin samengevoegd.':
+    'Potential duplicate candidates based on phone number or date of birth + surname, sorted by how certain the match is. Choose which profile to keep in each group; the others will be merged into it.',
   'Samenvoegen in geselecteerde': 'Merge into selected',
-  'Meerdere profielen hebben een dienstverband/payroll-record — samenvoegen moet hier handmatig.':
-    'Multiple profiles have an employment/payroll record — they must be merged manually here.',
+  'Meerdere profielen hebben een dienstverband of payroll-record — samenvoegen moet hier handmatig.':
+    'Multiple profiles have an employment or payroll record — they must be merged manually here.',
+  'Waarschijnlijk dezelfde persoon': 'Probably the same person',
+  'Nakijken': 'Needs review',
+  'Waarschijnlijk niet hetzelfde': 'Probably not the same person',
+  'Geen duplicaat': 'Not a duplicate',
+  'Terugzetten': 'Restore',
+  'Verschil': 'Difference',
+  'Geen botsende velden — de profielen vullen elkaar aan.':
+    'No clashing fields — the profiles complement each other.',
+  'De namen hebben niets gemeen. Waarschijnlijk delen deze mensen een telefoonnummer.':
+    'The names have nothing in common. These people probably share a phone number.',
+  'Groep weggezet als geen duplicaat': 'Group set aside as not a duplicate',
+  'Groep staat weer in de lijst': 'Group is back in the list',
   'profielen': 'profiles',
   'verschil': 'difference',
   'groep': 'group',

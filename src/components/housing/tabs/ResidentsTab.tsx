@@ -27,6 +27,7 @@ import { Plus, Check, X, Search, MoreHorizontal, Pencil, Trash2, ArrowRightLeft 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { formatDate, formatEUR } from '@/lib/format';
 import { toast } from 'sonner';
+import { GuardedSheet, useDirtyForm } from '@/components/shared/UnsavedCloseGuard';
 import { logAudit } from '@/lib/audit';
 import { resolveEmployeeId } from '@/lib/assignments';
 import { sendRegulationsForAssignment } from '@/lib/regulation-dispatch';
@@ -57,14 +58,17 @@ const InternalResidentsTab = ({ property }: { property: any }) => {
   const [empSearch, setEmpSearch] = useState('');
   const [selectedEmployee, setSelectedEmployee] = useState<any>(null);
   const [selectedUnit, setSelectedUnit] = useState<any>(null);
-  const [form, setForm] = useState({ check_in_date: '', deduction_amount: '', payment_frequency: 'wekelijks' as 'wekelijks' | 'maandelijks' });
+  const [form, setForm, formDirty] = useDirtyForm({ check_in_date: '', deduction_amount: '', payment_frequency: 'wekelijks' as 'wekelijks' | 'maandelijks' });
 
   // Edit assignment state
   const [editingAssignment, setEditingAssignment] = useState<any | null>(null);
-  const [editForm, setEditForm] = useState({
+  const [editForm, setEditForm, editFormDirty] = useDirtyForm({
     check_in_date: '',
     deduction_amount: '',
     payment_frequency: 'wekelijks' as 'wekelijks' | 'maandelijks',
+    // Zonder invoerveld: "borgbedrag" gaat over het pand en staat op de Contracten-tab.
+    // Blijft wel meelopen zodat een eerder ingevuld bedrag bij het bewerken van een
+    // toewijzing niet stilletjes op null wordt gezet.
     deposit_amount: '',
   });
 
@@ -353,7 +357,7 @@ const InternalResidentsTab = ({ property }: { property: any }) => {
         </Button>
       </div>
 
-      <Sheet open={assigning} onOpenChange={(v) => { if (!v) resetAssign(); else setAssigning(v); }}>
+      <GuardedSheet open={assigning} dirty={formDirty} onOpenChange={(v) => { if (!v) resetAssign(); else setAssigning(v); }}>
         <SheetContent className="sm:max-w-lg overflow-y-auto">
           <SheetHeader>
             <SheetTitle>
@@ -445,10 +449,10 @@ const InternalResidentsTab = ({ property }: { property: any }) => {
             )}
           </div>
         </SheetContent>
-      </Sheet>
+      </GuardedSheet>
 
       {/* Edit assignment Sheet */}
-      <Sheet open={!!editingAssignment} onOpenChange={(o) => { if (!o) setEditingAssignment(null); }}>
+      <GuardedSheet open={!!editingAssignment} dirty={editFormDirty} onOpenChange={(o) => { if (!o) setEditingAssignment(null); }}>
         <SheetContent className="sm:max-w-md overflow-y-auto">
           <SheetHeader><SheetTitle>Toewijzing bewerken</SheetTitle></SheetHeader>
           {editingAssignment && (
@@ -479,10 +483,6 @@ const InternalResidentsTab = ({ property }: { property: any }) => {
                 <Label>{editForm.payment_frequency === 'wekelijks' ? 'Wekelijkse' : 'Maandelijkse'} inhouding (€)</Label>
                 <Input type="number" value={editForm.deduction_amount} onChange={(e) => setEditForm(f => ({ ...f, deduction_amount: e.target.value }))} />
               </div>
-              <div>
-                <Label>Betaalde borg (€)</Label>
-                <Input type="number" step="0.01" value={editForm.deposit_amount} onChange={(e) => setEditForm(f => ({ ...f, deposit_amount: e.target.value }))} />
-              </div>
               <div className="flex justify-end gap-3 pt-4">
                 <Button variant="ghost" onClick={() => setEditingAssignment(null)}>Annuleren</Button>
                 <Button onClick={() => editAssignment.mutate()} disabled={!editForm.check_in_date || editAssignment.isPending}>
@@ -492,7 +492,7 @@ const InternalResidentsTab = ({ property }: { property: any }) => {
             </div>
           )}
         </SheetContent>
-      </Sheet>
+      </GuardedSheet>
 
       {/* Move assignment Sheet */}
       <Sheet open={!!movingAssignment} onOpenChange={(o) => { if (!o) closeMove(); }}>
@@ -616,7 +616,6 @@ const InternalResidentsTab = ({ property }: { property: any }) => {
                 <TableHead>Check-in</TableHead>
                 <TableHead>Inhouding</TableHead>
                 <TableHead>Borg</TableHead>
-                <TableHead>Borgbedrag</TableHead>
                 <TableHead>Huur tot</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead></TableHead>
@@ -644,14 +643,6 @@ const InternalResidentsTab = ({ property }: { property: any }) => {
                       )}
                     </TableCell>
                     <TableCell>{a.deposit_paid ? <Check className="h-4 w-4 text-stat-green" /> : <X className="h-4 w-4 text-red-500" />}</TableCell>
-                    {/* Het bedrag hoort naast het vinkje te staan. Het stond alleen op de
-                        Kosten-tab, terwijl bewoners hier beheerd worden. Alleen tonen —
-                        wijzigen gebeurt via "Toewijzing bewerken" in het rijmenu. */}
-                    <TableCell>
-                      {a.deposit_amount != null
-                        ? formatEUR(a.deposit_amount)
-                        : <span className="text-muted-foreground">—</span>}
-                    </TableCell>
                     <TableCell className={rentOverdue ? 'text-red-600 font-medium' : ''}>{formatDate(a.rent_paid_until)}</TableCell>
                     <TableCell>
                       <Badge variant="secondary" className={`text-xs ${a.status === 'ingecheckt' ? 'bg-stat-green/10 text-stat-green border-0' : 'bg-blue-100 text-blue-700 border-0'}`}>

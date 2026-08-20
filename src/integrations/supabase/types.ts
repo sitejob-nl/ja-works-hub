@@ -561,6 +561,48 @@ export type Database = {
           },
         ]
       }
+      candidate_duplicate_dismissals: {
+        Row: {
+          created_at: string
+          dismissed_by: string | null
+          group_key: string
+          id: string
+          organization_id: string
+          reason: string | null
+        }
+        Insert: {
+          created_at?: string
+          dismissed_by?: string | null
+          group_key: string
+          id?: string
+          organization_id: string
+          reason?: string | null
+        }
+        Update: {
+          created_at?: string
+          dismissed_by?: string | null
+          group_key?: string
+          id?: string
+          organization_id?: string
+          reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "candidate_duplicate_dismissals_dismissed_by_fkey"
+            columns: ["dismissed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "candidate_duplicate_dismissals_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       candidate_employment: {
         Row: {
           candidate_id: string
@@ -7538,6 +7580,8 @@ export type Database = {
           cost_waste: number | null
           cost_water: number | null
           created_at: string
+          deposit_amount: number | null
+          deposit_paid_date: string | null
           energy_wizard_id: string | null
           energy_wizard_linked: boolean | null
           has_rental_permit: boolean | null
@@ -7578,6 +7622,8 @@ export type Database = {
           cost_waste?: number | null
           cost_water?: number | null
           created_at?: string
+          deposit_amount?: number | null
+          deposit_paid_date?: string | null
           energy_wizard_id?: string | null
           energy_wizard_linked?: boolean | null
           has_rental_permit?: boolean | null
@@ -7618,6 +7664,8 @@ export type Database = {
           cost_waste?: number | null
           cost_water?: number | null
           created_at?: string
+          deposit_amount?: number | null
+          deposit_paid_date?: string | null
           energy_wizard_id?: string | null
           energy_wizard_linked?: boolean | null
           has_rental_permit?: boolean | null

@@ -317,9 +317,11 @@ const CompanyInfoTab = ({ company }: { company: any }) => {
         </div>
       </div>
 
-      <div className="bg-card rounded-lg border p-6 space-y-2">
-        <InlineTextField id="notes" label="Notities" value={company.notes} multiline onSave={(value) => saveField('Notities', { notes: value })} onDirtyChange={setEditorDirty} />
-      </div>
+      {/* Punt 9 — notities staan uitsluitend op de Notities-tab, ook bij opdrachtgevers.
+          Dit veld was hier de tweede schrijfplek: wat je hier intikte kwam nergens in de
+          notitielijst terecht, dus je moest twee plekken lezen om het verhaal compleet te
+          hebben. De bestaande tekst in `companies.notes` staat nu bovenaan de Notities-tab
+          vastgezet, net als bij een kandidaat. */}
 
       {/* Custom fields */}
       <CustomFieldsSection entityType="company" entityId={company.id} />

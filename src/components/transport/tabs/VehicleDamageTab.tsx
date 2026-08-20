@@ -29,6 +29,7 @@ import { toast } from 'sonner';
 import { formatDate, formatEUR } from '@/lib/format';
 import { Plus, ShieldAlert, CheckCircle2, Bell, MoreHorizontal, Pencil, Trash2, RotateCcw } from 'lucide-react';
 import { logAudit } from '@/lib/audit';
+import { GuardedSheet, useDirtyForm } from '@/components/shared/UnsavedCloseGuard';
 import { EntityLink } from '@/components/ui/entity-link';
 import { PhoneLink } from '@/components/ui/contact-links';
 import { MailButton } from '@/components/ui/mail-button';
@@ -376,7 +377,7 @@ const DamageSheet = ({ open, onOpenChange, vehicleId, orgId, onDone, existing, d
   existing?: any; defaultInternalEmail?: string | null; isFacility: boolean;
 }) => {
   const isEdit = !!existing;
-  const [form, setForm] = useState({ employee_id: '', damage_type: 'overig', description: '', internal_contact_email: '', external_contact_email: '', cost_estimate: '' });
+  const [form, setForm, formDirty] = useDirtyForm({ employee_id: '', damage_type: 'overig', description: '', internal_contact_email: '', external_contact_email: '', cost_estimate: '' });
   const [files, setFiles] = useState<File[]>([]);
   const [saving, setSaving] = useState(false);
 
@@ -538,7 +539,7 @@ const DamageSheet = ({ open, onOpenChange, vehicleId, orgId, onDone, existing, d
   const hasPhotoEvidence = (isEdit && ((existing?.photos ?? []) as string[]).length > 0) || files.length > 0;
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <GuardedSheet open={open} onOpenChange={onOpenChange} dirty={formDirty}>
       <SheetContent className="sm:max-w-md overflow-y-auto">
         <SheetHeader><SheetTitle>{isEdit ? 'Schademelding bewerken' : 'Nieuwe schademelding'}</SheetTitle></SheetHeader>
         <div className="space-y-4 mt-6">
@@ -613,7 +614,7 @@ const DamageSheet = ({ open, onOpenChange, vehicleId, orgId, onDone, existing, d
           </div>
         </div>
       </SheetContent>
-    </Sheet>
+    </GuardedSheet>
   );
 };
 

@@ -14,7 +14,7 @@ import { Label } from '@/components/ui/label';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { EntityLink } from '@/components/ui/entity-link';
-import { resolveEmployeeId } from '@/lib/assignments';
+import { formatAssignedBy, resolveEmployeeId } from '@/lib/assignments';
 import { roomHasFreeBedOn } from '@/lib/housing-availability';
 import { formatDate, formatEUR } from '@/lib/format';
 import RegulationStatus from '@/components/shared/RegulationStatus';
@@ -144,7 +144,7 @@ const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
             <div><p className="text-xs text-muted-foreground">Maandelijkse inhouding</p><p className="text-sm">{formatEUR(active.monthly_deduction)}</p></div>
             <div><p className="text-xs text-muted-foreground">Borg betaald</p><p className="text-sm">{active.deposit_paid ? 'Ja' : 'Nee'}</p></div>
             <div><p className="text-xs text-muted-foreground">Huur betaald tot</p><p className="text-sm">{formatDate(active.rent_paid_until)}</p></div>
-            <div><p className="text-xs text-muted-foreground">Toegewezen door</p><p className="text-sm">{(active as any).profiles?.full_name ?? '—'}</p></div>
+            <div><p className="text-xs text-muted-foreground">Toegewezen door</p><p className="text-sm">{formatAssignedBy(active as any)}</p></div>
           </div>
         )}
         {reserved && (
@@ -190,7 +190,7 @@ const EmployeeHousingTab = ({ candidateId }: { candidateId: string }) => {
                   <TableCell>{a.units?.name ?? '—'}</TableCell>
                   <TableCell>{formatDate(a.check_in_date)} – {a.check_out_date ? formatDate(a.check_out_date) : '—'}</TableCell>
                   <TableCell><Badge variant="secondary" className="text-xs border-0">{HOUSING_STATUS_LABELS[a.status] ?? a.status}</Badge></TableCell>
-                  <TableCell className="text-muted-foreground">{a.profiles?.full_name ?? '—'}</TableCell>
+                  <TableCell className="text-muted-foreground">{formatAssignedBy(a)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

@@ -29,6 +29,7 @@ import { Plus, Star, MoreHorizontal, Pencil, Trash2, RotateCcw } from 'lucide-re
 import { formatDate } from '@/lib/format';
 import { EntityLink } from '@/components/ui/entity-link';
 import { toast } from 'sonner';
+import { GuardedSheet, useDirtyForm } from '@/components/shared/UnsavedCloseGuard';
 import { logAudit } from '@/lib/audit';
 import {
   fetchFacilityHousingSnapshot,
@@ -103,7 +104,7 @@ const InspectionsTab = ({ property }: { property: any }) => {
     condition_rating: 0,
     condition_notes: '',
   };
-  const [form, setForm] = useState(defaultForm);
+  const [form, setForm, formDirty] = useDirtyForm(defaultForm);
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
 
   const isCheckInOut = form.inspection_type === 'check_in' || form.inspection_type === 'check_out';
@@ -446,7 +447,7 @@ const InspectionsTab = ({ property }: { property: any }) => {
       </Tabs>
 
       {/* New inspection sheet */}
-      <Sheet open={sheetOpen} onOpenChange={(o) => { if (!o) resetSheet(); else setSheetOpen(o); }}>
+      <GuardedSheet open={sheetOpen} dirty={formDirty} onOpenChange={(o) => { if (!o) resetSheet(); else setSheetOpen(o); }}>
         <SheetContent className="sm:max-w-lg overflow-y-auto">
           <SheetHeader><SheetTitle>{editingId ? 'Inspectie bewerken' : 'Nieuwe inspectie'}</SheetTitle></SheetHeader>
           <div className="space-y-4 mt-6">
@@ -554,7 +555,7 @@ const InspectionsTab = ({ property }: { property: any }) => {
             </div>
           </div>
         </SheetContent>
-      </Sheet>
+      </GuardedSheet>
 
       {/* Inspection cards */}
       {filtered.length === 0 ? (
