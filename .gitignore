@@ -56,3 +56,4 @@ test vacatures/
 
 # QA-screenshots van lokale testruns
 scripts/.qa/
+scripts/.qa-headed/
