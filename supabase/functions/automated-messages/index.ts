@@ -10,6 +10,16 @@
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendOutboundWhatsApp } from "../_shared/whatsapp-utils.ts";
 import { getWhatsAppAutomationSettings, mergeTemplate } from "../_shared/whatsapp-automation-settings.ts";
+import { captureEdgeException, withCronMonitor } from "../_shared/sentry.ts";
+
+const FN = "automated-messages";
+// pg_cron leest de crontab in de Postgres-tijdzone, en die staat op productie op UTC.
+// Sentry moet dus óók UTC krijgen (de helper default is Europe/Amsterdam) — anders staat
+// elke monitor 1-2 uur scheef en meldt Sentry runs als 'gemist' die gewoon gedraaid zijn.
+const CRON_TZ = "UTC";
+
+const JOB_ONBOARDING_REMINDERS = "onboarding-reminders";
+const JOB_SCHEDULED_CAMPAIGNS = "scheduled-campaigns";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -164,8 +174,21 @@ async function runScheduledCampaigns(service: SupabaseClient, cronSecret: string
         ok: res.ok,
         error: res.ok ? undefined : body.slice(0, 250),
       });
+      // Deze job heeft bewust geen check-in-monitor (zie Deno.serve), dus een falende
+      // campagne is alleen zichtbaar als we 'm hier expliciet melden. Response ongewijzigd.
+      if (!res.ok) {
+        await captureEdgeException(
+          new Error(`bulk-campaign-processor gaf HTTP ${res.status}`),
+          { fn: FN, job: JOB_SCHEDULED_CAMPAIGNS, extra: { campaign_id: campaign.id, status: res.status } },
+        );
+      }
     } catch (err) {
       results.push({ campaign_id: campaign.id, ok: false, error: String(err) });
+      await captureEdgeException(err, {
+        fn: FN,
+        job: JOB_SCHEDULED_CAMPAIGNS,
+        extra: { campaign_id: campaign.id },
+      });
     }
   }
 
@@ -174,6 +197,11 @@ async function runScheduledCampaigns(service: SupabaseClient, cronSecret: string
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
+
+  // Buiten de try zodat het catch-blok weet welke job faalde, en of withCronMonitor de
+  // fout al naar Sentry heeft gestuurd (anders zou hij dubbel binnenkomen).
+  let job: string | null = null;
+  let reportedByMonitor = false;
 
   try {
     const providedCronSecret = req.headers.get("X-Cron-Secret");
@@ -184,7 +212,7 @@ Deno.serve(async (req) => {
     }
 
     const url = new URL(req.url);
-    let job = url.searchParams.get("job");
+    job = url.searchParams.get("job");
     if (!job) {
       try {
         const body = await req.json();
@@ -201,11 +229,28 @@ Deno.serve(async (req) => {
     );
 
     switch (job) {
-      case "onboarding-reminders": {
-        const result = await runOnboardingReminders(service);
+      case JOB_ONBOARDING_REMINDERS: {
+        // pg_cron-job 'automated-onboarding-reminders' (0 9 * * *): één run per dag, en een
+        // gemiste run betekent dat de reminders die dag niet zijn verstuurd → check-in-monitor.
+        reportedByMonitor = true;
+        const result = await withCronMonitor(
+          {
+            monitorSlug: "automated-onboarding-reminders",
+            schedule: "0 9 * * *",
+            timezone: CRON_TZ,
+            maxRuntimeMinutes: 10,
+            checkinMarginMinutes: 5,
+            fn: FN,
+          },
+          () => runOnboardingReminders(service),
+        );
         return json({ job, result });
       }
-      case "scheduled-campaigns": {
+      case JOB_SCHEDULED_CAMPAIGNS: {
+        // BEWUST GEEN check-in-monitor: deze job draait */5 (288 runs/dag) en is self-healing —
+        // een overgeslagen run pakt dezelfde 'scheduled' campagnes 5 minuten later alsnog op,
+        // dus een 'gemiste run'-alert is ruis die de 6 dagelijkse alerts zou verdringen.
+        // Fouten worden wél gemeld via captureEdgeException in runScheduledCampaigns().
         const result = await runScheduledCampaigns(service, expectedCronSecret ?? null);
         return json({ job, result });
       }
@@ -214,6 +259,10 @@ Deno.serve(async (req) => {
     }
   } catch (err: any) {
     console.error("automated-messages error:", err);
+    // withCronMonitor rapporteert de fouten van het werk dat het omhult al zelf.
+    if (!reportedByMonitor) {
+      await captureEdgeException(err, { fn: FN, job: job ?? undefined });
+    }
     return json({ error: err.message ?? "Unknown error" }, 500);
   }
 });

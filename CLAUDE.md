@@ -55,7 +55,7 @@ Edge functions are Deno/TypeScript and live in `supabase/functions/` (configured
 - **Backend**: Supabase (PostgreSQL + Auth + Edge Functions + Realtime + Storage)
 - **PWA**: vite-plugin-pwa, standalone mode, auto-update, 5MB cache limit
 - **CSV/Excel/Documents**: PapaParse (CSV), xlsx (Excel export), pdfjs-dist + Tesseract.js in UI; unpdf + fflate in edge functions
-- **Testing**: Vitest + Testing Library + jsdom (unit), Playwright (e2e via `tests/e2e/`)
+- **Testing**: Vitest + Testing Library + jsdom (unit), Playwright (e2e via `scripts/e2e-*.spec.ts` + `scripts/playwright.config.ts`)
 - **Build tooling**: lovable-tagger (dev only), autoprefixer, postcss
 
 ### TypeScript Config
@@ -105,7 +105,7 @@ Standard React layout under `src/` — `components/`, `pages/`, `hooks/`, `lib/`
 - **`src/components/{candidates,companies,employees,housing,transport,vacancies}/`** — entity SlideOver + tabs pattern (CandidateSlideOver + 10 tabs, EmployeeDetail with 13 tabs, etc.).
 - **`src/components/placement/`** — `HousingSuggestions`, `PlacementConfirmation`, `PlacementTriggers` (the placement *flow*); separate from `src/components/placements/` (allowance/hour/travel-type config).
 - **`supabase/functions/`** — Deno edge functions; shared helpers include `candidate-dossier.ts` for AI dossier assembly. `supabase/migrations/` is the schema history.
-- **`tests/e2e/`** — Playwright; `src/test/` — Vitest.
+- **`scripts/e2e-*.spec.ts`** — Playwright (config: `scripts/playwright.config.ts`); `src/test/` — Vitest. Er is géén `tests/`-map.
 
 ### Routes
 
@@ -262,14 +262,46 @@ Canonical in [src/integrations/supabase/types.ts](src/integrations/supabase/type
 
 ### pg_cron-getriggerde functies
 
-4 actieve cron jobs (zie `cron.job` in productie). Elk cron-target valideert `x-cron-secret` header tegen `current_setting('app.cron_secret')`:
+**7** actieve cron jobs (geverifieerd tegen `cron.job` in productie, 2026-08-11). Elk cron-target valideert de `x-cron-secret` header tegen `current_setting('app.cron_secret')`. **pg_cron draait op UTC** — reken schedules dus niet om naar lokale tijd, en geef monitors expliciet `timezone: 'UTC'` mee.
 
-| Schedule | Job | Edge function |
+| Schedule (UTC) | Job / monitor-slug | Edge function |
 |----------|-----|---------------|
-| `0 6 * * *` | document-expiry check | `check-document-expiry` |
-| `0 9 * * *` | onboarding-reminders | `automated-messages` (`?job=onboarding-reminders`) |
-| `30 2 * * *` | housing-reminder daily | `housing-reminder-cron` |
-| `45 2 * * *` | vehicle-APK daily | `check-vehicle-apk` |
+| `0 9 * * *` | `automated-onboarding-reminders` | `automated-messages` (`?job=onboarding-reminders`) |
+| `*/5 * * * *` | `automated-whatsapp-scheduled-campaigns` | `automated-messages` (`?job=scheduled-campaigns`) |
+| `0 6 * * *` | `automated-document-expiry` | `check-document-expiry` |
+| `0 * * * *` | `birthday-loyalty-daily` — **draait uurlijks**, ondanks "daily" in de naam | `birthday-loyalty-cron` |
+| `30 2 * * *` | `housing-reminder-daily` | `housing-reminder-cron` |
+| `45 2 * * *` | `check-vehicle-apk-daily` | `check-vehicle-apk` |
+| `15 3 * * *` | `domain-status-sweep-daily` | `domain-management` |
+
+`bulk-campaign-processor` en `refresh-talentpool-members` accepteren óók een cron-secret maar staan **niet** in `cron.job` — de talentpool-cron is bewust opt-in (zie Dynamische talentpools), de campagne-processor wordt aangeroepen door `automated-messages`.
+
+### Backend-observability (`_shared/sentry.ts`)
+
+Frontend-Sentry (PR #120) dekte alleen de browser; edge functions konden stil falen. `supabase/functions/_shared/sentry.ts` vult dat aan — **zonder externe imports** (alleen `fetch` + `crypto.randomUUID`), volledig **env-gated** op `SENTRY_DSN_EDGE` en **fail-open**: ontbreekt de DSN of hapert Sentry, dan merkt de functie daar niets van.
+
+| Export | Gebruik |
+|---|---|
+| `withCronMonitor(cfg, work)` | Omhul het **cron-pad** van een functie. Stuurt `in_progress` → `ok`/`error` en maakt de monitor automatisch aan in Sentry. Een **uitblijvende** run wordt daardoor ook een alert — dat is het hele punt. |
+| `captureEdgeException(err, ctx)` | In catch-blokken, met `{fn, job, orgId}`. |
+| `cronCheckIn(opts)` / `sentryEnabled()` | Losse bouwstenen. |
+
+Regels bij het aansluiten van een nieuwe cron:
+- Gebruik als `monitorSlug` **exact de pg_cron-jobnaam**, en geef `timezone: 'UTC'` mee (pg_cron draait op UTC; Europe/Amsterdam zou elke dagelijkse job structureel als "gemist" markeren).
+- Omhul alleen het cron-pad, niet handmatige/UI-aanroepen van dezelfde functie.
+- `withCronMonitor` rapporteert de fout van het omhulde werk al zelf — meld 'm niet nog eens in het buitenste catch-blok.
+- Alle PII wordt geschrubd (e-mail, telefoon incl. buitenlands, BSN, IBAN, tokens) en er gaan nooit request-bodies of headers mee. Stop dus ook geen vrije kandidaattekst in `extra`.
+
+Sentry rekent Crons af **per monitor per maand** (~$0,78), niet per check-in. De `*/5`-job heeft daarom bewust géén monitor: hij is self-healing (pakt gemiste campagnes vijf minuten later alsnog op), dus een gemiste run is niet actiegericht terwijl 288 runs/dag wél ruis zouden opleveren die de zes zinvolle monitors verdringt. Fouten meldt hij wel.
+
+### Backups & herstel
+
+Supabase' eigen backups (Pro, 7 dagen, **geen PITR**) dekken alleen de database — de Storage-buckets met CV's, ID's en contracten zitten er expliciet **niet** in. Daarom draait er een eigen nachtelijke backup vanaf `srv1.sitejob.nl` naar de Hetzner Storage Box: `pg_dump` van `public`/`auth`/`storage` plus een rclone-spiegel van de buckets, in een versleutelde borg-repo (14 dagelijks / 8 wekelijks / 12 maandelijks).
+
+- Installatie + gezondheidschecks: [scripts/backup/README.md](scripts/backup/README.md)
+- Herstellen: [docs/runbook-herstel-jawerkt.md](docs/runbook-herstel-jawerkt.md)
+- Leest productie met de rol `backup_ro` (alleen `pg_read_all_data`) — nooit met het master-wachtwoord.
+- **BSN/IBAN komen als ciphertext terug** buiten het oorspronkelijke project: de Vault-sleutels gaan bewust niet mee in de backup.
 
 ### Public (verify_jwt = false)
 
@@ -689,7 +721,7 @@ const { data: { user } } = await supabaseClient.auth.getUser(authHeader.replace(
 - Some components may have verbose/duplicated code typical of AI-generated code
 
 ### Testing
-- Vitest + Testing Library + jsdom voor unit; **Playwright voor e2e** (`tests/e2e/`)
+- Vitest + Testing Library + jsdom voor unit; **Playwright voor e2e** (`scripts/e2e-*.spec.ts`)
 - Coverage is nog beperkt — uitbouw lopend
 
 ### Integrations
