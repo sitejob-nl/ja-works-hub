@@ -22,7 +22,8 @@ import { checkCompliance, type ComplianceResult } from '@/hooks/useComplianceChe
 import ComplianceWarningDialog from '@/components/ComplianceWarningDialog';
 import ComplianceFixList from './ComplianceFixList';
 import { logAudit } from '@/lib/audit';
-import { vehicleFreeOn } from '@/lib/vehicle-availability';
+import { vehicleFreeOn, vehicleReservedFrom } from '@/lib/vehicle-availability';
+import { formatDate } from '@/lib/format';
 import { useActivePayrollers } from '@/hooks/usePayrollers';
 import {
   activatePortalOnPlacement, assignVehicleOnPlacement, generateTimesheetTemplates,
@@ -700,9 +701,20 @@ const PlacementWizard = ({ open, onClose, match, vacancy, defaultCompanyId, lock
                   <SelectTrigger className="mt-1"><SelectValue placeholder="Geen voertuig" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value={NONE}>Geen voertuig</SelectItem>
-                    {(availableVehicles as any[]).map((v) => (
-                      <SelectItem key={v.id} value={v.id}>{v.license_plate}{v.brand ? ` — ${v.brand} ${v.model ?? ''}` : ''}</SelectItem>
-                    ))}
+                    {(availableVehicles as any[]).map((v) => {
+                      // Vrij op de startdatum is niet hetzelfde als vrij blijven: een auto
+                      // kan verderop al aan iemand anders beloofd zijn (punt 17).
+                      const reservedFrom = vehicleReservedFrom(
+                        v.vehicle_assignments,
+                        effectiveVehicleDate || new Date().toISOString().slice(0, 10),
+                      );
+                      return (
+                        <SelectItem key={v.id} value={v.id}>
+                          {v.license_plate}{v.brand ? ` — ${v.brand} ${v.model ?? ''}` : ''}
+                          {reservedFrom ? ` · gereserveerd vanaf ${formatDate(reservedFrom)}` : ''}
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
                 {(availableVehicles as any[]).length === 0 && (

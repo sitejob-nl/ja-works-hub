@@ -14,7 +14,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { EntityLink } from '@/components/ui/entity-link';
 import { formatAssignedBy, resolveEmployeeId } from '@/lib/assignments';
-import { vehicleFreeOn } from '@/lib/vehicle-availability';
+import { vehicleFreeOn, vehicleNextReservation, vehiclePeriodConflict } from '@/lib/vehicle-availability';
 import { sendRegulationsForAssignment } from '@/lib/regulation-dispatch';
 import RegulationStatus from '@/components/shared/RegulationStatus';
 import { formatDate, formatEUR } from '@/lib/format';
@@ -53,14 +53,17 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
   const [assignOpen, setAssignOpen] = useState(false);
   const [vehicleId, setVehicleId] = useState('');
   const [assignedDate, setAssignedDate] = useState('');
+  const [returnDate, setReturnDate] = useState('');
   const [startMileage, setStartMileage] = useState('');
 
   const { data: eligibleVehicles = [] } = useQuery({
     queryKey: ['assignable-vehicles', orgId],
     queryFn: async () => {
       // 'onderhoud'/'uit_dienst' vallen hard af; de rest beoordelen we op datum-bezetting.
+      // De naam bij een toewijzing hebben we nodig om te kunnen zeggen aan wíe een
+      // auto al vergeven is (punt 17 — reservering zichtbaar bij het toewijzen).
       const { data, error } = await supabase.from('vehicles')
-        .select('id, license_plate, brand, model, current_mileage, vehicle_assignments!vehicle_assignments_vehicle_id_fkey(id, assigned_date, returned_date)')
+        .select('id, license_plate, brand, model, current_mileage, vehicle_assignments!vehicle_assignments_vehicle_id_fkey(id, assigned_date, returned_date, candidates:candidate_id(first_name, last_name))')
         .eq('organization_id', orgId)
         .in('status', ['beschikbaar', 'toegewezen'] as any)
         .order('license_plate');
@@ -75,6 +78,33 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
   const todayStr = new Date().toISOString().slice(0, 10);
   const effectiveDate = assignedDate || todayStr;
   const availableVehicles = (eligibleVehicles as any[]).filter((v) => vehicleFreeOn(v, effectiveDate));
+
+  // Vrij op de toewijsdatum betekent niet vrij te blijven: een auto kan verderop al
+  // aan iemand anders beloofd zijn. Dat moet je zien vóór je hem meegeeft, anders
+  // staan er straks twee mensen bij dezelfde auto (opmerking Maria, 28-08).
+  const reservationFor = (vehicle: any) => vehicleNextReservation(vehicle?.vehicle_assignments, effectiveDate);
+  const reservationName = (reservation: any) => {
+    // PostgREST geeft een to-one embed als object terug, maar niet elke koppeling
+    // levert er één; beide vormen afvangen scheelt een lege waarschuwing.
+    const c = Array.isArray(reservation?.candidates) ? reservation.candidates[0] : reservation?.candidates;
+    return [c?.first_name, c?.last_name].filter(Boolean).join(' ') || 'iemand anders';
+  };
+  const selectedVehicle = availableVehicles.find((v: any) => v.id === vehicleId) ?? null;
+  const selectedReservation = selectedVehicle ? reservationFor(selectedVehicle) : null;
+  const returnConflict = selectedVehicle
+    ? vehiclePeriodConflict(selectedVehicle.vehicle_assignments, effectiveDate, returnDate || null)
+    : null;
+  // Zonder inleverdatum loopt de toewijzing dwars door de reservering heen. Het lege
+  // veld is dan wél blokkerend, maar krijgt geen rode melding: het gele blok erboven
+  // legt al uit wat er moet gebeuren, en rood op een veld dat je nog niet hebt
+  // aangeraakt leest als een fout die je zelf hebt gemaakt.
+  const returnDateRequired = !!selectedReservation;
+  const returnDateError = returnDate && returnDate < effectiveDate
+    ? 'De inleverdatum ligt vóór de toewijsdatum.'
+    : returnDate && returnConflict
+      ? `Deze periode overlapt een bestaande toewijzing (${formatDate(returnConflict.assigned_date)} — ${returnConflict.returned_date ? formatDate(returnConflict.returned_date) : 'open'}).`
+      : '';
+  const assignBlocked = !!returnDateError || (returnDateRequired && !returnDate);
 
   const assignVehicle = useMutation({
     mutationFn: async () => {
@@ -91,6 +121,7 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
         employee_id: employeeId,
         candidate_id: candidateId,
         assigned_date: assignedDate,
+        returned_date: returnDate || null,
         start_mileage: startMileage ? parseInt(startMileage) : null,
         created_by: user?.id ?? null,
       }).select('id').single();
@@ -113,7 +144,7 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
       qc.invalidateQueries({ queryKey: ['vehicles'] });
       toast.success('Voertuig toegewezen');
       setAssignOpen(false);
-      setVehicleId(''); setAssignedDate(''); setStartMileage('');
+      setVehicleId(''); setAssignedDate(''); setReturnDate(''); setStartMileage('');
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -283,7 +314,7 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
               <Input
                 type="date"
                 value={assignedDate}
-                onChange={(e) => { setAssignedDate(e.target.value); setVehicleId(''); }}
+                onChange={(e) => { setAssignedDate(e.target.value); setVehicleId(''); setReturnDate(''); }}
               />
               <p className="text-xs text-muted-foreground mt-1">
                 Standaard nu beschikbaar. Kies een toekomstige datum om voertuigen te tonen die dan vrij zijn.
@@ -305,18 +336,46 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
                   {availableVehicles.length === 0 && (
                     <div className="px-2 py-1.5 text-sm text-muted-foreground">Geen voertuigen vrij op deze datum</div>
                   )}
-                  {availableVehicles.map((v: any) => (
-                    <SelectItem key={v.id} value={v.id}>
-                      {v.license_plate}{v.brand ? ` — ${v.brand} ${v.model ?? ''}` : ''}
-                    </SelectItem>
-                  ))}
+                  {availableVehicles.map((v: any) => {
+                    const reserved = reservationFor(v);
+                    return (
+                      <SelectItem key={v.id} value={v.id}>
+                        {v.license_plate}{v.brand ? ` — ${v.brand} ${v.model ?? ''}` : ''}
+                        {reserved ? ` · gereserveerd vanaf ${formatDate(reserved.assigned_date)}` : ''}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
+            </div>
+            {selectedReservation && (
+              <div className="rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/40">
+                <p className="text-sm font-medium text-amber-900 dark:text-amber-200">
+                  Let op: deze auto is vanaf {formatDate(selectedReservation.assigned_date)} al toegewezen
+                  aan {reservationName(selectedReservation)}.
+                </p>
+                <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">
+                  Vul een inleverdatum in op of vóór die datum, zodat de auto op tijd vrijkomt.
+                </p>
+              </div>
+            )}
+            <div>
+              <Label>Inleverdatum {returnDateRequired ? '*' : '(leeg = nog niet bekend)'}</Label>
+              <Input
+                type="date"
+                value={returnDate}
+                min={effectiveDate}
+                onChange={(e) => setReturnDate(e.target.value)}
+              />
+              {returnDateError && <p className="mt-1 text-xs text-destructive">{returnDateError}</p>}
             </div>
             <div><Label>Begin kilometerstand</Label><Input type="number" value={startMileage} onChange={(e) => setStartMileage(e.target.value)} /></div>
             <div className="flex justify-end gap-3 pt-4">
               <Button variant="ghost" onClick={() => setAssignOpen(false)}>Annuleren</Button>
-              <Button onClick={() => assignVehicle.mutate()} disabled={!vehicleId || !assignedDate || assignVehicle.isPending}>
+              <Button
+                onClick={() => assignVehicle.mutate()}
+                disabled={!vehicleId || !assignedDate || assignBlocked || assignVehicle.isPending}
+              >
                 {assignVehicle.isPending ? 'Toewijzen...' : 'Toewijzen'}
               </Button>
             </div>
