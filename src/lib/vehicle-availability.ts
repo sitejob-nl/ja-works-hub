@@ -31,18 +31,47 @@ export function vehicleFreeOn(
 
 /**
  * Eerstvolgende toewijzing die ná `dateStr` begint en dan nog niet is ingeleverd —
- * oftewel: de reservering. Geeft de begindatum terug, of null.
+ * oftewel: de reservering. Geeft de toewijzing zélf terug, zodat de aanroeper niet
+ * alleen kán tonen vanaf wanneer de auto vergeven is maar ook aan wie.
  */
+export function vehicleNextReservation<T extends VehicleAssignmentLite>(
+  assignments: T[] | null | undefined,
+  dateStr: string,
+): T | null {
+  const upcoming = (assignments ?? [])
+    .filter((a) => !!a.assigned_date && a.assigned_date! > dateStr)
+    .filter((a) => a.returned_date == null || a.returned_date! > a.assigned_date!)
+    .sort((x, y) => (x.assigned_date! < y.assigned_date! ? -1 : 1));
+  return upcoming[0] ?? null;
+}
+
+/** Als `vehicleNextReservation`, maar alleen de begindatum. */
 export function vehicleReservedFrom(
   assignments: VehicleAssignmentLite[] | null | undefined,
   dateStr: string,
 ): string | null {
-  const upcoming = (assignments ?? [])
-    .filter((a) => !!a.assigned_date && a.assigned_date! > dateStr)
-    .filter((a) => a.returned_date == null || a.returned_date! > a.assigned_date!)
-    .map((a) => a.assigned_date!)
-    .sort();
-  return upcoming[0] ?? null;
+  return vehicleNextReservation(assignments, dateStr)?.assigned_date ?? null;
+}
+
+/**
+ * Botst een nieuwe toewijzing van `from` tot `until` met een bestaande? Een lege
+ * `until` betekent open einde. Zelfde grensregel als `vehicleAssignedOn`: de
+ * inleverdatum telt niet meer mee, dus de dag van inleveren mag de dag van de
+ * volgende toewijzing zijn. Geeft de botsende toewijzing terug, of null.
+ */
+export function vehiclePeriodConflict<T extends VehicleAssignmentLite>(
+  assignments: T[] | null | undefined,
+  from: string,
+  until?: string | null,
+): T | null {
+  const newUntil = until || null;
+  return (
+    (assignments ?? []).find((a) => {
+      const otherFrom = a.assigned_date ?? '';
+      const otherUntil = a.returned_date ?? null;
+      return (newUntil == null || otherFrom < newUntil) && (otherUntil == null || from < otherUntil);
+    }) ?? null
+  );
 }
 
 export type VehicleDisplayStatus = {

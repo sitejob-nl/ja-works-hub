@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.1"
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -686,6 +686,48 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      candidate_merges: {
+        Row: {
+          id: string
+          loser_id: string
+          merged_at: string
+          merged_by: string | null
+          organization_id: string
+          survivor_id: string
+        }
+        Insert: {
+          id?: string
+          loser_id: string
+          merged_at?: string
+          merged_by?: string | null
+          organization_id: string
+          survivor_id: string
+        }
+        Update: {
+          id?: string
+          loser_id?: string
+          merged_at?: string
+          merged_by?: string | null
+          organization_id?: string
+          survivor_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "candidate_merges_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "candidate_merges_survivor_id_fkey"
+            columns: ["survivor_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
             referencedColumns: ["id"]
           },
         ]
@@ -10183,6 +10225,10 @@ export type Database = {
       delete_candidate_record: {
         Args: { p_candidate_id: string; p_reason?: string }
         Returns: Json
+      }
+      document_path_matches_candidate: {
+        Args: { p_candidate: string; p_org: string; p_path: string }
+        Returns: boolean
       }
       encrypt_sensitive: { Args: { plaintext: string }; Returns: string }
       f_unaccent: { Args: { "": string }; Returns: string }

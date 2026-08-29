@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { vehicleAssignedOn, vehicleFreeOn } from '@/lib/vehicle-availability';
+import {
+  vehicleAssignedOn,
+  vehicleFreeOn,
+  vehicleNextReservation,
+  vehiclePeriodConflict,
+} from '@/lib/vehicle-availability';
 
 describe('vehicleAssignedOn', () => {
   it('is niet toegewezen zonder toewijzingen', () => {
@@ -40,5 +45,46 @@ describe('vehicleFreeOn', () => {
     const v = { vehicle_assignments: [{ assigned_date: '2026-05-01', returned_date: '2026-07-15' }] };
     expect(vehicleFreeOn(v, '2026-06-20')).toBe(false);
     expect(vehicleFreeOn(v, '2026-07-15')).toBe(true);
+  });
+});
+
+describe('vehicleNextReservation', () => {
+  it('geeft niets terug zonder toekomstige toewijzing', () => {
+    expect(vehicleNextReservation([{ assigned_date: '2026-05-01', returned_date: null }], '2026-06-03')).toBeNull();
+    expect(vehicleNextReservation([], '2026-06-03')).toBeNull();
+  });
+
+  it('geeft de eerstvolgende reservering terug, met alles wat eraan hangt', () => {
+    const a = [
+      { assigned_date: '2026-09-01', returned_date: null, naam: 'laat' },
+      { assigned_date: '2026-07-01', returned_date: null, naam: 'eerst' },
+    ];
+    expect(vehicleNextReservation(a, '2026-06-03')?.naam).toBe('eerst');
+  });
+
+  it('telt een reservering die op dezelfde dag alweer afloopt niet mee', () => {
+    const a = [{ assigned_date: '2026-07-01', returned_date: '2026-07-01' }];
+    expect(vehicleNextReservation(a, '2026-06-03')).toBeNull();
+  });
+});
+
+describe('vehiclePeriodConflict', () => {
+  const reservering = [{ assigned_date: '2026-07-01', returned_date: null }];
+
+  it('open einde botst met een latere reservering', () => {
+    expect(vehiclePeriodConflict(reservering, '2026-06-03', null)).not.toBeNull();
+  });
+
+  it('inleveren op de dag dat de reservering ingaat mag', () => {
+    expect(vehiclePeriodConflict(reservering, '2026-06-03', '2026-07-01')).toBeNull();
+  });
+
+  it('inleveren ná die dag botst wel', () => {
+    expect(vehiclePeriodConflict(reservering, '2026-06-03', '2026-07-02')).not.toBeNull();
+  });
+
+  it('een afgeronde toewijzing in het verleden botst niet', () => {
+    const verleden = [{ assigned_date: '2026-01-01', returned_date: '2026-03-01' }];
+    expect(vehiclePeriodConflict(verleden, '2026-06-03', null)).toBeNull();
   });
 });
