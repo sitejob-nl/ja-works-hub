@@ -2060,6 +2060,98 @@ export type Database = {
           },
         ]
       }
+      company_document_types: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          key: string
+          label: string
+          legacy_document_type:
+            | Database["public"]["Enums"]["document_type"]
+            | null
+          organization_id: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          key: string
+          label: string
+          legacy_document_type?:
+            | Database["public"]["Enums"]["document_type"]
+            | null
+          organization_id: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          key?: string
+          label?: string
+          legacy_document_type?:
+            | Database["public"]["Enums"]["document_type"]
+            | null
+          organization_id?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_document_types_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      company_duplicate_dismissals: {
+        Row: {
+          created_at: string
+          dismissed_by: string | null
+          group_key: string
+          id: string
+          organization_id: string
+          reason: string | null
+        }
+        Insert: {
+          created_at?: string
+          dismissed_by?: string | null
+          group_key: string
+          id?: string
+          organization_id: string
+          reason?: string | null
+        }
+        Update: {
+          created_at?: string
+          dismissed_by?: string | null
+          group_key?: string
+          id?: string
+          organization_id?: string
+          reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_duplicate_dismissals_dismissed_by_fkey"
+            columns: ["dismissed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "company_duplicate_dismissals_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       company_function_skills: {
         Row: {
           company_function_id: string
@@ -2162,6 +2254,48 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      company_merges: {
+        Row: {
+          id: string
+          loser_id: string
+          merged_at: string
+          merged_by: string | null
+          organization_id: string
+          survivor_id: string
+        }
+        Insert: {
+          id?: string
+          loser_id: string
+          merged_at?: string
+          merged_by?: string | null
+          organization_id: string
+          survivor_id: string
+        }
+        Update: {
+          id?: string
+          loser_id?: string
+          merged_at?: string
+          merged_by?: string | null
+          organization_id?: string
+          survivor_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_merges_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "company_merges_survivor_id_fkey"
+            columns: ["survivor_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
             referencedColumns: ["id"]
           },
         ]
@@ -2590,6 +2724,7 @@ export type Database = {
         Row: {
           ai_verification_result: Json | null
           candidate_id: string | null
+          company_document_type_id: string | null
           company_id: string | null
           created_at: string
           employee_id: string | null
@@ -2602,7 +2737,7 @@ export type Database = {
           organization_id: string
           source: string | null
           status: Database["public"]["Enums"]["document_status"]
-          type: Database["public"]["Enums"]["document_type"]
+          type: Database["public"]["Enums"]["document_type"] | null
           updated_at: string
           verified_at: string | null
           verified_by: string | null
@@ -2610,6 +2745,7 @@ export type Database = {
         Insert: {
           ai_verification_result?: Json | null
           candidate_id?: string | null
+          company_document_type_id?: string | null
           company_id?: string | null
           created_at?: string
           employee_id?: string | null
@@ -2622,7 +2758,7 @@ export type Database = {
           organization_id: string
           source?: string | null
           status?: Database["public"]["Enums"]["document_status"]
-          type: Database["public"]["Enums"]["document_type"]
+          type?: Database["public"]["Enums"]["document_type"] | null
           updated_at?: string
           verified_at?: string | null
           verified_by?: string | null
@@ -2630,6 +2766,7 @@ export type Database = {
         Update: {
           ai_verification_result?: Json | null
           candidate_id?: string | null
+          company_document_type_id?: string | null
           company_id?: string | null
           created_at?: string
           employee_id?: string | null
@@ -2642,7 +2779,7 @@ export type Database = {
           organization_id?: string
           source?: string | null
           status?: Database["public"]["Enums"]["document_status"]
-          type?: Database["public"]["Enums"]["document_type"]
+          type?: Database["public"]["Enums"]["document_type"] | null
           updated_at?: string
           verified_at?: string | null
           verified_by?: string | null
@@ -2653,6 +2790,13 @@ export type Database = {
             columns: ["candidate_id"]
             isOneToOne: false
             referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "documents_company_document_type_id_fkey"
+            columns: ["company_document_type_id"]
+            isOneToOne: false
+            referencedRelation: "company_document_types"
             referencedColumns: ["id"]
           },
           {
@@ -6405,7 +6549,7 @@ export type Database = {
         Row: {
           candidate_id: string | null
           created_at: string
-          employee_id: string
+          employee_id: string | null
           field_id: string
           file_path: string | null
           form_id: string
@@ -6416,7 +6560,7 @@ export type Database = {
         Insert: {
           candidate_id?: string | null
           created_at?: string
-          employee_id: string
+          employee_id?: string | null
           field_id: string
           file_path?: string | null
           form_id: string
@@ -6427,7 +6571,7 @@ export type Database = {
         Update: {
           candidate_id?: string | null
           created_at?: string
-          employee_id?: string
+          employee_id?: string | null
           field_id?: string
           file_path?: string | null
           form_id?: string
@@ -10230,6 +10374,10 @@ export type Database = {
         Args: { p_candidate: string; p_org: string; p_path: string }
         Returns: boolean
       }
+      document_path_matches_company: {
+        Args: { p_company: string; p_org: string; p_path: string }
+        Returns: boolean
+      }
       encrypt_sensitive: { Args: { plaintext: string }; Returns: string }
       f_unaccent: { Args: { "": string }; Returns: string }
       facility_employee_candidate_matches: {
@@ -10296,6 +10444,23 @@ export type Database = {
           match_reason: string
           phone: string
           status: string
+        }[]
+      }
+      find_duplicate_companies: {
+        Args: never
+        Returns: {
+          address_city: string
+          address_postal: string
+          address_street: string
+          company_id: string
+          created_at: string
+          email: string
+          group_key: string
+          is_active: boolean
+          kvk_number: string
+          match_reason: string
+          name: string
+          phone: string
         }[]
       }
       get_campaign_candidates: {
@@ -10419,6 +10584,10 @@ export type Database = {
         Args: { p_actor?: string; p_loser: string; p_survivor: string }
         Returns: Json
       }
+      merge_company_records: {
+        Args: { p_actor?: string; p_loser: string; p_survivor: string }
+        Returns: Json
+      }
       next_invoice_number: { Args: { org_id: string }; Returns: string }
       normalize_domain_host: { Args: { p_host: string }; Returns: string }
       normalize_skill_name: { Args: { value: string }; Returns: string }
@@ -10535,6 +10704,10 @@ export type Database = {
       }
       sa_update_org_plan: {
         Args: { new_plan_id: string; org_uuid: string }
+        Returns: undefined
+      }
+      seed_default_company_document_types: {
+        Args: { p_org_id: string }
         Returns: undefined
       }
       seed_default_termination_reasons_for_org: {
@@ -10689,12 +10862,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -10718,11 +10891,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -10743,11 +10916,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -10768,11 +10941,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -10785,11 +10958,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
