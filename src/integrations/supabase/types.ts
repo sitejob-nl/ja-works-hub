@@ -2060,6 +2060,56 @@ export type Database = {
           },
         ]
       }
+      company_document_types: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          key: string
+          label: string
+          legacy_document_type:
+            | Database["public"]["Enums"]["document_type"]
+            | null
+          organization_id: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          key: string
+          label: string
+          legacy_document_type?:
+            | Database["public"]["Enums"]["document_type"]
+            | null
+          organization_id: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          key?: string
+          label?: string
+          legacy_document_type?:
+            | Database["public"]["Enums"]["document_type"]
+            | null
+          organization_id?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_document_types_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       company_function_skills: {
         Row: {
           company_function_id: string
@@ -2590,6 +2640,7 @@ export type Database = {
         Row: {
           ai_verification_result: Json | null
           candidate_id: string | null
+          company_document_type_id: string | null
           company_id: string | null
           created_at: string
           employee_id: string | null
@@ -2602,7 +2653,7 @@ export type Database = {
           organization_id: string
           source: string | null
           status: Database["public"]["Enums"]["document_status"]
-          type: Database["public"]["Enums"]["document_type"]
+          type: Database["public"]["Enums"]["document_type"] | null
           updated_at: string
           verified_at: string | null
           verified_by: string | null
@@ -2610,6 +2661,7 @@ export type Database = {
         Insert: {
           ai_verification_result?: Json | null
           candidate_id?: string | null
+          company_document_type_id?: string | null
           company_id?: string | null
           created_at?: string
           employee_id?: string | null
@@ -2622,7 +2674,7 @@ export type Database = {
           organization_id: string
           source?: string | null
           status?: Database["public"]["Enums"]["document_status"]
-          type: Database["public"]["Enums"]["document_type"]
+          type?: Database["public"]["Enums"]["document_type"] | null
           updated_at?: string
           verified_at?: string | null
           verified_by?: string | null
@@ -2630,6 +2682,7 @@ export type Database = {
         Update: {
           ai_verification_result?: Json | null
           candidate_id?: string | null
+          company_document_type_id?: string | null
           company_id?: string | null
           created_at?: string
           employee_id?: string | null
@@ -2642,7 +2695,7 @@ export type Database = {
           organization_id?: string
           source?: string | null
           status?: Database["public"]["Enums"]["document_status"]
-          type?: Database["public"]["Enums"]["document_type"]
+          type?: Database["public"]["Enums"]["document_type"] | null
           updated_at?: string
           verified_at?: string | null
           verified_by?: string | null
@@ -2653,6 +2706,13 @@ export type Database = {
             columns: ["candidate_id"]
             isOneToOne: false
             referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "documents_company_document_type_id_fkey"
+            columns: ["company_document_type_id"]
+            isOneToOne: false
+            referencedRelation: "company_document_types"
             referencedColumns: ["id"]
           },
           {
@@ -6405,7 +6465,7 @@ export type Database = {
         Row: {
           candidate_id: string | null
           created_at: string
-          employee_id: string
+          employee_id: string | null
           field_id: string
           file_path: string | null
           form_id: string
@@ -6416,7 +6476,7 @@ export type Database = {
         Insert: {
           candidate_id?: string | null
           created_at?: string
-          employee_id: string
+          employee_id?: string | null
           field_id: string
           file_path?: string | null
           form_id: string
@@ -6427,7 +6487,7 @@ export type Database = {
         Update: {
           candidate_id?: string | null
           created_at?: string
-          employee_id?: string
+          employee_id?: string | null
           field_id?: string
           file_path?: string | null
           form_id?: string
@@ -10537,6 +10597,10 @@ export type Database = {
         Args: { new_plan_id: string; org_uuid: string }
         Returns: undefined
       }
+      seed_default_company_document_types: {
+        Args: { p_org_id: string }
+        Returns: undefined
+      }
       seed_default_termination_reasons_for_org: {
         Args: { p_org_id: string }
         Returns: undefined
@@ -10689,12 +10753,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -10718,11 +10782,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -10743,11 +10807,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -10768,11 +10832,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -10785,11 +10849,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
