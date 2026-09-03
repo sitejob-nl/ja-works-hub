@@ -4,6 +4,24 @@ Overdracht voor wie verdergaat (Codex / Claude Code). Lees [AGENTS.md](AGENTS.md
 commands, [CLAUDE.md](CLAUDE.md) voor de canonieke codebase-diepte, [HANDOVER.md](HANDOVER.md) voor de formele
 projectsamenvatting.
 
+## Sessie 2026-09-03 — mailhistorie-filter + mailboxrechten (`fix/mail-history-filter-en-rechten`)
+
+- **Worktree:** `.claude/worktrees/fix-mail-history-rechten`, branch `fix/mail-history-filter-en-rechten` vanaf `origin/main` `cdcc248` (#244).
+- **Aanleiding:** op de opdrachtgever-tab (Bax Metaal) stond mail van derden, en een admin (Kas) zag de mailbox
+  van Jeroen ondanks `can_read_mail = false` in `mail_account_user_access`.
+- **Oorzaak 1:** `outlook-mail` plakte per adres een quoted KQL-term met OR aan elkaar; Graph leest dat niet als
+  filter en geeft de hele mailbox terug (live bewezen tegen de demo-mailbox: 1 adres → 0 treffers, 2 fictieve adressen → 50).
+- **Oorzaak 2:** `adminOrgAccess` in `_shared/outlook-accounts.ts` gaf elke admin lees/verzend op alle
+  org-mailboxen, óók bij expliciete `false`-grants.
+- **Fix:** `_shared/outlook-mail-filter.ts` (+ Deno-test) → één KQL-string + server-side nafilter op
+  from/to/cc/bcc per pagina; client stuurt `participant_emails` ook bij `next_link`; admin-override verwijderd
+  op alle drie de plekken. Grants zijn nu leidend.
+- **Prod-data:** grants van Jeroen (profiel `35af6e91`, jeroen@jawerkt.nl) op zijn eigen mailbox volledig gezet en
+  `can_send_mail` op Algemeen aan, zodat hij na de deploy niets verliest. Kas heeft géén grant op Algemeen —
+  zelf aanvinken in Instellingen → Outlook.
+- **Deploy:** `outlook-mail`, `outlook-accounts`, `outlook-calendar`, `outlook-send-mail` via CLI vanuit deze worktree.
+- **Volgende actie:** PR reviewen + mergen (frontend-deel: `participant_emails` bij vervolgpagina's).
+
 ## ⚠️ Eerst dit: lokale checkout is stale
 
 - Deze werkkopie staat op branch **`docs/claude-md-session-refresh`** en loopt **~73 commits achter `origin/main`**.

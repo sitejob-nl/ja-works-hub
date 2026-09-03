@@ -10,6 +10,7 @@ import {
 } from "../_shared/outlook-accounts.ts";
 
 import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
+import { buildParticipantSearch, messageMatchesParticipants } from "../_shared/outlook-mail-filter.ts";
 import { persistMatchedInboundMail } from "../_shared/inbound-mail-persist.ts";
 
 type MailAction = "folders" | "list" | "detail" | "thread" | "attachment" | "delete" | "mark_read" | "move";
@@ -17,11 +18,9 @@ type MailAction = "folders" | "list" | "detail" | "thread" | "attachment" | "del
 const WELL_KNOWN = new Set(["inbox", "sentitems", "drafts", "deleteditems", "archive", "junkemail"]);
 const MAX_TOP = 50;
 
-function participantSearchExpression(input: unknown): string | null {
-  if (!Array.isArray(input)) return null;
-  const emails = [...new Set(input.map(cleanEmail).filter((value): value is string => Boolean(value)))];
-  if (emails.length === 0) return null;
-  return emails.map((email) => `"participants:${email}"`).join(" OR ");
+function participantEmails(input: unknown): string[] {
+  if (!Array.isArray(input)) return [];
+  return [...new Set(input.map(cleanEmail).filter((value): value is string => Boolean(value)))];
 }
 
 function folderSegment(input: unknown) {
@@ -129,13 +128,16 @@ Deno.serve(async (req) => {
       const top = Math.min(Math.max(Number(body.top || 25), 1), MAX_TOP);
       const skip = Math.max(Number(body.skip || 0), 0);
       const search = String(body.search || "").trim();
-      const participantSearch = participantSearchExpression(body.participant_emails);
+      // Entiteit-historie: één KQL-string met alle adressen (zie _shared/outlook-mail-filter.ts —
+      // losse quoted termen met OR leverden de héle mailbox op).
+      const participants = participantEmails(body.participant_emails);
+      const participantSearch = buildParticipantSearch(participants);
       const searchExpression = participantSearch || (search ? `"${search.replace(/"/g, '\\"')}"` : null);
       const next = safeNextLink(body.next_link, base);
       const url = next ?? (searchExpression
         ? graphUrl(`${base}/messages`, {
           "$search": searchExpression,
-          "$select": "id,conversationId,parentFolderId,subject,from,sender,toRecipients,ccRecipients,receivedDateTime,sentDateTime,isRead,bodyPreview,hasAttachments,importance,webLink",
+          "$select": "id,conversationId,parentFolderId,subject,from,sender,toRecipients,ccRecipients,bccRecipients,receivedDateTime,sentDateTime,isRead,bodyPreview,hasAttachments,importance,webLink",
           "$top": top,
         })
         : graphUrl(`${base}/mailFolders/${folderSegment(body.folder_id)}/messages`, {
@@ -145,7 +147,13 @@ Deno.serve(async (req) => {
           "$orderby": String(body.folder_id || "").toLowerCase() === "sentitems" ? "sentDateTime desc" : "receivedDateTime desc",
         }));
       const data = await graphJson<{ value?: any[]; "@odata.nextLink"?: string }>(admin, provider, url);
-      const messages = (data.value ?? []).map(mapMessage);
+      // Nafilter op échte deelnemers (from/to/cc/bcc), ook op vervolgpagina's via next_link:
+      // Graph `participants:` matcht mede op weergavenamen/tokens, en alleen mail mét een van
+      // de gevraagde adressen hoort in een opdrachtgever-/kandidaat-/contacthistorie.
+      const rawMessages = participants.length > 0
+        ? (data.value ?? []).filter((message: any) => messageMatchesParticipants(message, participants))
+        : (data.value ?? []);
+      const messages = rawMessages.map(mapMessage);
 
       // COM1: leg inkomende mail van/over een bekende kandidaat/opdrachtgever
       // automatisch vast in `communications` (match-gated, AVG-minimaal). In de
