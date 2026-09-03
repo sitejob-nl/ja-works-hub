@@ -103,6 +103,9 @@ export const qk = {
     activePlacement: (candidateId: string) => ['active-placement', candidateId] as const,
     sickReports: (candidateId: string) => ['sick-reports', candidateId] as const,
   },
+  onboarding: {
+    responses: (orgId: string, candidateId: string) => ['onboarding-responses', orgId, candidateId] as const,
+  },
   transport: {
     damage: (vehicleId: string) => ['vehicle-damage', vehicleId] as const,
     damagePhotoUrls: (vehicleId: string, paths: readonly string[]) =>
