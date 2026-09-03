@@ -1,11 +1,15 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { CheckCircle2, Circle } from 'lucide-react';
+import { CheckCircle2, Circle, ClipboardList } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { formatDate } from '@/lib/format';
+import { Badge } from '@/components/ui/badge';
+import { formatDate, formatDateTime } from '@/lib/format';
 import { toast } from 'sonner';
 import { logAudit } from '@/lib/audit';
+import { useOrgQuery } from '@/lib/org-scope';
+import { unwrapList } from '@/lib/db';
+import { qk } from '@/lib/query-keys';
 
 const FIELD_LABELS: Record<string, string> = {
   bsn: 'BSN', iban: 'IBAN', date_of_birth: 'Geboortedatum',
@@ -49,6 +53,43 @@ const EmployeeOnboardingTab = ({ candidateId, candidate }: { candidateId: string
       return (data as any[]) || [];
     },
   });
+
+  // Ruwe antwoorden uit het onboardingformulier — los van de checklist hierboven, die is
+  // afgeleid/berekend. Dit toont wat de kandidaat zelf letterlijk heeft ingevuld.
+  const { data: responses = [] } = useOrgQuery(
+    (orgId) => qk.onboarding.responses(orgId, candidateId),
+    (orgId) => unwrapList<any>(
+      supabase
+        .from('onboarding_responses')
+        .select(`
+          id, value, created_at,
+          onboarding_form_fields (
+            label, field_type, sort_order, document_type,
+            onboarding_form_steps ( sort_order, title )
+          )
+        `)
+        .eq('organization_id', orgId)
+        .eq('candidate_id', candidateId) as any,
+    ),
+  );
+
+  const sortedResponses = [...responses]
+    .filter((r) => r.onboarding_form_fields)
+    .sort((a, b) => {
+      const stepA = a.onboarding_form_fields?.onboarding_form_steps?.sort_order ?? 0;
+      const stepB = b.onboarding_form_fields?.onboarding_form_steps?.sort_order ?? 0;
+      if (stepA !== stepB) return stepA - stepB;
+      return (a.onboarding_form_fields?.sort_order ?? 0) - (b.onboarding_form_fields?.sort_order ?? 0);
+    });
+
+  const submittedAt = candidate?.onboarding_completed_at ?? sortedResponses[0]?.created_at ?? null;
+
+  const formatResponseValue = (value: string | null, fieldType: string): string => {
+    if (value == null || value === '') return '—';
+    if (fieldType === 'checkbox') return value === 'true' ? 'Ja' : 'Nee';
+    if (fieldType === 'date') return formatDate(value);
+    return value;
+  };
 
   // Build dynamic checklist
   const checkItems: CheckItem[] = [];
@@ -140,6 +181,42 @@ const EmployeeOnboardingTab = ({ candidateId, candidate }: { candidateId: string
 
   return (
     <div className="space-y-6">
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-medium">Ingediende onboardingantwoorden</h3>
+          {sortedResponses.length > 0 && (
+            <span className="text-xs text-muted-foreground">Ingediend op {formatDateTime(submittedAt)}</span>
+          )}
+        </div>
+        {sortedResponses.length === 0 ? (
+          <div className="bg-card rounded-lg border p-8 text-center text-muted-foreground">
+            <ClipboardList className="h-10 w-10 mx-auto mb-3 text-muted-foreground/40" />
+            <p>Nog geen onboardingformulier ingediend.</p>
+          </div>
+        ) : (
+          <div className="bg-card rounded-lg border divide-y">
+            {sortedResponses.map((r) => {
+              const field = r.onboarding_form_fields;
+              const isFile = field.field_type === 'file_upload' || field.field_type === 'file';
+              return (
+                <div key={r.id} className="px-4 py-3 flex items-center justify-between gap-4">
+                  <span className="text-sm text-muted-foreground shrink-0">{field.label}</span>
+                  <span className="text-sm font-medium text-right">
+                    {isFile ? (
+                      <Badge variant="secondary" className="font-normal">
+                        {r.value || 'geüpload'} — zie tabblad Documenten
+                      </Badge>
+                    ) : (
+                      formatResponseValue(r.value, field.field_type)
+                    )}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       <div className="bg-card rounded-lg border p-6">
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-medium">Onboarding voortgang</h3>
