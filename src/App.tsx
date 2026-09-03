@@ -42,6 +42,7 @@ const SettingsPage = lazyRoute(() => import("@/pages/Settings"));
 const PersonalOutlook = lazyRoute(() => import("@/pages/PersonalOutlook"));
 const Planning = lazyRoute(() => import("@/pages/Planning"));
 const Companies = lazyRoute(() => import("@/pages/Companies"));
+const DuplicateCompanies = lazyRoute(() => import("@/pages/DuplicateCompanies"));
 const CompanyNew = lazyRoute(() => import("@/pages/CompanyNew"));
 const CompanyDetail = lazyRoute(() => import("@/pages/CompanyDetail"));
 const CompanyEdit = lazyRoute(() => import("@/pages/CompanyEdit"));
@@ -184,6 +185,7 @@ const App = () => (
                 <Route path="/taken" element={<Tasks />} />
                 <Route path="/opdrachtgevers" element={<Companies />} />
                 <Route path="/opdrachtgevers/new" element={<CompanyNew />} />
+                <Route path="/opdrachtgevers/duplicaten" element={<DuplicateCompanies />} />
                 <Route path="/opdrachtgevers/:id" element={<CompanyDetail />} />
                 <Route path="/opdrachtgevers/:id/bewerken" element={<CompanyEdit />} />
                 <Route path="/kandidaten" element={<PermissionRoute permission="candidates.view"><Candidates /></PermissionRoute>} />
