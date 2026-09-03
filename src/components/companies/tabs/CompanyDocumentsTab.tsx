@@ -1,4 +1,4 @@
-import { useState, useRef, type DragEvent } from 'react';
+import { useState, useRef, useMemo, type DragEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { unwrap, unwrapDeleted, unwrapList } from '@/lib/db';
@@ -17,7 +17,10 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Plus, FileText, File, FileCheck, FileSignature, Download, Upload, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
+import {
+  Plus, FileText, File, FileCheck, FileSignature, Download, Upload, MoreHorizontal, Pencil, Trash2,
+  ClipboardList, Ruler, Euro, Briefcase,
+} from 'lucide-react';
 import { formatDate } from '@/lib/format';
 import { toast } from 'sonner';
 import { allowFileDrop, getDroppedFiles } from '@/lib/file-input';
@@ -25,19 +28,25 @@ import type { Database } from '@/integrations/supabase/types';
 
 type DocType = Database['public']['Enums']['document_type'];
 
-// Punt 10 — bij een opdrachtgever spelen andere documentsoorten dan bij een
-// medewerker. De kolom is dezelfde enum, dus we tonen alleen de zinnige subset.
-const COMPANY_DOC_TYPES: DocType[] = ['contract', 'reglement', 'certificaat', 'overig'];
-
-const typeLabels: Record<string, string> = {
-  contract: 'Contract / overeenkomst',
-  reglement: 'Reglement',
-  certificaat: 'Certificaat',
-  overig: 'Overig',
+type CompanyDocumentType = {
+  id: string;
+  key: string;
+  label: string;
+  legacy_document_type: DocType | null;
+  sort_order: number;
+  is_active: boolean;
 };
 
-const typeIcons: Record<string, any> = {
-  contract: FileSignature, reglement: FileCheck, certificaat: FileText, overig: File,
+// Iconen per bekende sleutel; een org-toegevoegd type zonder match valt terug op File.
+const TYPE_ICONS: Record<string, any> = {
+  contract: FileSignature,
+  reglement: FileCheck,
+  certificaat: FileText,
+  overig: File,
+  inventarisatie_formulier: ClipboardList,
+  tekeningen: Ruler,
+  financieel: Euro,
+  vacatures: Briefcase,
 };
 
 const statusBadge: Record<string, string> = {
@@ -47,7 +56,7 @@ const statusBadge: Record<string, string> = {
   ongeldig: 'bg-muted text-muted-foreground border-0',
 };
 
-const emptyForm = { type: 'contract' as DocType, name: '', issued_date: '', expiry_date: '', notes: '' };
+const emptyForm = { typeId: '', name: '', issued_date: '', expiry_date: '', notes: '' };
 
 const CompanyDocumentsTab = ({ companyId }: { companyId: string }) => {
   const orgId = useOrganizationId();
@@ -61,6 +70,27 @@ const CompanyDocumentsTab = ({ companyId }: { companyId: string }) => {
   const [docToDelete, setDocToDelete] = useState<any | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [file, setFile] = useState<File | null>(null);
+  const [typeFilter, setTypeFilter] = useState<string>('all');
+
+  const { data: types = [] } = useQuery({
+    queryKey: ['company-document-types', orgId],
+    queryFn: () => unwrapList<CompanyDocumentType>(
+      supabase.from('company_document_types')
+        .select('id, key, label, legacy_document_type, sort_order, is_active')
+        .eq('organization_id', orgId)
+        .order('sort_order'),
+    ),
+  });
+  const activeTypes = useMemo(() => types.filter((t) => t.is_active), [types]);
+  // Documenten van vóór dit ticket dragen alleen het oude enum-type; die
+  // resolven we via de geseedde catalogusrij met dezelfde legacy_document_type.
+  const legacyTypeMap = useMemo(
+    () => new Map(types.filter((t) => t.legacy_document_type).map((t) => [t.legacy_document_type as DocType, t])),
+    [types],
+  );
+  const typeById = useMemo(() => new Map(types.map((t) => [t.id, t])), [types]);
+  const resolveType = (doc: any): CompanyDocumentType | undefined =>
+    (doc.company_document_type_id && typeById.get(doc.company_document_type_id)) || legacyTypeMap.get(doc.type);
 
   const { data: docs = [] } = useQuery({
     queryKey: ['company-documents', companyId],
@@ -68,6 +98,12 @@ const CompanyDocumentsTab = ({ companyId }: { companyId: string }) => {
       supabase.from('documents').select('*').eq('company_id', companyId).order('created_at', { ascending: false }),
     ),
   });
+
+  const filteredDocs = useMemo(
+    () => (typeFilter === 'all' ? docs : docs.filter((d: any) => resolveType(d)?.id === typeFilter)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- resolveType leunt op types/legacyTypeMap/typeById, al in deps
+    [docs, typeFilter, types],
+  );
 
   const openDoc = async (filePath: string | null) => {
     if (!filePath) {
@@ -94,6 +130,8 @@ const CompanyDocumentsTab = ({ companyId }: { companyId: string }) => {
 
   const add = useMutation({
     mutationFn: async () => {
+      const selectedType = typeById.get(form.typeId);
+      if (!selectedType) throw new Error('Kies een documenttype');
       let filePath: string | null = null;
       if (file) {
         const ext = file.name.split('.').pop();
@@ -109,7 +147,8 @@ const CompanyDocumentsTab = ({ companyId }: { companyId: string }) => {
         organization_id: orgId,
         company_id: companyId,
         candidate_id: null,
-        type: form.type,
+        type: selectedType.legacy_document_type,
+        company_document_type_id: selectedType.id,
         name: form.name,
         issued_date: form.issued_date || null,
         expiry_date: form.expiry_date || null,
@@ -118,7 +157,8 @@ const CompanyDocumentsTab = ({ companyId }: { companyId: string }) => {
       }).select('id').single());
     },
     onSuccess: () => {
-      logAudit({ action: 'create', tableName: 'documents', recordId: companyId, newValues: { type: form.type, name: form.name } });
+      const selectedType = typeById.get(form.typeId);
+      logAudit({ action: 'create', tableName: 'documents', recordId: companyId, newValues: { type: selectedType?.label, name: form.name } });
       qc.invalidateQueries({ queryKey: ['company-documents', companyId] });
       setAdding(false);
       setForm(emptyForm);
@@ -130,7 +170,7 @@ const CompanyDocumentsTab = ({ companyId }: { companyId: string }) => {
 
   const startEdit = (doc: any) => {
     setForm({
-      type: doc.type as DocType,
+      typeId: resolveType(doc)?.id ?? '',
       name: doc.name ?? '',
       issued_date: doc.issued_date ?? '',
       expiry_date: doc.expiry_date ?? '',
@@ -142,8 +182,11 @@ const CompanyDocumentsTab = ({ companyId }: { companyId: string }) => {
 
   const save = useMutation({
     mutationFn: async () => {
+      const selectedType = typeById.get(form.typeId);
+      if (!selectedType) throw new Error('Kies een documenttype');
       await unwrap(supabase.from('documents').update({
-        type: form.type,
+        type: selectedType.legacy_document_type,
+        company_document_type_id: selectedType.id,
         name: form.name,
         issued_date: form.issued_date || null,
         expiry_date: form.expiry_date || null,
@@ -151,7 +194,8 @@ const CompanyDocumentsTab = ({ companyId }: { companyId: string }) => {
       }).eq('id', editingDoc.id));
     },
     onSuccess: () => {
-      logAudit({ action: 'update', tableName: 'documents', recordId: editingDoc.id, newValues: { type: form.type, name: form.name } });
+      const selectedType = typeById.get(form.typeId);
+      logAudit({ action: 'update', tableName: 'documents', recordId: editingDoc.id, newValues: { type: selectedType?.label, name: form.name } });
       qc.invalidateQueries({ queryKey: ['company-documents', companyId] });
       setEditingDoc(null);
       toast.success('Document bijgewerkt');
@@ -173,17 +217,21 @@ const CompanyDocumentsTab = ({ companyId }: { companyId: string }) => {
     onError: (e: any) => { setDocToDelete(null); toast.error(e.message); },
   });
 
+  const typeSelect = (
+    <div>
+      <Label>Type</Label>
+      <Select value={form.typeId} onValueChange={(v) => setForm((f) => ({ ...f, typeId: v }))}>
+        <SelectTrigger><SelectValue placeholder="Kies een documenttype" /></SelectTrigger>
+        <SelectContent>
+          {activeTypes.map((t) => <SelectItem key={t.id} value={t.id}>{t.label}</SelectItem>)}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+
   const fields = (
     <div className="space-y-4">
-      <div>
-        <Label>Type</Label>
-        <Select value={form.type} onValueChange={(v) => setForm((f) => ({ ...f, type: v as DocType }))}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
-          <SelectContent>
-            {COMPANY_DOC_TYPES.map((t) => <SelectItem key={t} value={t}>{typeLabels[t]}</SelectItem>)}
-          </SelectContent>
-        </Select>
-      </div>
+      {typeSelect}
       <div><Label>Naam</Label><Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} /></div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div><Label>Ingangsdatum</Label><Input type="date" value={form.issued_date} onChange={(e) => setForm((f) => ({ ...f, issued_date: e.target.value }))} /></div>
@@ -195,11 +243,20 @@ const CompanyDocumentsTab = ({ companyId }: { companyId: string }) => {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center gap-3 flex-wrap">
         <h3 className="font-medium">Documenten</h3>
-        <Button size="sm" variant="outline" onClick={() => { setForm(emptyForm); setFile(null); setAdding(true); }} className="gap-1">
-          <Plus className="h-3.5 w-3.5" />Nieuw document
-        </Button>
+        <div className="flex items-center gap-2">
+          <Select value={typeFilter} onValueChange={setTypeFilter}>
+            <SelectTrigger className="w-[200px]"><SelectValue placeholder="Alle types" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Alle types</SelectItem>
+              {types.map((t) => <SelectItem key={t.id} value={t.id}>{t.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Button size="sm" variant="outline" onClick={() => { setForm(emptyForm); setFile(null); setAdding(true); }} className="gap-1">
+            <Plus className="h-3.5 w-3.5" />Nieuw document
+          </Button>
+        </div>
       </div>
 
       <Sheet open={adding} onOpenChange={setAdding}>
@@ -225,7 +282,7 @@ const CompanyDocumentsTab = ({ companyId }: { companyId: string }) => {
             </div>
             <div className="flex justify-end gap-3 pt-4">
               <Button variant="ghost" onClick={() => setAdding(false)}>Annuleren</Button>
-              <Button onClick={() => add.mutate()} disabled={!form.name || add.isPending}>
+              <Button onClick={() => add.mutate()} disabled={!form.name || !form.typeId || add.isPending}>
                 {add.isPending ? 'Uploaden...' : 'Opslaan'}
               </Button>
             </div>
@@ -239,7 +296,7 @@ const CompanyDocumentsTab = ({ companyId }: { companyId: string }) => {
           <div className="mt-6">{fields}</div>
           <div className="flex justify-end gap-3 pt-4">
             <Button variant="ghost" onClick={() => setEditingDoc(null)}>Annuleren</Button>
-            <Button onClick={() => save.mutate()} disabled={!form.name || save.isPending}>
+            <Button onClick={() => save.mutate()} disabled={!form.name || !form.typeId || save.isPending}>
               {save.isPending ? 'Opslaan...' : 'Opslaan'}
             </Button>
           </div>
@@ -267,8 +324,9 @@ const CompanyDocumentsTab = ({ companyId }: { companyId: string }) => {
       </AlertDialog>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {docs.map((d: any) => {
-          const Icon = typeIcons[d.type] ?? File;
+        {filteredDocs.map((d: any) => {
+          const docType = resolveType(d);
+          const Icon = TYPE_ICONS[docType?.key ?? ''] ?? File;
           const hasFile = Boolean(d.file_path);
           return (
             <div key={d.id} className="bg-card rounded-lg border p-3 flex gap-3 transition hover:border-primary/40 hover:shadow-sm">
@@ -284,7 +342,7 @@ const CompanyDocumentsTab = ({ companyId }: { companyId: string }) => {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{d.name}</p>
-                  <p className="text-xs text-muted-foreground">{typeLabels[d.type] ?? d.type}</p>
+                  <p className="text-xs text-muted-foreground">{docType?.label ?? d.type ?? 'Onbekend type'}</p>
                   <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                     <Badge variant="secondary" className={`text-xs ${statusBadge[d.status] ?? ''}`}>{d.status}</Badge>
                     {!hasFile && <Badge variant="outline" className="text-xs">Geen bestand</Badge>}
@@ -315,7 +373,11 @@ const CompanyDocumentsTab = ({ companyId }: { companyId: string }) => {
           );
         })}
       </div>
-      {docs.length === 0 && <p className="text-center text-muted-foreground py-8">Nog geen documenten</p>}
+      {filteredDocs.length === 0 && (
+        <p className="text-center text-muted-foreground py-8">
+          {docs.length === 0 ? 'Nog geen documenten' : 'Geen documenten voor dit type'}
+        </p>
+      )}
     </div>
   );
 };
