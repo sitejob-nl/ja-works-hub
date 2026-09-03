@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Link, useNavigate } from 'react-router-dom';
-import { Building2, Plus, Search, Upload, RefreshCw, Trash2 } from 'lucide-react';
+import { Building2, Plus, Search, Upload, RefreshCw, Trash2, Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -232,6 +232,9 @@ const Companies = () => {
           )}
           <Button variant="outline" onClick={() => setImportOpen(true)} className="gap-2">
             <Upload className="h-4 w-4" /> Importeren
+          </Button>
+          <Button variant="outline" onClick={() => navigate('/opdrachtgevers/duplicaten')} className="gap-1.5 hidden md:flex">
+            <Copy className="h-4 w-4" /> Duplicaten
           </Button>
           <Button onClick={() => navigate('/opdrachtgevers/new')} className="gap-2">
             <Plus className="h-4 w-4" /> Nieuwe opdrachtgever

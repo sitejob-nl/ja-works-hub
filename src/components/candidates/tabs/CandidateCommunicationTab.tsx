@@ -258,10 +258,12 @@ const CandidateCommunicationTab = ({
       queryFn: () => callOutlook<OutlookListResponse>('outlook-mail', {
         action: 'list',
         account_id: target.accountId,
+        // Ook bij vervolgpagina's mee: de server nafiltert elke pagina op afzender/aan/cc/bcc,
+        // zodat er nooit mail van derden in een entiteitshistorie belandt.
+        participant_emails: targetEmails,
         ...(target.nextLink
           ? { next_link: target.nextLink }
           : {
-              participant_emails: targetEmails,
               search: buildOutlookParticipantSearch(targetEmails[0]),
               top: PAGE_SIZE,
             }),

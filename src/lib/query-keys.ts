@@ -28,6 +28,11 @@ export const qk = {
     /** Active-employee picker — intentionally NOT org-keyed (RLS-scoped); preserves the original key. */
     activeForTimesheet: () => ['candidates-active-for-timesheet'] as const,
   },
+  companies: {
+    duplicates: (orgId: string) => ['duplicate-companies', orgId] as const,
+    duplicateDismissals: (orgId: string) => ['company-duplicate-dismissals', orgId] as const,
+    relatedCounts: (orgId: string, ids: readonly string[]) => ['company-related-counts', orgId, ids] as const,
+  },
   communications: {
     forEntity: (orgId: string, entityType: string, entityId: string) =>
       ['entity-communications', orgId, entityType, entityId] as const,

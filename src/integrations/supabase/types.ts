@@ -2110,6 +2110,48 @@ export type Database = {
           },
         ]
       }
+      company_duplicate_dismissals: {
+        Row: {
+          created_at: string
+          dismissed_by: string | null
+          group_key: string
+          id: string
+          organization_id: string
+          reason: string | null
+        }
+        Insert: {
+          created_at?: string
+          dismissed_by?: string | null
+          group_key: string
+          id?: string
+          organization_id: string
+          reason?: string | null
+        }
+        Update: {
+          created_at?: string
+          dismissed_by?: string | null
+          group_key?: string
+          id?: string
+          organization_id?: string
+          reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_duplicate_dismissals_dismissed_by_fkey"
+            columns: ["dismissed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "company_duplicate_dismissals_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       company_function_skills: {
         Row: {
           company_function_id: string
@@ -2212,6 +2254,48 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      company_merges: {
+        Row: {
+          id: string
+          loser_id: string
+          merged_at: string
+          merged_by: string | null
+          organization_id: string
+          survivor_id: string
+        }
+        Insert: {
+          id?: string
+          loser_id: string
+          merged_at?: string
+          merged_by?: string | null
+          organization_id: string
+          survivor_id: string
+        }
+        Update: {
+          id?: string
+          loser_id?: string
+          merged_at?: string
+          merged_by?: string | null
+          organization_id?: string
+          survivor_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_merges_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "company_merges_survivor_id_fkey"
+            columns: ["survivor_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
             referencedColumns: ["id"]
           },
         ]
@@ -10290,6 +10374,10 @@ export type Database = {
         Args: { p_candidate: string; p_org: string; p_path: string }
         Returns: boolean
       }
+      document_path_matches_company: {
+        Args: { p_company: string; p_org: string; p_path: string }
+        Returns: boolean
+      }
       encrypt_sensitive: { Args: { plaintext: string }; Returns: string }
       f_unaccent: { Args: { "": string }; Returns: string }
       facility_employee_candidate_matches: {
@@ -10356,6 +10444,23 @@ export type Database = {
           match_reason: string
           phone: string
           status: string
+        }[]
+      }
+      find_duplicate_companies: {
+        Args: never
+        Returns: {
+          address_city: string
+          address_postal: string
+          address_street: string
+          company_id: string
+          created_at: string
+          email: string
+          group_key: string
+          is_active: boolean
+          kvk_number: string
+          match_reason: string
+          name: string
+          phone: string
         }[]
       }
       get_campaign_candidates: {
@@ -10476,6 +10581,10 @@ export type Database = {
       is_internal_user: { Args: never; Returns: boolean }
       is_superadmin: { Args: never; Returns: boolean }
       merge_candidate_records: {
+        Args: { p_actor?: string; p_loser: string; p_survivor: string }
+        Returns: Json
+      }
+      merge_company_records: {
         Args: { p_actor?: string; p_loser: string; p_survivor: string }
         Returns: Json
       }

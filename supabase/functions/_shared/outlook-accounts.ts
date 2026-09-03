@@ -240,15 +240,18 @@ function grantAllows(grant: AccessGrant | null, capability: OutlookCapability): 
   );
 }
 
-function grantOption(grant: AccessGrant | null, account: MailAccountRow, userId: string, role?: string | null): OutlookAccountOption["ja_grants"] {
+// JA-rechten per mailbox. De expliciete grants in `mail_account_user_access` zijn leidend: de
+// admin-rol geeft géén impliciet lees-/verzendrecht op bedrijfsmailboxen (admins beheren de
+// koppelingen en de rechten-matrix, maar hebben net als iedereen een eigen vinkje nodig).
+// Alleen de eigenaar van een persoonlijke koppeling heeft altijd toegang tot die mailbox.
+function grantOption(grant: AccessGrant | null, account: MailAccountRow, userId: string, _role?: string | null): OutlookAccountOption["ja_grants"] {
   const personalOwner = account.scope === "personal" && account.owner_user_id === userId;
-  const adminOrgAccess = role === "admin" && account.scope === "organization";
   return {
-    mail_read: personalOwner || adminOrgAccess ? true : Boolean(grant?.can_read_mail),
-    mail_send: personalOwner || adminOrgAccess ? true : Boolean(grant?.can_send_mail),
-    mail_delete: personalOwner || adminOrgAccess ? Boolean(account.mail_delete_enabled) : Boolean(grant?.can_delete_mail),
-    calendar_read: personalOwner || adminOrgAccess ? true : Boolean(grant?.can_read_calendar),
-    calendar_write: personalOwner || adminOrgAccess ? true : Boolean(grant?.can_write_calendar),
+    mail_read: personalOwner ? true : Boolean(grant?.can_read_mail),
+    mail_send: personalOwner ? true : Boolean(grant?.can_send_mail),
+    mail_delete: personalOwner ? Boolean(account.mail_delete_enabled) : Boolean(grant?.can_delete_mail),
+    calendar_read: personalOwner ? true : Boolean(grant?.can_read_calendar),
+    calendar_write: personalOwner ? true : Boolean(grant?.can_write_calendar),
   };
 }
 
@@ -313,8 +316,7 @@ export async function listVisibleAccounts(
   for (const account of accounts) {
     const grant = grants.get(account.id) ?? null;
     const personalOwner = account.scope === "personal" && account.owner_user_id === userId;
-    const adminOrgAccess = role === "admin" && account.scope === "organization";
-    const hasJaAccess = personalOwner || adminOrgAccess || grantAllows(grant, capability);
+    const hasJaAccess = personalOwner || grantAllows(grant, capability);
     const hasCapability = accountHasCapability(account, capability);
     if (!hasJaAccess) continue;
     if (!hasCapability && account.status === "connected") continue;
@@ -570,8 +572,7 @@ export async function loadProviderForAccount(
       .maybeSingle();
     if (grantError) throw grantError;
     const personalOwner = account.scope === "personal" && account.owner_user_id === options.userId;
-    const adminOrgAccess = options.role === "admin" && account.scope === "organization";
-    if (!personalOwner && !adminOrgAccess && !grantAllows((grantRaw as AccessGrant | null) ?? null, required)) {
+    if (!personalOwner && !grantAllows((grantRaw as AccessGrant | null) ?? null, required)) {
       throw new OutlookError("mail_account_forbidden", 403, "Je hebt geen JA-rechten voor deze mailbox of agenda");
     }
   }
