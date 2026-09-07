@@ -9,7 +9,8 @@ import { Badge } from '@/components/ui/badge';
 import EntityLink from '@/components/ui/entity-link';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
+import SortableTableHead from '@/components/ui/sortable-table-head';
+import TablePagination from '@/components/ui/table-pagination';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { formatDate } from '@/lib/format';
 import { differenceInCalendarDays, parseISO } from 'date-fns';
@@ -17,11 +18,38 @@ import TransportFinesTab from '@/components/transport/TransportFinesTab';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchFacilityTransportSnapshot, isFacilityRole } from '@/lib/facility';
 import { vehicleDisplayStatus } from '@/lib/vehicle-availability';
+import { useTableControls } from '@/hooks/useTableControls';
+import type { SortableColumn, SortState } from '@/lib/table-sort';
 
 
-const PAGE_SIZE = 10;
 // Bovengrens voor het afgeleide 'Gereserveerd'-filter, dat client-side moet filteren.
 const DERIVED_FILTER_SCAN_LIMIT = 500;
+
+// Sorteerbaar zijn de kolommen die één-op-één een voertuigkolom zijn. Status en
+// 'Toegewezen aan' bewust niet: de getoonde status is afgeleid ('Gereserveerd' bestaat
+// niet als databasewaarde) en de naam komt uit een gejoinde tabel — server-side ordenen
+// daarop zou een andere volgorde opleveren dan wat er in de kolom staat.
+const SORT_COLUMNS: readonly SortableColumn[] = [
+  { key: 'license_plate' },
+  {
+    key: 'brand',
+    orderBy: ['brand', 'model'],
+    value: (v: any) => [v.brand, v.model].filter(Boolean).join(' '),
+  },
+  { key: 'year', defaultDirection: 'desc' },
+  { key: 'fuel_type' },
+  { key: 'doors', defaultDirection: 'desc' },
+  { key: 'current_mileage', defaultDirection: 'desc' },
+  { key: 'apk_expiry' },
+];
+
+// De facility-rol ziet de tankpaskolom niet; hij mag dus ook niet sorteerbaar opduiken.
+const INTERNAL_SORT_COLUMNS: readonly SortableColumn[] = [
+  ...SORT_COLUMNS,
+  { key: 'fuel_card_reference' },
+];
+
+const DEFAULT_SORT: SortState = { column: 'license_plate', direction: 'asc' };
 
 const statusBadge: Record<string, string> = {
   beschikbaar: 'bg-stat-green/10 text-stat-green border-0',
@@ -45,9 +73,21 @@ const Transport = () => {
   const isFacility = isFacilityRole(role);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [page, setPage] = useState(0);
   const todayStr = new Date().toISOString().slice(0, 10);
   const hasActiveFilter = search.trim() !== '' || statusFilter !== 'all';
+
+  const sortColumns = useMemo(
+    () => (isFacility ? SORT_COLUMNS : INTERNAL_SORT_COLUMNS),
+    [isFacility],
+  );
+  const table = useTableControls({
+    columns: sortColumns,
+    defaultSort: DEFAULT_SORT,
+    // Ordenen op bouwjaar of brandstof laat gelijke rijen anders in willekeurige volgorde
+    // staan; met .range() zou een voertuig dan op twee pagina's tegelijk kunnen belanden.
+    tiebreak: ['license_plate', 'id'],
+  });
+  const { page, pageSize, sortRows: sortVehicles, pageSlice, applySort, resetPage } = table;
 
   const { data: facilitySnapshot, isLoading: isFacilityLoading } = useQuery({
     queryKey: ['facility-transport-snapshot', profile?.organization_id],
@@ -56,7 +96,7 @@ const Transport = () => {
   });
 
   const { data: internalData, isLoading: isInternalLoading } = useQuery({
-    queryKey: ['vehicles', search, statusFilter, page, todayStr],
+    queryKey: ['vehicles', search, statusFilter, page, pageSize, table.sort.column, table.sort.direction, todayStr],
     queryFn: async () => {
       let query = supabase.from('vehicles').select(`
         *,
@@ -79,10 +119,11 @@ const Transport = () => {
       if (statusFilter !== 'all') {
         query = query.eq('status', (isDerivedFilter ? 'beschikbaar' : statusFilter) as any);
       }
-      query = query.order('license_plate');
+      // Sorteren gebeurt in de database, dus over de héle set — niet over de zichtbare pagina.
+      query = applySort(query);
       query = isDerivedFilter
         ? query.limit(DERIVED_FILTER_SCAN_LIMIT)
-        : query.range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+        : query.range(table.from, table.to);
 
       const { data, count, error } = await query;
       if (error) throw error;
@@ -91,10 +132,8 @@ const Transport = () => {
       const reserved = (data ?? []).filter(
         (v: any) => vehicleDisplayStatus(v, todayStr).key === 'gereserveerd',
       );
-      return {
-        vehicles: reserved.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE),
-        total: reserved.length,
-      };
+      // Al gesorteerd binnengekomen; het afgeleide filter houdt die volgorde aan.
+      return { vehicles: pageSlice(reserved), total: reserved.length };
     },
     enabled: !isFacility,
   });
@@ -102,26 +141,24 @@ const Transport = () => {
   const facilityData = useMemo(() => {
     if (!isFacility) return { vehicles: [], total: 0 };
     const normalizedSearch = search.trim().toLocaleLowerCase('nl-NL');
-    const filtered = [...(facilitySnapshot?.vehicles ?? [])]
+    const filtered = (facilitySnapshot?.vehicles ?? [])
       .filter((vehicle: any) => statusFilter === 'all' || vehicle.status === statusFilter)
       .filter((vehicle: any) => {
         if (!normalizedSearch) return true;
         return [vehicle.license_plate, vehicle.brand, vehicle.model]
           .some((value) => String(value ?? '').toLocaleLowerCase('nl-NL').includes(normalizedSearch));
-      })
-      .sort((a: any, b: any) => String(a.license_plate ?? '').localeCompare(String(b.license_plate ?? ''), 'nl'));
-    return {
-      vehicles: filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE),
-      total: filtered.length,
-    };
-  }, [facilitySnapshot, isFacility, page, search, statusFilter]);
+      });
+    // Eerst de volledige gefilterde set sorteren, dan pas de pagina eruit snijden.
+    const sorted = sortVehicles(filtered);
+    return { vehicles: pageSlice(sorted), total: sorted.length };
+  }, [facilitySnapshot, isFacility, pageSlice, search, sortVehicles, statusFilter]);
 
   const data = isFacility ? facilityData : internalData;
   const isLoading = isFacility ? isFacilityLoading : isInternalLoading;
 
   const vehicles = data?.vehicles ?? [];
   const total = data?.total ?? 0;
-  const totalPages = Math.ceil(total / PAGE_SIZE);
+  const totalPages = Math.ceil(total / pageSize);
 
   // Stats from all vehicles (unfiltered)
   const { data: allVehicles } = useQuery({
@@ -222,9 +259,9 @@ const Transport = () => {
           <div className="flex items-center gap-3 flex-wrap">
             <div className="relative flex-1 max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Zoek op kenteken, merk of model..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} className="pl-9" />
+              <Input placeholder="Zoek op kenteken, merk of model..." value={search} onChange={(e) => { setSearch(e.target.value); resetPage(); }} className="pl-9" />
             </div>
-            <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(0); }}>
+            <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); resetPage(); }}>
               <SelectTrigger className="w-40"><SelectValue placeholder="Status" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Alle statussen</SelectItem>
@@ -243,7 +280,7 @@ const Transport = () => {
                 <>
                   <p className="text-lg font-medium text-muted-foreground">Geen voertuigen gevonden</p>
                   <p className="text-sm text-muted-foreground mt-1">Er zijn wel voertuigen, maar geen enkele past bij deze zoekopdracht of dit filter.</p>
-                  <Button variant="outline" className="mt-4" onClick={() => { setSearch(''); setStatusFilter('all'); setPage(0); }}>
+                  <Button variant="outline" className="mt-4" onClick={() => { setSearch(''); setStatusFilter('all'); resetPage(); }}>
                     Filters wissen
                   </Button>
                 </>
@@ -260,14 +297,17 @@ const Transport = () => {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Kenteken</TableHead>
-                      <TableHead>Merk / Model</TableHead>
-                      <TableHead>Bouwjaar</TableHead>
-                      <TableHead>Brandstof</TableHead>
-                      <TableHead className="text-right">Deuren</TableHead>
-                      <TableHead className="text-right">KM-stand</TableHead>
-                      <TableHead>APK</TableHead>
-                      {!isFacility && <TableHead>Tankpas</TableHead>}
+                      <SortableTableHead column="license_plate" sort={table.sort} onSort={table.toggleSort}>Kenteken</SortableTableHead>
+                      <SortableTableHead column="brand" sort={table.sort} onSort={table.toggleSort}>Merk / Model</SortableTableHead>
+                      <SortableTableHead column="year" sort={table.sort} onSort={table.toggleSort}>Bouwjaar</SortableTableHead>
+                      <SortableTableHead column="fuel_type" sort={table.sort} onSort={table.toggleSort}>Brandstof</SortableTableHead>
+                      <SortableTableHead column="doors" sort={table.sort} onSort={table.toggleSort} align="right">Deuren</SortableTableHead>
+                      <SortableTableHead column="current_mileage" sort={table.sort} onSort={table.toggleSort} align="right">KM-stand</SortableTableHead>
+                      <SortableTableHead column="apk_expiry" sort={table.sort} onSort={table.toggleSort}>APK</SortableTableHead>
+                      {!isFacility && (
+                        <SortableTableHead column="fuel_card_reference" sort={table.sort} onSort={table.toggleSort}>Tankpas</SortableTableHead>
+                      )}
+                      {/* Status en 'Toegewezen aan' zijn afgeleid resp. gejoind — zie SORT_COLUMNS. */}
                       <TableHead>Status</TableHead>
                       <TableHead>Toegewezen aan</TableHead>
                       {!isFacility && <TableHead>Notitie</TableHead>}
@@ -334,17 +374,13 @@ const Transport = () => {
                   </TableBody>
                 </Table>
               </div>
-              {totalPages > 1 && (
-                <Pagination>
-                  <PaginationContent>
-                    <PaginationItem><PaginationPrevious onClick={() => setPage(Math.max(0, page - 1))} className={page === 0 ? 'pointer-events-none opacity-50' : 'cursor-pointer'} /></PaginationItem>
-                    {Array.from({ length: totalPages }, (_, i) => (
-                      <PaginationItem key={i}><PaginationLink isActive={i === page} onClick={() => setPage(i)} className="cursor-pointer">{i + 1}</PaginationLink></PaginationItem>
-                    ))}
-                    <PaginationItem><PaginationNext onClick={() => setPage(Math.min(totalPages - 1, page + 1))} className={page >= totalPages - 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'} /></PaginationItem>
-                  </PaginationContent>
-                </Pagination>
-              )}
+              <TablePagination
+                page={page}
+                totalPages={totalPages}
+                onPageChange={table.setPage}
+                pageSize={pageSize}
+                onPageSizeChange={table.setPageSize}
+              />
             </>
           )}
         </TabsContent>
