@@ -18,6 +18,8 @@ import { unwrapList } from '@/lib/db';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchFacilityHousingSnapshot, isFacilityRole } from '@/lib/facility';
 import { totalMonthlyPropertyCosts } from '@/lib/housing-costs';
+import { summarizePropertyOccupancy } from '@/lib/housing-availability';
+import { todayISO } from '@/lib/tasks';
 
 const ALL_CITIES = '__all__';
 const WEEKS_PER_MONTH = 4.33;
@@ -70,40 +72,23 @@ const Housing = () => {
         property_owners(name),
         units!units_property_id_fkey(
           id, capacity, status,
-          housing_assignments!housing_assignments_unit_id_fkey(id, status)
+          housing_assignments!housing_assignments_unit_id_fkey(id, status, check_in_date, check_out_date)
         )
       `).order('address_city').order('address_street');
       if (error) throw error;
-      return (data ?? []).map((p: any) => {
-        const units = p.units ?? [];
-        const totalCapacity = units.reduce((s: number, u: any) => s + (u.capacity ?? 0), 0);
-        const currentOccupancy = units.reduce((s: number, u: any) =>
-          s + ((u.housing_assignments ?? []).filter((a: any) => a.status === 'ingecheckt').length), 0);
-        const percentage = totalCapacity > 0 ? Math.round((currentOccupancy / totalCapacity) * 100) : 0;
-        // Vrije kamers = kamers (units) met capaciteit die volledig leeg staan (0 bewoners ingecheckt).
-        const freeRooms = units.filter((u: any) =>
-          (u.capacity ?? 0) > 0
-          && (u.housing_assignments ?? []).filter((a: any) => a.status === 'ingecheckt').length === 0
-        ).length;
-        return { ...p, totalCapacity, currentOccupancy, percentage, freeRooms };
-      });
+      // Tellers worden hieronder in één keer afgeleid (summarizeOccupancy), zodat de
+      // interne en de facility-bron niet uit elkaar kunnen lopen.
+      return data ?? [];
     },
     enabled: !isFacility,
   });
 
   const allProperties = useMemo(() => {
     const source = isFacility ? (facilitySnapshot?.properties ?? []) : internalProperties;
+    const today = todayISO();
     return source.map((p: any) => {
       const units = p.units ?? [];
-      const totalCapacity = units.reduce((s: number, u: any) => s + (u.capacity ?? 0), 0);
-      const currentOccupancy = units.reduce((s: number, u: any) =>
-        s + ((u.housing_assignments ?? []).filter((a: any) => a.status === 'ingecheckt').length), 0);
-      const percentage = totalCapacity > 0 ? Math.round((currentOccupancy / totalCapacity) * 100) : 0;
-      const freeRooms = units.filter((u: any) =>
-        (u.capacity ?? 0) > 0
-        && (u.housing_assignments ?? []).filter((a: any) => a.status === 'ingecheckt').length === 0
-      ).length;
-      return { ...p, units, totalCapacity, currentOccupancy, percentage, freeRooms };
+      return { ...p, units, ...summarizePropertyOccupancy(units, today) };
     });
   }, [facilitySnapshot, internalProperties, isFacility]);
   const isLoading = isFacility ? facilityLoading : internalLoading;
