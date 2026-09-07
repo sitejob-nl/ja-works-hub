@@ -76,6 +76,7 @@ export type Database = {
       }
       ai_requests: {
         Row: {
+          budget_month: string
           candidate_id: string | null
           charged_cents: number
           created_at: string
@@ -102,6 +103,7 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
+          budget_month?: string
           candidate_id?: string | null
           charged_cents?: number
           created_at?: string
@@ -128,6 +130,7 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
+          budget_month?: string
           candidate_id?: string | null
           charged_cents?: number
           created_at?: string
@@ -172,6 +175,7 @@ export type Database = {
       }
       ai_usage_log: {
         Row: {
+          budget_month: string | null
           candidate_id: string | null
           cost_cents: number
           created_at: string
@@ -190,6 +194,7 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
+          budget_month?: string | null
           candidate_id?: string | null
           cost_cents?: number
           created_at?: string
@@ -208,6 +213,7 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
+          budget_month?: string | null
           candidate_id?: string | null
           cost_cents?: number
           created_at?: string
@@ -6941,6 +6947,11 @@ export type Database = {
       organization_credits: {
         Row: {
           balance_cents: number
+          budget_limit_cents: number | null
+          budget_month: string | null
+          budget_revision: number
+          credit_mode: string
+          last_budget_reset_at: string | null
           lifetime_topped_up_cents: number
           monthly_allowance_cents: number
           monthly_start_month: string | null
@@ -6952,6 +6963,11 @@ export type Database = {
         }
         Insert: {
           balance_cents?: number
+          budget_limit_cents?: number | null
+          budget_month?: string | null
+          budget_revision?: number
+          credit_mode?: string
+          last_budget_reset_at?: string | null
           lifetime_topped_up_cents?: number
           monthly_allowance_cents?: number
           monthly_start_month?: string | null
@@ -6963,6 +6979,11 @@ export type Database = {
         }
         Update: {
           balance_cents?: number
+          budget_limit_cents?: number | null
+          budget_month?: string | null
+          budget_revision?: number
+          credit_mode?: string
+          last_budget_reset_at?: string | null
           lifetime_topped_up_cents?: number
           monthly_allowance_cents?: number
           monthly_start_month?: string | null

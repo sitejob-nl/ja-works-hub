@@ -4,8 +4,11 @@ import { parseAiCreditSummary } from '@/hooks/useAiCredits';
 vi.mock('@/integrations/supabase/client', () => ({ supabase: {} }));
 
 const summary = {
-  balance_cents: 6721, reserved_cents: 0, available_cents: 6721,
+  balance_cents: 4999, reserved_cents: 0, available_cents: 4999,
   monthly_allowance_cents: 5000, monthly_start_month: '2026-09-01',
+  budget_mode: 'monthly', budget_month: '2026-09-01', monthly_budget_cents: 5000,
+  month_remaining_cents: 4999, previous_period_reserved_cents: 0, current_month_reserved_cents: 0,
+  month_reset_at: '2026-09-07T21:00:00+00:00',
   next_grant_at: '2026-09-30T22:00:00+00:00', month_start: '2026-09-01',
   month_charged_cents: 1, month_provider_cost_usd: null,
   month_provider_cost_unknown_count: 1, unresolved_requests: 0, stale_requests: 0,
@@ -29,7 +32,7 @@ describe('AI-credit summary RPC validation', () => {
   });
 
   it('accepts signed reconciliation differences and an absent monthly schedule', () => {
-    expect(parseAiCreditSummary({ ...summary, ledger_difference_cents: -22, monthly_start_month: null, next_grant_at: null }))
-      .toMatchObject({ ledger_difference_cents: -22, monthly_start_month: null, next_grant_at: null });
+    expect(parseAiCreditSummary({ ...summary, budget_mode: 'prepaid', budget_month: null, ledger_difference_cents: -22, monthly_start_month: null, next_grant_at: null, month_reset_at: null }))
+      .toMatchObject({ budget_mode: 'prepaid', ledger_difference_cents: -22, monthly_start_month: null, next_grant_at: null });
   });
 });

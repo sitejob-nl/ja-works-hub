@@ -40,7 +40,9 @@ export const aiRequestStatusLabel = (status: string) => ({
 
 export const aiLedgerKindLabel = (kind: string) => ({
   opening: 'Openingssaldo',
-  monthly_grant: 'Maandelijkse aanvulling',
+  monthly_grant: 'Maandelijkse aanvulling (oude regeling)',
+  monthly_reset: 'Maandbudget opnieuw ingesteld',
+  reservation_expiry: 'Ongebruikte reservering uit eerdere maand vervallen',
   manual_topup: 'Handmatige bijboeking / correctie',
   usage_charge: 'AI-verbruik',
   legacy_charge: 'Verbruik via eerdere verwerking',

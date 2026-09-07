@@ -87,7 +87,8 @@ laat CI vallen ook al dekt `npm run typecheck` Deno niet — draai dus de volled
 Betaalde AI-aanroepen lopen verplicht via `_shared/ai-accounting.ts`: reserveren vóór de provider, daarna
 aanvraag, verbruikslog en creditboeking in één transactie. Geen nieuwe directe provider-fetches of losse
 `consume_ai_credits`/`logAiUsage`-combinaties. Dit geldt ook voor previews, retries en toekomstige Vision-functies.
-Maandtegoed is opt-in per organisatie en wordt opgeteld; zie [docs/ai-accounting.md](docs/ai-accounting.md).
+Een maandbudget is opt-in per organisatie: elke kalendermaand een nieuwe limiet, zonder stapeling of
+meenemen van ongebruikt budget. Zie [docs/ai-accounting.md](docs/ai-accounting.md).
 
 Sentry frontend is live (#120), **env-gated en PII-veilig** (replay + tracing bewust UIT i.v.m. AVG). Activeert
 alleen als de `VITE_SENTRY_*` env-vars gezet zijn (Vercel PROD). Lokaal geen Sentry-noise.

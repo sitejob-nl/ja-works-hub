@@ -4,10 +4,18 @@ Overdracht voor wie verdergaat (Codex / Claude Code). Lees [AGENTS.md](AGENTS.md
 commands, [CLAUDE.md](CLAUDE.md) voor de canonieke codebase-diepte, [HANDOVER.md](HANDOVER.md) voor de formele
 projectsamenvatting.
 
-## Sessie 2026-09-07 — AI-accounting en maandtegoed (`codex/ai-ledger-monthly-credits`)
+## Correctie 2026-09-07 — vast AI-maandbudget (`codex/ai-monthly-budget-reset`)
+
+- Expliciete klantcorrectie: **€50 budget per maand, geen cumulatief tegoed**. Ongebruikt budget vervalt bij de volgende Nederlandse kalendermaand.
+- Werkmap `/tmp/ja-works-ai-monthly-cap`, vanaf `origin/main` `3e3735c` (PR #260). De registratie van alle elf betaalde AI-functies blijft intact; bestaande RPC-signatures blijven compatibel.
+- Nieuwe migratie corrigeert de maandregeling met herleidbare boekingen. Het huidige maandverbruik telt mee: op het controlemoment €0,01 in september, dus €49,99 beschikbaar. Oude boekingen worden niet gewijzigd of verwijderd.
+- Open aanvragen uit een vorige maand behouden hun reservering apart. Late afrekening of vrijgave verandert de ruimte voor de nieuwe maand niet. Er is geen inhaal of stapeling van gemiste maanden; handmatige top-ups zijn geblokkeerd bij een actief maandbudget.
+- De huidige afspraak en het databasecontract staan in [docs/ai-accounting.md](docs/ai-accounting.md) en [docs/ai-accounting-db-contract.md](docs/ai-accounting-db-contract.md). De oudere sessie hieronder documenteert de eerste, inmiddels gecorrigeerde interpretatie.
+
+## Sessie 2026-09-07 — eerste AI-accountingrelease (`codex/ai-ledger-monthly-credits`, maandinterpretatie gecorrigeerd)
 
 - Nieuwe worktree `/tmp/ja-works-ai-ledger`, vanaf actuele `origin/main` `cd0ba7d`. De oude dirty checkout is ongemoeid gelaten.
-- Opdracht: alle AI-calls sluitend registreren en JA Werkt vanaf september 2026 iedere maand €50 extra geven, met behoud van ongebruikt tegoed.
+- Eerste implementatie interpreteerde het maandbedrag als €50 extra met behoud van restant. Kas heeft dit expliciet gecorrigeerd naar een vast maandbudget zonder stapeling; zie de correctie hierboven.
 - Alle elf betaalde endpoints gebruiken `_shared/ai-accounting.ts`: vooraf reserveren, één providercall, daarna atomair aanvraag/verbruik/boeking afrekenen. Dry-runs tellen mee; cachehits niet. Onbekende uitkomsten houden hun reservering en worden zichtbaar gemeld.
 - Migratie `20260907201512_ai_accounting_ledger.sql` voegt onveranderlijke boekingen en een idempotente maandcron toe. Andere organisaties hebben standaard geen maandregeling. Het historische verschil van €0,22 wordt zichtbaar behouden, zonder extra afschrijving.
 - Instellingen en superadmin tonen saldo, reserveringen, maandtoelage, providerkosten en volledige historie. Handmatige correcties zijn idempotent.
