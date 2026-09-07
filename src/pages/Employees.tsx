@@ -2,17 +2,32 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Link, useNavigate } from 'react-router-dom';
-import { useSearchParamState } from '@/hooks/useSearchParamState';
 import { UserCheck, UserPlus, Search, Check, X, Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
+import SortableTableHead from '@/components/ui/sortable-table-head';
+import TablePagination from '@/components/ui/table-pagination';
 import { formatDate } from '@/lib/format';
+import { useTableControls } from '@/hooks/useTableControls';
+import type { SortableColumn, SortState } from '@/lib/table-sort';
 
-const PAGE_SIZE = 10;
+// Sorteerbaar zijn de kolommen die één-op-één een kandidaatkolom tonen. Startdatum komt uit
+// candidate_employment (to-many), Huisvesting en Actieve plaatsing uit joins — daar kan de
+// database de medewerkers niet op ordenen, dus die koppen blijven statisch. Status en
+// Compliance groeperen; Compliance in de vaste volgorde van de enum, niet op label.
+const SORT_COLUMNS: readonly SortableColumn[] = [
+  { key: 'name', orderBy: ['last_name', 'first_name'] },
+  { key: 'employee_number' },
+  { key: 'employee_status' },
+  { key: 'compliance_status' },
+];
+// Alfabetisch op achternaam. De lijst opende eerder op created_at, maar dat is het moment
+// waarop iemand als kándidaat werd aangemaakt — niet wanneer hij in dienst kwam — en die
+// kolom staat niet in de tabel, dus was die volgorde ook niet omkeerbaar.
+const DEFAULT_SORT: SortState = { column: 'name', direction: 'asc' };
 
 const statusBadge: Record<string, string> = {
   onboarding: 'bg-yellow-100 text-yellow-700 border-0',
@@ -34,11 +49,14 @@ const complianceBadge: Record<string, string> = {
 const Employees = () => {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useSearchParamState<string>('status', 'all');
-  const [page, setPage] = useState(0);
+  const table = useTableControls({ columns: SORT_COLUMNS, defaultSort: DEFAULT_SORT, tiebreak: ['id'] });
+  const { page, pageSize, applySort, resetPage } = table;
+  // Het statusfilter staat in de URL (`/medewerkers?status=ziek` is deelbaar). Via de
+  // tabel-hook, zodat filter én paginateller in één URL-update meegaan.
+  const [statusFilter, setStatusFilter] = table.filterParam<string>('status', 'all');
 
   const { data, isLoading } = useQuery({
-    queryKey: ['employees', search, statusFilter, page],
+    queryKey: ['employees', search, statusFilter, page, pageSize, table.sort.column, table.sort.direction],
     queryFn: async () => {
       let query = supabase.from('candidates').select(`
         *,
@@ -55,7 +73,8 @@ const Employees = () => {
       if (search) {
         query = query.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%`);
       }
-      query = query.order('created_at', { ascending: false }).range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+      // Sorteren gebeurt in de database, dus over de héle set — niet over de zichtbare pagina.
+      query = applySort(query).range(table.from, table.to);
 
       const { data, count, error } = await query;
       if (error) throw error;
@@ -66,7 +85,7 @@ const Employees = () => {
 
   const employees = data?.employees ?? [];
   const total = data?.total ?? 0;
-  const totalPages = Math.ceil(total / PAGE_SIZE);
+  const totalPages = Math.ceil(total / pageSize);
 
   return (
     <div className="space-y-6">
@@ -90,9 +109,10 @@ const Employees = () => {
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Zoek op naam..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} className="pl-9" />
+          <Input placeholder="Zoek op naam..." value={search} onChange={(e) => { setSearch(e.target.value); resetPage(); }} className="pl-9" />
         </div>
-        <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(0); }}>
+        {/* setStatusFilter zet zelf de paginateller terug (zie filterParam). */}
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-40"><SelectValue placeholder="Status" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Alle statussen</SelectItem>
@@ -116,16 +136,17 @@ const Employees = () => {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Naam</TableHead>
-                  <TableHead>Medewerkernr.</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Compliance</TableHead>
+                  <SortableTableHead column="name" sort={table.sort} onSort={table.toggleSort}>Naam</SortableTableHead>
+                  <SortableTableHead column="employee_number" sort={table.sort} onSort={table.toggleSort}>Medewerkernr.</SortableTableHead>
+                  <SortableTableHead column="employee_status" sort={table.sort} onSort={table.toggleSort}>Status</SortableTableHead>
+                  <SortableTableHead column="compliance_status" sort={table.sort} onSort={table.toggleSort}>Compliance</SortableTableHead>
+                  {/* Startdatum, Huisvesting en Actieve plaatsing zijn gejoind — zie SORT_COLUMNS. */}
                   <TableHead>Startdatum</TableHead>
                   <TableHead>Huisvesting</TableHead>
-                   <TableHead>Portaal</TableHead>
-                   <TableHead>Actieve plaatsing</TableHead>
-                 </TableRow>
-               </TableHeader>
+                  <TableHead>Portaal</TableHead>
+                  <TableHead>Actieve plaatsing</TableHead>
+                </TableRow>
+              </TableHeader>
               <TableBody>
                 {employees.map((c: any, i: number) => {
                   const hasHousing = (c.housing_assignments ?? []).some((h: any) => h.status === 'ingecheckt');
@@ -165,23 +186,13 @@ const Employees = () => {
             </Table>
           </div>
 
-          {totalPages > 1 && (
-            <Pagination>
-              <PaginationContent>
-                <PaginationItem>
-                  <PaginationPrevious onClick={() => setPage(Math.max(0, page - 1))} className={page === 0 ? 'pointer-events-none opacity-50' : 'cursor-pointer'} />
-                </PaginationItem>
-                {Array.from({ length: totalPages }, (_, i) => (
-                  <PaginationItem key={i}>
-                    <PaginationLink isActive={i === page} onClick={() => setPage(i)} className="cursor-pointer">{i + 1}</PaginationLink>
-                  </PaginationItem>
-                ))}
-                <PaginationItem>
-                  <PaginationNext onClick={() => setPage(Math.min(totalPages - 1, page + 1))} className={page >= totalPages - 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'} />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
-          )}
+          <TablePagination
+            page={page}
+            totalPages={totalPages}
+            onPageChange={table.setPage}
+            pageSize={pageSize}
+            onPageSizeChange={table.setPageSize}
+          />
         </>
       )}
     </div>

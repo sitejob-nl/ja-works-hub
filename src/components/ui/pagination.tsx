@@ -65,8 +65,13 @@ const PaginationNext = ({ className, ...props }: React.ComponentProps<typeof Pag
 );
 PaginationNext.displayName = "PaginationNext";
 
+// `relative` is geen opmaak: `sr-only` is position:absolute, en zonder gepositioneerde
+// voorouder is het containing block van dat spannetje het <html>-element. Onderaan een
+// lange lijst staat het dan buiten het viewport en maakt het hele document scrollbaar —
+// scrol je in <main> tot onderaan, dan scrolt daarna de complete shell (sidebar, topbar)
+// weg. Alleen lijsten met een ellipsis (> 7 pagina's) hadden daar last van.
 const PaginationEllipsis = ({ className, ...props }: React.ComponentProps<"span">) => (
-  <span aria-hidden className={cn("flex h-9 w-9 items-center justify-center", className)} {...props}>
+  <span aria-hidden className={cn("relative flex h-9 w-9 items-center justify-center", className)} {...props}>
     <MoreHorizontal className="h-4 w-4" />
     <span className="sr-only">Meer pagina's</span>
   </span>

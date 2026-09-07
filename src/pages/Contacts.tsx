@@ -11,7 +11,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { PhoneLink } from '@/components/ui/contact-links';
 import { MailButton } from '@/components/ui/mail-button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
+import SortableTableHead from '@/components/ui/sortable-table-head';
+import TablePagination from '@/components/ui/table-pagination';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -22,8 +23,21 @@ import { unwrap, unwrapList } from '@/lib/db';
 import { logAudit } from '@/lib/audit';
 import { toFriendlyError } from '@/lib/errorMessages';
 import { toast } from 'sonner';
+import { useTableControls } from '@/hooks/useTableControls';
+import type { SortableColumn, SortState } from '@/lib/table-sort';
 
-const PAGE_SIZE = 20;
+// Sorteerbaar zijn de kolommen die één-op-één een contactkolom tonen. 'Bedrijf' komt uit de
+// gejoinde opdrachtgever, maar dat is een to-one relatie en daar kan PostgREST de contacten
+// zelf op ordenen (`order=companies(name)`) — dus die gaat wél mee. Telefoon niet: een
+// nummer op volgorde zegt niemand iets.
+const SORT_COLUMNS: readonly SortableColumn[] = [
+  { key: 'full_name' },
+  { key: 'function_title' },
+  { key: 'company', orderBy: ['companies(name)'], value: (c: any) => c.companies?.name },
+  { key: 'email' },
+  { key: 'is_primary', defaultDirection: 'desc' },
+];
+const DEFAULT_SORT: SortState = { column: 'full_name', direction: 'asc' };
 
 const Contacts = () => {
   const orgId = useOrganizationId();
@@ -32,7 +46,16 @@ const Contacts = () => {
   const { role } = useAuth();
   const canDelete = role === 'admin';
   const [search, setSearch] = useState('');
-  const [page, setPage] = useState(0);
+  const table = useTableControls({
+    columns: SORT_COLUMNS,
+    defaultSort: DEFAULT_SORT,
+    // Deze lijst stond al op 20 rijen; dat blijft de default.
+    defaultPageSize: 20,
+    // Functie of bedrijf delen veel contacten; zonder vaste volgorde binnen zo'n groep kan
+    // .range() een contact op twee pagina's tegelijk zetten.
+    tiebreak: ['full_name', 'id'],
+  });
+  const { page, pageSize, applySort, resetPage } = table;
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingContact, setEditingContact] = useState<any>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -42,7 +65,7 @@ const Contacts = () => {
   const openEdit = (contact: any) => { setEditingContact(contact); setDialogOpen(true); };
 
   const { data, isLoading } = useQuery({
-    queryKey: ['all-contacts', orgId, search, page],
+    queryKey: ['all-contacts', orgId, search, page, pageSize, table.sort.column, table.sort.direction],
     queryFn: async () => {
       let query = supabase
         .from('company_contacts')
@@ -56,7 +79,8 @@ const Contacts = () => {
         query = query.or(`full_name.ilike.%${search}%,email.ilike.%${search}%,function_title.ilike.%${search}%`);
       }
 
-      query = query.order('full_name').range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+      // Sorteren gebeurt in de database, dus over de héle set — niet over de zichtbare pagina.
+      query = applySort(query).range(table.from, table.to);
 
       const { data, count, error } = await query;
       if (error) throw error;
@@ -66,7 +90,7 @@ const Contacts = () => {
 
   const contacts = data?.contacts ?? [];
   const total = data?.total ?? 0;
-  const totalPages = Math.ceil(total / PAGE_SIZE);
+  const totalPages = Math.ceil(total / pageSize);
   const allOnPageSelected = contacts.length > 0 && contacts.every((contact: any) => selected.has(contact.id));
 
   const toggleOne = (id: string) => {
@@ -155,7 +179,7 @@ const Contacts = () => {
           <Input
             placeholder="Zoek op naam, e-mail of functie..."
             value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+            onChange={(e) => { setSearch(e.target.value); resetPage(); }}
             className="pl-9"
           />
         </div>
@@ -224,12 +248,12 @@ const Contacts = () => {
                       />
                     </TableHead>
                   )}
-                  <TableHead>Naam</TableHead>
-                  <TableHead>Functie</TableHead>
-                  <TableHead>Bedrijf</TableHead>
+                  <SortableTableHead column="full_name" sort={table.sort} onSort={table.toggleSort}>Naam</SortableTableHead>
+                  <SortableTableHead column="function_title" sort={table.sort} onSort={table.toggleSort}>Functie</SortableTableHead>
+                  <SortableTableHead column="company" sort={table.sort} onSort={table.toggleSort}>Bedrijf</SortableTableHead>
                   <TableHead>Telefoon</TableHead>
-                  <TableHead>E-mail</TableHead>
-                  <TableHead>Primair</TableHead>
+                  <SortableTableHead column="email" sort={table.sort} onSort={table.toggleSort}>E-mail</SortableTableHead>
+                  <SortableTableHead column="is_primary" sort={table.sort} onSort={table.toggleSort}>Primair</SortableTableHead>
                   <TableHead className="w-12"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -294,23 +318,13 @@ const Contacts = () => {
             </Table>
           </div>
 
-          {totalPages > 1 && (
-            <Pagination>
-              <PaginationContent>
-                <PaginationItem>
-                  <PaginationPrevious onClick={() => setPage(Math.max(0, page - 1))} className={page === 0 ? 'pointer-events-none opacity-50' : 'cursor-pointer'} />
-                </PaginationItem>
-                {Array.from({ length: totalPages }, (_, i) => (
-                  <PaginationItem key={i}>
-                    <PaginationLink isActive={i === page} onClick={() => setPage(i)} className="cursor-pointer">{i + 1}</PaginationLink>
-                  </PaginationItem>
-                ))}
-                <PaginationItem>
-                  <PaginationNext onClick={() => setPage(Math.min(totalPages - 1, page + 1))} className={page >= totalPages - 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'} />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
-          )}
+          <TablePagination
+            page={page}
+            totalPages={totalPages}
+            onPageChange={table.setPage}
+            pageSize={pageSize}
+            onPageSizeChange={table.setPageSize}
+          />
         </>
       )}
 

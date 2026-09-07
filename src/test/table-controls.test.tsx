@@ -15,8 +15,11 @@ const DEFAULT_SORT: SortState = { column: 'license_plate', direction: 'asc' };
 type Harness = ReturnType<typeof useTableControls>;
 let controls: Harness;
 
-const Probe = ({ columns = COLUMNS }: { columns?: readonly SortableColumn[] }) => {
-  controls = useTableControls({ columns, defaultSort: DEFAULT_SORT, tiebreak: ['id'] });
+const Probe = ({
+  columns = COLUMNS,
+  defaultSort = DEFAULT_SORT,
+}: { columns?: readonly SortableColumn[]; defaultSort?: SortState }) => {
+  controls = useTableControls({ columns, defaultSort, tiebreak: ['id'] });
   const location = useLocation();
   return (
     <>
@@ -134,5 +137,47 @@ describe('useTableControls', () => {
   it('valt terug op de eerste zichtbare kolom als de default-kolom verborgen is', () => {
     setup('', [COLUMNS[1]]);
     expect(controls.sort).toEqual({ column: 'year', direction: 'desc' });
+  });
+
+  it('volgt een andere kolommenset met zijn eigen default (één hook, twee tabbladen)', () => {
+    // Kandidaten: het tabblad "Alle" sorteert server-side op created_at, "In dienst"
+    // client-side op startdatum. Dezelfde hook-instantie krijgt bij een tabwissel een
+    // andere kolommenset en default mee; een URL-sortering die het nieuwe tabblad niet
+    // kent, valt terug op de default van dát tabblad.
+    const inDienst: readonly SortableColumn[] = [{ key: 'name' }, { key: 'start_date', defaultDirection: 'desc' }];
+    const inDienstDefault: SortState = { column: 'start_date', direction: 'desc' };
+
+    const view = setup('?sort=year:asc');
+    expect(controls.sort).toEqual({ column: 'year', direction: 'asc' });
+
+    view.rerender(
+      <MemoryRouter initialEntries={['/kandidaten?sort=year:asc']}>
+        <Probe columns={inDienst} defaultSort={inDienstDefault} />
+      </MemoryRouter>,
+    );
+    expect(controls.sort).toEqual(inDienstDefault);
+
+    act(() => controls.toggleSort('name'));
+    expect(controls.sort).toEqual({ column: 'name', direction: 'asc' });
+    expect(url()).toContain('sort=name%3Aasc');
+  });
+
+  it('zet een URL-filter en de paginateller in één update terug', () => {
+    // Medewerkers/Vacatures/Plaatsingen/Uren dragen hun statusfilter in de URL. Het filter
+    // wijzigen én de pagina resetten moet één URL-update zijn: react-router chaint
+    // functionele setSearchParams-updaters niet, dus twee losse aanroepen (filter-hook +
+    // resetPage) in hetzelfde event overschrijven elkaar en de laatste wint.
+    setup('?page=3');
+    const [status, setStatus] = controls.filterParam<string>('status', 'all');
+    expect(status).toBe('all');
+
+    act(() => setStatus('actief'));
+    expect(url()).toBe('?status=actief');
+    expect(controls.page).toBe(0);
+    expect(controls.filterParam('status', 'all')[0]).toBe('actief');
+
+    // Terug naar de default haalt het filter weer uit de URL, net als useSearchParamState.
+    act(() => controls.filterParam('status', 'all')[1]('all'));
+    expect(url()).toBe('');
   });
 });

@@ -112,3 +112,29 @@ export async function ensureLoggedIn(page: Page): Promise<void> {
   // Geef de app-client even om de sessie te lezen; niet hard falen op trage redirects.
   await page.waitForLoadState("networkidle").catch(() => {});
 }
+
+/**
+ * Kiest een paginagrootte in de lijstvoettekst (`TablePagination`) zoals een gebruiker dat doet.
+ *
+ * De hoofdcontent van de app scrollt in een eigen container (`<main>`; `window.scrollY`
+ * blijft 0). Scroll er met het muiswiel naartoe in plaats van met Playwright's eigen
+ * auto-scroll: die zet `scrollTop` programmatisch, en de scroll-lock die Radix bij het
+ * openen van de dropdown aanzet draait dat terug. De voettekst springt dan alsnog buiten
+ * beeld en de optie is onklikbaar — een testartefact, niet iets wat een gebruiker raakt.
+ */
+export async function kiesPaginagrootte(page: Page, aantal: string): Promise<void> {
+  const trigger = page.getByLabel("Rijen per pagina");
+  // Altijd echt wielen — ook als de voettekst er al in beeld staat. Playwright kan er
+  // door een eerdere klik programmatisch naartoe gescrold zijn, en juist díé scrollpositie
+  // wordt bij het openen van de dropdown teruggedraaid.
+  await page.mouse.move(700, 400);
+  for (let i = 0; i < 15; i++) {
+    await page.mouse.wheel(0, 400);
+    await page.waitForTimeout(50);
+  }
+  await expect(trigger).toBeInViewport();
+  await trigger.click();
+  const optie = page.getByRole("option", { name: aantal, exact: true });
+  await expect(optie).toBeVisible();
+  await optie.click();
+}

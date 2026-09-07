@@ -11,7 +11,8 @@ import { EntityLink } from '@/components/ui/entity-link';
 import { PhoneLink } from '@/components/ui/contact-links';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
+import SortableTableHead from '@/components/ui/sortable-table-head';
+import TablePagination from '@/components/ui/table-pagination';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import ImportWizard from '@/components/import/ImportWizard';
 import { toast } from 'sonner';
@@ -20,8 +21,20 @@ import { toFriendlyError } from '@/lib/errorMessages';
 import { useAuth } from '@/contexts/AuthContext';
 import { logAudit } from '@/lib/audit';
 import { unwrap, unwrapList } from '@/lib/db';
+import { useTableControls } from '@/hooks/useTableControls';
+import type { SortableColumn, SortState } from '@/lib/table-sort';
 
-const PAGE_SIZE = 10;
+// Sorteerbaar zijn de kolommen die één-op-één een bedrijfskolom tonen. 'Primair contact'
+// komt uit een to-many join en 'Actieve plaatsingen' is een telling — daar kan de database
+// de opdrachtgevers niet op ordenen, dus die koppen blijven statisch. Telefoon ook: een
+// nummer op volgorde zegt niemand iets.
+const SORT_COLUMNS: readonly SortableColumn[] = [
+  { key: 'name' },
+  { key: 'address_city' },
+  // Eerste klik zet de actieve opdrachtgevers bovenaan.
+  { key: 'is_active', defaultDirection: 'desc' },
+];
+const DEFAULT_SORT: SortState = { column: 'name', direction: 'asc' };
 
 const Companies = () => {
   const navigate = useNavigate();
@@ -29,7 +42,14 @@ const Companies = () => {
   const { role } = useAuth();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [page, setPage] = useState(0);
+  const table = useTableControls({
+    columns: SORT_COLUMNS,
+    defaultSort: DEFAULT_SORT,
+    // Op stad of status delen veel opdrachtgevers dezelfde waarde; zonder vaste volgorde
+    // binnen zo'n groep kan .range() een bedrijf op twee pagina's tegelijk zetten.
+    tiebreak: ['name', 'id'],
+  });
+  const { page, pageSize, applySort, resetPage } = table;
   const [importOpen, setImportOpen] = useState(false);
   const [resyncOpen, setResyncOpen] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -134,7 +154,7 @@ const Companies = () => {
   });
 
   const { data, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['companies', search, statusFilter, page],
+    queryKey: ['companies', search, statusFilter, page, pageSize, table.sort.column, table.sort.direction],
     queryFn: async () => {
       let query = supabase
         .from('companies')
@@ -150,7 +170,8 @@ const Companies = () => {
       if (statusFilter === 'actief') query = query.eq('is_active', true);
       if (statusFilter === 'inactief') query = query.eq('is_active', false);
 
-      query = query.order('name').range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+      // Sorteren gebeurt in de database, dus over de héle set — niet over de zichtbare pagina.
+      query = applySort(query).range(table.from, table.to);
 
       const { data, count, error } = await query;
       if (error) throw error;
@@ -197,7 +218,7 @@ const Companies = () => {
 
   const companies = data?.companies ?? [];
   const total = data?.total ?? 0;
-  const totalPages = Math.ceil(total / PAGE_SIZE);
+  const totalPages = Math.ceil(total / pageSize);
 
   const allOnPageSelected = companies.length > 0 && companies.every((c: any) => selected.has(c.id));
   const toggleOne = (id: string) => {
@@ -264,9 +285,9 @@ const Companies = () => {
       <div className="flex items-center gap-3">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Zoek op naam of stad..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} className="pl-9" />
+          <Input placeholder="Zoek op naam of stad..." value={search} onChange={(e) => { setSearch(e.target.value); resetPage(); }} className="pl-9" />
         </div>
-        <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(0); }}>
+        <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); resetPage(); }}>
           <SelectTrigger className="w-36"><SelectValue placeholder="Status" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Alle</SelectItem>
@@ -341,11 +362,12 @@ const Companies = () => {
                       />
                     </TableHead>
                   )}
-                  <TableHead>Bedrijfsnaam</TableHead>
-                  <TableHead>Stad</TableHead>
+                  <SortableTableHead column="name" sort={table.sort} onSort={table.toggleSort}>Bedrijfsnaam</SortableTableHead>
+                  <SortableTableHead column="address_city" sort={table.sort} onSort={table.toggleSort}>Stad</SortableTableHead>
+                  {/* Primair contact en Actieve plaatsingen zijn gejoind resp. geteld — zie SORT_COLUMNS. */}
                   <TableHead>Primair contact</TableHead>
                   <TableHead>Telefoon</TableHead>
-                  <TableHead>Status</TableHead>
+                  <SortableTableHead column="is_active" sort={table.sort} onSort={table.toggleSort}>Status</SortableTableHead>
                   <TableHead className="text-right">Actieve plaatsingen</TableHead>
                 </TableRow>
               </TableHeader>
@@ -389,23 +411,13 @@ const Companies = () => {
             </Table>
           </div>
 
-          {totalPages > 1 && (
-            <Pagination>
-              <PaginationContent>
-                <PaginationItem>
-                  <PaginationPrevious onClick={() => setPage(Math.max(0, page - 1))} className={page === 0 ? 'pointer-events-none opacity-50' : 'cursor-pointer'} />
-                </PaginationItem>
-                {Array.from({ length: totalPages }, (_, i) => (
-                  <PaginationItem key={i}>
-                    <PaginationLink isActive={i === page} onClick={() => setPage(i)} className="cursor-pointer">{i + 1}</PaginationLink>
-                  </PaginationItem>
-                ))}
-                <PaginationItem>
-                  <PaginationNext onClick={() => setPage(Math.min(totalPages - 1, page + 1))} className={page >= totalPages - 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'} />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
-          )}
+          <TablePagination
+            page={page}
+            totalPages={totalPages}
+            onPageChange={table.setPage}
+            pageSize={pageSize}
+            onPageSizeChange={table.setPageSize}
+          />
         </>
       )}
 
