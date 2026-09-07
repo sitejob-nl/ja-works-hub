@@ -57,6 +57,21 @@ export async function unwrapDeleted(
   return deleted;
 }
 
+/** Een select-builder met `{ count: 'exact', head: true }`: levert alleen `count` op. */
+type CountLike = PromiseLike<{ count: number | null; error: PostgrestError | null }>;
+
+/**
+ * Count-variant: throwt op error en geeft het aantal terug (`null` wordt 0).
+ * Voor vooraf-checks vóór een onomkeerbare actie ("hangt er nog iets aan?"),
+ * zodat een call-site niet zelf `count ?? 0` hoeft te schrijven en de error
+ * niet per ongeluk als "niets gevonden" doorgaat.
+ */
+export async function unwrapCount(query: CountLike): Promise<number> {
+  const { count, error } = await query;
+  if (error) throw error;
+  return count ?? 0;
+}
+
 /**
  * Turn an unknown error into a single, consistent Dutch toast.
  * Centralizes the duplicated `toast.error(err.message)` handling across the app.

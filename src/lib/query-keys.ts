@@ -67,6 +67,8 @@ export const qk = {
     hourTypes: (placementId: string) => ['placement-hour-types', placementId] as const,
     travelTypes: (placementId: string) => ['placement-travel-types', placementId] as const,
     allowances: (placementId: string) => ['placement-allowances', placementId] as const,
+    /** Vooraf-check vóór verwijderen: wat er nog aan de plaatsing hangt. */
+    deleteImpact: (placementId: string) => ['placement-delete-impact', placementId] as const,
   },
   regulations: {
     list: (orgId: string) => ['regulations', orgId] as const,

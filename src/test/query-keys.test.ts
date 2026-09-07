@@ -35,6 +35,7 @@ describe('qk.placements', () => {
     expect(qk.placements.hourTypes('p1')).toEqual(['placement-hour-types', 'p1']);
     expect(qk.placements.travelTypes('p1')).toEqual(['placement-travel-types', 'p1']);
     expect(qk.placements.allowances('p1')).toEqual(['placement-allowances', 'p1']);
+    expect(qk.placements.deleteImpact('p1')).toEqual(['placement-delete-impact', 'p1']);
   });
 });
 
