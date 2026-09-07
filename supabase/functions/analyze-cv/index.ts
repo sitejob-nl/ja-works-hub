@@ -5,10 +5,10 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireRolePermission } from "../_shared/auth.ts";
+import { AiAccountingError } from "../_shared/ai-accounting.ts";
 import { pseudonymizeCv } from "../_shared/cv-pseudonymize.ts";
-import { calculateCostCents } from "../_shared/anthropic-cv.ts";
-import { analyzeWithGemini, GEMINI_DEFAULT_MODEL, geminiPricingForModel } from "../_shared/gemini-cv.ts";
-import { logAiUsage, writeCvAnalysisToCandidate } from "../_shared/cv-write.ts";
+import { analyzeWithGemini, GEMINI_DEFAULT_MODEL } from "../_shared/gemini-cv.ts";
+import { writeCvAnalysisToCandidate } from "../_shared/cv-write.ts";
 import { sanitizeOrgPrompt } from "../_shared/sanitize-org-prompt.ts";
 import { buildCandidateDossier } from "../_shared/candidate-dossier.ts";
 
@@ -17,11 +17,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
-
-// Pre-flight reservering: een analyse wordt geweigerd als saldo < dit bedrag.
-// Gemini is met de maxOutputTokens-cap ~1 cent/dossier, dus een lage drempel volstaat
-// en blokkeert orgs met klein saldo niet onnodig.
-const GEMINI_PREFLIGHT_RESERVATION_CENTS = 5;
 
 // Max bestandsgrootte die we als VISION-input naar Gemini sturen. Boven dit punt slaan
 // we het bestand over (Gemini-payloadlimiet + kosten). 10 MB.
@@ -262,31 +257,6 @@ Deno.serve(async (req) => {
         );
       }
 
-      // Pre-flight: saldo checken
-      const { data: credits } = await admin
-        .from("organization_credits")
-        .select("balance_cents")
-        .eq("organization_id", orgId)
-        .single();
-
-      const balance = credits?.balance_cents ?? 0;
-      const geminiPricing = geminiPricingForModel(geminiModel);
-      const pricingIn = geminiPricing.inputCentsPerMtok;
-      const pricingOut = geminiPricing.outputCentsPerMtok;
-      const reservationCents = GEMINI_PREFLIGHT_RESERVATION_CENTS;
-
-      if (balance < reservationCents) {
-        await admin.from("candidates").update({ ai_status: null }).eq("id", candidate_id);
-        return jsonResponse(
-          {
-            error: "Saldo onvoldoende voor AI-analyse",
-            balance_cents: balance,
-            required_cents: reservationCents,
-          },
-          402,
-        );
-      }
-
       // VISION: gescand/foto-CV (of tekstloze PDF) als inline bestand meesturen naar Gemini.
       const visionParts = await loadVisionFileParts(admin, dossier.visionFile);
 
@@ -298,8 +268,14 @@ Deno.serve(async (req) => {
           apiKey,
           promptAddendum,
           { model: geminiModel, fileParts: visionParts.length > 0 ? visionParts : undefined },
+          { admin, organizationId: orgId, userId: user.id, feature: "cv_analysis", candidateId: candidate_id },
         );
       } catch (e) {
+        if (e instanceof AiAccountingError) {
+          await admin.from("candidates").update({ ai_status: e.status === 402 ? null : "failed" })
+            .eq("id", candidate_id).eq("organization_id", orgId);
+          return jsonResponse({ error: e.message, code: e.code, request_id: e.requestId, cost_cents: e.costCents, balance_cents: e.balanceCents }, e.status);
+        }
         const msg = (e as Error).message;
         console.error(`[analyze-cv] Gemini-call mislukt:`, msg);
         await admin.from("candidates").update({ ai_status: "failed" }).eq("id", candidate_id);
@@ -315,40 +291,6 @@ Deno.serve(async (req) => {
         );
       }
 
-      const costCents = calculateCostCents(
-        result.inputTokens,
-        result.outputTokens,
-        pricingIn,
-        pricingOut,
-      );
-
-      // Atomic decrement via RPC (race-safe met SELECT FOR UPDATE)
-      const { data: consumeResult, error: consumeErr } = await admin.rpc("consume_ai_credits", {
-        p_org_id: orgId,
-        p_amount_cents: costCents,
-      });
-
-      if (consumeErr) {
-        console.error("[analyze-cv] consume_ai_credits RPC fout:", consumeErr);
-        await admin.from("candidates").update({ ai_status: "failed" }).eq("id", candidate_id);
-        return jsonResponse({ error: "Saldo-afschrijving mislukt" }, 500);
-      }
-
-      // RPC returnt array van { ok, new_balance_cents }
-      const consume = Array.isArray(consumeResult) ? consumeResult[0] : consumeResult;
-      if (!consume?.ok) {
-        // Race: saldo viel in de tussentijd onder kosten. Niets afschrijven, niets schrijven.
-        await admin.from("candidates").update({ ai_status: null }).eq("id", candidate_id);
-        return jsonResponse(
-          {
-            error: "Saldo onvoldoende — analyse niet doorgegaan, geen kosten in rekening gebracht",
-            balance_cents: consume?.new_balance_cents ?? 0,
-            required_cents: costCents,
-          },
-          402,
-        );
-      }
-
       // Schrijf resultaat naar candidate. dossierText = exact de (gepseudonimiseerde) tekst
       // die het model zag → grounding-filter verifieert bewijsfragmenten daartegen.
       await writeCvAnalysisToCandidate(admin, candidate_id, orgId, result.analysis, {
@@ -358,19 +300,7 @@ Deno.serve(async (req) => {
       // Geef het geanalyseerde (CV-)document meteen een nette naam + type 'cv'.
       await relabelSelectedCvDocument(admin, orgId, candidate, dossier.selectedDocument);
 
-      // Audit + usage-log
-      await logAiUsage(admin, {
-        organization_id: orgId,
-        user_id: user.id,
-        provider,
-        model: result.model,
-        input_tokens: result.inputTokens,
-        output_tokens: result.outputTokens,
-        cost_cents: costCents,
-        candidate_id,
-        duration_ms: result.durationMs,
-      });
-
+      // De provider-aanroep staat al in het AI-grootboek; deze audit beschrijft de domeinwijziging.
       await admin.from("audit_log").insert({
         organization_id: orgId,
         user_id: user.id,
@@ -383,7 +313,7 @@ Deno.serve(async (req) => {
           model: result.model,
           tokens_in: result.inputTokens,
           tokens_out: result.outputTokens,
-          cost_cents: costCents,
+          cost_cents: result.costCents,
           duration_ms: result.durationMs,
           dossier_meta: {
             selected_document: dossier.selectedDocument,
@@ -401,8 +331,9 @@ Deno.serve(async (req) => {
           provider,
           model: result.model,
           candidate_id,
-          balance_cents: consume.new_balance_cents,
-          cost_cents: costCents,
+          balance_cents: result.balanceCents,
+          request_id: result.requestId,
+          cost_cents: result.costCents,
           duration_ms: result.durationMs,
           dossier_meta: {
             selected_document: dossier.selectedDocument,

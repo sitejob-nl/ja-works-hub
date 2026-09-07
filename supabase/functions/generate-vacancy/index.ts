@@ -7,18 +7,17 @@
 //
 // Auth: interne gebruiker met vacancies.edit (admin/intercedent). Verrijking gebeurt
 // via de service-role admin-client; RLS wordt daarnaast defensief gecheckt op org.
-// Billing: preflight saldo → LLM → consume_ai_credits → upsert → ai_usage_log.
+// Billing: reserveren → provider-aanroep → atomair afrekenen en loggen → domeinoutput opslaan.
 
 import {
   createAdminClient,
   jsonResponse,
   requireRolePermission,
 } from "../_shared/auth.ts";
+import { AiAccountingError } from "../_shared/ai-accounting.ts";
 import { sanitizeOrgPrompt, VACANCY_PROMPT_MAX_LENGTH } from "../_shared/sanitize-org-prompt.ts";
 import { stripMarkdownInline } from "../_shared/rich-text.ts";
 import {
-  anthropicPricingForModel,
-  calculateCostCents,
   generateVacancyContent,
   VACANCY_DEFAULT_MODEL,
   type VacancyAnswers,
@@ -29,9 +28,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
-
-// Sonnet is duurder dan Gemini/Haiku; reserveer ruimer bij de preflight (idem cloud-pad).
-const PREFLIGHT_RESERVATION_CENTS = 25;
 
 function json(body: unknown, status = 200) {
   return jsonResponse(body, status, corsHeaders);
@@ -109,39 +105,16 @@ Deno.serve(async (req: Request) => {
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!apiKey) return json({ error: "AI-provider niet geconfigureerd (ANTHROPIC_API_KEY ontbreekt)" }, 500);
 
-  // --- Credits preflight (niet markeren → retry na bijladen) ---
-  const { data: credits } = await admin
-    .from("organization_credits")
-    .select("balance_cents")
-    .eq("organization_id", orgId)
-    .maybeSingle();
-  const balance = credits?.balance_cents ?? 0;
-  if (balance < PREFLIGHT_RESERVATION_CENTS) {
-    return json({ error: "Saldo onvoldoende voor AI-generatie", balance_cents: balance, required_cents: PREFLIGHT_RESERVATION_CENTS }, 402);
-  }
-
   // --- LLM ---
   let result;
   try {
     result = await generateVacancyContent(answers, apiKey, {
       masterprompt: sanitized.text || undefined,
       model,
-    });
+    }, { admin, organizationId: orgId, userId, feature: "vacancy_generate", candidateId: null });
   } catch (e) {
+    if (e instanceof AiAccountingError) return json({ error: e.message, code: e.code, request_id: e.requestId, cost_cents: e.costCents, balance_cents: e.balanceCents }, e.status);
     return json({ error: `AI-generatie mislukt: ${(e as Error).message.slice(0, 300)}` }, 502);
-  }
-
-  // --- Kosten + afschrijven ---
-  const pricing = anthropicPricingForModel(result.model);
-  const costCents = calculateCostCents(result.inputTokens, result.outputTokens, pricing.inputCentsPerMtok, pricing.outputCentsPerMtok);
-  const { data: consumeResult, error: consumeErr } = await admin.rpc("consume_ai_credits", {
-    p_org_id: orgId,
-    p_amount_cents: costCents,
-  });
-  if (consumeErr) return json({ error: `Saldo-afschrijving mislukt: ${consumeErr.message}` }, 500);
-  const consume = Array.isArray(consumeResult) ? consumeResult[0] : consumeResult;
-  if (!consume?.ok) {
-    return json({ error: "Saldo onvoldoende — generatie niet opgeslagen, geen kosten in rekening gebracht", balance_cents: consume?.new_balance_cents ?? 0, required_cents: costCents }, 402);
   }
 
   // --- Output splitsen: eerste-klas tekstvelden vs content jsonb ---
@@ -194,30 +167,13 @@ Deno.serve(async (req: Request) => {
     if (descErr) console.error("candidate_description opslaan mislukt:", descErr.message);
   }
 
-  // --- Usage-log (best-effort) ---
-  try {
-    await admin.from("ai_usage_log").insert({
-      feature: "vacancy_generate",
-      organization_id: orgId,
-      user_id: userId,
-      provider: "cloud",
-      model: result.model,
-      input_tokens: result.inputTokens,
-      output_tokens: result.outputTokens,
-      cost_cents: costCents,
-      candidate_id: null,
-      duration_ms: result.durationMs,
-    });
-  } catch (_e) {
-    // usage-log mag de flow nooit breken
-  }
-
   return json({
     success: true,
     result: {
       status: "ok",
-      cost_cents: costCents,
-      new_balance_cents: consume.new_balance_cents,
+      cost_cents: result.costCents,
+      new_balance_cents: result.balanceCents,
+      request_id: result.requestId,
       generated_at: generatedAt,
       model: result.model,
       content: c,

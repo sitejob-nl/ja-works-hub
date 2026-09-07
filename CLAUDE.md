@@ -186,7 +186,7 @@ Database triggers encrypt sensitive fields (BSN, IBAN, webhook secrets, access t
 - **Compliance & Config**: `compliance_rules`, `regulations`, `regulation_acknowledgements`, `contract_templates`, `termination_reasons`, `knowledge_base`.
 - **Org & Users**: `organizations`, `profiles`, `superadmins`, `subscription_plans`, `organization_modules`, `portal_invites`.
 - **External Integration**: `exact_config`, `external_mappings`, `job_listings`, `job_import_logs`, `people_search_results`.
-- **Logging & System**: `audit_log`, `client_errors`, `rate_limit_tracking`, `recruiter_tasks`, `notes`, `talentpools`, `talentpool_members`, `ai_usage_log` (append-only, provider CHECK vps|cloud|gemini), `organization_credits` (1:1 org, alleen via SECURITY DEFINER RPC's), `match_response_attempts` (service-role-only throttle voor publieke token-endpoints).
+- **Logging & System**: `audit_log`, `client_errors`, `rate_limit_tracking`, `recruiter_tasks`, `notes`, `talentpools`, `talentpool_members`, `ai_usage_log` (append-only verbruik), `ai_requests` (reservering en provideruitkomst), `ai_credit_ledger` (onveranderlijke boekingen), `organization_credits` (1:1 org, alleen via SECURITY DEFINER RPC's), `match_response_attempts` (service-role-only throttle voor publieke token-endpoints).
 
 ### Encrypted columns (never SELECT directly)
 
@@ -345,14 +345,14 @@ Canonical in [src/integrations/supabase/types.ts](src/integrations/supabase/type
 | `rank-candidates` | Rangschikt de hele kandidatenpool voor één vacature (shortlist "Beste kandidaten") |
 | `rank-vacancies` | **Reverse matching**: rangschikt alle open vacatures voor één kandidaat (tab "Vacatures" op het dossier) |
 | `enrich-vacancies` | **AI-skillverrijking** (Gemini): kent `required_skills` toe uit de volledige vacaturetekst, uitsluitend uit de actieve org-skillcatalogus. Batch (admin/superadmin/service) óf single (`vacancy_id`, RLS eigen-org elke rol). Idempotent via `skills_enriched_at`-cursor |
-| `rerank-matches` | **Stage-2 Gemini-rerank** van de shortlist-top-N: vacaturetekst (incl. `vacancy_seo_content.body_markdown` indien aanwezig) × compact kandidaatdossier → fit-score + onderbouwing ("Waarom?"). Cache in `match_rerank_cache` op `input_hash` (model+vacaturetekst+dossier); credits via `consume_ai_credits` |
+| `rerank-matches` | **Stage-2 Gemini-rerank** van de shortlist-top-N: vacaturetekst × compact kandidaatdossier → fit-score + onderbouwing. Cache in `match_rerank_cache` op `input_hash`; centrale AI-accounting, cachehits gratis |
 
 **AI**
 | Function | Purpose |
 |----------|---------|
 | `cv-rewrite` | AI-powered CV improvement |
-| `generate-vacancy` | **AI-vacaturetekstgenerator** (Claude Sonnet, `claude-sonnet-5`): 16 masterprompt-antwoorden → complete SEO-set, upsert in `vacancy_seo_content`. Auth `vacancies.edit`; billing via `consume_ai_credits` + `ai_usage_log` (feature `vacancy_generate`) |
-| `analyze-cv` | Submit kandidaatdossier for LLM analysis via VPS or Cloud. Builds dossier from CV/document text, profile and internal context; pseudonimiseert naam/email/tel/BSN/IBAN vóór verzending |
+| `generate-vacancy` | **AI-vacaturetekstgenerator** (Claude Sonnet, `claude-sonnet-5`): 16 masterprompt-antwoorden → complete SEO-set, upsert in `vacancy_seo_content`. Auth `vacancies.edit`; centrale AI-accounting (feature `vacancy_generate`) |
+| `analyze-cv` | Analyseert kandidaatdossier via Gemini. Builds dossier from CV/document text, profile and internal context; pseudonimiseert naam/email/tel/BSN/IBAN vóór verzending |
 | `analyze-cv-callback` | Receive async CV analysis results from LLM VPS |
 | `analyze-cv-batch` | **Backfill** voor bestaande kandidaten: select document/CV + notes/context → pseudonimiseer dossier → VPS. Superadmin-auth, throttle 1.5s/dossier |
 | `refresh-talentpool-members` | **Dynamische talentpools**: past `filter_criteria` toe + diff vs huidige leden. Single-mode (user-JWT) of cron-mode (`x-cron-secret`) |
@@ -412,7 +412,13 @@ Similar to WhatsApp — tenant registration via SiteJob Connect → OAuth popup 
 
 **UI:** `src/pages/ExactOnline.tsx`, `src/components/settings/ExactOnlineSettings.tsx`
 
-### AI / LLM — Candidate dossier analysis via VPS + optional Cloud
+### AI / LLM — Gemini-screening en centrale creditregistratie
+
+Alle elf betaalde AI-endpoints gebruiken `_shared/ai-accounting.ts`. Deze reserveert vooraf en rekent
+atomair af via `ai_requests`, `ai_usage_log` en `ai_credit_ledger`. Gebruik geen losse
+`consume_ai_credits`/`logAiUsage`-combinatie in nieuwe code. JA Werkt krijgt vanaf september 2026 elke
+Nederlandse kalendermaand €50 erbij; ongebruikt saldo blijft staan. Andere organisaties hebben standaard
+geen maandtoelage. Zie [docs/ai-accounting.md](docs/ai-accounting.md) en het bijbehorende databasecontract.
 
 **Edge functions:** `analyze-cv`, `analyze-cv-callback`, `analyze-cv-batch`
 
@@ -421,9 +427,9 @@ Similar to WhatsApp — tenant registration via SiteJob Connect → OAuth popup 
 2. Edge helper `_shared/candidate-dossier.ts` builds a server-side dossier from explicit CV text or best matching document, plus profile fields, internal notes, communication notes, placements and employment context.
 3. Server-side sanitization strips prompt-injection phrases and wraps the dossier as data.
 4. **AVG-pseudonimisering** (`_shared/cv-pseudonymize.ts`): naam → `[KANDIDAAT]`, emails → `[EMAIL]`, NL-telefoon → `[TELEFOON]`, BSN met 11-proef → `[BSN]`, IBAN → `[IBAN]`. Counts in `cv_pseudonymization_meta`.
-5. Provider-keuze: request override → `organizations.settings.cv_ai_provider` → default `vps`. Org prompt lives in `organizations.settings.candidate_analysis_prompt`; legacy `cv_prompt_addendum` is still read/written for compatibility.
-6. **VPS-pad:** dossier capped at ~28k chars, sent to `{OLLAMA_BASE_URL}/analyze` with `system_prompt`, JSON schema and callback URL. Current request remains backwards compatible via `cv_text`.
-7. **Cloud-pad:** Anthropic Claude Haiku 4.5 via `ANTHROPIC_API_KEY`, synchroon, met gesanitized org prompt, tool-schema output en credit-afschrijving via `consume_ai_credits`.
+5. Screening gebruikt uitsluitend Gemini. Model: request override → `organizations.settings.cv_ai_model` → omgeving → helperdefault. Org prompt lives in `organizations.settings.candidate_analysis_prompt`; legacy `cv_prompt_addendum` remains compatible.
+6. Gemini kan gescande PDF's en afbeeldingen meenemen; de centrale transportlaag telt beeldtokens vóór reservering. Broninhoud komt niet in de creditadministratie.
+7. Het lokale Qwen-model is uitgefaseerd. Het oude callback-endpoint blijft alleen voor legacy afhandeling; batchselectie `vps` retourneert 410. Batch ondersteunt Gemini en expliciet Anthropic (`cloud`).
 8. Results in candidate: `ai_analysis`, `ai_status`, `ai_reliability_score`, `ai_function_group`, `ai_classification`, `ai_red_flags`, etc. New schema includes `dossier`, `manual_review_required`, `contra_indicaties` and `bronverwijzingen`.
 9. **Hard-skill grounding (anti-hallucinatie):** het model levert `competenties.hard_skills` als objecten `{vaardigheid, bron, bewijs}`; `_shared/cv-write.ts → resolveHardSkills(raw, dossierText)` behoudt alléén skills waarvan het letterlijke bewijscitaat in het dossier voorkomt en collapse't terug naar `string[]` (UI/matcher ongewijzigd). Zonder dossiertekst of bij legacy/VPS-strings: ongefilterd behouden (back-compat). Voorkomt dat de matcher op verzonnen vakvaardigheden scoort.
 
@@ -431,10 +437,10 @@ Similar to WhatsApp — tenant registration via SiteJob Connect → OAuth popup 
 - UI in `/superadmin/cv-backfill` (alleen superadmins), now labelled AI Dossier Backfill.
 - Selects candidates with `ai_status` null/idle (and failed if requested), not only candidates with `cv_file_url`.
 - Chooses the best text document from `candidate.cv_file_url` or `documents` (`type=cv`, CV-like filename, recency), then adds internal notes/context.
-- Text extraction in the edge function supports PDF, DOCX, ODT, RTF, TXT and heuristic legacy DOC; image-only files are flagged but not OCRed server-side.
-- Throttle 1.5s/dossier. Max batch 25. Optie: mislukten opnieuw proberen.
+- Text extraction supports PDF, DOCX, ODT, RTF, TXT and heuristic legacy DOC; Gemini can also inspect selected image/PDF sources.
+- Batch default 25, maximaal 50 per selectie, concurrency 4. Expliciete totaalgrenzen blijven bij deadlines gehandhaafd; onzekere afrekening stopt vervolgverwerking.
 
-**LLM:** code-default is de VPS (Qwen3-14B via `OLLAMA_BASE_URL` + `OLLAMA_API_KEY`), maar in de praktijk draait CV-analyse via **Gemini** (org-setting `cv_ai_provider`); Cloud-pad via Anthropic (`ANTHROPIC_API_KEY`). Vacaturetekst-generatie (`generate-vacancy`) gebruikt **Claude Sonnet**. Alle betaalde paden schrijven af van het €50-starterbudget in `organization_credits` (`consume_ai_credits`) en loggen in `ai_usage_log`.
+**LLM:** Gemini voor screening, skills en rerank; Anthropic Claude Sonnet voor vacatureteksten. CV herschrijven, recruiterprioriteiten en urencontrole gebruiken de bestaande Lovable-gateway; Exa-zoekopdrachten worden eveneens centraal gemeterd. Providerkosten in USD staan apart van afgeronde klantcredits. Onbekende kosten blijven zichtbaar gereserveerd.
 
 **UI:** `src/components/candidates/tabs/CandidateAiTab.tsx` (realtime via Supabase channel) + `src/components/settings/AiCvProviderSettings.tsx` + `src/pages/superadmin/SuperAdminCvBackfill.tsx`
 
@@ -697,14 +703,14 @@ const { data: { user } } = await supabaseClient.auth.getUser(authHeader.replace(
 ### Integrations
 - WhatsApp: full code but not tested with real Meta credentials
 - Exact Online: depends on SiteJob Connect service
-- AI dossier analysis: UI has OCR for PDFs/images; server batch does not OCR image-only files. Prompt-injection sanitization + **server-side AVG-pseudonimisering actief**.
+- AI dossier analysis: UI has OCR for PDFs/images; Gemini can inspect selected PDF/image sources server-side. Prompt-injection sanitization + **server-side AVG-pseudonimisering actief**.
 
 ### Hardcoded Values
 - SiteJob Connect URLs hardcoded in edge functions
 - Meta Graph API version: `v25.0`
 - AI dossier cap: ~28.000 chars; selected document/CV text cap: ~16.000 chars
 - Campaign batch size: 50 recipients
-- AI dossier batch throttle: 1500 ms/dossier, max 25 per call
+- AI dossier batch: default 25, max 50 per selectie, concurrency 4
 
 ### Open gaps & roadmap
 
@@ -769,4 +775,4 @@ npx supabase gen types typescript --project-id noaupcteygfvlyymqtew > src/integr
 - **Client:** JA Werkt, Jeroen Adriaans, Mierlo
 - **Supabase project ID:** `noaupcteygfvlyymqtew`
 - **GitHub repo:** `sitejob-nl/ja-works-hub`
-- **LLM infra:** Hetzner VPS (Qwen3-14B via Ollama) als code-default; in de praktijk Gemini voor CV-analyse/skills/rerank en Anthropic Claude Sonnet voor vacaturetekst-generatie, met per-org credits
+- **LLM infra:** Gemini voor CV-analyse/skills/rerank en Anthropic Claude Sonnet voor vacatureteksten; centrale reserveringen en per-org creditboekingen. Qwen is uitgefaseerd; documentvoorbewerking op de JA Werkt-VPS staat hiervan los.

@@ -1,3 +1,4 @@
+import { AiAccountingError, meteredAiFetch } from "../_shared/ai-accounting.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireRolePermission } from "../_shared/auth.ts";
 
@@ -96,8 +97,13 @@ Deno.serve(async (req) => {
       highlightsPerUrl = 3,
     } = await req.json();
 
-    if (!query || typeof query !== "string") {
-      return new Response(JSON.stringify({ error: "query is required" }), {
+    if (!query || typeof query !== "string" || query.length > 10000
+      || typeof numResults !== "number" || !Number.isFinite(numResults)
+      || typeof maxCharacters !== "number" || !Number.isFinite(maxCharacters)
+      || typeof numSentences !== "number" || !Number.isFinite(numSentences)
+      || typeof highlightsPerUrl !== "number" || !Number.isFinite(highlightsPerUrl)
+      || (highlightsQuery != null && (typeof highlightsQuery !== "string" || highlightsQuery.length > 10000))) {
+      return new Response(JSON.stringify({ error: "Ongeldige zoekopdracht of zoeklimieten." }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -112,7 +118,7 @@ Deno.serve(async (req) => {
     }
 
     // Request 1.5x results to compensate for vacancy filtering
-    const requestedResults = Math.min(Math.max(numResults, 5), 100);
+    const requestedResults = Math.min(Math.max(Math.floor(numResults), 5), 100);
     const overFetchResults = Math.min(Math.ceil(requestedResults * 1.5), 100);
 
     // Build Exa request
@@ -142,15 +148,25 @@ Deno.serve(async (req) => {
       exaBody.contents = contents;
     }
 
-    console.log("Calling Exa API with body:", JSON.stringify(exaBody));
+    const adminClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
 
-    const exaRes = await fetch("https://api.exa.ai/search", {
-      method: "POST",
+    const { response: exaRes } = await meteredAiFetch({
+      admin: adminClient,
+      organizationId,
+      userId: auth.userId,
+      feature: "people_search",
+    }, {
+      provider: "exa",
+      model: "exa-search",
+      url: "https://api.exa.ai/search",
       headers: {
         "x-api-key": EXA_API_KEY,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(exaBody),
+      body: exaBody,
     });
 
     if (!exaRes.ok) {
@@ -173,12 +189,6 @@ Deno.serve(async (req) => {
     const results = filteredResults.slice(0, requestedResults);
 
     console.log(`Exa returned ${allResults.length} results, filtered ${filteredCount} vacancies, keeping ${results.length}`);
-
-    // Use service role for upserts
-    const adminClient = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
 
     let newCount = 0;
     const mappedResults = results.map((r: Record<string, unknown>) => ({
@@ -224,6 +234,12 @@ Deno.serve(async (req) => {
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
+    if (err instanceof AiAccountingError) {
+      return new Response(JSON.stringify({ error: err.message, code: err.code }), {
+        status: err.status,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     console.error("Edge function error:", err);
     return new Response(
       JSON.stringify({ error: err instanceof Error ? err.message : "Unknown error" }),

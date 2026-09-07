@@ -14,11 +14,11 @@
 // (zodat na bijladen verder gegaan kan worden).
 //
 // Auth: org-admin (eigen org), superadmin (org via body) of service-role (self-trigger).
-// dry_run = berekenen + sample, niets wegschrijven/markeren.
+// dry_run = berekenen + sample zonder vacaturewijzigingen; echte AI-aanroepen worden wel afgerekend.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { calculateCostCents } from "../_shared/anthropic-cv.ts";
-import { GEMINI_DEFAULT_MODEL, geminiPricingForModel } from "../_shared/gemini-cv.ts";
+import { AiAccountingError } from "../_shared/ai-accounting.ts";
+import { GEMINI_DEFAULT_MODEL } from "../_shared/gemini-cv.ts";
 import { extractVacancySkills } from "../_shared/gemini-vacancy.ts";
 import { internalFunctionHeaders, isServiceRoleRequest, requireRolePermission } from "../_shared/auth.ts";
 
@@ -30,13 +30,9 @@ const corsHeaders = {
 
 const DEFAULT_BATCH_SIZE = 25;
 const MAX_BATCH_SIZE = 50;
-// Lichte concurrency. De preflight-saldocheck is per vacature (niet over de chunk), dus op
-// de saldo-rand kunnen tot CONCURRENCY-1 betaalde Gemini-calls plaatsvinden zonder dat er
-// krediet voor wordt afgeschreven. consume_ai_credits is race-safe (FOR UPDATE) → geen
-// overdraft; de marge van enkele centen is bewust geaccepteerd (idem analyze-cv-batch).
+// Parallelle provider-aanroepen reserveren hun kosten vooraf atomair.
 const CONCURRENCY = 4;
 const SOFT_DEADLINE_MS = 70_000;
-const PREFLIGHT_RESERVATION_CENTS = 5;
 
 // deno-lint-ignore no-explicit-any
 type Admin = any;
@@ -61,14 +57,16 @@ interface VacResult {
   reason?: string;
   cost_cents?: number;
   stop?: boolean;
+  stop_code?: string;
+  http_status?: number;
+  request_id?: string;
+  cost_pending?: boolean;
 }
 
 interface Ctx {
   apiKey: string;
   model: string;
   catalogue: string[];
-  pricingIn: number;
-  pricingOut: number;
   userId: string | null;
   dryRun: boolean;
 }
@@ -90,50 +88,39 @@ async function processVacancy(admin: Admin, v: VacRow, ctx: Ctx): Promise<VacRes
     return { vacancy_id: v.id, status: "skipped", reason: "geen bruikbare vacaturetekst (titel leeg)" };
   }
 
-  if (!ctx.dryRun) {
-    const { data: credits } = await admin.from("organization_credits").select("balance_cents").eq("organization_id", v.organization_id).single();
-    if ((credits?.balance_cents ?? 0) < PREFLIGHT_RESERVATION_CENTS) {
-      return { vacancy_id: v.id, status: "failed", reason: "saldo onvoldoende", stop: true }; // NIET marken → retry na bijladen
-    }
-  }
-
   let res;
   try {
-    res = await extractVacancySkills(text, ctx.catalogue, ctx.apiKey, ctx.model);
+    res = await extractVacancySkills(text, ctx.catalogue, ctx.apiKey, ctx.model, {
+      admin, organizationId: v.organization_id, userId: ctx.userId, feature: "vacancy_skills", candidateId: null,
+    });
   } catch (e) {
-    await mark(); // markeer mislukte zodat de keten niet blijft hangen; reset om te retryen
-    return { vacancy_id: v.id, status: "failed", reason: (e as Error).message.slice(0, 200) };
+    const usage = e as Error & { costCents?: number; requestId?: string; providerAttempted?: boolean };
+    const accountingError = e instanceof AiAccountingError;
+    // Een saldo-/registratieblokkade beëindigt de keten; niet vanzelf opnieuw proberen.
+    if (!accountingError) await mark();
+    return {
+      vacancy_id: v.id, status: "failed", reason: usage.message.slice(0, 200),
+      stop: accountingError, stop_code: accountingError ? e.code : undefined,
+      http_status: accountingError ? e.status : 502,
+      cost_cents: usage.costCents, request_id: usage.requestId,
+      cost_pending: usage.providerAttempted === true && usage.costCents === undefined,
+    };
   }
 
-  const costCents = calculateCostCents(res.inputTokens, res.outputTokens, ctx.pricingIn, ctx.pricingOut);
+  const costCents = res.costCents;
   const out: VacResult = {
     vacancy_id: v.id, status: "done", required_skills: res.requiredSkills,
     detected_certifications: res.requiredCertifications, requires_drivers_license: res.requiresDriversLicense,
-    cost_cents: costCents,
+    cost_cents: costCents, request_id: res.requestId,
   };
   if (ctx.dryRun) return out;
-
-  const { data: consumeResult, error: consumeErr } = await admin.rpc("consume_ai_credits", {
-    p_org_id: v.organization_id, p_amount_cents: costCents,
-  });
-  if (consumeErr) { await mark(); return { vacancy_id: v.id, status: "failed", reason: `credits: ${consumeErr.message}` }; }
-  const consume = Array.isArray(consumeResult) ? consumeResult[0] : consumeResult;
-  if (!consume?.ok) return { vacancy_id: v.id, status: "failed", reason: "saldo onvoldoende tijdens afschrijving", stop: true }; // NIET marken
 
   // Schrijf alleen required_skills + de marker. requires_drivers_license alleen op true zetten
   // (nooit een handmatig gezette true terug naar false overschrijven). Certs NIET wegschrijven.
   const update: Record<string, unknown> = { required_skills: res.requiredSkills, skills_enriched_at: new Date().toISOString() };
   if (res.requiresDriversLicense) update.requires_drivers_license = true;
   const { error: updErr } = await admin.from("vacancies").update(update).eq("id", v.id).eq("organization_id", v.organization_id);
-  if (updErr) return { vacancy_id: v.id, status: "failed", reason: `db-update: ${updErr.message}` };
-
-  try {
-    await admin.from("ai_usage_log").insert({
-      feature: "vacancy_skills", organization_id: v.organization_id, user_id: ctx.userId,
-      provider: "gemini", model: res.model, input_tokens: res.inputTokens, output_tokens: res.outputTokens,
-      cost_cents: costCents, candidate_id: null, duration_ms: res.durationMs,
-    });
-  } catch (_e) { /* usage-log mag de flow niet breken */ }
+  if (updErr) return { ...out, status: "failed", reason: `db-update: ${updErr.message}`, stop: true, stop_code: "storage_failed", http_status: 500 };
 
   return out;
 }
@@ -156,7 +143,7 @@ function scheduleSelfTrigger(orgId: string, model: string): Promise<void> | void
   return trigger;
 }
 
-// Bouwt de verwerkingscontext (Gemini-key, org-skill-catalogus, model, pricing) voor één org.
+// Bouwt de verwerkingscontext (Gemini-key, org-skill-catalogus en model) voor één org.
 async function buildCtx(admin: Admin, orgId: string, body: any, userId: string | null, dryRun: boolean): Promise<{ ctx: Ctx } | { error: string; status: number }> {
   const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
   if (!GEMINI_API_KEY) return { error: "GEMINI_API_KEY ontbreekt", status: 500 };
@@ -164,8 +151,7 @@ async function buildCtx(admin: Admin, orgId: string, body: any, userId: string |
   const catalogue = (orgSkills ?? []).map((s: { name: string }) => s.name).filter(Boolean);
   if (catalogue.length === 0) return { error: "Geen skills-catalogus voor deze organisatie", status: 400 };
   const model = (typeof body.model === "string" && body.model) || Deno.env.get("GEMINI_MODEL") || GEMINI_DEFAULT_MODEL;
-  const gp = geminiPricingForModel(model);
-  return { ctx: { apiKey: GEMINI_API_KEY, model, catalogue, pricingIn: gp.inputCentsPerMtok, pricingOut: gp.outputCentsPerMtok, userId, dryRun } };
+  return { ctx: { apiKey: GEMINI_API_KEY, model, catalogue, userId, dryRun } };
 }
 
 Deno.serve(async (req) => {
@@ -175,7 +161,10 @@ Deno.serve(async (req) => {
     const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const body = await req.json().catch(() => ({}));
     const dryRun = body.dry_run === true;
-    const maxVacancies = Math.max(0, Number(body.max_vacancies) || 0);
+    if (body.max_vacancies !== undefined && (!Number.isInteger(body.max_vacancies) || body.max_vacancies < 0)) {
+      return json({ error: "max_vacancies moet een geheel getal van 0 of hoger zijn" }, 400);
+    }
+    const maxVacancies = body.max_vacancies ?? 0;
     const batchSize = Math.min(Math.max(1, Number(body.batch_size) || DEFAULT_BATCH_SIZE), MAX_BATCH_SIZE);
 
     // ── Enkele vacature (bij opslaan / handmatige knop) ──────────────────────
@@ -204,7 +193,7 @@ Deno.serve(async (req) => {
       const built = await buildCtx(admin, vac.organization_id, body, uid, dryRun);
       if ("error" in built) return json({ error: built.error }, built.status);
       const result = await processVacancy(admin, vac, built.ctx);
-      return json({ success: true, single: true, result });
+      return json({ success: result.status !== "failed", single: true, result }, result.http_status ?? 200);
     }
 
     // --- Auth ---
@@ -240,14 +229,16 @@ Deno.serve(async (req) => {
     const model = ctx.model;
 
     const started = Date.now();
-    let done = 0, skipped = 0, failed = 0, costTotal = 0, stopped = false;
+    let done = 0, skipped = 0, failed = 0, costTotal = 0, pendingCosts = 0, stopped = false;
+    let stopCode: string | undefined;
     const sample: VacResult[] = [];
 
     while (!stopped) {
       if (!dryRun && Date.now() - started > SOFT_DEADLINE_MS) {
+        if (maxVacancies > 0) { stopped = true; stopCode = "deadline"; break; }
         const maybe = scheduleSelfTrigger(orgId, model);
         if (maybe) await maybe;
-        return json({ success: true, continued: true, done, skipped, failed, cost_cents: costTotal, sample: sample.slice(0, 25) });
+        return json({ success: true, continued: true, done, skipped, failed, cost_cents: costTotal, costs_pending: pendingCosts, sample: sample.slice(0, 25) });
       }
 
       // STATUS-CURSOR: open vacatures met description die nog niet verrijkt zijn. Verwerkte
@@ -263,19 +254,22 @@ Deno.serve(async (req) => {
         .limit(batchSize);
       if (selErr) return json({ error: selErr.message }, 500);
       if (!vacs || vacs.length === 0) {
-        return json({ success: true, done_all: true, done, skipped, failed, cost_cents: costTotal, sample: sample.slice(0, 25) });
+        return json({ success: true, done_all: true, done, skipped, failed, cost_cents: costTotal, costs_pending: pendingCosts, sample: sample.slice(0, 25) });
       }
 
       const rows = vacs as VacRow[];
       for (let i = 0; i < rows.length; i += CONCURRENCY) {
-        const chunk = rows.slice(i, i + CONCURRENCY);
+        const remaining = maxVacancies > 0 ? maxVacancies - done - skipped - failed : CONCURRENCY;
+        const chunk = rows.slice(i, i + Math.min(CONCURRENCY, remaining));
         const settled = await Promise.all(chunk.map((v) => processVacancy(admin, v, ctx)));
         for (const r of settled) {
-          if (r.status === "done") { done++; costTotal += r.cost_cents ?? 0; }
+          costTotal += r.cost_cents ?? 0;
+          if (r.cost_pending) pendingCosts++;
+          if (r.status === "done") done++;
           else if (r.status === "skipped") skipped++;
           else failed++;
           if (sample.length < 25) sample.push(r);
-          if (r.stop) stopped = true;
+          if (r.stop) { stopped = true; stopCode ??= r.stop_code; }
         }
         if (maxVacancies && (done + skipped + failed) >= maxVacancies) stopped = true;
         if (stopped) break;
@@ -283,15 +277,15 @@ Deno.serve(async (req) => {
       }
 
       if (dryRun) {
-        return json({ success: true, dry_run: true, done, skipped, failed, cost_cents: costTotal, sample: sample.slice(0, 25) });
+        return json({ success: true, dry_run: true, stopped_reason: stopCode, done, skipped, failed, cost_cents: costTotal, costs_pending: pendingCosts, sample: sample.slice(0, 25) });
       }
       // niet-dry: loop opnieuw; volgende fetch pakt de eerstvolgende niet-verrijkte vacatures.
     }
 
     const reachedMax = maxVacancies > 0 && (done + skipped + failed) >= maxVacancies;
     return json({
-      success: true, stopped_reason: reachedMax ? "max_vacancies bereikt" : "saldo onvoldoende",
-      done, skipped, failed, cost_cents: costTotal, sample: sample.slice(0, 25),
+      success: true, stopped_reason: stopCode ?? (reachedMax ? "max_vacancies bereikt" : "saldo onvoldoende"),
+      done, skipped, failed, cost_cents: costTotal, costs_pending: pendingCosts, sample: sample.slice(0, 25),
     });
   } catch (e) {
     console.error("[enrich-vacancies] fatal:", e);

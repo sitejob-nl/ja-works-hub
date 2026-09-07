@@ -1260,9 +1260,6 @@ export const RECRUITER_UI_DICTIONARY_EN: Record<string, string> = {
   'Voer je Voys API token in...': 'Enter your Voys API token...',
   'AI kandidaatdossier-analyse': 'AI candidate dossier analysis',
   'Analyseer CV, documenten en interne notities via Gemini.': 'Analyse CV, documents and internal notes with Gemini.',
-  'AI-saldo': 'AI balance',
-  'resterend': 'remaining',
-  'Totaal ooit toegekend:': 'Total ever granted:',
   'Eigen analyseprompt': 'Custom analysis prompt',
   'Deze tekst wordt als organisatie-context aan de standaard analyseprompt toegevoegd en gaat mee naar Gemini. Handig voor sector-specifieke focus, voorkeursfuncties of klant-specifieke nuances.':
     'This text is added to the default analysis prompt as organisation context and sent to Gemini. Useful for sector-specific focus, preferred roles or client-specific nuances.',

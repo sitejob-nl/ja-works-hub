@@ -1,3 +1,4 @@
+import { AiAccountingError, meteredAiFetch } from "../_shared/ai-accounting.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createAdminClient, requireRolePermission } from "../_shared/auth.ts";
 import { pseudonymizeCv } from "../_shared/cv-pseudonymize.ts";
@@ -99,14 +100,23 @@ Genereer een professioneel CV met de volgende secties.`;
       last_name: candidate.last_name,
     });
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
+    const { response } = await meteredAiFetch({
+      admin,
+      organizationId: auth.organizationId,
+      userId: auth.userId,
+      feature: "cv_rewrite",
+      candidateId,
+    }, {
+      provider: "lovable",
+      model: "google/gemini-3-flash-preview",
+      url: "https://ai.gateway.lovable.dev/v1/chat/completions",
       headers: {
         Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
+      body: {
         model: "google/gemini-3-flash-preview",
+        max_tokens: 4096,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
@@ -134,7 +144,7 @@ Genereer een professioneel CV met de volgende secties.`;
           },
         ],
         tool_choice: { type: "function", function: { name: "generate_cv" } },
-      }),
+      },
     });
 
     if (!response.ok) {
@@ -169,6 +179,12 @@ Genereer een professioneel CV met de volgende secties.`;
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
+    if (e instanceof AiAccountingError) {
+      return new Response(JSON.stringify({ error: e.message, code: e.code }), {
+        status: e.status,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     console.error("cv-rewrite error:", e);
     return new Response(JSON.stringify({ error: "Genereren van het CV is mislukt. Probeer het later opnieuw." }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },

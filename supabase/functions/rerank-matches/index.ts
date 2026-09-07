@@ -12,12 +12,13 @@
 // pas als de vacaturetekst groot wordt. Wil je meer nuance op rijke vacatures: zet 'm op gemini-3.5-flash
 // (kost gelijk 1 ct tot de payload de vloer overschrijdt). Resultaat wordt gecached in match_rerank_cache
 // per (vacature × kandidaat); reruns zijn gratis zolang de input (vacaturetekst + dossier) niet wijzigt
-// (input_hash). Credits via consume_ai_credits.
+// (input_hash). Iedere echte aanroep reserveert en verantwoordt kosten via het AI-grootboek.
 //
 // Auth: actieve interne org-gebruiker met matching.pipeline.view. verify_jwt=false in config.toml;
 // de gedeelde auth-helper valideert de Bearer-token. Cache-writes + credits gaan via service-role.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { AiAccountingError } from "../_shared/ai-accounting.ts";
 import { rerankCandidateFit } from "../_shared/gemini-rerank.ts";
 import { requireRolePermission } from "../_shared/auth.ts";
 
@@ -32,37 +33,8 @@ const json = (body: unknown, status = 200) =>
 
 const MAX_CANDIDATES = 30;
 const CONCURRENCY = 4;
-const PREFLIGHT_RESERVATION_CENTS = 2;
 const SOFT_DEADLINE_MS = 110_000;
 const GEMINI_DEFAULT_MODEL = "gemini-3.1-flash-lite";
-
-interface GeminiPricing {
-  inputCentsPerMtok: number;
-  outputCentsPerMtok: number;
-}
-
-const GEMINI_PRICING: Record<string, GeminiPricing> = {
-  "gemini-3.5-flash": { inputCentsPerMtok: 150, outputCentsPerMtok: 900 },
-  "gemini-3-flash-preview": { inputCentsPerMtok: 50, outputCentsPerMtok: 300 },
-  "gemini-3.1-flash-lite": { inputCentsPerMtok: 25, outputCentsPerMtok: 150 },
-  "gemini-2.5-flash": { inputCentsPerMtok: 30, outputCentsPerMtok: 250 },
-  "gemini-2.5-flash-lite": { inputCentsPerMtok: 10, outputCentsPerMtok: 40 },
-};
-
-function geminiPricingForModel(model: string): GeminiPricing {
-  return GEMINI_PRICING[model] ?? GEMINI_PRICING[GEMINI_DEFAULT_MODEL];
-}
-
-function calculateCostCents(
-  inputTokens: number,
-  outputTokens: number,
-  pricingInputCentsPerMtok: number,
-  pricingOutputCentsPerMtok: number,
-): number {
-  const inCost = (inputTokens / 1_000_000) * pricingInputCentsPerMtok;
-  const outCost = (outputTokens / 1_000_000) * pricingOutputCentsPerMtok;
-  return Math.max(1, Math.ceil(inCost + outCost));
-}
 
 async function sha256Hex(s: string): Promise<string> {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
@@ -204,8 +176,6 @@ Deno.serve(async (req) => {
     // Eén vlakke lijst (vacature × kandidaat) zodat beide richtingen dezelfde kern doorlopen.
     const jobs = vacancyRows.flatMap((v) => candidates.map((c) => ({ vacancy: v, candidate: c })));
 
-    const pricing = geminiPricingForModel(model);
-
     // Bestaande cache in één keer ophalen, gesleuteld op het paar (vacature × kandidaat).
     const { data: cacheRows } = await admin
       .from("match_rerank_cache")
@@ -218,7 +188,8 @@ Deno.serve(async (req) => {
     for (const r of cacheRows ?? []) cacheByPair.set(pairKey(r.vacancy_id, r.candidate_id), r);
 
     const started = Date.now();
-    let costTotal = 0, geminiCalls = 0, cachedCount = 0, failed = 0;
+    let costTotal = 0, geminiCalls = 0, cachedCount = 0, failed = 0, pendingCosts = 0;
+    let stopCode: string | undefined;
     let stopped = false;
     // deno-lint-ignore no-explicit-any
     const results: any[] = [];
@@ -245,46 +216,44 @@ Deno.serve(async (req) => {
         return;
       }
 
-      const { data: credits } = await admin.from("organization_credits").select("balance_cents").eq("organization_id", orgId).single();
-      if ((credits?.balance_cents ?? 0) < PREFLIGHT_RESERVATION_CENTS) { stopped = true; return; }
-
       let r;
       try {
-        r = await rerankCandidateFit(vacancyText, dossier, GEMINI_API_KEY!, model);
+        r = await rerankCandidateFit(vacancyText, dossier, GEMINI_API_KEY!, model, {
+          admin, organizationId: orgId, userId, feature: "match_rerank", candidateId: c.id,
+        });
       } catch (e) {
+        const usage = e as Error & { costCents?: number; requestId?: string; providerAttempted?: boolean };
         failed++;
-        results.push({ ...ident, error: (e as Error).message.slice(0, 200) });
+        costTotal += usage.costCents ?? 0;
+        if (usage.providerAttempted) {
+          geminiCalls++;
+          if (usage.costCents === undefined) pendingCosts++;
+        }
+        if (e instanceof AiAccountingError) { stopped = true; stopCode ??= e.code; }
+        results.push({ ...ident, error: usage.message.slice(0, 200), request_id: usage.requestId, cost_cents: usage.costCents });
         return;
       }
 
-      const costCents = calculateCostCents(r.inputTokens, r.outputTokens, pricing.inputCentsPerMtok, pricing.outputCentsPerMtok);
-      const { data: consumeResult, error: consumeErr } = await admin.rpc("consume_ai_credits", { p_org_id: orgId, p_amount_cents: costCents });
-      const consume = Array.isArray(consumeResult) ? consumeResult[0] : consumeResult;
-      if (consumeErr || !consume?.ok) { stopped = true; return; }
-      costTotal += costCents; geminiCalls++;
+      costTotal += r.costCents; geminiCalls++;
 
-      await admin.from("match_rerank_cache").upsert({
+      const { error: cacheError } = await admin.from("match_rerank_cache").upsert({
         organization_id: orgId, vacancy_id: vId, candidate_id: c.id, input_hash: inputHash,
         fit_score: r.fitScore, verdict: r.verdict, reasoning: r.reasoning, strengths: r.strengths, concerns: r.concerns,
         model: r.model, updated_at: new Date().toISOString(),
       }, { onConflict: "vacancy_id,candidate_id" });
 
-      try {
-        await admin.from("ai_usage_log").insert({
-          feature: "match_rerank", organization_id: orgId, user_id: userId, provider: "gemini", model: r.model,
-          input_tokens: r.inputTokens, output_tokens: r.outputTokens, cost_cents: costCents, candidate_id: c.id, duration_ms: r.durationMs,
-        });
-      } catch (_e) { /* usage-log mag de flow niet breken */ }
+      if (cacheError) console.error("Rerank-cache opslaan mislukt:", cacheError.message);
 
       results.push({
         ...ident,
         fit_score: r.fitScore, verdict: r.verdict, reasoning: r.reasoning,
         strengths: r.strengths, concerns: r.concerns, cached: false,
+        request_id: r.requestId, cost_cents: r.costCents, cache_saved: !cacheError,
       });
     }
 
     for (let i = 0; i < jobs.length; i += CONCURRENCY) {
-      if (Date.now() - started > SOFT_DEADLINE_MS) { stopped = true; break; }
+      if (Date.now() - started > SOFT_DEADLINE_MS) { stopped = true; stopCode = "deadline"; break; }
       await Promise.all(jobs.slice(i, i + CONCURRENCY).map(processOne));
       if (stopped) break;
     }
@@ -294,9 +263,9 @@ Deno.serve(async (req) => {
       vacancy_id: reverse ? null : vacancyId,
       candidate_id: reverse ? candidateId : null,
       model,
-      requested: jobs.length, scored: results.length,
+      requested: jobs.length, scored: results.filter((r) => typeof r.fit_score === "number").length,
       gemini_calls: geminiCalls, cached: cachedCount, failed,
-      cost_cents: costTotal, stopped, results,
+      cost_cents: costTotal, costs_pending: pendingCosts, stopped, stopped_reason: stopCode, results,
     });
   } catch (err) {
     console.error("rerank-matches error:", err);

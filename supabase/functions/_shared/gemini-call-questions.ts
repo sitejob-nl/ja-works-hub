@@ -1,3 +1,5 @@
+import { attachAiAccounting, meteredAiFetch, type AiAccountingContext, type AiAccountingResult } from "./ai-accounting.ts";
+
 // Genereert vakinhoudelijke belvragen voor de telefonische screening van een kandidaat voor
 // één specifieke vacature. Spiegelt het Gemini-call-patroon van gemini-vacancy.ts (zelfde
 // endpoint, header, usageMetadata-extractie) zodat de kosten 1-op-1 te verrekenen zijn.
@@ -7,7 +9,7 @@ const DEFAULT_MAX_OUTPUT_TOKENS = 1024;
 const DEFAULT_THINKING_BUDGET = 256;
 const MAX_INPUT_CHARS = 8000;
 
-export interface CallQuestionsResult {
+export interface CallQuestionsResult extends AiAccountingResult {
   questions: string[];
   model: string;
   inputTokens: number;
@@ -50,6 +52,7 @@ export async function generateCallQuestions(
   contextText: string,
   apiKey: string,
   model: string,
+  accounting: AiAccountingContext,
 ): Promise<CallQuestionsResult> {
   const start = Date.now();
   const text = contextText.length > MAX_INPUT_CHARS
@@ -68,37 +71,43 @@ export async function generateCallQuestions(
     },
   };
 
-  const resp = await fetch(`${GEMINI_API_BASE}/${model}:generateContent`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-    body: JSON.stringify(body),
-  });
-  const raw = await resp.text();
-  if (!resp.ok) throw new Error(`Gemini API ${resp.status}: ${raw.slice(0, 400)}`);
-
-  const data = JSON.parse(raw) as GeminiResponse;
-  if (data.promptFeedback?.blockReason) throw new Error(`Gemini blokkeerde: ${data.promptFeedback.blockReason}`);
-  const finishReason = data.candidates?.[0]?.finishReason;
-  const partText = (data.candidates?.[0]?.content?.parts ?? []).map((p) => p.text || "").join("").trim();
-  if (!partText) throw new Error(`Gemini gaf geen content (finishReason=${finishReason ?? "?"})`);
-
-  let parsed: { questions?: unknown };
-  try {
-    parsed = JSON.parse(partText);
-  } catch {
-    parsed = JSON.parse(partText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, ""));
-  }
-
-  const questions = Array.isArray(parsed.questions)
-    ? [...new Set(parsed.questions.map((q) => String(q).trim()).filter(Boolean))].slice(0, 10)
-    : [];
-
-  const usage = data.usageMetadata ?? {};
-  return {
-    questions,
+  const metered = await meteredAiFetch(accounting, {
+    provider: "gemini",
     model,
-    inputTokens: usage.promptTokenCount ?? 0,
-    outputTokens: (usage.candidatesTokenCount ?? 0) + (usage.thoughtsTokenCount ?? 0),
-    durationMs: Date.now() - start,
-  };
+    url: `${GEMINI_API_BASE}/${model}:generateContent`,
+    headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+    body,
+  });
+  const { response: resp, ...accountedUsage } = metered;
+
+  try {
+    const raw = await resp.text();
+    if (!resp.ok) throw new Error(`Gemini API ${resp.status}: ${raw.slice(0, 400)}`);
+
+    const data = JSON.parse(raw) as GeminiResponse;
+    if (data.promptFeedback?.blockReason) throw new Error(`Gemini blokkeerde: ${data.promptFeedback.blockReason}`);
+    const finishReason = data.candidates?.[0]?.finishReason;
+    const partText = (data.candidates?.[0]?.content?.parts ?? []).map((p) => p.text || "").join("").trim();
+    if (!partText) throw new Error(`Gemini gaf geen content (finishReason=${finishReason ?? "?"})`);
+
+    let parsed: { questions?: unknown };
+    try {
+      parsed = JSON.parse(partText);
+    } catch {
+      parsed = JSON.parse(partText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, ""));
+    }
+
+    const questions = Array.isArray(parsed.questions)
+      ? [...new Set(parsed.questions.map((q) => String(q).trim()).filter(Boolean))].slice(0, 10)
+      : [];
+
+    return {
+      questions,
+      model,
+      durationMs: Date.now() - start,
+      ...accountedUsage,
+    };
+  } catch (error) {
+    throw attachAiAccounting(error, metered);
+  }
 }

@@ -1,3 +1,5 @@
+import { meteredAiFetch, attachAiAccounting, type AiAccountingContext, type AiAccountingResult } from "./ai-accounting.ts";
+
 // Anthropic Claude Haiku 4.5 kandidaatdossier-analyse — synchroon, ~5-10s per dossier.
 // Forceert JSON-schema via tool_choice. Geeft tokens + duration terug voor billing.
 //
@@ -21,7 +23,7 @@ const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_MODEL = "claude-haiku-4-5";
 const ANTHROPIC_VERSION = "2023-06-01";
 
-export interface AnthropicCvResult {
+export interface AnthropicCvResult extends AiAccountingResult {
   analysis: CvAnalysisResult;
   model: string;
   inputTokens: number;
@@ -64,7 +66,8 @@ ${stripped}
 export async function analyzeWithAnthropic(
   pseudonymizedDossierText: string,
   apiKey: string,
-  orgPromptAddendum?: string,
+  orgPromptAddendum: string | undefined,
+  accounting: AiAccountingContext,
 ): Promise<AnthropicCvResult> {
   const start = Date.now();
 
@@ -99,38 +102,41 @@ export async function analyzeWithAnthropic(
     ],
   };
 
-  const resp = await fetch(ANTHROPIC_API_URL, {
-    method: "POST",
+  const { response: resp, ...accountingResult } = await meteredAiFetch(accounting, {
+    provider: "anthropic", model: ANTHROPIC_MODEL, url: ANTHROPIC_API_URL,
     headers: {
       "Content-Type": "application/json",
       "x-api-key": apiKey,
       "anthropic-version": ANTHROPIC_VERSION,
     },
-    body: JSON.stringify(body),
+    body,
   });
 
-  const text = await resp.text();
-  if (!resp.ok) {
-    throw new Error(`Anthropic API ${resp.status}: ${text.slice(0, 500)}`);
+  try {
+    const text = await resp.text();
+    if (!resp.ok) {
+      throw new Error(`Anthropic API ${resp.status}`);
+    }
+
+    const data = JSON.parse(text) as AnthropicMessage;
+    const toolUse = data.content.find(
+      (c): c is { type: "tool_use"; name: string; input: unknown } =>
+        c.type === "tool_use" && c.name === CV_ANALYSIS_TOOL_NAME,
+    );
+
+    if (!toolUse) {
+      throw new Error("Anthropic response bevat geen tool_use blok");
+    }
+
+    return {
+      analysis: toolUse.input as CvAnalysisResult,
+      model: data.model,
+      durationMs: Date.now() - start,
+      ...accountingResult,
+    };
+  } catch (error) {
+    throw attachAiAccounting(error, accountingResult);
   }
-
-  const data = JSON.parse(text) as AnthropicMessage;
-  const toolUse = data.content.find(
-    (c): c is { type: "tool_use"; name: string; input: unknown } =>
-      c.type === "tool_use" && c.name === CV_ANALYSIS_TOOL_NAME,
-  );
-
-  if (!toolUse) {
-    throw new Error("Anthropic response bevat geen tool_use blok");
-  }
-
-  return {
-    analysis: toolUse.input as CvAnalysisResult,
-    model: data.model,
-    inputTokens: data.usage.input_tokens + (data.usage.cache_creation_input_tokens ?? 0),
-    outputTokens: data.usage.output_tokens,
-    durationMs: Date.now() - start,
-  };
 }
 
 export function calculateCostCents(

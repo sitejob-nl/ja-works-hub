@@ -1,26 +1,23 @@
 // CV-veldextractie voor het "nieuwe kandidaat"-formulier.
 // Stateless: er bestaat nog geen candidate-rij. Neemt ruwe CV-tekst (client-side
 // geëxtraheerd), stuurt die synchroon naar Gemini en geeft gestructureerde velden
-// terug om het formulier vooraf in te vullen. Trekt ~1ct credits via consume_ai_credits.
+// terug om het formulier vooraf in te vullen. Kosten worden vóór de call gereserveerd
+// en samen met het verbruik in het gedeelde AI-grootboek afgerekend.
 //
 // NB: dit pad is NIET gepseudonimiseerd (we willen juist naam/adres terug). De
 // kwalitatieve dossieranalyse (analyze-cv) blijft wél gepseudonimiseerd.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireRolePermission } from "../_shared/auth.ts";
+import { AiAccountingError } from "../_shared/ai-accounting.ts";
 import { extractCvProfile } from "../_shared/cv-extract.ts";
-import { calculateCostCents } from "../_shared/anthropic-cv.ts";
-import { GEMINI_DEFAULT_MODEL, geminiPricingForModel } from "../_shared/gemini-cv.ts";
+import { GEMINI_DEFAULT_MODEL } from "../_shared/gemini-cv.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
-
-// Synchrone Gemini-extractie is met de output-cap ~1ct/CV. Een kleine reservering
-// volstaat en blokkeert orgs met klein saldo niet onnodig (mirror van analyze-cv).
-const GEMINI_PREFLIGHT_RESERVATION_CENTS = 5;
 
 function jsonResponse(body: unknown, status: number) {
   return new Response(JSON.stringify(body), {
@@ -96,25 +93,6 @@ Deno.serve(async (req) => {
       .order("name");
     const skillCatalog = (orgSkills ?? []).map((s) => s.name as string).filter(Boolean);
 
-    // Pre-flight: saldo checken
-    const { data: credits } = await admin
-      .from("organization_credits")
-      .select("balance_cents")
-      .eq("organization_id", orgId)
-      .single();
-
-    const balance = credits?.balance_cents ?? 0;
-    if (balance < GEMINI_PREFLIGHT_RESERVATION_CENTS) {
-      return jsonResponse(
-        {
-          error: "Saldo onvoldoende voor automatisch invullen",
-          balance_cents: balance,
-          required_cents: GEMINI_PREFLIGHT_RESERVATION_CENTS,
-        },
-        402,
-      );
-    }
-
     // Gemini-call (synchroon)
     let result;
     try {
@@ -124,61 +102,12 @@ Deno.serve(async (req) => {
         nationalityCatalog,
         languageCatalog,
         countryCatalog,
-      });
+      }, { admin, organizationId: orgId, userId: user.id, feature: "cv_field_extract", candidateId: null });
     } catch (e) {
+      if (e instanceof AiAccountingError) return jsonResponse({ error: e.message, code: e.code, request_id: e.requestId, cost_cents: e.costCents, balance_cents: e.balanceCents }, e.status);
       const msg = (e as Error).message;
       console.error("[extract-cv-profile] Gemini-call mislukt:", msg);
       return jsonResponse({ error: `Automatisch invullen mislukt: ${msg}` }, 502);
-    }
-
-    const pricing = geminiPricingForModel(model);
-    const costCents = calculateCostCents(
-      result.inputTokens,
-      result.outputTokens,
-      pricing.inputCentsPerMtok,
-      pricing.outputCentsPerMtok,
-    );
-
-    // Atomic decrement via RPC (race-safe met SELECT FOR UPDATE)
-    const { data: consumeResult, error: consumeErr } = await admin.rpc("consume_ai_credits", {
-      p_org_id: orgId,
-      p_amount_cents: costCents,
-    });
-
-    if (consumeErr) {
-      console.error("[extract-cv-profile] consume_ai_credits RPC fout:", consumeErr);
-      return jsonResponse({ error: "Saldo-afschrijving mislukt" }, 500);
-    }
-
-    const consume = Array.isArray(consumeResult) ? consumeResult[0] : consumeResult;
-    if (!consume?.ok) {
-      // Race: saldo viel tussentijds onder kosten. Niets afgeschreven.
-      return jsonResponse(
-        {
-          error: "Saldo onvoldoende — automatisch invullen niet doorgegaan",
-          balance_cents: consume?.new_balance_cents ?? 0,
-          required_cents: costCents,
-        },
-        402,
-      );
-    }
-
-    // Usage-log (best-effort; mag de flow nooit breken)
-    try {
-      await admin.from("ai_usage_log").insert({
-        feature: "cv_field_extract",
-        organization_id: orgId,
-        user_id: user.id,
-        provider: "gemini",
-        model: result.model,
-        input_tokens: result.inputTokens,
-        output_tokens: result.outputTokens,
-        cost_cents: costCents,
-        candidate_id: null,
-        duration_ms: result.durationMs,
-      });
-    } catch (e) {
-      console.error("[extract-cv-profile] Kon ai_usage_log niet schrijven:", (e as Error).message);
     }
 
     return jsonResponse(
@@ -186,8 +115,9 @@ Deno.serve(async (req) => {
         success: true,
         fields: result.fields,
         model: result.model,
-        cost_cents: costCents,
-        balance_cents: consume.new_balance_cents,
+        cost_cents: result.costCents,
+        balance_cents: result.balanceCents,
+        request_id: result.requestId,
         duration_ms: result.durationMs,
       },
       200,
