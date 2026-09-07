@@ -4,11 +4,15 @@ import { FolderCog, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { unwrap, unwrapDeleted, unwrapList } from '@/lib/db';
+import { qk } from '@/lib/query-keys';
+import { slugify } from '@/lib/slugify';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import type { CompanyDocumentFolder } from '@/lib/company-document-folders';
 
 type CompanyDocumentType = {
   id: string;
@@ -16,19 +20,11 @@ type CompanyDocumentType = {
   label: string;
   sort_order: number;
   is_active: boolean;
+  default_folder_id: string | null;
 };
 
-// eslint-disable-next-line no-misleading-character-class -- combining-diacritics range (NFD-strip), niet mis te lezen als losse tekens
-const DIACRITICS_RE = /[̀-ͯ]/g;
-
-const slugify = (label: string) =>
-  label
-    .trim()
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(DIACRITICS_RE, '')
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '');
+// Radix Select accepteert geen lege waarde als item; dit staat voor "geen vaste map".
+const ORG_DEFAULT_FOLDER = '__org_default__';
 
 const CompanyDocumentTypesSettings = () => {
   const orgId = useOrganizationId();
@@ -36,11 +32,23 @@ const CompanyDocumentTypesSettings = () => {
   const [newLabel, setNewLabel] = useState('');
 
   const { data: types = [], isLoading } = useQuery({
-    queryKey: ['company-document-types-settings', orgId],
+    queryKey: qk.companyDocuments.typesSettings(orgId),
     queryFn: () => unwrapList<CompanyDocumentType>(
       supabase
         .from('company_document_types')
-        .select('id, key, label, sort_order, is_active')
+        .select('id, key, label, sort_order, is_active, default_folder_id')
+        .eq('organization_id', orgId)
+        .order('sort_order'),
+    ),
+    enabled: !!orgId,
+  });
+
+  const { data: folders = [] } = useQuery({
+    queryKey: qk.companyDocuments.folders(orgId),
+    queryFn: () => unwrapList<CompanyDocumentFolder>(
+      supabase
+        .from('company_document_folders')
+        .select('id, key, label, sort_order, is_default, allowed_roles, required_permission')
         .eq('organization_id', orgId)
         .order('sort_order'),
     ),
@@ -82,6 +90,13 @@ const CompanyDocumentTypesSettings = () => {
     onError: (error: Error) => toast.error(error.message),
   });
 
+  const folderMutation = useMutation({
+    mutationFn: async ({ id, folderId }: { id: string; folderId: string | null }) =>
+      unwrap(supabase.from('company_document_types').update({ default_folder_id: folderId }).eq('id', id).select('id').single()),
+    onSuccess: invalidate,
+    onError: (error: Error) => toast.error(error.message),
+  });
+
   const deleteMutation = useMutation({
     mutationFn: (id: string) => unwrapDeleted(supabase.from('company_document_types').delete().eq('id', id)),
     onSuccess: () => {
@@ -106,7 +121,9 @@ const CompanyDocumentTypesSettings = () => {
         <CardTitle className="flex items-center gap-2 text-base">
           <FolderCog className="h-4 w-4" /> Documenttypen opdrachtgevers
         </CardTitle>
-        <CardDescription>Beheer welke documenttypen te kiezen zijn bij een opdrachtgever</CardDescription>
+        <CardDescription>
+          Beheer welke documenttypen te kiezen zijn bij een opdrachtgever en in welke map een type standaard terechtkomt
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-col sm:flex-row gap-2">
@@ -125,8 +142,22 @@ const CompanyDocumentTypesSettings = () => {
 
         <div className="space-y-2">
           {types.map((type) => (
-            <div key={type.id} className="flex items-center gap-2 rounded-md border p-2">
-              <span className="text-sm flex-1">{type.label}</span>
+            <div key={type.id} className="flex items-center gap-2 rounded-md border p-2 flex-wrap">
+              <span className="text-sm flex-1 min-w-[140px]">{type.label}</span>
+              <Select
+                value={type.default_folder_id ?? ORG_DEFAULT_FOLDER}
+                onValueChange={(value) => folderMutation.mutate({ id: type.id, folderId: value === ORG_DEFAULT_FOLDER ? null : value })}
+              >
+                <SelectTrigger className="h-8 w-[190px] text-xs" aria-label={`Standaardmap voor ${type.label}`}>
+                  <SelectValue placeholder="Standaardmap" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ORG_DEFAULT_FOLDER}>Map: standaardmap</SelectItem>
+                  {folders.map((folder) => (
+                    <SelectItem key={folder.id} value={folder.id}>Map: {folder.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Switch checked={type.is_active} onCheckedChange={(checked) => toggleMutation.mutate({ id: type.id, isActive: checked })} />
               <Button size="icon" variant="ghost" className="h-8 w-8 text-red-600" onClick={() => deleteMutation.mutate(type.id)}>
                 <Trash2 className="h-4 w-4" />

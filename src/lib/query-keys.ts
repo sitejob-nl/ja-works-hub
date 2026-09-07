@@ -33,6 +33,13 @@ export const qk = {
     duplicateDismissals: (orgId: string) => ['company-duplicate-dismissals', orgId] as const,
     relatedCounts: (orgId: string, ids: readonly string[]) => ['company-related-counts', orgId, ids] as const,
   },
+  companyDocuments: {
+    /** Documenten van één opdrachtgever; RLS levert alleen zichtbare mappen/documenten. */
+    forCompany: (companyId: string) => ['company-documents', companyId] as const,
+    types: (orgId: string) => ['company-document-types', orgId] as const,
+    typesSettings: (orgId: string) => ['company-document-types-settings', orgId] as const,
+    folders: (orgId: string) => ['company-document-folders', orgId] as const,
+  },
   communications: {
     forEntity: (orgId: string, entityType: string, entityId: string) =>
       ['entity-communications', orgId, entityType, entityId] as const,
