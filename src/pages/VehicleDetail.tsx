@@ -68,6 +68,7 @@ const VehicleDetail = () => {
       }
       return unwrap(supabase.from('vehicles').select(`
         *,
+        location_profile:profiles!vehicles_last_known_location_by_fkey(full_name),
         vehicle_assignments!vehicle_assignments_vehicle_id_fkey(
           id, assigned_date, returned_date, start_mileage, end_mileage,
           employees!vehicle_assignments_employee_id_fkey(

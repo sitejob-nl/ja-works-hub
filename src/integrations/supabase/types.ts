@@ -9967,6 +9967,9 @@ export type Database = {
           fuel_card_reference: string | null
           fuel_type: string | null
           id: string
+          last_known_location: string | null
+          last_known_location_at: string | null
+          last_known_location_by: string | null
           license_plate: string
           model: string | null
           notes: string | null
@@ -9991,6 +9994,9 @@ export type Database = {
           fuel_card_reference?: string | null
           fuel_type?: string | null
           id?: string
+          last_known_location?: string | null
+          last_known_location_at?: string | null
+          last_known_location_by?: string | null
           license_plate: string
           model?: string | null
           notes?: string | null
@@ -10015,6 +10021,9 @@ export type Database = {
           fuel_card_reference?: string | null
           fuel_type?: string | null
           id?: string
+          last_known_location?: string | null
+          last_known_location_at?: string | null
+          last_known_location_by?: string | null
           license_plate?: string
           model?: string | null
           notes?: string | null
@@ -10027,6 +10036,13 @@ export type Database = {
           year?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "vehicles_last_known_location_by_fkey"
+            columns: ["last_known_location_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "vehicles_organization_id_fkey"
             columns: ["organization_id"]

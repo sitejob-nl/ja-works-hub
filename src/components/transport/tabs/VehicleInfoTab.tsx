@@ -10,17 +10,25 @@ import { Button } from '@/components/ui/button';
 import { formatDate } from '@/lib/format';
 import { differenceInCalendarDays, parseISO } from 'date-fns';
 import { logAudit } from '@/lib/audit';
+import { toFriendlyError } from '@/lib/errorMessages';
 import { lookupRdw, normalizeRdwFuel, yearFromRdwDate } from '@/lib/rdw';
+import {
+  formatVehicleLocationUpdate,
+  vehicleLocationPatch,
+  vehicleLocationText,
+} from '@/lib/vehicle-location';
+import VehicleLocationDialog from '@/components/transport/VehicleLocationDialog';
 import { toast } from 'sonner';
-import { Car, Check, X } from 'lucide-react';
+import { Car, Check, MapPin, X } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { isFacilityRole, saveFacilityOperationalEntity } from '@/lib/facility';
 
 const VehicleInfoTab = ({ vehicle, activeAssignment }: { vehicle: any; activeAssignment: any }) => {
-  const { role } = useAuth();
+  const { role, profile } = useAuth();
   const isFacility = isFacilityRole(role);
   const assignee = activeAssignment?.employees?.candidates ?? activeAssignment?.worker ?? activeAssignment;
   const [rdwPreview, setRdwPreview] = useState<any>(null);
+  const [locationOpen, setLocationOpen] = useState(false);
   const qc = useQueryClient();
 
   const rdwLookup = useMutation({
@@ -69,6 +77,39 @@ const VehicleInfoTab = ({ vehicle, activeAssignment }: { vehicle: any; activeAss
     },
     onError: (e: any) => toast.error(e.message),
   });
+
+  // Laatste bekende locatie — één schrijfpad, zodat vastleggen en wissen dezelfde
+  // velden raken. Alleen intern: de facility-rol krijgt zijn voertuigen via
+  // facility_transport_snapshot, en die geeft deze kolommen niet terug.
+  const saveLocation = useMutation({
+    mutationFn: async (raw: string) => {
+      const patch = vehicleLocationPatch(raw, profile?.id);
+      await unwrap(supabase.from('vehicles').update(patch as any).eq('id', vehicle.id));
+      return patch;
+    },
+    onSuccess: (patch) => {
+      qc.invalidateQueries({ queryKey: qk.vehicles.detail(vehicle.id) });
+      qc.invalidateQueries({ queryKey: ['vehicles'] });
+      logAudit({
+        action: 'update',
+        tableName: 'vehicles',
+        recordId: vehicle.id,
+        oldValues: {
+          last_known_location: vehicle.last_known_location ?? null,
+          last_known_location_at: vehicle.last_known_location_at ?? null,
+          last_known_location_by: vehicle.last_known_location_by ?? null,
+        },
+        newValues: patch,
+        reason: patch.last_known_location ? 'Laatste bekende locatie bijgewerkt' : 'Laatste bekende locatie gewist',
+      });
+      setLocationOpen(false);
+      toast.success(patch.last_known_location ? 'Locatie bijgewerkt' : 'Locatie gewist');
+    },
+    onError: (e: any) => toast.error(toFriendlyError(e, 'Locatie bijwerken mislukt')),
+  });
+
+  const locationText = vehicleLocationText(vehicle);
+  const locationUpdate = formatVehicleLocationUpdate(vehicle);
 
   return (
     <div className="space-y-6 mt-4">
@@ -166,7 +207,48 @@ const VehicleInfoTab = ({ vehicle, activeAssignment }: { vehicle: any; activeAss
           )}
         </CardContent>
       </Card>
+
+      {/* Waar staat de auto? Los van de toewijzing: ook een voertuig zonder bestuurder
+          staat érgens, en juist dan is dit het enige spoor. */}
+      {!isFacility && (
+        <Card>
+          <CardHeader>
+            <div className="flex justify-between items-center">
+              <CardTitle className="text-base">Laatste bekende locatie</CardTitle>
+              <Button size="sm" variant="outline" onClick={() => setLocationOpen(true)}>
+                <MapPin className="h-3.5 w-3.5 mr-1" />{locationText ? 'Bijwerken' : 'Vastleggen'}
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            {locationText ? (
+              <>
+                <p className="font-medium break-words">{locationText}</p>
+                {/* Geen naam of tijdstip bekend (bv. een latere automatische bron): dan
+                    helemaal geen regel, in plaats van een half ingevulde. */}
+                {locationUpdate && (
+                  <p className="text-xs text-muted-foreground">Bijgewerkt: {locationUpdate}</p>
+                )}
+              </>
+            ) : (
+              <p className="text-muted-foreground">
+                Nog niet vastgelegd — er is niet doorgegeven waar dit voertuig staat.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
       </div>
+
+      {!isFacility && (
+        <VehicleLocationDialog
+          open={locationOpen}
+          onOpenChange={setLocationOpen}
+          vehicle={vehicle}
+          pending={saveLocation.isPending}
+          onConfirm={(location) => saveLocation.mutate(location)}
+        />
+      )}
     </div>
   );
 };
