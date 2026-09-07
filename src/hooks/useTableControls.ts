@@ -38,6 +38,16 @@ export type TableControls<Row = any> = {
   pageSlice: <T>(rows: readonly T[]) => T[];
   /** Terug naar pagina 1 — aanroepen wanneer een zoekterm of filter wijzigt. */
   resetPage: () => void;
+  /**
+   * Leest een URL-gedragen filter (`?status=actief`) en geeft een setter terug die het
+   * filter zet én de paginateller terugzet — in dezelfde URL-update. Zelfde semantiek als
+   * `useSearchParamState` (default-waarde verdwijnt uit de URL), maar níét te combineren
+   * met die hook voor hetzelfde filter: twee `setSearchParams`-aanroepen in één event
+   * overschrijven elkaar, omdat react-router functionele updaters niet chaint — beide
+   * vertrekken van de URL van de huidige render en de laatste wint. `setStatus(v);
+   * resetPage()` verliest zo op pagina 2 het filter.
+   */
+  filterParam: <T extends string>(key: string, defaultValue: T) => [T, (value: T) => void];
 };
 
 /**
@@ -150,6 +160,22 @@ export function useTableControls<Row = any>({
     update((params_) => params_.delete(pageParam));
   }, [page, update, pageParam]);
 
+  // Geen hook (leest de al opgehaalde `params`), dus na `useTableControls` overal aanroepbaar.
+  const filterParam = useCallback(
+    <T extends string>(key: string, defaultValue: T): [T, (value: T) => void] => {
+      const value = (params.get(key) as T | null) ?? defaultValue;
+      const setValue = (next: T) =>
+        update((params_) => {
+          if (!next || next === defaultValue) params_.delete(key);
+          else params_.set(key, next);
+          // Ander filter → andere set → "pagina 3" bestaat misschien niet meer.
+          params_.delete(pageParam);
+        });
+      return [value, setValue];
+    },
+    [params, update, pageParam],
+  );
+
   const from = page * pageSize;
   const to = from + pageSize - 1;
 
@@ -183,6 +209,7 @@ export function useTableControls<Row = any>({
     sortRows: sortRowsBound,
     pageSlice,
     resetPage,
+    filterParam,
   };
 }
 

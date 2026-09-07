@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Users, Plus, Search, Upload, CheckCircle2, XCircle, FolderHeart, SlidersHorizontal, UserPlus, Check, X, KeyRound, ArrowUpDown, Copy } from 'lucide-react';
+import { Users, Plus, Search, Upload, CheckCircle2, XCircle, FolderHeart, SlidersHorizontal, UserPlus, Check, X, KeyRound, Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -10,7 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
+import SortableTableHead from '@/components/ui/sortable-table-head';
+import TablePagination from '@/components/ui/table-pagination';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import ImportWizard from '@/components/import/ImportWizard';
@@ -22,13 +23,12 @@ import { PhoneLink } from '@/components/ui/contact-links';
 import { MailButton } from '@/components/ui/mail-button';
 import { formatDate } from '@/lib/format';
 import ErrorState from '@/components/shared/ErrorState';
-import { getPaginationRange } from '@/lib/pagination';
+import { useTableControls } from '@/hooks/useTableControls';
+import type { SortableColumn, SortState } from '@/lib/table-sort';
 import { useRolePermission } from '@/hooks/usePermissions';
 import { useHasRole } from '@/contexts/AuthContext';
 import DeleteCandidateDialog from '@/components/candidates/DeleteCandidateDialog';
 import { Trash2 } from 'lucide-react';
-
-const PAGE_SIZE = 10;
 
 const statusBadge: Record<string, string> = {
   lead: 'bg-sky-100 text-sky-700 border-0',
@@ -130,6 +130,36 @@ const candidateName = (candidate: any) => `${candidate.last_name ?? ''} ${candid
 const foldAccents = (s: string) => s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
 type CandidateTab = 'alle' | 'instroom' | 'in-dienst';
 
+// "Alle kandidaten" wordt server-side gesorteerd en met .range() gepagineerd. Sorteerbaar zijn
+// de kolommen die één-op-één een kandidaatkolom tonen. 'Profiel' komt uit een aparte
+// tokens-query voor alleen de zichtbare rijen, 'Vaardigheden' is een lijst en 'Telefoon' zegt
+// op volgorde niets — die koppen blijven statisch. Status en Compliance zijn enums: sorteren
+// groepeert per status in de vaste volgorde van de database, niet alfabetisch op label.
+const ALL_SORT_COLUMNS: readonly SortableColumn[] = [
+  { key: 'name', orderBy: ['last_name', 'first_name'] },
+  { key: 'status' },
+  { key: 'email' },
+  { key: 'compliance_status' },
+  { key: 'created_at', defaultDirection: 'desc' },
+];
+// Nieuwste kandidaat bovenaan, zoals de lijst altijd al opende. De kolom 'Toegevoegd' maakt
+// die volgorde nu zichtbaar en omkeerbaar in plaats van een verborgen default.
+const ALL_DEFAULT_SORT: SortState = { column: 'created_at', direction: 'desc' };
+
+// "In dienst" is client-side: de set komt uit actieve plaatsingen en wordt hier gefilterd,
+// gesorteerd en pas daarna in pagina's gesneden. Huisvesting en Portaal zijn icoonkolommen
+// zonder leesbare waarde; die blijven statisch.
+const IN_DIENST_SORT_COLUMNS: readonly SortableColumn[] = [
+  { key: 'name', value: candidateName },
+  { key: 'employee_number' },
+  { key: 'employee_status' },
+  { key: 'compliance_status' },
+  { key: 'start_date', value: (c: any) => c.activePlacement?.start_date, defaultDirection: 'desc' },
+  { key: 'company', value: (c: any) => c.activePlacement?.companies?.name ?? c.activePlacement?.function_name },
+];
+// Laatst gestarte plaatsing bovenaan — de volgorde die toInServiceCandidates al gaf.
+const IN_DIENST_DEFAULT_SORT: SortState = { column: 'start_date', direction: 'desc' };
+
 const Candidates = () => {
   const navigate = useNavigate();
   const canEditCandidates = useRolePermission('candidates.edit');
@@ -141,13 +171,21 @@ const Candidates = () => {
       ? 'instroom'
       : 'alle';
   const [activeTab, setActiveTab] = useState<CandidateTab>(initialTab);
+  const isInDienst = activeTab === 'in-dienst';
+  // Eén hook voor beide tabbladen: ze delen de URL, en van tabblad wisselen wist sortering en
+  // pagina toch al (handleTabChange). Elk tabblad heeft wel zijn eigen kolommen en default;
+  // een URL-sortering die het andere tabblad niet kent, valt terug op diens default.
+  const table = useTableControls({
+    columns: isInDienst ? IN_DIENST_SORT_COLUMNS : ALL_SORT_COLUMNS,
+    defaultSort: isInDienst ? IN_DIENST_DEFAULT_SORT : ALL_DEFAULT_SORT,
+    tiebreak: ['id'],
+  });
+  const { page, pageSize, applySort, resetPage } = table;
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [employeeStatusFilter, setEmployeeStatusFilter] = useState('all');
   const hasEmployeeFilter = search.trim() !== '' || employeeStatusFilter !== 'all';
   const [complianceFilter, setComplianceFilter] = useState('all');
-  const [nameSort, setNameSort] = useState<'none' | 'asc' | 'desc'>('none');
-  const [page, setPage] = useState(0);
   const [importOpen, setImportOpen] = useState(false);
   const [importPreset, setImportPreset] = useState<'carerix' | 'buddy' | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -180,7 +218,7 @@ const Candidates = () => {
     setLanguageFilter('all');
     setSkillsFilter([]);
     setCvSearch('');
-    setPage(0);
+    resetPage();
   };
 
   // Distinct nationaliteiten + talen voor de filter-dropdowns (client-side
@@ -212,7 +250,7 @@ const Candidates = () => {
 
   const handleTabChange = (tab: string) => {
     setActiveTab(tab as CandidateTab);
-    setPage(0);
+    // Sortering, pagina en paginagrootte staan in de URL en gaan hieronder mee weg.
     setSearch('');
     setStatusFilter('all');
     setEmployeeStatusFilter('all');
@@ -226,14 +264,9 @@ const Candidates = () => {
     }
   };
 
-  const toggleNameSort = () => {
-    setNameSort((current) => current === 'asc' ? 'desc' : 'asc');
-    setPage(0);
-  };
-
   // Query for "Alle" tab
   const { data, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['candidates', search, statusFilter, complianceFilter, cvSearch, nameSort, page, housingFilter, screeningFilter, licenseFilter, nationalityFilter, languageFilter, skillsFilter],
+    queryKey: ['candidates', search, statusFilter, complianceFilter, cvSearch, page, pageSize, table.sort.column, table.sort.direction, housingFilter, screeningFilter, licenseFilter, nationalityFilter, languageFilter, skillsFilter],
     queryFn: async () => {
       let query = supabase.from('candidates').select('*', { count: 'exact' });
       if (search) {
@@ -257,14 +290,11 @@ const Candidates = () => {
       if (nationalityFilter !== 'all') query = query.eq('nationality', nationalityFilter);
       if (languageFilter !== 'all') query = query.contains('languages', [languageFilter]);
       if (skillsFilter.length > 0) query = query.overlaps('skills', skillsFilter);
-      if (nameSort === 'none') {
-        query = query.order('created_at', { ascending: false });
-      } else {
-        query = query
-          .order('last_name', { ascending: nameSort === 'asc', nullsFirst: false })
-          .order('first_name', { ascending: nameSort === 'asc', nullsFirst: false });
-      }
-      query = query.range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+      // Sorteren gebeurt in de database, dus over de héle set — niet over de zichtbare pagina.
+      // Op naam ordent Postgres met de en_US-collatie van de database: accenten en hoofdletters
+      // tellen daar pas op het tweede niveau, dus "José" staat naast "Jose" — hetzelfde beeld
+      // als de Nederlandse collator in de client-tak van "In dienst".
+      query = applySort(query).range(table.from, table.to);
       const { data, count, error } = await query;
       if (error) throw error;
       return { candidates: data ?? [], total: count ?? 0 };
@@ -273,9 +303,11 @@ const Candidates = () => {
     placeholderData: keepPreviousData,
   });
 
-  // Query for "In dienst" tab
-  const { data: employeeData, isLoading: employeesLoading } = useQuery({
-    queryKey: ['candidates-in-dienst', search, employeeStatusFilter, nameSort, page],
+  // "In dienst": de set komt uit actieve plaatsingen en is klein genoeg om in één keer op te
+  // halen. Zoeken, filteren, sorteren en pagineren gebeurt daarna client-side (hieronder),
+  // zodat een toetsaanslag of andere sortering geen nieuwe fetch kost.
+  const { data: inServiceCandidates, isLoading: employeesLoading } = useQuery({
+    queryKey: ['candidates-in-dienst'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('placements')
@@ -302,42 +334,38 @@ const Candidates = () => {
         .not('candidate_id', 'is', null)
         .order('start_date', { ascending: false });
       if (error) throw error;
-
-      const activeCandidates = toInServiceCandidates(data ?? []);
-      const searchValue = foldAccents(search.trim());
-      const filtered = activeCandidates.filter((candidate: any) => {
-        if (employeeStatusFilter !== 'all' && candidate.employee_status !== employeeStatusFilter) return false;
-        if (!searchValue) return true;
-
-        const activePlacement = candidate.activePlacement;
-        const haystack = foldAccents([
-          candidate.first_name,
-          candidate.last_name,
-          candidate.employee_number,
-          activePlacement?.companies?.name,
-          activePlacement?.function_name,
-        ].filter(Boolean).join(' '));
-
-        return haystack.includes(searchValue);
-      });
-      if (nameSort !== 'none') {
-        filtered.sort((a: any, b: any) => {
-          const result = candidateName(a).localeCompare(candidateName(b), 'nl', { sensitivity: 'base' });
-          return nameSort === 'asc' ? result : -result;
-        });
-      }
-
-      const start = page * PAGE_SIZE;
-
-      return { employees: filtered.slice(start, start + PAGE_SIZE), total: filtered.length };
+      return toInServiceCandidates(data ?? []);
     },
-    enabled: activeTab === 'in-dienst',
-    placeholderData: keepPreviousData,
+    enabled: isInDienst,
   });
+
+  const { sortRows: sortEmployees, pageSlice } = table;
+  const employeeData = useMemo(() => {
+    if (!isInDienst) return { employees: [] as any[], total: 0 };
+    const searchValue = foldAccents(search.trim());
+    const filtered = (inServiceCandidates ?? []).filter((candidate: any) => {
+      if (employeeStatusFilter !== 'all' && candidate.employee_status !== employeeStatusFilter) return false;
+      if (!searchValue) return true;
+
+      const activePlacement = candidate.activePlacement;
+      const haystack = foldAccents([
+        candidate.first_name,
+        candidate.last_name,
+        candidate.employee_number,
+        activePlacement?.companies?.name,
+        activePlacement?.function_name,
+      ].filter(Boolean).join(' '));
+
+      return haystack.includes(searchValue);
+    });
+    // Eerst de volledige gefilterde set sorteren, dan pas de pagina eruit snijden.
+    const sorted = sortEmployees(filtered);
+    return { employees: pageSlice(sorted), total: sorted.length };
+  }, [employeeStatusFilter, inServiceCandidates, isInDienst, pageSlice, search, sortEmployees]);
 
   const candidates = data?.candidates ?? [];
   const total = data?.total ?? 0;
-  const totalPages = Math.ceil(total / PAGE_SIZE);
+  const totalPages = Math.ceil(total / pageSize);
   const candidateIds = candidates.map((c: any) => c.id);
 
   // Fetch latest profile tokens for visible candidates
@@ -391,9 +419,9 @@ const Candidates = () => {
 
   const allOnPageSelected = candidates.length > 0 && candidates.every((c: any) => selected.has(c.id));
 
-  const employees = employeeData?.employees ?? [];
-  const employeeTotal = employeeData?.total ?? 0;
-  const employeeTotalPages = Math.ceil(employeeTotal / PAGE_SIZE);
+  const employees = employeeData.employees;
+  const employeeTotal = employeeData.total;
+  const employeeTotalPages = Math.ceil(employeeTotal / pageSize);
 
   return (
     <div className="space-y-4 sm:space-y-6" data-translate-region>
@@ -447,16 +475,16 @@ const Candidates = () => {
         <div className="flex items-center gap-3 flex-wrap">
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Zoek op naam, stad, e-mail of telefoon..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} className="pl-9" />
+            <Input placeholder="Zoek op naam, stad, e-mail of telefoon..." value={search} onChange={(e) => { setSearch(e.target.value); resetPage(); }} className="pl-9" />
           </div>
-          <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(0); }}>
+          <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); resetPage(); }}>
             <SelectTrigger className="w-40"><SelectValue placeholder="Status" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Alle statussen</SelectItem>
               {Object.entries(statusLabel).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
             </SelectContent>
           </Select>
-          <Select value={complianceFilter} onValueChange={(v) => { setComplianceFilter(v); setPage(0); }}>
+          <Select value={complianceFilter} onValueChange={(v) => { setComplianceFilter(v); resetPage(); }}>
             <SelectTrigger className="w-40"><SelectValue placeholder="Compliance" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Alle compliance</SelectItem>
@@ -484,9 +512,9 @@ const Candidates = () => {
         <div className="flex items-center gap-3 flex-wrap">
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Zoek op naam..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} className="pl-9" />
+            <Input placeholder="Zoek op naam..." value={search} onChange={(e) => { setSearch(e.target.value); resetPage(); }} className="pl-9" />
           </div>
-          <Select value={employeeStatusFilter} onValueChange={(v) => { setEmployeeStatusFilter(v); setPage(0); }}>
+          <Select value={employeeStatusFilter} onValueChange={(v) => { setEmployeeStatusFilter(v); resetPage(); }}>
             <SelectTrigger className="w-40"><SelectValue placeholder="Status" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Alle statussen</SelectItem>
@@ -512,7 +540,7 @@ const Candidates = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground">Eigen huisvesting (NL)</label>
-              <Select value={housingFilter} onValueChange={(v) => { setHousingFilter(v); setPage(0); }}>
+              <Select value={housingFilter} onValueChange={(v) => { setHousingFilter(v); resetPage(); }}>
                 <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Alle</SelectItem>
@@ -524,7 +552,7 @@ const Candidates = () => {
 
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground">Screening</label>
-              <Select value={screeningFilter} onValueChange={(v) => { setScreeningFilter(v); setPage(0); }}>
+              <Select value={screeningFilter} onValueChange={(v) => { setScreeningFilter(v); resetPage(); }}>
                 <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Alle</SelectItem>
@@ -537,7 +565,7 @@ const Candidates = () => {
 
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground">Rijbewijs</label>
-              <Select value={licenseFilter} onValueChange={(v) => { setLicenseFilter(v); setPage(0); }}>
+              <Select value={licenseFilter} onValueChange={(v) => { setLicenseFilter(v); resetPage(); }}>
                 <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Alle</SelectItem>
@@ -549,7 +577,7 @@ const Candidates = () => {
 
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground">Nationaliteit</label>
-              <Select value={nationalityFilter} onValueChange={(v) => { setNationalityFilter(v); setPage(0); }}>
+              <Select value={nationalityFilter} onValueChange={(v) => { setNationalityFilter(v); resetPage(); }}>
                 <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Alle nationaliteiten</SelectItem>
@@ -560,7 +588,7 @@ const Candidates = () => {
 
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground">Taal</label>
-              <Select value={languageFilter} onValueChange={(v) => { setLanguageFilter(v); setPage(0); }}>
+              <Select value={languageFilter} onValueChange={(v) => { setLanguageFilter(v); resetPage(); }}>
                 <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Alle talen</SelectItem>
@@ -573,7 +601,7 @@ const Candidates = () => {
               <label className="text-xs font-medium text-muted-foreground">Vaardigheden</label>
               <SkillMultiSelect
                 value={skillsFilter}
-                onChange={(v) => { setSkillsFilter(v); setPage(0); }}
+                onChange={(v) => { setSkillsFilter(v); resetPage(); }}
                 placeholder="Alle vaardigheden"
               />
               {skillsFilter.length > 0 && (
@@ -588,11 +616,11 @@ const Candidates = () => {
               <Input
                 placeholder="bijv. lassen MIG TIG ervaring"
                 value={cvSearch}
-                onChange={(e) => { setCvSearch(e.target.value); setPage(0); }}
+                onChange={(e) => { setCvSearch(e.target.value); resetPage(); }}
                 className="flex-1"
               />
               {cvSearch && (
-                <Button variant="ghost" size="sm" onClick={() => { setCvSearch(''); setPage(0); }}>
+                <Button variant="ghost" size="sm" onClick={() => { setCvSearch(''); resetPage(); }}>
                   Wissen
                 </Button>
               )}
@@ -661,19 +689,15 @@ const Candidates = () => {
                           aria-label={allOnPageSelected ? 'Deselecteer alle kandidaten op deze pagina' : 'Selecteer alle kandidaten op deze pagina'}
                         />
                       </TableHead>}
-                      <TableHead>
-                        <Button type="button" variant="ghost" size="sm" className="-ml-3 gap-1.5" onClick={toggleNameSort}>
-                          Naam
-                          <ArrowUpDown className="h-3.5 w-3.5" />
-                          {nameSort !== 'none' && <span className="text-xs text-muted-foreground">{nameSort === 'asc' ? 'A-Z' : 'Z-A'}</span>}
-                        </Button>
-                      </TableHead>
-                      <TableHead>Status</TableHead>
+                      <SortableTableHead column="name" sort={table.sort} onSort={table.toggleSort}>Naam</SortableTableHead>
+                      <SortableTableHead column="status" sort={table.sort} onSort={table.toggleSort}>Status</SortableTableHead>
+                      {/* Profiel, Telefoon en Vaardigheden zijn afgeleid resp. niet zinnig — zie ALL_SORT_COLUMNS. */}
                       <TableHead>Profiel</TableHead>
                       <TableHead>Telefoon</TableHead>
-                      <TableHead>E-mail</TableHead>
+                      <SortableTableHead column="email" sort={table.sort} onSort={table.toggleSort}>E-mail</SortableTableHead>
                       <TableHead>Vaardigheden</TableHead>
-                      <TableHead>Compliance</TableHead>
+                      <SortableTableHead column="compliance_status" sort={table.sort} onSort={table.toggleSort}>Compliance</SortableTableHead>
+                      <SortableTableHead column="created_at" sort={table.sort} onSort={table.toggleSort}>Toegevoegd</SortableTableHead>
                       {canEditCandidates && <TableHead className="text-right">Acties</TableHead>}
                     </TableRow>
                   </TableHeader>
@@ -734,6 +758,7 @@ const Candidates = () => {
                               {c.compliance_status}
                             </Badge>
                           </TableCell>
+                          <TableCell className="whitespace-nowrap">{formatDate(c.created_at)}</TableCell>
                           {canEditCandidates && <TableCell className="text-right">
                             <Button
                               variant="outline"
@@ -753,27 +778,13 @@ const Candidates = () => {
                 </Table>
               </div>
 
-              {totalPages > 1 && (
-                <Pagination>
-                  <PaginationContent>
-                    <PaginationItem>
-                      <PaginationPrevious onClick={() => setPage(Math.max(0, page - 1))} className={page === 0 ? 'pointer-events-none opacity-50' : 'cursor-pointer'} />
-                    </PaginationItem>
-                    {getPaginationRange(page, totalPages).map((item, i) => (
-                      <PaginationItem key={`${item}-${i}`}>
-                        {typeof item === 'number' ? (
-                          <PaginationLink isActive={item === page} onClick={() => setPage(item)} className="cursor-pointer">{item + 1}</PaginationLink>
-                        ) : (
-                          <PaginationEllipsis />
-                        )}
-                      </PaginationItem>
-                    ))}
-                    <PaginationItem>
-                      <PaginationNext onClick={() => setPage(Math.min(totalPages - 1, page + 1))} className={page >= totalPages - 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'} />
-                    </PaginationItem>
-                  </PaginationContent>
-                </Pagination>
-              )}
+              <TablePagination
+                page={page}
+                totalPages={totalPages}
+                onPageChange={table.setPage}
+                pageSize={pageSize}
+                onPageSizeChange={table.setPageSize}
+              />
             </>
           )}
         </>
@@ -795,7 +806,7 @@ const Candidates = () => {
                 <>
                   <p className="text-lg font-medium text-muted-foreground">Geen medewerkers gevonden</p>
                   <p className="text-sm text-muted-foreground mt-1">Er zijn wel medewerkers, maar geen enkele past bij deze zoekopdracht of dit filter.</p>
-                  <Button variant="outline" className="mt-4" onClick={() => { setSearch(''); setEmployeeStatusFilter('all'); setPage(0); }}>
+                  <Button variant="outline" className="mt-4" onClick={() => { setSearch(''); setEmployeeStatusFilter('all'); resetPage(); }}>
                     Filters wissen
                   </Button>
                 </>
@@ -816,20 +827,15 @@ const Candidates = () => {
                 <Table className="min-w-[820px]">
                   <TableHeader>
                     <TableRow>
-                      <TableHead>
-                        <Button type="button" variant="ghost" size="sm" className="-ml-3 gap-1.5" onClick={toggleNameSort}>
-                          Naam
-                          <ArrowUpDown className="h-3.5 w-3.5" />
-                          {nameSort !== 'none' && <span className="text-xs text-muted-foreground">{nameSort === 'asc' ? 'A-Z' : 'Z-A'}</span>}
-                        </Button>
-                      </TableHead>
-                      <TableHead>Medewerkernr.</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Compliance</TableHead>
-                      <TableHead>Startdatum</TableHead>
+                      <SortableTableHead column="name" sort={table.sort} onSort={table.toggleSort}>Naam</SortableTableHead>
+                      <SortableTableHead column="employee_number" sort={table.sort} onSort={table.toggleSort}>Medewerkernr.</SortableTableHead>
+                      <SortableTableHead column="employee_status" sort={table.sort} onSort={table.toggleSort}>Status</SortableTableHead>
+                      <SortableTableHead column="compliance_status" sort={table.sort} onSort={table.toggleSort}>Compliance</SortableTableHead>
+                      <SortableTableHead column="start_date" sort={table.sort} onSort={table.toggleSort}>Startdatum</SortableTableHead>
+                      {/* Huisvesting en Portaal zijn icoonkolommen — zie IN_DIENST_SORT_COLUMNS. */}
                       <TableHead>Huisvesting</TableHead>
                       <TableHead>Portaal</TableHead>
-                      <TableHead>Actieve plaatsing</TableHead>
+                      <SortableTableHead column="company" sort={table.sort} onSort={table.toggleSort}>Actieve plaatsing</SortableTableHead>
                       {canEditCandidates && <TableHead className="text-right">Acties</TableHead>}
                     </TableRow>
                   </TableHeader>
@@ -895,27 +901,13 @@ const Candidates = () => {
                 </Table>
               </div>
 
-              {employeeTotalPages > 1 && (
-                <Pagination>
-                  <PaginationContent>
-                    <PaginationItem>
-                      <PaginationPrevious onClick={() => setPage(Math.max(0, page - 1))} className={page === 0 ? 'pointer-events-none opacity-50' : 'cursor-pointer'} />
-                    </PaginationItem>
-                    {getPaginationRange(page, employeeTotalPages).map((item, i) => (
-                      <PaginationItem key={`${item}-${i}`}>
-                        {typeof item === 'number' ? (
-                          <PaginationLink isActive={item === page} onClick={() => setPage(item)} className="cursor-pointer">{item + 1}</PaginationLink>
-                        ) : (
-                          <PaginationEllipsis />
-                        )}
-                      </PaginationItem>
-                    ))}
-                    <PaginationItem>
-                      <PaginationNext onClick={() => setPage(Math.min(employeeTotalPages - 1, page + 1))} className={page >= employeeTotalPages - 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'} />
-                    </PaginationItem>
-                  </PaginationContent>
-                </Pagination>
-              )}
+              <TablePagination
+                page={page}
+                totalPages={employeeTotalPages}
+                onPageChange={table.setPage}
+                pageSize={pageSize}
+                onPageSizeChange={table.setPageSize}
+              />
             </>
           )}
         </>

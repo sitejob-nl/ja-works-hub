@@ -1,37 +1,12 @@
 import { expect, test } from '@playwright/test';
-import { ensureLoggedIn } from './e2e-helpers';
+import { ensureLoggedIn, kiesPaginagrootte } from './e2e-helpers';
 
 // Browser-QA voor het ticket "Sorteerbare kolomkoppen en instelbare paginagrootte op
 // Transport": sorteren, paginagrootte wisselen, verversen, en zien dat de keuze staat.
+// De uitrol over de andere lijsten staat in qa-tabel-sortering-uitrol-*.spec.ts.
 
 const plates = (page: import('@playwright/test').Page) =>
   page.locator('table tbody tr td:first-child').allInnerTexts();
-
-/**
- * Kiest een paginagrootte zoals een gebruiker dat doet.
- *
- * De hoofdcontent van de app scrollt in een eigen container (`<main>`; `window.scrollY`
- * blijft 0). Scroll er met het muiswiel naartoe in plaats van met Playwright's eigen
- * auto-scroll: die zet `scrollTop` programmatisch, en de scroll-lock die Radix bij het
- * openen van de dropdown aanzet draait dat terug. De voettekst springt dan alsnog buiten
- * beeld en de optie is onklikbaar — een testartefact, niet iets wat een gebruiker raakt.
- */
-async function kiesPaginagrootte(page: import('@playwright/test').Page, aantal: string) {
-  const trigger = page.getByLabel('Rijen per pagina');
-  // Altijd echt wielen — ook als de voettekst er al in beeld staat. Playwright kan er
-  // door een eerdere klik programmatisch naartoe gescrold zijn, en juist díé scrollpositie
-  // wordt bij het openen van de dropdown teruggedraaid.
-  await page.mouse.move(700, 400);
-  for (let i = 0; i < 15; i++) {
-    await page.mouse.wheel(0, 400);
-    await page.waitForTimeout(50);
-  }
-  await expect(trigger).toBeInViewport();
-  await trigger.click();
-  const optie = page.getByRole('option', { name: aantal, exact: true });
-  await expect(optie).toBeVisible();
-  await optie.click();
-}
 
 test.describe('/transport — sortering en paginagrootte', () => {
   test.beforeEach(async ({ page }) => {
