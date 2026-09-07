@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bedsOccupiedOn, checkOutDateProblem, defaultCheckOutDate, roomHasFreeBedOn } from '@/lib/housing-availability';
+import { bedsOccupiedOn, checkOutDateProblem, defaultCheckOutDate, roomHasFreeBedOn, summarizePropertyOccupancy } from '@/lib/housing-availability';
 
 describe('bedsOccupiedOn', () => {
   it('telt geen bedden in een lege kamer', () => {
@@ -88,6 +88,57 @@ describe('bedsOccupiedOn — uitgecheckt met een datum', () => {
     const unit = { capacity: 1, housing_assignments: futureCheckOut };
     expect(roomHasFreeBedOn(unit, '2026-09-10')).toBe(false);
     expect(roomHasFreeBedOn(unit, '2026-09-20')).toBe(true);
+  });
+});
+
+describe('summarizePropertyOccupancy', () => {
+  const bewoond = { status: 'ingecheckt', check_in_date: '2026-08-01', check_out_date: null };
+  const uitgecheckt2009 = { status: 'uitgecheckt', check_in_date: '2026-08-01', check_out_date: '2026-09-20' };
+
+  it('leeg pand telt nergens toe en deelt niet door nul', () => {
+    expect(summarizePropertyOccupancy([], '2026-09-07')).toEqual({
+      totalCapacity: 0, currentOccupancy: 0, percentage: 0, freeRooms: 0,
+    });
+    expect(summarizePropertyOccupancy(null, '2026-09-07').percentage).toBe(0);
+  });
+
+  it('telt een toekomstige uitcheck als bezet tot de uitcheckdatum', () => {
+    const units = [{ capacity: 1, housing_assignments: [uitgecheckt2009] }];
+    expect(summarizePropertyOccupancy(units, '2026-09-07')).toEqual({
+      totalCapacity: 1, currentOccupancy: 1, percentage: 100, freeRooms: 0,
+    });
+    // Op de uitcheckdatum zelf is de kamer vrij — zonder handmatige actie.
+    expect(summarizePropertyOccupancy(units, '2026-09-20')).toEqual({
+      totalCapacity: 1, currentOccupancy: 0, percentage: 0, freeRooms: 1,
+    });
+  });
+
+  it('een uitcheck in het verleden telt niet meer mee', () => {
+    const units = [{ capacity: 1, housing_assignments: [{ status: 'uitgecheckt', check_in_date: '2026-08-01', check_out_date: '2026-08-20' }] }];
+    expect(summarizePropertyOccupancy(units, '2026-09-07').currentOccupancy).toBe(0);
+    expect(summarizePropertyOccupancy(units, '2026-09-07').freeRooms).toBe(1);
+  });
+
+  it('telt reserveringen mee vanaf de incheckdatum, net als de kamerkiezer', () => {
+    const units = [{ capacity: 1, housing_assignments: [{ status: 'gereserveerd', check_in_date: '2026-09-20', check_out_date: null }] }];
+    expect(summarizePropertyOccupancy(units, '2026-09-07').currentOccupancy).toBe(0);
+    expect(summarizePropertyOccupancy(units, '2026-09-20').currentOccupancy).toBe(1);
+  });
+
+  it('telt over meerdere kamers en rondt het percentage af', () => {
+    const units = [
+      { capacity: 2, housing_assignments: [bewoond] },
+      { capacity: 1, housing_assignments: [uitgecheckt2009] },
+      { capacity: 1, housing_assignments: [] },
+    ];
+    expect(summarizePropertyOccupancy(units, '2026-09-07')).toEqual({
+      totalCapacity: 4, currentOccupancy: 2, percentage: 50, freeRooms: 1,
+    });
+  });
+
+  it('kamers zonder capaciteit tellen niet als vrije kamer', () => {
+    const units = [{ capacity: 0, housing_assignments: [] }];
+    expect(summarizePropertyOccupancy(units, '2026-09-07').freeRooms).toBe(0);
   });
 });
 
