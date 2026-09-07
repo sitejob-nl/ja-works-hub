@@ -14,10 +14,14 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import SortableTableHead from '@/components/ui/sortable-table-head';
+import TablePagination from '@/components/ui/table-pagination';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { Plus, MessageSquare, Mail, Phone, StickyNote, MessageCircle, Search, Loader2, Send } from 'lucide-react';
 import type { Database } from '@/integrations/supabase/types';
+import { useTableControls } from '@/hooks/useTableControls';
+import type { SortableColumn, SortState } from '@/lib/table-sort';
 
 const VITE_SUPABASE_PROJECT_ID = import.meta.env.VITE_SUPABASE_PROJECT_ID;
 
@@ -39,7 +43,19 @@ const CHANNEL_LABELS: Record<CommunicationChannel, string> = {
   sms: 'SMS',
 };
 
-const PAGE_SIZE = 20;
+// Sorteerbaar zijn de kolommen die één-op-één een communicatiekolom tonen. 'Verzender' is een
+// to-one embed op profiles en daar ordent PostgREST de berichten zelf op. 'Aan/Van' niet: die
+// cel valt terug van kandidaat naar bedrijf naar contactpersoon, dus één databasekolom dekt
+// hem niet. Kanaal en richting zijn enums: sorteren groepeert, niet alfabetisch op label.
+const SORT_COLUMNS: readonly SortableColumn[] = [
+  { key: 'channel' },
+  { key: 'direction' },
+  { key: 'subject' },
+  { key: 'sent_at', defaultDirection: 'desc' },
+  { key: 'sender', orderBy: ['profiles(full_name)'] },
+];
+// Nieuwste bericht bovenaan, zoals de lijst altijd al opende — nu zichtbaar en omkeerbaar.
+const DEFAULT_SORT: SortState = { column: 'sent_at', direction: 'desc' };
 
 const Communications = () => {
   const organizationId = useOrganizationId();
@@ -50,7 +66,16 @@ const Communications = () => {
   const [channelFilter, setChannelFilter] = useState('all');
   const [directionFilter, setDirectionFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
-  const [page, setPage] = useState(0);
+  const table = useTableControls({
+    columns: SORT_COLUMNS,
+    defaultSort: DEFAULT_SORT,
+    // Deze lijst stond al op 20 rijen; dat blijft de default.
+    defaultPageSize: 20,
+    // Kanaal, richting en verzender zijn niet uniek; zonder vaste volgorde daarbinnen kan
+    // .range() een bericht op twee pagina's tegelijk zetten.
+    tiebreak: ['id'],
+  });
+  const { page, pageSize, applySort, resetPage } = table;
   const [sheetOpen, setSheetOpen] = useState(false);
   const [detailItem, setDetailItem] = useState<any>(null);
 
@@ -68,7 +93,7 @@ const Communications = () => {
   const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['communications', organizationId, search, channelFilter, directionFilter, typeFilter, page],
+    queryKey: ['communications', organizationId, search, channelFilter, directionFilter, typeFilter, page, pageSize, table.sort.column, table.sort.direction],
     queryFn: async () => {
       let query = supabase
         .from('communications')
@@ -79,9 +104,7 @@ const Communications = () => {
           company_contacts!communications_company_contact_id_fkey(full_name),
           profiles!communications_sent_by_fkey(full_name)
         `, { count: 'exact' })
-        .eq('organization_id', organizationId)
-        .order('sent_at', { ascending: false })
-        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+        .eq('organization_id', organizationId);
 
       if (search.trim()) {
         query = query.or(`subject.ilike.%${search}%,body.ilike.%${search}%`);
@@ -97,6 +120,9 @@ const Communications = () => {
       } else if (typeFilter === 'company') {
         query = query.not('company_id', 'is', null);
       }
+
+      // Sorteren gebeurt in de database, dus over de héle set — niet over de zichtbare pagina.
+      query = applySort(query).range(table.from, table.to);
 
       const { data, error, count } = await query;
       if (error) throw error;
@@ -228,7 +254,7 @@ const Communications = () => {
 
   const items = data?.items || [];
   const totalCount = data?.count || 0;
-  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+  const totalPages = Math.ceil(totalCount / pageSize);
 
   const getRecipientName = (item: any) => {
     if (item.candidates) {
@@ -267,12 +293,12 @@ const Communications = () => {
             <Input
               placeholder="Zoek op onderwerp of tekst..."
               value={search}
-              onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+              onChange={(e) => { setSearch(e.target.value); resetPage(); }}
               className="pl-9"
             />
           </div>
         </div>
-        <Select value={channelFilter} onValueChange={(v) => { setChannelFilter(v); setPage(0); }}>
+        <Select value={channelFilter} onValueChange={(v) => { setChannelFilter(v); resetPage(); }}>
           <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Alle kanalen</SelectItem>
@@ -283,7 +309,7 @@ const Communications = () => {
             <SelectItem value="sms">SMS</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={directionFilter} onValueChange={(v) => { setDirectionFilter(v); setPage(0); }}>
+        <Select value={directionFilter} onValueChange={(v) => { setDirectionFilter(v); resetPage(); }}>
           <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Alle richtingen</SelectItem>
@@ -291,7 +317,7 @@ const Communications = () => {
             <SelectItem value="outbound">Uitgaand</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={typeFilter} onValueChange={(v) => { setTypeFilter(v); setPage(0); }}>
+        <Select value={typeFilter} onValueChange={(v) => { setTypeFilter(v); resetPage(); }}>
           <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Alle types</SelectItem>
@@ -316,12 +342,13 @@ const Communications = () => {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[60px]">Kanaal</TableHead>
-                  <TableHead className="w-[100px]">Richting</TableHead>
+                  <SortableTableHead column="channel" sort={table.sort} onSort={table.toggleSort} className="w-[60px]">Kanaal</SortableTableHead>
+                  <SortableTableHead column="direction" sort={table.sort} onSort={table.toggleSort} className="w-[100px]">Richting</SortableTableHead>
+                  {/* Aan/Van valt terug van kandidaat naar bedrijf naar contact — zie SORT_COLUMNS. */}
                   <TableHead>Aan/Van</TableHead>
-                  <TableHead>Onderwerp</TableHead>
-                  <TableHead className="w-[160px]">Datum/tijd</TableHead>
-                  <TableHead className="w-[140px]">Verzender</TableHead>
+                  <SortableTableHead column="subject" sort={table.sort} onSort={table.toggleSort}>Onderwerp</SortableTableHead>
+                  <SortableTableHead column="sent_at" sort={table.sort} onSort={table.toggleSort} className="w-[160px]">Datum/tijd</SortableTableHead>
+                  <SortableTableHead column="sender" sort={table.sort} onSort={table.toggleSort} className="w-[140px]">Verzender</SortableTableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -362,14 +389,13 @@ const Communications = () => {
             </Table>
           </div>
 
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex justify-center gap-2">
-              <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage(p => p - 1)}>Vorige</Button>
-              <span className="text-sm text-muted-foreground self-center">Pagina {page + 1} van {totalPages}</span>
-              <Button variant="outline" size="sm" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}>Volgende</Button>
-            </div>
-          )}
+          <TablePagination
+            page={page}
+            totalPages={totalPages}
+            onPageChange={table.setPage}
+            pageSize={pageSize}
+            onPageSizeChange={table.setPageSize}
+          />
         </>
       )}
 

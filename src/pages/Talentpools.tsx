@@ -8,7 +8,8 @@ import { FolderHeart, Plus, Search, Trash2, Wand2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
+import SortableTableHead from '@/components/ui/sortable-table-head';
+import TablePagination from '@/components/ui/table-pagination';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -17,8 +18,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTableControls } from '@/hooks/useTableControls';
+import type { SortableColumn, SortState } from '@/lib/table-sort';
 
-const PAGE_SIZE = 20;
+// Sorteerbaar zijn de kolommen die één-op-één een poolkolom tonen. 'Leden' is een
+// telling uit een to-many embed (talentpool_members(count)) — daar kan PostgREST niet op
+// ordenen, dus die kop blijft statisch, net als de vrije beschrijvingstekst.
+const SORT_COLUMNS: readonly SortableColumn[] = [
+  { key: 'name' },
+  { key: 'is_dynamic', defaultDirection: 'desc' },
+  { key: 'last_refreshed_at', defaultDirection: 'desc' },
+  { key: 'created_at', defaultDirection: 'desc' },
+];
+// Nieuwste pool bovenaan, zoals de lijst altijd al opende. De kolom 'Aangemaakt' maakt die
+// volgorde zichtbaar en omkeerbaar in plaats van een verborgen default.
+const DEFAULT_SORT: SortState = { column: 'created_at', direction: 'desc' };
 
 const POOL_COLORS = [
   { label: 'Blauw', value: '#3b82f6' },
@@ -37,7 +51,16 @@ const Talentpools = () => {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
-  const [page, setPage] = useState(0);
+  const table = useTableControls({
+    columns: SORT_COLUMNS,
+    defaultSort: DEFAULT_SORT,
+    // Deze lijst stond al op 20 rijen; dat blijft de default.
+    defaultPageSize: 20,
+    // Type en verversdatum zijn niet uniek; zonder vaste volgorde daarbinnen kan .range()
+    // een pool op twee pagina's tegelijk zetten.
+    tiebreak: ['name', 'id'],
+  });
+  const { page, pageSize, applySort, resetPage } = table;
   const [createOpen, setCreateOpen] = useState(false);
   const [genFnOpen, setGenFnOpen] = useState(false);
   const [genForm, setGenForm] = useState({ company_id: '', function_id: '' });
@@ -111,7 +134,7 @@ const Talentpools = () => {
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ['talentpools', orgId, search, page],
+    queryKey: ['talentpools', orgId, search, page, pageSize, table.sort.column, table.sort.direction],
     queryFn: async () => {
       let query = supabase
         .from('talentpools' as any)
@@ -122,7 +145,8 @@ const Talentpools = () => {
         query = query.ilike('name', `%${search}%`);
       }
 
-      query = query.order('created_at', { ascending: false }).range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+      // Sorteren gebeurt in de database, dus over de héle set — niet over de zichtbare pagina.
+      query = applySort(query).range(table.from, table.to);
 
       const { data, count, error } = await query;
       if (error) throw error;
@@ -132,7 +156,7 @@ const Talentpools = () => {
 
   const pools = data?.pools ?? [];
   const total = data?.total ?? 0;
-  const totalPages = Math.ceil(total / PAGE_SIZE);
+  const totalPages = Math.ceil(total / pageSize);
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -185,7 +209,7 @@ const Talentpools = () => {
           <Input
             placeholder="Zoek op naam..."
             value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+            onChange={(e) => { setSearch(e.target.value); resetPage(); }}
             className="pl-9"
           />
         </div>
@@ -207,11 +231,13 @@ const Talentpools = () => {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Naam</TableHead>
-                  <TableHead>Type</TableHead>
+                  <SortableTableHead column="name" sort={table.sort} onSort={table.toggleSort}>Naam</SortableTableHead>
+                  <SortableTableHead column="is_dynamic" sort={table.sort} onSort={table.toggleSort}>Type</SortableTableHead>
+                  {/* Beschrijving is vrije tekst en Leden een telling uit een to-many embed — zie SORT_COLUMNS. */}
                   <TableHead>Beschrijving</TableHead>
                   <TableHead>Leden</TableHead>
-                  <TableHead>Laatst ververst</TableHead>
+                  <SortableTableHead column="last_refreshed_at" sort={table.sort} onSort={table.toggleSort}>Laatst ververst</SortableTableHead>
+                  <SortableTableHead column="created_at" sort={table.sort} onSort={table.toggleSort}>Aangemaakt</SortableTableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -251,7 +277,10 @@ const Talentpools = () => {
                       <TableCell className="text-muted-foreground text-xs">
                         {p.last_refreshed_at
                           ? new Date(p.last_refreshed_at).toLocaleString('nl-NL', { dateStyle: 'short', timeStyle: 'short' })
-                          : p.is_dynamic ? 'Nog niet ververst' : `Aangemaakt ${new Date(p.created_at).toLocaleDateString('nl-NL')}`}
+                          : p.is_dynamic ? 'Nog niet ververst' : '—'}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground text-xs">
+                        {p.created_at ? new Date(p.created_at).toLocaleDateString('nl-NL') : '—'}
                       </TableCell>
                     </TableRow>
                   );
@@ -260,23 +289,13 @@ const Talentpools = () => {
             </Table>
           </div>
 
-          {totalPages > 1 && (
-            <Pagination>
-              <PaginationContent>
-                <PaginationItem>
-                  <PaginationPrevious onClick={() => setPage(Math.max(0, page - 1))} className={page === 0 ? 'pointer-events-none opacity-50' : 'cursor-pointer'} />
-                </PaginationItem>
-                {Array.from({ length: totalPages }, (_, i) => (
-                  <PaginationItem key={i}>
-                    <PaginationLink isActive={i === page} onClick={() => setPage(i)} className="cursor-pointer">{i + 1}</PaginationLink>
-                  </PaginationItem>
-                ))}
-                <PaginationItem>
-                  <PaginationNext onClick={() => setPage(Math.min(totalPages - 1, page + 1))} className={page >= totalPages - 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'} />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
-          )}
+          <TablePagination
+            page={page}
+            totalPages={totalPages}
+            onPageChange={table.setPage}
+            pageSize={pageSize}
+            onPageSizeChange={table.setPageSize}
+          />
         </>
       )}
 

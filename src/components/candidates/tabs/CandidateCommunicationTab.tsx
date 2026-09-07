@@ -77,7 +77,8 @@ type OutlookTarget = {
   nextLink: string | null;
 };
 
-const PAGE_SIZE = 50;
+// Aantal berichten dat Graph per aanroep teruggeeft (`top`) — geen paginagrootte van een lijst.
+const MAIL_FETCH_TOP = 50;
 
 const channelIcons: Record<Channel, typeof Mail> = {
   whatsapp: MessageSquare,
@@ -265,7 +266,7 @@ const CandidateCommunicationTab = ({
           ? { next_link: target.nextLink }
           : {
               search: buildOutlookParticipantSearch(targetEmails[0]),
-              top: PAGE_SIZE,
+              top: MAIL_FETCH_TOP,
             }),
       }),
       enabled: Boolean(targetEmails.length > 0 && (target.page === 0 || target.nextLink)),

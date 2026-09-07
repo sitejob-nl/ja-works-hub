@@ -12,15 +12,40 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
+import SortableTableHead from '@/components/ui/sortable-table-head';
+import TablePagination from '@/components/ui/table-pagination';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { formatDate, formatEUR } from '@/lib/format';
 import { useNavigate } from 'react-router-dom';
 import PlacementWizard from '@/components/placement/PlacementWizard';
+import { useTableControls } from '@/hooks/useTableControls';
+import type { SortableColumn, SortState } from '@/lib/table-sort';
 
-const PAGE_SIZE = 20;
+// De tabelbesturing hangt aan het **lijstoverzicht**. Het kalenderoverzicht is een weekraster:
+// één rij per medewerker, zeven dagkolommen, geen paginering — daar bestaat "sorteren op een
+// kolomkop" niet (de koppen zijn dagen) en het raster groepeert al op naam. De lijst haalt de
+// week in één keer op en filtert in de browser, dus sorteren gebeurt client-side over de héle
+// gefilterde set en pas daarna wordt de pagina eruit gesneden.
+const SORT_COLUMNS: readonly SortableColumn[] = [
+  {
+    key: 'employee',
+    value: (p: any) => {
+      const cand = p.candidates ?? p.employees?.candidates;
+      return cand ? `${cand.last_name ?? ''} ${cand.first_name ?? ''}`.trim() : '';
+    },
+  },
+  { key: 'company', value: (p: any) => p.companies?.name },
+  { key: 'function_name' },
+  { key: 'start_date' },
+  { key: 'end_date' },
+  { key: 'hourly_rate', defaultDirection: 'desc' },
+  { key: 'status' },
+];
+// Op medewerkersnaam, net als het kalenderoverzicht — de lijst had tot nu toe helemaal geen
+// vaste volgorde en gaf terug wat de database toevallig teruggaf.
+const DEFAULT_SORT: SortState = { column: 'employee', direction: 'asc' };
 
 const statusBadge: Record<string, string> = {
   gepland: 'bg-blue-100 text-blue-700 border-0',
@@ -45,7 +70,13 @@ const Planning = () => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [companyFilter, setCompanyFilter] = useState('all');
-  const [page, setPage] = useState(0);
+  const table = useTableControls({
+    columns: SORT_COLUMNS,
+    defaultSort: DEFAULT_SORT,
+    // Dit overzicht stond al op 20 rijen; dat blijft de default.
+    defaultPageSize: 20,
+  });
+  const { page, pageSize, resetPage } = table;
   const [sheetOpen, setSheetOpen] = useState(false);
 
   const ws = startOfWeek(weekRef, { weekStartsOn: 1 });
@@ -203,8 +234,11 @@ const Planning = () => {
            d <= new Date(end.getFullYear(), end.getMonth(), end.getDate());
   };
 
-  const totalListPages = Math.ceil(filtered.length / PAGE_SIZE);
-  const listData = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  // Eerst de volledige gefilterde set sorteren, dan pas de pagina eruit snijden.
+  const sortedList = useMemo(() => table.sortRows(filtered), [filtered, table.sortRows]);
+  const totalListPages = Math.ceil(sortedList.length / pageSize);
+  const listPage = totalListPages > 0 ? Math.min(page, totalListPages - 1) : 0;
+  const listData = sortedList.slice(listPage * pageSize, (listPage + 1) * pageSize);
 
   return (
     <div className="space-y-6">
@@ -241,11 +275,11 @@ const Planning = () => {
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-1">
-            <Button variant="outline" size="icon" onClick={() => { setWeekRef(subWeeks(weekRef, 1)); setPage(0); }}><ChevronLeft className="h-4 w-4" /></Button>
+            <Button variant="outline" size="icon" onClick={() => { setWeekRef(subWeeks(weekRef, 1)); resetPage(); }}><ChevronLeft className="h-4 w-4" /></Button>
             <span className="text-sm font-medium min-w-[200px] text-center">{weekLabel}</span>
-            <Button variant="outline" size="icon" onClick={() => { setWeekRef(addWeeks(weekRef, 1)); setPage(0); }}><ChevronRight className="h-4 w-4" /></Button>
+            <Button variant="outline" size="icon" onClick={() => { setWeekRef(addWeeks(weekRef, 1)); resetPage(); }}><ChevronRight className="h-4 w-4" /></Button>
           </div>
-          <Button variant="ghost" size="sm" onClick={() => { setWeekRef(new Date()); setPage(0); }}>Vandaag</Button>
+          <Button variant="ghost" size="sm" onClick={() => { setWeekRef(new Date()); resetPage(); }}>Vandaag</Button>
           <div className="flex gap-1 ml-auto">
             <Button variant={view === 'calendar' ? 'default' : 'outline'} size="sm" onClick={() => setView('calendar')}><LayoutGrid className="h-4 w-4 mr-1" />Kalender</Button>
             <Button variant={view === 'list' ? 'default' : 'outline'} size="sm" onClick={() => setView('list')}><LayoutList className="h-4 w-4 mr-1" />Lijst</Button>
@@ -254,9 +288,9 @@ const Planning = () => {
         <div className="flex flex-wrap gap-3">
           <div className="relative flex-1 min-w-[200px] max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Zoek medewerker of bedrijf..." className="pl-9" value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} />
+            <Input placeholder="Zoek medewerker of bedrijf..." className="pl-9" value={search} onChange={(e) => { setSearch(e.target.value); resetPage(); }} />
           </div>
-          <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(0); }}>
+          <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); resetPage(); }}>
             <SelectTrigger className="w-[150px]"><SelectValue placeholder="Status" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Alle statussen</SelectItem>
@@ -265,7 +299,7 @@ const Planning = () => {
               <SelectItem value="afgerond">Afgerond</SelectItem>
             </SelectContent>
           </Select>
-          <Select value={companyFilter} onValueChange={(v) => { setCompanyFilter(v); setPage(0); }}>
+          <Select value={companyFilter} onValueChange={(v) => { setCompanyFilter(v); resetPage(); }}>
             <SelectTrigger className="w-[200px]"><SelectValue placeholder="Opdrachtgever" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Alle opdrachtgevers</SelectItem>
@@ -368,13 +402,13 @@ const Planning = () => {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Medewerker</TableHead>
-                      <TableHead>Opdrachtgever</TableHead>
-                      <TableHead>Functie</TableHead>
-                      <TableHead>Start</TableHead>
-                      <TableHead>Eind</TableHead>
-                      <TableHead>Uurtarief</TableHead>
-                      <TableHead>Status</TableHead>
+                      <SortableTableHead column="employee" sort={table.sort} onSort={table.toggleSort}>Medewerker</SortableTableHead>
+                      <SortableTableHead column="company" sort={table.sort} onSort={table.toggleSort}>Opdrachtgever</SortableTableHead>
+                      <SortableTableHead column="function_name" sort={table.sort} onSort={table.toggleSort}>Functie</SortableTableHead>
+                      <SortableTableHead column="start_date" sort={table.sort} onSort={table.toggleSort}>Start</SortableTableHead>
+                      <SortableTableHead column="end_date" sort={table.sort} onSort={table.toggleSort}>Eind</SortableTableHead>
+                      <SortableTableHead column="hourly_rate" sort={table.sort} onSort={table.toggleSort}>Uurtarief</SortableTableHead>
+                      <SortableTableHead column="status" sort={table.sort} onSort={table.toggleSort}>Status</SortableTableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -402,19 +436,15 @@ const Planning = () => {
                     })}
                   </TableBody>
                 </Table>
-                {totalListPages > 1 && (
-                  <div className="p-4 flex justify-center">
-                    <Pagination>
-                      <PaginationContent>
-                        <PaginationItem><PaginationPrevious onClick={() => setPage(Math.max(0, page - 1))} /></PaginationItem>
-                        {Array.from({ length: Math.min(totalListPages, 5) }, (_, i) => (
-                          <PaginationItem key={i}><PaginationLink isActive={page === i} onClick={() => setPage(i)}>{i + 1}</PaginationLink></PaginationItem>
-                        ))}
-                        <PaginationItem><PaginationNext onClick={() => setPage(Math.min(totalListPages - 1, page + 1))} /></PaginationItem>
-                      </PaginationContent>
-                    </Pagination>
-                  </div>
-                )}
+                <div className="p-4">
+                  <TablePagination
+                    page={listPage}
+                    totalPages={totalListPages}
+                    onPageChange={table.setPage}
+                    pageSize={pageSize}
+                    onPageSizeChange={table.setPageSize}
+                  />
+                </div>
               </>
             )}
           </CardContent>

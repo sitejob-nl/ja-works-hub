@@ -180,4 +180,21 @@ describe('useTableControls', () => {
     act(() => controls.filterParam('status', 'all')[1]('all'));
     expect(url()).toBe('');
   });
+
+  it('laat twee URL-filters naast elkaar staan', () => {
+    // Uren draagt zowel `status` als `placement_id` in de URL. Eén filter zetten mag het
+    // andere niet wegvagen: elke filterParam-setter kopieert de bestaande params en past
+    // alleen zijn eigen sleutel (plus de paginateller) aan.
+    setup('?placement_id=abc&page=3');
+    expect(controls.filterParam('placement_id', 'all')[0]).toBe('abc');
+
+    act(() => controls.filterParam<string>('status', 'all')[1]('ingediend'));
+    expect(controls.filterParam('placement_id', 'all')[0]).toBe('abc');
+    expect(controls.filterParam('status', 'all')[0]).toBe('ingediend');
+    expect(controls.page).toBe(0);
+
+    // Het ene filter wissen laat het andere staan.
+    act(() => controls.filterParam<string>('placement_id', 'all')[1]('all'));
+    expect(url()).toBe('?status=ingediend');
+  });
 });
