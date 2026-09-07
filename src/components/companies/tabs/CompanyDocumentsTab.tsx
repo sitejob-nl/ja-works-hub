@@ -2,6 +2,7 @@ import { useState, useRef, useMemo, type DragEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { unwrap, unwrapDeleted, unwrapList } from '@/lib/db';
+import { qk } from '@/lib/query-keys';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { useHasRole } from '@/contexts/AuthContext';
 import { logAudit } from '@/lib/audit';
@@ -19,11 +20,18 @@ import {
 } from '@/components/ui/alert-dialog';
 import {
   Plus, FileText, File, FileCheck, FileSignature, Download, Upload, MoreHorizontal, Pencil, Trash2,
-  ClipboardList, Ruler, Euro, Briefcase,
+  ClipboardList, Ruler, Euro, Briefcase, Folder, Lock,
 } from 'lucide-react';
 import { formatDate } from '@/lib/format';
 import { toast } from 'sonner';
 import { allowFileDrop, getDroppedFiles } from '@/lib/file-input';
+import {
+  describeFolderAccess,
+  groupDocumentsByFolder,
+  isRestrictedFolder,
+  suggestFolderId,
+  type CompanyDocumentFolder,
+} from '@/lib/company-document-folders';
 import type { Database } from '@/integrations/supabase/types';
 
 type DocType = Database['public']['Enums']['document_type'];
@@ -35,6 +43,7 @@ type CompanyDocumentType = {
   legacy_document_type: DocType | null;
   sort_order: number;
   is_active: boolean;
+  default_folder_id: string | null;
 };
 
 // Iconen per bekende sleutel; een org-toegevoegd type zonder match valt terug op File.
@@ -56,7 +65,9 @@ const statusBadge: Record<string, string> = {
   ongeldig: 'bg-muted text-muted-foreground border-0',
 };
 
-const emptyForm = { typeId: '', name: '', issued_date: '', expiry_date: '', notes: '' };
+// folderId '' = "volg het documenttype": de map wordt dan afgeleid van het type
+// (default_folder_id) of de standaardmap. Een expliciete keuze blijft staan.
+const emptyForm = { typeId: '', name: '', issued_date: '', expiry_date: '', notes: '', folderId: '' };
 
 const CompanyDocumentsTab = ({ companyId }: { companyId: string }) => {
   const orgId = useOrganizationId();
@@ -73,17 +84,17 @@ const CompanyDocumentsTab = ({ companyId }: { companyId: string }) => {
   const [typeFilter, setTypeFilter] = useState<string>('all');
 
   const { data: types = [] } = useQuery({
-    queryKey: ['company-document-types', orgId],
+    queryKey: qk.companyDocuments.types(orgId),
     queryFn: () => unwrapList<CompanyDocumentType>(
       supabase.from('company_document_types')
-        .select('id, key, label, legacy_document_type, sort_order, is_active')
+        .select('id, key, label, legacy_document_type, sort_order, is_active, default_folder_id')
         .eq('organization_id', orgId)
         .order('sort_order'),
     ),
   });
   const activeTypes = useMemo(() => types.filter((t) => t.is_active), [types]);
-  // Documenten van vóór dit ticket dragen alleen het oude enum-type; die
-  // resolven we via de geseedde catalogusrij met dezelfde legacy_document_type.
+  // Documenten van vóór #247 dragen alleen het oude enum-type; die resolven we
+  // via de geseedde catalogusrij met dezelfde legacy_document_type.
   const legacyTypeMap = useMemo(
     () => new Map(types.filter((t) => t.legacy_document_type).map((t) => [t.legacy_document_type as DocType, t])),
     [types],
@@ -92,8 +103,22 @@ const CompanyDocumentsTab = ({ companyId }: { companyId: string }) => {
   const resolveType = (doc: any): CompanyDocumentType | undefined =>
     (doc.company_document_type_id && typeById.get(doc.company_document_type_id)) || legacyTypeMap.get(doc.type);
 
+  // RLS levert alleen de mappen die deze gebruiker mag zien; een map zonder
+  // recht bestaat hier dus niet — ook niet leeg. Dat geldt ook voor de
+  // documenten en de bestanden erin (zie migratie 20260907080729).
+  const { data: folders = [] } = useQuery({
+    queryKey: qk.companyDocuments.folders(orgId),
+    queryFn: () => unwrapList<CompanyDocumentFolder>(
+      supabase.from('company_document_folders')
+        .select('id, key, label, sort_order, is_default, allowed_roles, required_permission')
+        .eq('organization_id', orgId)
+        .order('sort_order'),
+    ),
+  });
+  const folderById = useMemo(() => new Map(folders.map((f) => [f.id, f])), [folders]);
+
   const { data: docs = [] } = useQuery({
-    queryKey: ['company-documents', companyId],
+    queryKey: qk.companyDocuments.forCompany(companyId),
     queryFn: () => unwrapList<any>(
       supabase.from('documents').select('*').eq('company_id', companyId).order('created_at', { ascending: false }),
     ),
@@ -104,6 +129,14 @@ const CompanyDocumentsTab = ({ companyId }: { companyId: string }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- resolveType leunt op types/legacyTypeMap/typeById, al in deps
     [docs, typeFilter, types],
   );
+
+  const groups = useMemo(() => groupDocumentsByFolder(filteredDocs, folders), [filteredDocs, folders]);
+  // Zonder filter tonen we ook lege mappen (wie de map mag zien, ziet hem ook
+  // leeg); mét een typefilter alleen de mappen waar iets in zit.
+  const visibleGroups = typeFilter === 'all' ? groups : groups.filter((g) => g.docs.length > 0);
+
+  const effectiveFolderId = form.folderId || suggestFolderId(typeById.get(form.typeId), folders);
+  const selectedFolder = folderById.get(effectiveFolderId);
 
   const openDoc = async (filePath: string | null) => {
     if (!filePath) {
@@ -132,12 +165,13 @@ const CompanyDocumentsTab = ({ companyId }: { companyId: string }) => {
     mutationFn: async () => {
       const selectedType = typeById.get(form.typeId);
       if (!selectedType) throw new Error('Kies een documenttype');
+      if (!effectiveFolderId) throw new Error('Kies een map');
       let filePath: string | null = null;
       if (file) {
         const ext = file.name.split('.').pop();
-        // Eigen padsegment 'companies': de opslagcontrole geeft interne rollen toegang
-        // tot de hele org-map, terwijl portaal- en facility-rollen alleen bij hun eigen
-        // categorieën komen. Bedrijfsdocumenten blijven daarmee intern.
+        // Eigen padsegment 'companies': de opslagcontrole zoekt bij dit pad de
+        // documentrij op en past de mapcontrole toe, zodat ook het bestand zelf
+        // alleen bereikbaar is voor wie de map mag zien.
         const path = `${orgId}/companies/${companyId}/${crypto.randomUUID()}.${ext}`;
         const { error: uploadErr } = await supabase.storage.from('documents').upload(path, file);
         if (uploadErr) throw uploadErr;
@@ -149,6 +183,7 @@ const CompanyDocumentsTab = ({ companyId }: { companyId: string }) => {
         candidate_id: null,
         type: selectedType.legacy_document_type,
         company_document_type_id: selectedType.id,
+        company_document_folder_id: effectiveFolderId,
         name: form.name,
         issued_date: form.issued_date || null,
         expiry_date: form.expiry_date || null,
@@ -158,8 +193,11 @@ const CompanyDocumentsTab = ({ companyId }: { companyId: string }) => {
     },
     onSuccess: () => {
       const selectedType = typeById.get(form.typeId);
-      logAudit({ action: 'create', tableName: 'documents', recordId: companyId, newValues: { type: selectedType?.label, name: form.name } });
-      qc.invalidateQueries({ queryKey: ['company-documents', companyId] });
+      logAudit({
+        action: 'create', tableName: 'documents', recordId: companyId,
+        newValues: { type: selectedType?.label, folder: selectedFolder?.label, name: form.name },
+      });
+      qc.invalidateQueries({ queryKey: qk.companyDocuments.forCompany(companyId) });
       setAdding(false);
       setForm(emptyForm);
       setFile(null);
@@ -175,6 +213,7 @@ const CompanyDocumentsTab = ({ companyId }: { companyId: string }) => {
       issued_date: doc.issued_date ?? '',
       expiry_date: doc.expiry_date ?? '',
       notes: doc.notes ?? '',
+      folderId: doc.company_document_folder_id ?? '',
     });
     setFile(null);
     setEditingDoc(doc);
@@ -184,9 +223,11 @@ const CompanyDocumentsTab = ({ companyId }: { companyId: string }) => {
     mutationFn: async () => {
       const selectedType = typeById.get(form.typeId);
       if (!selectedType) throw new Error('Kies een documenttype');
+      if (!effectiveFolderId) throw new Error('Kies een map');
       await unwrap(supabase.from('documents').update({
         type: selectedType.legacy_document_type,
         company_document_type_id: selectedType.id,
+        company_document_folder_id: effectiveFolderId,
         name: form.name,
         issued_date: form.issued_date || null,
         expiry_date: form.expiry_date || null,
@@ -195,8 +236,11 @@ const CompanyDocumentsTab = ({ companyId }: { companyId: string }) => {
     },
     onSuccess: () => {
       const selectedType = typeById.get(form.typeId);
-      logAudit({ action: 'update', tableName: 'documents', recordId: editingDoc.id, newValues: { type: selectedType?.label, name: form.name } });
-      qc.invalidateQueries({ queryKey: ['company-documents', companyId] });
+      logAudit({
+        action: 'update', tableName: 'documents', recordId: editingDoc.id,
+        newValues: { type: selectedType?.label, folder: selectedFolder?.label, name: form.name },
+      });
+      qc.invalidateQueries({ queryKey: qk.companyDocuments.forCompany(companyId) });
       setEditingDoc(null);
       toast.success('Document bijgewerkt');
     },
@@ -210,17 +254,22 @@ const CompanyDocumentsTab = ({ companyId }: { companyId: string }) => {
     },
     onSuccess: (_data, doc: any) => {
       logAudit({ action: 'delete', tableName: 'documents', recordId: doc.id, oldValues: { name: doc.name } });
-      qc.invalidateQueries({ queryKey: ['company-documents', companyId] });
+      qc.invalidateQueries({ queryKey: qk.companyDocuments.forCompany(companyId) });
       setDocToDelete(null);
       toast.success('Document verwijderd');
     },
     onError: (e: any) => { setDocToDelete(null); toast.error(e.message); },
   });
 
+  // Bij een nieuw document volgt de map het gekozen type; bij bewerken blijft
+  // de map van het document staan tot je hem zelf verzet.
+  const onTypeChange = (typeId: string) =>
+    setForm((f) => ({ ...f, typeId, folderId: editingDoc ? f.folderId : '' }));
+
   const typeSelect = (
     <div>
       <Label>Type</Label>
-      <Select value={form.typeId} onValueChange={(v) => setForm((f) => ({ ...f, typeId: v }))}>
+      <Select value={form.typeId} onValueChange={onTypeChange}>
         <SelectTrigger><SelectValue placeholder="Kies een documenttype" /></SelectTrigger>
         <SelectContent>
           {activeTypes.map((t) => <SelectItem key={t.id} value={t.id}>{t.label}</SelectItem>)}
@@ -229,9 +278,29 @@ const CompanyDocumentsTab = ({ companyId }: { companyId: string }) => {
     </div>
   );
 
+  const folderSelect = (
+    <div>
+      <Label>Map</Label>
+      <Select value={effectiveFolderId} onValueChange={(v) => setForm((f) => ({ ...f, folderId: v }))}>
+        <SelectTrigger><SelectValue placeholder="Kies een map" /></SelectTrigger>
+        <SelectContent>
+          {folders.map((f) => (
+            <SelectItem key={f.id} value={f.id}>
+              {f.label}{isRestrictedFolder(f) ? ' (afgeschermd)' : ''}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {selectedFolder && isRestrictedFolder(selectedFolder) && (
+        <p className="mt-1 text-xs text-muted-foreground">Zichtbaar voor: {describeFolderAccess(selectedFolder)}</p>
+      )}
+    </div>
+  );
+
   const fields = (
     <div className="space-y-4">
       {typeSelect}
+      {folderSelect}
       <div><Label>Naam</Label><Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} /></div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div><Label>Ingangsdatum</Label><Input type="date" value={form.issued_date} onChange={(e) => setForm((f) => ({ ...f, issued_date: e.target.value }))} /></div>
@@ -240,6 +309,57 @@ const CompanyDocumentsTab = ({ companyId }: { companyId: string }) => {
       <div><Label>Notities</Label><Textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={3} /></div>
     </div>
   );
+
+  const canSubmit = Boolean(form.name && form.typeId && effectiveFolderId);
+
+  const renderDoc = (d: any) => {
+    const docType = resolveType(d);
+    const Icon = TYPE_ICONS[docType?.key ?? ''] ?? File;
+    const hasFile = Boolean(d.file_path);
+    return (
+      <div key={d.id} className="bg-card rounded-lg border p-3 flex gap-3 transition hover:border-primary/40 hover:shadow-sm">
+        <button
+          type="button"
+          onClick={() => openDoc(d.file_path)}
+          disabled={!hasFile}
+          className="flex flex-1 min-w-0 gap-3 text-left disabled:opacity-60 disabled:cursor-not-allowed"
+          title={hasFile ? 'Open document' : 'Er hangt geen bestand aan dit document'}
+        >
+          <div className="h-12 w-12 rounded-md bg-muted flex items-center justify-center shrink-0">
+            <Icon className="h-5 w-5 text-muted-foreground" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium truncate">{d.name}</p>
+            <p className="text-xs text-muted-foreground">{docType?.label ?? d.type ?? 'Onbekend type'}</p>
+            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+              <Badge variant="secondary" className={`text-xs ${statusBadge[d.status] ?? ''}`}>{d.status}</Badge>
+              {!hasFile && <Badge variant="outline" className="text-xs">Geen bestand</Badge>}
+            </div>
+            {d.expiry_date && <p className="text-xs text-muted-foreground mt-1">Verloopt: {formatDate(d.expiry_date)}</p>}
+            <p className="text-xs text-muted-foreground">Toegevoegd: {formatDate(d.created_at)}</p>
+          </div>
+          {hasFile && <Download className="h-4 w-4 text-muted-foreground shrink-0 self-start mt-1" />}
+        </button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" aria-label={`Acties voor ${d.name}`}>
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => startEdit(d)}>
+              <Pencil className="h-4 w-4 mr-2" /> Bewerken
+            </DropdownMenuItem>
+            {canDeleteDocuments && (
+              <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setDocToDelete(d)}>
+                <Trash2 className="h-4 w-4 mr-2" /> Verwijderen
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-4">
@@ -282,7 +402,7 @@ const CompanyDocumentsTab = ({ companyId }: { companyId: string }) => {
             </div>
             <div className="flex justify-end gap-3 pt-4">
               <Button variant="ghost" onClick={() => setAdding(false)}>Annuleren</Button>
-              <Button onClick={() => add.mutate()} disabled={!form.name || !form.typeId || add.isPending}>
+              <Button onClick={() => add.mutate()} disabled={!canSubmit || add.isPending}>
                 {add.isPending ? 'Uploaden...' : 'Opslaan'}
               </Button>
             </div>
@@ -296,7 +416,7 @@ const CompanyDocumentsTab = ({ companyId }: { companyId: string }) => {
           <div className="mt-6">{fields}</div>
           <div className="flex justify-end gap-3 pt-4">
             <Button variant="ghost" onClick={() => setEditingDoc(null)}>Annuleren</Button>
-            <Button onClick={() => save.mutate()} disabled={!form.name || !form.typeId || save.isPending}>
+            <Button onClick={() => save.mutate()} disabled={!canSubmit || save.isPending}>
               {save.isPending ? 'Opslaan...' : 'Opslaan'}
             </Button>
           </div>
@@ -323,57 +443,31 @@ const CompanyDocumentsTab = ({ companyId }: { companyId: string }) => {
         </AlertDialogContent>
       </AlertDialog>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {filteredDocs.map((d: any) => {
-          const docType = resolveType(d);
-          const Icon = TYPE_ICONS[docType?.key ?? ''] ?? File;
-          const hasFile = Boolean(d.file_path);
+      <div className="space-y-6">
+        {visibleGroups.map(({ folder, docs: groupDocs }) => {
+          const restricted = folder ? isRestrictedFolder(folder) : false;
           return (
-            <div key={d.id} className="bg-card rounded-lg border p-3 flex gap-3 transition hover:border-primary/40 hover:shadow-sm">
-              <button
-                type="button"
-                onClick={() => openDoc(d.file_path)}
-                disabled={!hasFile}
-                className="flex flex-1 min-w-0 gap-3 text-left disabled:opacity-60 disabled:cursor-not-allowed"
-                title={hasFile ? 'Open document' : 'Er hangt geen bestand aan dit document'}
-              >
-                <div className="h-12 w-12 rounded-md bg-muted flex items-center justify-center shrink-0">
-                  <Icon className="h-5 w-5 text-muted-foreground" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{d.name}</p>
-                  <p className="text-xs text-muted-foreground">{docType?.label ?? d.type ?? 'Onbekend type'}</p>
-                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                    <Badge variant="secondary" className={`text-xs ${statusBadge[d.status] ?? ''}`}>{d.status}</Badge>
-                    {!hasFile && <Badge variant="outline" className="text-xs">Geen bestand</Badge>}
-                  </div>
-                  {d.expiry_date && <p className="text-xs text-muted-foreground mt-1">Verloopt: {formatDate(d.expiry_date)}</p>}
-                  <p className="text-xs text-muted-foreground">Toegevoegd: {formatDate(d.created_at)}</p>
-                </div>
-                {hasFile && <Download className="h-4 w-4 text-muted-foreground shrink-0 self-start mt-1" />}
-              </button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" aria-label={`Acties voor ${d.name}`}>
-                    <MoreHorizontal className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => startEdit(d)}>
-                    <Pencil className="h-4 w-4 mr-2" /> Bewerken
-                  </DropdownMenuItem>
-                  {canDeleteDocuments && (
-                    <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setDocToDelete(d)}>
-                      <Trash2 className="h-4 w-4 mr-2" /> Verwijderen
-                    </DropdownMenuItem>
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
+            <section key={folder?.id ?? '__none'} className="space-y-2" aria-label={folder?.label ?? 'Zonder map'}>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Folder className="h-4 w-4 text-muted-foreground" />
+                <h4 className="text-sm font-medium">{folder?.label ?? 'Zonder map'}</h4>
+                <Badge variant="secondary" className="text-xs">{groupDocs.length}</Badge>
+                {folder && restricted && (
+                  <span className="inline-flex items-center gap-1 text-xs text-muted-foreground" title={`Zichtbaar voor: ${describeFolderAccess(folder)}`}>
+                    <Lock className="h-3 w-3" /> {describeFolderAccess(folder)}
+                  </span>
+                )}
+              </div>
+              {groupDocs.length === 0 ? (
+                <p className="pl-6 text-xs text-muted-foreground">Nog geen documenten in deze map</p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">{groupDocs.map(renderDoc)}</div>
+              )}
+            </section>
           );
         })}
       </div>
-      {filteredDocs.length === 0 && (
+      {visibleGroups.length === 0 && (
         <p className="text-center text-muted-foreground py-8">
           {docs.length === 0 ? 'Nog geen documenten' : 'Geen documenten voor dit type'}
         </p>

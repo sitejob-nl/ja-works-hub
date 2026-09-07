@@ -2060,9 +2060,57 @@ export type Database = {
           },
         ]
       }
+      company_document_folders: {
+        Row: {
+          allowed_roles: Database["public"]["Enums"]["user_role"][]
+          created_at: string
+          id: string
+          is_default: boolean
+          key: string
+          label: string
+          organization_id: string
+          required_permission: string | null
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          allowed_roles?: Database["public"]["Enums"]["user_role"][]
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          key: string
+          label: string
+          organization_id: string
+          required_permission?: string | null
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          allowed_roles?: Database["public"]["Enums"]["user_role"][]
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          key?: string
+          label?: string
+          organization_id?: string
+          required_permission?: string | null
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_document_folders_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       company_document_types: {
         Row: {
           created_at: string
+          default_folder_id: string | null
           id: string
           is_active: boolean
           key: string
@@ -2076,6 +2124,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          default_folder_id?: string | null
           id?: string
           is_active?: boolean
           key: string
@@ -2089,6 +2138,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          default_folder_id?: string | null
           id?: string
           is_active?: boolean
           key?: string
@@ -2101,6 +2151,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "company_document_types_default_folder_id_fkey"
+            columns: ["default_folder_id"]
+            isOneToOne: false
+            referencedRelation: "company_document_folders"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "company_document_types_organization_id_fkey"
             columns: ["organization_id"]
@@ -2724,6 +2781,7 @@ export type Database = {
         Row: {
           ai_verification_result: Json | null
           candidate_id: string | null
+          company_document_folder_id: string | null
           company_document_type_id: string | null
           company_id: string | null
           created_at: string
@@ -2745,6 +2803,7 @@ export type Database = {
         Insert: {
           ai_verification_result?: Json | null
           candidate_id?: string | null
+          company_document_folder_id?: string | null
           company_document_type_id?: string | null
           company_id?: string | null
           created_at?: string
@@ -2766,6 +2825,7 @@ export type Database = {
         Update: {
           ai_verification_result?: Json | null
           candidate_id?: string | null
+          company_document_folder_id?: string | null
           company_document_type_id?: string | null
           company_id?: string | null
           created_at?: string
@@ -2790,6 +2850,13 @@ export type Database = {
             columns: ["candidate_id"]
             isOneToOne: false
             referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "documents_company_document_folder_id_fkey"
+            columns: ["company_document_folder_id"]
+            isOneToOne: false
+            referencedRelation: "company_document_folders"
             referencedColumns: ["id"]
           },
           {
@@ -10580,6 +10647,10 @@ export type Database = {
       is_facility_user: { Args: never; Returns: boolean }
       is_internal_user: { Args: never; Returns: boolean }
       is_superadmin: { Args: never; Returns: boolean }
+      link_default_company_document_folders: {
+        Args: { p_org_id: string }
+        Returns: undefined
+      }
       merge_candidate_records: {
         Args: { p_actor?: string; p_loser: string; p_survivor: string }
         Returns: Json
@@ -10704,6 +10775,10 @@ export type Database = {
       }
       sa_update_org_plan: {
         Args: { new_plan_id: string; org_uuid: string }
+        Returns: undefined
+      }
+      seed_default_company_document_folders: {
+        Args: { p_org_id: string }
         Returns: undefined
       }
       seed_default_company_document_types: {

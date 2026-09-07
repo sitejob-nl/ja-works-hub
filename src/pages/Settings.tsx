@@ -18,6 +18,7 @@ import ExactOnlineSettings from '@/components/settings/ExactOnlineSettings';
 import DataExport from '@/components/settings/DataExport';
 import ComplianceRulesSettings from '@/components/settings/ComplianceRulesSettings';
 import CompanyDocumentTypesSettings from '@/components/settings/CompanyDocumentTypesSettings';
+import CompanyDocumentFoldersSettings from '@/components/settings/CompanyDocumentFoldersSettings';
 import RegulationsSettings from '@/components/settings/RegulationsSettings';
 import ContractTemplatesSettings from '@/components/settings/ContractTemplatesSettings';
 import OnboardingFormSettings from '@/components/settings/OnboardingFormSettings';
@@ -577,6 +578,7 @@ const Settings = () => {
             <TabsContent value="hr" className="mt-0 space-y-5">
               <PlacementSettings />
               <ComplianceRulesSettings />
+              <CompanyDocumentFoldersSettings />
               <CompanyDocumentTypesSettings />
               <RegulationsSettings />
               <ContractTemplatesSettings />
