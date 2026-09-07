@@ -1,3 +1,5 @@
+import { meteredAiFetch, attachAiAccounting, aiPricing, type AiAccountingContext, type AiAccountingResult } from "./ai-accounting.ts";
+
 // Google Gemini Flash kandidaatdossier-analyse — synchroon, EU-alternatief voor de VPS.
 // Mirrort anthropic-cv.ts: hergebruikt dezelfde buildSystemPrompt + CV_ANALYSIS_SCHEMA,
 // maar forceert de output via Gemini's responseSchema (structured output) i.p.v. tool_use.
@@ -9,8 +11,8 @@
 //   4. responseSchema forceert dat het antwoord ALTIJD het JSON-schema volgt
 //
 // Kosten: Gemini geeft input/output-tokens terug; thinking-tokens worden op het
-// output-tarief gefactureerd, dus die tellen we mee in outputTokens. Billing zelf
-// loopt via calculateCostCents (anthropic-cv.ts) met Gemini-tarieven.
+// output-tarief gefactureerd, dus die tellen we mee in outputTokens. Kosten en
+// reservering lopen centraal via ai-accounting.ts, vóór het parsen van de analyse.
 
 import {
   CV_ANALYSIS_SCHEMA,
@@ -32,7 +34,7 @@ export const GEMINI_DEFAULT_MODEL = "gemini-3.5-flash";
 const DEFAULT_MAX_OUTPUT_TOKENS = 8192;
 const DEFAULT_THINKING_BUDGET = 1024;
 
-export interface GeminiCvResult {
+export interface GeminiCvResult extends AiAccountingResult {
   analysis: CvAnalysisResult;
   model: string;
   inputTokens: number;
@@ -40,26 +42,17 @@ export interface GeminiCvResult {
   durationMs: number;
 }
 
-// Tarieven in cent per 1M tokens (EUR-cent, ~USD-pariteit). Gebruikt door
-// calculateCostCents voor credit-afschrijving. Bron: ai.google.dev/gemini-api/docs/pricing
-// (Standard tier). Bewust iets conservatief afgerond zodat we niet onderfactureren.
+// Compatibility view of the central tariff in customer credit cents per million
+// tokens. This is a credit tariff at USD-cent parity, not a USD/EUR exchange rate.
 export interface GeminiPricing {
   inputCentsPerMtok: number;
   outputCentsPerMtok: number;
 }
 
-const GEMINI_PRICING: Record<string, GeminiPricing> = {
-  "gemini-3.5-flash": { inputCentsPerMtok: 150, outputCentsPerMtok: 900 },
-  "gemini-3-flash-preview": { inputCentsPerMtok: 50, outputCentsPerMtok: 300 },
-  "gemini-3.1-flash-lite": { inputCentsPerMtok: 25, outputCentsPerMtok: 150 },
-  "gemini-2.5-flash": { inputCentsPerMtok: 30, outputCentsPerMtok: 250 },
-  "gemini-2.5-flash-lite": { inputCentsPerMtok: 10, outputCentsPerMtok: 40 },
-};
-
-// Onbekend model → val terug op de duurste bekende Flash zodat we nooit te weinig
-// afschrijven (veiliger dan onderschatten).
+// Unknown models fail closed until their tariff has been reviewed.
 export function geminiPricingForModel(model: string): GeminiPricing {
-  return GEMINI_PRICING[model] ?? GEMINI_PRICING["gemini-3.5-flash"];
+  const pricing = aiPricing("gemini", model);
+  return { inputCentsPerMtok: pricing.input * 100, outputCentsPerMtok: pricing.output * 100 };
 }
 
 // Gemini's responseSchema is een OpenAPI-subset met lowercase types (zoals onze
@@ -131,15 +124,16 @@ interface GeminiResponse {
 export async function analyzeWithGemini(
   pseudonymizedDossierText: string,
   apiKey: string,
-  orgPromptAddendum?: string,
-  options?: {
+  orgPromptAddendum: string | undefined,
+  options: {
     model?: string;
     thinkingBudget?: number;
     maxOutputTokens?: number;
     // Bijgevoegde CV-bestanden (gescande afbeelding/PDF) als VISION-input. Alleen
     // CV-documenten — de caller dwingt af dat hier nooit ID/paspoort terechtkomt.
     fileParts?: Array<{ mimeType: string; dataB64: string }>;
-  },
+  } | undefined,
+  accounting: AiAccountingContext,
 ): Promise<GeminiCvResult> {
   const start = Date.now();
   const model = options?.model || GEMINI_DEFAULT_MODEL;
@@ -173,66 +167,67 @@ export async function analyzeWithGemini(
     generationConfig,
   };
 
-  const resp = await fetch(`${GEMINI_API_BASE}/${model}:generateContent`, {
-    method: "POST",
+  const { response: resp, ...accountingResult } = await meteredAiFetch(accounting, {
+    provider: "gemini", model, url: `${GEMINI_API_BASE}/${model}:generateContent`,
     headers: {
       "Content-Type": "application/json",
       "x-goog-api-key": apiKey,
     },
-    body: JSON.stringify(body),
+    body,
   });
 
-  const text = await resp.text();
-  if (!resp.ok) {
-    throw new Error(`Gemini API ${resp.status}: ${text.slice(0, 500)}`);
-  }
-
-  const data = JSON.parse(text) as GeminiResponse;
-
-  if (data.promptFeedback?.blockReason) {
-    throw new Error(`Gemini blokkeerde de prompt: ${data.promptFeedback.blockReason}`);
-  }
-
-  const finishReason = data.candidates?.[0]?.finishReason;
-  const partText = (data.candidates?.[0]?.content?.parts ?? [])
-    .map((p) => p.text || "")
-    .join("");
-
-  if (!partText.trim()) {
-    throw new Error(`Gemini gaf geen content terug (finishReason=${finishReason ?? "onbekend"})`);
-  }
-
-  // responseSchema garandeert geldige JSON alleen bij een VOLTOOIDE generatie.
-  // Bij MAX_TOKENS/SAFETY/RECITATION kan de JSON afgekapt zijn → geef een
-  // begrijpelijke fout i.p.v. een kale SyntaxError.
-  let analysis: CvAnalysisResult;
   try {
-    analysis = JSON.parse(partText) as CvAnalysisResult;
-  } catch (_e) {
-    const cleaned = partText.trim()
-      .replace(/^```(?:json)?\s*/i, "")
-      .replace(/\s*```$/i, "");
-    try {
-      analysis = JSON.parse(cleaned) as CvAnalysisResult;
-    } catch (parseErr) {
-      if (finishReason && finishReason !== "STOP") {
-        throw new Error(
-          `Gemini-output onvolledig of geweigerd (finishReason=${finishReason}); ` +
-            `verhoog maxOutputTokens/thinkingBudget of controleer de safety-filters.`,
-        );
-      }
-      throw parseErr;
+    const text = await resp.text();
+    if (!resp.ok) {
+      throw new Error(`Gemini API ${resp.status}`);
     }
+
+    const data = JSON.parse(text) as GeminiResponse;
+
+    if (data.promptFeedback?.blockReason) {
+      throw new Error(`Gemini blokkeerde de prompt: ${data.promptFeedback.blockReason}`);
+    }
+
+    const finishReason = data.candidates?.[0]?.finishReason;
+    const partText = (data.candidates?.[0]?.content?.parts ?? [])
+      .map((p) => p.text || "")
+      .join("");
+
+    if (!partText.trim()) {
+      throw new Error(`Gemini gaf geen content terug (finishReason=${finishReason ?? "onbekend"})`);
+    }
+
+    // responseSchema garandeert geldige JSON alleen bij een VOLTOOIDE generatie.
+    // Bij MAX_TOKENS/SAFETY/RECITATION kan de JSON afgekapt zijn → geef een
+    // begrijpelijke fout i.p.v. een kale SyntaxError.
+    let analysis: CvAnalysisResult;
+    try {
+      analysis = JSON.parse(partText) as CvAnalysisResult;
+    } catch (_e) {
+      const cleaned = partText.trim()
+        .replace(/^```(?:json)?\s*/i, "")
+        .replace(/\s*```$/i, "");
+      try {
+        analysis = JSON.parse(cleaned) as CvAnalysisResult;
+      } catch (parseErr) {
+        if (finishReason && finishReason !== "STOP") {
+          throw new Error(
+            `Gemini-output onvolledig of geweigerd (finishReason=${finishReason}); ` +
+              `verhoog maxOutputTokens/thinkingBudget of controleer de safety-filters.`,
+          );
+        }
+        throw parseErr;
+      }
+    }
+
+
+    return {
+      analysis,
+      model: model,
+      durationMs: Date.now() - start,
+      ...accountingResult,
+    };
+  } catch (error) {
+    throw attachAiAccounting(error, accountingResult);
   }
-
-  const usage = data.usageMetadata ?? {};
-  const outputTokens = (usage.candidatesTokenCount ?? 0) + (usage.thoughtsTokenCount ?? 0);
-
-  return {
-    analysis,
-    model: model,
-    inputTokens: usage.promptTokenCount ?? 0,
-    outputTokens,
-    durationMs: Date.now() - start,
-  };
 }

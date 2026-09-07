@@ -6,11 +6,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Brain, Wallet, Save, RotateCcw } from 'lucide-react';
+import { Brain, Save, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
-
-const formatEuro = (cents: number) =>
-  (cents / 100).toLocaleString('nl-NL', { style: 'currency', currency: 'EUR' });
+import AiCreditsPanel from '@/components/settings/AiCreditsPanel';
+import { qk } from '@/lib/query-keys';
+import { unwrap } from '@/lib/db';
+import { toFriendlyError } from '@/lib/errorMessages';
 
 const ORG_PROMPT_MAX_LENGTH = 2000;
 
@@ -37,29 +38,12 @@ const AiCvProviderSettings = () => {
   const qc = useQueryClient();
 
   const { data: org } = useQuery({
-    queryKey: ['organization-ai-settings', orgId],
-    queryFn: async () => {
-      const { data, error } = await supabase
+    queryKey: qk.aiSettings(orgId),
+    queryFn: () => unwrap(supabase
         .from('organizations')
         .select('settings')
         .eq('id', orgId)
-        .single();
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  const { data: credits, isLoading: creditsLoading } = useQuery({
-    queryKey: ['organization-credits', orgId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('organization_credits')
-        .select('balance_cents, lifetime_topped_up_cents')
-        .eq('organization_id', orgId)
-        .maybeSingle();
-      if (error) throw error;
-      return data;
-    },
+        .single()),
   });
 
   const settings = (org?.settings as Record<string, unknown> | null) ?? {};
@@ -81,22 +65,17 @@ const AiCvProviderSettings = () => {
   const saveAddendum = useMutation({
     mutationFn: async (next: string) => {
       const newSettings = { ...settings, candidate_analysis_prompt: next, cv_prompt_addendum: next };
-      const { error } = await supabase
+      await unwrap(supabase
         .from('organizations')
         .update({ settings: newSettings })
-        .eq('id', orgId);
-      if (error) throw error;
+        .eq('id', orgId));
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['organization-ai-settings', orgId] });
+      qc.invalidateQueries({ queryKey: qk.aiSettings(orgId) });
       toast.success('Analyseprompt opgeslagen');
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (error) => toast.error(toFriendlyError(error)),
   });
-
-  const balance = credits?.balance_cents ?? 0;
-  const lifetime = credits?.lifetime_topped_up_cents ?? 0;
-  const lowBalance = balance < 100;
 
   return (
     <Card>
@@ -117,36 +96,7 @@ const AiCvProviderSettings = () => {
           </div>
         </div>
 
-        <div className="rounded-lg border border-border bg-card p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Wallet className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium">AI-saldo</span>
-          </div>
-          {creditsLoading ? (
-            <p className="text-sm text-muted-foreground">Laden...</p>
-          ) : (
-            <div className="space-y-1">
-              <div className="flex items-baseline gap-2">
-                <span
-                  className={`text-2xl font-bold ${
-                    lowBalance ? 'text-orange-600' : 'text-foreground'
-                  }`}
-                >
-                  {formatEuro(balance)}
-                </span>
-                <span className="text-xs text-muted-foreground">resterend</span>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Totaal ooit toegekend: {formatEuro(lifetime)}
-              </p>
-              {lowBalance && (
-                <p className="text-xs text-orange-600 mt-2">
-                  Saldo loopt op zijn eind. Neem contact op met SiteJob voor bijvullen.
-                </p>
-              )}
-            </div>
-          )}
-        </div>
+        <AiCreditsPanel orgId={orgId} />
 
         {/* Prompt-addendum voor Gemini */}
         <div className="border-t border-border pt-6 space-y-3">

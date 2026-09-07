@@ -1,3 +1,5 @@
+import { attachAiAccounting, meteredAiFetch, type AiAccountingContext, type AiAccountingResult } from "./ai-accounting.ts";
+
 // CV-veldextractie via Google Gemini — synchroon, structured output.
 // Doel: ruwe CV-tekst → gestructureerde persoons-/profielvelden om het
 // "nieuwe kandidaat"-formulier vooraf in te vullen.
@@ -40,7 +42,7 @@ export interface CvExtractFields {
   languages: string[];
 }
 
-export interface CvExtractResult {
+export interface CvExtractResult extends AiAccountingResult {
   fields: CvExtractFields;
   model: string;
   inputTokens: number;
@@ -225,6 +227,7 @@ export async function extractCvProfile(
   cvText: string,
   apiKey: string,
   options: { model: string; skillCatalog?: string[]; nationalityCatalog?: string[]; languageCatalog?: string[]; countryCatalog?: string[] },
+  accounting: AiAccountingContext,
 ): Promise<CvExtractResult> {
   const start = Date.now();
   const model = options.model;
@@ -248,58 +251,63 @@ export async function extractCvProfile(
     },
   };
 
-  const resp = await fetch(`${GEMINI_API_BASE}/${model}:generateContent`, {
-    method: "POST",
+  const metered = await meteredAiFetch(accounting, {
+    provider: "gemini",
+    model,
+    url: `${GEMINI_API_BASE}/${model}:generateContent`,
     headers: {
       "Content-Type": "application/json",
       "x-goog-api-key": apiKey,
     },
-    body: JSON.stringify(body),
+    body,
   });
 
-  const text = await resp.text();
-  if (!resp.ok) {
-    throw new Error(`Gemini API ${resp.status}: ${text.slice(0, 500)}`);
-  }
+  const { response: resp, ...accountedUsage } = metered;
 
-  const data = JSON.parse(text) as GeminiResponse;
-
-  if (data.promptFeedback?.blockReason) {
-    throw new Error(`Gemini blokkeerde de prompt: ${data.promptFeedback.blockReason}`);
-  }
-
-  const finishReason = data.candidates?.[0]?.finishReason;
-  const partText = (data.candidates?.[0]?.content?.parts ?? [])
-    .map((p) => p.text || "")
-    .join("");
-
-  if (!partText.trim()) {
-    throw new Error(`Gemini gaf geen content terug (finishReason=${finishReason ?? "onbekend"})`);
-  }
-
-  let parsed: Partial<CvExtractFields>;
   try {
-    parsed = JSON.parse(partText) as Partial<CvExtractFields>;
-  } catch (_e) {
-    const cleaned = partText.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
-    try {
-      parsed = JSON.parse(cleaned) as Partial<CvExtractFields>;
-    } catch (parseErr) {
-      if (finishReason && finishReason !== "STOP") {
-        throw new Error(`Gemini-output onvolledig (finishReason=${finishReason})`);
-      }
-      throw parseErr;
+    const text = await resp.text();
+    if (!resp.ok) {
+      throw new Error(`Gemini API ${resp.status}: ${text.slice(0, 500)}`);
     }
+
+    const data = JSON.parse(text) as GeminiResponse;
+
+    if (data.promptFeedback?.blockReason) {
+      throw new Error(`Gemini blokkeerde de prompt: ${data.promptFeedback.blockReason}`);
+    }
+
+    const finishReason = data.candidates?.[0]?.finishReason;
+    const partText = (data.candidates?.[0]?.content?.parts ?? [])
+      .map((p) => p.text || "")
+      .join("");
+
+    if (!partText.trim()) {
+      throw new Error(`Gemini gaf geen content terug (finishReason=${finishReason ?? "onbekend"})`);
+    }
+
+    let parsed: Partial<CvExtractFields>;
+    try {
+      parsed = JSON.parse(partText) as Partial<CvExtractFields>;
+    } catch (_e) {
+      const cleaned = partText.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
+      try {
+        parsed = JSON.parse(cleaned) as Partial<CvExtractFields>;
+      } catch (parseErr) {
+        if (finishReason && finishReason !== "STOP") {
+          throw new Error(`Gemini-output onvolledig (finishReason=${finishReason})`);
+        }
+        throw parseErr;
+      }
+    }
+
+
+    return {
+      fields: normalizeFields(parsed),
+      model,
+      durationMs: Date.now() - start,
+      ...accountedUsage,
+    };
+  } catch (error) {
+    throw attachAiAccounting(error, metered);
   }
-
-  const usage = data.usageMetadata ?? {};
-  const outputTokens = (usage.candidatesTokenCount ?? 0) + (usage.thoughtsTokenCount ?? 0);
-
-  return {
-    fields: normalizeFields(parsed),
-    model,
-    inputTokens: usage.promptTokenCount ?? 0,
-    outputTokens,
-    durationMs: Date.now() - start,
-  };
 }

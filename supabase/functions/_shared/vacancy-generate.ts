@@ -1,3 +1,5 @@
+import { attachAiAccounting, meteredAiFetch, type AiAccountingContext, type AiAccountingResult } from "./ai-accounting.ts";
+
 // AI-vacaturetekstgenerator — synchroon via Anthropic Claude (Sonnet standaard).
 // Spiegelt anthropic-cv.ts: forceert JSON-schema via tool_choice, geeft tokens +
 // duration terug voor billing.
@@ -43,7 +45,7 @@ export const VACANCY_ANSWER_FIELDS: Array<{ key: string; label: string; internal
 
 export type VacancyAnswers = Record<string, string>;
 
-export interface VacancyGenerateResult {
+export interface VacancyGenerateResult extends AiAccountingResult {
   content: Record<string, unknown>;
   model: string;
   inputTokens: number;
@@ -242,7 +244,8 @@ ${stripped}
 export async function generateVacancyContent(
   answers: VacancyAnswers,
   apiKey: string,
-  options: { masterprompt?: string; model?: string } = {},
+  options: { masterprompt?: string; model?: string },
+  accounting: AiAccountingContext,
 ): Promise<VacancyGenerateResult> {
   const start = Date.now();
   const model = options.model && options.model.trim().length > 0 ? options.model.trim() : VACANCY_DEFAULT_MODEL;
@@ -274,37 +277,44 @@ export async function generateVacancyContent(
     messages: [{ role: "user", content: userMessage }],
   };
 
-  const resp = await fetch(ANTHROPIC_API_URL, {
-    method: "POST",
+  const metered = await meteredAiFetch(accounting, {
+    provider: "anthropic",
+    model,
+    url: ANTHROPIC_API_URL,
     headers: {
       "Content-Type": "application/json",
       "x-api-key": apiKey,
       "anthropic-version": ANTHROPIC_VERSION,
     },
-    body: JSON.stringify(body),
+    body,
   });
 
-  const text = await resp.text();
-  if (!resp.ok) {
-    throw new Error(`Anthropic API ${resp.status}: ${text.slice(0, 500)}`);
-  }
+  const { response: resp, ...accountedUsage } = metered;
 
-  const data = JSON.parse(text) as AnthropicMessage;
-  const toolUse = data.content.find(
-    (c): c is { type: "tool_use"; name: string; input: unknown } =>
-      c.type === "tool_use" && c.name === VACANCY_GENERATE_TOOL_NAME,
-  );
-  if (!toolUse) {
-    throw new Error("Anthropic response bevat geen tool_use blok");
-  }
+  try {
+    const text = await resp.text();
+    if (!resp.ok) {
+      throw new Error(`Anthropic API ${resp.status}: ${text.slice(0, 500)}`);
+    }
 
-  return {
-    content: toolUse.input as Record<string, unknown>,
-    model: data.model,
-    inputTokens: data.usage.input_tokens + (data.usage.cache_creation_input_tokens ?? 0),
-    outputTokens: data.usage.output_tokens,
-    durationMs: Date.now() - start,
-  };
+    const data = JSON.parse(text) as AnthropicMessage;
+    const toolUse = data.content.find(
+      (c): c is { type: "tool_use"; name: string; input: unknown } =>
+        c.type === "tool_use" && c.name === VACANCY_GENERATE_TOOL_NAME,
+    );
+    if (!toolUse) {
+      throw new Error("Anthropic response bevat geen tool_use blok");
+    }
+
+    return {
+      content: toolUse.input as Record<string, unknown>,
+      model: data.model,
+      durationMs: Date.now() - start,
+      ...accountedUsage,
+    };
+  } catch (error) {
+    throw attachAiAccounting(error, metered);
+  }
 }
 
 // Herexport zodat de edge function alles uit één helper haalt.

@@ -16,6 +16,15 @@
  * This is intentionally partial: extend per domain as call sites are migrated.
  */
 export const qk = {
+  aiSettings: (orgId: string) => ['organization-ai-settings', orgId] as const,
+  aiCredits: {
+    all: () => ['ai-credits'] as const,
+    summary: (orgId: string) => ['ai-credits', orgId, 'summary'] as const,
+    requests: (orgId: string) => ['ai-credits', orgId, 'requests'] as const,
+    legacyUsage: (orgId: string) => ['ai-credits', orgId, 'legacy-usage'] as const,
+    ledger: (orgId: string) => ['ai-credits', orgId, 'ledger'] as const,
+    organizationBalances: () => ['ai-credits', 'superadmin-balances'] as const,
+  },
   permissions: {
     roleMatrix: (orgId: string) => ['role-permissions', orgId] as const,
     userOverrides: (orgId: string, userId: string) => ['user-permission-overrides', orgId, userId] as const,

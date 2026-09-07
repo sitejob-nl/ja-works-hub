@@ -1,16 +1,14 @@
 // Genereert AI vakinhoudelijke belvragen voor een kandidaat × vacature (de "AI"-tak van de
-// hybride belscreening). Kosten worden ACCURAAT verrekend: echte Gemini-tokenusage →
-// calculateCostCents → consume_ai_credits (atomair, van het org-budget) → ai_usage_log.
+// hybride belscreening). Iedere provider-aanroep reserveert en verantwoordt kosten
+// via het gedeelde AI-grootboek, ook bij onbruikbare modeloutput.
 import { createAdminClient, requireInternalProfile } from "../_shared/auth.ts";
-import { calculateCostCents } from "../_shared/anthropic-cv.ts";
-import { geminiPricingForModel } from "../_shared/gemini-cv.ts";
 import { generateCallQuestions } from "../_shared/gemini-call-questions.ts";
+import { AiAccountingError } from "../_shared/ai-accounting.ts";
 import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
 
 // Vast, geprijsd model → de pricing-tabel (geminiPricingForModel) matcht exact wat we sturen,
 // zodat de afgeschreven kosten kloppen. 2.5-flash = de live gekozen JA Werkt-modelklasse.
 const MODEL = "gemini-2.5-flash";
-const PREFLIGHT_RESERVATION_CENTS = 5;
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -31,17 +29,6 @@ Deno.serve(async (req) => {
     if (!apiKey) return json({ error: "AI niet geconfigureerd (GEMINI_API_KEY ontbreekt)" }, 503);
 
     const admin = createAdminClient();
-
-    // Preflight: genoeg saldo om te starten? (definitieve afschrijving gebeurt na de call op echte tokens)
-    const { data: credits } = await admin
-      .from("organization_credits")
-      .select("balance_cents")
-      .eq("organization_id", orgId)
-      .single();
-    const balance = credits?.balance_cents ?? 0;
-    if (balance < PREFLIGHT_RESERVATION_CENTS) {
-      return json({ error: "Saldo onvoldoende voor AI-vragen", balance_cents: balance }, 402);
-    }
 
     // Vacature + match + kandidaat (org-scoped). We sturen GEEN PII naar Gemini — alleen vak-content + gaten.
     const { data: vacancy } = await admin
@@ -75,41 +62,14 @@ Deno.serve(async (req) => {
       missing.length ? `Aandachtspunten/gaten uit de match (verifiëren): ${missing.join("; ")}` : null,
     ].filter(Boolean).join("\n");
 
-    const result = await generateCallQuestions(contextText, apiKey, MODEL);
-    if (result.questions.length === 0) return json({ error: "AI gaf geen vragen terug" }, 502);
+    const result = await generateCallQuestions(contextText, apiKey, MODEL, {
+      admin, organizationId: orgId, userId: auth.userId, feature: "call_questions", candidateId: candidate_id,
+    });
+    if (result.questions.length === 0) return json({ error: "AI gaf geen vragen terug", request_id: result.requestId, cost_cents: result.costCents, balance_cents: result.balanceCents }, 502);
 
-    // Kosten exact uit de echte tokenusage van dit model.
-    const pricing = geminiPricingForModel(MODEL);
-    const costCents = calculateCostCents(result.inputTokens, result.outputTokens, pricing.inputCentsPerMtok, pricing.outputCentsPerMtok);
-
-    // Atomair afschrijven van het org-budget.
-    const { data: consumeResult, error: consumeErr } = await admin.rpc("consume_ai_credits", { p_org_id: orgId, p_amount_cents: costCents });
-    if (consumeErr) return json({ error: "Saldo-afschrijving mislukt" }, 500);
-    const consume = Array.isArray(consumeResult) ? consumeResult[0] : consumeResult;
-    if (!consume?.ok) {
-      return json({ error: "Saldo onvoldoende — geen kosten in rekening gebracht", balance_cents: consume?.new_balance_cents ?? 0 }, 402);
-    }
-
-    // Verbruik loggen (silent-fail, mag de flow nooit breken).
-    try {
-      await admin.from("ai_usage_log").insert({
-        feature: "call_questions",
-        organization_id: orgId,
-        user_id: auth.userId,
-        provider: "gemini",
-        model: result.model,
-        input_tokens: result.inputTokens,
-        output_tokens: result.outputTokens,
-        cost_cents: costCents,
-        candidate_id,
-        duration_ms: result.durationMs,
-      });
-    } catch (e) {
-      console.error("[generate-call-questions] ai_usage_log faalde:", (e as Error).message);
-    }
-
-    return json({ questions: result.questions, cost_cents: costCents, balance_cents: consume.new_balance_cents });
+    return json({ questions: result.questions, cost_cents: result.costCents, balance_cents: result.balanceCents, request_id: result.requestId });
   } catch (e) {
+    if (e instanceof AiAccountingError) return json({ error: e.message, code: e.code, request_id: e.requestId, cost_cents: e.costCents, balance_cents: e.balanceCents }, e.status);
     return json({ error: e instanceof Error ? e.message : "Onbekende fout" }, 500);
   }
 });

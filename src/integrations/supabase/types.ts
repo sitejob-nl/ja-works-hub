@@ -14,6 +14,162 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_credit_ledger: {
+        Row: {
+          amount_cents: number
+          balance_after_cents: number
+          created_at: string
+          grant_month: string | null
+          id: string
+          idempotency_key: string
+          kind: string
+          metadata: Json
+          note: string | null
+          organization_id: string
+          request_id: string | null
+          topup_id: string | null
+        }
+        Insert: {
+          amount_cents: number
+          balance_after_cents: number
+          created_at?: string
+          grant_month?: string | null
+          id?: string
+          idempotency_key: string
+          kind: string
+          metadata?: Json
+          note?: string | null
+          organization_id: string
+          request_id?: string | null
+          topup_id?: string | null
+        }
+        Update: {
+          amount_cents?: number
+          balance_after_cents?: number
+          created_at?: string
+          grant_month?: string | null
+          id?: string
+          idempotency_key?: string
+          kind?: string
+          metadata?: Json
+          note?: string | null
+          organization_id?: string
+          request_id?: string | null
+          topup_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_credit_ledger_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "ai_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_credit_ledger_topup_id_fkey"
+            columns: ["topup_id"]
+            isOneToOne: false
+            referencedRelation: "credit_topups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_requests: {
+        Row: {
+          candidate_id: string | null
+          charged_cents: number
+          created_at: string
+          duration_ms: number | null
+          error_code: string | null
+          feature: string
+          finalized_at: string | null
+          id: string
+          input_tokens: number | null
+          metadata: Json
+          model: string
+          organization_id: string
+          output_tokens: number | null
+          provider: string
+          provider_cost_usd: number | null
+          provider_request_id: string | null
+          requested_charged_cents: number | null
+          reservation_cents: number
+          reservation_overrun_cents: number
+          settlement_payload: Json | null
+          status: string
+          thinking_tokens: number | null
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          candidate_id?: string | null
+          charged_cents?: number
+          created_at?: string
+          duration_ms?: number | null
+          error_code?: string | null
+          feature: string
+          finalized_at?: string | null
+          id: string
+          input_tokens?: number | null
+          metadata?: Json
+          model: string
+          organization_id: string
+          output_tokens?: number | null
+          provider: string
+          provider_cost_usd?: number | null
+          provider_request_id?: string | null
+          requested_charged_cents?: number | null
+          reservation_cents: number
+          reservation_overrun_cents?: number
+          settlement_payload?: Json | null
+          status: string
+          thinking_tokens?: number | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          candidate_id?: string | null
+          charged_cents?: number
+          created_at?: string
+          duration_ms?: number | null
+          error_code?: string | null
+          feature?: string
+          finalized_at?: string | null
+          id?: string
+          input_tokens?: number | null
+          metadata?: Json
+          model?: string
+          organization_id?: string
+          output_tokens?: number | null
+          provider?: string
+          provider_cost_usd?: number | null
+          provider_request_id?: string | null
+          requested_charged_cents?: number | null
+          reservation_cents?: number
+          reservation_overrun_cents?: number
+          settlement_payload?: Json | null
+          status?: string
+          thinking_tokens?: number | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_requests_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_requests_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_usage_log: {
         Row: {
           candidate_id: string | null
@@ -27,6 +183,10 @@ export type Database = {
           organization_id: string
           output_tokens: number | null
           provider: string
+          provider_cost_usd: number | null
+          request_id: string | null
+          status: string
+          thinking_tokens: number | null
           user_id: string | null
         }
         Insert: {
@@ -41,6 +201,10 @@ export type Database = {
           organization_id: string
           output_tokens?: number | null
           provider: string
+          provider_cost_usd?: number | null
+          request_id?: string | null
+          status?: string
+          thinking_tokens?: number | null
           user_id?: string | null
         }
         Update: {
@@ -55,6 +219,10 @@ export type Database = {
           organization_id?: string
           output_tokens?: number | null
           provider?: string
+          provider_cost_usd?: number | null
+          request_id?: string | null
+          status?: string
+          thinking_tokens?: number | null
           user_id?: string | null
         }
         Relationships: [
@@ -70,6 +238,13 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_usage_log_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "ai_requests"
             referencedColumns: ["id"]
           },
         ]
@@ -6767,25 +6942,34 @@ export type Database = {
         Row: {
           balance_cents: number
           lifetime_topped_up_cents: number
+          monthly_allowance_cents: number
+          monthly_start_month: string | null
           organization_id: string
           pricing_input_cents_per_mtok: number
           pricing_output_cents_per_mtok: number
+          reserved_cents: number
           updated_at: string
         }
         Insert: {
           balance_cents?: number
           lifetime_topped_up_cents?: number
+          monthly_allowance_cents?: number
+          monthly_start_month?: string | null
           organization_id: string
           pricing_input_cents_per_mtok?: number
           pricing_output_cents_per_mtok?: number
+          reserved_cents?: number
           updated_at?: string
         }
         Update: {
           balance_cents?: number
           lifetime_topped_up_cents?: number
+          monthly_allowance_cents?: number
+          monthly_start_month?: string | null
           organization_id?: string
           pricing_input_cents_per_mtok?: number
           pricing_output_cents_per_mtok?: number
+          reserved_cents?: number
           updated_at?: string
         }
         Relationships: [
@@ -10513,6 +10697,22 @@ export type Database = {
           status: string
         }[]
       }
+      finalize_ai_usage: {
+        Args: {
+          p_charged_cents?: number
+          p_duration_ms?: number
+          p_error_code?: string
+          p_input_tokens?: number
+          p_metadata?: Json
+          p_output_tokens?: number
+          p_provider_cost_usd?: number
+          p_provider_request_id?: string
+          p_request_id: string
+          p_status: string
+          p_thinking_tokens?: number
+        }
+        Returns: Json
+      }
       find_duplicate_candidates: {
         Args: never
         Returns: {
@@ -10546,6 +10746,7 @@ export type Database = {
           phone: string
         }[]
       }
+      get_ai_credit_summary: { Args: { p_org_id: string }; Returns: Json }
       get_campaign_candidates: {
         Args: {
           p_channel: Database["public"]["Enums"]["communication_channel"]
@@ -10658,6 +10859,10 @@ export type Database = {
           waba_id: string
         }[]
       }
+      grant_monthly_ai_credits: {
+        Args: { p_as_of?: string; p_org_id?: string }
+        Returns: Json
+      }
       has_role_permission: { Args: { p_permission: string }; Returns: boolean }
       is_employee_user: { Args: never; Returns: boolean }
       is_facility_user: { Args: never; Returns: boolean }
@@ -10708,6 +10913,20 @@ export type Database = {
         }
         Returns: Json
       }
+      reserve_ai_usage: {
+        Args: {
+          p_candidate_id?: string
+          p_feature: string
+          p_metadata?: Json
+          p_model: string
+          p_org_id: string
+          p_provider: string
+          p_request_id: string
+          p_reserved_cents: number
+          p_user_id: string
+        }
+        Returns: Json
+      }
       resolve_housing_owner: { Args: { p_org_id: string }; Returns: string }
       resolve_organization_domain: {
         Args: { p_host: string }
@@ -10719,6 +10938,7 @@ export type Database = {
           primary_hostname: string
         }[]
       }
+      resync_unit_statuses: { Args: never; Returns: number }
       role_permission_admin_defaults: { Args: never; Returns: Json }
       role_permission_defaults: { Args: { p_role: string }; Returns: Json }
       sa_get_audit_log: {
@@ -10805,12 +11025,29 @@ export type Database = {
         Args: { p_org_id: string }
         Returns: undefined
       }
+      set_monthly_ai_allowance: {
+        Args: {
+          p_amount_cents: number
+          p_org_id: string
+          p_start_month: string
+        }
+        Returns: Json
+      }
       sync_unit_status_from_assignments: {
         Args: { p_unit_id: string }
         Returns: undefined
       }
       topup_ai_credits: {
         Args: { p_amount_cents: number; p_note?: string; p_org_id: string }
+        Returns: number
+      }
+      topup_ai_credits_once: {
+        Args: {
+          p_amount_cents: number
+          p_note: string
+          p_org_id: string
+          p_request_id: string
+        }
         Returns: number
       }
       update_role_permissions: {

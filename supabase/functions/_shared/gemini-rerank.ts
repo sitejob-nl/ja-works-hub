@@ -1,3 +1,5 @@
+import { meteredAiFetch, attachAiAccounting, type AiAccountingContext, type AiAccountingResult } from "./ai-accounting.ts";
+
 // Stage-2 matching: Gemini beoordeelt hoe goed ÉÉN kandidaat past op ÉÉN specifieke vacature.
 //
 // Gebruikt de VOLLEDIGE vacaturetekst + een compact kandidaatdossier en vangt zo nuance die de
@@ -11,7 +13,7 @@ const MAX_DOSSIER_CHARS = 4000;
 const DEFAULT_MAX_OUTPUT_TOKENS = 1024;
 const DEFAULT_THINKING_BUDGET = 512;
 
-export interface RerankResult {
+export interface RerankResult extends AiAccountingResult {
   fitScore: number; // 0-100
   verdict: string; // 'sterk' | 'redelijk' | 'zwak'
   reasoning: string;
@@ -62,6 +64,7 @@ export async function rerankCandidateFit(
   dossier: string,
   apiKey: string,
   model: string,
+  accounting: AiAccountingContext,
 ): Promise<RerankResult> {
   const start = Date.now();
   const vac = vacancyText.length > MAX_VACANCY_CHARS ? vacancyText.slice(0, MAX_VACANCY_CHARS) + "\n[ingekort]" : vacancyText;
@@ -80,43 +83,46 @@ export async function rerankCandidateFit(
     },
   };
 
-  const resp = await fetch(`${GEMINI_API_BASE}/${model}:generateContent`, {
-    method: "POST",
+  const { response: resp, ...accountingResult } = await meteredAiFetch(accounting, {
+    provider: "gemini", model, url: `${GEMINI_API_BASE}/${model}:generateContent`,
     headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-    body: JSON.stringify(body),
+    body,
   });
-  const raw = await resp.text();
-  if (!resp.ok) throw new Error(`Gemini API ${resp.status}: ${raw.slice(0, 300)}`);
-  const data = JSON.parse(raw) as GeminiResponse;
-  if (data.promptFeedback?.blockReason) throw new Error(`Gemini blokkeerde: ${data.promptFeedback.blockReason}`);
-  const finishReason = data.candidates?.[0]?.finishReason;
-  const partText = (data.candidates?.[0]?.content?.parts ?? []).map((p) => p.text || "").join("").trim();
-  if (!partText) throw new Error(`Gemini gaf geen content (finishReason=${finishReason ?? "?"})`);
 
-  let parsed: { fit_score?: unknown; verdict?: unknown; reasoning?: unknown; strengths?: unknown; concerns?: unknown };
   try {
-    parsed = JSON.parse(partText);
-  } catch {
-    parsed = JSON.parse(partText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, ""));
+    const raw = await resp.text();
+    if (!resp.ok) throw new Error(`Gemini API ${resp.status}`);
+    const data = JSON.parse(raw) as GeminiResponse;
+    if (data.promptFeedback?.blockReason) throw new Error(`Gemini blokkeerde: ${data.promptFeedback.blockReason}`);
+    const finishReason = data.candidates?.[0]?.finishReason;
+    const partText = (data.candidates?.[0]?.content?.parts ?? []).map((p) => p.text || "").join("").trim();
+    if (!partText) throw new Error(`Gemini gaf geen content (finishReason=${finishReason ?? "?"})`);
+
+    let parsed: { fit_score?: unknown; verdict?: unknown; reasoning?: unknown; strengths?: unknown; concerns?: unknown };
+    try {
+      parsed = JSON.parse(partText);
+    } catch {
+      parsed = JSON.parse(partText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, ""));
+    }
+
+    const fitScore = Math.max(0, Math.min(100, Math.round(Number(parsed.fit_score) || 0)));
+    const verdict = ["sterk", "redelijk", "zwak"].includes(parsed.verdict as string)
+      ? (parsed.verdict as string)
+      : fitScore >= 75 ? "sterk" : fitScore >= 45 ? "redelijk" : "zwak";
+    const asArr = (v: unknown) =>
+      Array.isArray(v) ? v.map(String).map((s) => s.trim()).filter(Boolean).slice(0, 8) : [];
+
+    return {
+      fitScore,
+      verdict,
+      reasoning: typeof parsed.reasoning === "string" ? parsed.reasoning.slice(0, 600) : "",
+      strengths: asArr(parsed.strengths),
+      concerns: asArr(parsed.concerns),
+      model,
+      durationMs: Date.now() - start,
+      ...accountingResult,
+    };
+  } catch (error) {
+    throw attachAiAccounting(error, accountingResult);
   }
-
-  const fitScore = Math.max(0, Math.min(100, Math.round(Number(parsed.fit_score) || 0)));
-  const verdict = ["sterk", "redelijk", "zwak"].includes(parsed.verdict as string)
-    ? (parsed.verdict as string)
-    : fitScore >= 75 ? "sterk" : fitScore >= 45 ? "redelijk" : "zwak";
-  const asArr = (v: unknown) =>
-    Array.isArray(v) ? v.map(String).map((s) => s.trim()).filter(Boolean).slice(0, 8) : [];
-
-  const usage = data.usageMetadata ?? {};
-  return {
-    fitScore,
-    verdict,
-    reasoning: typeof parsed.reasoning === "string" ? parsed.reasoning.slice(0, 600) : "",
-    strengths: asArr(parsed.strengths),
-    concerns: asArr(parsed.concerns),
-    model,
-    inputTokens: usage.promptTokenCount ?? 0,
-    outputTokens: (usage.candidatesTokenCount ?? 0) + (usage.thoughtsTokenCount ?? 0),
-    durationMs: Date.now() - start,
-  };
 }

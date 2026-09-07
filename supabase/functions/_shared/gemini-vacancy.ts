@@ -1,3 +1,5 @@
+import { meteredAiFetch, attachAiAccounting, type AiAccountingContext, type AiAccountingResult } from "./ai-accounting.ts";
+
 // Vacature-skill-extractie via Gemini.
 // Leest titel + description van een vacature en bepaalt welke vaardigheden vereist zijn,
 // UITSLUITEND gekozen uit de org-skills-catalogus (zodat ze 1-op-1 matchen met
@@ -11,7 +13,7 @@ const DEFAULT_MAX_OUTPUT_TOKENS = 2048;
 const DEFAULT_THINKING_BUDGET = 512;
 const MAX_VACANCY_CHARS = 12000;
 
-export interface VacancySkillResult {
+export interface VacancySkillResult extends AiAccountingResult {
   requiredSkills: string[];
   requiredCertifications: string[];
   requiresDriversLicense: boolean;
@@ -91,6 +93,7 @@ export async function extractVacancySkills(
   catalogue: string[],
   apiKey: string,
   model: string,
+  accounting: AiAccountingContext,
 ): Promise<VacancySkillResult> {
   const start = Date.now();
   const text = vacancyText.length > MAX_VACANCY_CHARS
@@ -109,63 +112,66 @@ export async function extractVacancySkills(
     },
   };
 
-  const resp = await fetch(`${GEMINI_API_BASE}/${model}:generateContent`, {
-    method: "POST",
+  const { response: resp, ...accountingResult } = await meteredAiFetch(accounting, {
+    provider: "gemini", model, url: `${GEMINI_API_BASE}/${model}:generateContent`,
     headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-    body: JSON.stringify(body),
+    body,
   });
-  const raw = await resp.text();
-  if (!resp.ok) throw new Error(`Gemini API ${resp.status}: ${raw.slice(0, 400)}`);
 
-  const data = JSON.parse(raw) as GeminiResponse;
-  if (data.promptFeedback?.blockReason) throw new Error(`Gemini blokkeerde: ${data.promptFeedback.blockReason}`);
-  const finishReason = data.candidates?.[0]?.finishReason;
-  const partText = (data.candidates?.[0]?.content?.parts ?? []).map((p) => p.text || "").join("").trim();
-  if (!partText) throw new Error(`Gemini gaf geen content (finishReason=${finishReason ?? "?"})`);
-
-  let parsed: {
-    required_skills?: unknown;
-    required_certifications?: unknown;
-    requires_drivers_license?: unknown;
-    function_group?: unknown;
-  };
   try {
-    parsed = JSON.parse(partText);
-  } catch {
+    const raw = await resp.text();
+    if (!resp.ok) throw new Error(`Gemini API ${resp.status}`);
+
+    const data = JSON.parse(raw) as GeminiResponse;
+    if (data.promptFeedback?.blockReason) throw new Error(`Gemini blokkeerde: ${data.promptFeedback.blockReason}`);
+    const finishReason = data.candidates?.[0]?.finishReason;
+    const partText = (data.candidates?.[0]?.content?.parts ?? []).map((p) => p.text || "").join("").trim();
+    if (!partText) throw new Error(`Gemini gaf geen content (finishReason=${finishReason ?? "?"})`);
+
+    let parsed: {
+      required_skills?: unknown;
+      required_certifications?: unknown;
+      requires_drivers_license?: unknown;
+      function_group?: unknown;
+    };
     try {
-      parsed = JSON.parse(partText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, ""));
-    } catch (e2) {
-      if (finishReason && finishReason !== "STOP") {
-        throw new Error(`Gemini-output onvolledig (finishReason=${finishReason}); verhoog maxOutputTokens`);
+      parsed = JSON.parse(partText);
+    } catch {
+      try {
+        parsed = JSON.parse(partText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, ""));
+      } catch (e2) {
+        if (finishReason && finishReason !== "STOP") {
+          throw new Error(`Gemini-output onvolledig (finishReason=${finishReason}); verhoog maxOutputTokens`);
+        }
+        throw e2;
       }
-      throw e2;
     }
+
+    // Post-filter: required_skills MOET in de catalogus zitten (case/diakriet-ongevoelig),
+    // teruggemapt naar de exacte catalogus-schrijfwijze.
+    const catByNorm = new Map<string, string>();
+    for (const c of catalogue) catByNorm.set(normalizeTerm(c), c);
+    const rawSkills = Array.isArray(parsed.required_skills) ? parsed.required_skills.map(String) : [];
+    const requiredSkills = [...new Set(
+      rawSkills
+        .map((s) => catByNorm.get(normalizeTerm(s)))
+        .filter((s): s is string => Boolean(s) && !SOFT_SKILL_DENY.has(normalizeTerm(s as string))),
+    )];
+
+    const requiredCertifications = Array.isArray(parsed.required_certifications)
+      ? [...new Set(parsed.required_certifications.map(String).map((s) => s.trim()).filter(Boolean))]
+      : [];
+
+    return {
+      requiredSkills,
+      requiredCertifications,
+      requiresDriversLicense: parsed.requires_drivers_license === true,
+      functionGroup: typeof parsed.function_group === "string" ? parsed.function_group : null,
+      model,
+      durationMs: Date.now() - start,
+      ...accountingResult,
+    };
+  } catch (error) {
+    throw attachAiAccounting(error, accountingResult);
   }
-
-  // Post-filter: required_skills MOET in de catalogus zitten (case/diakriet-ongevoelig),
-  // teruggemapt naar de exacte catalogus-schrijfwijze.
-  const catByNorm = new Map<string, string>();
-  for (const c of catalogue) catByNorm.set(normalizeTerm(c), c);
-  const rawSkills = Array.isArray(parsed.required_skills) ? parsed.required_skills.map(String) : [];
-  const requiredSkills = [...new Set(
-    rawSkills
-      .map((s) => catByNorm.get(normalizeTerm(s)))
-      .filter((s): s is string => Boolean(s) && !SOFT_SKILL_DENY.has(normalizeTerm(s as string))),
-  )];
-
-  const requiredCertifications = Array.isArray(parsed.required_certifications)
-    ? [...new Set(parsed.required_certifications.map(String).map((s) => s.trim()).filter(Boolean))]
-    : [];
-
-  const usage = data.usageMetadata ?? {};
-  return {
-    requiredSkills,
-    requiredCertifications,
-    requiresDriversLicense: parsed.requires_drivers_license === true,
-    functionGroup: typeof parsed.function_group === "string" ? parsed.function_group : null,
-    model,
-    inputTokens: usage.promptTokenCount ?? 0,
-    outputTokens: (usage.candidatesTokenCount ?? 0) + (usage.thoughtsTokenCount ?? 0),
-    durationMs: Date.now() - start,
-  };
 }

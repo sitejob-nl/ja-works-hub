@@ -1,3 +1,4 @@
+import { AiAccountingError, meteredAiFetch } from "../_shared/ai-accounting.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireRolePermission } from "../_shared/auth.ts";
 import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
@@ -18,8 +19,9 @@ Deno.serve(async (req) => {
     });
 
     const { timesheet_ids } = await req.json();
-    if (!timesheet_ids?.length) {
-      return new Response(JSON.stringify({ error: "No timesheet_ids provided" }), { status: 400, headers: corsHeaders });
+    if (!Array.isArray(timesheet_ids) || !timesheet_ids.length || timesheet_ids.length > 100
+      || timesheet_ids.some((id: unknown) => typeof id !== "string" || !id)) {
+      return new Response(JSON.stringify({ error: "Selecteer 1 tot 100 urenregistraties per validatie." }), { status: 400, headers: corsHeaders });
     }
 
     // Fetch timesheets with context
@@ -93,14 +95,25 @@ Controleer op:
 4. Ongebruikelijk patroon (plotselinge grote afwijkingen)
 5. Meer uren dan contracturen zonder overwerk-markering`;
 
-      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
+      // Every candidate is a separate provider request and gets its own reservation.
+      // Accounting must finish before any validation result can change timesheets.
+      const { response } = await meteredAiFetch({
+        admin: serviceClient,
+        organizationId: auth.organizationId,
+        userId: auth.userId,
+        feature: "timesheet_validation",
+        candidateId,
+      }, {
+        provider: "lovable",
+        model: "google/gemini-3-flash-preview",
+        url: "https://ai.gateway.lovable.dev/v1/chat/completions",
         headers: {
           Authorization: `Bearer ${LOVABLE_API_KEY}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
+        body: {
           model: "google/gemini-3-flash-preview",
+          max_tokens: 8192,
           messages: [
             { role: "system", content: "Je bent een AI-assistent die urenregistraties valideert voor een uitzendbureau. Gebruik de validate_timesheets tool om je resultaat te geven." },
             { role: "user", content: prompt },
@@ -133,7 +146,7 @@ Controleer op:
             },
           }],
           tool_choice: { type: "function", function: { name: "validate_timesheets" } },
-        }),
+        },
       });
 
       if (response.status === 429) {
@@ -177,6 +190,12 @@ Controleer op:
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
+    if (err instanceof AiAccountingError) {
+      return new Response(JSON.stringify({ error: err.message, code: err.code }), {
+        status: err.status,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     console.error("validate-timesheets error:", err);
     // Do not leak raw technical/Postgres detail to the client.
     return new Response(JSON.stringify({ error: "Validatie van de uren is mislukt. Probeer het later opnieuw." }), {

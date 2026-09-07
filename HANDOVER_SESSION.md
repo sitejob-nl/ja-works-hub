@@ -4,6 +4,17 @@ Overdracht voor wie verdergaat (Codex / Claude Code). Lees [AGENTS.md](AGENTS.md
 commands, [CLAUDE.md](CLAUDE.md) voor de canonieke codebase-diepte, [HANDOVER.md](HANDOVER.md) voor de formele
 projectsamenvatting.
 
+## Sessie 2026-09-07 — AI-accounting en maandtegoed (`codex/ai-ledger-monthly-credits`)
+
+- Nieuwe worktree `/tmp/ja-works-ai-ledger`, vanaf actuele `origin/main` `cd0ba7d`. De oude dirty checkout is ongemoeid gelaten.
+- Opdracht: alle AI-calls sluitend registreren en JA Werkt vanaf september 2026 iedere maand €50 extra geven, met behoud van ongebruikt tegoed.
+- Alle elf betaalde endpoints gebruiken `_shared/ai-accounting.ts`: vooraf reserveren, één providercall, daarna atomair aanvraag/verbruik/boeking afrekenen. Dry-runs tellen mee; cachehits niet. Onbekende uitkomsten houden hun reservering en worden zichtbaar gemeld.
+- Migratie `20260907201512_ai_accounting_ledger.sql` voegt onveranderlijke boekingen en een idempotente maandcron toe. Andere organisaties hebben standaard geen maandregeling. Het historische verschil van €0,22 wordt zichtbaar behouden, zonder extra afschrijving.
+- Instellingen en superadmin tonen saldo, reserveringen, maandtoelage, providerkosten en volledige historie. Handmatige correcties zijn idempotent.
+- Validatie: volledige quality-gate, Deno voor alle elf functies, gemockte provider/handler-tests, echte concurrerende PostgreSQL/pg_cron-tests en desktop/mobiele mock-UI. Geen betaalde testcalls of klantcommunicatie.
+- Release vereist migratie, alle elf edge functions via CLI en frontendmerge; alleen de frontend deployt automatisch. Zie [docs/ai-accounting.md](docs/ai-accounting.md) en [databasecontract](docs/ai-accounting-db-contract.md) voor beheer, inschrijving, controles en herstel. De PR/releasecontrole is leidend voor de actuele uitrolstatus.
+- De oudere AI/VPS-beschrijvingen verderop zijn historisch; de AI-sectie in `CLAUDE.md` is nu bijgewerkt. Qwen is uitgefaseerd. Documentvoorbewerking op de JA Werkt-VPS en de toekomstige urenfotoherkenning vallen buiten deze accountingrelease.
+
 ## Sessie 2026-09-03 — mailhistorie-filter + mailboxrechten (`fix/mail-history-filter-en-rechten`)
 
 - **Worktree:** `.claude/worktrees/fix-mail-history-rechten`, branch `fix/mail-history-filter-en-rechten` vanaf `origin/main` `cdcc248` (#244).

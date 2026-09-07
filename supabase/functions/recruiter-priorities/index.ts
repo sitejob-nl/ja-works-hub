@@ -1,6 +1,7 @@
+import { AiAccountingError, meteredAiFetch } from "../_shared/ai-accounting.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { requireRolePermission } from "../_shared/auth.ts";
+import { createAdminClient, requireRolePermission } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -103,14 +104,22 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
-    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
+    const { response: aiResponse } = await meteredAiFetch({
+      admin: createAdminClient(),
+      organizationId: orgId,
+      userId,
+      feature: "recruiter_priorities",
+    }, {
+      provider: "lovable",
+      model: "google/gemini-3-flash-preview",
+      url: "https://ai.gateway.lovable.dev/v1/chat/completions",
       headers: {
         Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
+      body: {
         model: "google/gemini-3-flash-preview",
+        max_tokens: 8192,
         messages: [
           {
             role: "system",
@@ -158,7 +167,7 @@ Genereer maximaal 15 taken. Focus op urgentie en impact.`,
           },
         ],
         tool_choice: { type: "function", function: { name: "generate_tasks" } },
-      }),
+      },
     });
 
     if (!aiResponse.ok) {
@@ -217,6 +226,12 @@ Genereer maximaal 15 taken. Focus op urgentie en impact.`,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
+    if (e instanceof AiAccountingError) {
+      return new Response(JSON.stringify({ error: e.message, code: e.code }), {
+        status: e.status,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     console.error("recruiter-priorities error:", e);
     return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
