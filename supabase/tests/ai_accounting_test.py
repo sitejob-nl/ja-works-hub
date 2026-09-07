@@ -20,6 +20,43 @@ import uuid
 ROOT = Path(__file__).resolve().parents[2]
 CONTAINER = f"jawerkt-ai-accounting-test-{os.getpid()}"
 BASELINE_ORG = "00000000-0000-4000-8000-000000000001"
+MONTHLY_CUTOVER_ORG = "00000000-0000-4000-8000-000000000002"
+
+
+def accounting_migrations():
+    """Apply the immutable ledger before its forward-only monthly budget fix."""
+    directory = ROOT / "supabase/migrations"
+    migrations = sorted({*directory.glob("*ai_accounting*.sql"),
+                         *directory.glob("*ai_monthly_budget*.sql")})
+    if len(migrations) < 2:
+        raise RuntimeError("Expected ledger migration followed by monthly budget correction")
+    return migrations
+
+
+def seed_monthly_cutover():
+    """Synthetic version of the already-live additive account, no customer data."""
+    sql(f"""
+      INSERT INTO public.organizations(id, name, slug)
+      VALUES ({literal(MONTHLY_CUTOVER_ORG)}, 'Synthetic monthly correction', 'test-monthly-cutover');
+      UPDATE public.organization_credits SET balance_cents=1721, lifetime_topped_up_cents=5000
+        WHERE organization_id={literal(MONTHLY_CUTOVER_ORG)};
+      INSERT INTO public.ai_usage_log(organization_id, feature, provider, cost_cents, created_at)
+      VALUES ({literal(MONTHLY_CUTOVER_ORG)}, 'legacy-monthly-test', 'gemini', 1,
+        date_trunc('month', now() AT TIME ZONE 'Europe/Amsterdam') AT TIME ZONE 'Europe/Amsterdam');
+    """)
+
+
+def apply_accounting_migrations(migrations):
+    seed_monthly_cutover()
+    for index, migration in enumerate(migrations):
+        sql(migration.read_text())
+        if index == 0:
+            month = sql("SELECT date_trunc('month', now() AT TIME ZONE 'Europe/Amsterdam')::date;")
+            rpc("set_monthly_ai_allowance", p_org_id=MONTHLY_CUTOVER_ORG,
+                p_amount_cents=5000, p_start_month=month)
+            rpc("grant_monthly_ai_credits", p_org_id=MONTHLY_CUTOVER_ORG)
+            if sql(f"SELECT balance_cents FROM public.organization_credits WHERE organization_id={literal(MONTHLY_CUTOVER_ORG)};") != "6721":
+                raise AssertionError("Synthetic additive cutover fixture must start at 6721 cents")
 
 
 def literal(value):
@@ -73,7 +110,7 @@ def parallel(statements, role="service_role", user=None):
         return list(pool.map(run, statements))
 
 
-def setup_database(migration):
+def setup_database(migrations):
     subprocess.run(
         ["docker", "run", "--detach", "--name", CONTAINER, "--network", "none",
          "--env", "POSTGRES_HOST_AUTH_METHOD=trust", "postgres:17-alpine"],
@@ -103,7 +140,7 @@ def setup_database(migration):
       VALUES ({literal(BASELINE_ORG)}, 'legacy-test', 'gemini', 3257);
       GRANT ALL ON ALL TABLES IN SCHEMA public TO authenticated, service_role;
     """)
-    sql(migration.read_text())
+    apply_accounting_migrations(migrations)
 
 
 class AIAccountingTests(unittest.TestCase):
@@ -138,6 +175,110 @@ class AIAccountingTests(unittest.TestCase):
     def account(self, org=None):
         return json.loads(sql(f"SELECT row_to_json(c) FROM public.organization_credits c "
                               f"WHERE organization_id={literal(org or self.org)};"))
+
+    def current_month(self):
+        return sql("SELECT date_trunc('month', now() AT TIME ZONE 'Europe/Amsterdam')::date;")
+
+    def enable_monthly(self, amount=5000):
+        return rpc("set_monthly_ai_allowance", p_org_id=self.org,
+                   p_amount_cents=amount, p_start_month=self.current_month())
+
+    def assert_reconciled(self):
+        summary = rpc("get_ai_credit_summary", p_org_id=self.org)
+        self.assertEqual(summary["ledger_difference_cents"], 0)
+        self.assertEqual(summary["reservation_difference_cents"], 0)
+        return summary
+
+    def previous_month_hold(self, amount=4000, unknown=False):
+        """Model the clock boundary using only synthetic rows in the isolated DB.
+
+        Reserve with the real RPC, then move that synthetic period into the past.
+        The monthly reset/finalization themselves are never mocked or rewritten.
+        """
+        request = self.reserve(amount=amount)["request_id"]
+        if unknown:
+            self.finish(request, status="unknown", charge=None, p_provider_cost_usd=None)
+        sql(f"""
+          UPDATE public.ai_requests SET
+            budget_month=(date_trunc('month', now() AT TIME ZONE 'Europe/Amsterdam') - interval '1 month')::date,
+            created_at=(date_trunc('month', now() AT TIME ZONE 'Europe/Amsterdam') - interval '1 day') AT TIME ZONE 'Europe/Amsterdam'
+            WHERE id={literal(request)};
+          UPDATE public.organization_credits SET credit_mode='monthly',
+            monthly_allowance_cents=5000, budget_limit_cents=5000,
+            monthly_start_month=(date_trunc('month', now() AT TIME ZONE 'Europe/Amsterdam') - interval '1 month')::date,
+            budget_month=(date_trunc('month', now() AT TIME ZONE 'Europe/Amsterdam') - interval '1 month')::date
+            WHERE organization_id={literal(self.org)};
+        """)
+        rpc("grant_monthly_ai_credits", p_org_id=self.org)
+        return request
+
+    def test_monthly_cutover_preserves_usage_and_replaces_additive_credit(self):
+        rpc("grant_monthly_ai_credits", p_org_id=MONTHLY_CUTOVER_ORG)
+        account = self.account(MONTHLY_CUTOVER_ORG)
+        self.assertEqual(account["balance_cents"], 4999)
+        self.assertEqual(account["reserved_cents"], 0)
+        self.assertEqual(account["credit_mode"], "monthly")
+        self.assertEqual(sql(f"SELECT sum(cost_cents) FROM public.ai_usage_log WHERE organization_id={literal(MONTHLY_CUTOVER_ORG)};"), "1")
+        self.assertEqual(sql(f"SELECT amount_cents FROM public.ai_credit_ledger WHERE organization_id={literal(MONTHLY_CUTOVER_ORG)} AND kind='opening';"), "1721")
+        self.assertEqual(sql(f"SELECT amount_cents FROM public.ai_credit_ledger WHERE organization_id={literal(MONTHLY_CUTOVER_ORG)} AND kind='monthly_grant';"), "5000")
+        self.assertEqual(sql(f"SELECT sum(amount_cents) FROM public.ai_credit_ledger WHERE organization_id={literal(MONTHLY_CUTOVER_ORG)} AND kind='monthly_reset';"), "-1722")
+        summary = rpc("get_ai_credit_summary", p_org_id=MONTHLY_CUTOVER_ORG)
+        self.assertEqual(summary["available_cents"], 4999)
+        self.assertEqual(summary["month_charged_cents"], 1)
+        self.assertEqual(summary["ledger_difference_cents"], 0)
+        self.assertEqual(summary["reservation_difference_cents"], 0)
+
+    def test_monthly_reset_does_not_replenish_spent_budget_on_retry(self):
+        self.enable_monthly()
+        request = self.reserve(amount=4000)["request_id"]
+        self.finish(request, charge=4000)
+        for _ in range(2):
+            rpc("grant_monthly_ai_credits", p_org_id=self.org)
+        self.assertEqual(self.account()["balance_cents"], 1000)
+        self.assertFalse(self.reserve(amount=1001)["ok"])
+        self.assertEqual(self.assert_reconciled()["available_cents"], 1000)
+
+    def test_monthly_unknown_previous_period_hold_does_not_spend_new_budget(self):
+        old_request = self.previous_month_hold(unknown=True)
+        before = self.assert_reconciled()
+        self.assertEqual((before["balance_cents"], before["reserved_cents"], before["available_cents"]), (9000, 4000, 5000))
+        current_request = self.reserve(amount=3000)["request_id"]
+        self.finish(old_request, charge=3500)
+        after = self.assert_reconciled()
+        self.assertEqual((after["balance_cents"], after["reserved_cents"], after["available_cents"]), (5000, 3000, 2000))
+        self.assertEqual(after["month_charged_cents"], 0)
+        self.assertEqual(sql(f"SELECT amount_cents FROM public.ai_credit_ledger WHERE request_id={literal(old_request)} AND kind='reservation_expiry';"), "-500")
+        self.finish(old_request, charge=3500)
+        self.assertEqual(self.assert_reconciled()["available_cents"], 2000)
+        self.finish(current_request, charge=3000)
+        self.assertEqual(self.assert_reconciled()["month_charged_cents"], 3000)
+
+    def test_monthly_previous_period_failed_call_expires_entire_hold(self):
+        old_request = self.previous_month_hold()
+        self.finish(old_request, status="failed", charge=0, p_provider_cost_usd=0)
+        summary = self.assert_reconciled()
+        self.assertEqual((summary["balance_cents"], summary["reserved_cents"], summary["available_cents"]), (5000, 0, 5000))
+        self.assertEqual(sql(f"SELECT amount_cents FROM public.ai_credit_ledger WHERE request_id={literal(old_request)} AND kind='reservation_expiry';"), "-4000")
+        self.assertTrue(self.reserve(amount=5000)["ok"])
+        self.assertFalse(self.reserve(amount=1)["ok"])
+
+    def test_monthly_mode_cannot_be_bypassed_by_topup_or_legacy_debit(self):
+        sql(f"INSERT INTO public.superadmins(user_id) VALUES ({literal(self.user)});")
+        self.enable_monthly()
+        before = self.account()
+        sql(f"SELECT public.topup_ai_credits_once({literal(self.org)}, 100, 'Synthetic forbidden monthly topup', {literal(str(uuid.uuid4()))});",
+            role="authenticated", user=self.user, expect_error=True)
+        legacy = json.loads(sql(f"SELECT row_to_json(r) FROM public.consume_ai_credits({literal(self.org)}, 1) r;", role="service_role"))
+        self.assertFalse(legacy["ok"])
+        self.assertEqual(self.account(), before)
+        self.assertEqual(self.assert_reconciled()["available_cents"], 5000)
+
+    def test_monthly_paused_budget_does_not_revert_to_prepaid(self):
+        self.enable_monthly()
+        self.enable_monthly(amount=0)
+        self.assertEqual(self.account()["credit_mode"], "monthly")
+        self.assertEqual(self.assert_reconciled()["available_cents"], 0)
+        self.assertFalse(self.reserve(amount=1)["ok"])
 
     def test_reserve_then_finalize_debits_actual_once(self):
         before = self.account()
@@ -332,8 +473,9 @@ class AIAccountingTests(unittest.TestCase):
     def test_migration_reapply_does_not_duplicate_historical_opening(self):
         before = self.account()
         before_count = int(sql("SELECT count(*) FROM public.ai_credit_ledger WHERE kind='opening';"))
-        migration = next((ROOT / "supabase/migrations").glob("*ai_accounting*.sql"))
-        sql(migration.read_text())
+        # A correction must itself be idempotent; do not reinstall old function
+        # bodies or old index definitions after a newer release.
+        sql(accounting_migrations()[-1].read_text())
         self.assertEqual(self.account(), before)
         self.assertEqual(int(sql("SELECT count(*) FROM public.ai_credit_ledger WHERE kind='opening';")), before_count)
 
@@ -383,9 +525,6 @@ class AIAccountingTests(unittest.TestCase):
         summary = rpc("get_ai_credit_summary", role="authenticated", user=self.user,
                       p_org_id=self.org)
         self.assertEqual(summary["balance_cents"], 5000)
-        allowance = rpc("set_monthly_ai_allowance", role="authenticated", user=self.user,
-                        p_org_id=self.org, p_amount_cents=5000, p_start_month="2026-09-01")
-        self.assertEqual(allowance["monthly_allowance_cents"], 5000)
         balance = rpc("topup_ai_credits_once", role="authenticated", user=self.user,
                       p_org_id=self.org, p_amount_cents=100, p_note="Synthetic superadmin topup",
                       p_request_id=str(uuid.uuid4()))
@@ -394,6 +533,9 @@ class AIAccountingTests(unittest.TestCase):
         self.assertEqual(int(sql(f"SELECT count(*) FROM public.ai_credit_ledger "
                                  f"WHERE organization_id='{self.org}';",
                                  role="authenticated", user=self.user)), 2)
+        allowance = rpc("set_monthly_ai_allowance", role="authenticated", user=self.user,
+                        p_org_id=self.org, p_amount_cents=5000, p_start_month="2026-09-01")
+        self.assertEqual(allowance["monthly_allowance_cents"], 5000)
 
     def test_manual_topup_retries_once_and_rejects_conflicting_details(self):
         sql(f"INSERT INTO public.superadmins(user_id) VALUES('{self.user}');")
@@ -431,11 +573,9 @@ class AIAccountingTests(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    migrations = sorted((ROOT / "supabase/migrations").glob("*ai_accounting*.sql"))
-    if len(migrations) != 1:
-        raise SystemExit("Expected exactly one *ai_accounting*.sql migration")
+    migrations = accounting_migrations()
     try:
-        setup_database(migrations[0])
+        setup_database(migrations)
         print(f"Database: {sql('SELECT version();')}", flush=True)
         result = unittest.TextTestRunner(verbosity=2).run(
             unittest.defaultTestLoader.loadTestsFromTestCase(AIAccountingTests)

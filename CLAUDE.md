@@ -417,8 +417,9 @@ Similar to WhatsApp — tenant registration via SiteJob Connect → OAuth popup 
 Alle elf betaalde AI-endpoints gebruiken `_shared/ai-accounting.ts`. Deze reserveert vooraf en rekent
 atomair af via `ai_requests`, `ai_usage_log` en `ai_credit_ledger`. Gebruik geen losse
 `consume_ai_credits`/`logAiUsage`-combinatie in nieuwe code. JA Werkt krijgt vanaf september 2026 elke
-Nederlandse kalendermaand €50 erbij; ongebruikt saldo blijft staan. Andere organisaties hebben standaard
-geen maandtoelage. Zie [docs/ai-accounting.md](docs/ai-accounting.md) en het bijbehorende databasecontract.
+Nederlandse kalendermaand een budget van €50; ongebruikt budget vervalt en wordt niet opgeteld.
+Andere organisaties hebben standaard geen maandregeling. Zie [docs/ai-accounting.md](docs/ai-accounting.md)
+en het bijbehorende databasecontract. De eerdere interpretatie als cumulatief tegoed is gecorrigeerd.
 
 **Edge functions:** `analyze-cv`, `analyze-cv-callback`, `analyze-cv-batch`
 

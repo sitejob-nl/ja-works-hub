@@ -42,6 +42,7 @@ function CreditMetric({ label, value, note }: { label: string; value: string; no
 
 function CreditManagement({ orgId, summary }: { orgId: string; summary: AiCreditSummary }) {
   const { topup, setAllowance } = useManageAiCredits(orgId);
+  const monthlyMode = summary.budget_mode === 'monthly';
   const pendingTopup = useRef<PendingTopup | null>(readPendingTopup(orgId));
   const [hasPendingTopup, setHasPendingTopup] = useState(!!pendingTopup.current);
   const [amount, setAmount] = useState(pendingTopup.current ? (pendingTopup.current.amountCents / 100).toFixed(2).replace('.', ',') : '');
@@ -55,6 +56,7 @@ function CreditManagement({ orgId, summary }: { orgId: string; summary: AiCredit
   }, [summary.monthly_allowance_cents, summary.monthly_start_month, summary.month_start]);
 
   const bookTopup = async () => {
+    if (monthlyMode) return;
     const amountCents = parseAiCreditCents(amount);
     if (amountCents == null || amountCents === 0 || !note.trim()) {
       toast.error('Vul een bedrag met maximaal twee decimalen en een omschrijving in.');
@@ -91,12 +93,12 @@ function CreditManagement({ orgId, summary }: { orgId: string; summary: AiCredit
   const saveMonthlyAllowance = async () => {
     const amountCents = parseAiCreditCents(monthlyAmount);
     if (amountCents == null || amountCents < 0 || !/^\d{4}-(0[1-9]|1[0-2])$/.test(startMonth)) {
-      toast.error('Vul een positief maandbedrag (of 0 om te stoppen) en een geldige startmaand in.');
+      toast.error('Vul een maandbudget van minimaal €0 en een geldige startmaand in.');
       return;
     }
     try {
       await setAllowance.mutateAsync({ amountCents, startMonth: `${startMonth}-01` });
-      toast.success('Maandregeling opgeslagen. Een verschuldigde aanvulling wordt binnen een uur verwerkt.');
+      toast.success('Maandbudget opgeslagen.');
     } catch (error) {
       toast.error(toFriendlyError(error));
     }
@@ -105,10 +107,10 @@ function CreditManagement({ orgId, summary }: { orgId: string; summary: AiCredit
   return (
     <div className="space-y-4 border-t pt-4">
       <div className="space-y-3 rounded-lg border p-4">
-        <h3 className="text-sm font-semibold">Maandelijkse aanvulling beheren</h3>
+        <h3 className="text-sm font-semibold">Maandbudget beheren</h3>
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1">
-            <Label htmlFor={`ai-monthly-${orgId}`}>Bedrag per maand (€)</Label>
+            <Label htmlFor={`ai-monthly-${orgId}`}>Maandbudget (€)</Label>
             <Input id={`ai-monthly-${orgId}`} inputMode="decimal" value={monthlyAmount}
               onChange={(event) => setMonthlyAmount(event.target.value)} disabled={setAllowance.isPending} />
           </div>
@@ -119,13 +121,19 @@ function CreditManagement({ orgId, summary }: { orgId: string; summary: AiCredit
           </div>
         </div>
         <p className="text-xs text-muted-foreground">
-          Resterend tegoed blijft staan. Iedere maand wordt hoogstens één keer toegevoegd.
-          Een al geboekte maand verandert niet. Stel €0 in om toekomstige aanvullingen te stoppen.
+          Dit is de bestedingslimiet per kalendermaand. Ongebruikt budget vervalt bij de volgende maand.
+          Een nieuwe maand begint met het ingestelde budget. Er wordt niets opgespaard.
+          Een lagere limiet mag lopende reserveringen van deze maand niet aantasten.
         </p>
-        <Button size="sm" onClick={saveMonthlyAllowance} disabled={setAllowance.isPending}>Maandregeling opslaan</Button>
+        <Button size="sm" onClick={saveMonthlyAllowance} disabled={setAllowance.isPending}>Maandbudget opslaan</Button>
       </div>
 
-      <div className="space-y-3 rounded-lg border p-4">
+      {monthlyMode ? (
+        <p className="rounded-lg border p-3 text-xs text-muted-foreground">
+          Bij een maandbudget zijn losse bijboekingen en saldocorrecties uitgeschakeld.
+          Pas zo nodig het maandbudget aan.
+        </p>
+      ) : <div className="space-y-3 rounded-lg border p-4">
         <h3 className="text-sm font-semibold">Eenmalige bijboeking of correctie</h3>
         <div className="space-y-1">
           <Label htmlFor={`ai-topup-${orgId}`}>Bedrag (€)</Label>
@@ -148,7 +156,7 @@ function CreditManagement({ orgId, summary }: { orgId: string; summary: AiCredit
         <Button size="sm" onClick={bookTopup} disabled={topup.isPending || !amount || !note.trim()}>
           {hasPendingTopup ? 'Dezelfde boeking opnieuw proberen' : 'Boeken'}
         </Button>
-      </div>
+      </div>}
     </div>
   );
 }
@@ -159,6 +167,7 @@ export default function AiCreditsPanel({ orgId, canManage = false }: { orgId: st
   const ledgerQuery = useAiCreditLedger(orgId);
   const legacyQuery = useLegacyAiUsage(orgId);
   const summary = summaryQuery.data;
+  const monthlyMode = summary?.budget_mode === 'monthly';
   const requests = requestsQuery.data?.pages.flat() ?? [];
   const ledger = ledgerQuery.data?.pages.flat() ?? [];
   const legacyUsage = legacyQuery.data?.pages.flat() ?? [];
@@ -180,21 +189,27 @@ export default function AiCreditsPanel({ orgId, canManage = false }: { orgId: st
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <CreditMetric label="Beschikbaar AI-tegoed" value={formatAiCreditEuro(summary.available_cents)} note="Voor nieuwe AI-aanvragen" />
-        <CreditMetric label="Gereserveerd" value={formatAiCreditEuro(summary.reserved_cents)} note="Lopende of nog onbekende uitkomsten" />
-        <CreditMetric label="Totaal saldo" value={formatAiCreditEuro(summary.balance_cents)} note="Inclusief gereserveerd tegoed" />
+        <CreditMetric label={monthlyMode ? 'Beschikbaar deze maand' : 'Beschikbaar AI-tegoed'} value={formatAiCreditEuro(summary.available_cents)} note="Voor nieuwe AI-aanvragen" />
+        <CreditMetric label={monthlyMode ? 'Gereserveerd deze maand' : 'Gereserveerd'} value={formatAiCreditEuro(monthlyMode ? summary.current_month_reserved_cents : summary.reserved_cents)} note="Lopende of nog onbekende uitkomsten" />
+        <CreditMetric label={monthlyMode ? 'Maandbudget' : 'Totaal saldo'} value={formatAiCreditEuro(monthlyMode ? summary.monthly_budget_cents : summary.balance_cents)} note={monthlyMode ? 'Bestedingslimiet voor deze kalendermaand' : 'Inclusief gereserveerd tegoed'} />
       </div>
 
       <div className="rounded-lg border p-3 text-sm">
-        {summary.monthly_allowance_cents > 0 ? (
+        {monthlyMode ? (
           <>
-            <p><strong>{formatAiCreditEuro(summary.monthly_allowance_cents)}</strong> erbij per kalendermaand. Resterend tegoed blijft staan.</p>
+            <p><strong>{formatAiCreditEuro(summary.monthly_budget_cents)}</strong> AI-budget per kalendermaand. Ongebruikt budget vervalt bij het begin van de volgende maand.</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              {summary.next_grant_at ? `Volgende aanvulling: ${formatAiCreditDate(summary.next_grant_at)} (Nederlandse tijd).` : 'Volgende aanvulling wordt bepaald zodra de maandregeling actief is.'}
+              {summary.next_grant_at ? `Nieuw maandbudget: ${formatAiCreditDate(summary.next_grant_at)} (Nederlandse tijd).` : 'De datum van het volgende maandbudget is nog niet bekend.'}
             </p>
           </>
-        ) : <p>Er is geen maandelijkse aanvulling ingesteld. Het bestaande tegoed blijft beschikbaar.</p>}
+        ) : <p>Er is geen maandbudget actief. Het bestaande eenmalige AI-tegoed is beschikbaar.
+          {summary.monthly_allowance_cents > 0 && summary.monthly_start_month && ` Vanaf ${formatAiCreditDate(summary.monthly_start_month)} geldt een maandbudget van ${formatAiCreditEuro(summary.monthly_allowance_cents)}; ongebruikt budget vervalt iedere maand.`}
+        </p>}
       </div>
+
+      {monthlyMode && summary.previous_period_reserved_cents > 0 && (
+        <p className="text-xs text-muted-foreground">Uit eerdere maanden staat nog {formatAiCreditEuro(summary.previous_period_reserved_cents)} gereserveerd. Deze aanvragen worden met het budget van hun oorspronkelijke maand afgerekend en verlagen het huidige maandbudget niet.</p>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         <CreditMetric label="Afgeschreven deze maand" value={formatAiCreditEuro(summary.month_charged_cents)} note="Van het AI-tegoed van deze organisatie" />

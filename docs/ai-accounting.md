@@ -1,10 +1,10 @@
-# AI-verbruik en maandelijkse credits
+# AI-verbruik en vast maandbudget
 
 ## Afspraak
 
-JA Werkt krijgt vanaf september 2026 iedere kalendermaand €50 extra AI-tegoed. Het ongebruikte saldo blijft staan. De periodegrens is Europe/Amsterdam; dezelfde maand kan per organisatie maar eenmaal worden bijgeschreven. Andere organisaties krijgen niet automatisch dezelfde regeling: hun maandbedrag blijft standaard nul.
+JA Werkt heeft vanaf september 2026 een AI-budget van €50 per kalendermaand. Ongebruikt budget vervalt bij de maandwisseling; het wordt niet opgeteld bij de volgende maand. De periodegrens is Europe/Amsterdam. Herhaalde verwerking van dezelfde maand geeft geen extra budget. Andere organisaties krijgen niet automatisch dezelfde regeling: hun maandbedrag blijft standaard nul.
 
-De bestaande €17,21 wordt bij de overgang behouden. De eerste maandelijkse aanvulling brengt dit op €67,21, afgezien van eventueel tussentijds AI-gebruik. Er worden geen eerdere maanden bijgeboekt. Het historische verschil van €0,22 tussen het oude saldo en de oude gebruikslog is als onverklaarde historische afwijking vastgelegd; er wordt geen fictieve AI-aanroep of extra klantafschrijving voor gemaakt.
+De eerste release interpreteerde de afspraak verkeerd als cumulatief tegoed en bracht het saldo op €67,21. De correctie maakt daarvan €50 minus het geregistreerde septemberverbruik: op het controlemoment €0,01 verbruikt en dus €49,99 beschikbaar. Een expliciete boeking legt het verschil vast; bestaande boekingen en verbruik worden niet herschreven. Het historische verschil van €0,22 blijft een afzonderlijke historische toelichting.
 
 ## Eén route voor betaalde AI
 
@@ -21,21 +21,23 @@ Nieuwe functies, waaronder urenfotoherkenning, moeten dezelfde transportlaag geb
 
 Bij een time-out of ontbrekende verbruiksgegevens blijft de uitkomst zichtbaar als onbekend, met de reservering intact. Een onzekere uitkomst wordt niet automatisch een gratis retry. Mislukte registratie wordt met dezelfde afrekening herhaald; het providerverzoek wordt daarbij niet opnieuw uitgevoerd. Als de database onbereikbaar blijft, bevat het serverlog de minimale afrekengegevens voor herstel: ID, tokens, kosten en status, zonder broninhoud of API-sleutel. Oude open reserveringen worden als afwijking getoond en vragen onderzoek.
 
+Iedere aanvraag houdt de budgetmaand waarin zij is gestart. Open reserveringen uit een eerdere maand blijven apart vaststaan. Als zo'n aanvraag later wordt afgerekend, vervalt het ongebruikte deel van die oude reservering. Het nieuwe maandbudget wordt daarmee niet groter of kleiner. Het technische totaalsaldo kan zulke oude reserveringen bevatten; het scherm toont voor maandorganisaties de maandlimiet en de daadwerkelijk beschikbare ruimte.
+
 De bovengrens voorkomt overschrijding van het beschikbare klanttegoed. Een onverwachte afwijking tussen reservering en werkelijk gerapporteerd verbruik wordt afzonderlijk getoond; deze maakt geen klantenschuld en wordt niet uit de reservering van een andere aanvraag betaald.
 
 ## Kosten en tegoed
 
 Klantcredits zijn eurocenten volgens het ingestelde creditcontract. Providerkosten blijven afzonderlijk in Amerikaanse dollars, met tokenaantallen en tariefversie. De bestaande afronding op hele klantcenten blijft behouden. Dit is geen valutaconversie en geen kopie van een leveranciersfactuur: kortingen, belastingen of contractafspraken bij de provider kunnen afwijken. Exa's door de provider gemelde kosten worden als zodanig vastgelegd. Onbekende kosten worden niet als nul gepresenteerd.
 
-Het instellingenpaneel en het superadminpaneel tonen beschikbaar, gereserveerd en totaal saldo, de maandelijkse aanvulling, volgende periode, maandverbruik, historie en afwijkingen. Historische gebruiksregels blijven apart beschikbaar. Handmatige bijboekingen gebruiken een unieke sleutel zodat een onzekere herhaling geen dubbele aanvulling oplevert.
+Het instellingenpaneel en het superadminpaneel tonen beschikbaar maandbudget, reserveringen, maandlimiet, volgende periode, maandverbruik, historie en afwijkingen. Historische gebruiksregels blijven apart beschikbaar. Bij een actief maandbudget zijn handmatige top-ups geblokkeerd; een beheerder kan de maandlimiet aanpassen. Organisaties zonder maandregeling houden hun bestaande prepaidtegoed en idempotente handmatige correcties.
 
 ## Beheer en controle
 
-Zie [het databasecontract](ai-accounting-db-contract.md) voor de RPC's en kolommen. De maandelijkse taak roept SQL rechtstreeks aan en heeft geen webhook of API-sleutel nodig. Zij probeert elk uur opnieuw; bij een gemiste uitvoering worden verschuldigde maanden alsnog één keer toegevoegd. Een nieuwe reservering voert dezelfde idempotente controle uit.
+Zie [het databasecontract](ai-accounting-db-contract.md) voor de RPC's en kolommen. De maandelijkse taak roept SQL rechtstreeks aan en heeft geen webhook of API-sleutel nodig. Zij controleert elk uur of de huidige maand actief is; een nieuwe AI-reservering doet dezelfde controle. Bij een gemiste uitvoering wordt uitsluitend het budget van de huidige maand geactiveerd. Overgeslagen maanden leveren geen extra tegoed op.
 
 `get_ai_credit_summary` toont onder meer het verschil tussen saldo en boekingen en tussen gereserveerd saldo en open aanvragen. Beide horen vanaf de overgang nul te zijn. Het historische verschil blijft afzonderlijk zichtbaar en wordt niet weggemoffeld in nieuwe bedragen.
 
-SQL-tests draaien uitsluitend op een eigen lokale PostgreSQL-testcontainer. Provider- en handler-tests gebruiken mocks en veroorzaken geen echte AI-kosten of klantcommunicatie. Voor productie zijn de migration, alle elf gewijzigde edge functions en de frontend één release; alleen de frontend wordt automatisch via Vercel uitgerold.
+SQL-tests draaien uitsluitend op een eigen lokale PostgreSQL-testcontainer. Provider- en handler-tests gebruiken mocks en veroorzaken geen echte AI-kosten of klantcommunicatie. De elf AI-endpoints zijn centraal aangesloten in PR #260. De maandcorrectie houdt hun RPC-contract compatibel en vereist een database- en frontendrelease; de providerlaag hoeft hiervoor niet opnieuw uitgerold te worden.
 
 ## Herstel
 

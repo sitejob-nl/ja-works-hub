@@ -1,72 +1,56 @@
-# AI-accounting databasecontract
+# AI-accounting: maandbudget en databasecontract
 
-Deze migratie start een nieuw, controleerbaar grootboek op het bestaande saldo. Ze verandert geen historisch saldo en schrijft geen ontbrekende oude AI-aanroepen bij. De maandregeling telt bedragen op; bestaand tegoed blijft staan. De standaard maandtoelage voor iedere organisatie is **0**. Alleen expliciet ingeschreven organisaties krijgen een toelage.
+Een organisatie met een maandbudget mag per kalendermaand maximaal het ingestelde bedrag aan klantcredits besteden. Voor JA Werkt is dat **€50 per maand**. Ongebruikt budget vervalt; er worden geen oude maanden ingehaald en bedragen stapelen niet op. Kalendermaanden volgen `Europe/Amsterdam`.
 
-## Bedragen en bronnen
+De bestaande accountingmigratie blijft onveranderd als historische migratie. De aanvullende migratie `20260907204252_ai_monthly_budget_reset.sql` vervangt de eerdere optellende maandregeling. Reeds geboekte regels blijven intact; correcties verschijnen als nieuwe grootboekregels. Organisaties zonder maandregeling blijven in hun bestaande prepaidmodel.
+
+## Saldo en lopende aanvragen
 
 | Veld | Betekenis |
 | --- | --- |
-| `organization_credits.balance_cents` | Werkelijk klanttegoed in eurocenten, inclusief nog gereserveerd bedrag. |
-| `reserved_cents` | Som van reserveringen met status `reserved` of `unknown`. |
-| `balance_cents - reserved_cents` | Beschikbaar voor een volgende AI-aanroep. |
-| `monthly_allowance_cents`, `monthly_start_month` | Toevoeging per kalendermaand vanaf deze eerste maand. Geen reset of vervaldatum. |
-| `ai_requests.provider_cost_usd` | Providerkosten in USD: door de provider gerapporteerd of geschat op basis van echt verbruik en een tariefversie in `metadata`. `metadata.provider_cost_kind` onderscheidt die bronnen. NULL betekent onbekend, niet gratis. |
-| `ai_requests.requested_charged_cents` | Berekende klantprijs voordat de grens van de reservering wordt toegepast. |
-| `ai_requests.charged_cents` / `ai_usage_log.cost_cents` | Daadwerkelijk afgeschreven klantcredits. Niet gelijkstellen aan de providerfactuur. |
-| `reservation_overrun_cents` | Berekende klantprijs boven de eigen reservering. Apart zichtbaar, nooit als schuld of ten laste van andere reserveringen. |
+| `organization_credits.credit_mode` | `prepaid` of `monthly`; maandbedrag nul binnen `monthly` betekent gepauzeerd. |
+| `monthly_allowance_cents`, `monthly_start_month` | De ingestelde maandlimiet en eerste budgetmaand; de namen blijven compatibel met bestaande clients. |
+| `budget_month`, `budget_limit_cents` | De daadwerkelijk verwerkte huidige budgetperiode en limiet. |
+| `balance_cents` | Brutosaldo inclusief eventueel nog vastgehouden reserveringen uit eerdere maanden. Dit is niet het maandbudget. |
+| `reserved_cents` | Alle open reserveringen, uit huidige én eerdere maanden. |
+| `balance_cents - reserved_cents` | Beschikbaar budget voor nieuwe aanvragen; oude reserveringen tellen hierin nooit mee. |
+| `ai_requests.budget_month` | De maand waarin de providerpoging is toegestaan. Deze maand blijft staan als de afrekening later komt. |
+| `ai_usage_log.budget_month` | Dezelfde autorisatiemaand; oudere NULL-rijen worden toegerekend aan hun aanmaakmaand. |
 
-Nieuwe aanvragen, het gebruikslog, de afschrijving, het vrijgeven van de reservering en het grootboek krijgen bij afrekening één transactieresultaat. Een technische providerfout kan wel betaald verbruik hebben; status `failed` mag daarom positieve kosten bevatten.
+Voorbeeld over een maandgrens: een septemberaanvraag houdt €10 vast. In oktober begint het nieuwe budget op €50 beschikbaar; technisch zijn het brutosaldo €60 en alle reserveringen €10. Als de septemberaanvraag daarna €8 kost, schrijft het grootboek €8 gebruik en €2 verlopen reservering. Oktober houdt €50 beschikbaar. Vrijgekomen septembergeld wordt nooit nieuw oktoberbudget.
 
-Bij Gemini bevat `output_tokens` ook het betaalde denkwerk; `thinking_tokens` is daarvan een informatieve uitsplitsing en mag niet nogmaals worden opgeteld. Bij Anthropic bevat `input_tokens` ook cachelees- en cacheschrijftokens, met de verschillende providerprijzen vastgelegd in metadata.
+Ook als een aanvraag met status `unknown` meerdere maanden open blijft, blijft uitsluitend die bestaande reservering vastgehouden. Er wordt geen extra budget voor gemiste maanden opgebouwd. De UI toont beschikbaar budget, huidige reserveringen en de maandlimiet; oude reserveringen staan apart.
 
-## Vooraf reserveren
+## Vooraf reserveren en atomair afrekenen
+
+De bestaande RPC-signatures veranderen niet; de elf bestaande edge functions hoeven hiervoor niet opnieuw uitgerold te worden.
 
 ```sql
 reserve_ai_usage(
-  p_request_id uuid,
-  p_org_id uuid,
-  p_user_id uuid,
-  p_feature text,
-  p_provider text,
-  p_model text,
-  p_reserved_cents integer,
-  p_candidate_id uuid default null,
-  p_metadata jsonb default '{}'
-) returns jsonb
-```
+  p_request_id uuid, p_org_id uuid, p_user_id uuid,
+  p_feature text, p_provider text, p_model text, p_reserved_cents integer,
+  p_candidate_id uuid default null, p_metadata jsonb default '{}'
+) returns jsonb;
 
-Alleen `service_role` mag deze functie uitvoeren. De transportlaag maakt een nieuwe UUID voor **iedere daadwerkelijke providerpoging**, inclusief retries en een andere provider. Het bedrag is een conservatieve bovengrens voor die ene poging, inclusief mogelijk denkwerk en beeldtokens. De RPC verwerkt eerst eventuele verschuldigde maandtoelagen. Daarna vergrendelt ze de organisatierekening voordat ze beschikbaar saldo controleert.
-
-Het antwoord bevat `ok`, `request_id`, `status`, `reservation_cents`, `balance_cents`, `reserved_cents`, `available_cents`, `already_exists`. Alleen `ok=true` en `already_exists=false` geven toestemming om de provider aan te roepen. Een herhaalde UUID retourneert de bestaande aanvraag met `ok=false`; dezelfde provideractie mag niet worden herhaald. Een UUID met andere kernparameters geeft een fout. Onvoldoende saldo levert een geregistreerde aanvraag met status `blocked` op, zonder reservering of providerverzoek.
-
-## Afrekenen
-
-```sql
 finalize_ai_usage(
-  p_request_id uuid,
-  p_status text,
-  p_input_tokens integer default null,
-  p_output_tokens integer default null,
-  p_thinking_tokens integer default null,
-  p_provider_cost_usd numeric default null,
-  p_charged_cents integer default null,
-  p_provider_request_id text default null,
-  p_error_code text default null,
-  p_duration_ms integer default null,
+  p_request_id uuid, p_status text,
+  p_input_tokens integer default null, p_output_tokens integer default null,
+  p_thinking_tokens integer default null, p_provider_cost_usd numeric default null,
+  p_charged_cents integer default null, p_provider_request_id text default null,
+  p_error_code text default null, p_duration_ms integer default null,
   p_metadata jsonb default '{}'
-) returns jsonb
+) returns jsonb;
 ```
 
-Alleen `service_role`; status is `succeeded`, `failed` of `unknown`. Het antwoord bevat `ok`, `request_id`, `status`, `charged_cents`, `balance_cents`, `reserved_cents`, `available_cents`, `already_finalized`, `reservation_overrun_cents`.
+Alleen `service_role` mag deze RPC's uitvoeren. Vooraf reserveren vergrendelt de organisatierekening en synchroniseert eerst de huidige budgetmaand. Iedere echte providerpoging heeft een eigen UUID en conservatieve kostenbovengrens. Alleen `ok=true` met `already_exists=false` staat een providerverzoek toe; hergebruik of onvoldoende budget geeft geen tweede provideractie. Een maandbudget van nul blokkeert ook een aanvraag met een reservering van nul.
 
-- `succeeded` en `failed` vereisen een expliciet bedrag, ook bij nul. De definitieve status, één gebruikslogrij, één grootboekrij (ook bij nul) en de saldoverandering worden atomair opgeslagen.
-- Exact dezelfde terminale payload mag opnieuw worden aangeboden en boekt niets dubbel. Een andere terminale payload geeft een fout. De transportlaag bewaart dus ook de oorspronkelijke duur en metadata bij een afrekenretry.
-- `unknown` houdt de volledige reservering vast. Een timeout, procescrash of verloren antwoord wordt niet automatisch gratis en geeft geen toestemming voor een betaalde retry. De aanvraag kan later met verbruiksbewijs via dezelfde RPC definitief worden afgerekend. Bij onzekerheid over de afrekening zelf kan de exacte afrekening opnieuw worden aangeboden.
-- Bij uitzonderlijke overschrijding wordt maximaal de eigen reservering afgeschreven. De volledige berekende prijs, providerkosten en overschrijding blijven bewaard. Dit vereist onderzoek en verbetering van de bovengrens; er ontstaat geen negatieve klantbalans.
+Een definitieve afrekening (`succeeded` of `failed`) vereist expliciete klantkosten, ook bij nul. Aanvraag, gebruikslog, saldo, reserveringsvrijgave en grootboek worden in één transactie verwerkt. Een fout kan betaald providerverbruik hebben; dat blijft geregistreerd. Exact dezelfde terminale payload mag opnieuw worden aangeboden zonder dubbele boeking; een afwijkende terminale payload wordt geweigerd.
 
-Het modelantwoord of de prompt hoort niet in `metadata`; sla alleen technische tarief-, token- en foutgegevens op. Achtergebleven aanvragen worden vanaf 15 minuten zichtbaar als `stale_requests`. Reserveringen hebben bewust geen automatische vrijgave na een timeout.
+`unknown` houdt de reservering vast totdat de werkelijke uitkomst is vastgesteld. Er is geen automatische vrijgave na een timeout. Aanvragen ouder dan 15 minuten worden zichtbaar als open aandachtspunt. Bij afrekenen van een oude budgetmaand vervalt het ongebruikte deel van die reservering via `reservation_expiry`; het vult de huidige maand niet aan.
 
-## Maandregeling
+Uitzonderlijke kosten boven de eigen reservering worden niet bij andere aanvragen of de klant in rekening gebracht. `requested_charged_cents` bewaart de berekende prijs, `charged_cents` de begrensde afschrijving en `reservation_overrun_cents` het te onderzoeken verschil. Providerkosten blijven apart bewaard. Een mislukte databaseafrekening draait alle boekhoudmutaties terug; de reservering blijft dan zichtbaar open.
+
+## Maandreset en instellingen
 
 ```sql
 set_monthly_ai_allowance(p_org_id uuid, p_amount_cents integer, p_start_month date)
@@ -75,69 +59,85 @@ grant_monthly_ai_credits(p_as_of timestamptz default now(), p_org_id uuid defaul
   returns jsonb;
 ```
 
-De eerste RPC is alleen voor superadmins of `service_role` en wijzigt uitsluitend de instellingen. De tweede is voor `service_role` en de databasecron. Er wordt per organisatie en maand exact één grootboekrij met `kind='monthly_grant'` aangemaakt; parallelle uitvoering en herhaalde uitvoering schrijven niets dubbel bij. Het antwoord is `{grants_created, amount_cents, through_month}`.
+De naam `grant_monthly_ai_credits` blijft bestaan voor compatibiliteit met de bestaande cron. De functie **reset het actuele budget** en telt geen maandbedragen op. Het antwoord bevat `resets_created`, het compatibele `grants_created`, de netto grootboekmutatie in `amount_cents` en `through_month`.
 
-De kalendermaand wordt bepaald in `Europe/Amsterdam`, inclusief zomer- en wintertijd. De uurcron `ai-monthly-credit-grants` draait iedere uur op minuut 5. De reserverings-RPC haalt een gemiste cronuitvoering ook in. Toekomstig bijschrijven is niet toegestaan; `p_as_of` mag maximaal vijf minuten vooruit liggen voor klokverschil. Een inhaalperiode boven tien jaar faalt expliciet. Toelagen en handmatige mutaties zijn begrensd op €100.000 per handeling/maand; dit is een technische foutgrens, geen standaardbedrag.
+De interne `private.refresh_ai_monthly_budget` verwerkt uitsluitend de gevraagde huidige of nog niet verwerkte periode. Een eerdere periode dan de al verwerkte `budget_month` is een no-op. Een toekomstige kalendermaand wordt geweigerd, ook als die binnen de toegestane vijf minuten klokmarge zou vallen. Een gemiste cronrun leidt uitsluitend tot het actuele maandbudget, niet tot een reeks historische toevoegingen.
 
-Voor JA Werkt is de gewenste inschrijving €50 vanaf september 2026; uitvoeren gebeurt apart na review/deploy:
+De bestaande uurcron draait iedere uur op minuut 5. Reserveren, afrekenen en een geautoriseerde samenvatting ophalen synchroniseren het budget eveneens. De UI hoeft daardoor niet te wachten op de cron. `get_ai_credit_summary` is bewust `VOLATILE`: de leesactie mag eerst de gecontroleerde budgetreset verwerken.
+
+De instellings-RPC is beschikbaar voor actieve superadmins en `service_role`. Een superadmin zonder regulier profiel blijft toegestaan volgens `private.is_active_user()`. Een wijziging voor de huidige maand wordt direct verwerkt. Herhaald opslaan van dezelfde instelling reset reeds besteed budget niet opnieuw. Een echte limietwijziging herberekent het restant na werkelijk geboekte maandkosten en krijgt een afzonderlijke, controleerbare grootboekmutatie.
+
+Een bedrag nul pauzeert het maandbudget, ook als die maand al kosten zijn geboekt. Een verlaging die nog lopende, in de huidige maand goedgekeurde reserveringen zou aantasten wordt geweigerd; deze aanvragen moeten eerst worden afgerond of opgelost. Oude maandreserveringen blokkeren de pauze niet. Het maandbedrag nul zet een organisatie niet terug naar prepaid en biedt geen route om de maandlimiet via handmatig saldo te omzeilen.
+
+Handmatige `topup_ai_credits_once`-mutaties zijn daarom geweigerd voor maandbudgetorganisaties. Het oude `consume_ai_credits`-pad retourneert in maandmodus `ok=false`; nieuwe aanvragen moeten de centrale reserveringsroute gebruiken. In prepaidmodus blijven beide bestaande routes gelijk werken. Een exacte retry van een reeds geboekte handmatige correctie blijft idempotent, ook als de organisatie inmiddels maandmodus gebruikt.
+
+## Correctie JA Werkt
+
+De migratie bevat geen hardcoded organisatie-ID en verwijdert geen historie. Voor de gecontroleerde huidige toestand geldt:
+
+- Eerder brutosaldo: 6721 cent; open reserveringen: 0.
+- Budget september: 5000 cent; septembergebruik: 1 cent.
+- Correct beschikbaar budget: **4999 cent**.
+- Expliciete `monthly_reset`-mutatie: **-1722 cent**; eerdere opening en maandtoevoeging blijven bestaan.
+
+Na toepassing van de migratie verwerkt de bestaande RPC de correctie automatisch op basis van de actuele gegevens:
 
 ```sql
--- Uitvoeren met service_role en het geverifieerde JA Werkt-organisatie-ID.
-select set_monthly_ai_allowance(:ja_werkt_org_id, 5000, date '2026-09-01');
+-- Uitvoeren als service_role, met het geverifieerde JA Werkt-organisatie-ID.
 select grant_monthly_ai_credits(now(), :ja_werkt_org_id);
+select get_ai_credit_summary(:ja_werkt_org_id);
 ```
 
-Een bedrag wijzigen verandert reeds geboekte maanden niet. Voor nog niet geboekte maanden vanaf de ingestelde startmaand geldt het nieuwe bedrag. De UI moet daarom expliciet de eerste maand tonen. Er is geen automatische inschrijving of terugwerkende toelage voor andere organisaties.
+Als er ondertussen nieuw gebruik is ontstaan, berekent de database het dan juiste restant; er is geen handmatige UPDATE van het saldo nodig. Volgende maand wordt het nieuwe budget €50, onafhankelijk van het ongebruikte restant. Het oude historische verschil van €0,22 blijft ongewijzigd als toelichting op de openingsboeking.
 
-## Handmatige correcties
+## Samenvatting en kosten
 
-```sql
-topup_ai_credits_once(p_org_id uuid, p_amount_cents integer, p_note text, p_request_id uuid)
-  returns integer;
-```
+`get_ai_credit_summary(p_org_id uuid)` behoudt alle bestaande velden en voegt toe:
 
-Alleen actieve superadmins; een superadmin zonder regulier organisatieprofiel mag dit ook, volgens de bestaande `private.is_active_user()`-regel. De UI bewaart dezelfde UUID bij een onzekere netwerkretry. Het bedrag en de notitie moeten dan identiek zijn. Negatieve correcties zijn mogelijk zolang ze geen gereserveerd bedrag besteden en geen schuld creëren. Het bestaande `topup_ai_credits(uuid, integer, text)` blijft compatibel maar maakt zelf een UUID; nieuwe UI-code gebruikt uitsluitend de `once`-variant.
+| Veld | Betekenis |
+| --- | --- |
+| `budget_mode` | Canonieke responsewaarde `monthly` of `prepaid`; de tabelkolom heet `credit_mode`. |
+| `budget_month` | Verwerkte maand; null voor prepaid zonder maandperiode. |
+| `monthly_budget_cents` | Limiet van de actuele periode; nul bij een gepauzeerd maandbudget. |
+| `month_remaining_cents` | Maandlimiet minus werkelijk geboekt maandgebruik, vóór actuele reserveringen. |
+| `current_month_reserved_cents` | Alleen reserveringen die de huidige maand belasten. |
+| `previous_period_reserved_cents` | Reserveringen uit eerdere maanden, apart vastgehouden. |
+| `previous_month_reserved_cents` | Compatibele alias voor hetzelfde bedrag uit eerdere maanden. |
+| `month_reset_at` | Tijdstip van de laatste reset of limietwijziging. |
+| `next_grant_at` | Eerstvolgende maandreset, of null bij een gepauzeerde regeling. |
 
-`consume_ai_credits(uuid, integer)` blijft tijdelijk bruikbaar voor nog actieve oude edge-functionversies. Deze oude aanroepen worden als `legacy_charge` in het grootboek geschreven en kunnen geen nieuw gereserveerd saldo verbruiken. Ze kunnen zelf geen provider-request-ID leveren; productiecode moet daarom volledig naar de reserveringsroute worden overgezet. Het oude `ai_usage_log` blijft voor zulke lopende aanroepen schrijfbaar via de service-role tijdens de overgang.
+`month_charged_cents` en de maandelijkse providerkosten volgen de autorisatiemaand, zodat een late septemberafrekening geen oktobergebruik wordt. `balance_cents` blijft uitsluitend het technische brutosaldo; toon dit niet als maandlimiet.
 
-## Lezen en reconciliatie
+`ai_usage_log.cost_cents` en `charged_cents` zijn klantcredits in eurocenten. `provider_cost_usd` is apart: door de provider gerapporteerd of uit echt verbruik en een vastgelegde tariefversie berekend. `metadata.provider_cost_kind` onderscheidt die bronnen. NULL betekent onbekend, niet gratis. NaN en oneindige bedragen worden geweigerd. Gemini-denktokens zijn een uitsplitsing van het al betaalde `output_tokens`-totaal en worden niet dubbel geteld. Prompts en modelantwoorden horen niet in technische boekhoudmetadata.
 
-```sql
-get_ai_credit_summary(p_org_id uuid) returns jsonb
-```
+## Grootboek, autorisatie en reconciliatie
 
-Beschikbaar voor interne gebruikers van hun eigen organisatie, superadmins en `service_role`. De uitkomst bevat:
+`ai_credit_ledger` blijft append-only. De nieuwe soorten zijn `monthly_reset` (netto mutatie naar het nieuwe budget) en `reservation_expiry` (ongebruikt deel van een oude reservering). Eenzelfde verzoek heeft maximaal één `usage_charge` en één eventuele `reservation_expiry`. Een reset kan netto nul zijn of alleen het verschil tonen tussen de vervallen vrije ruimte en de nieuwe limiet; de metadata legt de volledige limiet en periode vast.
 
-- Saldo: `balance_cents`, `reserved_cents`, `available_cents`.
-- Toelage: `monthly_allowance_cents`, `monthly_start_month`, `next_grant_at` (ISO-tijdstip of null; kan in het verleden liggen als een bijschrijving nog ontbreekt).
-- Huidige Nederlandse maand: `month_start`, `month_charged_cents`, `month_provider_cost_usd` (null zonder bekende providerkosten), `month_provider_cost_unknown_count`.
-- Open posten: `unresolved_requests`, `stale_requests`, `unreviewed_overrun_cents`.
-- Aansluiting: `ledger_difference_cents`, `reservation_difference_cents`, `historical_unexplained_cents`.
+Interne gebruikers lezen uitsluitend hun eigen organisatie; actieve superadmins lezen organisatieoverstijgend. Anonieme, portal- en gedeactiveerde gebruikers krijgen geen toegang. De interne refresh is geen rechtstreeks uitvoerbare client-RPC. Alle financiële schrijftoegang loopt via de geautoriseerde transacties.
 
-De eerste twee verschillen moeten **nul** zijn. Het historische verschil blijft zichtbaar als onveranderlijke openingstoelichting. Voor JA Werkt was op het voorafgaande controlemoment het saldo 1721 cent, levenslange toevoegingen 5000 cent en geregistreerde gebruikskosten 3257 cent: een historisch onverklaard verschil van 22 cent. De migratie legt de daadwerkelijk aanwezige waarden vast op het migratiemoment; ze corrigeert of verzint geen historie.
+De oorspronkelijke organisatie-UUID blijft zonder verwijderende FK in het grootboek staan. Daardoor kan een mislukte, ongebruikte registratie worden teruggedraaid terwijl de opening als afgeschermde audit bewaard blijft. Bestaande request- en topup-FK's beschermen de bijbehorende betaalde historie.
 
-Aanvullende diagnose voor afrekeningen die niet exact aan hun gebruikslog en grootboek aansluiten:
+`ledger_difference_cents` en `reservation_difference_cents` horen nul te zijn. De gebruikscontrole moet alleen de daadwerkelijke afschrijving vergelijken, niet de aanvullende expiratie:
 
 ```sql
 select r.id, r.organization_id, r.status, r.charged_cents,
        u.cost_cents usage_charge, l.amount_cents ledger_movement
 from public.ai_requests r
 left join public.ai_usage_log u on u.request_id = r.id
-left join public.ai_credit_ledger l on l.request_id = r.id
+left join public.ai_credit_ledger l on l.request_id = r.id and l.kind = 'usage_charge'
 where r.status in ('succeeded', 'failed')
   and (u.id is null or l.id is null
     or u.cost_cents is distinct from r.charged_cents
     or l.amount_cents is distinct from -r.charged_cents);
 ```
 
-Deze query moet geen rijen geven. De reserveringssom telt uitsluitend `reserved` en `unknown`; `blocked` heeft nooit saldo vastgezet. Nieuwe tabellen ondersteunen interne tenantlezers en superadmins via RLS, inclusief de actieve-profielcontrole. Dezelfde actieve-superadmincontrole geldt in de SECURITY DEFINER-RPC's. Anonieme en portalgebruikers hebben geen toegang; clientrollen kunnen de boekhouding niet schrijven.
-
-Grootboekregels kunnen niet worden gewijzigd of verwijderd, ook niet via directe service-role schrijftoegang. `ai_credit_ledger.organization_id` bewaart de oorspronkelijke UUID zonder verwijderende organisatie-FK. Hierdoor kan de bestaande registratieflow een ongebruikte nieuwe organisatie terugdraaien als het aanmaken van het auth-account mislukt; de openingsboeking blijft voor actieve superadmins beschikbaar als audit. Er ontstaat geen tenanttoegang tot die achtergebleven boeking. Bestaande request- en topup-FK's beschermen bijbehorende betaalde historie tegen cascades. Een verwijderde organisatie heeft geen actieve creditrekening meer; een eventueel toekomstig retentie-/verwijderproces moet de bewaarde audit expliciet behandelen.
+Deze query hoort geen rijen terug te geven. Een verlopen reservering telt niet als nieuw AI-gebruik of providerkosten.
 
 ## Validatie en uitrol
 
-Voer de migratie en regressietests uit in een geïsoleerde PostgreSQL-database, inclusief concurrerende transacties. Pas de migratie daarna toe voordat edge functions die de nieuwe RPC's gebruiken worden uitgerold. Het saldo blijft bruikbaar voor oude functies gedurende deze overgang. Schrijf vervolgens alle actieve betaalde AI-paden over naar de centrale transportlaag, schrijf alleen JA Werkt in, voer de eerste maandbijschrijving uit en verifieer beide nulverschillen en de cron. Geen providerverzoek is nodig om de boekhouding te testen.
+De geïsoleerde PostgreSQL-tests draaien oude en nieuwe migraties in volgorde met synthetische gegevens. Ze controleren onder meer €67,21→€49,99, maandgrenzen en zomertijd, gelijktijdige resets, geen inhaalbudget, oude onbekende aanvragen, late afrekeningen en expiratie, herhaalde instellingen en maandbedrag nul. Bestaande transactietests voor rollen, registratie-rollback en betaalde oproepen blijven gelden.
 
-De basisrunner `python3 supabase/tests/ai_accounting_test.py` gebruikt uitsluitend een tijdelijke PostgreSQL 17-Dockercontainer zonder netwerk of hostpoort. De 22 regressies omvatten echte concurrerende reserveringen en afrekeningen, idempotentie, onbekende uitkomsten, kostenplafond, rollen, historische opening, registratie-rollback en handmatige bijschrijvingen. `python3 scripts/ai-accounting-db-test.py` voegt onafhankelijke controle toe met echte `pg_cron`, Nederlandse maandgrenzen en aanvullende foutgevallen. De runners gebruiken synthetische gegevens. De basisrunner ruimt zijn container automatisch op; de uitgebreide runner bewaart hem voor inspectie en ruimt hem op met `python3 scripts/ai-accounting-db-test.py --cleanup`.
+`python3 supabase/tests/ai_accounting_test.py` gebruikt een tijdelijke database en ruimt deze zelf op. `python3 scripts/ai-accounting-db-test.py` controleert ook echte `pg_cron` en bewaart zijn container ter inspectie; opruimen kan met dezelfde opdracht en `--cleanup`. Er zijn geen provideroproepen, productieverbindingen of klantgegevens nodig voor deze tests.
 
-Bij een noodzakelijke code-rollback blijven de migratie en het grootboek staan. De compatibele `consume_ai_credits` beschermt bestaande reserveringen en registreert de oude afschrijvingen. Verwijder of reset na echte boekingen geen grootboektabellen om een edge-functionprobleem op te lossen.
+Uitrol: nieuwe migratie toepassen, de JA Werkt-reset via de bestaande RPC uitvoeren, saldo en nulverschillen controleren en de gecorrigeerde UI publiceren. De bestaande edge-function-RPC-signatures blijven compatibel. De oude migratie of oude maandfunctie mag niet opnieuw over deze correctie heen worden toegepast.

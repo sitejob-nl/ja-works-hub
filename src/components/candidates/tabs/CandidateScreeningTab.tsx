@@ -150,7 +150,7 @@ const CandidateScreeningTab = ({
   // Deterministische laag = gratis, uit match_breakdown.missing; AI-laag = Gemini (kost credits).
   const [aiCallQuestions, setAiCallQuestions] = useState<string[]>([]);
   const [aiCallLoading, setAiCallLoading] = useState(false);
-  const [aiCallMeta, setAiCallMeta] = useState<{ cost: number; balance: number } | null>(null);
+  const [aiCallMeta, setAiCallMeta] = useState<{ cost: number } | null>(null);
 
   const { data: screeningVacancy } = useQuery({
     queryKey: ['screening-vacancy', vacancyId],
@@ -189,7 +189,7 @@ const CandidateScreeningTab = ({
       if (error) throw error;
       const result = normalizeGeneratedCallQuestionsResponse(data);
       setAiCallQuestions(result.questions);
-      if (typeof result.costCents === 'number') setAiCallMeta({ cost: result.costCents, balance: result.balanceCents ?? 0 });
+      if (typeof result.costCents === 'number') setAiCallMeta({ cost: result.costCents });
       toast.success(`AI-vragen gegenereerd${typeof result.costCents === 'number' ? ` (${(result.costCents / 100).toLocaleString('nl-NL', { style: 'currency', currency: 'EUR' })})` : ''}`);
     } catch (e) {
       toast.error(await extractFunctionErrorMessage(e, 'AI-vragen genereren mislukt'));
@@ -942,7 +942,7 @@ const CandidateScreeningTab = ({
                   </div>
                   {aiCallMeta && (
                     <p className="text-[11px] text-muted-foreground">
-                      Kosten: {(aiCallMeta.cost / 100).toLocaleString('nl-NL', { style: 'currency', currency: 'EUR' })} · resterend budget: {(aiCallMeta.balance / 100).toLocaleString('nl-NL', { style: 'currency', currency: 'EUR' })}
+                      Kosten: {(aiCallMeta.cost / 100).toLocaleString('nl-NL', { style: 'currency', currency: 'EUR' })}
                     </p>
                   )}
                 </div>

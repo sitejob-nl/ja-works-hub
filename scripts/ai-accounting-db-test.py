@@ -24,7 +24,7 @@ import unittest
 import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTAINER = "ja-works-ai-ledger-test-20260907"
+CONTAINER = "ja-works-ai-monthly-budget-test-20260907"
 LABEL = "ja-werkt-ai-ledger-qa"
 LABEL_VALUE = "20260907"
 IMAGE = "public.ecr.aws/supabase/postgres:17.6.1.127"
@@ -105,7 +105,7 @@ def ensure_container():
     raise RuntimeError("Disposable PostgreSQL did not start")
 
 
-def initialize(migration):
+def initialize(migrations):
     # Only initialize pristine owned containers. Never reset an existing test DB.
     if sql("SELECT to_regclass('public.organization_credits') IS NOT NULL;") == "t":
         raise RuntimeError("QA data already exists; inspect results then use --cleanup")
@@ -127,11 +127,20 @@ def initialize(migration):
       VALUES ({literal(db.BASELINE_ORG)}, 'legacy-test', 'gemini', 3257);
       GRANT ALL ON ALL TABLES IN SCHEMA public TO authenticated, service_role;
     """)
-    sql(migration.read_text())
+    db.apply_accounting_migrations(migrations)
 
 
 class DatabaseEdgeCases(db.AIAccountingTests):
     """Independent cases supplement the primary transaction suite."""
+
+    def prepare_monthly_before_synthetic_clock(self, first_month):
+        # The public setter resets immediately using the real clock. Directly
+        # prepare synthetic settings here so past timezone boundaries can be
+        # tested without changing PostgreSQL/the host clock or production SQL.
+        sql(f"""UPDATE public.organization_credits SET credit_mode='monthly',
+          monthly_allowance_cents=5000, budget_limit_cents=5000,
+          monthly_start_month={literal(first_month)}, budget_month=NULL
+          WHERE organization_id={literal(self.org)};""")
 
     def test_actual_pg_cron_installed(self):
         self.assertEqual(sql("SELECT count(*) FROM pg_extension WHERE extname='pg_cron';"), "1")
@@ -148,8 +157,7 @@ class DatabaseEdgeCases(db.AIAccountingTests):
 
     def test_real_cron_background_job_grants_once_without_jwt(self):
         month = sql("SELECT date_trunc('month', now() AT TIME ZONE 'Europe/Amsterdam')::date;")
-        rpc("set_monthly_ai_allowance", p_org_id=self.org, p_amount_cents=5000,
-            p_start_month=month)
+        self.prepare_monthly_before_synthetic_clock(month)
         jobname = "qa-monthly-" + self.org
         command = f"SELECT public.grant_monthly_ai_credits(now(), {literal(self.org)});"
         job_id = sql(f"SELECT cron.schedule({literal(jobname)}, '1 second', {literal(command)});")
@@ -165,9 +173,9 @@ class DatabaseEdgeCases(db.AIAccountingTests):
                 details = sql("SELECT coalesce(json_agg(row_to_json(r)), '[]') "
                               f"FROM cron.job_run_details r WHERE jobid={int(job_id)};")
                 self.fail(f"Expected two successful real cron executions, received {details}")
-            self.assertEqual(self.account()["balance_cents"], 10000)
+            self.assertEqual(self.account()["balance_cents"], 5000)
             self.assertEqual(sql("SELECT count(*) FROM public.ai_credit_ledger WHERE "
-                                 f"organization_id={literal(self.org)} AND kind='monthly_grant';"), "1")
+                                 f"organization_id={literal(self.org)} AND kind='monthly_reset';"), "1")
         finally:
             sql(f"SELECT cron.unschedule({int(job_id)});")
 
@@ -210,14 +218,13 @@ class DatabaseEdgeCases(db.AIAccountingTests):
                                      role="authenticated", user=self.user), "0")
                 sql(f"UPDATE public.profiles SET is_active=true WHERE id={literal(self.user)};")
 
-    def test_monthly_december_january_amsterdam_boundary_and_rollover(self):
-        rpc("set_monthly_ai_allowance", p_org_id=self.org, p_amount_cents=5000,
-            p_start_month="2025-11-01")
+    def test_monthly_december_january_amsterdam_boundary_without_rollover(self):
+        self.prepare_monthly_before_synthetic_clock("2025-11-01")
         december = rpc("grant_monthly_ai_credits", p_org_id=self.org,
                        p_as_of="2025-12-31T22:59:59Z")
-        self.assertEqual(december["grants_created"], 2)
+        self.assertEqual(december["grants_created"], 1)
         self.assertEqual(december["through_month"], "2025-12-01")
-        self.assertEqual(self.account()["balance_cents"], 15000)
+        self.assertEqual(self.account()["balance_cents"], 5000)
         january = rpc("grant_monthly_ai_credits", p_org_id=self.org,
                       p_as_of="2025-12-31T23:00:00Z")
         self.assertEqual(january["grants_created"], 1)
@@ -225,12 +232,10 @@ class DatabaseEdgeCases(db.AIAccountingTests):
         again = rpc("grant_monthly_ai_credits", p_org_id=self.org,
                     p_as_of="2026-01-31T22:59:59Z")
         self.assertEqual(again["grants_created"], 0)
-        self.assertEqual(self.account()["balance_cents"], 20000)
-        self.assertEqual(self.account()["lifetime_topped_up_cents"], 20000)
+        self.assertEqual(self.account()["balance_cents"], 5000)
 
     def test_monthly_summer_time_boundary_concurrent_retry(self):
-        rpc("set_monthly_ai_allowance", p_org_id=self.org, p_amount_cents=5000,
-            p_start_month="2026-03-01")
+        self.prepare_monthly_before_synthetic_clock("2026-03-01")
         first = rpc("grant_monthly_ai_credits", p_org_id=self.org,
                     p_as_of="2026-03-31T21:59:59Z")
         self.assertEqual(first["grants_created"], 1)
@@ -238,9 +243,9 @@ class DatabaseEdgeCases(db.AIAccountingTests):
                       f"{literal(self.org)});" for _ in range(8)]
         results = [json.loads(value) for value in db.parallel(statements)]
         self.assertEqual(sum(result["grants_created"] for result in results), 1)
-        self.assertEqual(self.account()["balance_cents"], 15000)
+        self.assertEqual(self.account()["balance_cents"], 5000)
         self.assertEqual(sql("SELECT count(*) FROM public.ai_credit_ledger WHERE "
-                             f"organization_id={literal(self.org)} AND kind='monthly_grant';"), "2")
+                             f"organization_id={literal(self.org)} AND kind='monthly_reset';"), "2")
 
     def test_reservation_transaction_rollback_has_no_orphan_or_balance_change(self):
         request = str(uuid.uuid4())
@@ -331,11 +336,13 @@ def main():
         subprocess.run(["docker", "rm", "-f", "-v", CONTAINER], check=True)
         return 0
     ensure_container()
-    migrations = sorted((ROOT / "supabase/migrations").glob("*ai_accounting*.sql"))
-    if len(migrations) != 1:
-        raise RuntimeError("Expected exactly one AI accounting migration")
+    migrations = db.accounting_migrations()
     if not args.reuse:
-        initialize(migrations[0])
+        initialize(migrations)
+    else:
+        # A reused fixture may predate a corrected function body. Apply only the
+        # latest forward migration before any test; never replay an old release.
+        sql(migrations[-1].read_text())
     version = sql('SELECT version();')
     print(f"Database: {version}", flush=True)
     suite = unittest.defaultTestLoader.loadTestsFromTestCase(DatabaseEdgeCases)
@@ -349,15 +356,18 @@ def main():
         "failures": [{"test": test.id(), "traceback": trace} for test, trace in result.failures],
         "errors": [{"test": test.id(), "traceback": trace} for test, trace in result.errors],
         "elapsed_seconds": round(time.monotonic() - started, 3),
-        "migration": str(migrations[0].relative_to(ROOT)),
-        "migration_sha256": hashlib.sha256(migrations[0].read_bytes()).hexdigest(),
+        "migration": str(migrations[-1].relative_to(ROOT)),
+        "migration_sha256": hashlib.sha256(migrations[-1].read_bytes()).hexdigest(),
+        "migrations": [{"path": str(migration.relative_to(ROOT)),
+                        "sha256": hashlib.sha256(migration.read_bytes()).hexdigest()}
+                       for migration in migrations],
         "pg_cron_version": sql("SELECT extversion FROM pg_extension WHERE extname='pg_cron';"),
         "real_provider_calls": 0, "production_connections": 0,
         "auth_fixture": "Synthetic auth.users/profiles and JWT-claim helpers; real PostgreSQL roles, RLS and locks",
-        "run_command": "PYTHONDONTWRITEBYTECODE=1 python3 scripts/ai-accounting-db-test.py",
+        "run_command": "PYTHONDONTWRITEBYTECODE=1 python3 scripts/ai-accounting-db-test.py" + (" --reuse" if args.reuse else ""),
         "cleanup_command": "python3 scripts/ai-accounting-db-test.py --cleanup",
     }
-    report_path = Path("/tmp/ai-ledger-db-qa-result.json")
+    report_path = Path("/tmp/ai-monthly-budget-db-qa-result.json")
     report_path.write_text(json.dumps(report, indent=2) + "\n")
     print(f"Result JSON: {report_path}", flush=True)
     print(f"Container retained for inspection: {CONTAINER}", flush=True)

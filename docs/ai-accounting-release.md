@@ -1,5 +1,7 @@
 # Releasecontrole AI-accounting — 7 september 2026
 
+> **Gecorrigeerde maandafspraak:** deze eerste release stapelde tegoed. Kas heeft daarna expliciet bevestigd dat JA Werkt een vast budget van €50 per maand heeft, zonder meenemen van restant. De huidige regeling staat in [ai-accounting.md](ai-accounting.md); onderstaande bedragen beschrijven de eerste release vóór die correctie.
+
 ## Productie
 
 De migratie is toegepast op Supabase-project `noaupcteygfvlyymqtew` als versie
