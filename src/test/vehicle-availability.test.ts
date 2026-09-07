@@ -4,6 +4,7 @@ import {
   vehicleFreeOn,
   vehicleNextReservation,
   vehiclePeriodConflict,
+  vehicleStoredStatusFor,
 } from '@/lib/vehicle-availability';
 
 describe('vehicleAssignedOn', () => {
@@ -86,5 +87,39 @@ describe('vehiclePeriodConflict', () => {
   it('een afgeronde toewijzing in het verleden botst niet', () => {
     const verleden = [{ assigned_date: '2026-01-01', returned_date: '2026-03-01' }];
     expect(vehiclePeriodConflict(verleden, '2026-06-03', null)).toBeNull();
+  });
+});
+
+describe('vehicleStoredStatusFor', () => {
+  const TODAY = '2026-06-03';
+
+  it('wordt beschikbaar zodra er geen toewijzing meer loopt', () => {
+    const v = { status: 'toegewezen', vehicle_assignments: [{ assigned_date: '2026-05-01', returned_date: '2026-06-03' }] };
+    expect(vehicleStoredStatusFor(v, TODAY)).toBe('beschikbaar');
+    expect(vehicleStoredStatusFor({ status: 'toegewezen', vehicle_assignments: [] }, TODAY)).toBe('beschikbaar');
+  });
+
+  it('blijft toegewezen zolang een toewijzing loopt, ook met een inleverdatum in de toekomst', () => {
+    const v = { status: 'toegewezen', vehicle_assignments: [{ assigned_date: '2026-05-01', returned_date: '2026-06-10' }] };
+    expect(vehicleStoredStatusFor(v, TODAY)).toBeNull();
+  });
+
+  it('zet een hangende beschikbaar-stand recht als er wél iets loopt', () => {
+    const v = { status: 'beschikbaar', vehicle_assignments: [{ assigned_date: '2026-05-01', returned_date: null }] };
+    expect(vehicleStoredStatusFor(v, TODAY)).toBe('toegewezen');
+  });
+
+  it('een reservering houdt de auto beschikbaar', () => {
+    const v = { status: 'beschikbaar', vehicle_assignments: [{ assigned_date: '2026-07-01', returned_date: null }] };
+    expect(vehicleStoredStatusFor(v, TODAY)).toBeNull();
+  });
+
+  it('handmatige standen winnen altijd', () => {
+    expect(vehicleStoredStatusFor({ status: 'onderhoud', vehicle_assignments: [] }, TODAY)).toBeNull();
+    expect(vehicleStoredStatusFor({ status: 'uit_dienst', vehicle_assignments: [{ assigned_date: '2026-05-01', returned_date: null }] }, TODAY)).toBeNull();
+  });
+
+  it('geeft null als de kolom al klopt, zodat er niet voor niets geschreven wordt', () => {
+    expect(vehicleStoredStatusFor({ status: 'beschikbaar', vehicle_assignments: [] }, TODAY)).toBeNull();
   });
 });
