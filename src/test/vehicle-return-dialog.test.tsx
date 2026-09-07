@@ -1,5 +1,11 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+
+// De dialoog gebruikt alleen de pure validatie-helpers uit @/lib/assignments, maar die
+// module maakt bij import de Supabase-client aan — en die eist VITE_SUPABASE_URL, die in
+// CI (geen .env) ontbreekt. Mocken op modulegrens, zoals compliance-check.test.ts.
+vi.mock('@/integrations/supabase/client', () => ({ supabase: {} }));
+
 import { VehicleReturnDialog } from '@/components/transport/VehicleReturnDialog';
 import { todayISO } from '@/lib/tasks';
 
