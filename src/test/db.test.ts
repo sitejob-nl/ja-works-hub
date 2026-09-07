@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const errorSpy = vi.fn();
 vi.mock('sonner', () => ({ toast: { error: (msg: string) => errorSpy(msg) } }));
 
-import { unwrap, unwrapList, unwrapDeleted, toastError } from '@/lib/db';
+import { unwrap, unwrapList, unwrapDeleted, unwrapCount, toastError } from '@/lib/db';
 
 /** Bootst een PostgREST delete-builder na: `.select(cols)` levert het resultaat. */
 const deleteBuilder = (result: { data: unknown[] | null; error: any }) => {
@@ -69,6 +69,21 @@ describe('unwrapDeleted', () => {
     const error = { message: 'boom' } as any;
     const { builder } = deleteBuilder({ data: null, error });
     await expect(unwrapDeleted(builder)).rejects.toBe(error);
+  });
+});
+
+describe('unwrapCount', () => {
+  it('geeft het aantal terug', async () => {
+    expect(await unwrapCount(Promise.resolve({ count: 3, error: null }))).toBe(3);
+  });
+
+  it('maakt van null 0, zodat een lege tabel niet als onbekend doorgaat', async () => {
+    expect(await unwrapCount(Promise.resolve({ count: null, error: null }))).toBe(0);
+  });
+
+  it('throwt de postgrest error ongewijzigd door', async () => {
+    const error = { message: 'boom' } as any;
+    await expect(unwrapCount(Promise.resolve({ count: null, error }))).rejects.toBe(error);
   });
 });
 

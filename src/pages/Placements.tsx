@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
-import { Search, Users, CalendarClock, TrendingUp, Plus } from 'lucide-react';
+import { Search, Users, CalendarClock, TrendingUp, Plus, Trash2 } from 'lucide-react';
 import { formatDate, formatEUR } from '@/lib/format';
 import { payrollerBadgeClass } from '@/lib/payroller';
 import { usePayrollers } from '@/hooks/usePayrollers';
@@ -22,6 +22,7 @@ import { getPaginationRange } from '@/lib/pagination';
 import { EntityLink } from '@/components/ui/entity-link';
 import ErrorState from '@/components/shared/ErrorState';
 import PlacementWizard from '@/components/placement/PlacementWizard';
+import DeletePlacementDialog, { type DeletePlacementTarget } from '@/components/placements/DeletePlacementDialog';
 
 type PlacementStatus = Database['public']['Enums']['placement_status'];
 
@@ -45,13 +46,16 @@ const getPlacementCandidate = (placement: any) =>
 export default function PlacementsPage() {
   const navigate = useNavigate();
   const orgId = useOrganizationId();
-  const { user } = useAuth();
+  const { user, role } = useAuth();
+  // Definitief verwijderen is admin-only, gelijk aan de RLS-policy tenant_delete op placements.
+  const canDelete = role === 'admin';
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useSearchParamState<PlacementStatus | 'all'>('status', 'all');
   const [payrollerFilter, setPayrollerFilter] = useState<string>('all');
   const { data: payrollerOptions } = usePayrollers();
   const [page, setPage] = useState(0);
   const [newPlacementOpen, setNewPlacementOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<DeletePlacementTarget | null>(null);
 
   const { data: placements, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['placements-list', orgId, statusFilter, payrollerFilter],
@@ -166,11 +170,12 @@ export default function PlacementsPage() {
                   <TableHead>Periode</TableHead>
                   <TableHead>Tarief</TableHead>
                   <TableHead>Status</TableHead>
+                  {canDelete && <TableHead className="w-10"><span className="sr-only">Acties</span></TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filtered.length === 0 ? (
-                  <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">Geen plaatsingen gevonden</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={canDelete ? 8 : 7} className="text-center text-muted-foreground py-8">Geen plaatsingen gevonden</TableCell></TableRow>
                 ) : visiblePlacements.map((p: any) => {
                   const cand = getPlacementCandidate(p);
                   const st = statusBadge[p.status] || statusBadge.gepland;
@@ -195,6 +200,29 @@ export default function PlacementsPage() {
                       <TableCell className="text-xs whitespace-nowrap">{formatDate(p.start_date)} — {formatDate(p.expected_end_date || p.end_date)}</TableCell>
                       <TableCell className="font-mono text-xs">{formatEUR(p.client_hourly_rate || p.hourly_rate)}</TableCell>
                       <TableCell><Badge variant="secondary" className={st.class}>{st.label}</Badge></TableCell>
+                      {canDelete && (
+                        <TableCell className="w-10 py-1" onClick={(e) => e.stopPropagation()}>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7 text-destructive hover:text-destructive"
+                            aria-label={`Plaatsing van ${candidateName} verwijderen`}
+                            title="Plaatsing verwijderen"
+                            onClick={() => setDeleteTarget({
+                              id: p.id,
+                              function_name: p.function_name,
+                              start_date: p.start_date,
+                              end_date: p.end_date,
+                              expected_end_date: p.expected_end_date,
+                              candidateName: cand ? candidateName : null,
+                              companyName: company?.name,
+                              row: p,
+                            })}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </TableCell>
+                      )}
                     </TableRow>
                   );
                 })}
@@ -246,6 +274,14 @@ export default function PlacementsPage() {
       )}
 
       <PlacementWizard open={newPlacementOpen} onClose={() => setNewPlacementOpen(false)} />
+
+      {canDelete && (
+        <DeletePlacementDialog
+          open={!!deleteTarget}
+          onOpenChange={(o) => { if (!o) setDeleteTarget(null); }}
+          placement={deleteTarget}
+        />
+      )}
     </div>
   );
 }

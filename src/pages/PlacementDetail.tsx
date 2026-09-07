@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams, Link, useSearchParams } from 'react-router-dom';
+import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { Database } from '@/integrations/supabase/types';
@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
-import { Save, Building2, User, XCircle, ExternalLink, Briefcase, Mail, Clock3 } from 'lucide-react';
+import { Save, Building2, User, XCircle, ExternalLink, Briefcase, Mail, Clock3, Trash2 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import { toast } from 'sonner';
 import { formatDate } from '@/lib/format';
@@ -31,6 +31,8 @@ import { useTrackPageVisit } from '@/hooks/useTrackPageVisit';
 import NotesSection from '@/components/shared/NotesSection';
 import TasksSection from '@/components/shared/TasksSection';
 import { useRolePermission } from '@/hooks/usePermissions';
+import { useAuth } from '@/contexts/AuthContext';
+import DeletePlacementDialog from '@/components/placements/DeletePlacementDialog';
 
 type TerminatedByType = Database['public']['Enums']['terminated_by_type'];
 
@@ -55,10 +57,15 @@ const PlacementDetail = () => {
   const orgId = useOrganizationId();
   const canEditPlacements = useRolePermission('placements.edit');
   const canViewFinance = useRolePermission('finance.view');
+  // Definitief verwijderen is admin-only, gelijk aan de RLS-policy tenant_delete op placements.
+  const { role } = useAuth();
+  const canDeletePlacement = role === 'admin';
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [editing, setEditing] = useState(false);
   const [showTerminate, setShowTerminate] = useState(false);
+  const [showDelete, setShowDelete] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
 
   const { data: placement, isLoading } = useQuery({
@@ -205,6 +212,11 @@ const PlacementDetail = () => {
           {canEditPlacements && canTerminate && (
             <Button variant="destructive" size="sm" onClick={() => setShowTerminate(true)} className="gap-1">
               <XCircle className="h-3.5 w-3.5" /> Beëindigen
+            </Button>
+          )}
+          {canDeletePlacement && (
+            <Button variant="outline" size="sm" onClick={() => setShowDelete(true)} className="gap-1 text-destructive hover:text-destructive">
+              <Trash2 className="h-3.5 w-3.5" /> Verwijderen
             </Button>
           )}
           {canEditPlacements && (!editing ? (
@@ -374,6 +386,22 @@ const PlacementDetail = () => {
         companyName={company?.name ?? 'Opdrachtgever'}
         functionName={placement.function_name}
         startDate={placement.start_date}
+      />}
+
+      {canDeletePlacement && <DeletePlacementDialog
+        open={showDelete}
+        onOpenChange={setShowDelete}
+        placement={{
+          id: placement.id,
+          function_name: placement.function_name,
+          start_date: placement.start_date,
+          end_date: placement.end_date,
+          expected_end_date: placement.expected_end_date,
+          candidateName: `${cand?.first_name ?? ''} ${cand?.last_name ?? ''}`.trim(),
+          companyName: company?.name,
+          row: placement as unknown as Record<string, unknown>,
+        }}
+        onDeleted={() => navigate('/plaatsingen')}
       />}
     </div>
   );
