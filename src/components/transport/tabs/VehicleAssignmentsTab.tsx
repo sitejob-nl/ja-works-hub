@@ -16,16 +16,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { toast } from 'sonner';
 import { formatDate } from '@/lib/format';
 import { logAudit } from '@/lib/audit';
@@ -493,28 +484,21 @@ const VehicleAssignmentsTab = ({ vehicle }: { vehicle: any }) => {
       </Sheet>
 
       {/* Delete assignment confirm */}
-      <AlertDialog open={!isFacility && !!assignmentToDelete} onOpenChange={(o) => { if (!o) setAssignmentToDelete(null); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Toewijzing verwijderen?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {assignmentToDelete && !assignmentToDelete.returned_date
-                ? 'Voertuig is nog niet ingeleverd. Eerst inleveren voordat je de toewijzing kunt verwijderen.'
-                : 'Verwijdert de historische toewijzing permanent. Deze actie kan niet ongedaan worden gemaakt.'}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Annuleren</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(e) => { e.preventDefault(); if (assignmentToDelete) deleteMutation.mutate(assignmentToDelete); }}
-              disabled={deleteMutation.isPending || (assignmentToDelete && !assignmentToDelete.returned_date)}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {deleteMutation.isPending ? 'Verwijderen...' : 'Verwijderen'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={!isFacility && !!assignmentToDelete}
+        onOpenChange={(o) => { if (!o) setAssignmentToDelete(null); }}
+        title="Toewijzing verwijderen?"
+        description={
+          assignmentToDelete && !assignmentToDelete.returned_date
+            ? 'Voertuig is nog niet ingeleverd. Eerst inleveren voordat je de toewijzing kunt verwijderen.'
+            : 'Verwijdert de historische toewijzing permanent. Deze actie kan niet ongedaan worden gemaakt.'
+        }
+        confirmLabel="Verwijderen"
+        pendingLabel="Verwijderen..."
+        pending={deleteMutation.isPending}
+        confirmDisabled={!!assignmentToDelete && !assignmentToDelete.returned_date}
+        onConfirm={() => { if (assignmentToDelete) deleteMutation.mutate(assignmentToDelete); }}
+      />
 
       {/* Return dialog */}
       <Dialog open={!!returnDialog} onOpenChange={(o) => !o && setReturnDialog(null)}>

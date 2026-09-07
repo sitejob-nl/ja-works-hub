@@ -13,16 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Plus, Check, X, Search, MoreHorizontal, Pencil, Trash2, ArrowRightLeft } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { formatDate, formatEUR } from '@/lib/format';
@@ -580,29 +571,21 @@ const InternalResidentsTab = ({ property }: { property: any }) => {
       </Sheet>
 
       {/* Delete assignment confirm */}
-      <AlertDialog open={!!assignmentToDelete} onOpenChange={(o) => { if (!o) setAssignmentToDelete(null); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Toewijzing verwijderen?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {assignmentToDelete?.status === 'ingecheckt'
-                ? <>Bewoner is <strong>ingecheckt</strong>. Eerst uitchecken, dan kun je de toewijzing verwijderen of laten staan als historie.</>
-                : <>Dit verwijdert de toewijzing van {assignmentToDelete?.candidates?.first_name} {assignmentToDelete?.candidates?.last_name} aan kamer {assignmentToDelete?.unitName}. Deze actie kan niet ongedaan worden gemaakt.</>
-              }
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Annuleren</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(e) => { e.preventDefault(); if (assignmentToDelete) deleteAssignment.mutate(assignmentToDelete); }}
-              disabled={deleteAssignment.isPending || assignmentToDelete?.status === 'ingecheckt'}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {deleteAssignment.isPending ? 'Verwijderen...' : 'Verwijderen'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={!!assignmentToDelete}
+        onOpenChange={(o) => { if (!o) setAssignmentToDelete(null); }}
+        title="Toewijzing verwijderen?"
+        description={
+          assignmentToDelete?.status === 'ingecheckt'
+            ? <>Bewoner is <strong>ingecheckt</strong>. Eerst uitchecken, dan kun je de toewijzing verwijderen of laten staan als historie.</>
+            : <>Dit verwijdert de toewijzing van {assignmentToDelete?.candidates?.first_name} {assignmentToDelete?.candidates?.last_name} aan kamer {assignmentToDelete?.unitName}. Deze actie kan niet ongedaan worden gemaakt.</>
+        }
+        confirmLabel="Verwijderen"
+        pendingLabel="Verwijderen..."
+        pending={deleteAssignment.isPending}
+        confirmDisabled={assignmentToDelete?.status === 'ingecheckt'}
+        onConfirm={() => { if (assignmentToDelete) deleteAssignment.mutate(assignmentToDelete); }}
+      />
 
       {activeAssignments.length === 0 ? (
         <p className="text-center text-muted-foreground py-8">Geen bewoners</p>
