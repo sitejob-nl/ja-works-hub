@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { unwrapList } from '@/lib/db';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { useAuth, useHasRole } from '@/contexts/AuthContext';
-import { Plus } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -12,8 +12,17 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { EntityLink } from '@/components/ui/entity-link';
-import { formatAssignedBy, resolveEmployeeId } from '@/lib/assignments';
+import { VehicleReturnDialog } from '@/components/transport/VehicleReturnDialog';
+import { qk } from '@/lib/query-keys';
+import {
+  deleteVehicleAssignment,
+  formatAssignedBy,
+  resolveEmployeeId,
+  returnVehicleAssignment,
+  vehicleAssignmentErrorMessage,
+} from '@/lib/assignments';
 import { vehicleFreeOn, vehicleNextReservation, vehiclePeriodConflict } from '@/lib/vehicle-availability';
 import { sendRegulationsForAssignment } from '@/lib/regulation-dispatch';
 import RegulationStatus from '@/components/shared/RegulationStatus';
@@ -149,6 +158,49 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
     onError: (e: any) => toast.error(e.message),
   });
 
+  // Inleveren en verwijderen delen hun mutatielogica met de voertuigkant
+  // (src/lib/assignments.ts), zodat een correctie vanaf het dossier precies hetzelfde
+  // doet als vanaf het voertuig — inclusief de voertuigstatus en de auditregel.
+  const [returnTarget, setReturnTarget] = useState<any>(null);
+  const [deleteTarget, setDeleteTarget] = useState<any>(null);
+
+  const invalidateAfterChange = (vehicleId: string) => {
+    qc.invalidateQueries({ queryKey: ['vehicle-assignments-candidate', orgId, candidateId] });
+    qc.invalidateQueries({ queryKey: ['vehicle-assignments', vehicleId] });
+    qc.invalidateQueries({ queryKey: qk.vehicles.detail(vehicleId) });
+    qc.invalidateQueries({ queryKey: ['vehicles'] });
+    qc.invalidateQueries({ queryKey: ['assignable-vehicles', orgId] });
+  };
+
+  const returnVehicle = useMutation({
+    mutationFn: (values: { returnedDate: string; endMileage: number }) =>
+      returnVehicleAssignment({ organizationId: orgId, assignment: returnTarget, ...values }),
+    onSuccess: () => {
+      invalidateAfterChange(returnTarget?.vehicle_id);
+      toast.success('Voertuig ingeleverd');
+      setReturnTarget(null);
+    },
+    onError: (e: any) => toast.error(vehicleAssignmentErrorMessage(e, 'Inleveren is niet gelukt.')),
+  });
+
+  const deleteAssignment = useMutation({
+    mutationFn: (a: any) => deleteVehicleAssignment({ organizationId: orgId, assignment: a }).then(() => a),
+    onSuccess: (a) => {
+      invalidateAfterChange(a.vehicle_id);
+      toast.success('Toewijzing verwijderd');
+      setDeleteTarget(null);
+    },
+    onError: (e: any) => {
+      toast.error(vehicleAssignmentErrorMessage(e, 'Verwijderen is niet gelukt.'));
+      setDeleteTarget(null);
+    },
+  });
+
+  const vehicleLabel = (a: any) =>
+    [a?.vehicles?.license_plate, [a?.vehicles?.brand, a?.vehicles?.model].filter(Boolean).join(' ')]
+      .filter(Boolean)
+      .join(' — ');
+
   const { data: mileage = [] } = useQuery({
     queryKey: ['mileage', orgId, candidateId],
     queryFn: async () => {
@@ -185,6 +237,21 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
           {canAssignVehicle && !assignment && (
             <Button size="sm" onClick={() => setAssignOpen(true)} className="gap-1"><Plus className="h-4 w-4" /> Voertuig toewijzen</Button>
           )}
+          {canAssignVehicle && assignment && (
+            <div className="flex items-center gap-1">
+              <Button size="sm" variant="outline" onClick={() => setReturnTarget(assignment)}>Inleveren</Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                aria-label="Toewijzing verwijderen"
+                title="Toewijzing verwijderen"
+                onClick={() => setDeleteTarget(assignment)}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
         </div>
         {assignment ? (
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -216,6 +283,7 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
                 <TableHead className="text-right">Begin km</TableHead>
                 <TableHead className="text-right">Eind km</TableHead>
                 <TableHead>Toegewezen door</TableHead>
+                {canAssignVehicle && <TableHead className="w-[1%]"><span className="sr-only">Acties</span></TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -229,6 +297,20 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
                   <TableCell className="text-right tabular-nums">{formatKm(a.start_mileage)}</TableCell>
                   <TableCell className="text-right tabular-nums">{formatKm(a.end_mileage)}</TableCell>
                   <TableCell className="text-muted-foreground">{formatAssignedBy(a)}</TableCell>
+                  {canAssignVehicle && (
+                    <TableCell>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                        aria-label="Toewijzing verwijderen"
+                        title="Toewijzing verwijderen"
+                        onClick={() => setDeleteTarget(a)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>
@@ -382,6 +464,32 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
           </div>
         </SheetContent>
       </Sheet>
+
+      <VehicleReturnDialog
+        assignment={returnTarget}
+        vehicleLabel={returnTarget ? vehicleLabel(returnTarget) : null}
+        onOpenChange={(o) => { if (!o) setReturnTarget(null); }}
+        pending={returnVehicle.isPending}
+        onConfirm={(values) => returnVehicle.mutate(values)}
+      />
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(o) => { if (!o) setDeleteTarget(null); }}
+        title="Toewijzing verwijderen?"
+        description={
+          deleteTarget && !deleteTarget.returned_date
+            ? 'Voertuig is nog niet ingeleverd. Eerst inleveren voordat je de toewijzing kunt verwijderen.'
+            : deleteTarget
+              ? <>Verwijdert de toewijzing van <strong>{vehicleLabel(deleteTarget)}</strong> ({formatDate(deleteTarget.assigned_date)} – {formatDate(deleteTarget.returned_date)}) permanent. Deze actie kan niet ongedaan worden gemaakt.</>
+              : null
+        }
+        confirmLabel="Verwijderen"
+        pendingLabel="Verwijderen..."
+        pending={deleteAssignment.isPending}
+        confirmDisabled={!!deleteTarget && !deleteTarget.returned_date}
+        onConfirm={() => { if (deleteTarget) deleteAssignment.mutate(deleteTarget); }}
+      />
     </div>
   );
 };

@@ -105,3 +105,21 @@ export function vehicleDisplayStatus(
   if (reservedFrom) return { key: 'gereserveerd', reservedFrom };
   return { key: vehicle.status ?? 'beschikbaar', reservedFrom: null };
 }
+
+/**
+ * De waarde die de kolom `vehicles.status` op `dateStr` hoort te hebben, afgeleid uit
+ * de toewijzingen: 'toegewezen' zolang er een toewijzing loopt, anders 'beschikbaar'.
+ * Een toekomstige toewijzing (reservering) houdt de auto dus beschikbaar.
+ *
+ * Geeft null als er niets te schrijven valt: bij een handmatige stand (onderhoud /
+ * uit_dienst wint altijd, net als in vehicleDisplayStatus) en als de kolom al klopt.
+ * Zo schrijft de aanroeper alleen wanneer de status echt verandert.
+ */
+export function vehicleStoredStatusFor(
+  vehicle: { status?: string | null; vehicle_assignments?: VehicleAssignmentLite[] | null },
+  dateStr: string,
+): 'beschikbaar' | 'toegewezen' | null {
+  if (vehicle.status === 'onderhoud' || vehicle.status === 'uit_dienst') return null;
+  const next = vehicleAssignedOn(vehicle.vehicle_assignments, dateStr) ? 'toegewezen' : 'beschikbaar';
+  return next === vehicle.status ? null : next;
+}

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { unwrapDeleted, unwrapList } from '@/lib/db';
+import { unwrapList } from '@/lib/db';
 import { qk } from '@/lib/query-keys';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { Link } from 'react-router-dom';
@@ -14,15 +14,21 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { VehicleReturnDialog } from '@/components/transport/VehicleReturnDialog';
 import { toast } from 'sonner';
 import { formatDate } from '@/lib/format';
 import { logAudit } from '@/lib/audit';
 import { toFriendlyError } from '@/lib/errorMessages';
 import { cn } from '@/lib/utils';
-import { resolveEmployeeId } from '@/lib/assignments';
+import { todayISO } from '@/lib/tasks';
+import {
+  deleteVehicleAssignment,
+  resolveEmployeeId,
+  returnVehicleAssignment,
+  vehicleAssignmentErrorMessage,
+} from '@/lib/assignments';
 import { sendRegulationsForAssignment } from '@/lib/regulation-dispatch';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchFacilityTransportSnapshot, fetchFacilityWorkerDirectory, isFacilityRole, saveFacilityOperationalEntity } from '@/lib/facility';
@@ -67,7 +73,6 @@ const VehicleAssignmentsTab = ({ vehicle }: { vehicle: any }) => {
   const [selectedPerson, setSelectedPerson] = useState<any>(null);
   const [assignedDate, setAssignedDate] = useState('');
   const [startMileage, setStartMileage] = useState(vehicle.current_mileage?.toString() ?? '');
-  const [endMileage, setEndMileage] = useState('');
 
   const [editingAssignment, setEditingAssignment] = useState<any | null>(null);
   const [editForm, setEditForm] = useState({
@@ -219,20 +224,28 @@ const VehicleAssignmentsTab = ({ vehicle }: { vehicle: any }) => {
     },
   });
 
+  // Inleveren en verwijderen lopen via src/lib/assignments.ts, gedeeld met het
+  // medewerkersdossier (EmployeeTransportTab): dezelfde velden, dezelfde voertuigstatus,
+  // dezelfde auditregel — vanaf welke kant je het ook doet.
   const returnMutation = useMutation({
-    mutationFn: async () => {
-      const km = parseInt(endMileage);
-      const { error } = await supabase.from('vehicle_assignments').update({
-        returned_date: new Date().toISOString().split('T')[0],
-        end_mileage: km,
-      }).eq('id', returnDialog.id);
-      if (error) throw error;
+    mutationFn: async (values: { returnedDate: string; endMileage: number }) => {
       if (isFacility) {
-        await saveFacilityOperationalEntity('vehicle', { id: vehicle.id, current_mileage: km, status: 'beschikbaar' });
-      } else {
-        const { error: vErr } = await supabase.from('vehicles').update({ current_mileage: km, status: 'beschikbaar' as any }).eq('id', vehicle.id);
-        if (vErr) throw vErr;
+        // De facility-rol leest en schrijft voertuigen via RPC (geen directe RLS-toegang),
+        // dus hier een eigen pad met dezelfde uitkomst: een inleverdatum in de toekomst
+        // laat de toewijzing nog lopen en houdt het voertuig op 'toegewezen'.
+        const { error } = await supabase.from('vehicle_assignments').update({
+          returned_date: values.returnedDate,
+          end_mileage: values.endMileage,
+        }).eq('id', returnDialog.id);
+        if (error) throw error;
+        await saveFacilityOperationalEntity('vehicle', {
+          id: vehicle.id,
+          current_mileage: values.endMileage,
+          ...(values.returnedDate <= todayISO() ? { status: 'beschikbaar' } : {}),
+        });
+        return;
       }
+      await returnVehicleAssignment({ organizationId: orgId, assignment: returnDialog, ...values });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['vehicle-assignments', vehicle.id] });
@@ -240,9 +253,9 @@ const VehicleAssignmentsTab = ({ vehicle }: { vehicle: any }) => {
       qc.invalidateQueries({ queryKey: ['vehicles'] });
       qc.invalidateQueries({ queryKey: ['facility-transport-snapshot'] });
       toast.success('Voertuig ingeleverd');
-      setReturnDialog(null); setEndMileage('');
+      setReturnDialog(null);
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => toast.error(vehicleAssignmentErrorMessage(e, 'Inleveren is niet gelukt.')),
   });
 
   const editMutation = useMutation({
@@ -270,26 +283,17 @@ const VehicleAssignmentsTab = ({ vehicle }: { vehicle: any }) => {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (a: any) => {
-      if (!a.returned_date) {
-        throw new Error('Voertuig is nog niet ingeleverd — eerst inleveren voordat de toewijzing verwijderd kan worden.');
-      }
-      // Rowcount tellen: de DELETE-policy is admin-only, dus voor andere rollen raakt de
-      // delete 0 rijen zónder error — dat gaf een groene toast terwijl de rij bleef staan.
-      await unwrapDeleted(
-        supabase.from('vehicle_assignments').delete().eq('id', a.id),
-        'Verwijderen niet toegestaan — je hebt hiervoor beheerdersrechten nodig.',
-      );
-      return a;
-    },
-    onSuccess: (a) => {
+    // Guard op "nog niet ingeleverd", rowcount-check (RLS weigert stil), status-sync en
+    // auditregel zitten in de gedeelde helper.
+    mutationFn: (a: any) => deleteVehicleAssignment({ organizationId: orgId, assignment: a }).then(() => a),
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['vehicle-assignments', vehicle.id] });
       qc.invalidateQueries({ queryKey: ['vehicle', vehicle.id] });
-      logAudit({ action: 'delete', tableName: 'vehicle_assignments', recordId: a.id });
+      qc.invalidateQueries({ queryKey: ['vehicles'] });
       toast.success('Toewijzing verwijderd');
       setAssignmentToDelete(null);
     },
-    onError: (e: any) => { toast.error(toFriendlyError(e, 'Verwijderen is niet gelukt.')); setAssignmentToDelete(null); },
+    onError: (e: any) => { toast.error(vehicleAssignmentErrorMessage(e, 'Verwijderen is niet gelukt.')); setAssignmentToDelete(null); },
   });
 
   const openEdit = (a: any) => {
@@ -341,7 +345,7 @@ const VehicleAssignmentsTab = ({ vehicle }: { vehicle: any }) => {
                   <TableCell className="text-right">{totalKm != null ? totalKm.toLocaleString('nl-NL') : '—'}</TableCell>
                   <TableCell>
                     <div className="flex gap-1 items-center">
-                      {!a.returned_date && <Button size="sm" variant="outline" onClick={() => { setReturnDialog(a); setEndMileage(''); }}>Inleveren</Button>}
+                      {!a.returned_date && <Button size="sm" variant="outline" onClick={() => setReturnDialog(a)}>Inleveren</Button>}
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button size="icon" variant="ghost" className="h-8 w-8"><MoreHorizontal className="h-4 w-4" /></Button>
@@ -500,21 +504,14 @@ const VehicleAssignmentsTab = ({ vehicle }: { vehicle: any }) => {
         onConfirm={() => { if (assignmentToDelete) deleteMutation.mutate(assignmentToDelete); }}
       />
 
-      {/* Return dialog */}
-      <Dialog open={!!returnDialog} onOpenChange={(o) => !o && setReturnDialog(null)}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Voertuig inleveren</DialogTitle></DialogHeader>
-          <div className="space-y-4">
-            <div><Label>Eind kilometerstand *</Label><Input type="number" value={endMileage} onChange={(e) => setEndMileage(e.target.value)} placeholder="Huidige km-stand" /></div>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setReturnDialog(null)}>Annuleren</Button>
-            <Button onClick={() => returnMutation.mutate()} disabled={!endMileage || returnMutation.isPending}>
-              {returnMutation.isPending ? 'Inleveren...' : 'Inleveren'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Return dialog — gedeeld met het medewerkersdossier */}
+      <VehicleReturnDialog
+        assignment={returnDialog}
+        vehicleLabel={vehicle.license_plate}
+        onOpenChange={(o) => { if (!o) setReturnDialog(null); }}
+        pending={returnMutation.isPending}
+        onConfirm={(values) => returnMutation.mutate(values)}
+      />
     </div>
   );
 };
