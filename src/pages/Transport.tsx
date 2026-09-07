@@ -18,6 +18,7 @@ import TransportFinesTab from '@/components/transport/TransportFinesTab';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchFacilityTransportSnapshot, isFacilityRole } from '@/lib/facility';
 import { vehicleDisplayStatus } from '@/lib/vehicle-availability';
+import { vehicleLocationDate, vehicleLocationText } from '@/lib/vehicle-location';
 import { useTableControls } from '@/hooks/useTableControls';
 import type { SortableColumn, SortState } from '@/lib/table-sort';
 
@@ -43,10 +44,14 @@ const SORT_COLUMNS: readonly SortableColumn[] = [
   { key: 'apk_expiry' },
 ];
 
-// De facility-rol ziet de tankpaskolom niet; hij mag dus ook niet sorteerbaar opduiken.
+// De facility-rol ziet de tankpas- en locatiekolom niet; die mogen dus ook niet
+// sorteerbaar opduiken. Voor de locatie is dat niet alleen een keuze: de facility-rol
+// haalt zijn voertuigen via `facility_transport_snapshot`, en die RPC geeft de
+// locatiekolommen niet terug — sorteren op een veld dat er niet is, geeft één hoop rijen.
 const INTERNAL_SORT_COLUMNS: readonly SortableColumn[] = [
   ...SORT_COLUMNS,
   { key: 'fuel_card_reference' },
+  { key: 'last_known_location' },
 ];
 
 const DEFAULT_SORT: SortState = { column: 'license_plate', direction: 'asc' };
@@ -310,6 +315,9 @@ const Transport = () => {
                       {/* Status en 'Toegewezen aan' zijn afgeleid resp. gejoind — zie SORT_COLUMNS. */}
                       <TableHead>Status</TableHead>
                       <TableHead>Toegewezen aan</TableHead>
+                      {!isFacility && (
+                        <SortableTableHead column="last_known_location" sort={table.sort} onSort={table.toggleSort}>Laatste locatie</SortableTableHead>
+                      )}
                       {!isFacility && <TableHead>Notitie</TableHead>}
                     </TableRow>
                   </TableHeader>
@@ -361,6 +369,21 @@ const Transport = () => {
                               ? <span>{assignee.first_name} {assignee.last_name}</span>
                               : <EntityLink type="employee" id={activeAssignment?.employees?.id}>{assignee.first_name} {assignee.last_name}</EntityLink>
                           ) : '—'}</TableCell>
+                          {/* Leeg is een geldige staat: dan alleen een streepje, geen lege
+                              regel en geen datum die suggereert dat hij vandaag gezien is. */}
+                          {!isFacility && <TableCell className="max-w-[180px]">
+                            {(() => {
+                              const location = vehicleLocationText(v);
+                              if (!location) return <span className="text-muted-foreground">—</span>;
+                              const seenOn = vehicleLocationDate(v);
+                              return (
+                                <span className="block">
+                                  <span className="block truncate text-xs" title={location}>{location}</span>
+                                  {seenOn && <span className="block text-[10px] text-muted-foreground">{seenOn}</span>}
+                                </span>
+                              );
+                            })()}
+                          </TableCell>}
                           {!isFacility && <TableCell className="max-w-[200px]">
                             {v.notes ? (
                               <span className="text-xs text-muted-foreground truncate block" title={v.notes}>{v.notes}</span>
