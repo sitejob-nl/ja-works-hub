@@ -17,14 +17,22 @@ const ACTIVE_HOUSING = ['ingecheckt', 'gereserveerd'];
  * niet vertrokken (`check_out_date` leeg of ná die datum). Zo telt een toekomstige
  * reservering NIET mee voor eerdere datums, en komt een kamer vrij zodra de bewoner
  * op/voor de gekozen datum uitcheckt.
+ *
+ * Een toewijzing met status `uitgecheckt` telt alléén mee zolang de uitcheckdatum
+ * nog niet bereikt is: wie op een toekomstige datum is uitgecheckt, zit er tot die
+ * dag nog. Historische uitchecks (datum voorbij) tellen nooit mee.
  */
 export function bedsOccupiedOn(assignments: HousingAssignmentLite[] | null | undefined, dateStr: string): number {
-  return (assignments ?? []).filter(
-    (a) =>
-      ACTIVE_HOUSING.includes(a.status ?? '') &&
-      (!a.check_in_date || a.check_in_date <= dateStr) &&
-      (a.check_out_date == null || a.check_out_date > dateStr),
-  ).length;
+  return (assignments ?? []).filter((a) => {
+    const checkedInBy = !a.check_in_date || a.check_in_date <= dateStr;
+    if (ACTIVE_HOUSING.includes(a.status ?? '')) {
+      return checkedInBy && (a.check_out_date == null || a.check_out_date > dateStr);
+    }
+    if (a.status === 'uitgecheckt') {
+      return checkedInBy && a.check_out_date != null && a.check_out_date > dateStr;
+    }
+    return false;
+  }).length;
 }
 
 /**
@@ -36,4 +44,27 @@ export function roomHasFreeBedOn(
   dateStr: string,
 ): boolean {
   return bedsOccupiedOn(unit.housing_assignments, dateStr) < (unit.capacity ?? 1);
+}
+
+/**
+ * Waarom een uitcheckdatum niet kan, of `null` als hij goed is. Uitchecken mag in
+ * het verleden of de toekomst liggen, maar nooit vóór de incheckdatum (dezelfde
+ * dag mag wel). Een lege datum is ook een fout: het veld is verplicht.
+ */
+export function checkOutDateProblem(
+  checkOutDate: string | null | undefined,
+  checkInDate: string | null | undefined,
+): string | null {
+  if (!checkOutDate) return 'Kies een uitcheckdatum.';
+  if (checkInDate && checkOutDate < checkInDate) return 'De uitcheckdatum kan niet vóór de incheckdatum liggen.';
+  return null;
+}
+
+/**
+ * Voorgestelde uitcheckdatum: `today` (YYYY-MM-DD, lokale dag). Wie pas in de
+ * toekomst incheckt, krijgt de incheckdatum voorgesteld — anders opent de
+ * uitcheckdialoog meteen geblokkeerd.
+ */
+export function defaultCheckOutDate(checkInDate: string | null | undefined, today: string): string {
+  return checkInDate && checkInDate > today ? checkInDate : today;
 }

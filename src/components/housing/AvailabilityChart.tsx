@@ -74,7 +74,9 @@ const AvailabilityChart = ({
     queryFn: async () => {
       const startStr = formatISO(start, { representation: 'date' });
       const endStr = formatISO(end, { representation: 'date' });
-      const statusFilter: AssignmentStatus[] = ['ingecheckt', 'gereserveerd'];
+      // Ook 'uitgecheckt' meenemen: wie op een datum in de toekomst is uitgecheckt,
+      // bezet het bed tot die dag. De datumfilter hieronder laat oude uitchecks weg.
+      const statusFilter: AssignmentStatus[] = ['ingecheckt', 'gereserveerd', 'uitgecheckt'];
       const { data, error } = await supabase
         .from('housing_assignments')
         .select('check_in_date, check_out_date, status')
@@ -96,6 +98,8 @@ const AvailabilityChart = ({
         const inDate = a.check_in_date ? parseISO(a.check_in_date) : null;
         const outDate = a.check_out_date ? parseISO(a.check_out_date) : null;
         if (!inDate) return false;
+        // Uitgecheckt zonder datum (legacy) is echt weg; mét datum telt tot die datum.
+        if (a.status === 'uitgecheckt' && !outDate) return false;
         if (inDate >= weekEnd) return false;
         if (outDate && outDate <= weekStart) return false;
         return true;
