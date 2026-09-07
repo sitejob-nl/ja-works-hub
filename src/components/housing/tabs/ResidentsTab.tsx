@@ -14,6 +14,8 @@ import { Label } from '@/components/ui/label';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { HousingCheckOutDialog } from '@/components/housing/HousingCheckOutDialog';
+import { bedsOccupiedOn } from '@/lib/housing-availability';
 import { Plus, Check, X, Search, MoreHorizontal, Pencil, Trash2, ArrowRightLeft } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { formatDate, formatEUR } from '@/lib/format';
@@ -72,6 +74,9 @@ const InternalResidentsTab = ({ property }: { property: any }) => {
   // Delete state
   const [assignmentToDelete, setAssignmentToDelete] = useState<any | null>(null);
 
+  // Check-out state: de dialoog kiest de uitcheckdatum en bevestigt.
+  const [assignmentToCheckOut, setAssignmentToCheckOut] = useState<any | null>(null);
+
   // Get all assignments for all units in this property
   const units = property.units ?? [];
   const allAssignments = units.flatMap((u: any) =>
@@ -116,6 +121,12 @@ const InternalResidentsTab = ({ property }: { property: any }) => {
 
   const assign = useMutation({
     mutationFn: async () => {
+      // De kamerlijst kijkt alleen naar de status; een bewoner die op een datum in de
+      // toekomst is uitgecheckt zit er tot die dag nog. Blokkeer een incheck vóór dat vertrek.
+      const occupiedOnCheckIn = bedsOccupiedOn(selectedUnit.housing_assignments, form.check_in_date);
+      if (occupiedOnCheckIn >= (selectedUnit.capacity ?? 1)) {
+        throw new Error(`Kamer ${selectedUnit.name} is op ${formatDate(form.check_in_date)} nog bezet (${occupiedOnCheckIn}/${selectedUnit.capacity ?? 1}). Kies een latere check-in datum.`);
+      }
       const deductionNum = form.deduction_amount ? Number(form.deduction_amount) : null;
       const employeeId = await resolveEmployeeId(selectedEmployee, orgId!, form.check_in_date);
       const assignment = await unwrap(supabase.from('housing_assignments').insert({
@@ -152,22 +163,26 @@ const InternalResidentsTab = ({ property }: { property: any }) => {
   });
 
   const updateStatus = useMutation({
-    mutationFn: async ({ assignmentId, status, checkOut }: { assignmentId: string; status: string; checkOut?: boolean }) => {
+    mutationFn: async ({ assignmentId, status, checkOutDate }: { assignmentId: string; status: string; checkOutDate?: string }) => {
       const update: any = { status };
-      if (checkOut) update.check_out_date = new Date().toISOString().split('T')[0];
+      // Uitchecken: de gekozen datum mag in het verleden of de toekomst liggen. De rij
+      // blijft staan als historie; alleen status + uitcheckdatum veranderen.
+      if (checkOutDate) update.check_out_date = checkOutDate;
       await unwrap(supabase.from('housing_assignments').update(update).eq('id', assignmentId));
     },
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: qk.housing.property(property.id) });
+      qc.invalidateQueries({ queryKey: ['properties'] });
       logAudit({
         action: 'status_change',
         tableName: 'housing_assignments',
         recordId: vars.assignmentId,
-        newValues: { status: vars.status },
+        newValues: vars.checkOutDate ? { status: vars.status, check_out_date: vars.checkOutDate } : { status: vars.status },
       });
-      toast.success('Status bijgewerkt');
+      toast.success(vars.checkOutDate ? 'Bewoner uitgecheckt' : 'Status bijgewerkt');
+      setAssignmentToCheckOut(null);
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => toast.error(toFriendlyError(e, 'Status bijwerken mislukt')),
   });
 
   const editAssignment = useMutation({
@@ -587,6 +602,18 @@ const InternalResidentsTab = ({ property }: { property: any }) => {
         onConfirm={() => { if (assignmentToDelete) deleteAssignment.mutate(assignmentToDelete); }}
       />
 
+      {/* Check-out confirm: uitcheckdatum kiezen (standaard vandaag) en bevestigen */}
+      <HousingCheckOutDialog
+        assignment={assignmentToCheckOut}
+        residentName={`${assignmentToCheckOut?.candidates?.first_name ?? ''} ${assignmentToCheckOut?.candidates?.last_name ?? ''}`.trim() || 'Bewoner'}
+        unitName={assignmentToCheckOut?.unitName}
+        pending={updateStatus.isPending}
+        onConfirm={(checkOutDate) => {
+          if (assignmentToCheckOut) updateStatus.mutate({ assignmentId: assignmentToCheckOut.id, status: 'uitgecheckt', checkOutDate });
+        }}
+        onClose={() => setAssignmentToCheckOut(null)}
+      />
+
       {activeAssignments.length === 0 ? (
         <p className="text-center text-muted-foreground py-8">Geen bewoners</p>
       ) : (
@@ -640,7 +667,7 @@ const InternalResidentsTab = ({ property }: { property: any }) => {
                           </Button>
                         )}
                         {a.status === 'ingecheckt' && (
-                          <Button size="sm" variant="outline" onClick={() => updateStatus.mutate({ assignmentId: a.id, status: 'uitgecheckt', checkOut: true })}>
+                          <Button size="sm" variant="outline" onClick={() => setAssignmentToCheckOut(a)}>
                             Uitchecken
                           </Button>
                         )}
@@ -687,6 +714,7 @@ const FacilityResidentsTab = ({ property }: { property: any }) => {
   const [checkInDate, setCheckInDate] = useState('');
   const [moving, setMoving] = useState<any | null>(null);
   const [targetUnitId, setTargetUnitId] = useState('');
+  const [checkingOut, setCheckingOut] = useState<any | null>(null);
 
   const { data: directory = [] } = useQuery({
     queryKey: ['facility-worker-directory'],
@@ -777,7 +805,8 @@ const FacilityResidentsTab = ({ property }: { property: any }) => {
     },
     onSuccess: (_, variables) => {
       invalidate();
-      toast.success('Toewijzing bijgewerkt');
+      toast.success(variables.values.check_out_date ? 'Bewoner uitgecheckt' : 'Toewijzing bijgewerkt');
+      setCheckingOut(null);
     },
     onError: (error: any) => toast.error(error.message ?? 'Bijwerken mislukt'),
   });
@@ -873,6 +902,17 @@ const FacilityResidentsTab = ({ property }: { property: any }) => {
         </SheetContent>
       </Sheet>
 
+      <HousingCheckOutDialog
+        assignment={checkingOut}
+        residentName={workerLabel(checkingOut ? workerFor(checkingOut) : null)}
+        unitName={checkingOut?.unitName}
+        pending={update.isPending}
+        onConfirm={(checkOutDate) => {
+          if (checkingOut) update.mutate({ id: checkingOut.id, values: { status: 'uitgecheckt', check_out_date: checkOutDate } });
+        }}
+        onClose={() => setCheckingOut(null)}
+      />
+
       {activeAssignments.length === 0 ? (
         <p className="text-center text-muted-foreground py-8">Geen bewoners</p>
       ) : (
@@ -906,7 +946,7 @@ const FacilityResidentsTab = ({ property }: { property: any }) => {
                         </Button>
                       )}
                       {assignment.status === 'ingecheckt' && (
-                        <Button size="sm" variant="outline" onClick={() => update.mutate({ id: assignment.id, values: { status: 'uitgecheckt', check_out_date: new Date().toISOString().slice(0, 10) } })}>
+                        <Button size="sm" variant="outline" onClick={() => setCheckingOut(assignment)}>
                           Uitchecken
                         </Button>
                       )}
