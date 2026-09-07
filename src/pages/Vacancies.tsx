@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Link, useNavigate } from 'react-router-dom';
-import { useSearchParamState } from '@/hooks/useSearchParamState';
 import { Briefcase, Plus, Search, AlertTriangle, Loader2, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,19 +9,36 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import SortableTableHead from '@/components/ui/sortable-table-head';
+import TablePagination from '@/components/ui/table-pagination';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
 import { formatDate, formatEUR } from '@/lib/format';
 import { logAudit } from '@/lib/audit';
-import { getPaginationRange } from '@/lib/pagination';
 import { toast } from 'sonner';
 import ErrorState from '@/components/shared/ErrorState';
 import { toFriendlyError } from '@/lib/errorMessages';
 import { useRolePermission } from '@/hooks/usePermissions';
 import { useAuth } from '@/contexts/AuthContext';
 import { unwrap, unwrapList } from '@/lib/db';
+import { useTableControls } from '@/hooks/useTableControls';
+import type { SortableColumn, SortState } from '@/lib/table-sort';
 
-const PAGE_SIZE = 10;
+// Sorteerbaar zijn de kolommen die één-op-één een vacaturekolom tonen. 'Opdrachtgever' is een
+// to-one embed en daar ordent PostgREST de vacatures zelf op (order=companies(name)), dus die
+// gaat wél mee. 'Aantal' (ingevuld/gevraagd) en 'Salaris' (min/max/uurtarief in één cel) staan
+// voor meerdere kolommen tegelijk — daar zegt een volgorde niets, die koppen blijven statisch.
+// Status en urgentie zijn enums: sorteren groepeert in de vaste volgorde van de database.
+const SORT_COLUMNS: readonly SortableColumn[] = [
+  { key: 'title' },
+  { key: 'company', orderBy: ['companies(name)'] },
+  { key: 'location' },
+  { key: 'urgency', defaultDirection: 'desc' },
+  { key: 'start_date' },
+  { key: 'status' },
+];
+// Hoogste urgentie bovenaan, daarbinnen de vroegste startdatum eerst — precies de volgorde
+// waarmee de lijst altijd al opende, nu zichtbaar en omkeerbaar via de kop 'Urgentie'.
+const DEFAULT_SORT: SortState = { column: 'urgency', direction: 'desc' };
 
 const statusBadge: Record<string, string> = {
   open: 'bg-stat-green/10 text-stat-green border-0',
@@ -61,9 +77,18 @@ const Vacancies = () => {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useSearchParamState<string>('status', 'all');
   const [urgencyFilter, setUrgencyFilter] = useState('all');
-  const [page, setPage] = useState(0);
+  const table = useTableControls({
+    columns: SORT_COLUMNS,
+    defaultSort: DEFAULT_SORT,
+    // Urgentie, status en locatie delen veel vacatures; zonder vaste volgorde binnen zo'n
+    // groep kan .range() een vacature op twee pagina's tegelijk zetten.
+    tiebreak: ['start_date', 'id'],
+  });
+  const { page, pageSize, applySort, resetPage } = table;
+  // Statusfilter staat in de URL. Via de tabelbesturing, niet via useSearchParamState: het
+  // filter zetten én de paginateller resetten moet één URL-update zijn.
+  const [statusFilter, setStatusFilter] = table.filterParam<string>('status', 'all');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleteOpen, setDeleteOpen] = useState(false);
 
@@ -74,7 +99,7 @@ const Vacancies = () => {
   }, [search]);
 
   const { data, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['vacancies', debouncedSearch, statusFilter, urgencyFilter, page],
+    queryKey: ['vacancies', debouncedSearch, statusFilter, urgencyFilter, page, pageSize, table.sort.column, table.sort.direction],
     queryFn: async () => {
       const searchTerm = debouncedSearch.trim();
       let matchingCompanyIds: string[] = [];
@@ -96,10 +121,8 @@ const Vacancies = () => {
       }
       if (statusFilter !== 'all') query = query.eq('status', statusFilter as any);
       if (urgencyFilter !== 'all') query = query.eq('urgency', parseInt(urgencyFilter));
-      query = query
-        .order('urgency', { ascending: false, nullsFirst: false })
-        .order('start_date', { ascending: true, nullsFirst: false })
-        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+      // Sorteren gebeurt in de database, dus over de héle set — niet over de zichtbare pagina.
+      query = applySort(query).range(table.from, table.to);
       const { data, count, error } = await query;
       if (error) throw error;
       return { vacancies: data ?? [], total: count ?? 0 };
@@ -153,7 +176,7 @@ const Vacancies = () => {
 
   const vacancies = data?.vacancies ?? [];
   const total = data?.total ?? 0;
-  const totalPages = Math.ceil(total / PAGE_SIZE);
+  const totalPages = Math.ceil(total / pageSize);
 
   const allOnPageSelected = vacancies.length > 0 && vacancies.every((v: any) => selected.has(v.id));
   const toggleOne = (id: string) => {
@@ -190,16 +213,16 @@ const Vacancies = () => {
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Zoek op functietitel of opdrachtgever..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} className="pl-9" />
+          <Input placeholder="Zoek op functietitel of opdrachtgever..." value={search} onChange={(e) => { setSearch(e.target.value); resetPage(); }} className="pl-9" />
         </div>
-        <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(0); }}>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-36"><SelectValue placeholder="Status" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Alle statussen</SelectItem>
             {Object.entries(statusLabel).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
           </SelectContent>
         </Select>
-        <Select value={urgencyFilter} onValueChange={(v) => { setUrgencyFilter(v); setPage(0); }}>
+        <Select value={urgencyFilter} onValueChange={(v) => { setUrgencyFilter(v); resetPage(); }}>
           <SelectTrigger className="w-36"><SelectValue placeholder="Urgentie" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Alle urgentie</SelectItem>
@@ -280,14 +303,15 @@ const Vacancies = () => {
                       />
                     </TableHead>
                   )}
-                  <TableHead>Titel</TableHead>
-                  <TableHead>Opdrachtgever</TableHead>
-                  <TableHead>Locatie</TableHead>
+                  <SortableTableHead column="title" sort={table.sort} onSort={table.toggleSort}>Titel</SortableTableHead>
+                  <SortableTableHead column="company" sort={table.sort} onSort={table.toggleSort}>Opdrachtgever</SortableTableHead>
+                  <SortableTableHead column="location" sort={table.sort} onSort={table.toggleSort}>Locatie</SortableTableHead>
+                  {/* Aantal en Salaris staan voor meerdere kolommen tegelijk — zie SORT_COLUMNS. */}
                   <TableHead>Aantal</TableHead>
                   <TableHead>Salaris</TableHead>
-                  <TableHead>Urgentie</TableHead>
-                  <TableHead>Startdatum</TableHead>
-                  <TableHead>Status</TableHead>
+                  <SortableTableHead column="urgency" sort={table.sort} onSort={table.toggleSort}>Urgentie</SortableTableHead>
+                  <SortableTableHead column="start_date" sort={table.sort} onSort={table.toggleSort}>Startdatum</SortableTableHead>
+                  <SortableTableHead column="status" sort={table.sort} onSort={table.toggleSort}>Status</SortableTableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -354,27 +378,13 @@ const Vacancies = () => {
             </Table>
           </div>
 
-          {totalPages > 1 && (
-            <Pagination>
-              <PaginationContent>
-                <PaginationItem>
-                  <PaginationPrevious onClick={() => setPage(Math.max(0, page - 1))} className={page === 0 ? 'pointer-events-none opacity-50' : 'cursor-pointer'} />
-                </PaginationItem>
-                {getPaginationRange(page, totalPages).map((item, i) => (
-                  <PaginationItem key={`${item}-${i}`}>
-                    {typeof item === 'number' ? (
-                      <PaginationLink isActive={item === page} onClick={() => setPage(item)} className="cursor-pointer">{item + 1}</PaginationLink>
-                    ) : (
-                      <PaginationEllipsis />
-                    )}
-                  </PaginationItem>
-                ))}
-                <PaginationItem>
-                  <PaginationNext onClick={() => setPage(Math.min(totalPages - 1, page + 1))} className={page >= totalPages - 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'} />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
-          )}
+          <TablePagination
+            page={page}
+            totalPages={totalPages}
+            onPageChange={table.setPage}
+            pageSize={pageSize}
+            onPageSizeChange={table.setPageSize}
+          />
         </>
       )}
     </div>

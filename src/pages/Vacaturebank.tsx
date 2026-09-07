@@ -13,6 +13,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import SortableTableHead from '@/components/ui/sortable-table-head';
+import TablePagination from '@/components/ui/table-pagination';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Separator } from '@/components/ui/separator';
@@ -26,6 +28,8 @@ import { Search, Download, ExternalLink, Globe, Building2, Briefcase, MapPin, Lo
 import { format, subDays, subMonths } from 'date-fns';
 import { nl } from 'date-fns/locale';
 import { LINKEDIN_INDUSTRIES, LINKEDIN_INDUSTRIES_FEATURED } from '@/lib/linkedin-industries';
+import { useTableControls } from '@/hooks/useTableControls';
+import type { SortableColumn, SortState } from '@/lib/table-sort';
 
 const ATS_OPTIONS = [
   'adp','applicantpro','ashby','bamboohr','breezy','careerplug','comeet','csod',
@@ -96,7 +100,21 @@ const LINKEDIN_EMPLOYMENT_TYPES = [
   { value: 'OTHER', label: 'Overig' },
 ];
 
-const PAGE_SIZE = 25;
+// Deze lijst haalt de hele vacaturebank in één keer op en filtert in de browser; sorteren
+// gebeurt daarom óók client-side, over de héle gefilterde set en pas daarna de pagina eruit.
+// 'Locatie' (stad + land) en 'Branche' (eerste AI-taxonomie) staan niet één-op-één in een
+// kolom, dus die krijgen een eigen waarde-functie die precies sorteert op wat er staat.
+const SORT_COLUMNS: readonly SortableColumn[] = [
+  { key: 'title' },
+  { key: 'organization_name' },
+  { key: 'location', value: (j: any) => [j.city, j.country].filter(Boolean).join(', ') },
+  { key: 'taxonomy', value: (j: any) => j.ai_taxonomies?.[0] },
+  { key: 'source' },
+  { key: 'work_arrangement' },
+  { key: 'date_posted', defaultDirection: 'desc' },
+];
+// Nieuwste vacature bovenaan, zoals de lijst altijd al opende — nu zichtbaar en omkeerbaar.
+const DEFAULT_SORT: SortState = { column: 'date_posted', direction: 'desc' };
 
 const Vacaturebank = () => {
   const organizationId = useOrganizationId();
@@ -173,7 +191,14 @@ const Vacaturebank = () => {
   const [filterSource, setFilterSource] = useState('');
   const [filterWorkArr, setFilterWorkArr] = useState('');
   const [filterTaxonomy, setFilterTaxonomy] = useState('');
-  const [page, setPage] = useState(0);
+  const table = useTableControls({
+    columns: SORT_COLUMNS,
+    defaultSort: DEFAULT_SORT,
+    // Deze lijst stond op 25 rijen, een maat die de gedeelde keuzelijst (10/20/50/100) niet
+    // kent. Default wordt de dichtstbijzijnde optie; wie meer wil ziet er nu 50 naast staan.
+    defaultPageSize: 20,
+  });
+  const { page, pageSize, resetPage } = table;
 
   // Selection state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -190,7 +215,10 @@ const Vacaturebank = () => {
       const { data, error } = await (supabase as any)
         .from('job_listings')
         .select('*')
-        .order('date_posted', { ascending: false });
+        // Vaste basisvolgorde: zonder id-tiebreak mag Postgres vacatures met dezelfde
+        // plaatsingsdatum bij elke fetch anders teruggeven.
+        .order('date_posted', { ascending: false })
+        .order('id', { ascending: true });
       if (error) throw error;
       return data as any[];
     },
@@ -325,8 +353,11 @@ const Vacaturebank = () => {
     });
   }, [jobs, search, filterCountry, filterSource, filterWorkArr, filterTaxonomy]);
 
-  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
-  const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  // Eerst de volledige gefilterde set sorteren, dan pas de pagina eruit snijden.
+  const sorted = useMemo(() => table.sortRows(filtered), [filtered, table.sortRows]);
+  const totalPages = Math.ceil(sorted.length / pageSize);
+  const currentPage = totalPages > 0 ? Math.min(page, totalPages - 1) : 0;
+  const paged = sorted.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
 
   // Selection helpers
   const allPageSelected = paged.length > 0 && paged.every(j => selectedIds.has(j.id));
@@ -1178,31 +1209,31 @@ const Vacaturebank = () => {
             placeholder="Zoek op titel, bedrijf of stad..."
             className="pl-9"
             value={search}
-            onChange={e => { setSearch(e.target.value); setPage(0); }}
+            onChange={e => { setSearch(e.target.value); resetPage(); }}
           />
         </div>
-        <Select value={filterCountry} onValueChange={v => { setFilterCountry(v === '_all' ? '' : v); setPage(0); }}>
+        <Select value={filterCountry} onValueChange={v => { setFilterCountry(v === '_all' ? '' : v); resetPage(); }}>
           <SelectTrigger className="w-[160px]"><SelectValue placeholder="Land" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="_all">Alle landen</SelectItem>
             {countries.map(c => <SelectItem key={c} value={c!}>{c}</SelectItem>)}
           </SelectContent>
         </Select>
-        <Select value={filterSource} onValueChange={v => { setFilterSource(v === '_all' ? '' : v); setPage(0); }}>
+        <Select value={filterSource} onValueChange={v => { setFilterSource(v === '_all' ? '' : v); resetPage(); }}>
           <SelectTrigger className="w-[160px]"><SelectValue placeholder="ATS" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="_all">Alle ATS</SelectItem>
             {sources.map(s => <SelectItem key={s} value={s!}>{s}</SelectItem>)}
           </SelectContent>
         </Select>
-        <Select value={filterWorkArr} onValueChange={v => { setFilterWorkArr(v === '_all' ? '' : v); setPage(0); }}>
+        <Select value={filterWorkArr} onValueChange={v => { setFilterWorkArr(v === '_all' ? '' : v); resetPage(); }}>
           <SelectTrigger className="w-[160px]"><SelectValue placeholder="Werkmodel" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="_all">Alle werkmodellen</SelectItem>
             {WORK_ARRANGEMENTS.map(w => <SelectItem key={w} value={w}>{w}</SelectItem>)}
           </SelectContent>
         </Select>
-        <Select value={filterTaxonomy} onValueChange={v => { setFilterTaxonomy(v === '_all' ? '' : v); setPage(0); }}>
+        <Select value={filterTaxonomy} onValueChange={v => { setFilterTaxonomy(v === '_all' ? '' : v); resetPage(); }}>
           <SelectTrigger className="w-[160px]"><SelectValue placeholder="Branche" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="_all">Alle branches</SelectItem>
@@ -1245,13 +1276,13 @@ const Vacaturebank = () => {
                   onCheckedChange={togglePage}
                 />
               </TableHead>
-              <TableHead>Titel</TableHead>
-              <TableHead>Bedrijf</TableHead>
-              <TableHead>Locatie</TableHead>
-              <TableHead>Branche</TableHead>
-              <TableHead>ATS</TableHead>
-              <TableHead>Werkmodel</TableHead>
-              <TableHead>Datum</TableHead>
+              <SortableTableHead column="title" sort={table.sort} onSort={table.toggleSort}>Titel</SortableTableHead>
+              <SortableTableHead column="organization_name" sort={table.sort} onSort={table.toggleSort}>Bedrijf</SortableTableHead>
+              <SortableTableHead column="location" sort={table.sort} onSort={table.toggleSort}>Locatie</SortableTableHead>
+              <SortableTableHead column="taxonomy" sort={table.sort} onSort={table.toggleSort}>Branche</SortableTableHead>
+              <SortableTableHead column="source" sort={table.sort} onSort={table.toggleSort}>ATS</SortableTableHead>
+              <SortableTableHead column="work_arrangement" sort={table.sort} onSort={table.toggleSort}>Werkmodel</SortableTableHead>
+              <SortableTableHead column="date_posted" sort={table.sort} onSort={table.toggleSort}>Datum</SortableTableHead>
               <TableHead className="w-10"></TableHead>
             </TableRow>
           </TableHeader>
@@ -1314,30 +1345,16 @@ const Vacaturebank = () => {
         </Table>
       </div>
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            Pagina {page + 1} van {totalPages} ({filtered.length} resultaten)
-          </p>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPage(p => Math.max(0, p - 1))}
-              disabled={page === 0}
-            >
-              Vorige
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
-              disabled={page >= totalPages - 1}
-            >
-              Volgende
-            </Button>
-          </div>
+      {sorted.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-sm text-muted-foreground">{sorted.length} resultaten</p>
+          <TablePagination
+            page={currentPage}
+            totalPages={totalPages}
+            onPageChange={table.setPage}
+            pageSize={pageSize}
+            onPageSizeChange={table.setPageSize}
+          />
         </div>
       )}
 

@@ -3,7 +3,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
-import { useSearchParamState } from '@/hooks/useSearchParamState';
 import { startOfWeek, endOfWeek, addWeeks, subWeeks, format, getISOWeek } from 'date-fns';
 import { nl } from 'date-fns/locale';
 import { Clock, Plus, Upload, ChevronLeft, ChevronRight, CheckCircle2, XCircle, AlertTriangle, Sparkles, FileText } from 'lucide-react';
@@ -12,7 +11,8 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from '@/components/ui/table';
-import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
+import SortableTableHead from '@/components/ui/sortable-table-head';
+import TablePagination from '@/components/ui/table-pagination';
 import { toast } from 'sonner';
 import { logAudit } from '@/lib/audit';
 import { formatDate } from '@/lib/format';
@@ -20,8 +20,26 @@ import TimesheetEntrySheet from '@/components/timesheets/TimesheetEntrySheet';
 import TimesheetCsvImport from '@/components/timesheets/TimesheetCsvImport';
 import { EntityLink } from '@/components/ui/entity-link';
 import { useRolePermission } from '@/hooks/usePermissions';
+import { useTableControls } from '@/hooks/useTableControls';
+import type { SortableColumn, SortState } from '@/lib/table-sort';
 
-const PAGE_SIZE = 25;
+// Sorteerbaar zijn de kolommen die één-op-één een urenkolom tonen. 'Medewerker' is een to-one
+// embed op candidates en daar ordent PostgREST de registraties zelf op. 'Opdrachtgever' komt
+// twee joins diep (timesheets → placements → companies); PostgREST ordent alleen op een embed
+// één niveau diep, dus die kop blijft statisch. Bron en Status zijn enums: sorteren groepeert
+// in de vaste volgorde van de database, niet alfabetisch op label.
+const SORT_COLUMNS: readonly SortableColumn[] = [
+  { key: 'candidate', orderBy: ['candidates(last_name)', 'candidates(first_name)'] },
+  { key: 'work_date', defaultDirection: 'desc' },
+  { key: 'hours', defaultDirection: 'desc' },
+  { key: 'overtime_hours', defaultDirection: 'desc' },
+  { key: 'source' },
+  { key: 'status' },
+  { key: 'client_approved', defaultDirection: 'desc' },
+];
+// Laatste werkdag van de week bovenaan — de volgorde waarmee de lijst altijd al opende,
+// nu zichtbaar en omkeerbaar via de kop 'Datum'.
+const DEFAULT_SORT: SortState = { column: 'work_date', direction: 'desc' };
 
 const statusBadge: Record<string, string> = {
   concept: 'bg-muted text-muted-foreground border-0',
@@ -50,10 +68,22 @@ const Timesheets = () => {
   const canManageFinance = useRolePermission('finance.manage');
   const qc = useQueryClient();
   const [weekRef, setWeekRef] = useState(new Date());
-  const [statusFilter, setStatusFilter] = useSearchParamState<string>('status', 'all');
-  const [placementFilter, setPlacementFilter] = useSearchParamState<string>('placement_id', 'all');
+  const table = useTableControls({
+    columns: SORT_COLUMNS,
+    defaultSort: DEFAULT_SORT,
+    // Deze lijst stond op 25 rijen, een maat die de gedeelde keuzelijst (10/20/50/100) niet
+    // kent. Default wordt de dichtstbijzijnde optie; wie meer wil ziet er nu 50 naast staan.
+    defaultPageSize: 20,
+    // Binnen één werkdag (of één status) staan veel registraties; zonder vaste volgorde
+    // daarbinnen kan .range() een registratie op twee pagina's tegelijk zetten.
+    tiebreak: ['id'],
+  });
+  const { page, pageSize, applySort, resetPage } = table;
+  // Status- en plaatsingfilter staan in de URL. Via de tabelbesturing, niet via
+  // useSearchParamState: het filter zetten én de paginateller resetten moet één URL-update zijn.
+  const [statusFilter, setStatusFilter] = table.filterParam<string>('status', 'all');
+  const [placementFilter, setPlacementFilter] = table.filterParam<string>('placement_id', 'all');
   const [employeeFilter, setEmployeeFilter] = useState('all');
-  const [page, setPage] = useState(0);
   const [entryOpen, setEntryOpen] = useState(false);
   const [csvOpen, setCsvOpen] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -73,7 +103,7 @@ const Timesheets = () => {
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ['timesheets', weekStart, weekEnd, statusFilter, employeeFilter, placementFilter, page],
+    queryKey: ['timesheets', weekStart, weekEnd, statusFilter, employeeFilter, placementFilter, page, pageSize, table.sort.column, table.sort.direction],
     queryFn: async () => {
       let query = supabase.from('timesheets').select(`
         *,
@@ -92,7 +122,8 @@ const Timesheets = () => {
       if (employeeFilter !== 'all') query = query.eq('candidate_id', employeeFilter);
       if (placementFilter !== 'all') query = query.eq('placement_id', placementFilter);
 
-      query = query.order('work_date', { ascending: false }).range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+      // Sorteren gebeurt in de database, dus over de héle set — niet over de zichtbare pagina.
+      query = applySort(query).range(table.from, table.to);
 
       const { data, count, error } = await query;
       if (error) throw error;
@@ -102,7 +133,7 @@ const Timesheets = () => {
 
   const timesheets = useMemo(() => data?.timesheets ?? [], [data?.timesheets]);
   const total = data?.total ?? 0;
-  const totalPages = Math.ceil(total / PAGE_SIZE);
+  const totalPages = Math.ceil(total / pageSize);
 
   // Stats
   const stats = useMemo(() => {
@@ -278,7 +309,7 @@ const Timesheets = () => {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => { setWeekRef(subWeeks(weekRef, 1)); setPage(0); }}
+            onClick={() => { setWeekRef(subWeeks(weekRef, 1)); resetPage(); }}
             aria-label="Vorige week"
           >
             <ChevronLeft className="h-4 w-4" />
@@ -287,20 +318,20 @@ const Timesheets = () => {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => { setWeekRef(addWeeks(weekRef, 1)); setPage(0); }}
+            onClick={() => { setWeekRef(addWeeks(weekRef, 1)); resetPage(); }}
             aria-label="Volgende week"
           >
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
-        <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(0); }}>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-36"><SelectValue placeholder="Status" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Alle statussen</SelectItem>
             {Object.entries(statusLabel).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
           </SelectContent>
         </Select>
-        <Select value={employeeFilter} onValueChange={(v) => { setEmployeeFilter(v); setPage(0); }}>
+        <Select value={employeeFilter} onValueChange={(v) => { setEmployeeFilter(v); resetPage(); }}>
           <SelectTrigger className="w-48"><SelectValue placeholder="Medewerker" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Alle medewerkers</SelectItem>
@@ -315,7 +346,7 @@ const Timesheets = () => {
             <button
               type="button"
               className="rounded-sm px-1 hover:bg-background/80"
-              onClick={() => { setPlacementFilter('all'); setPage(0); }}
+              onClick={() => setPlacementFilter('all')}
               aria-label="Plaatsingfilter wissen"
             >
               ×
@@ -378,14 +409,15 @@ const Timesheets = () => {
                       aria-label={selected.size === timesheets.length && timesheets.length > 0 ? 'Deselecteer alle urenregistraties' : 'Selecteer alle urenregistraties'}
                     />
                   </TableHead>}
-                  <TableHead>Medewerker</TableHead>
+                  <SortableTableHead column="candidate" sort={table.sort} onSort={table.toggleSort}>Medewerker</SortableTableHead>
+                  {/* Opdrachtgever zit twee joins diep — zie SORT_COLUMNS. */}
                   <TableHead>Opdrachtgever</TableHead>
-                  <TableHead>Datum</TableHead>
-                  <TableHead className="text-right">Uren</TableHead>
-                  <TableHead className="text-right">Overwerk</TableHead>
-                  <TableHead>Bron</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Klant</TableHead>
+                  <SortableTableHead column="work_date" sort={table.sort} onSort={table.toggleSort}>Datum</SortableTableHead>
+                  <SortableTableHead column="hours" sort={table.sort} onSort={table.toggleSort} align="right">Uren</SortableTableHead>
+                  <SortableTableHead column="overtime_hours" sort={table.sort} onSort={table.toggleSort} align="right">Overwerk</SortableTableHead>
+                  <SortableTableHead column="source" sort={table.sort} onSort={table.toggleSort}>Bron</SortableTableHead>
+                  <SortableTableHead column="status" sort={table.sort} onSort={table.toggleSort}>Status</SortableTableHead>
+                  <SortableTableHead column="client_approved" sort={table.sort} onSort={table.toggleSort}>Klant</SortableTableHead>
                   {canManageFinance && <TableHead>Acties</TableHead>}
                 </TableRow>
               </TableHeader>
@@ -471,23 +503,13 @@ const Timesheets = () => {
             </Table>
           </div>
 
-          {totalPages > 1 && (
-            <Pagination>
-              <PaginationContent>
-                <PaginationItem>
-                  <PaginationPrevious onClick={() => setPage(Math.max(0, page - 1))} className={page === 0 ? 'pointer-events-none opacity-50' : 'cursor-pointer'} />
-                </PaginationItem>
-                {Array.from({ length: totalPages }, (_, i) => (
-                  <PaginationItem key={i}>
-                    <PaginationLink isActive={i === page} onClick={() => setPage(i)} className="cursor-pointer">{i + 1}</PaginationLink>
-                  </PaginationItem>
-                ))}
-                <PaginationItem>
-                  <PaginationNext onClick={() => setPage(Math.min(totalPages - 1, page + 1))} className={page >= totalPages - 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'} />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
-          )}
+          <TablePagination
+            page={page}
+            totalPages={totalPages}
+            onPageChange={table.setPage}
+            pageSize={pageSize}
+            onPageSizeChange={table.setPageSize}
+          />
         </>
       )}
 

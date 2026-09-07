@@ -1,32 +1,31 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { Database } from '@/integrations/supabase/types';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
 import { useAuth } from '@/contexts/AuthContext';
-import { useSearchParamState } from '@/hooks/useSearchParamState';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import SortableTableHead from '@/components/ui/sortable-table-head';
+import TablePagination from '@/components/ui/table-pagination';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
 import { Search, Users, CalendarClock, TrendingUp, Plus, Trash2 } from 'lucide-react';
 import { formatDate, formatEUR } from '@/lib/format';
 import { payrollerBadgeClass } from '@/lib/payroller';
 import { usePayrollers } from '@/hooks/usePayrollers';
-import { getPaginationRange } from '@/lib/pagination';
+import { useTableControls } from '@/hooks/useTableControls';
+import type { SortableColumn, SortState } from '@/lib/table-sort';
 import { EntityLink } from '@/components/ui/entity-link';
 import ErrorState from '@/components/shared/ErrorState';
 import PlacementWizard from '@/components/placement/PlacementWizard';
 import DeletePlacementDialog, { type DeletePlacementTarget } from '@/components/placements/DeletePlacementDialog';
 
 type PlacementStatus = Database['public']['Enums']['placement_status'];
-
-const PAGE_SIZE = 25;
 
 const statusBadge: Record<string, { class: string; label: string }> = {
   gepland: { class: 'bg-blue-100 text-blue-700 border-0', label: 'Gepland' },
@@ -43,6 +42,30 @@ const asSingle = <T,>(value: T | T[] | null | undefined): T | null => {
 const getPlacementCandidate = (placement: any) =>
   asSingle(placement.candidates) ?? asSingle(asSingle(placement.employees)?.candidates);
 
+// Deze lijst haalt alle plaatsingen in één keer op en filtert op zoekterm in de browser;
+// sorteren gebeurt daarom óók client-side, over de héle gefilterde set en pas daarna de
+// pagina eruit. De kandidaat komt uit `candidates` of via de legacy `employees`-koppeling
+// (zie getPlacementCandidate) — server-side ordenen op één van die twee joins zou de rijen
+// uit de andere tak op de verkeerde plek zetten. 'Periode' sorteert op de startdatum.
+const SORT_COLUMNS: readonly SortableColumn[] = [
+  {
+    key: 'candidate',
+    value: (p: any) => {
+      const cand = getPlacementCandidate(p);
+      return cand ? `${cand.last_name ?? ''} ${cand.first_name ?? ''}`.trim() : '';
+    },
+  },
+  { key: 'company', value: (p: any) => p.companies?.name },
+  { key: 'function_name' },
+  { key: 'payroller', value: (p: any) => p.payrollers?.name },
+  { key: 'start_date', defaultDirection: 'desc' },
+  { key: 'rate', value: (p: any) => p.client_hourly_rate || p.hourly_rate, defaultDirection: 'desc' },
+  { key: 'status' },
+];
+// Laatst gestarte plaatsing bovenaan — de volgorde waarmee de lijst altijd al opende,
+// nu zichtbaar en omkeerbaar via de kop 'Periode'.
+const DEFAULT_SORT: SortState = { column: 'start_date', direction: 'desc' };
+
 export default function PlacementsPage() {
   const navigate = useNavigate();
   const orgId = useOrganizationId();
@@ -50,10 +73,19 @@ export default function PlacementsPage() {
   // Definitief verwijderen is admin-only, gelijk aan de RLS-policy tenant_delete op placements.
   const canDelete = role === 'admin';
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useSearchParamState<PlacementStatus | 'all'>('status', 'all');
   const [payrollerFilter, setPayrollerFilter] = useState<string>('all');
   const { data: payrollerOptions } = usePayrollers();
-  const [page, setPage] = useState(0);
+  const table = useTableControls({
+    columns: SORT_COLUMNS,
+    defaultSort: DEFAULT_SORT,
+    // Deze lijst stond op 25 rijen, een maat die de gedeelde keuzelijst (10/20/50/100) niet
+    // kent. Default wordt de dichtstbijzijnde optie; wie meer wil ziet er nu 50 naast staan.
+    defaultPageSize: 20,
+  });
+  const { page, pageSize, resetPage } = table;
+  // Statusfilter staat in de URL. Via de tabelbesturing, niet via useSearchParamState: het
+  // filter zetten én de paginateller resetten moet één URL-update zijn.
+  const [statusFilter, setStatusFilter] = table.filterParam<PlacementStatus | 'all'>('status', 'all');
   const [newPlacementOpen, setNewPlacementOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<DeletePlacementTarget | null>(null);
 
@@ -64,7 +96,10 @@ export default function PlacementsPage() {
         .from('placements')
         .select('*, companies!placements_company_id_fkey(id, name), candidates!placements_candidate_id_fkey(id, first_name, last_name), employees!placements_employee_id_fkey(id, candidate_id, candidates!employees_candidate_id_fkey(id, first_name, last_name)), payrollers(id, name, legacy_key)')
         .eq('organization_id', orgId)
-        .order('start_date', { ascending: false });
+        // Vaste basisvolgorde: zonder id-tiebreak mag Postgres plaatsingen met dezelfde
+        // startdatum bij elke fetch anders teruggeven, en dan verspringen ze tussen pagina's.
+        .order('start_date', { ascending: false })
+        .order('id', { ascending: true });
       if (statusFilter !== 'all') q = q.eq('status', statusFilter);
       if (payrollerFilter !== 'all') q = q.eq('payroller_id', payrollerFilter);
       const { data, error } = await q;
@@ -80,10 +115,12 @@ export default function PlacementsPage() {
     const name = `${cand?.first_name ?? ''} ${cand?.last_name ?? ''}`.toLowerCase();
     return name.includes(s) || p.function_name?.toLowerCase().includes(s) || (p.companies as any)?.name?.toLowerCase().includes(s);
   });
-  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+  // Eerst de volledige gefilterde set sorteren, dan pas de pagina eruit snijden.
+  const sorted = useMemo(() => table.sortRows(filtered), [filtered, table.sortRows]);
+  const totalPages = Math.ceil(sorted.length / pageSize);
   const currentPage = totalPages > 0 ? Math.min(page, totalPages - 1) : 0;
-  const pageStart = currentPage * PAGE_SIZE;
-  const visiblePlacements = filtered.slice(pageStart, pageStart + PAGE_SIZE);
+  const pageStart = currentPage * pageSize;
+  const visiblePlacements = sorted.slice(pageStart, pageStart + pageSize);
 
   const now = new Date();
   const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
@@ -129,9 +166,9 @@ export default function PlacementsPage() {
       <div className="flex items-center gap-3 mb-4 flex-wrap">
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Zoek op naam, functie, bedrijf..." value={search} onChange={e => { setSearch(e.target.value); setPage(0); }} className="pl-9" />
+          <Input placeholder="Zoek op naam, functie, bedrijf..." value={search} onChange={e => { setSearch(e.target.value); resetPage(); }} className="pl-9" />
         </div>
-        <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v as PlacementStatus | 'all'); setPage(0); }}>
+        <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as PlacementStatus | 'all')}>
           <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Alle statussen</SelectItem>
@@ -141,7 +178,7 @@ export default function PlacementsPage() {
             <SelectItem value="voortijdig_beeindigd">Voortijdig beëindigd</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={payrollerFilter} onValueChange={(v) => { setPayrollerFilter(v); setPage(0); }}>
+        <Select value={payrollerFilter} onValueChange={(v) => { setPayrollerFilter(v); resetPage(); }}>
           <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Alle payrollers</SelectItem>
@@ -163,13 +200,13 @@ export default function PlacementsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Kandidaat</TableHead>
-                  <TableHead>Opdrachtgever</TableHead>
-                  <TableHead>Functie</TableHead>
-                  <TableHead>Payroller</TableHead>
-                  <TableHead>Periode</TableHead>
-                  <TableHead>Tarief</TableHead>
-                  <TableHead>Status</TableHead>
+                  <SortableTableHead column="candidate" sort={table.sort} onSort={table.toggleSort}>Kandidaat</SortableTableHead>
+                  <SortableTableHead column="company" sort={table.sort} onSort={table.toggleSort}>Opdrachtgever</SortableTableHead>
+                  <SortableTableHead column="function_name" sort={table.sort} onSort={table.toggleSort}>Functie</SortableTableHead>
+                  <SortableTableHead column="payroller" sort={table.sort} onSort={table.toggleSort}>Payroller</SortableTableHead>
+                  <SortableTableHead column="start_date" sort={table.sort} onSort={table.toggleSort}>Periode</SortableTableHead>
+                  <SortableTableHead column="rate" sort={table.sort} onSort={table.toggleSort}>Tarief</SortableTableHead>
+                  <SortableTableHead column="status" sort={table.sort} onSort={table.toggleSort}>Status</SortableTableHead>
                   {canDelete && <TableHead className="w-10"><span className="sr-only">Acties</span></TableHead>}
                 </TableRow>
               </TableHeader>
@@ -232,44 +269,18 @@ export default function PlacementsPage() {
         </CardContent>
       </Card>
 
-      {!isLoading && filtered.length > 0 && (
-        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      {!isLoading && sorted.length > 0 && (
+        <div className="mt-4 flex flex-col gap-3">
           <p className="text-sm text-muted-foreground">
-            Toon {pageStart + 1}-{Math.min(pageStart + PAGE_SIZE, filtered.length)} van {filtered.length} plaatsingen
+            Toon {pageStart + 1}-{Math.min(pageStart + pageSize, sorted.length)} van {sorted.length} plaatsingen
           </p>
-          {totalPages > 1 && (
-            <Pagination className="sm:justify-end">
-              <PaginationContent>
-                <PaginationItem>
-                  <PaginationPrevious
-                    onClick={() => setPage(Math.max(0, currentPage - 1))}
-                    className={currentPage === 0 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
-                  />
-                </PaginationItem>
-                {getPaginationRange(currentPage, totalPages).map((item, i) => (
-                  <PaginationItem key={`${item}-${i}`}>
-                    {typeof item === 'number' ? (
-                      <PaginationLink
-                        isActive={item === currentPage}
-                        onClick={() => setPage(item)}
-                        className="cursor-pointer"
-                      >
-                        {item + 1}
-                      </PaginationLink>
-                    ) : (
-                      <PaginationEllipsis />
-                    )}
-                  </PaginationItem>
-                ))}
-                <PaginationItem>
-                  <PaginationNext
-                    onClick={() => setPage(Math.min(totalPages - 1, currentPage + 1))}
-                    className={currentPage >= totalPages - 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
-                  />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
-          )}
+          <TablePagination
+            page={currentPage}
+            totalPages={totalPages}
+            onPageChange={table.setPage}
+            pageSize={pageSize}
+            onPageSizeChange={table.setPageSize}
+          />
         </div>
       )}
 

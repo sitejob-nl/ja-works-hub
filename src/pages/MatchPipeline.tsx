@@ -47,7 +47,7 @@ const PIPELINE_SCOPES: { key: PipelineScope; label: string }[] = [
   { key: 'all', label: 'Alles' },
 ];
 
-const MATCH_PIPELINE_PAGE_SIZE = 1000;
+const MATCH_PIPELINE_FETCH_CHUNK = 1000;
 const MATCH_PIPELINE_SELECT =
   '*, assignee:profiles!matches_assigned_to_fkey(id, full_name, email), candidates!matches_candidate_id_fkey(id, first_name, last_name, phone, phone_nl, email, compliance_status, portal_enabled, available_from, available_until, arrival_date, availability_notes, ai_analysis, ai_summary, ai_classification, ai_reliability_score, screening_data, screened_at, skills, certifications, languages, has_drivers_license, has_dutch_address, address_city), vacancies!inner(id, title, status, created_by, companies!vacancies_company_id_fkey(id, name, email))';
 
@@ -87,12 +87,12 @@ async function fetchAllMatchPipelineRows(orgId: string | null | undefined, pipel
   const rows: any[] = [];
 
   for (let page = 0; ; page += 1) {
-    const from = page * MATCH_PIPELINE_PAGE_SIZE;
-    const to = from + MATCH_PIPELINE_PAGE_SIZE - 1;
+    const from = page * MATCH_PIPELINE_FETCH_CHUNK;
+    const to = from + MATCH_PIPELINE_FETCH_CHUNK - 1;
     const pageRows = await fetchMatchPipelinePage(orgId, pipelineScope, from, to);
     rows.push(...pageRows);
 
-    if (pageRows.length < MATCH_PIPELINE_PAGE_SIZE) break;
+    if (pageRows.length < MATCH_PIPELINE_FETCH_CHUNK) break;
   }
 
   return rows;
