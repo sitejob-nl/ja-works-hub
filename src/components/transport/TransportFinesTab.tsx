@@ -2,11 +2,12 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { differenceInCalendarDays, parseISO } from 'date-fns';
-import { FileText, Pencil, Search, Upload } from 'lucide-react';
+import { FileText, Pencil, Search, Trash2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -14,8 +15,12 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
+import { unwrap, unwrapDeleted } from '@/lib/db';
+import { toFriendlyError } from '@/lib/errorMessages';
 import { formatDate, formatEUR } from '@/lib/format';
 import { logAudit } from '@/lib/audit';
+import { qk } from '@/lib/query-keys';
+import { deleteFineDescription, fineAuditValues, paidToggleCopy } from '@/lib/vehicle-fines';
 
 const NO_EMPLOYEE_VALUE = '__none__';
 
@@ -64,13 +69,15 @@ const TransportFinesTab = () => {
   const [editingFine, setEditingFine] = useState<any | null>(null);
   const [editForm, setEditForm] = useState(emptyEditForm);
   const [editFiles, setEditFiles] = useState<File[]>([]);
+  const [fineToDelete, setFineToDelete] = useState<any | null>(null);
+  const [fineToTogglePaid, setFineToTogglePaid] = useState<any | null>(null);
 
   const setEdit = (key: keyof typeof emptyEditForm, value: string) => {
     setEditForm((form) => ({ ...form, [key]: value }));
   };
 
   const { data: fines = [], isLoading } = useQuery({
-    queryKey: ['transport-fines'],
+    queryKey: qk.transport.allFines(),
     queryFn: async () => {
       const { data, error } = await supabase.from('vehicle_fines').select(`
         *,
@@ -161,18 +168,40 @@ const TransportFinesTab = () => {
 
   const paidMutation = useMutation({
     mutationFn: async ({ id, paid }: { id: string; paid: boolean }) => {
-      const { error } = await supabase.from('vehicle_fines').update({
+      await unwrap(supabase.from('vehicle_fines').update({
         paid,
         paid_at: paid ? new Date().toISOString() : null,
-      }).eq('id', id);
-      if (error) throw error;
+      }).eq('id', id));
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['transport-fines'] });
+      qc.invalidateQueries({ queryKey: qk.transport.allFines() });
       qc.invalidateQueries({ queryKey: ['vehicle-fines'] });
       toast.success('Betaalstatus bijgewerkt');
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => toast.error(toFriendlyError(e, 'Betaalstatus bijwerken mislukt')),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (fine: any) => {
+      // Eerst de rij, dan pas de foto's: raakt de delete 0 rijen (RLS weigert stil), dan
+      // zouden bij de omgekeerde volgorde de foto's weg zijn terwijl de boete blijft staan.
+      await unwrapDeleted(
+        supabase.from('vehicle_fines').delete().eq('id', fine.id),
+        'Deze boete kon niet worden verwijderd — je hebt hiervoor mogelijk beheerdersrechten nodig.',
+      );
+      if (fine.photos?.length > 0) {
+        await supabase.storage.from('documents').remove(fine.photos);
+      }
+      return fine;
+    },
+    onSuccess: (fine) => {
+      qc.invalidateQueries({ queryKey: qk.transport.allFines() });
+      qc.invalidateQueries({ queryKey: ['vehicle-fines'] });
+      logAudit({ action: 'delete', tableName: 'vehicle_fines', recordId: fine.id, oldValues: fineAuditValues(fine) });
+      toast.success('Boete verwijderd');
+      setFineToDelete(null);
+    },
+    onError: (e: any) => { toast.error(toFriendlyError(e, 'Verwijderen mislukt')); setFineToDelete(null); },
   });
 
   const updateMutation = useMutation({
@@ -209,7 +238,7 @@ const TransportFinesTab = () => {
       return editingFine.id;
     },
     onSuccess: (recordId) => {
-      qc.invalidateQueries({ queryKey: ['transport-fines'] });
+      qc.invalidateQueries({ queryKey: qk.transport.allFines() });
       qc.invalidateQueries({ queryKey: ['vehicle-fines'] });
       logAudit({ action: 'update', tableName: 'vehicle_fines', recordId });
       toast.success('Boete bijgewerkt');
@@ -254,6 +283,8 @@ const TransportFinesTab = () => {
       openAmount: open.reduce((sum: number, fine: any) => sum + Number(fine.amount ?? 0), 0),
     };
   }, [fines]);
+
+  const paidCopy = fineToTogglePaid ? paidToggleCopy(fineToTogglePaid) : null;
 
   return (
     <div className="space-y-4">
@@ -380,16 +411,27 @@ const TransportFinesTab = () => {
                     <Badge
                       variant="secondary"
                       className={`cursor-pointer ${fine.paid ? 'bg-stat-green/10 text-stat-green border-0' : 'bg-red-100 text-red-600 border-0'}`}
-                      onClick={() => paidMutation.mutate({ id: fine.id, paid: !fine.paid })}
+                      onClick={() => setFineToTogglePaid(fine)}
                     >
                       {fine.paid ? 'Betaald' : 'Niet betaald'}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button size="sm" variant="ghost" className="h-8 gap-1" onClick={() => openEdit(fine)}>
-                      <Pencil className="h-3.5 w-3.5" />
-                      Bewerken
-                    </Button>
+                    <div className="flex justify-end gap-1">
+                      <Button size="sm" variant="ghost" className="h-8 gap-1" onClick={() => openEdit(fine)}>
+                        <Pencil className="h-3.5 w-3.5" />
+                        Bewerken
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 gap-1 text-destructive hover:text-destructive"
+                        onClick={() => setFineToDelete(fine)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Verwijderen
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               );
@@ -499,6 +541,31 @@ const TransportFinesTab = () => {
           </div>
         </SheetContent>
       </Sheet>
+
+      <ConfirmDialog
+        open={!!fineToDelete}
+        onOpenChange={(o) => { if (!o) setFineToDelete(null); }}
+        title="Boete verwijderen?"
+        description={fineToDelete ? deleteFineDescription(fineToDelete) : undefined}
+        confirmLabel="Verwijderen"
+        pendingLabel="Verwijderen..."
+        pending={deleteMutation.isPending}
+        onConfirm={() => { if (fineToDelete) deleteMutation.mutate(fineToDelete); }}
+      />
+
+      {/* Betaalstatus: neutrale bevestiging zonder eigen laadstaat — de dialoog sluit direct, de toast meldt de uitkomst. */}
+      <ConfirmDialog
+        open={!!fineToTogglePaid}
+        onOpenChange={(o) => { if (!o) setFineToTogglePaid(null); }}
+        variant="default"
+        closeOnConfirm
+        title={paidCopy?.title ?? ''}
+        description={paidCopy?.description}
+        confirmLabel={paidCopy?.confirmLabel}
+        onConfirm={() => {
+          if (fineToTogglePaid) paidMutation.mutate({ id: fineToTogglePaid.id, paid: !fineToTogglePaid.paid });
+        }}
+      />
     </div>
   );
 };

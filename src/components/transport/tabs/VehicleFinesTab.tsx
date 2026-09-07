@@ -14,20 +14,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { toast } from 'sonner';
 import { formatDate, formatEUR } from '@/lib/format';
 import { toFriendlyError } from '@/lib/errorMessages';
 import { logAudit } from '@/lib/audit';
+import { deleteFineDescription, fineAuditValues, paidToggleCopy } from '@/lib/vehicle-fines';
 import { GuardedSheet, useDirtyForm } from '@/components/shared/UnsavedCloseGuard';
 import { differenceInCalendarDays, parseISO } from 'date-fns';
 import { EntityLink } from '@/components/ui/entity-link';
@@ -66,6 +58,7 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
   const [form, setForm, formDirty] = useDirtyForm(emptyFine);
   const [files, setFiles] = useState<File[]>([]);
   const [fineToDelete, setFineToDelete] = useState<any | null>(null);
+  const [fineToTogglePaid, setFineToTogglePaid] = useState<any | null>(null);
 
   // Backwards-compatible aliases for inline form-binding (less code churn)
   const fineDate = form.fine_date; const setFineDate = (v: string) => setForm(f => ({ ...f, fine_date: v }));
@@ -227,7 +220,12 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
     onSuccess: (fine) => {
       qc.invalidateQueries({ queryKey: qk.transport.fines(vehicle.id) });
       qc.invalidateQueries({ queryKey: qk.transport.allFines() });
-      logAudit({ action: 'delete', tableName: 'vehicle_fines', recordId: fine.id });
+      logAudit({
+        action: 'delete',
+        tableName: 'vehicle_fines',
+        recordId: fine.id,
+        oldValues: fineAuditValues(fine, vehicle.license_plate),
+      });
       toast.success('Boete verwijderd');
       setFineToDelete(null);
     },
@@ -246,8 +244,10 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
       qc.invalidateQueries({ queryKey: qk.transport.allFines() });
       toast.success('Betaalstatus bijgewerkt');
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => toast.error(toFriendlyError(e, 'Betaalstatus bijwerken mislukt')),
   });
+
+  const paidCopy = fineToTogglePaid ? paidToggleCopy(fineToTogglePaid, vehicle.license_plate) : null;
 
   return (
     <div className="space-y-4 mt-4">
@@ -326,7 +326,7 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
                     <Badge
                       variant="secondary"
                       className={`cursor-pointer ${f.paid ? 'bg-stat-green/10 text-stat-green border-0' : 'bg-red-100 text-red-600 border-0'}`}
-                      onClick={() => paidMutation.mutate({ id: f.id, paid: !f.paid })}
+                      onClick={() => setFineToTogglePaid(f)}
                     >
                       {f.paid ? 'Betaald' : 'Niet betaald'}
                     </Badge>
@@ -397,26 +397,30 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
         </SheetContent>
       </GuardedSheet>
 
-      <AlertDialog open={!!fineToDelete} onOpenChange={(o) => { if (!o) setFineToDelete(null); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Boete verwijderen?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Verwijdert de boete van {fineToDelete && formatDate(fineToDelete.fine_date)} ({fineToDelete && formatEUR(fineToDelete.amount)}). Deze actie kan niet ongedaan worden gemaakt.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Annuleren</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(e) => { e.preventDefault(); if (fineToDelete) deleteMutation.mutate(fineToDelete); }}
-              disabled={deleteMutation.isPending}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {deleteMutation.isPending ? 'Verwijderen...' : 'Verwijderen'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={!!fineToDelete}
+        onOpenChange={(o) => { if (!o) setFineToDelete(null); }}
+        title="Boete verwijderen?"
+        description={fineToDelete ? deleteFineDescription(fineToDelete, vehicle.license_plate) : undefined}
+        confirmLabel="Verwijderen"
+        pendingLabel="Verwijderen..."
+        pending={deleteMutation.isPending}
+        onConfirm={() => { if (fineToDelete) deleteMutation.mutate(fineToDelete); }}
+      />
+
+      {/* Betaalstatus: neutrale bevestiging zonder eigen laadstaat — de dialoog sluit direct, de toast meldt de uitkomst. */}
+      <ConfirmDialog
+        open={!!fineToTogglePaid}
+        onOpenChange={(o) => { if (!o) setFineToTogglePaid(null); }}
+        variant="default"
+        closeOnConfirm
+        title={paidCopy?.title ?? ''}
+        description={paidCopy?.description}
+        confirmLabel={paidCopy?.confirmLabel}
+        onConfirm={() => {
+          if (fineToTogglePaid) paidMutation.mutate({ id: fineToTogglePaid.id, paid: !fineToTogglePaid.paid });
+        }}
+      />
     </div>
   );
 };
