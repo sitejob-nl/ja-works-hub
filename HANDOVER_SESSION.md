@@ -35,13 +35,13 @@ projectsamenvatting.
   **Geen edge-function-deploy nodig.**
 - Verificatie: **157 echte PostgreSQL-tests** (`scripts/hours-workbook-db-test.py` — 12 nieuwe
   werkmapgevallen plus de volledige vrijgegeven pagina-/inname-/foundation-/classificatie-/poortregressies,
-  elf migraties elk tweemaal); **1.537 applicatietests**; lint 0 errors, typecheck en productiebuild groen.
+  elf migraties elk tweemaal); **1.538 applicatietests**; lint 0 errors, typecheck en productiebuild groen.
   De vrijgegeven harnassen zijn ongewijzigd gelaten; de nieuwe importeert `hours-pages-db-test.py` en
   overschrijft alleen de twee verwachtingen die echt bewogen (bucket-mediatypen, RPC-signaturen).
 - **JA Werkt blijft UIT, demo AAN** — vóór de migratie geverifieerd. Het geblokkeerde `QA_SUPERADMIN`-account
   is ongemoeid gelaten. Advisors na DDL: geen ERROR-bevindingen; de nieuwe RPC valt in dezelfde bewuste
   WARN-categorie "SECURITY DEFINER uitvoerbaar door authenticated" als alle bestaande urenfuncties.
-- **Zeven codereviewrondes vonden eenendertig echte defecten, allemaal gerepareerd** met een test die eerst
+- **Acht codereviewrondes vonden tweeëndertig echte defecten, allemaal gerepareerd** met een test die eerst
   rood stond. Ronde 1 (zeven): kolomkoppen op voorvoegsel matchen ("Aantal dagen" won het urentotaal, een
   1 werd een uur); een als tijd opgemaakte cel die als datum werd gelezen waardoor een heel lijstblad stil
   verdween; een tijd-nul zonder reden die de hele uitlezing liet weigeren; dubbele dagen die de server
@@ -76,7 +76,9 @@ projectsamenvatting.
   linkse stil winnen; een leeggelaten dag in een kruistabel verklaarde een weektotaalverschil zonder dat
   het scherm dat zei; boven vijfhonderd regels was er geen manier om in één keer uit te vinken; en een
   `.csv` glipt op Windows binnen als `application/vnd.ms-excel` — de bytes worden nu gecontroleerd vóór
-  opslag.
+  opslag. Ronde 8 (één): de herkenning van foutwaarden was te nauw — `#DIV/0!` bevat een cijfer en de
+  uitlezer levert `#ERROR_#DIV/0!` — waardoor die alsnog een reden voor "geen uren" werden. Dat geval
+  wordt nu door een echt bestand mét foutcel getest, niet door de tekst rechtstreeks in te voeren.
 - **Nog open:** verbonden demo-QA in de browser is voor dit ticket **niet** uitgevoerd — de vier
   `pages`-QA-weken staan klaar (`scripts/prepare-hours-pages-demo.mjs`, dezelfde `HOURS_PAGES_RUN_ID`
   hergebruiken). PR #266 (T2) moet nog gemerged worden vóór deze branch.

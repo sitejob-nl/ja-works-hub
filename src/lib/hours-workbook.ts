@@ -194,8 +194,12 @@ const ZERO_WITHOUT_REASON: HoursIssue = {
 /** Marks that a cell is empty in intent: a dash, a cross, a "not applicable". */
 const PLACEHOLDERS = ['-', '\u2013', '\u2014', 'x', '.', '/', '\\', 'nvt', 'n.v.t.', 'geen'];
 const isPlaceholder = (text: string): boolean => PLACEHOLDERS.includes(text.trim().toLowerCase());
-/** A cell a spreadsheet filled with its own failure says nothing about the work. */
-const isErrorValue = (text: string): boolean => /^#[A-Z_/]+[?!]?$/.test(text.trim().toUpperCase());
+/**
+ * A cell a spreadsheet filled with its own failure says nothing about the work.
+ * The shapes vary — `#N/A`, `#DIV/0!`, and read-excel-file's own `#ERROR_…` —
+ * so the leading hash is the signal; no delivered reason ever starts with one.
+ */
+const isErrorValue = (text: string): boolean => text.trim().startsWith('#');
 
 const asDuration = (minutes: number) => `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')}`;
 

@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HoursWeekSources } from '@/components/hours-workflow/HoursWeekSources';
 import type { HoursWeekView } from '@/components/hours-workflow/types';
-import { buildWorkbookFile, formatted, text } from './support/xlsx-workbook';
+import { buildWorkbookFile, error, formatted, text } from './support/xlsx-workbook';
 
 const { rpc, upload, createSignedUrl } = vi.hoisted(() => ({
   rpc: vi.fn(), upload: vi.fn(), createSignedUrl: vi.fn(),
@@ -209,5 +209,22 @@ describe('a file that only claims to be a workbook', () => {
 
     expect(await screen.findByText(/geen Excel-werkmap/i)).toBeInTheDocument();
     expect(upload).not.toHaveBeenCalled();
+  });
+});
+
+describe('a spreadsheet that failed its own sum', () => {
+  it('never reads an error cell as a claim that someone did not work', async () => {
+    serveWorkbook(buildWorkbookFile([{ name: 'Week 37', rows: [
+      [text('Naam'), text('Datum'), text('Uren')],
+      [text('Jan Kowalski'), text('07-09-2026'), error('#DIV/0!')],
+      [text('Ewa Nowak'), text('08-09-2026'), text('8:00')],
+    ] }]));
+    show();
+    fireEvent.click(await screen.findByRole('button', { name: 'Uitlezen' }));
+
+    const panel = await screen.findByRole('group', { name: 'Uitlezing van deze bron' });
+    expect(within(panel).getByRole('button', { name: '1 voorstel bewaren' })).toBeInTheDocument();
+    expect(within(panel).getByText(/foutwaarde van het rekenblad/i)).toBeInTheDocument();
+    expect(within(panel).queryByText(/Geen uren/)).not.toBeInTheDocument();
   });
 });

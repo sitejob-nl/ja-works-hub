@@ -6,7 +6,7 @@ import { crc32 } from 'node:zlib';
  * hide what a case actually contains.
  */
 export interface FixtureCell {
-  text?: string; number?: string; formula?: string;
+  text?: string; number?: string; formula?: string; error?: string;
   /** A number format code, e.g. 'h:mm' or '[h]:mm'; decides how a cell is stored. */
   format?: string;
 }
@@ -65,6 +65,7 @@ export function buildWorkbookFile(sheets: FixtureSheet[], options: { macros?: bo
       const cells = row.map((cell, columnIndex) => {
         const reference = `${columnName(columnIndex)}${rowIndex + 1}`;
         const style = cell.format ? ` s="${styleId(cell.format)}"` : '';
+        if (cell.error !== undefined) return `<c r="${reference}" t="e"><v>${xml(cell.error)}</v></c>`;
         if (cell.formula !== undefined) {
           // A formula with its stored result. A reader that executed formulas
           // would need a calculation engine; this one reads what was saved.
@@ -135,5 +136,7 @@ export function buildLegacyXlsFile(): ArrayBuffer {
 export const text = (value: string): FixtureCell => ({ text: value });
 export const empty = (): FixtureCell => ({});
 export const formula = (expression: string, storedResult: string): FixtureCell => ({ formula: expression, number: storedResult });
+/** A cell a spreadsheet filled with its own failure, e.g. '#DIV/0!' or '#N/A'. */
+export const error = (code: string): FixtureCell => ({ error: code });
 /** A serial number carrying a number format, the way a spreadsheet stores a duration. */
 export const formatted = (serial: string, format: string): FixtureCell => ({ number: serial, format });

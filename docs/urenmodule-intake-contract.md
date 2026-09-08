@@ -301,8 +301,8 @@ beoordeelde bron eist een pagina op elk nieuw voorstel, een tegensprekend pagina
   dezelfde aanlevering hetzelfde te zien krijgen.
 - **Een streepje of kruisje is geen reden.** `-`, `x`, `.` en `n.v.t.` in een urencel betekenen "hier staat
   niets"; die worden als overgeslagen regel benoemd en niet als reden voor "geen uren" overgenomen.
-  Hetzelfde geldt voor een foutwaarde van het rekenblad zelf (`#N/A`, `#REF!`, `#VALUE!`): die zegt niets
-  over de gewerkte tijd en wordt nooit de bewering dat iemand niet heeft gewerkt.
+  Hetzelfde geldt voor elke foutwaarde van het rekenblad zelf (`#N/A`, `#REF!`, `#DIV/0!` en varianten):
+  die zegt niets over de gewerkte tijd en wordt nooit de bewering dat iemand niet heeft gewerkt.
 - **Twee kolommen die dezelfde rol claimen maken het blad dubbelzinnig.** Staan er bijvoorbeeld zowel een
   "Totaal"- als een "Uren"-kolom, dan wordt er niet gekozen — dat zou een weektotaal als dagtotaal kunnen
   voorstellen — maar blokkeert de uitlezing net als bij een onbekende kop.
