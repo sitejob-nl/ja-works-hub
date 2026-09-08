@@ -13,6 +13,8 @@ projectsamenvatting.
 - Fundering is opgeslagen tot `47c408f`, draft PR #262; CI quality en Vercel preview geslaagd. Nog geen productiemigratie.
 - Afhankelijke matrixbouw: `/Users/kas/dev/ja-works-hub/.worktrees/urenmodule-matrix`, branch `codex/urenmodule-matrix`, vanaf `47c408f`. Matrixeditor, expliciete CAO-koppelingen, conceptpublicatie en immutable versies gebouwd. Opslag: 30 echte PG-tests + 85 pariteitsgevallen geslaagd; migratiehash `cee82deced978525e0d92544f6e8d25b027c0cc21e7a97ec97ecaffdd146a0fe`. Zie [matrixcontract](docs/urenmodule-matrix-contract.md). Eerst basiswijzigingen integreren vóór merge naar main.
 - Eerstvolgende implementatie is servermatige classificatie aan een exacte dagrevisie en matrixsnapshot, plus brongegevens voor diensten/categorieën. Huidige matrixpagina rekent alleen voorbeelden en schrijft geen urenindeling. Automatische inname, mailoutbox en payrollvrijgave blijven latere stappen.
+- Matrixcheckpoint `da7dbaa` staat als draft in PR #263 (base `codex/urenmodule-bouw`). Inclusief matrixbouw: 1.234 tests, typecheck, lint en build groen; 7 offline browsercontroles zonder API-aanroepen geslaagd.
+- De classificatiebouw start afhankelijk vanaf dit checkpoint in `/Users/kas/dev/ja-works-hub/.worktrees/urenmodule-classificatie`, branch `codex/urenmodule-classificatie`. Deze worktree bevat de actieve vervolgwijzigingen; niet opnieuw vanaf main beginnen.
 
 ## Correctie 2026-09-07 — vast AI-maandbudget (`codex/ai-monthly-budget-reset`)
 

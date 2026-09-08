@@ -6,6 +6,7 @@ base `aedc6dc` (PR #261). De bestaande dirty checkout blijft onaangeraakt.
 De fundering staat als draft in [PR #262](https://github.com/sitejob-nl/ja-works-hub/pull/262), met geslaagde CI.
 De afhankelijke matrixbouw staat in `/Users/kas/dev/ja-works-hub/.worktrees/urenmodule-matrix`, branch
 `codex/urenmodule-matrix`, vanaf fundering `47c408f`. Beide bouwstappen zijn nog niet naar productie uitgerold.
+Matrixcheckpoint `da7dbaa` staat in afhankelijke draft [PR #263](https://github.com/sitejob-nl/ja-works-hub/pull/263).
 
 Deze eerste bouwstap voert de handmatige weekcontrole uit de specificatie van 7 september uit.
 Het is de basis voor de volledige urenmodule; geen volledige oplevering of payrollpilot.
@@ -102,6 +103,10 @@ controle is geslaagd: 1.194 applicatietests, lint (nul errors), typecheck en pro
 De matrixopslag is aanvullend gecontroleerd met 30 echte PostgreSQL-tests en 85 validatiegevallen
 vergeleken met de gedeelde rekenkern. Beide migraties zijn tweemaal toegepast in een verse testdatabase.
 De matrixmigratie heeft SHA256 `cee82deced978525e0d92544f6e8d25b027c0cc21e7a97ec97ecaffdd146a0fe`.
+Inclusief de matrixbouw slagen 1.234 applicatietests, typecheck, lint (nul errors) en de productiebuild.
+Zeven offline browsercontroles toetsen de echte schermen met synthetische data op desktop en mobiel:
+conceptopslag, actuele publicatiebevestiging, historie, versieconflicten, leesrechten en CAO-koppeling.
+Er zijn geen API-aanroepen of browserfouten; Google Fonts is in deze controle geblokkeerd.
 
 Na verlies van de tijdelijke werkmap zijn de bestanden uit succesvolle sessie-edits hersteld in de
 vaste worktree en vastgelegd in Git. De migratiehash bleef exact
