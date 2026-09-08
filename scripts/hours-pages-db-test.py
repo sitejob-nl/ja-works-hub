@@ -247,14 +247,15 @@ class PageTests(intake.IntakeTests):
         member = week["members"][0]
         source, _ = self.add_source(pages=2)
         # Before any decision the page stays optional, exactly as released.
-        self.propose(source["source_id"], member["days"][0]["id"], page_number=None)
+        pageless = self.only_proposal(self.propose(source["source_id"], member["days"][0]["id"], page_number=None))
+        rpc("hours_discard_source_proposal", user=self.admin, p_proposal_id=pageless["id"], p_note=None)
         self.set_page(source["source_id"], 1, "unclear", note="Naam onleesbaar")
         self.reject("hours_create_source_proposal", code="22023", user=self.admin,
                     p_source_id=source["source_id"], p_day_id=member["days"][1]["id"], p_minutes=480,
                     p_no_hours_reason=None, p_note=None, p_source_input=None, p_page_label=None,
                     p_page_number=None, p_assignment_uncertain=False)
         forced = self.propose(source["source_id"], member["days"][1]["id"], page_number=1)
-        self.assertTrue(forced["sources"][0]["proposals"][1]["assignment_uncertain"])
+        self.assertTrue(forced["sources"][0]["proposals"][-1]["assignment_uncertain"])
 
     def test_confirming_cannot_route_around_a_page_that_names_someone_else(self):
         week = self.two_member_week()
@@ -286,6 +287,30 @@ class PageTests(intake.IntakeTests):
                     p_page_label=None, p_page_number=2001)
         self.reject("hours_set_source_page", code="22023", user=self.admin, p_source_id=source["source_id"],
                     p_page_number=2001, p_assignment="multiple", p_member_id=None, p_note=None)
+
+    def test_a_pageless_proposal_blocks_judging_the_source_by_page(self):
+        """Otherwise the very first decision leaves earlier proposals as a silent exception."""
+        week = self.two_member_week()
+        member = week["members"][0]
+        source, _ = self.add_source(pages=2)
+        proposal = self.only_proposal(self.propose(source["source_id"], member["days"][0]["id"], page_number=None))
+        self.reject("hours_set_source_page", code="22023", user=self.admin, p_source_id=source["source_id"],
+                    p_page_number=1, p_assignment="unclear", p_member_id=None, p_note=None)
+        self.assertEqual(self.count("hours_source_pages"), "0")
+        rpc("hours_discard_source_proposal", user=self.admin, p_proposal_id=proposal["id"], p_note=None)
+        judged = self.set_page(source["source_id"], 1, "unclear")
+        self.assertEqual(self.active_pages(judged)[0]["assignment"], "unclear")
+
+    def test_a_page_take_over_accepts_an_entry_without_source_details(self):
+        week = self.two_member_week()
+        member = week["members"][0]
+        source, _ = self.add_source(pages=1)
+        self.set_page(source["source_id"], 1, "single", member=member["id"])
+        sources = rpc("hours_create_page_proposals", user=self.admin, p_source_id=source["source_id"],
+                      p_page_number=1, p_entries=json.dumps([
+                          {"day_id": member["days"][0]["id"], "minutes": 480, "source_input": None}]))
+        self.assertEqual(len(sources["sources"][0]["proposals"]), 1)
+        self.assertIsNone(sources["sources"][0]["proposals"][0]["source_input"])
 
     def test_an_unclear_page_makes_every_proposal_on_it_undecided(self):
         week = self.two_member_week()
@@ -401,14 +426,22 @@ class PagesModuleGateTests(intake.IntakeModuleGateTests):
 
     def prepare_all(self):
         day, calls = intake.IntakeModuleGateTests.prepare_all(self)
-        source = sql(f"SELECT id FROM public.hours_week_sources WHERE week_id={literal(day['week_id'])} LIMIT 1;")
+        week_id = day["week_id"]
         member = sql(f"SELECT member_id FROM public.hours_days WHERE id={literal(day['id'])};")
+        # A source of its own: the released prepare leaves a page-less proposal on
+        # the first one, and judging a source by page requires those to be resolved.
+        marker = digest(f"gate-pages-{week_id}")
+        sql(f"""INSERT INTO storage.objects(bucket_id,name,metadata) VALUES ('hours-sources',
+          {literal(f"{self.org}/{week_id}/{marker}.pdf")},
+          jsonb_build_object('size',2048,'mimetype',{literal(PDF)}));""")
+        source = rpc("hours_add_week_source", user=self.admin, p_week_id=week_id, p_content_hash=marker,
+                     p_file_name="gate-pages.pdf", p_content_type=PDF, p_page_count=2)["source_id"]
         rpc("hours_set_source_page", user=self.admin, p_source_id=source, p_page_number=1,
             p_assignment="single", p_member_id=member, p_note=None)
-        uncertain = rpc("hours_create_source_proposal", user=self.admin, p_source_id=source,
-                        p_day_id=day["id"], p_minutes=360, p_no_hours_reason=None, p_note=None,
-                        p_source_input=None, p_page_label=None, p_page_number=1,
-                        p_assignment_uncertain=True)["sources"][0]["proposals"][-1]["id"]
+        uncertain = [proposal["id"] for proposal in rpc("hours_create_source_proposal", user=self.admin,
+                     p_source_id=source, p_day_id=day["id"], p_minutes=360, p_no_hours_reason=None,
+                     p_note=None, p_source_input=None, p_page_label=None, p_page_number=2,
+                     p_assignment_uncertain=True)["sources"][-1]["proposals"]][-1]
         calls.update({
             "hours_set_source_page": dict(p_source_id=source, p_page_number=1, p_assignment="multiple",
                                           p_member_id=None, p_note=None),
@@ -467,6 +500,7 @@ def main():
         "20260910090000_hours_source_pages_and_assignment.sql",
         "20260910100000_hours_page_decision_contradiction.sql",
         "20260910110000_hours_page_assignment_hardening.sql",
+        "20260910120000_hours_pageless_proposals_and_take_over.sql",
     )]
     fixtures = [ROOT / "tests/db/hours-workflow-fixture.sql", ROOT / "tests/db/hours-module-gate-fixture.sql",
                 ROOT / "tests/db/hours-intake-fixture.sql"]

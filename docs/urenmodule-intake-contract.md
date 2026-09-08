@@ -169,6 +169,10 @@ Bij die regel horen twee sluitstukken, want anders is hij om te lopen:
   bestaat, dus die blijft werken; maar een pagina die expliciet op een **andere** medewerker staat
   blokkeert de bevestiging (`22023`). Anders zou de volgorde "onduidelijk → voorstel → pagina op iemand
   anders → bevestigen" dezelfde tegenspraak alsnog binnenlaten.
+- **Het eerste paginabesluit op een bron eist dat openstaande voorstellen zónder pagina eerst zijn
+  afgehandeld** (`22023`). Vanaf dat moment vraagt de bron een pagina op elk nieuw voorstel; de oudere
+  paginaloze voorstellen zouden anders een uitzondering blijven die geen enkel besluit kan bereiken.
+  (`20260910120000`.)
 
 ### Een pagina in één handeling overnemen
 
@@ -234,13 +238,13 @@ Een medewerker ziet de bronherkomst van de eigen dag, maar:
 
 ## Verificatie
 
-- **137 echte PostgreSQL-tests** (`scripts/hours-pages-db-test.py`): 11 nieuwe paginagevallen plus de
+- **145 echte PostgreSQL-tests** (`scripts/hours-pages-db-test.py`): 19 nieuwe paginagevallen plus de
   volledige vrijgegeven inname-, foundation-, classificatie- en modulepoortregressies op het nieuwe
-  schema. Alle zeven migraties worden tweemaal toegepast. De poortcontrole is uitgebreid van vijftien
+  schema. Alle negen migraties worden tweemaal toegepast. De poortcontrole is uitgebreid van vijftien
   naar **zestien** tabellen en van de vijf inname-RPC's naar de acht van nu. De voorloper
   `scripts/hours-intake-db-test.py` blijft ongewijzigd; de nieuwe harness importeert hem.
 - **Applicatietests**: `src/test/hours-sources.test.ts` en `src/test/hours-week-sources-ui.test.tsx`;
-  totaal 1.469 groen, met lint (0 errors), typecheck en productiebuild.
+  totaal 1.472 groen, met lint (0 errors), typecheck en productiebuild.
 - **Verbonden demo-QA** (`scripts/e2e-hours-pages-demo.spec.ts` + `scripts/prepare-hours-pages-demo.mjs`):
   echte interne en medewerkerlogin tegen de live API, met een synthetische PDF van drie pagina's die de
   browser zelf telt, in een eigen QA-week met **twee** medewerkers. De run claimt bewust precies één

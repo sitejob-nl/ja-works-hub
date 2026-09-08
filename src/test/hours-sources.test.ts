@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   describeSourceReferences, formatSourceSize, hoursSourcePath, hoursSourceTypeError,
   parseWeekSources, proposalChanges, proposalIsBlocked, sourceOriginText, HOURS_SOURCE_MAX_BYTES,
+  type HoursSourceProposal,
 } from '@/lib/hours-sources';
 import type { HoursSourceInput } from '@/components/hours-workflow/hours-day-source';
 
@@ -133,7 +134,8 @@ describe('source pages and assignment', () => {
   });
   const proposal = (overrides: Record<string, unknown> = {}) => ({
     id: day('3'), day_id: day('4'), member_id: day('5'), work_date: '2026-09-07',
-    candidate_name: 'Testmedewerker', status: 'open', minutes: 480, no_hours_reason: null,
+    candidate_name: 'Testmedewerker', status: 'open' as HoursSourceProposal['status'],
+    minutes: 480, no_hours_reason: null,
     note: null, source_input: null, page_label: null, page_number: 1, assignment_uncertain: false,
     assignment_confirmed_at: null, assignment_note: null, applied_revision_id: null,
     applied_created_revision: null, resolution_note: null, resolved_at: null,
@@ -180,6 +182,10 @@ describe('source pages and assignment', () => {
       assignment_uncertain: true, assignment_confirmed_at: '2026-09-08T09:00:00Z',
     }))).toBe(false);
     expect(proposalIsBlocked(proposal())).toBe(false);
+    // A discarded proposal blocks nothing, matching the server's open-point count.
+    expect(proposalIsBlocked(proposal({
+      status: 'discarded' as HoursSourceProposal['status'], assignment_uncertain: true,
+    }))).toBe(false);
   });
 
   it('names the page a revision came from so the employee can find it back', () => {

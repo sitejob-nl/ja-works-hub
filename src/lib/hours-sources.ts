@@ -78,12 +78,13 @@ export interface HoursWeekSources {
 /**
  * A proposal whose employee was recorded as uncertain may not be applied before
  * a named internal user has confirmed who it is about. The server refuses it
- * too; this only keeps the screen from offering an act it would reject.
+ * too; this only keeps the screen from offering an act it would reject. A
+ * resolved proposal blocks nothing, matching the server-side open-point count.
  */
 export function proposalIsBlocked(
-  proposal: Pick<HoursSourceProposal, 'assignment_uncertain' | 'assignment_confirmed_at'>,
+  proposal: Pick<HoursSourceProposal, 'status' | 'assignment_uncertain' | 'assignment_confirmed_at'>,
 ): boolean {
-  return proposal.assignment_uncertain && !proposal.assignment_confirmed_at;
+  return proposal.status === 'open' && proposal.assignment_uncertain && !proposal.assignment_confirmed_at;
 }
 
 /** How a page decision reads on screen, in the language of the delivery. */

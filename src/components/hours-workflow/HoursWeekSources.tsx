@@ -79,6 +79,10 @@ function PageDecisionForm({ source, employees, existing, onCancel, onSubmit }: {
   const [note, setNote] = useState(existing?.note ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Recording a decision for a page that already has one replaces it. That is
+  // allowed, but never a surprise.
+  const replacing = existing ? null
+    : source.pages.find(item => String(item.page_number) === pageNumber.trim()) ?? null;
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -138,6 +142,11 @@ function PageDecisionForm({ source, employees, existing, onCancel, onSubmit }: {
         <Textarea id="page-note" rows={2} maxLength={2000} value={note} onChange={event => setNote(event.target.value)} />
       </div>
     </fieldset>
+    {replacing && <Alert><AlertDescription>
+      Pagina {replacing.page_number} heeft al een toewijzing: {HOURS_PAGE_ASSIGNMENT_LABELS[replacing.assignment]}
+      {replacing.candidate_name ? <>, <span data-no-translate="true">{replacing.candidate_name}</span></> : null}.
+      Opslaan vervangt die; de oude blijft als historie bewaard.
+    </AlertDescription></Alert>}
     {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
     <div className="flex flex-wrap gap-2">
       <Button type="submit" size="sm" disabled={busy}>{busy ? 'Opslaan…' : 'Toewijzing vastleggen'}</Button>

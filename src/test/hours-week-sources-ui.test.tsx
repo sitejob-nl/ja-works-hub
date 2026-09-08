@@ -230,6 +230,7 @@ describe('internal hours intake', () => {
 
   it('will not apply a proposal whose employee is still undecided, until someone confirms', async () => {
     const undecided = proposal({ assignment_uncertain: true });
+    // A discarded proposal keeps neither the badge nor the instruction.
     rpc.mockImplementation(async (name: string) => ok(name === 'hours_confirm_proposal_assignment'
       ? projection([proposal({ assignment_uncertain: true, assignment_confirmed_at: '2026-09-08T09:00:00Z',
                                assignment_note: 'Naam vergeleken met de plaatsingslijst' })])
@@ -308,6 +309,20 @@ describe('internal hours intake', () => {
     fireEvent.click(within(form).getByRole('button', { name: 'Voorstel bewaren' }));
     expect(await within(form).findByText(/uit welke pagina/)).toBeInTheDocument();
     expect(rpc).not.toHaveBeenCalledWith('hours_create_source_proposal', expect.anything());
+  });
+
+  it('says so before a new decision replaces the one a page already has', async () => {
+    const decided = {
+      id: '00000000-0000-4000-8000-00000000000c', page_number: 1, assignment: 'single',
+      member_id: memberId, candidate_name: 'Testmedewerker', note: null, created_at: '2026-09-08T08:10:00Z',
+    };
+    rpc.mockResolvedValue(ok(projection([], true, { pages: [decided] })));
+    show();
+    fireEvent.click(await screen.findByRole('button', { name: /Paginatoewijzing/ }));
+    const form = await screen.findByRole('form', { name: 'Paginatoewijzing vastleggen' });
+    expect(within(form).getByText(/Pagina 1 heeft al een toewijzing/)).toBeInTheDocument();
+    fireEvent.change(within(form).getByLabelText(/^Pagina/), { target: { value: '2' } });
+    expect(within(form).queryByText(/heeft al een toewijzing/)).not.toBeInTheDocument();
   });
 
   it('offers no one-click take-over for a page that carries several employees', async () => {
