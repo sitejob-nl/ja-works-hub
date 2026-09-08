@@ -4,7 +4,21 @@ Overdracht voor wie verdergaat (Codex / Claude Code). Lees [AGENTS.md](AGENTS.md
 commands, [CLAUDE.md](CLAUDE.md) voor de canonieke codebase-diepte, [HANDOVER.md](HANDOVER.md) voor de formele
 projectsamenvatting.
 
-## Bouw urenmodule — 8 september 2026
+## Actuele uitrol urenmodule — 8 september 2026
+
+- Kas vroeg echte demo-QA en een SaaS-schakelaar per organisatie. De nieuwe key is `uren-workflow`, afzonderlijk van legacy `uren`, standaard UIT. Zes nieuwe routes en beide toegangsknoppen zijn afgeschermd; alle 13 nieuwe tabellen en de interne/portal/service-RPC's controleren hetzelfde recht. Zie [modulecontract](docs/urenmodule-organization-gate.md).
+- Actieve worktree blijft `/Users/kas/dev/ja-works-hub/.worktrees/urenmodule-classificatie`, branch `codex/urenmodule-classificatie`. De oudere bouwsnapshots hieronder zijn historisch; de backend is inmiddels wel gedeployed.
+- Op 8 september zijn de vier urenmigraties atomisch toegepast met Supabase `apply_migration`; receipt `20260908101415_hours_workflow_guarded_initial_release`. Hun oorspronkelijke versies zijn in dezelfde transactie geregistreerd. `scripts/build-hours-initial-release.py` en de manifest/evidence bevatten bronhashes en uitrolinstellingen.
+- Live einddoel en geverifieerde huidige database-instelling: **JA Werkt UIT**, **Demo Uitzendbureau Showroom AAN**, andere drie organisaties UIT. JA Werkt is tijdens deze test niet aangezet. De bestaande urenregistratie blijft bestaan.
+- Edge `hours-classify-day` via CLI gedeployed met eigen sessievalidatie (`verify_jwt=false`). Live database-types via CLI gegenereerd (+999 regels voor de urenmodule); tijdelijke RPC-casts worden op de gegenereerde signatures aangesloten.
+- Predeploy: 1.402 applicatietests, lint 0 errors, typecheck/build/Deno geslaagd; **100 echte PostgreSQL-tests** (74 regressies +26 gategevallen), vier migraties tweemaal en finale gatehash `e0661385b35b39f72854e4144f94307813ff9dd46b9e7fda2a86c67362d0d14a`. Onafhankelijke securityreview en transactionele bundelreview GO.
+- Verbonden browser-QA loopt via echte interne en portal-login, localhost:8083 tegen de geverifieerde demo-tenant. Demo is een organisatie in hetzelfde Supabase-project, geen apart testproject. Alleen de synthetische opdrachtgever `Urenmodule QA 20260908-gate` en bijbehorende demo-plaatsing zijn toegevoegd.
+- **Open testafhankelijkheid:** opgeslagen `QA_SUPERADMIN` is bewust inactief en geblokkeerd. Tijdelijke activatie is aan Kas gevraagd, nog niet toegestaan; account niet wijzigen zonder antwoord. De businessflow kan met `HOURS_DEMO_SKIP_SUPERADMIN=1` door. Een latere `HOURS_DEMO_TOGGLE_ONLY=1` test gebruikt hetzelfde bewezen dossier.
+- **Tijdelijke demo-instelling:** uitgaande demo-mail/WhatsApp staan tijdens QA op pauze. Oorspronkelijke waarde false/false staat in het fixturebestand; herstel na QA met `scripts/prepare-hours-demo.mjs restore-communications` en `HOURS_DEMO_FIXTURE_PATH`. Geen echte berichten of betaalde AI-calls uitgevoerd.
+- Duurzame bewijsmap: `/Users/kas/.codex/visualizations/2026/09/07/01a07bd6-9fd4-7440-a463-9fc32ece3f91/JA-Werkt-urenmodule/bouw/`; onderdelen `module-gate-quality`, `module-gate-db-qa` en `demo-connected-qa`.
+- Frontendmerge/publicatie nog niet uitgevoerd. Publiceer de volledige bewaakte branch in één release; merge niet eerst de oudere ongegate foundation-PR. Resterende modulebouw (OCR/inname, mailprofielen/outbox, volledige weekregels, vrijgave/export) blijft open; dit is geen volledige klantoplevering.
+
+## Historische bouw urenmodule — 8 september 2026
 
 - Vaste worktree `/Users/kas/dev/ja-works-hub/.worktrees/urenmodule-bouw`, branch `codex/urenmodule-bouw`, vanaf `aedc6dc` (#261). Eerste codecheckpoint `3530bcd`.
 - Klantweken, handmatige dagrevisies, exacte medewerkerreacties, interne controle, Nederlandse deadlines, pure minuten-/matrixkern en mailplanningpreview gebouwd. Dit is een ontwikkelversie zonder vrijgave/export of automatische inname. Geen productieklanten geactiveerd en geen migratie gedeployed.

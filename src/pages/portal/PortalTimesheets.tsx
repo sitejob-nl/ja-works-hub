@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { usePortal } from '@/contexts/PortalContext';
+import { useHoursModuleAccess } from '@/hooks/useHoursModuleAccess';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -39,7 +40,8 @@ const statusLabel: Record<string, string> = {
 };
 
 const PortalTimesheets = () => {
-  const { employee } = usePortal();
+  const { employee, profile, session, loading: authLoading } = usePortal();
+  const hoursModule = useHoursModuleAccess({ organizationId: profile?.id === session?.user.id ? profile?.organization_id : null, userId: session?.user.id, zone: 'portal', loading: authLoading });
   const qc = useQueryClient();
   const employeeId = employee?.id;
   const orgId = employee?.organization_id;
@@ -192,12 +194,12 @@ const PortalTimesheets = () => {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 rounded-xl border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
+      {hoursModule.enabled && <div className="flex flex-col gap-3 rounded-xl border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm">Controleer de aangeleverde uren van je opdrachtgever per werkweek.</p>
         <Button asChild variant="outline" className="shrink-0">
           <Link to="/portaal/uren/weken">Uren controleren</Link>
         </Button>
-      </div>
+      </div>}
       {/* Week navigation */}
       <div className="bg-card rounded-xl border p-4">
         <div className="flex items-center justify-between">

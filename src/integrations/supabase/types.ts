@@ -4414,6 +4414,875 @@ export type Database = {
           },
         ]
       }
+      hours_company_cao_binding_history: {
+        Row: {
+          cao_matrix_id: string | null
+          company_id: string
+          created_at: string
+          created_by: string
+          id: string
+          organization_id: string
+          version: number
+        }
+        Insert: {
+          cao_matrix_id?: string | null
+          company_id: string
+          created_at?: string
+          created_by: string
+          id?: string
+          organization_id: string
+          version: number
+        }
+        Update: {
+          cao_matrix_id?: string | null
+          company_id?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          organization_id?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hours_company_cao_binding_his_cao_matrix_id_organization_i_fkey"
+            columns: ["cao_matrix_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "hours_matrices"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "hours_company_cao_binding_history_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_company_cao_binding_history_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_company_cao_binding_history_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hours_company_cao_bindings: {
+        Row: {
+          cao_matrix_id: string | null
+          company_id: string
+          organization_id: string
+          updated_at: string
+          updated_by: string
+          version: number
+        }
+        Insert: {
+          cao_matrix_id?: string | null
+          company_id: string
+          organization_id: string
+          updated_at?: string
+          updated_by: string
+          version: number
+        }
+        Update: {
+          cao_matrix_id?: string | null
+          company_id?: string
+          organization_id?: string
+          updated_at?: string
+          updated_by?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hours_company_cao_bindings_cao_matrix_id_organization_id_fkey"
+            columns: ["cao_matrix_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "hours_matrices"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "hours_company_cao_bindings_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: true
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_company_cao_bindings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_company_cao_bindings_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hours_company_settings: {
+        Row: {
+          company_id: string
+          confirmation_day_offset: number
+          confirmation_time: string
+          enabled: boolean
+          organization_id: string
+          submission_day_offset: number
+          submission_time: string
+          timezone: string
+          updated_at: string
+          updated_by: string
+          version: number
+        }
+        Insert: {
+          company_id: string
+          confirmation_day_offset?: number
+          confirmation_time?: string
+          enabled?: boolean
+          organization_id: string
+          submission_day_offset?: number
+          submission_time?: string
+          timezone?: string
+          updated_at?: string
+          updated_by: string
+          version?: number
+        }
+        Update: {
+          company_id?: string
+          confirmation_day_offset?: number
+          confirmation_time?: string
+          enabled?: boolean
+          organization_id?: string
+          submission_day_offset?: number
+          submission_time?: string
+          timezone?: string
+          updated_at?: string
+          updated_by?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hours_company_settings_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: true
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_company_settings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_company_settings_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hours_day_classifications: {
+        Row: {
+          allocations: Json
+          binding_snapshot: Json
+          context_hash: string
+          context_snapshot: Json
+          created_at: string
+          created_by: string
+          day_id: string
+          engine_version: string
+          id: string
+          input_snapshot: Json
+          issues: Json
+          matrix_name: string | null
+          matrix_scope: string | null
+          matrix_snapshot: Json | null
+          matrix_version_id: string | null
+          organization_id: string
+          original_matrix_snapshot: Json | null
+          result: Json
+          revision_id: string
+          status: string
+        }
+        Insert: {
+          allocations: Json
+          binding_snapshot: Json
+          context_hash: string
+          context_snapshot: Json
+          created_at?: string
+          created_by: string
+          day_id: string
+          engine_version: string
+          id?: string
+          input_snapshot: Json
+          issues: Json
+          matrix_name?: string | null
+          matrix_scope?: string | null
+          matrix_snapshot?: Json | null
+          matrix_version_id?: string | null
+          organization_id: string
+          original_matrix_snapshot?: Json | null
+          result: Json
+          revision_id: string
+          status: string
+        }
+        Update: {
+          allocations?: Json
+          binding_snapshot?: Json
+          context_hash?: string
+          context_snapshot?: Json
+          created_at?: string
+          created_by?: string
+          day_id?: string
+          engine_version?: string
+          id?: string
+          input_snapshot?: Json
+          issues?: Json
+          matrix_name?: string | null
+          matrix_scope?: string | null
+          matrix_snapshot?: Json | null
+          matrix_version_id?: string | null
+          organization_id?: string
+          original_matrix_snapshot?: Json | null
+          result?: Json
+          revision_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hours_day_classifications_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_day_classifications_matrix_version_id_fkey"
+            columns: ["matrix_version_id"]
+            isOneToOne: false
+            referencedRelation: "hours_matrix_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_day_classifications_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_day_classifications_revision_id_day_id_organization__fkey"
+            columns: ["revision_id", "day_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "hours_day_revisions"
+            referencedColumns: ["id", "day_id", "organization_id"]
+          },
+        ]
+      }
+      hours_day_confirmations: {
+        Row: {
+          created_at: string
+          created_by: string
+          day_id: string
+          decision: string
+          id: string
+          note: string | null
+          organization_id: string
+          revision_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          day_id: string
+          decision: string
+          id?: string
+          note?: string | null
+          organization_id: string
+          revision_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          day_id?: string
+          decision?: string
+          id?: string
+          note?: string | null
+          organization_id?: string
+          revision_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hours_day_confirmations_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_day_confirmations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_day_confirmations_revision_id_day_id_organization_id_fkey"
+            columns: ["revision_id", "day_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "hours_day_revisions"
+            referencedColumns: ["id", "day_id", "organization_id"]
+          },
+        ]
+      }
+      hours_day_matrix_basis: {
+        Row: {
+          binding_snapshot: Json
+          created_at: string
+          created_by: string
+          day_id: string
+          definition: Json
+          first_revision_id: string
+          matrix_id: string
+          matrix_name: string
+          matrix_version_id: string
+          organization_id: string
+          original_definition: Json
+          scope: string
+          selection_snapshot: Json
+        }
+        Insert: {
+          binding_snapshot: Json
+          created_at?: string
+          created_by: string
+          day_id: string
+          definition: Json
+          first_revision_id: string
+          matrix_id: string
+          matrix_name: string
+          matrix_version_id: string
+          organization_id: string
+          original_definition: Json
+          scope: string
+          selection_snapshot: Json
+        }
+        Update: {
+          binding_snapshot?: Json
+          created_at?: string
+          created_by?: string
+          day_id?: string
+          definition?: Json
+          first_revision_id?: string
+          matrix_id?: string
+          matrix_name?: string
+          matrix_version_id?: string
+          organization_id?: string
+          original_definition?: Json
+          scope?: string
+          selection_snapshot?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hours_day_matrix_basis_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_day_matrix_basis_day_id_organization_id_fkey"
+            columns: ["day_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "hours_days"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "hours_day_matrix_basis_first_revision_id_day_id_organizati_fkey"
+            columns: ["first_revision_id", "day_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "hours_day_revisions"
+            referencedColumns: ["id", "day_id", "organization_id"]
+          },
+          {
+            foreignKeyName: "hours_day_matrix_basis_matrix_id_organization_id_fkey"
+            columns: ["matrix_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "hours_matrices"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "hours_day_matrix_basis_matrix_version_id_fkey"
+            columns: ["matrix_version_id"]
+            isOneToOne: false
+            referencedRelation: "hours_matrix_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_day_matrix_basis_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hours_day_reviews: {
+        Row: {
+          created_at: string
+          created_by: string
+          day_id: string
+          id: string
+          note: string | null
+          organization_id: string
+          revision_id: string
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          day_id: string
+          id?: string
+          note?: string | null
+          organization_id: string
+          revision_id: string
+          status: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          day_id?: string
+          id?: string
+          note?: string | null
+          organization_id?: string
+          revision_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hours_day_reviews_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_day_reviews_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_day_reviews_revision_id_day_id_organization_id_fkey"
+            columns: ["revision_id", "day_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "hours_day_revisions"
+            referencedColumns: ["id", "day_id", "organization_id"]
+          },
+        ]
+      }
+      hours_day_revisions: {
+        Row: {
+          created_at: string
+          created_by: string
+          day_id: string
+          id: string
+          minutes: number
+          no_hours_reason: string | null
+          note: string | null
+          organization_id: string
+          revision_number: number
+          source_input: Json | null
+          source_references: Json
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          day_id: string
+          id?: string
+          minutes: number
+          no_hours_reason?: string | null
+          note?: string | null
+          organization_id: string
+          revision_number: number
+          source_input?: Json | null
+          source_references: Json
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          day_id?: string
+          id?: string
+          minutes?: number
+          no_hours_reason?: string | null
+          note?: string | null
+          organization_id?: string
+          revision_number?: number
+          source_input?: Json | null
+          source_references?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hours_day_revisions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_day_revisions_day_id_organization_id_fkey"
+            columns: ["day_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "hours_days"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "hours_day_revisions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hours_days: {
+        Row: {
+          current_revision_id: string | null
+          id: string
+          member_id: string
+          organization_id: string
+          week_id: string
+          work_date: string
+        }
+        Insert: {
+          current_revision_id?: string | null
+          id?: string
+          member_id: string
+          organization_id: string
+          week_id: string
+          work_date: string
+        }
+        Update: {
+          current_revision_id?: string | null
+          id?: string
+          member_id?: string
+          organization_id?: string
+          week_id?: string
+          work_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hours_days_current_revision_fk"
+            columns: ["id", "current_revision_id"]
+            isOneToOne: false
+            referencedRelation: "hours_day_revisions"
+            referencedColumns: ["day_id", "id"]
+          },
+          {
+            foreignKeyName: "hours_days_member_id_week_id_organization_id_fkey"
+            columns: ["member_id", "week_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "hours_week_members"
+            referencedColumns: ["id", "week_id", "organization_id"]
+          },
+          {
+            foreignKeyName: "hours_days_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hours_matrices: {
+        Row: {
+          company_id: string | null
+          created_at: string
+          created_by: string
+          id: string
+          name: string
+          organization_id: string
+          scope: string
+        }
+        Insert: {
+          company_id?: string | null
+          created_at?: string
+          created_by: string
+          id?: string
+          name: string
+          organization_id: string
+          scope: string
+        }
+        Update: {
+          company_id?: string | null
+          created_at?: string
+          created_by?: string
+          id?: string
+          name?: string
+          organization_id?: string
+          scope?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hours_matrices_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: true
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_matrices_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_matrices_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hours_matrix_versions: {
+        Row: {
+          config: Json
+          created_at: string
+          created_by: string
+          id: string
+          matrix_id: string
+          organization_id: string
+          published_at: string | null
+          published_by: string | null
+          revision: number
+          status: string
+          updated_at: string
+          updated_by: string
+          valid_from: string
+          valid_until: string | null
+          version_number: number
+        }
+        Insert: {
+          config: Json
+          created_at?: string
+          created_by: string
+          id?: string
+          matrix_id: string
+          organization_id: string
+          published_at?: string | null
+          published_by?: string | null
+          revision?: number
+          status?: string
+          updated_at?: string
+          updated_by: string
+          valid_from: string
+          valid_until?: string | null
+          version_number: number
+        }
+        Update: {
+          config?: Json
+          created_at?: string
+          created_by?: string
+          id?: string
+          matrix_id?: string
+          organization_id?: string
+          published_at?: string | null
+          published_by?: string | null
+          revision?: number
+          status?: string
+          updated_at?: string
+          updated_by?: string
+          valid_from?: string
+          valid_until?: string | null
+          version_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hours_matrix_versions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_matrix_versions_matrix_id_organization_id_fkey"
+            columns: ["matrix_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "hours_matrices"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "hours_matrix_versions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_matrix_versions_published_by_fkey"
+            columns: ["published_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_matrix_versions_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hours_week_members: {
+        Row: {
+          candidate_id: string
+          candidate_name: string
+          created_at: string
+          end_date: string
+          id: string
+          organization_id: string
+          placement_id: string
+          placement_snapshot: Json
+          start_date: string
+          week_id: string
+        }
+        Insert: {
+          candidate_id: string
+          candidate_name: string
+          created_at?: string
+          end_date: string
+          id?: string
+          organization_id: string
+          placement_id: string
+          placement_snapshot: Json
+          start_date: string
+          week_id: string
+        }
+        Update: {
+          candidate_id?: string
+          candidate_name?: string
+          created_at?: string
+          end_date?: string
+          id?: string
+          organization_id?: string
+          placement_id?: string
+          placement_snapshot?: Json
+          start_date?: string
+          week_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hours_week_members_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_week_members_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_week_members_placement_id_fkey"
+            columns: ["placement_id"]
+            isOneToOne: false
+            referencedRelation: "placements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_week_members_placement_id_fkey"
+            columns: ["placement_id"]
+            isOneToOne: false
+            referencedRelation: "v_active_placements"
+            referencedColumns: ["placement_id"]
+          },
+          {
+            foreignKeyName: "hours_week_members_week_id_organization_id_fkey"
+            columns: ["week_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "hours_weeks"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
+      }
+      hours_weeks: {
+        Row: {
+          company_id: string
+          company_name: string
+          confirmation_deadline_at: string
+          created_at: string
+          created_by: string
+          id: string
+          organization_id: string
+          settings_snapshot: Json
+          submission_deadline_at: string
+          week_start: string
+        }
+        Insert: {
+          company_id: string
+          company_name: string
+          confirmation_deadline_at: string
+          created_at?: string
+          created_by: string
+          id?: string
+          organization_id: string
+          settings_snapshot: Json
+          submission_deadline_at: string
+          week_start: string
+        }
+        Update: {
+          company_id?: string
+          company_name?: string
+          confirmation_deadline_at?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          organization_id?: string
+          settings_snapshot?: Json
+          submission_deadline_at?: string
+          week_start?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hours_weeks_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_weeks_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_weeks_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       housing_assignments: {
         Row: {
           candidate_id: string | null
@@ -10885,6 +11754,132 @@ export type Database = {
         Returns: Json
       }
       has_role_permission: { Args: { p_permission: string }; Returns: boolean }
+      hours_confirm_day: {
+        Args: {
+          p_day_id: string
+          p_decision: string
+          p_expected_revision_id: string
+          p_note: string
+        }
+        Returns: Json
+      }
+      hours_confirm_days: {
+        Args: { p_note: string; p_revisions: Json; p_week_id: string }
+        Returns: Json
+      }
+      hours_create_matrix: {
+        Args: { p_company_id: string; p_name: string; p_scope: string }
+        Returns: Json
+      }
+      hours_create_matrix_draft: {
+        Args: {
+          p_config: Json
+          p_matrix_id: string
+          p_valid_from: string
+          p_valid_until: string
+        }
+        Returns: Json
+      }
+      hours_create_week: {
+        Args: { p_company_id: string; p_week_start: string }
+        Returns: Json
+      }
+      hours_finalize_day_classification: {
+        Args: {
+          p_actor_id: string
+          p_day_id: string
+          p_engine_version: string
+          p_expected_context_hash: string
+          p_expected_revision_id: string
+          p_result: Json
+        }
+        Returns: Json
+      }
+      hours_get_company_matrix_binding: {
+        Args: { p_company_id: string }
+        Returns: Json
+      }
+      hours_get_company_settings: {
+        Args: { p_company_id: string }
+        Returns: Json
+      }
+      hours_get_day_classification_context: {
+        Args: { p_day_id: string; p_expected_revision_id: string }
+        Returns: Json
+      }
+      hours_get_matrix: { Args: { p_matrix_id: string }; Returns: Json }
+      hours_get_module_access: { Args: never; Returns: Json }
+      hours_get_week: { Args: { p_week_id: string }; Returns: Json }
+      hours_list_matrices: { Args: { p_company_id?: string }; Returns: Json }
+      hours_list_weeks: { Args: { p_week_start?: string }; Returns: Json }
+      hours_publish_matrix_version: {
+        Args: {
+          p_confirmed: boolean
+          p_expected_revision: number
+          p_version_id: string
+        }
+        Returns: Json
+      }
+      hours_review_day: {
+        Args: {
+          p_day_id: string
+          p_expected_revision_id: string
+          p_note: string
+          p_status: string
+        }
+        Returns: Json
+      }
+      hours_save_day: {
+        Args: {
+          p_day_id: string
+          p_expected_revision_id: string
+          p_minutes: number
+          p_no_hours_reason: string
+          p_note: string
+        }
+        Returns: Json
+      }
+      hours_save_day_source: {
+        Args: {
+          p_day_id: string
+          p_expected_revision_id: string
+          p_minutes: number
+          p_no_hours_reason: string
+          p_note: string
+          p_source_input: Json
+        }
+        Returns: Json
+      }
+      hours_save_matrix_draft: {
+        Args: {
+          p_config: Json
+          p_expected_revision: number
+          p_valid_from: string
+          p_valid_until: string
+          p_version_id: string
+        }
+        Returns: Json
+      }
+      hours_set_company_matrix_binding: {
+        Args: {
+          p_cao_matrix_id: string
+          p_company_id: string
+          p_expected_version: number
+        }
+        Returns: Json
+      }
+      hours_set_company_settings: {
+        Args: {
+          p_company_id: string
+          p_confirmation_day_offset: number
+          p_confirmation_time: string
+          p_enabled: boolean
+          p_expected_version: number
+          p_submission_day_offset: number
+          p_submission_time: string
+        }
+        Returns: Json
+      }
       is_employee_user: { Args: never; Returns: boolean }
       is_facility_user: { Args: never; Returns: boolean }
       is_internal_user: { Args: never; Returns: boolean }
@@ -11025,6 +12020,10 @@ export type Database = {
           role: Database["public"]["Enums"]["user_role"]
           updated_at: string
         }[]
+      }
+      sa_set_hours_workflow_enabled: {
+        Args: { p_enabled: boolean; p_organization_id: string }
+        Returns: Json
       }
       sa_update_org_active: {
         Args: { active: boolean; org_uuid: string }

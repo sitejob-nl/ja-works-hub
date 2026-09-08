@@ -1,33 +1,29 @@
-import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
 import { unwrap } from '@/lib/db';
 import type { HoursSourceInput } from '@/components/hours-workflow/hours-day-source';
 
 /**
- * Explicit boundary for the additive, not-yet-deployed workflow RPCs. The existing
- * generated database types describe production and remain untouched. Regenerate
- * them after deploying the migration, before merging/activating these routes.
- * Inputs are typed here; every read result is parsed with Zod by the caller.
+ * Domain arguments refine the generated database signatures; the typed Supabase
+ * client checks every RPC call. Every read result is parsed with Zod by the caller.
  */
+type RpcArgs<Name extends keyof Database['public']['Functions']> = Database['public']['Functions'][Name]['Args'];
+
 interface HoursRpcArguments {
-  hours_list_weeks: { p_week_start: string | null };
-  hours_get_week: { p_week_id: string };
-  hours_get_company_settings: { p_company_id: string };
-  hours_create_week: { p_company_id: string; p_week_start: string };
-  hours_set_company_settings: {
-    p_company_id: string; p_expected_version: number; p_enabled: boolean;
-    p_submission_day_offset: number; p_submission_time: string;
-    p_confirmation_day_offset: number; p_confirmation_time: string;
-  };
-  hours_save_day: { p_day_id: string; p_expected_revision_id: string | null; p_minutes: number; p_no_hours_reason: string | null; p_note: string | null };
-  hours_save_day_source: { p_day_id: string; p_expected_revision_id: string | null; p_minutes: number; p_no_hours_reason: string | null; p_note: string | null; p_source_input: HoursSourceInput | null };
-  hours_confirm_day: { p_day_id: string; p_expected_revision_id: string; p_decision: 'confirmed' | 'disputed'; p_note: string | null };
-  hours_confirm_days: { p_week_id: string; p_revisions: { day_id: string; revision_id: string }[]; p_note: string | null };
-  hours_review_day: { p_day_id: string; p_expected_revision_id: string; p_status: 'checked' | 'blocked'; p_note: string | null };
+  hours_list_weeks: Required<RpcArgs<'hours_list_weeks'>>;
+  hours_get_week: RpcArgs<'hours_get_week'>;
+  hours_get_company_settings: RpcArgs<'hours_get_company_settings'>;
+  hours_create_week: RpcArgs<'hours_create_week'>;
+  hours_set_company_settings: RpcArgs<'hours_set_company_settings'>;
+  hours_save_day: RpcArgs<'hours_save_day'>;
+  hours_save_day_source: Omit<RpcArgs<'hours_save_day_source'>, 'p_source_input'> & { p_source_input: HoursSourceInput | null };
+  hours_confirm_day: RpcArgs<'hours_confirm_day'> & { p_decision: 'confirmed' | 'disputed' };
+  hours_confirm_days: Omit<RpcArgs<'hours_confirm_days'>, 'p_revisions'> & { p_revisions: { day_id: string; revision_id: string }[] };
+  hours_review_day: RpcArgs<'hours_review_day'> & { p_status: 'checked' | 'blocked' };
 }
 
 export async function hoursWorkflowRpc<K extends keyof HoursRpcArguments>(name: K, args: HoursRpcArguments[K]): Promise<unknown> {
-  return unwrap((supabase as SupabaseClient).rpc(name, args));
+  return unwrap(supabase.rpc(name, args));
 }
 
 /** The server reads all facts and matrices; the browser sends identifiers only. */

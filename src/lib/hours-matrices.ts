@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '@/integrations/supabase/types';
 import { supabase } from '@/integrations/supabase/client';
 import { unwrap } from '@/lib/db';
 import { toFriendlyError } from '@/lib/errorMessages';
@@ -41,20 +41,22 @@ export type MatrixDraftInput = { validFrom: string; validUntil: string | null; c
 export const matrixBindingSchema = z.object({ company_id: z.string().uuid(), version: z.number().int(), cao_matrix_id: z.string().uuid().nullable(), can_manage: z.boolean() });
 export type MatrixBinding = z.infer<typeof matrixBindingSchema>;
 
+type RpcArgs<Name extends keyof Database['public']['Functions']> = Database['public']['Functions'][Name]['Args'];
+
 interface MatrixRpcArguments {
-  hours_list_matrices: { p_company_id: string | null };
-  hours_get_matrix: { p_matrix_id: string };
-  hours_create_matrix: { p_scope: 'client' | 'cao'; p_company_id: string | null; p_name: string };
-  hours_create_matrix_draft: { p_matrix_id: string; p_valid_from: string; p_valid_until: string | null; p_config: MatrixConfig };
-  hours_save_matrix_draft: { p_version_id: string; p_expected_revision: number; p_valid_from: string; p_valid_until: string | null; p_config: MatrixConfig };
-  hours_publish_matrix_version: { p_version_id: string; p_expected_revision: number; p_confirmed: boolean };
-  hours_get_company_matrix_binding: { p_company_id: string };
-  hours_set_company_matrix_binding: { p_company_id: string; p_expected_version: number; p_cao_matrix_id: string | null };
+  hours_list_matrices: Required<RpcArgs<'hours_list_matrices'>>;
+  hours_get_matrix: RpcArgs<'hours_get_matrix'>;
+  hours_create_matrix: RpcArgs<'hours_create_matrix'> & { p_scope: 'client' | 'cao' };
+  hours_create_matrix_draft: RpcArgs<'hours_create_matrix_draft'> & { p_config: MatrixConfig };
+  hours_save_matrix_draft: RpcArgs<'hours_save_matrix_draft'> & { p_config: MatrixConfig };
+  hours_publish_matrix_version: RpcArgs<'hours_publish_matrix_version'>;
+  hours_get_company_matrix_binding: RpcArgs<'hours_get_company_matrix_binding'>;
+  hours_set_company_matrix_binding: RpcArgs<'hours_set_company_matrix_binding'>;
 }
 
-/** Additive RPC boundary until the migration is deployed and production types regenerated. */
+/** Domain arguments refine the generated signatures; reads still pass through Zod. */
 export async function hoursMatrixRpc<K extends keyof MatrixRpcArguments>(name: K, args: MatrixRpcArguments[K]): Promise<unknown> {
-  return unwrap((supabase as SupabaseClient).rpc(name, args));
+  return unwrap(supabase.rpc(name, args));
 }
 
 export function configFromDefinition(definition: z.infer<typeof matrixDefinitionSchema>): MatrixConfig {

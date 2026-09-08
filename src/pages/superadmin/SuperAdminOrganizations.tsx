@@ -11,9 +11,21 @@ import { toast } from 'sonner';
 import { Building2, Search, Settings2, Wallet } from 'lucide-react';
 import AiCreditsPanel from '@/components/settings/AiCreditsPanel';
 import { useAiCreditOrganizationBalances } from '@/hooks/useAiCredits';
+import { useSuperAdmin } from '@/contexts/SuperAdminContext';
+import { HOURS_WORKFLOW_MODULE, setHoursWorkflowEnabled } from '@/hooks/useHoursModuleAccess';
+import { qk } from '@/lib/query-keys';
+import { unwrap } from '@/lib/db';
+import { toFriendlyError } from '@/lib/errorMessages';
+import { z } from 'zod';
 
 const formatEuro = (cents: number) =>
   (cents / 100).toLocaleString('nl-NL', { style: 'currency', currency: 'EUR' });
+
+const organizationModulesSchema = z.array(z.object({
+  organization_id: z.string().uuid(),
+  module_name: z.string(),
+  enabled: z.boolean().nullable(),
+}));
 
 const ALL_MODULES = [
   { key: 'workbench', label: 'Workbench', group: 'Kern' },
@@ -23,6 +35,7 @@ const ALL_MODULES = [
   { key: 'vacatures', label: 'Vacatures', group: 'Kern' },
   { key: 'planning', label: 'Planning', group: 'Kern' },
   { key: 'uren', label: 'Uren', group: 'Kern' },
+  { key: HOURS_WORKFLOW_MODULE, label: 'Urenmodule — weekcontrole en matrices', group: 'Kern' },
   { key: 'huisvesting', label: 'Huisvesting', group: 'Vastgoed & Fleet' },
   { key: 'transport', label: 'Transport', group: 'Vastgoed & Fleet' },
   { key: 'tankpas-analyse', label: 'Tankpas analyse', group: 'Vastgoed & Fleet' },
@@ -45,6 +58,7 @@ const SuperAdminOrganizations = () => {
   const [selectedOrg, setSelectedOrg] = useState<any>(null);
   const [creditsOrg, setCreditsOrg] = useState<any>(null);
   const queryClient = useQueryClient();
+  const { user, isSuperAdmin, loading: authLoading } = useSuperAdmin();
 
   const { data: orgs, isLoading } = useQuery({
     queryKey: ['sa-orgs'],
@@ -64,15 +78,17 @@ const SuperAdminOrganizations = () => {
     },
   });
 
-  const { data: orgModules } = useQuery({
-    queryKey: ['sa-org-modules', selectedOrg?.id],
-    enabled: !!selectedOrg,
+  const modules = useQuery({
+    queryKey: qk.hoursModule.adminModules(user?.id ?? '', selectedOrg?.id ?? ''),
+    enabled: !!selectedOrg && !!user && isSuperAdmin && !authLoading,
+    retry: false,
+    refetchOnMount: 'always',
     queryFn: async () => {
-      const { data, error } = await supabase
+      const data = organizationModulesSchema.parse(await unwrap(supabase
         .from('organization_modules')
-        .select('*')
-        .eq('organization_id', selectedOrg.id);
-      if (error) throw error;
+        .select('organization_id,module_name,enabled')
+        .eq('organization_id', selectedOrg.id)));
+      if (data.some(module => module.organization_id !== selectedOrg.id)) throw new Error('De modules horen niet bij deze organisatie.');
       return data;
     },
   });
@@ -103,18 +119,25 @@ const SuperAdminOrganizations = () => {
 
   const toggleModule = useMutation({
     mutationFn: async ({ orgId, moduleName, enabled }: { orgId: string; moduleName: string; enabled: boolean }) => {
-      const { error } = await supabase
+      if (moduleName === HOURS_WORKFLOW_MODULE) {
+        await setHoursWorkflowEnabled(orgId, enabled);
+        return;
+      }
+      await unwrap(supabase
         .from('organization_modules')
         .upsert(
           { organization_id: orgId, module_name: moduleName, enabled },
           { onConflict: 'organization_id,module_name' }
-        );
-      if (error) throw error;
+        ));
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['sa-org-modules'] });
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: qk.hoursModule.adminAll() }),
+        queryClient.invalidateQueries({ queryKey: qk.hoursModule.all() }),
+      ]);
       toast.success('Module bijgewerkt');
     },
+    onError: error => toast.error(toFriendlyError(error)),
   });
 
   const filtered = orgs?.filter(o =>
@@ -123,8 +146,11 @@ const SuperAdminOrganizations = () => {
   ) ?? [];
 
   const getModuleEnabled = (moduleName: string): boolean => {
-    const override = orgModules?.find(m => m.module_name === moduleName);
-    if (override) return override.enabled;
+    const override = modules.data?.find(m => m.module_name === moduleName && m.organization_id === selectedOrg?.id);
+    if (moduleName === HOURS_WORKFLOW_MODULE) {
+      return !authLoading && isSuperAdmin && modules.isSuccess && !modules.isFetching && override?.enabled === true;
+    }
+    if (override) return override.enabled === true;
     // Fall back to plan modules
     if (selectedOrg?.plan_id && plans) {
       const plan = plans.find(p => p.id === selectedOrg.plan_id);
@@ -236,7 +262,7 @@ const SuperAdminOrganizations = () => {
                         variant="ghost"
                         size="sm"
                         className="text-zinc-400 hover:text-white"
-                        onClick={() => setSelectedOrg(org)}
+                        onClick={() => { toggleModule.reset(); setSelectedOrg(org); }}
                         title="Modules beheren"
                       >
                         <Settings2 className="h-4 w-4" />
@@ -260,6 +286,10 @@ const SuperAdminOrganizations = () => {
           </SheetHeader>
           <div className="mt-6 space-y-4 overflow-y-auto max-h-[calc(100vh-8rem)]">
             <p className="text-zinc-400 text-sm">Schakel modules in of uit voor deze organisatie. Overrides hebben voorrang op het abonnement.</p>
+            <p className="text-zinc-400 text-sm">Weekcontrole en matrices staan standaard uit en worden alleen met deze schakelaar beschikbaar voor medewerkers en interne gebruikers.</p>
+            {modules.isFetching && <p role="status" className="text-sm text-zinc-400">Modules laden…</p>}
+            {modules.isError && <div role="alert" className="space-y-2 text-sm text-red-300"><p>De modules konden niet worden geladen.</p><Button variant="outline" onClick={() => void modules.refetch()}>Opnieuw proberen</Button></div>}
+            {toggleModule.isError && <p role="alert" className="text-sm text-red-300">De module is niet bijgewerkt. {toFriendlyError(toggleModule.error)}</p>}
             <div className="space-y-5 pb-4">
               {Array.from(new Set(ALL_MODULES.map(m => m.group))).map(group => (
                 <div key={group}>
@@ -269,7 +299,9 @@ const SuperAdminOrganizations = () => {
                       <div key={mod.key} className="flex items-center justify-between py-2 px-3 bg-zinc-800 rounded-lg">
                         <span className="text-sm text-white">{mod.label}</span>
                         <Switch
+                          aria-label={mod.label}
                           checked={getModuleEnabled(mod.key)}
+                          disabled={!user || authLoading || !isSuperAdmin || !modules.isSuccess || modules.isFetching || toggleModule.isPending}
                           onCheckedChange={(enabled) =>
                             toggleModule.mutate({
                               orgId: selectedOrg.id,

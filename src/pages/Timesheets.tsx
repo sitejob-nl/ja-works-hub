@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
+import { useHoursModuleAccess } from '@/hooks/useHoursModuleAccess';
 import { startOfWeek, endOfWeek, addWeeks, subWeeks, format, getISOWeek } from 'date-fns';
 import { nl } from 'date-fns/locale';
 import { Clock, Plus, Upload, ChevronLeft, ChevronRight, CheckCircle2, XCircle, AlertTriangle, Sparkles, FileText } from 'lucide-react';
@@ -65,7 +66,8 @@ const sourceLabel: Record<string, string> = {
 };
 
 const Timesheets = () => {
-  const { user } = useAuth();
+  const { user, profile, loading: authLoading } = useAuth();
+  const hoursModule = useHoursModuleAccess({ organizationId: profile?.id === user?.id ? profile?.organization_id : null, userId: user?.id, zone: 'internal', loading: authLoading });
   const canManageFinance = useRolePermission('finance.manage');
   const qc = useQueryClient();
   const [weekRef, setWeekRef] = useState(new Date());
@@ -287,9 +289,9 @@ const Timesheets = () => {
           <p className="text-muted-foreground text-sm mt-1 hidden sm:block">Urenregistratie en goedkeuring</p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <Button asChild variant="outline" size="sm" className="gap-1.5">
+          {hoursModule.enabled && <Button asChild variant="outline" size="sm" className="gap-1.5">
             <Link to="/uren/weken"><CheckCircle2 className="h-4 w-4" />Weekcontrole</Link>
-          </Button>
+          </Button>}
           {canManageFinance && <>
             {employeeFilter !== 'all' && timesheets.length > 0 && (
               <Button variant="outline" size="sm" onClick={() => generateHourLetter.mutate()} disabled={generateHourLetter.isPending} className="gap-1.5">
