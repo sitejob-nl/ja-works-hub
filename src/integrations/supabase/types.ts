@@ -5147,10 +5147,98 @@ export type Database = {
           },
         ]
       }
+      hours_source_pages: {
+        Row: {
+          assignment: string
+          created_at: string
+          created_by: string
+          id: string
+          member_id: string | null
+          note: string | null
+          organization_id: string
+          page_number: number
+          source_id: string
+          status: string
+          week_id: string
+          withdrawn_at: string | null
+          withdrawn_by: string | null
+        }
+        Insert: {
+          assignment: string
+          created_at?: string
+          created_by: string
+          id?: string
+          member_id?: string | null
+          note?: string | null
+          organization_id: string
+          page_number: number
+          source_id: string
+          status?: string
+          week_id: string
+          withdrawn_at?: string | null
+          withdrawn_by?: string | null
+        }
+        Update: {
+          assignment?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          member_id?: string | null
+          note?: string | null
+          organization_id?: string
+          page_number?: number
+          source_id?: string
+          status?: string
+          week_id?: string
+          withdrawn_at?: string | null
+          withdrawn_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hours_source_pages_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_source_pages_member_id_week_id_organization_id_fkey"
+            columns: ["member_id", "week_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "hours_week_members"
+            referencedColumns: ["id", "week_id", "organization_id"]
+          },
+          {
+            foreignKeyName: "hours_source_pages_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_source_pages_source_id_week_id_organization_id_fkey"
+            columns: ["source_id", "week_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "hours_week_sources"
+            referencedColumns: ["id", "week_id", "organization_id"]
+          },
+          {
+            foreignKeyName: "hours_source_pages_withdrawn_by_fkey"
+            columns: ["withdrawn_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       hours_source_proposals: {
         Row: {
           applied_created_revision: boolean | null
           applied_revision_id: string | null
+          assignment_confirmed_at: string | null
+          assignment_confirmed_by: string | null
+          assignment_note: string | null
+          assignment_uncertain: boolean
           created_at: string
           created_by: string
           day_id: string
@@ -5160,6 +5248,7 @@ export type Database = {
           note: string | null
           organization_id: string
           page_label: string | null
+          page_number: number | null
           resolution_note: string | null
           resolved_at: string | null
           resolved_by: string | null
@@ -5171,6 +5260,10 @@ export type Database = {
         Insert: {
           applied_created_revision?: boolean | null
           applied_revision_id?: string | null
+          assignment_confirmed_at?: string | null
+          assignment_confirmed_by?: string | null
+          assignment_note?: string | null
+          assignment_uncertain?: boolean
           created_at?: string
           created_by: string
           day_id: string
@@ -5180,6 +5273,7 @@ export type Database = {
           note?: string | null
           organization_id: string
           page_label?: string | null
+          page_number?: number | null
           resolution_note?: string | null
           resolved_at?: string | null
           resolved_by?: string | null
@@ -5191,6 +5285,10 @@ export type Database = {
         Update: {
           applied_created_revision?: boolean | null
           applied_revision_id?: string | null
+          assignment_confirmed_at?: string | null
+          assignment_confirmed_by?: string | null
+          assignment_note?: string | null
+          assignment_uncertain?: boolean
           created_at?: string
           created_by?: string
           day_id?: string
@@ -5200,6 +5298,7 @@ export type Database = {
           note?: string | null
           organization_id?: string
           page_label?: string | null
+          page_number?: number | null
           resolution_note?: string | null
           resolved_at?: string | null
           resolved_by?: string | null
@@ -5215,6 +5314,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "hours_day_revisions"
             referencedColumns: ["id", "day_id", "organization_id"]
+          },
+          {
+            foreignKeyName: "hours_source_proposals_assignment_confirmed_by_fkey"
+            columns: ["assignment_confirmed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "hours_source_proposals_created_by_fkey"
@@ -5339,6 +5445,7 @@ export type Database = {
           file_name: string
           id: string
           organization_id: string
+          page_count: number | null
           storage_path: string
           week_id: string
         }
@@ -5352,6 +5459,7 @@ export type Database = {
           file_name: string
           id?: string
           organization_id: string
+          page_count?: number | null
           storage_path: string
           week_id: string
         }
@@ -5365,6 +5473,7 @@ export type Database = {
           file_name?: string
           id?: string
           organization_id?: string
+          page_count?: number | null
           storage_path?: string
           week_id?: string
         }
@@ -11936,6 +12045,7 @@ export type Database = {
           p_content_hash: string
           p_content_type: string
           p_file_name: string
+          p_page_count?: number
           p_week_id: string
         }
         Returns: Json
@@ -11957,6 +12067,10 @@ export type Database = {
         Args: { p_note: string; p_revisions: Json; p_week_id: string }
         Returns: Json
       }
+      hours_confirm_proposal_assignment: {
+        Args: { p_note?: string; p_proposal_id: string }
+        Returns: Json
+      }
       hours_create_matrix: {
         Args: { p_company_id: string; p_name: string; p_scope: string }
         Returns: Json
@@ -11970,13 +12084,19 @@ export type Database = {
         }
         Returns: Json
       }
+      hours_create_page_proposals: {
+        Args: { p_entries: Json; p_page_number: number; p_source_id: string }
+        Returns: Json
+      }
       hours_create_source_proposal: {
         Args: {
+          p_assignment_uncertain?: boolean
           p_day_id: string
           p_minutes: number
           p_no_hours_reason: string
           p_note: string
           p_page_label: string
+          p_page_number?: number
           p_source_id: string
           p_source_input: Json
         }
@@ -12084,6 +12204,16 @@ export type Database = {
           p_expected_version: number
           p_submission_day_offset: number
           p_submission_time: string
+        }
+        Returns: Json
+      }
+      hours_set_source_page: {
+        Args: {
+          p_assignment: string
+          p_member_id?: string
+          p_note?: string
+          p_page_number: number
+          p_source_id: string
         }
         Returns: Json
       }

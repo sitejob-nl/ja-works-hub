@@ -13,21 +13,34 @@ export const HOURS_SOURCE_ACCEPT = Object.keys(HOURS_SOURCE_TYPES).join(',');
 export const HOURS_SOURCE_BUCKET = 'hours-sources';
 
 const uuid = z.string().uuid();
+/** What an internal user decided about one page of one delivered file. */
+export const HOURS_PAGE_ASSIGNMENTS = ['single', 'multiple', 'unclear'] as const;
+export type HoursPageAssignment = (typeof HOURS_PAGE_ASSIGNMENTS)[number];
+export const hoursSourcePageSchema = z.object({
+  id: uuid, page_number: z.number().int().min(1), assignment: z.enum(HOURS_PAGE_ASSIGNMENTS),
+  member_id: uuid.nullable(), candidate_name: z.string().nullable(),
+  note: z.string().nullable(), created_at: z.string(),
+});
 export const hoursProposalSchema = z.object({
   id: uuid, day_id: uuid, member_id: uuid, work_date: z.string(), candidate_name: z.string(),
   status: z.enum(['open', 'applied', 'discarded']),
   minutes: z.number().int().min(0).max(1440),
   no_hours_reason: z.string().nullable(), note: z.string().nullable(),
   source_input: hoursSourceInputSchema.nullable(),
-  page_label: z.string().nullable(), applied_revision_id: uuid.nullable(),
+  page_label: z.string().nullable(), page_number: z.number().int().min(1).nullable(),
+  assignment_uncertain: z.boolean(), assignment_confirmed_at: z.string().nullable(),
+  assignment_note: z.string().nullable(), applied_revision_id: uuid.nullable(),
   applied_created_revision: z.boolean().nullable(), resolution_note: z.string().nullable(),
   resolved_at: z.string().nullable(), created_at: z.string(),
 });
 export const hoursWeekSourcesSchema = z.object({
   week_id: uuid, can_manage: z.boolean(),
+  open_proposals: z.number().int().nonnegative(), undecided_assignments: z.number().int().nonnegative(),
   sources: z.array(z.object({
     id: uuid, file_name: z.string(), content_type: z.string(), byte_size: z.number().int().nonnegative(),
     content_hash: z.string(), storage_path: z.string(), created_at: z.string(),
+    page_count: z.number().int().min(1).nullable(),
+    pages: z.array(hoursSourcePageSchema),
     proposals: z.array(hoursProposalSchema),
   })),
 });
@@ -36,20 +49,54 @@ export const hoursWeekSourcesSchema = z.object({
  * inference into all-optional fields, which loses the guarantees the schema
  * above actually checks at the boundary.
  */
+export interface HoursSourcePage {
+  id: string; page_number: number; assignment: HoursPageAssignment;
+  member_id: string | null; candidate_name: string | null; note: string | null; created_at: string;
+}
 export interface HoursSourceProposal {
   id: string; day_id: string; member_id: string; work_date: string; candidate_name: string;
   status: 'open' | 'applied' | 'discarded'; minutes: number;
   no_hours_reason: string | null; note: string | null;
-  source_input: HoursSourceInput | null; page_label: string | null;
+  source_input: HoursSourceInput | null; page_label: string | null; page_number: number | null;
+  assignment_uncertain: boolean; assignment_confirmed_at: string | null; assignment_note: string | null;
   applied_revision_id: string | null; applied_created_revision: boolean | null;
   resolution_note: string | null; resolved_at: string | null; created_at: string;
 }
 export interface HoursWeekSourceFile {
   id: string; file_name: string; content_type: string; byte_size: number;
   content_hash: string; storage_path: string; created_at: string;
+  page_count: number | null;
+  pages: HoursSourcePage[];
   proposals: HoursSourceProposal[];
 }
-export interface HoursWeekSources { week_id: string; can_manage: boolean; sources: HoursWeekSourceFile[] }
+export interface HoursWeekSources {
+  week_id: string; can_manage: boolean;
+  open_proposals: number; undecided_assignments: number;
+  sources: HoursWeekSourceFile[];
+}
+
+/**
+ * A proposal whose employee was recorded as uncertain may not be applied before
+ * a named internal user has confirmed who it is about. The server refuses it
+ * too; this only keeps the screen from offering an act it would reject.
+ */
+export function proposalIsBlocked(
+  proposal: Pick<HoursSourceProposal, 'assignment_uncertain' | 'assignment_confirmed_at'>,
+): boolean {
+  return proposal.assignment_uncertain && !proposal.assignment_confirmed_at;
+}
+
+/** How a page decision reads on screen, in the language of the delivery. */
+export const HOURS_PAGE_ASSIGNMENT_LABELS: Record<HoursPageAssignment, string> = {
+  single: 'Eén medewerker',
+  multiple: 'Meerdere medewerkers',
+  unclear: 'Onduidelijk wie',
+};
+
+export function describePageCount(pageCount: number | null): string {
+  if (pageCount === null) return 'aantal pagina\u2019s onbekend';
+  return pageCount === 1 ? '1 pagina' : `${pageCount} pagina\u2019s`;
+}
 
 export function parseWeekSources(value: unknown): HoursWeekSources {
   return hoursWeekSourcesSchema.parse(value) as HoursWeekSources;

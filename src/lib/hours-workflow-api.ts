@@ -2,6 +2,14 @@ import { supabase } from '@/integrations/supabase/client';
 import type { Database } from '@/integrations/supabase/types';
 import { unwrap } from '@/lib/db';
 import type { HoursSourceInput } from '@/components/hours-workflow/hours-day-source';
+import type { HoursPageAssignment } from '@/lib/hours-sources';
+
+/** One day of a page take-over; the server reads exactly these fields. */
+export interface HoursPageEntry {
+  day_id: string; minutes: number;
+  no_hours_reason?: string | null; note?: string | null;
+  source_input?: HoursSourceInput | null; page_label?: string | null;
+}
 
 /**
  * Domain arguments refine the generated database signatures; the typed Supabase
@@ -25,6 +33,9 @@ interface HoursRpcArguments {
   hours_create_source_proposal: Omit<RpcArgs<'hours_create_source_proposal'>, 'p_source_input'> & { p_source_input: HoursSourceInput | null };
   hours_discard_source_proposal: RpcArgs<'hours_discard_source_proposal'>;
   hours_apply_source_proposal: RpcArgs<'hours_apply_source_proposal'>;
+  hours_confirm_proposal_assignment: RpcArgs<'hours_confirm_proposal_assignment'>;
+  hours_set_source_page: RpcArgs<'hours_set_source_page'> & { p_assignment: HoursPageAssignment };
+  hours_create_page_proposals: Omit<RpcArgs<'hours_create_page_proposals'>, 'p_entries'> & { p_entries: HoursPageEntry[] };
 }
 
 export async function hoursWorkflowRpc<K extends keyof HoursRpcArguments>(name: K, args: HoursRpcArguments[K]): Promise<unknown> {
