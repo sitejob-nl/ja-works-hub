@@ -86,7 +86,11 @@ const IGNORED_HEADERS = ['opmerking', 'opmerkingen', 'notitie', 'toelichting', '
   'nr', 'nummer', 'id', 'personeelsnummer', 'akkoord', 'paraaf', 'handtekening',
   // Money is never a piece of the working day, however neatly it fits under the total.
   'uurloon', 'uurtarief', 'tarief', 'loon', 'bedrag', 'totaalbedrag', 'prijs', 'rate',
-  'km', 'kilometers', 'reiskosten', 'vergoeding'];
+  'km', 'kilometers', 'reiskosten', 'vergoeding',
+  // Shift times are not a breakdown of the day. This module has its own shape
+  // for those (shifts with confirmed breaks) and this reader does not fill it.
+  'begin', 'begintijd', 'start', 'starttijd', 'aanvang', 'eind', 'einde', 'eindtijd',
+  'van', 'tot', 'pauze', 'pauzes', 'pauzetijd', 'break', 'lunch'];
 
 const headerMatches = (value: string, options: string[]): boolean =>
   options.includes(normalizeName(value));
@@ -314,6 +318,24 @@ function detectWideHeader(rows: WorkbookCell[][], members: WorkbookWeekMember[])
   return null;
 }
 
+/**
+ * A bare number in a week total is the same riddle as anywhere else — 1,75 is
+ * either 1:45 written as a decimal or 42:00 written as [h]:mm — except that the
+ * days of that very row can settle it. Where exactly one reading matches what
+ * was read, that is the delivered total; otherwise it falls back to the plain
+ * decimal reading and the difference is shown.
+ */
+function readWeekTotal(value: WorkbookCell, readMinutes: number):
+  { minutes: number } | { reason: string } | { issue: HoursIssue } | null {
+  if (typeof value === 'number' && value > 0) {
+    const readings = [Math.round(value * 60), Math.round(value * 1440)]
+      .filter(minutes => minutes > 0 && minutes <= 10080);
+    const matching = readings.filter(minutes => minutes === readMinutes);
+    if (matching.length === 1) return { minutes: matching[0] };
+  }
+  return readDuration(value, 10080);
+}
+
 function readWideSheet(
   sheet: WorkbookSheet, sheetIndex: number, header: WideHeader, context: WorkbookContext,
   dayOf: Map<string, string>, candidates: WorkbookCandidate[], skipped: WorkbookSkippedRow[],
@@ -365,7 +387,7 @@ function readWideSheet(
     }
     if (header.total === null || !wholeRowRead) continue;
     // A week total legitimately exceeds a day, so it is read against the week bound.
-    const delivered = readDuration(row[header.total], 10080);
+    const delivered = readWeekTotal(row[header.total], readMinutes);
     if (delivered === null) continue;
     if (!('minutes' in delivered)) {
       skipped.push({ ...place, text: `${nameText} · totaal`, reason: 'Het aangeleverde weektotaal is niet als duur te lezen; het is niet vergeleken.' });

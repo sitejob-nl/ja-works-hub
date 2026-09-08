@@ -267,7 +267,9 @@ beoordeelde bron eist een pagina op elk nieuw voorstel, een tegensprekend pagina
   het voorstel gemeld. Een kolom die aantoonbaar géén duren bevat wordt bij naam apart gezet. Kolommen die
   geld of een verwijzing dragen (uurloon, tarief, bedrag, kilometers, project, kostenplaats, ploeg,
   opmerking) worden op hun kop herkend en nooit als deel van de werkdag overgenomen — ook niet wanneer de
-  waarde toevallig onder het dagtotaal past.
+  waarde toevallig onder het dagtotaal past. Datzelfde geldt voor **diensttijden** (begin, eind, pauze):
+  die zijn geen indeling van de dag, en deze module heeft er een eigen vorm voor die deze uitlezer niet
+  vult.
   **Let op:** een kolom die een *deel* van de dag beschrijft (bijvoorbeeld alleen overwerk) telt per
   definitie niet op tot het dagtotaal en levert dus altijd een zichtbaar verschil. Dat is bedoeld gedrag —
   de klantspecificatie vraagt juist om dat verschil — maar het betekent dat zo'n kolom om beoordeling
@@ -288,7 +290,9 @@ beoordeelde bron eist een pagina op elk nieuw voorstel, een tegensprekend pagina
   12:00 — en niets in het bestand zegt welk van de twee. Een kaal getal **onder de 1** is daarom
   dubbelzinnig: de uitlezer meldt beide lezingen en maakt geen voorstel, in plaats van stilzwijgend door
   vierentwintig te delen. Een getal van 1 of hoger wordt als decimale uren gelezen; wijkt dat af van de
-  gelezen dagen, dan is dat zichtbaar in het controlegetal. Een decimaal die als
+  gelezen dagen, dan is dat zichtbaar in het controlegetal. Voor een **weektotaal** beslissen de dagen van
+  diezelfde regel mee: past precies één van de twee lezingen bij wat er gelezen is, dan is dat de
+  aangeleverde waarde. Dat is geen gok maar het bestand dat zichzelf uitlegt. Een decimaal die als
   tekst staat is niet dubbelzinnig en wordt gewoon gelezen.
 - **Een werkblad dat de uitlezer niet kan indelen wordt bij naam genoemd.** Het blijft ongelezen — er
   worden geen halve voorstellen uit gemaakt — maar het scherm meldt welk blad het betreft, zodat een

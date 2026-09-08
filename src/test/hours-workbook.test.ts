@@ -617,3 +617,31 @@ describe('an empty day inside a grid', () => {
     })]);
   });
 });
+
+describe('columns that describe the shift rather than a breakdown', () => {
+  it('leaves begin, end and break times out of the delivered breakdown', () => {
+    const reading = readHoursWorkbook([sheet('Week 37', [
+      ['Naam', 'Datum', 'Uren', 'Begin', 'Eind', 'Pauze'],
+      ['Jan Kowalski', '07-09-2026', '8:00', '07:00', '15:30', '0:30'],
+    ])], week);
+
+    expect(reading.ok).toBe(true);
+    if (reading.ok === false) return;
+    expect(reading.candidates[0].sourceInput).toBeNull();
+    expect(reading.candidates[0].notices).toEqual([]);
+  });
+});
+
+describe('a week total the spreadsheet stored as elapsed time', () => {
+  it('lets the days of that row settle how a bare number should be read', () => {
+    // 1,75 is either 1:45 as a decimal or 42:00 as [h]:mm. The days say which.
+    const reading = readHoursWorkbook([sheet('Uren', [
+      ['Medewerker', '07-09-2026', '08-09-2026', 'Totaal'],
+      ['Jan Kowalski', '21:00', '21:00', 1.75],
+    ])], week);
+
+    expect(reading.ok).toBe(true);
+    if (reading.ok === false) return;
+    expect(reading.rowTotals).toEqual([]);
+  });
+});
