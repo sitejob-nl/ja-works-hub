@@ -35,13 +35,13 @@ projectsamenvatting.
   **Geen edge-function-deploy nodig.**
 - Verificatie: **157 echte PostgreSQL-tests** (`scripts/hours-workbook-db-test.py` — 12 nieuwe
   werkmapgevallen plus de volledige vrijgegeven pagina-/inname-/foundation-/classificatie-/poortregressies,
-  elf migraties elk tweemaal); **1.530 applicatietests**; lint 0 errors, typecheck en productiebuild groen.
+  elf migraties elk tweemaal); **1.537 applicatietests**; lint 0 errors, typecheck en productiebuild groen.
   De vrijgegeven harnassen zijn ongewijzigd gelaten; de nieuwe importeert `hours-pages-db-test.py` en
   overschrijft alleen de twee verwachtingen die echt bewogen (bucket-mediatypen, RPC-signaturen).
 - **JA Werkt blijft UIT, demo AAN** — vóór de migratie geverifieerd. Het geblokkeerde `QA_SUPERADMIN`-account
   is ongemoeid gelaten. Advisors na DDL: geen ERROR-bevindingen; de nieuwe RPC valt in dezelfde bewuste
   WARN-categorie "SECURITY DEFINER uitvoerbaar door authenticated" als alle bestaande urenfuncties.
-- **Zes codereviewrondes vonden zesentwintig echte defecten, allemaal gerepareerd** met een test die eerst
+- **Zeven codereviewrondes vonden eenendertig echte defecten, allemaal gerepareerd** met een test die eerst
   rood stond. Ronde 1 (zeven): kolomkoppen op voorvoegsel matchen ("Aantal dagen" won het urentotaal, een
   1 werd een uur); een als tijd opgemaakte cel die als datum werd gelezen waardoor een heel lijstblad stil
   verdween; een tijd-nul zonder reden die de hele uitlezing liet weigeren; dubbele dagen die de server
@@ -71,7 +71,12 @@ projectsamenvatting.
   lijstkoppen bleef "gelezen" terwijl er niets uit kwam en de kruistabel eronder geen beurt kreeg; de
   dubbelzinnigheidsgrens schaalde mee met de weekgrens waardoor een weektotaal van 6 werd geweigerd; een
   punt als plaatshouder werd een reden voor "geen uren"; en tijdens een lopende uitlezing kon een tweede
-  paneel op dezelfde bron worden geopend.
+  paneel op dezelfde bron worden geopend. Ronde 7 (vijf): een foutwaarde van het rekenblad (`#N/A`) werd de
+  bewering dat iemand niet had gewerkt; twee kolommen die allebei het urentotaal claimden lieten de meest
+  linkse stil winnen; een leeggelaten dag in een kruistabel verklaarde een weektotaalverschil zonder dat
+  het scherm dat zei; boven vijfhonderd regels was er geen manier om in één keer uit te vinken; en een
+  `.csv` glipt op Windows binnen als `application/vnd.ms-excel` — de bytes worden nu gecontroleerd vóór
+  opslag.
 - **Nog open:** verbonden demo-QA in de browser is voor dit ticket **niet** uitgevoerd — de vier
   `pages`-QA-weken staan klaar (`scripts/prepare-hours-pages-demo.mjs`, dezelfde `HOURS_PAGES_RUN_ID`
   hergebruiken). PR #266 (T2) moet nog gemerged worden vóór deze branch.

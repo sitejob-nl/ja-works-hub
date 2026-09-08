@@ -38,3 +38,17 @@ describe('choosing what to record out of a reading', () => {
     await vi.waitFor(() => expect(onSave).toHaveBeenCalledOnce());
   });
 });
+
+describe('narrowing down a large reading', () => {
+  it('lets the reviewer clear the whole selection in one act', () => {
+    const onSave = vi.fn();
+    render(<HoursWorkbookReading reading={reading(3)}
+      alreadyProposed={new Set()} onCancel={() => {}} onSave={onSave} />);
+
+    expect(screen.getByText('3 van 3 gekozen.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Alles uitvinken' }));
+    expect(screen.getByText('0 van 3 gekozen.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Alles aanvinken' }));
+    expect(screen.getByText('3 van 3 gekozen.')).toBeInTheDocument();
+  });
+});

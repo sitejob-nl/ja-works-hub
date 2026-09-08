@@ -7,7 +7,9 @@ import {
   parseWeekSources, type HoursSourceContentType, type HoursWeekSources,
 } from '@/lib/hours-sources';
 import { countPdfPages } from '@/lib/hours-pdf-pages';
-import { countWorkbookSheets, decodeWorkbook, isWorkbookSource } from '@/lib/hours-workbook-file';
+import {
+  countWorkbookSheets, decodeWorkbook, isWorkbookSource, workbookBytesError,
+} from '@/lib/hours-workbook-file';
 import { readHoursWorkbook, type WorkbookContext, type WorkbookReading } from '@/lib/hours-workbook';
 import type { HoursPageEntry, HoursReadingEntry } from '@/lib/hours-workflow-api';
 import type { HoursPageAssignment } from '@/lib/hours-sources';
@@ -66,6 +68,9 @@ export function useHoursWeekSources(organizationId: string, weekId: string | und
       const rejection = hoursSourceTypeError(file);
       if (rejection) throw new Error(rejection);
       const bytes = await file.arrayBuffer();
+      // The declared media type is not proof; a workbook has to be one.
+      const notAWorkbook = isWorkbookSource(file.type) ? workbookBytesError(bytes) : null;
+      if (notAWorkbook) throw new Error(notAWorkbook);
       const digest = await hoursSourceDigest(bytes);
       const pageCount = await deliveredPageCount(file, bytes);
       const path = hoursSourcePath(organizationId, weekId!, digest, file.type as HoursSourceContentType);

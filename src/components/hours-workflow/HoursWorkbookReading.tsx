@@ -83,7 +83,17 @@ export function HoursWorkbookReading({ reading, alreadyProposed, onCancel, onSav
 
     {reading.candidates.length === 0
       ? <p className="text-sm">Er is geen enkele regel gevonden die bij een medewerker en werkdag van deze week hoort.</p>
-      : <ul className="space-y-2">
+      : <>
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span>{chosen.length} van {reading.candidates.length} gekozen.</span>
+        <Button type="button" size="sm" variant="ghost" disabled={busy || !chosen.length}
+          onClick={() => setExcluded(new Set(reading.candidates.map(candidate => candidate.dayId)))}>
+          Alles uitvinken
+        </Button>
+        <Button type="button" size="sm" variant="ghost" disabled={busy || chosen.length === reading.candidates.length}
+          onClick={() => setExcluded(new Set())}>Alles aanvinken</Button>
+      </div>
+      <ul className="space-y-2">
         {reading.candidates.map(candidate => {
           const include = !excluded.has(candidate.dayId);
           const inputId = `reading-${candidate.dayId}`;
@@ -114,7 +124,8 @@ export function HoursWorkbookReading({ reading, alreadyProposed, onCancel, onSav
             {candidate.assignmentUncertain && <Badge variant="destructive">Toewijzing onzeker</Badge>}
           </li>;
         })}
-      </ul>}
+      </ul>
+      </>}
 
     {reading.sheetsIgnored.length > 0 && <Alert><AlertDescription>
       <p className="font-medium">
@@ -131,6 +142,7 @@ export function HoursWorkbookReading({ reading, alreadyProposed, onCancel, onSav
         {reading.rowTotals.map((total, index) => <li key={index} data-no-translate="true">
           {total.employeeName} (blad {total.sheet}, rij {total.row}): aangeleverd {duration(total.deliveredMinutes)},
           gelezen {duration(total.readMinutes)}.
+          {total.unreadDays.length > 0 && ` Leeg gelaten: ${total.unreadDays.join(', ')}.`}
         </li>)}
       </ul>
       <p className="mt-2">De dagen houden precies wat er in het bestand staat; het verschil wordt niet weggerekend.</p>

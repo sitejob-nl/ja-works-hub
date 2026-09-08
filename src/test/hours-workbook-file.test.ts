@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decodeWorkbook } from '@/lib/hours-workbook-file';
+import { decodeWorkbook, workbookBytesError } from '@/lib/hours-workbook-file';
 import { buildLegacyXlsFile, buildWorkbookFile, formatted, formula, text } from './support/xlsx-workbook';
 
 describe('decoding a delivered spreadsheet', () => {
@@ -68,5 +68,17 @@ describe('how a spreadsheet stores a duration', () => {
     expect(clock).toBeInstanceOf(Date);
     expect((clock as Date).getTime() - Date.UTC(1899, 11, 30)).toBe(12 * 60 * 60 * 1000);
     expect(elapsed).toBe(0.5);
+  });
+});
+
+describe('what may be stored as a workbook at all', () => {
+  it('refuses a file that is not a workbook, whatever its media type claims', () => {
+    const csv = new TextEncoder().encode('naam;datum;uren\nJan;07-09-2026;8\n').buffer as ArrayBuffer;
+    expect(workbookBytesError(csv)).toMatch(/geen Excel-werkmap/i);
+  });
+
+  it('accepts the two real workbook containers', () => {
+    expect(workbookBytesError(buildWorkbookFile([{ name: 'Week 37', rows: [[text('Naam')]] }]))).toBeNull();
+    expect(workbookBytesError(buildLegacyXlsFile())).toBeNull();
   });
 });

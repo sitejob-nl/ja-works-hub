@@ -301,6 +301,17 @@ beoordeelde bron eist een pagina op elk nieuw voorstel, een tegensprekend pagina
   dezelfde aanlevering hetzelfde te zien krijgen.
 - **Een streepje of kruisje is geen reden.** `-`, `x`, `.` en `n.v.t.` in een urencel betekenen "hier staat
   niets"; die worden als overgeslagen regel benoemd en niet als reden voor "geen uren" overgenomen.
+  Hetzelfde geldt voor een foutwaarde van het rekenblad zelf (`#N/A`, `#REF!`, `#VALUE!`): die zegt niets
+  over de gewerkte tijd en wordt nooit de bewering dat iemand niet heeft gewerkt.
+- **Twee kolommen die dezelfde rol claimen maken het blad dubbelzinnig.** Staan er bijvoorbeeld zowel een
+  "Totaal"- als een "Uren"-kolom, dan wordt er niet gekozen — dat zou een weektotaal als dagtotaal kunnen
+  voorstellen — maar blokkeert de uitlezing net als bij een onbekende kop.
+- **Lege dagen worden bij een afwijkend weektotaal benoemd.** Een verschil dat door een leeggelaten dag
+  komt is iets anders dan een verschil in de aangeleverde cijfers, en het scherm zegt welke dagen leeg
+  waren.
+- **Het mediatype is geen bewijs.** Windows meldt `application/vnd.ms-excel` voor een gewone `.csv`. De
+  browser controleert daarom de eerste bytes: een werkmap is een zip-container (`.xlsx`) of een
+  OLE-document (`.xls`); iets anders wordt geweigerd vóór het wordt bewaard.
 - **Een aangeleverd totaal is een controlegetal.** Klopt het weektotaal van een rij niet met de dagen
   eronder, of tellen de broncodes niet op tot het dagtotaal, dan blijft alles staan zoals aangeleverd en
   wordt **het verschil getoond**. Er wordt niets weggerekend en toepassen wordt niet stil geblokkeerd; de

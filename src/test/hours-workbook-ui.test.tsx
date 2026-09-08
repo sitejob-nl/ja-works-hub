@@ -195,3 +195,19 @@ describe('a worksheet the reader could not lay out', () => {
     expect(within(panel).getByText('Losse aantekeningen')).toBeInTheDocument();
   });
 });
+
+describe('a file that only claims to be a workbook', () => {
+  it('refuses a spreadsheet media type whose bytes are not a workbook', async () => {
+    const csv = new TextEncoder().encode('naam;datum;uren\nJan;07-09-2026;8\n');
+    const file = new File([csv], 'uren.xls', { type: 'application/vnd.ms-excel' });
+    Object.defineProperty(file, 'arrayBuffer', {
+      value: async () => csv.buffer.slice(csv.byteOffset, csv.byteOffset + csv.byteLength),
+    });
+    show();
+    await screen.findByRole('button', { name: 'Uitlezen' });
+    fireEvent.change(screen.getByLabelText('Urenbriefje uploaden'), { target: { files: [file] } });
+
+    expect(await screen.findByText(/geen Excel-werkmap/i)).toBeInTheDocument();
+    expect(upload).not.toHaveBeenCalled();
+  });
+});

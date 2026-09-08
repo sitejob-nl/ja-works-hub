@@ -12,6 +12,19 @@ export function isWorkbookSource(contentType: string): contentType is HoursWorkb
   return contentType in HOURS_WORKBOOK_TYPES;
 }
 
+/**
+ * Windows browsers report `application/vnd.ms-excel` for a plain .csv, so the
+ * declared media type is not enough. A workbook is either a zip container
+ * (.xlsx) or an OLE compound document (.xls); anything else is refused before
+ * it is stored, with a message that says what to do.
+ */
+export function workbookBytesError(bytes: ArrayBuffer): string | null {
+  const header = new Uint8Array(bytes, 0, Math.min(8, bytes.byteLength));
+  if (header[0] === 0x50 && header[1] === 0x4b) return null;
+  if (isLegacyWorkbook(bytes)) return null;
+  return 'Dit bestand is geen Excel-werkmap. Sla het in Excel op als .xlsx en lever het opnieuw aan.';
+}
+
 export type WorkbookDecoding =
   | { ok: true; sheets: WorkbookSheet[] }
   | { ok: false; issues: HoursIssue[] };

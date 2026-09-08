@@ -44,6 +44,8 @@ export interface WorkbookSkippedRow { sheet: string; row: number; text: string; 
 export interface WorkbookRowTotal {
   sheet: string; row: number; employeeName: string;
   deliveredMinutes: number; readMinutes: number;
+  /** Days of this week the row left empty; they explain part of a difference. */
+  unreadDays: string[];
 }
 
 export type WorkbookReading =
@@ -137,10 +139,14 @@ interface LongHeader {
 
 function detectLongHeader(rows: WorkbookCell[][], members: WorkbookWeekMember[] = []): LongHeader | null {
   for (const [index, row] of rows.entries()) {
-    const name = row.findIndex(cell => headerMatches(cellText(cell), NAME_HEADERS));
-    const date = row.findIndex(cell => headerMatches(cellText(cell), DATE_HEADERS));
-    const total = row.findIndex(cell => headerMatches(cellText(cell), TOTAL_HEADERS));
-    if (name < 0 || date < 0 || total < 0) continue;
+    const columnsFor = (options: string[]) =>
+      row.flatMap((cell, column) => headerMatches(cellText(cell), options) ? [column] : []);
+    const [names, dates, totals] = [NAME_HEADERS, DATE_HEADERS, TOTAL_HEADERS].map(columnsFor);
+    // Two columns claiming the same role make the worksheet ambiguous. Picking
+    // the leftmost could propose a running week total as one day's hours, so
+    // this ends in the same honest blockade as an unknown title.
+    if (names.length !== 1 || dates.length !== 1 || totals.length !== 1) continue;
+    const [name, date, total] = [names[0], dates[0], totals[0]];
     // Judged on the rows this reader will actually read. A trailing summary row
     // belongs to nobody, so it may not disqualify a delivered code.
     const dataRows = rows.slice(index + 1)
@@ -188,6 +194,8 @@ const ZERO_WITHOUT_REASON: HoursIssue = {
 /** Marks that a cell is empty in intent: a dash, a cross, a "not applicable". */
 const PLACEHOLDERS = ['-', '\u2013', '\u2014', 'x', '.', '/', '\\', 'nvt', 'n.v.t.', 'geen'];
 const isPlaceholder = (text: string): boolean => PLACEHOLDERS.includes(text.trim().toLowerCase());
+/** A cell a spreadsheet filled with its own failure says nothing about the work. */
+const isErrorValue = (text: string): boolean => /^#[A-Z_/]+[?!]?$/.test(text.trim().toUpperCase());
 
 const asDuration = (minutes: number) => `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')}`;
 
@@ -201,6 +209,10 @@ function readDuration(value: WorkbookCell, maxMinutes = 1440, allowZero = false)
   if (value === null || value === undefined || cellText(value) === '') return null;
   if (typeof value !== 'number' && isPlaceholder(cellText(value))) {
     return { issue: { code: 'PLACEHOLDER', message: 'Deze cel bevat geen waarde, alleen een streepje of kruisje.' } };
+  }
+  if (typeof value !== 'number' && isErrorValue(cellText(value))) {
+    return { issue: { code: 'SPREADSHEET_ERROR',
+      message: `Deze cel bevat een foutwaarde van het rekenblad (${cellText(value)}) en zegt niets over de gewerkte tijd.` } };
   }
   if (value instanceof Date) {
     // Excel stores a typed "8:30" as a time on its own epoch; a real work date never lands there.
@@ -319,6 +331,7 @@ function readWideSheet(
     // outside this week, comparing it would report a difference the file does
     // not actually have.
     let wholeRowRead = true;
+    const unreadDays: string[] = [];
     for (const day of header.days) {
       const dayId = dayOf.get(`${match.member.id}|${day.workDate}`);
       const where = { ...place, text: `${nameText} · ${day.workDate}` };
@@ -330,7 +343,7 @@ function readWideSheet(
         continue;
       }
       const duration = readDuration(row[day.column]);
-      if (duration === null) continue;
+      if (duration === null) { unreadDays.push(day.workDate); continue; }
       if ('issue' in duration) {
         wholeRowRead = false;
         skipped.push({ ...where, reason: duration.issue.message });
@@ -357,7 +370,7 @@ function readWideSheet(
     if (delivered.minutes !== readMinutes) {
       rowTotals.push({
         sheet: sheet.name, row: rowNumber, employeeName: match.member.name,
-        deliveredMinutes: delivered.minutes, readMinutes,
+        deliveredMinutes: delivered.minutes, readMinutes, unreadDays,
       });
     }
   }

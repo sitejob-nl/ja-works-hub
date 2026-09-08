@@ -573,3 +573,47 @@ describe('a full stop as a placeholder', () => {
     expect(reading.skipped.map(row => row.reason)).toEqual([expect.stringMatching(/geen waarde/i)]);
   });
 });
+
+describe('cells a spreadsheet fills with its own error', () => {
+  it('never turns #N/A into a claim that someone did not work', () => {
+    const reading = readHoursWorkbook([sheet('Week 37', [
+      ['Naam', 'Datum', 'Uren'],
+      ['Jan Kowalski', '07-09-2026', '#N/A'],
+      ['Ewa Nowak', '08-09-2026', '#REF!'],
+    ])], week);
+
+    expect(reading.ok).toBe(true);
+    if (reading.ok === false) return;
+    expect(reading.candidates).toHaveLength(0);
+    expect(reading.skipped).toHaveLength(2);
+    expect(reading.skipped[0].reason).toMatch(/foutwaarde/i);
+  });
+});
+
+describe('a heading that names the hours twice', () => {
+  it('blocks instead of picking one of two total columns', () => {
+    const reading = readHoursWorkbook([sheet('Week 37', [
+      ['Naam', 'Datum', 'Totaal', 'Uren'],
+      ['Jan Kowalski', '07-09-2026', '40:00', '8:00'],
+    ])], week);
+
+    expect(reading.ok).toBe(false);
+    if (reading.ok !== false) return;
+    expect(reading.issues[0].code).toBe('NO_LAYOUT');
+  });
+});
+
+describe('an empty day inside a grid', () => {
+  it('names the empty days next to a total that does not match', () => {
+    const reading = readHoursWorkbook([sheet('Uren', [
+      ['Medewerker', '07-09-2026', '08-09-2026', 'Totaal'],
+      ['Jan Kowalski', '8:00', '', '16:00'],
+    ])], week);
+
+    expect(reading.ok).toBe(true);
+    if (reading.ok === false) return;
+    expect(reading.rowTotals).toEqual([expect.objectContaining({
+      deliveredMinutes: 960, readMinutes: 480, unreadDays: ['2026-09-08'],
+    })]);
+  });
+});
