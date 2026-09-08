@@ -41,8 +41,11 @@ projectsamenvatting.
   "SECURITY DEFINER uitvoerbaar door authenticated" als alle bestaande urenfuncties — bewuste conventie.
   Alle foreign keys op de twee nieuwe tabellen zijn geïndexeerd.
 - Bewijsmap: `/Users/kas/.codex/visualizations/2026/09/07/01a07bd6-9fd4-7440-a463-9fc32ece3f91/JA-Werkt-urenmodule/bouw/intake-20260909/`.
-- **Volgende actie:** PR reviewen en mergen (alleen frontend; migratie staat al live). Daarna de frontier
-  uit `docs/urenmodule-tickets.md`: T2 (bronpagina's en toewijzingscontrole) of T6 (klantweekpagina).
+- Frontendrelease loopt via [PR #265](https://github.com/sitejob-nl/ja-works-hub/pull/265) op `main`;
+  CI `quality` en de Vercel-preview zijn groen. Niet gemerged — merge is een productiedeploy en blijft
+  aan Kas.
+- **Volgende actie:** PR #265 reviewen en mergen (alleen frontend; de migratie staat al live). Daarna de
+  frontier uit `docs/urenmodule-tickets.md`: T2 (bronpagina's en toewijzingscontrole) of T6 (klantweekpagina).
 
 ## Actuele uitrol urenmodule — 8 september 2026
 
