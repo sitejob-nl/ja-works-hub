@@ -350,3 +350,73 @@ describe('columns that carry something other than a breakdown', () => {
     expect(reading.candidates[0]).toMatchObject({ minutes: 0, noHoursReason: 'ziek', sourceInput: null });
   });
 });
+
+describe('a bare number that could mean two things', () => {
+  it('refuses to choose between half an hour and half a day', () => {
+    // A spreadsheet stores an elapsed-time cell as a fraction of a day, so 0,5
+    // is either 0:30 written as a decimal or 12:00 written as [h]:mm.
+    const reading = readHoursWorkbook([sheet('Week 37', [
+      ['Naam', 'Datum', 'Uren'],
+      ['Jan Kowalski', '07-09-2026', 0.5],
+    ])], week);
+
+    expect(reading.ok).toBe(true);
+    if (reading.ok === false) return;
+    expect(reading.candidates).toHaveLength(0);
+    expect(reading.skipped[0].reason).toMatch(/0:30.*12:00|12:00.*0:30/);
+  });
+
+  it('reads a bare number that can only be decimal hours', () => {
+    const reading = readHoursWorkbook([sheet('Week 37', [
+      ['Naam', 'Datum', 'Uren'],
+      ['Jan Kowalski', '07-09-2026', 8.5],
+    ])], week);
+
+    expect(reading.ok).toBe(true);
+    if (reading.ok === false) return;
+    expect(reading.candidates[0].minutes).toBe(510);
+  });
+
+  it('still reads a decimal written as text, where nothing is ambiguous', () => {
+    const reading = readHoursWorkbook([sheet('Week 37', [
+      ['Naam', 'Datum', 'Uren'],
+      ['Jan Kowalski', '07-09-2026', '0,5'],
+    ])], week);
+
+    expect(reading.ok).toBe(true);
+    if (reading.ok === false) return;
+    expect(reading.candidates[0].minutes).toBe(30);
+  });
+});
+
+describe('a breakdown column that is zero on some days', () => {
+  it('keeps the delivered codes instead of dropping the whole breakdown', () => {
+    const reading = readHoursWorkbook([sheet('Week 37', [
+      ['Naam', 'Datum', 'Uren', 'OV1', 'Overuren'],
+      ['Jan Kowalski', '07-09-2026', '8:00', '8:00', '0:00'],
+      ['Ewa Nowak', '08-09-2026', '9:00', '8:00', '1:00'],
+    ])], week);
+
+    expect(reading.ok).toBe(true);
+    if (reading.ok === false) return;
+    expect(reading.candidates[0].sourceInput?.categories).toEqual([
+      { sourceCode: 'OV1', minutes: 480 }, { sourceCode: 'Overuren', minutes: 0 },
+    ]);
+    expect(reading.candidates[0].notices).toEqual([]);
+  });
+});
+
+describe('a placeholder in a day cell', () => {
+  it('does not turn a dash into a reason for no hours', () => {
+    const reading = readHoursWorkbook([sheet('Uren', [
+      ['Medewerker', '07-09-2026', '08-09-2026'],
+      ['Jan Kowalski', '8:00', '-'],
+    ])], week);
+
+    expect(reading.ok).toBe(true);
+    if (reading.ok === false) return;
+    expect(reading.candidates).toHaveLength(1);
+    expect(reading.candidates[0].dayId).toBe('day-jan-mo');
+    expect(reading.skipped.map(row => row.reason)).toEqual([expect.stringMatching(/geen waarde/i)]);
+  });
+});

@@ -141,7 +141,7 @@ function detectLongHeader(rows: WorkbookCell[][]): LongHeader | null {
       // remarks column is left alone rather than dropping the whole row, and an
       // hourly rate or amount never becomes a piece of the working day.
       const readable = rows.slice(index + 1).every(data => {
-        const part = readDuration((data ?? [])[column]);
+        const part = readDuration((data ?? [])[column], 1440, true);
         if (part === null) return true;
         if (!('minutes' in part)) return false;
         const whole = readDuration((data ?? [])[total]);
@@ -169,20 +169,43 @@ const ZERO_WITHOUT_REASON: HoursIssue = {
   message: 'Nul uren zonder reden. Leg de reden zelf als voorstel vast.',
 };
 
-/** Durations are read exactly: decimal comma, decimal point and H:MM, never rounded. */
-function readDuration(value: WorkbookCell, maxMinutes = 1440): { minutes: number } | { reason: string } | { issue: HoursIssue } | null {
+/** Marks that a cell is empty in intent: a dash, a cross, a "not applicable". */
+const PLACEHOLDERS = ['-', '\u2013', '\u2014', 'x', '.', '/', 'nvt', 'n v t', 'geen'];
+
+const asDuration = (minutes: number) => `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')}`;
+
+/**
+ * Durations are read exactly: decimal comma, decimal point and H:MM, never
+ * rounded. `allowZero` is for a breakdown column, where nought overtime on a
+ * Tuesday is a delivered fact rather than a day without hours.
+ */
+function readDuration(value: WorkbookCell, maxMinutes = 1440, allowZero = false):
+  { minutes: number } | { reason: string } | { issue: HoursIssue } | null {
   if (value === null || value === undefined || cellText(value) === '') return null;
+  if (typeof value !== 'number' && PLACEHOLDERS.includes(normalizeName(cellText(value)))) {
+    return { issue: { code: 'PLACEHOLDER', message: 'Deze cel bevat geen waarde, alleen een streepje of kruisje.' } };
+  }
   if (value instanceof Date) {
     // Excel stores a typed "8:30" as a time on its own epoch; a real work date never lands there.
     if (!isStoredDuration(value)) {
       return { issue: { code: 'INVALID_HOURS', message: 'Deze cel bevat een datum in plaats van een duur.' } };
     }
     const minutes = storedDurationMinutes(value);
-    if (minutes === 0) return { issue: ZERO_WITHOUT_REASON };
+    if (minutes === 0) return allowZero ? { minutes } : { issue: ZERO_WITHOUT_REASON };
     if (minutes < 0 || minutes > maxMinutes) {
       return { issue: { code: 'HOURS_OUT_OF_RANGE', message: `De duur mag niet meer dan ${maxMinutes} minuten zijn.` } };
     }
     return { minutes };
+  }
+  // A spreadsheet stores an elapsed-time cell ([h]:mm) as a fraction of a day,
+  // and read-excel-file hands that over as a plain number. A bare 0,5 is then
+  // either half an hour written as a decimal or twelve hours written as a time,
+  // and nothing in the file says which. Where both readings fit, the reader
+  // refuses to choose rather than quietly dividing a day by twenty-four.
+  if (typeof value === 'number' && value > 0 && value * 1440 <= maxMinutes) {
+    return { issue: { code: 'AMBIGUOUS_DURATION',
+      message: `Deze cel kan zowel ${asDuration(Math.round(value * 60))} als `
+        + `${asDuration(Math.round(value * 1440))} betekenen. Leg de duur zelf als voorstel vast.` } };
   }
   const text = cellText(value);
   const parsed = parseHoursToMinutes(typeof value === 'number' ? String(value) : text.replace(/\s*uur$/i, ''), { maxMinutes });
@@ -192,7 +215,8 @@ function readDuration(value: WorkbookCell, maxMinutes = 1440): { minutes: number
     if (typeof value === 'number' || /^[-+]?\d/.test(text)) return { issue: parsed.issues[0] };
     return { reason: text.slice(0, 500) };
   }
-  return parsed.value === 0 ? { issue: ZERO_WITHOUT_REASON } : { minutes: parsed.value };
+  if (parsed.value === 0 && !allowZero) return { issue: ZERO_WITHOUT_REASON };
+  return { minutes: parsed.value };
 }
 
 /**
@@ -202,7 +226,7 @@ function readDuration(value: WorkbookCell, maxMinutes = 1440): { minutes: number
 function readCategories(header: LongHeader, row: WorkbookCell[]): { sourceInput: HoursSourceInput | null } | { issue: HoursIssue } {
   const categories: { sourceCode: string; minutes: number }[] = [];
   for (const category of header.categories) {
-    const value = readDuration(row[category.column]);
+    const value = readDuration(row[category.column], 1440, true);
     if (value === null) continue;
     if ('issue' in value) {
       return { issue: { code: value.issue.code, message: `Kolom ${category.sourceCode}: ${value.issue.message}` } };

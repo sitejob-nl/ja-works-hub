@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { decodeWorkbook } from '@/lib/hours-workbook-file';
-import { buildLegacyXlsFile, buildWorkbookFile, formula, text } from './support/xlsx-workbook';
+import { buildLegacyXlsFile, buildWorkbookFile, formatted, formula, text } from './support/xlsx-workbook';
 
 describe('decoding a delivered spreadsheet', () => {
   it('reads every worksheet with its name and cells', async () => {
@@ -51,5 +51,22 @@ describe('decoding a delivered spreadsheet', () => {
     expect(decoding.ok).toBe(false);
     if (decoding.ok !== false) return;
     expect(decoding.issues[0].code).toBe('UNREADABLE_WORKBOOK');
+  });
+});
+
+describe('how a spreadsheet stores a duration', () => {
+  it('keeps a clock-formatted cell a duration and leaves an elapsed-time cell a bare number', async () => {
+    const decoding = await decodeWorkbook(buildWorkbookFile([{ name: 'Week 37', rows: [
+      [text('Klok'), text('Verstreken')],
+      [formatted('0.5', 'h:mm'), formatted('0.5', '[h]:mm')],
+    ] }]));
+
+    expect(decoding.ok).toBe(true);
+    if (decoding.ok === false) return;
+    const [clock, elapsed] = decoding.sheets[0].rows[1];
+    // Half a day: the clock format arrives as a time, the elapsed format as a raw fraction.
+    expect(clock).toBeInstanceOf(Date);
+    expect((clock as Date).getTime() - Date.UTC(1899, 11, 30)).toBe(12 * 60 * 60 * 1000);
+    expect(elapsed).toBe(0.5);
   });
 });

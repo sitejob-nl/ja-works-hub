@@ -35,13 +35,13 @@ projectsamenvatting.
   **Geen edge-function-deploy nodig.**
 - Verificatie: **157 echte PostgreSQL-tests** (`scripts/hours-workbook-db-test.py` — 12 nieuwe
   werkmapgevallen plus de volledige vrijgegeven pagina-/inname-/foundation-/classificatie-/poortregressies,
-  elf migraties elk tweemaal); **1.511 applicatietests**; lint 0 errors, typecheck en productiebuild groen.
+  elf migraties elk tweemaal); **1.518 applicatietests**; lint 0 errors, typecheck en productiebuild groen.
   De vrijgegeven harnassen zijn ongewijzigd gelaten; de nieuwe importeert `hours-pages-db-test.py` en
   overschrijft alleen de twee verwachtingen die echt bewogen (bucket-mediatypen, RPC-signaturen).
 - **JA Werkt blijft UIT, demo AAN** — vóór de migratie geverifieerd. Het geblokkeerde `QA_SUPERADMIN`-account
   is ongemoeid gelaten. Advisors na DDL: geen ERROR-bevindingen; de nieuwe RPC valt in dezelfde bewuste
   WARN-categorie "SECURITY DEFINER uitvoerbaar door authenticated" als alle bestaande urenfuncties.
-- **Twee codereviewrondes vonden twaalf echte defecten, allemaal gerepareerd** met een test die eerst
+- **Drie codereviewrondes vonden vijftien echte defecten, allemaal gerepareerd** met een test die eerst
   rood stond. Ronde 1 (zeven): kolomkoppen op voorvoegsel matchen ("Aantal dagen" won het urentotaal, een
   1 werd een uur); een als tijd opgemaakte cel die als datum werd gelezen waardoor een heel lijstblad stil
   verdween; een tijd-nul zonder reden die de hele uitlezing liet weigeren; dubbele dagen die de server
@@ -51,7 +51,12 @@ projectsamenvatting.
   verdween, woensdag landde op zondag); een tijdwaarde boven 24 uur die modulo 24 werd afgekapt (40:00 →
   16:00); een lijstblad met een tweede datumkolom dat als kruistabel werd gelezen; elke ongenoemde
   getallenkolom die een uurindeling werd (een uurloon van 15,5 werd 930 minuten); en nul uren met
-  brongegevens, een combinatie die de servercontrole nooit kan afhandelen.
+  brongegevens, een combinatie die de servercontrole nooit kan afhandelen. Ronde 3 (drie): de
+  verstreken-tijdnotatie `[h]:mm` komt als kale breuk van een dag binnen en werd als decimaal gelezen
+  (12:00 → 0:30, een weektotaal van 36:00 → 1:30) — waar beide lezingen passen weigert de uitlezer nu te
+  kiezen; één nul in een broncodekolom liet de hele indeling van het blad vervallen; en een streepje in
+  een dagcel werd de letterlijke reden voor "geen uren", vooraf aangevinkt. De testhulp schrijft nu ook
+  getalnotaties, zodat het echte bestandspad — waar bevinding 1 zat — meetest.
 - **Nog open:** verbonden demo-QA in de browser is voor dit ticket **niet** uitgevoerd — de vier
   `pages`-QA-weken staan klaar (`scripts/prepare-hours-pages-demo.mjs`, dezelfde `HOURS_PAGES_RUN_ID`
   hergebruiken). PR #266 (T2) moet nog gemerged worden vóór deze branch.

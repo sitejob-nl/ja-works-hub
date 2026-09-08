@@ -253,7 +253,8 @@ beoordeelde bron eist een pagina op elk nieuw voorstel, een tegensprekend pagina
   overgenomen (`OV1`, `OV3`, …) met de duur uit die cel. Er wordt niets naar een interne uursoort vertaald;
   dat is het werk van de matrix, later en op de vastgelegde dagrevisie. Een kolom telt alleen als broncode
   wanneer **elke** waarde eronder een duur is die in het dagtotaal van diezelfde regel past — een deel is
-  nooit groter dan het geheel. Een opmerkingen- of referentiekolom wordt met rust gelaten in plaats van de
+  nooit groter dan het geheel. Een nul in zo'n kolom is een aangeleverd feit (nul overuren op dinsdag) en
+  geen reden om de hele indeling te laten vervallen. Een opmerkingen- of referentiekolom wordt met rust gelaten in plaats van de
   hele regel te laten vervallen, en een uurloon- of bedragkolom wordt nooit een stuk van de werkdag.
   Op een dag zónder uren wordt helemaal geen indeling voorgesteld: die combinatie kan de servercontrole
   niet afhandelen, en de RPC weigert haar dan ook.
@@ -268,6 +269,13 @@ beoordeelde bron eist een pagina op elk nieuw voorstel, een tegensprekend pagina
   breuk van een dag op zijn eigen jaartelling; dat als datum lezen zou een lijstblad op een kruistabel doen
   lijken en het hele blad stil laten verdwijnen. De dagcomponent telt mee, zodat een weektotaal van `40:00`
   ook veertig uur blijft en niet zestien.
+- **Een kaal getal dat twee dingen kan betekenen wordt niet gekozen.** De verstreken-tijdnotatie `[h]:mm`
+  komt niet als tijd maar als kale breuk van een dag binnen. `0,5` is dan óf een half uur decimaal, óf
+  12:00 — en niets in het bestand zegt welk van de twee. Waar beide lezingen passen meldt de uitlezer dat
+  en maakt hij geen voorstel, in plaats van stilzwijgend door vierentwintig te delen. Een decimaal die als
+  tekst staat is niet dubbelzinnig en wordt gewoon gelezen.
+- **Een streepje of kruisje is geen reden.** `-`, `x`, `.` en `n.v.t.` in een urencel betekenen "hier staat
+  niets"; die worden als overgeslagen regel benoemd en niet als reden voor "geen uren" overgenomen.
 - **Een aangeleverd totaal is een controlegetal.** Klopt het weektotaal van een rij niet met de dagen
   eronder, of tellen de broncodes niet op tot het dagtotaal, dan blijft alles staan zoals aangeleverd en
   wordt **het verschil getoond**. Er wordt niets weggerekend en toepassen wordt niet stil geblokkeerd; de

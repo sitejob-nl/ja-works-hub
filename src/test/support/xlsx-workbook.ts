@@ -5,7 +5,11 @@ import { crc32 } from 'node:zlib';
  * file format rather than against a stand-in. Committing binary fixtures would
  * hide what a case actually contains.
  */
-export interface FixtureCell { text?: string; number?: string; formula?: string }
+export interface FixtureCell {
+  text?: string; number?: string; formula?: string;
+  /** A number format code, e.g. 'h:mm' or '[h]:mm'; decides how a cell is stored. */
+  format?: string;
+}
 export interface FixtureSheet { name: string; rows: FixtureCell[][] }
 
 const xml = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -44,6 +48,11 @@ function buildZip(entries: { name: string; text: string }[]): Uint8Array {
 }
 
 export function buildWorkbookFile(sheets: FixtureSheet[], options: { macros?: boolean } = {}): ArrayBuffer {
+  const formats: string[] = [];
+  const styleId = (format: string) => {
+    const existing = formats.indexOf(format);
+    return (existing >= 0 ? existing : formats.push(format) - 1) + 1;
+  };
   const strings: string[] = [];
   const stringId = (value: string) => {
     const existing = strings.indexOf(value);
@@ -55,12 +64,13 @@ export function buildWorkbookFile(sheets: FixtureSheet[], options: { macros?: bo
     const rows = sheet.rows.map((row, rowIndex) => {
       const cells = row.map((cell, columnIndex) => {
         const reference = `${columnName(columnIndex)}${rowIndex + 1}`;
+        const style = cell.format ? ` s="${styleId(cell.format)}"` : '';
         if (cell.formula !== undefined) {
           // A formula with its stored result. A reader that executed formulas
           // would need a calculation engine; this one reads what was saved.
-          return `<c r="${reference}"><f>${xml(cell.formula)}</f><v>${xml(cell.number ?? '')}</v></c>`;
+          return `<c r="${reference}"${style}><f>${xml(cell.formula)}</f><v>${xml(cell.number ?? '')}</v></c>`;
         }
-        if (cell.number !== undefined) return `<c r="${reference}"><v>${xml(cell.number)}</v></c>`;
+        if (cell.number !== undefined) return `<c r="${reference}"${style}><v>${xml(cell.number)}</v></c>`;
         if (cell.text === undefined || cell.text === '') return `<c r="${reference}"/>`;
         return `<c r="${reference}" t="s"><v>${stringId(cell.text)}</v></c>`;
       }).join('');
@@ -95,10 +105,14 @@ ${sheetParts.map(sheet => `<Relationship Id="rId${sheet.index}" Type="http://sch
 <Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
 </Relationships>` },
     { name: 'xl/styles.xml', text: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="0"/>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<numFmts count="${formats.length}">${formats.map((format, index) =>
+      `<numFmt numFmtId="${164 + index}" formatCode="${xml(format)}"/>`).join('')}</numFmts>
 <fonts count="1"><font/></fonts><fills count="1"><fill/></fills><borders count="1"><border/></borders>
 <cellStyleXfs count="1"><xf/></cellStyleXfs>
-<cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs></styleSheet>` },
+<cellXfs count="${formats.length + 1}"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>${
+      formats.map((_, index) => `<xf numFmtId="${164 + index}" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>`).join('')
+    }</cellXfs></styleSheet>` },
     ...sheetParts.map(sheet => ({ name: `xl/worksheets/sheet${sheet.index}.xml`, text: sheet.xml })),
   ];
   if (options.macros) parts.push({ name: 'xl/vbaProject.bin', text: 'Sub Auto_Open()\nEnd Sub' });
@@ -121,3 +135,5 @@ export function buildLegacyXlsFile(): ArrayBuffer {
 export const text = (value: string): FixtureCell => ({ text: value });
 export const empty = (): FixtureCell => ({});
 export const formula = (expression: string, storedResult: string): FixtureCell => ({ formula: expression, number: storedResult });
+/** A serial number carrying a number format, the way a spreadsheet stores a duration. */
+export const formatted = (serial: string, format: string): FixtureCell => ({ number: serial, format });

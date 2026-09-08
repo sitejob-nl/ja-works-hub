@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HoursWeekSources } from '@/components/hours-workflow/HoursWeekSources';
 import type { HoursWeekView } from '@/components/hours-workflow/types';
-import { buildWorkbookFile, text } from './support/xlsx-workbook';
+import { buildWorkbookFile, formatted, text } from './support/xlsx-workbook';
 
 const { rpc, upload, createSignedUrl } = vi.hoisted(() => ({
   rpc: vi.fn(), upload: vi.fn(), createSignedUrl: vi.fn(),
@@ -136,6 +136,24 @@ describe('reading a delivered spreadsheet from the week screen', () => {
     // The days keep what the file said; nothing is corrected away.
     expect(within(panel).getByText('4:00 uur')).toBeInTheDocument();
     expect(within(panel).getByText('5:00 uur')).toBeInTheDocument();
+  });
+
+  it('reads a clock-formatted duration but refuses an ambiguous elapsed-time cell', async () => {
+    // Both cells hold half a day. The clock format arrives as a time and is read
+    // as 12:00; the elapsed format arrives as a bare 0,5 that could equally be
+    // half an hour, so the reader says so instead of choosing.
+    serveWorkbook(buildWorkbookFile([{ name: 'Week 37', rows: [
+      [text('Naam'), text('Datum'), text('Uren')],
+      [text('Jan Kowalski'), text('07-09-2026'), formatted('0.5', 'h:mm')],
+      [text('Ewa Nowak'), text('08-09-2026'), formatted('0.5', '[h]:mm')],
+    ] }]));
+    show();
+    fireEvent.click(await screen.findByRole('button', { name: 'Uitlezen' }));
+
+    const panel = await screen.findByRole('group', { name: 'Uitlezing van deze bron' });
+    expect(within(panel).getByText('12:00 uur')).toBeInTheDocument();
+    expect(within(panel).getByText(/kan zowel 0:30 als 12:00 betekenen/)).toBeInTheDocument();
+    expect(within(panel).getByRole('button', { name: '1 voorstel bewaren' })).toBeInTheDocument();
   });
 
   it('blocks an unreadable file with an explanation and records nothing', async () => {
