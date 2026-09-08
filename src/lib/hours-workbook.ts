@@ -20,11 +20,20 @@ export interface WorkbookCandidate {
   /** The delivered breakdown, kept exactly as the sheet wrote it. */
   sourceInput: HoursSourceInput | null;
   pageNumber: number; pageLabel: string;
+  /** Where this came from, for a message that can name the row. */
+  sheetName: string; row: number;
   assignmentUncertain: boolean;
   /** What the sheet literally said about this employee. */
   employeeText: string;
   notices: HoursIssue[];
 }
+
+/**
+ * How many proposals one handling may record. The server enforces the same
+ * bound; the screen checks it first so a large reading is narrowed down rather
+ * than refused as a whole after the fact.
+ */
+export const HOURS_READING_MAX_ENTRIES = 500;
 
 /** A row the reader deliberately left alone, named so nothing disappears silently. */
 export interface WorkbookSkippedRow { sheet: string; row: number; text: string; reason: string }
@@ -54,18 +63,30 @@ const normalizeName = (value: string): string =>
   value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
     .replace(/[.,]/g, ' ').replace(/\s+/g, ' ').trim();
 
-const NAME_HEADERS = ['naam', 'medewerker', 'werknemer', 'employee', 'name', 'nazwisko'];
-const DATE_HEADERS = ['datum', 'date', 'dag', 'day', 'data'];
-const TOTAL_HEADERS = ['uren', 'hours', 'totaal', 'total', 'aantal', 'gewerkt', 'godziny'];
+/**
+ * Column titles are matched exactly. A prefix rule looks helpful until a column
+ * called "Aantal dagen" wins the race for the hours total and a 1 becomes an
+ * hour. An unrecognised title simply does not make this a list worksheet, which
+ * ends in an honest blockade rather than in wrong hours.
+ */
+const NAME_HEADERS = ['naam', 'medewerker', 'werknemer', 'naam medewerker', 'medewerkernaam',
+  'employee', 'name', 'nazwisko'];
+const DATE_HEADERS = ['datum', 'date', 'dag', 'day', 'werkdag', 'data'];
+const TOTAL_HEADERS = ['uren', 'aantal uren', 'totaal uren', 'uren totaal', 'gewerkte uren',
+  'totaal', 'total', 'hours', 'godziny'];
+/** Titles that are certainly not a delivered duration; they are left alone. */
+const IGNORED_HEADERS = ['opmerking', 'opmerkingen', 'notitie', 'toelichting', 'remark', 'remarks',
+  'note', 'notes', 'project', 'kostenplaats', 'afdeling', 'functie', 'week', 'weeknummer',
+  'nr', 'nummer', 'id', 'personeelsnummer', 'akkoord', 'paraaf', 'handtekening'];
 
-const headerMatches = (value: string, options: string[]): boolean => {
-  const text = normalizeName(value);
-  return options.some(option => text === option || text.startsWith(`${option} `));
-};
+const headerMatches = (value: string, options: string[]): boolean =>
+  options.includes(normalizeName(value));
 
 /** Only unambiguous notations; a date that is not a day of this week is never guessed at. */
 function parseWorkDate(value: WorkbookCell): string | null {
-  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  // A cell formatted as a time comes back as a Date on the spreadsheet's own
+  // epoch. Reading that as a work date makes a list worksheet look like a grid.
+  if (value instanceof Date) return value.getUTCFullYear() < 1901 ? null : value.toISOString().slice(0, 10);
   const text = cellText(value);
   const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
   if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
@@ -114,33 +135,47 @@ function detectLongHeader(rows: WorkbookCell[][]): LongHeader | null {
     const categories = row.flatMap((cell, column) => {
       const sourceCode = cellText(cell);
       if (!sourceCode || column === name || column === date || column === total) return [];
-      if (headerMatches(sourceCode, [...NAME_HEADERS, ...DATE_HEADERS, ...TOTAL_HEADERS])) return [];
-      return [{ column, sourceCode: sourceCode.slice(0, 200) }];
+      if (headerMatches(sourceCode, [...NAME_HEADERS, ...DATE_HEADERS, ...TOTAL_HEADERS, ...IGNORED_HEADERS])) return [];
+      // A remaining column only carries a delivered code when every value under
+      // it really is a duration. A remarks or reference column is left alone
+      // rather than turned into hours or into a reason to drop the whole row.
+      const values = rows.slice(index + 1).map(data => (data ?? [])[column]);
+      const readable = values.every(value => {
+        const duration = readDuration(value);
+        return duration === null || 'minutes' in duration;
+      });
+      return readable ? [{ column, sourceCode: sourceCode.slice(0, 200) }] : [];
     });
     return { kind: 'long', row: index, name, date, total, categories };
   }
   return null;
 }
 
+const ZERO_WITHOUT_REASON: HoursIssue = {
+  code: 'ZERO_WITHOUT_REASON',
+  message: 'Nul uren zonder reden. Leg de reden zelf als voorstel vast.',
+};
+
 /** Durations are read exactly: decimal comma, decimal point and H:MM, never rounded. */
 function readDuration(value: WorkbookCell, maxMinutes = 1440): { minutes: number } | { reason: string } | { issue: HoursIssue } | null {
   if (value === null || value === undefined || cellText(value) === '') return null;
   if (value instanceof Date) {
     // Excel stores a typed "8:30" as a time on its own epoch; a real work date never lands there.
-    if (value.getUTCFullYear() < 1901) return { minutes: value.getUTCHours() * 60 + value.getUTCMinutes() };
-    return { issue: { code: 'INVALID_HOURS', message: 'Deze cel bevat een datum in plaats van een duur.' } };
+    if (value.getUTCFullYear() >= 1901) {
+      return { issue: { code: 'INVALID_HOURS', message: 'Deze cel bevat een datum in plaats van een duur.' } };
+    }
+    const minutes = value.getUTCHours() * 60 + value.getUTCMinutes();
+    return minutes === 0 ? { issue: ZERO_WITHOUT_REASON } : { minutes };
   }
   const text = cellText(value);
   const parsed = parseHoursToMinutes(typeof value === 'number' ? String(value) : text.replace(/\s*uur$/i, ''), { maxMinutes });
   if (parsed.ok === false) {
-    // Text that is not a duration is read as the literal reason for no hours.
-    if (/^\d/.test(text)) return { issue: parsed.issues[0] };
+    // Only text can be a literal reason for no hours. A number that will not
+    // parse — negative, out of range, sub-minute — is a problem, not a reason.
+    if (typeof value === 'number' || /^[-+]?\d/.test(text)) return { issue: parsed.issues[0] };
     return { reason: text.slice(0, 500) };
   }
-  if (parsed.value === 0) {
-    return { issue: { code: 'ZERO_WITHOUT_REASON', message: 'Nul uren zonder reden. Vul de reden zelf in als voorstel.' } };
-  }
-  return { minutes: parsed.value };
+  return parsed.value === 0 ? { issue: ZERO_WITHOUT_REASON } : { minutes: parsed.value };
 }
 
 /**
@@ -225,6 +260,7 @@ function readWideSheet(
         dayId, memberId: match.member.id, employeeName: match.member.name, workDate: day.workDate,
         minutes, noHoursReason: 'reason' in duration ? duration.reason : null, sourceInput: null,
         pageNumber: sheetIndex + 1, pageLabel: `blad ${sheet.name} · rij ${rowNumber}`,
+        sheetName: sheet.name, row: rowNumber,
         assignmentUncertain: match.uncertain, employeeText: nameText, notices: [],
       });
     }
@@ -308,6 +344,7 @@ export function readHoursWorkbook(sheets: WorkbookSheet[], context: WorkbookCont
         minutes, noHoursReason: 'reason' in duration ? duration.reason : null,
         sourceInput: breakdown.sourceInput,
         pageNumber: sheetIndex + 1, pageLabel: `blad ${sheet.name} · rij ${rowNumber}`,
+        sheetName: sheet.name, row: rowNumber,
         assignmentUncertain: match.uncertain, employeeText: nameText,
         notices: controlNotices(minutes, breakdown.sourceInput),
       });
@@ -316,6 +353,23 @@ export function readHoursWorkbook(sheets: WorkbookSheet[], context: WorkbookCont
 
   if (!sheetsRead.length) {
     return fail('NO_LAYOUT', 'Geen enkel werkblad heeft een herkenbare indeling met namen, dagen en uren. Er zijn geen voorstellen gemaakt.');
+  }
+  // One workday can carry only one proposal out of one delivery. A file that
+  // says two different things about the same day is ambiguous about that day,
+  // and picking one of the two would be exactly the guess this module avoids.
+  const repeated = candidates.filter((candidate, index) =>
+    candidates.findIndex(other => other.dayId === candidate.dayId) !== index);
+  if (repeated.length) {
+    const second = repeated[0];
+    const first = candidates.find(candidate => candidate.dayId === second.dayId)!;
+    const place = (candidate: WorkbookCandidate) => first.sheetName === second.sheetName
+      ? `rij ${candidate.row}` : `blad ${candidate.sheetName}, rij ${candidate.row}`;
+    const where = first.sheetName === second.sheetName
+      ? `blad ${first.sheetName}, ${place(first)} en ${place(second)}`
+      : `${place(first)} en ${place(second)}`;
+    return fail('DUPLICATE_DAY',
+      `${first.employeeName} staat meer dan één keer op ${first.workDate}: ${where}. `
+      + 'Maak in het bestand duidelijk welke regel geldt; er zijn geen voorstellen gemaakt.');
   }
   return { ok: true, candidates, skipped, rowTotals, sheetsRead };
 }

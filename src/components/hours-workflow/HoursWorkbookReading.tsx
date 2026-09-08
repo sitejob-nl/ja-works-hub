@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { hoursWorkflowError } from '@/lib/hours-workflow';
-import type { WorkbookCandidate, WorkbookReading } from '@/lib/hours-workbook';
+import { HOURS_READING_MAX_ENTRIES, type WorkbookCandidate, type WorkbookReading } from '@/lib/hours-workbook';
 import type { HoursReadingEntry } from '@/lib/hours-workflow-api';
 import { formatHoursDate } from './presentation';
 
@@ -62,6 +62,11 @@ export function HoursWorkbookReading({ reading, alreadyProposed, onCancel, onSav
     if (busy) return;
     setError(null);
     if (!chosen.length) { setError('Kies minstens één regel om als voorstel te bewaren.'); return; }
+    if (chosen.length > HOURS_READING_MAX_ENTRIES) {
+      setError(`Er kunnen maximaal ${HOURS_READING_MAX_ENTRIES} regels in één keer worden bewaard. `
+        + `Vink er ${chosen.length - HOURS_READING_MAX_ENTRIES} uit en bewaar de rest daarna.`);
+      return;
+    }
     setBusy(true);
     try { await onSave(chosen.map(entryOf)); onCancel(); }
     catch (failure) { setError(hoursWorkflowError(failure)); }

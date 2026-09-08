@@ -240,12 +240,26 @@ beoordeelde bron eist een pagina op elk nieuw voorstel, een tegensprekend pagina
 - **Twee indelingen worden herkend.** Een *kruistabel* (medewerkers onder elkaar, dagen als kolomkoppen)
   en een *lijst* (kop met naam, datum en uren, één regel per medewerker/dag). Elke andere indeling levert
   een blokkade en **géén halve voorstellen**.
+- **Kolomkoppen worden exact herkend, niet op voorvoegsel.** Een voorvoegselregel lijkt behulpzaam tot een
+  kolom "Aantal dagen" de wedstrijd om het urentotaal wint en een `1` een uur wordt. Een onbekende kop
+  maakt van het blad simpelweg geen lijstblad, wat op een eerlijke blokkade uitkomt in plaats van op
+  verkeerde uren.
 - **Broncategorieën blijven letterlijk staan.** In een lijstblad wordt elke overige kolomkop als broncode
   overgenomen (`OV1`, `OV3`, …) met de duur uit die cel. Er wordt niets naar een interne uursoort vertaald;
-  dat is het werk van de matrix, later en op de vastgelegde dagrevisie.
+  dat is het werk van de matrix, later en op de vastgelegde dagrevisie. Een kolom telt alleen als broncode
+  wanneer **elke** waarde eronder een duur is; een opmerkingen- of referentiekolom wordt met rust gelaten
+  in plaats van de hele regel te laten vervallen. Glipt er tóch een getallenkolom doorheen, dan is dat
+  zichtbaar: de optelling klopt dan niet met het dagtotaal en dat verschil wordt getoond.
+- **Eén werkdag draagt hoogstens één voorstel uit één aanlevering.** Staat dezelfde medewerker tweemaal
+  op dezelfde dag, dan is het bestand over die dag dubbelzinnig; de uitlezing **blokkeert** met de beide
+  vindplaatsen erbij. Een van de twee kiezen zou precies de gok zijn die deze module vermijdt.
 - **Ontbrekende tijden worden niet verzonnen.** Een lege cel levert geen voorstel; de regel wordt met reden
-  benoemd. Een tekstcel in een urenkolom wordt de letterlijke reden voor "geen uren"; een numerieke nul
-  zonder reden levert bewust géén voorstel.
+  benoemd. Alleen **tekst** in een urenkolom wordt de letterlijke reden voor "geen uren" — een getal dat
+  niet als duur te lezen is (negatief, buiten bereik, subminuut) is een probleem en geen reden. Een nul,
+  ook een als tijd opgemaakte `0:00`, levert bewust géén voorstel: daar hoort een reden bij.
+- **Een als tijd opgemaakte cel is een duur, nooit een werkdatum.** Een spreadsheet bewaart `8:30` als een
+  tijdstip op zijn eigen jaartelling; dat als datum lezen zou een lijstblad op een kruistabel doen lijken
+  en het hele blad stil laten verdwijnen.
 - **Een aangeleverd totaal is een controlegetal.** Klopt het weektotaal van een rij niet met de dagen
   eronder, of tellen de broncodes niet op tot het dagtotaal, dan blijft alles staan zoals aangeleverd en
   wordt **het verschil getoond**. Er wordt niets weggerekend en toepassen wordt niet stil geblokkeerd; de
@@ -261,7 +275,9 @@ beoordeelde bron eist een pagina op elk nieuw voorstel, een tegensprekend pagina
 ### Eén uitlezing, één handeling
 
 `hours_create_source_proposals` legt een hele uitlezing in één transactie vast: één tot vijfhonderd
-voorstellen, elke werkdag hoogstens één keer, vaste vergrendelvolgorde over de dagen. Wordt één regel
+voorstellen, elke werkdag hoogstens één keer, vaste vergrendelvolgorde over de dagen. Het scherm toetst
+diezelfde bovengrens vóór het verzenden, zodat een grote uitlezing wordt versmald in plaats van achteraf
+in zijn geheel geweigerd. Wordt één regel
 geweigerd, dan wordt er **niets** vastgelegd — een halve uitlezing is erger dan geen. Wat eruit komt zijn
 nog steeds voorstellen: toepassen blijft per dag een aparte handeling.
 

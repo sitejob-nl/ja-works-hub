@@ -196,3 +196,89 @@ describe('a week total longer than a day', () => {
     expect(reading.rowTotals).toEqual([expect.objectContaining({ deliveredMinutes: 2400, readMinutes: 960 })]);
   });
 });
+
+describe('columns the reader must not mistake for something else', () => {
+  it('does not treat a loosely titled column as the hours total', () => {
+    const reading = readHoursWorkbook([sheet('Week 37', [
+      ['Naam', 'Datum', 'Aantal dagen', 'Uren'],
+      ['Jan Kowalski', '07-09-2026', '1', '8:00'],
+    ])], week);
+
+    expect(reading.ok).toBe(true);
+    if (reading.ok === false) return;
+    expect(reading.candidates[0].minutes).toBe(480);
+  });
+
+  it('ignores a remarks column instead of discarding the whole row', () => {
+    const reading = readHoursWorkbook([sheet('Week 37', [
+      ['Naam', 'Datum', 'Uren', 'Opmerking'],
+      ['Jan Kowalski', '07-09-2026', '8:00', 'kwam later binnen'],
+    ])], week);
+
+    expect(reading.ok).toBe(true);
+    if (reading.ok === false) return;
+    expect(reading.candidates).toHaveLength(1);
+    expect(reading.candidates[0].sourceInput).toBeNull();
+  });
+
+  it('reads a time-typed cell as a duration and never as a date', () => {
+    // Excel stores "8:30" as a time on its own epoch; read-excel-file returns that Date.
+    const excelTime = new Date(Date.UTC(1899, 11, 30, 8, 30));
+    const reading = readHoursWorkbook([sheet('Week 37', [
+      ['Naam', 'Datum', 'Uren'],
+      ['Jan Kowalski', '07-09-2026', excelTime],
+    ])], week);
+
+    expect(reading.ok).toBe(true);
+    if (reading.ok === false) return;
+    expect(reading.candidates.map(candidate => [candidate.dayId, candidate.minutes])).toEqual([['day-jan-mo', 510]]);
+  });
+
+  it('asks for a reason instead of proposing a time-typed zero', () => {
+    const reading = readHoursWorkbook([sheet('Week 37', [
+      ['Naam', 'Datum', 'Uren'],
+      ['Jan Kowalski', '07-09-2026', new Date(Date.UTC(1899, 11, 30, 0, 0))],
+    ])], week);
+
+    expect(reading.ok).toBe(true);
+    if (reading.ok === false) return;
+    expect(reading.candidates).toHaveLength(0);
+    expect(reading.skipped[0].reason).toMatch(/reden/i);
+  });
+
+  it('refuses to read a negative number as a reason for no hours', () => {
+    const reading = readHoursWorkbook([sheet('Week 37', [
+      ['Naam', 'Datum', 'Uren'],
+      ['Jan Kowalski', '07-09-2026', -8],
+    ])], week);
+
+    expect(reading.ok).toBe(true);
+    if (reading.ok === false) return;
+    expect(reading.candidates).toHaveLength(0);
+    expect(reading.skipped[0].reason).not.toMatch(/-8/);
+  });
+
+  it('blocks a file that says two different things about the same workday', () => {
+    const reading = readHoursWorkbook([sheet('Week 37', [
+      ['Naam', 'Datum', 'Uren'],
+      ['Jan Kowalski', '07-09-2026', '4:00'],
+      ['Jan Kowalski', '07-09-2026', '3:30'],
+    ])], week);
+
+    expect(reading.ok).toBe(false);
+    if (reading.ok !== false) return;
+    expect(reading.issues[0].code).toBe('DUPLICATE_DAY');
+    expect(reading.issues[0].message).toMatch(/rij 2 en rij 3/);
+  });
+});
+
+describe('the same workday on two worksheets', () => {
+  it('names both worksheets when the repeat is not on the same one', () => {
+    const rows = (hours: string) => [['Naam', 'Datum', 'Uren'], ['Jan Kowalski', '07-09-2026', hours]];
+    const reading = readHoursWorkbook([sheet('Week 37', rows('4:00')), sheet('Correcties', rows('3:30'))], week);
+
+    expect(reading.ok).toBe(false);
+    if (reading.ok !== false) return;
+    expect(reading.issues[0].message).toMatch(/blad Week 37, rij 2 en blad Correcties, rij 2/);
+  });
+});
