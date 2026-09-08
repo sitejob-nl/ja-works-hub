@@ -13,8 +13,8 @@ bevestigde klant-/CAO-matrices inclusief pauze-, afrondings- en samenloopregels 
 het exportvoorbeeld van de payroller met uurcodes en correctieprocedure (T12, T13),
 ontvangers/verantwoordelijken per partij (T8), en de keuze van pilotklanten (T14).
 
-Stand 08-09-2026: **T1 gebouwd, gedeployed en met verbonden demo-QA bewezen** (branch
-`feat/urenmodule-broninname`, migratie `20260909090000`). T2 t/m T14 nog niet gestart.
+Stand 08-09-2026: **T1 en T2 gebouwd, gedeployed en met verbonden demo-QA bewezen** (migraties
+`20260909090000` en `20260910090000`). T3 t/m T14 nog niet gestart.
 
 ---
 
@@ -62,14 +62,17 @@ interne gebruiker ziet per pagina welk deel van de bron bij welk voorstel hoort,
 de toewijzing niet eenduidig is blijft expliciet onbeslist. Een onbesliste toewijzing blokkeert de
 betreffende dag; hij kan nooit stilzwijgend bij één persoon terechtkomen.
 
+**Status:** gebouwd en gedeployed op 8 september 2026; zie het
+[innamecontract](urenmodule-intake-contract.md#paginas-en-gecontroleerde-toewijzing-t2).
+
 **Geblokkeerd door:** T1.
 
-- [ ] Een PDF toont paginanummer en -aantal; een voorstel verwijst naar de exacte pagina
-- [ ] Meerdere voorstellen uit dezelfde bron voor verschillende medewerkers en dagen
-- [ ] Een voorstel kan expliciet "toewijzing onzeker" zijn; toepassen is dan geblokkeerd tot een
+- [x] Een PDF toont paginanummer en -aantal; een voorstel verwijst naar de exacte pagina
+- [x] Meerdere voorstellen uit dezelfde bron voor verschillende medewerkers en dagen
+- [x] Een voorstel kan expliciet "toewijzing onzeker" zijn; toepassen is dan geblokkeerd tot een
       interne gebruiker de medewerker bevestigt
-- [ ] Een pagina met meerdere personen kan niet in één handeling aan één persoon worden toegewezen
-- [ ] Een onbesliste toewijzing telt mee als openstaand punt op de week
+- [x] Een pagina met meerdere personen kan niet in één handeling aan één persoon worden toegewezen
+- [x] Een onbesliste toewijzing telt mee als openstaand punt op de week
 
 ---
 

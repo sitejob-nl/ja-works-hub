@@ -1,10 +1,10 @@
 # Urenmodule: interne broninname en invoervoorstellen
 
-**Status: gedeployed op 8 september 2026** (migratie `20260909090000_hours_week_sources_and_proposals.sql`,
-receipt `20260908142509_hours_week_sources_and_proposals`). De migratie is additief en verandert geen
+**Status: gedeployed op 8 september 2026** (migraties `20260909090000_hours_week_sources_and_proposals.sql`
+en `20260910090000_hours_source_pages_and_assignment.sql`). Beide zijn additief en veranderen geen
 bestaande urenafspraak. `timesheets`, facturatie, urenbrieven, CSV-import en communicatie worden niet
 geschreven. **JA Werkt staat UIT, de geverifieerde demo staat AAN** voor `uren-workflow`; die SaaS-poort
-geldt ook voor de twee nieuwe tabellen en de privé-bronopslag.
+geldt ook voor de drie nieuwe tabellen en de privé-bronopslag.
 
 Dit is de eerste helft van "uren ontvangen en uitlezen": **interne** upload met **handmatige**
 beoordeling. Automatische uitlezers (Excel, PDF-tekst, OCR/Vision, mailinname) sluiten later op exact
@@ -50,10 +50,11 @@ aanlevering van hetzelfde bestand binnen dezelfde week één bron; de RPC meldt 
 history-trigger als de overige urentabellen).
 
 `hours_source_proposals` bevat medewerkerdag, minuten of expliciete nulreden, notitie, optionele
-broninput (diensten/pauzes/broncategorieën, exact hetzelfde schema als handmatige invoer) en een vrije
-`page_label` als vindplaats. De inhoud is onveranderlijk; alleen de afwikkeling beweegt één keer van
-`open` naar `applied` of `discarded`, met actor en tijdstip. Een CHECK bewaakt dat een afgewikkeld
-voorstel altijd actor én uitkomst heeft, en dat een open voorstel die velden juist niet heeft.
+broninput (diensten/pauzes/broncategorieën, exact hetzelfde schema als handmatige invoer), een
+`page_number` en een vrije `page_label` als vindplaats binnen die pagina. De inhoud is onveranderlijk;
+alleen de afwikkeling beweegt één keer van `open` naar `applied` of `discarded`, met actor en tijdstip,
+en de toewijzingsbevestiging beweegt hoogstens één keer (zie hieronder). Een CHECK bewaakt dat een
+afgewikkeld voorstel altijd actor én uitkomst heeft, en dat een open voorstel die velden juist niet heeft.
 
 `private.hours_write_day_revision` is nu de enige plek die beslist of opgeslagen feiten verschillen.
 Handmatige invoer en een toegepast voorstel volgen daardoor exact dezelfde revisie-, no-op- en
@@ -74,17 +75,23 @@ De frontend leest de herkomst uit `source_references` in plaats van een vaste te
 
 ## Publieke RPC's
 
-Alle vijf zijn uitvoerbaar voor `authenticated` en autoriseren opnieuw in de functie: actief profiel,
+Alle acht zijn uitvoerbaar voor `authenticated` en autoriseren opnieuw in de functie: actief profiel,
 eigen organisatie, `is_internal_user()`, de SaaS-module en `finance.view`/`finance.manage`. Geen enkele
 is uitvoerbaar voor `anon` of `service_role`.
 
 | RPC | Parameters | Resultaat |
 | --- | --- | --- |
-| `hours_get_week_sources` | `p_week_id uuid` | `{week_id, can_manage, sources[]}` met per bron zijn voorstellen |
-| `hours_add_week_source` | `p_week_id uuid`, `p_content_hash text`, `p_file_name text`, `p_content_type text` | Dezelfde projectie plus `duplicate` en `source_id` |
-| `hours_create_source_proposal` | `p_source_id uuid`, `p_day_id uuid`, `p_minutes integer`, `p_no_hours_reason text`, `p_note text`, `p_source_input jsonb`, `p_page_label text` | Dezelfde projectie |
+| `hours_get_week_sources` | `p_week_id uuid` | `{week_id, can_manage, open_proposals, undecided_assignments, sources[]}` met per bron zijn pagina's en voorstellen |
+| `hours_add_week_source` | `p_week_id uuid`, `p_content_hash text`, `p_file_name text`, `p_content_type text`, `p_page_count integer` | Dezelfde projectie plus `duplicate` en `source_id` |
+| `hours_create_source_proposal` | `p_source_id uuid`, `p_day_id uuid`, `p_minutes integer`, `p_no_hours_reason text`, `p_note text`, `p_source_input jsonb`, `p_page_label text`, `p_page_number integer`, `p_assignment_uncertain boolean` | Dezelfde projectie |
 | `hours_discard_source_proposal` | `p_proposal_id uuid`, `p_note text` | Dezelfde projectie |
 | `hours_apply_source_proposal` | `p_proposal_id uuid`, `p_expected_revision_id uuid` | `WeekDetail` plus `applied_created_revision` en `sources` |
+| `hours_set_source_page` | `p_source_id uuid`, `p_page_number integer`, `p_assignment text`, `p_member_id uuid`, `p_note text` | Dezelfde projectie |
+| `hours_create_page_proposals` | `p_source_id uuid`, `p_page_number integer`, `p_entries jsonb` | Dezelfde projectie |
+| `hours_confirm_proposal_assignment` | `p_proposal_id uuid`, `p_note text` | Dezelfde projectie |
+
+De projectie telt daarnaast `open_proposals` en `undecided_assignments` **server-side over de hele
+week**, zodat een scherm nooit hoeft op te tellen wat er toevallig op staat.
 
 `can_manage` is `true` bij een interne gebruiker met `finance.manage` **en** een ingeschakelde
 opdrachtgever; bij een uitgeschakelde opdrachtgever blijven bestaande bronnen leesbaar.
@@ -104,11 +111,94 @@ revisie; het eerdere medewerkerakkoord blijft daardoor geldig. Het scherm meldt 
 wijziging maakt wél een nieuwe revisie, waarna het eerdere akkoord en de eerdere controle vervallen —
 precies zoals bij handmatige correctie.
 
+## Pagina's en gecontroleerde toewijzing (T2)
+
+Eén aangeleverd bestand bevat vaak briefjes van meerdere medewerkers. De klantspecificatie is daar
+scherp over: **een PDF met meerdere briefjes mag nooit stilzwijgend aan één persoon worden toegewezen.**
+
+### Hoeveel pagina's er zijn
+
+`hours_week_sources.page_count` legt vast hoeveel pagina's de aanlevering had. De browser telt een PDF
+met pdf.js (`src/lib/hours-pdf-pages.ts`) op de bytes die hij toch al leest voor de digest; een foto is
+per definitie één pagina en de server forceert dat. Een bestand dat de browser niet kan tellen blijft
+eerlijk `null` — "aantal pagina's onbekend" — in plaats van te doen alsof het één pagina is. Bronnen van
+vóór deze migratie houden `null`.
+
+Net als de digest is dit een **feit over de aanlevering, geen vertrouwensgrens**: de beoordelaar ziet
+altijd de werkelijke pagina's voordat een voorstel wordt toegepast. Wat de server wél afdwingt is de
+samenhang: `page_number` op een voorstel of paginabesluit moet binnen `page_count` vallen zodra dat
+bekend is.
+
+### Wie op een pagina staat
+
+`hours_source_pages` bewaart per pagina van een bron het besluit van een interne gebruiker:
+
+| `assignment` | Betekenis | `member_id` |
+| --- | --- | --- |
+| `single` | Op deze pagina staat één medewerker | verplicht, lid van dezelfde week |
+| `multiple` | Op deze pagina staan meerdere medewerkers | leeg |
+| `unclear` | Onduidelijk wie hierop staat | leeg |
+
+De rij is append-only met actor en tijdstip, zoals elk ander urenfeit. Een besluit wijzigen betekent dat
+`hours_set_source_page` het oude in dezelfde transactie op `withdrawn` zet en een nieuw besluit vastlegt;
+een partiële unieke index houdt precies één actief besluit per pagina over. Zo blijft zichtbaar wie ooit
+zei dat een pagina bij één persoon hoorde.
+
+**`single` wordt geweigerd zodra de pagina aantoonbaar meerdere medewerkers draagt** — dat wil zeggen:
+er staan al niet-verworpen voorstellen voor meer dan één medewerker op die pagina (`22023`). Dat is geen
+mening maar een feit uit de eigen administratie, en het is niet te omzeilen door harder te klikken.
+
+### Een pagina in één handeling overnemen
+
+`hours_create_page_proposals` maakt uit één pagina in één handeling een voorstel per werkdag. Dit is de
+handeling waar het risico van criterium 4 zit, en daarom is hij dubbel begrensd:
+
+- er moet een **actief `single`-besluit** voor die pagina zijn, anders `22023`;
+- elke opgegeven dag moet bij **precies die medewerker** horen, anders `22023` en niets geschreven.
+
+De verkorte route kan dus per constructie geen andere persoon raken. Wat eruit komt zijn nog steeds
+voorstellen: toepassen blijft per dag een aparte handeling.
+
+### Een toewijzing die openlijk onbeslist blijft
+
+Een voorstel draagt `assignment_uncertain`. De interne gebruiker kan dat zelf aanvinken, en de server
+forceert het wanneer het actieve paginabesluit het voorstel tegenspreekt: een `unclear`-pagina, of een
+`single`-pagina die op een andere medewerker staat.
+
+Zolang een onzeker voorstel niet is bevestigd, **blokkeert `hours_apply_source_proposal` met `22023` en
+schrijft niets**. `hours_confirm_proposal_assignment` heft die blokkade op: het zet
+`assignment_confirmed_by`/`_at` (eenmalig, bewaakt door de trigger) en laat het voorstel verder
+ongemoeid — status blijft `open`, toepassen blijft een aparte handeling.
+
+De bevestigingstoelichting staat bewust in een **eigen** kolom `assignment_note` en niet in `note`:
+`note` is voorgestelde inhoud die letterlijk wordt toegepast, en die mag door een bevestiging niet
+veranderen. De onveranderlijkheidstrigger dwingt dat af.
+
+Klopt de medewerker niet? Dan geldt de bestaande regel ongewijzigd: verwerp het voorstel en leg een
+nieuw voorstel vast. Bevestigen kan alleen instemmen met de voorgestelde medewerker, nooit een andere
+kiezen.
+
+### Herkomst en openstaande punten
+
+De herkomst op de dagrevisie noemt nu ook de pagina:
+`[{"kind":"upload","label":"<bestandsnaam>","reference":"pagina 2 · <vindplaats>"}]`, server-side
+opgebouwd. Nog steeds zonder interne identificatoren.
+
+`hours_get_week_sources` levert `undecided_assignments`: het aantal open voorstellen met een onbesliste
+toewijzing. Het scherm toont dat als blokkerend openstaand punt op de week.
+
+### Uitrolvolgorde
+
+De twee gewijzigde RPC's kregen hun nieuwe parameters **met een default**, zodat een aanroep met de oude
+parameterset geldig blijft. De migratie kan daardoor vóór de frontend live: de nog draaiende versie blijft
+werken en levert dan simpelweg geen paginanummer. Een databasetest bewijst dat expliciet.
+
 ## Portaalgrens
 
 Een medewerker ziet de bronherkomst van de eigen dag, maar:
 
-- `hours_week_sources` en `hours_source_proposals` leveren via directe tabeltoegang nul rijen;
+- `hours_week_sources`, `hours_source_proposals` en `hours_source_pages` leveren via directe
+  tabeltoegang nul rijen;
 - `hours_get_week_sources` weigert een portaalgebruiker met `42501` (HTTP 403);
 - interne revisiehistorie en classificaties blijven leeg in de portaalprojectie.
 
@@ -117,22 +207,23 @@ Een medewerker ziet de bronherkomst van de eigen dag, maar:
 | SQLSTATE | Betekenis |
 | --- | --- |
 | `42501` | Geen bevoegdheid, verkeerde organisatie, ontoegankelijke week/dag/bron, of poging historie te wijzigen |
-| `22023` | Ongeldige invoer, niet-ondersteund bestandstype, ontbrekend of afwijkend opslagobject, uitgeschakelde opdrachtgever, al afgewikkeld voorstel |
+| `22023` | Ongeldige invoer, niet-ondersteund bestandstype, ontbrekend of afwijkend opslagobject, uitgeschakelde opdrachtgever, al afgewikkeld voorstel, pagina buiten het bereik van de bron, "één medewerker" op een pagina die er aantoonbaar meerdere draagt, een overname die een dag van een andere medewerker raakt, of een nog onbesliste toewijzing bij toepassen |
 | `PT409` | De dagversie is ondertussen gewijzigd; opnieuw laden en het voorstel opnieuw beoordelen |
 
 ## Verificatie
 
-- **126 echte PostgreSQL-tests** (`scripts/hours-intake-db-test.py`): 25 nieuwe innamegevallen plus de
-  volledige vrijgegeven foundation-, classificatie- en modulepoortregressies op het nieuwe schema. Alle
-  zes migraties worden tweemaal toegepast. De poortcontrole is uitgebreid van dertien naar **vijftien**
-  tabellen en van de bestaande RPC-inventaris naar de vijf nieuwe.
-- **29 nieuwe applicatietests** (`src/test/hours-sources.test.ts`, `src/test/hours-week-sources-ui.test.tsx`);
-  totaal 1.458 groen, met lint (0 errors), typecheck en productiebuild.
-- **Verbonden demo-QA** (`scripts/e2e-hours-intake-demo.spec.ts` + `scripts/prepare-hours-intake-demo.mjs`):
-  echte interne en medewerkerlogin tegen de live API met synthetische bestanden. Zie de bouwstand voor
-  het bewijs. Deze stroom verstuurt niets en doet geen betaalde AI-aanroepen, dus de
+- **137 echte PostgreSQL-tests** (`scripts/hours-pages-db-test.py`): 11 nieuwe paginagevallen plus de
+  volledige vrijgegeven inname-, foundation-, classificatie- en modulepoortregressies op het nieuwe
+  schema. Alle zeven migraties worden tweemaal toegepast. De poortcontrole is uitgebreid van vijftien
+  naar **zestien** tabellen en van de vijf inname-RPC's naar de acht van nu. De voorloper
+  `scripts/hours-intake-db-test.py` blijft ongewijzigd; de nieuwe harness importeert hem.
+- **Applicatietests**: `src/test/hours-sources.test.ts` en `src/test/hours-week-sources-ui.test.tsx`;
+  totaal 1.469 groen, met lint (0 errors), typecheck en productiebuild.
+- **Verbonden demo-QA** (`scripts/e2e-hours-pages-demo.spec.ts` + `scripts/prepare-hours-pages-demo.mjs`):
+  echte interne en medewerkerlogin tegen de live API, met een synthetische PDF van drie pagina's die de
+  browser zelf telt, in een eigen QA-week met **twee** medewerkers. De run claimt bewust precies één
+  onaangeroerde werkdag. Deze stroom verstuurt niets en doet geen betaalde AI-aanroepen, dus de
   communicatie-instelling van de demo is niet aangeraakt.
 
-Nog niet gebouwd: paginasplitsing en toewijzingscontrole bij meerdere medewerkers per bestand,
-bestandslezers (Excel/Word/PDF-tekst/OCR), mailinname, de klantpagina zonder inloggen, en vrijgave of
-export. Zie [de ticketlijst](urenmodule-tickets.md).
+Nog niet gebouwd: bestandslezers (Excel/Word/PDF-tekst/OCR), mailinname, de klantpagina zonder
+inloggen, en vrijgave of export. Zie [de ticketlijst](urenmodule-tickets.md).

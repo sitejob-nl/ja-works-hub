@@ -4,6 +4,61 @@ Overdracht voor wie verdergaat (Codex / Claude Code). Lees [AGENTS.md](AGENTS.md
 commands, [CLAUDE.md](CLAUDE.md) voor de canonieke codebase-diepte, [HANDOVER.md](HANDOVER.md) voor de formele
 projectsamenvatting.
 
+## Bronpagina's en gecontroleerde toewijzing — 8 september 2026 (`feat/urenmodule-bronpaginas`)
+
+- Nieuwe duurzame worktree `/Users/kas/dev/ja-works-hub/.worktrees/urenmodule-bronpaginas`, branch
+  `feat/urenmodule-bronpaginas` vanaf actuele `origin/main` `95ee94e` (de gemergde T1-release #265). De
+  stale hoofdcheckout en alle overige worktrees zijn ongemoeid gelaten.
+- **T2 uit [docs/urenmodule-tickets.md](docs/urenmodule-tickets.md) is gebouwd** — bronpagina's en
+  gecontroleerde toewijzing bij meerdere medewerkers in één bestand. Alle vijf acceptatiecriteria zijn
+  afgevinkt en met echte databasetests én verbonden demo-QA bewezen. Zie de nieuwe sectie
+  ["Pagina's en gecontroleerde toewijzing (T2)"](docs/urenmodule-intake-contract.md#paginas-en-gecontroleerde-toewijzing-t2)
+  in het innamecontract.
+- **Wat er nu kan:** een bron legt zijn paginaaantal vast (de browser telt een PDF met pdf.js; een foto is
+  één pagina; een onleesbaar bestand blijft eerlijk onbekend). Per pagina legt een interne gebruiker vast
+  of er **één medewerker**, **meerdere medewerkers** of **onduidelijk wie** op staat — append-only met
+  actor, een vergissing wordt vervangen en niet herschreven. "Eén medewerker" wordt geweigerd zodra die
+  pagina aantoonbaar voorstellen voor meerdere medewerkers draagt. Een pagina die op één naam staat kan in
+  één handeling worden overgenomen, maar die verkorte route kan per constructie alleen dagen van precies
+  die medewerker raken. Een voorstel kan expliciet "toewijzing onzeker" zijn (een onduidelijke pagina
+  forceert dat); toepassen is dan geblokkeerd tot een met naam bekende interne gebruiker bevestigt.
+- **De grens is ongewijzigd:** een bron, een paginabesluit en een voorstel zijn geen uren. Alleen
+  `hours_apply_source_proposal` schrijft een dagrevisie en neemt het voorstel letterlijk over. Nul writes
+  naar `timesheets`, facturatie of communicatie — na afloop in productie geverifieerd.
+- Migratie `20260910090000_hours_source_pages_and_assignment.sql` (SHA256
+  `8bc39109c66b828dd5aad088db1308d8100b381de9a92c5a04323314e49943c5`) is op 8 september toegepast; de
+  bronversie is in dezelfde transactie in `schema_migrations` geregistreerd. Additief: één nieuwe tabel
+  (`hours_source_pages`), vier nieuwe kolommen op `hours_source_proposals`, één op `hours_week_sources`,
+  drie nieuwe RPC's en twee gewijzigde. Live types hergenereerd (+130 regels).
+  **Geen edge-function-deploy nodig.**
+- **Uitrolvolgorde is veilig:** de twee gewijzigde RPC's kregen hun nieuwe parameters *met een default*,
+  zodat de nog draaiende frontend tussen migratie en merge blijft werken. Een databasetest bewijst dat.
+- Verificatie: **137 echte PostgreSQL-tests** (`scripts/hours-pages-db-test.py` — 11 nieuw plus de
+  volledige vrijgegeven inname-/foundation-/classificatie-/poortregressies, zeven migraties elk tweemaal,
+  poortcontrole van vijftien naar **zestien** tabellen); **1.469 applicatietests**; lint 0 errors,
+  typecheck en productiebuild groen. De vrijgegeven harness `scripts/hours-intake-db-test.py` is
+  ongewijzigd gelaten; de nieuwe importeert hem en overschrijft alleen de signaturen die echt bewogen.
+- **Verbonden demo-QA geslaagd** (`scripts/e2e-hours-pages-demo.spec.ts` +
+  `scripts/prepare-hours-pages-demo.mjs`, 4,9 s, `pages-flow-passed`, 48 echte API-oproepen): eigen verse
+  QA-opdrachtgever `Urenmodule QA 20260910-pages-r1` met **twee** medewerkers, een synthetische PDF van
+  drie pagina's die de browser zelf telt. Bewezen: paginaaantal uit de echte PDF, pagina op één naam,
+  overname als uitsluitend voorstellen (nul revisies), overname geweigerd op een dag van een andere
+  medewerker (400), onbesliste toewijzing die toepassen blokkeert (400, nul writes) en als openstaand punt
+  op de week telt, bevestiging die dat opheft, toepassing als versie 1 met "pagina 2 · onderste blok" als
+  herkomst, een pagina met twee medewerkers die op één naam wordt geweigerd maar wel als "meerdere" mag
+  worden vastgelegd, en een portaalgebruiker die geen paginabesluiten ziet (403 op de projectie).
+  **De run claimt bewust precies één onaangeroerde werkdag** — dat is na afloop geverifieerd.
+- **JA Werkt blijft UIT, demo AAN** — na afloop opnieuw geverifieerd. De demo-communicatiepauze staat nog
+  op de oorspronkelijke `{email:false, whatsapp:false}`; deze stroom heeft geen verzendpad. Het
+  geblokkeerde `QA_SUPERADMIN`-account is ongemoeid gelaten.
+- Advisors na DDL: geen ERROR-bevindingen. De drie nieuwe RPC's verschijnen in dezelfde WARN-categorie
+  "SECURITY DEFINER uitvoerbaar door authenticated" als alle bestaande urenfuncties — bewuste conventie.
+  Alle vijf foreign keys op `hours_source_pages` zijn geïndexeerd.
+- **Volgende actie:** PR openen, reviewen en mergen (alleen frontend; de migratie staat al live). Daarna
+  de frontier uit `docs/urenmodule-tickets.md`: **T3** (Excel-/tabelbestanden) en **T4** (scans/foto's via
+  de VPS met AI-boekhouding) zijn nu gedeblokkeerd, naast de al open **T6** (klantweekpagina zonder
+  inloggen) en de losstaande **T10**.
+
 ## Interne broninname urenmodule — 8 september 2026 (`feat/urenmodule-broninname`)
 
 - Nieuwe duurzame worktree `/Users/kas/dev/ja-works-hub/.worktrees/urenmodule-intake`, branch
