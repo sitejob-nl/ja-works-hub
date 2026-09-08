@@ -22,7 +22,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > `timesheets`. Brongegevens, matrixversies, medewerkerreacties en servermatige uurindeling hebben elk
 > een eigen contract; een geslaagde indeling is nog geen payrollvrijgave. Zie
 > [bouwstand](docs/urenmodule-bouw.md), [weekcontract](docs/urenmodule-db-contract.md),
-> [matrixcontract](docs/urenmodule-matrix-contract.md) en [classificatiecontract](docs/urenmodule-classification-contract.md).
+> [matrixcontract](docs/urenmodule-matrix-contract.md), [classificatiecontract](docs/urenmodule-classification-contract.md)
+> en [innamecontract](docs/urenmodule-intake-contract.md). De resterende bouw staat als tickets met
+> blokkades in [docs/urenmodule-tickets.md](docs/urenmodule-tickets.md).
+> **Broninname (09-09-migratie):** een geüpload urenbriefje en het daaruit afgeleide invoervoorstel zijn
+> géén uren — alleen `hours_apply_source_proposal` schrijft een dagrevisie, en dat neemt het voorstel
+> letterlijk over. Nieuwe uitlezers (Excel, OCR, mail) sluiten op die grens aan, niet op de dagrevisies.
 > Het aparte SaaS-recht `uren-workflow` is opt-in en geldt voor routes, RPC's en directe tabellezing;
 > legacy `uren` of een abonnement geeft dit recht niet. Zie [modulecontract](docs/urenmodule-organization-gate.md).
 > De backend is atomisch uitgerold op 8 september: JA Werkt UIT, geverifieerde demo AAN.
@@ -397,6 +402,11 @@ Canonical in [src/integrations/supabase/types.ts](src/integrations/supabase/type
 
 - **documents** — candidate/employee documents (CVs, IDs, contracts, inspection photos)
 - **organization-logos** — company branding logos
+- **property-contracts** — huurcontracten per pand (privé, interne rollen)
+- **hours-sources** — originele urenbriefjes per klantweek (privé, append-only: geen update-/delete-policy).
+  Pad `<org>/<week>/<sha256>.<pdf|jpg|png>`, 25 MiB en mediatypen door Storage zelf afgedwongen; toegang via
+  `private.hours_source_object_allowed()` (SaaS-module + `finance.view`/`finance.manage`). Bekijken met een
+  signed URL van 5 minuten. Zie [innamecontract](docs/urenmodule-intake-contract.md).
 
 ## Integration Status
 

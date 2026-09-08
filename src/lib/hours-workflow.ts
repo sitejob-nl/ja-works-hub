@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { HoursClassificationView, HoursWeekView } from '@/components/hours-workflow/types';
 import { hoursSourceInputSchema, type HoursSourceInput } from '@/components/hours-workflow/hours-day-source';
+import { describeSourceReferences } from '@/lib/hours-sources';
 
 const uuid = z.string().uuid();
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -48,13 +49,17 @@ export const hoursWeekListSchema = z.object({
 
 /** Never treat a response to an older revision as approval of the current hours. */
 export function toHoursWeekView(week: HoursWeek): HoursWeekView {
-  const mapRevision = (revision: z.infer<typeof revisionSchema>) => ({
+  const mapRevision = (revision: z.infer<typeof revisionSchema>) => {
+    const [origin] = describeSourceReferences(revision.source_references);
+    return {
     id: revision.id, version: revision.revision_number, minutes: revision.minutes,
     noHoursReason: revision.no_hours_reason, notes: revision.note,
-    sourceLabel: 'Handmatige invoer', createdAt: revision.created_at,
+    sourceLabel: origin?.label ?? 'Bron niet beschikbaar', sourceReference: origin?.reference ?? undefined,
+    createdAt: revision.created_at,
     sourceInput: revision.source_input as HoursSourceInput | null | undefined,
     classification: revision.classification?.revision_id === revision.id ? toHoursClassificationView(revision.classification) : null,
-  });
+    };
+  };
   return {
     id: week.id, companyName: week.company_name, weekStart: week.week_start,
     submissionDeadline: week.submission_deadline_at, confirmationDeadline: week.confirmation_deadline_at,

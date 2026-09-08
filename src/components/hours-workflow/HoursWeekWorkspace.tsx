@@ -25,6 +25,8 @@ export interface HoursWeekWorkspaceProps {
   onClassify?: (input: HoursClassifyInput) => Promise<void>;
   onReload?: () => void;
   readOnly?: boolean;
+  /** Rendered under the week summary; the internal intake panel fetches its own data. */
+  sourcesSlot?: React.ReactNode;
 }
 
 function ReviewEditor({ day, status, onReview, onClose, onReload }: {
@@ -205,7 +207,7 @@ function DayEditor({ day, onSave, onCancel, onReload }: {
   );
 }
 
-export function HoursWeekWorkspace({ week, onSaveDay, onReview, onClassify, onReload, readOnly: permissionReadOnly = false }: HoursWeekWorkspaceProps) {
+export function HoursWeekWorkspace({ week, onSaveDay, onReview, onClassify, onReload, sourcesSlot, readOnly: permissionReadOnly = false }: HoursWeekWorkspaceProps) {
   const readOnly = permissionReadOnly || !week.enabled;
   const [editingDay, setEditingDay] = useState<string | null>(null);
   const [reviewing, setReviewing] = useState<{ dayId: string; status: HoursReviewInput['status'] } | null>(null);
@@ -235,6 +237,7 @@ export function HoursWeekWorkspace({ week, onSaveDay, onReview, onClassify, onRe
       {week.submissionDeadline && <p>Aanleveren vóór: <strong>{formatHoursDeadline(week.submissionDeadline)}</strong></p>}
       {week.confirmationDeadline && <p>Medewerkerakkoord vóór: <strong>{formatHoursDeadline(week.confirmationDeadline)}</strong></p>}
     </div>}
+    {sourcesSlot}
     <p className="text-sm text-muted-foreground">Een lege dag is ontbrekende informatie. Ook bij geen gewerkte uren is een reden nodig. Medewerkerakkoord en interne controle blijven afzonderlijk zichtbaar.</p>
     {blockedDayCount > 0 && <p className="text-sm text-destructive">{blockedDayCount} {blockedDayCount === 1 ? 'dag vraagt' : 'dagen vragen'} aandacht door een betwisting, interne blokkade of geblokkeerde uurindeling.</p>}
     {saved && <p role="status" className="text-sm text-stat-green">De dag is opgeslagen. Gewijzigde uren wachten op een nieuwe reactie van de medewerker.</p>}

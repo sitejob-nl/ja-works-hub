@@ -4,6 +4,46 @@ Overdracht voor wie verdergaat (Codex / Claude Code). Lees [AGENTS.md](AGENTS.md
 commands, [CLAUDE.md](CLAUDE.md) voor de canonieke codebase-diepte, [HANDOVER.md](HANDOVER.md) voor de formele
 projectsamenvatting.
 
+## Interne broninname urenmodule — 8 september 2026 (`feat/urenmodule-broninname`)
+
+- Nieuwe duurzame worktree `/Users/kas/dev/ja-works-hub/.worktrees/urenmodule-intake`, branch
+  `feat/urenmodule-broninname` vanaf actuele `origin/main` `f01be24` (de gemergde release #264). De
+  classificatieworktree is ongemoeid gelaten; er stond geen ongepusht werk.
+- De resterende urenmodulebouw is eerst als tickets met blokkades vastgelegd in
+  [docs/urenmodule-tickets.md](docs/urenmodule-tickets.md) (T1 t/m T14, plus de klantinput die T8/T9/T12/T14
+  blokkeert). Daarna is T1 gebouwd.
+- **T1 — interne broninname:** urenbriefje uploaden bij een klantweek (PDF/JPG/PNG, privé bucket
+  `hours-sources`), bron bekijken via een signed URL van 5 minuten, een **invoervoorstel** vastleggen en
+  dat in een aparte handeling **letterlijk** toepassen als nieuwe dagrevisie. Een bron of voorstel is geen
+  uur; alleen toepassen schrijft. Zie [innamecontract](docs/urenmodule-intake-contract.md).
+- Migratie `20260909090000_hours_week_sources_and_proposals.sql` (SHA256
+  `37af2734e9cdd9c9b03e6bc276e8359cf5892031c0e7e31f49b3f74e5c38e270`) is op 8 september toegepast; receipt
+  `20260908142509_hours_week_sources_and_proposals`, en de bronversie is expliciet in `schema_migrations`
+  geregistreerd. Additief: `hours_save_day_source` is alleen op een gedeelde revisieschrijver aangesloten,
+  gedragsgelijk en bewezen door de volledige vrijgegeven regressieset. Live types zijn hergenereerd
+  (+207 regels) en de RPC-adapter hangt aan de gegenereerde signatures. **Geen edge-function-deploy nodig.**
+- Verificatie: **1.458 applicatietests**, lint 0 errors, typecheck en productiebuild groen;
+  **126 echte PostgreSQL-tests** (`scripts/hours-intake-db-test.py`) met zes migraties elk tweemaal
+  toegepast, poortcontrole uitgebreid van dertien naar vijftien tabellen en de vijf nieuwe RPC's.
+- Verbonden demo-QA geslaagd (`scripts/e2e-hours-intake-demo.spec.ts`, 9,3 s, `intake-flow-passed`) met
+  echte interne en medewerkerlogins tegen de live API en uitsluitend synthetische bestanden op een tot dan
+  onaangeroerde dag van de bestaande r4-fixture. Bewezen: geweigerd bestandstype vóór opslag, herhaalde
+  aanlevering als één bron, publieke URL faalt terwijl de signed URL werkt, voorstel zonder dagwijziging,
+  toepassing als versie 1 met de bron als herkomst, geweigerde tweede toepassing, geslaagde
+  uursoortenindeling (`classified`) op de toegepaste revisie, medewerkerakkoord met afgeschermde interne
+  gegevens, correctie die het akkoord ongeldig maakt, en een verouderde toepassing die niets schrijft.
+  Die run vond één echte bug (de bevestiging na toepassen verdween) die is hersteld en opnieuw getest.
+- **JA Werkt blijft UIT, demo AAN** — na afloop opnieuw geverifieerd. Nul berichten, nul betaalde
+  AI-calls, nul legacy-`timesheets`-writes; deze stroom heeft geen verzendpad, dus de
+  communicatie-instelling van de demo is niet aangeraakt (staat nog op de oorspronkelijke false/false).
+  Het geblokkeerde `QA_SUPERADMIN`-account is ongemoeid gelaten; deze stroom heeft het niet nodig.
+- Advisors na DDL: geen ERROR-bevindingen. De vijf nieuwe RPC's verschijnen in dezelfde WARN-categorie
+  "SECURITY DEFINER uitvoerbaar door authenticated" als alle bestaande urenfuncties — bewuste conventie.
+  Alle foreign keys op de twee nieuwe tabellen zijn geïndexeerd.
+- Bewijsmap: `/Users/kas/.codex/visualizations/2026/09/07/01a07bd6-9fd4-7440-a463-9fc32ece3f91/JA-Werkt-urenmodule/bouw/intake-20260909/`.
+- **Volgende actie:** PR reviewen en mergen (alleen frontend; migratie staat al live). Daarna de frontier
+  uit `docs/urenmodule-tickets.md`: T2 (bronpagina's en toewijzingscontrole) of T6 (klantweekpagina).
+
 ## Actuele uitrol urenmodule — 8 september 2026
 
 - Kas vroeg echte demo-QA en een SaaS-schakelaar per organisatie. De nieuwe key is `uren-workflow`, afzonderlijk van legacy `uren`, standaard UIT. Zes nieuwe routes en beide toegangsknoppen zijn afgeschermd; alle 13 nieuwe tabellen en de interne/portal/service-RPC's controleren hetzelfde recht. Zie [modulecontract](docs/urenmodule-organization-gate.md).
