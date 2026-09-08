@@ -473,3 +473,46 @@ describe('a grid that reaches past this week', () => {
     expect(reading.skipped.map(row => row.text)).toContain('Jan Kowalski · 2026-09-06');
   });
 });
+
+describe('a banner whose dates happen to sit next to each other', () => {
+  it('takes the row directly above the employees as the day header', () => {
+    const reading = readHoursWorkbook([sheet('Uren', [
+      ['Periode', '08-09-2026', '09-09-2026'],
+      ['Medewerker', '07-09-2026', '08-09-2026'],
+      ['Jan Kowalski', '8:00', '7:00'],
+    ])], week);
+
+    expect(reading.ok).toBe(true);
+    if (reading.ok === false) return;
+    expect(reading.candidates.map(candidate => [candidate.dayId, candidate.minutes])).toEqual([
+      ['day-jan-mo', 480], ['day-jan-tu', 420],
+    ]);
+  });
+});
+
+describe('a gap in a breakdown column', () => {
+  it('keeps the column when one employee has a dash under it', () => {
+    const reading = readHoursWorkbook([sheet('Week 37', [
+      ['Naam', 'Datum', 'Uren', 'OV1'],
+      ['Jan Kowalski', '07-09-2026', '8:00', '8:00'],
+      ['Ewa Nowak', '08-09-2026', '8:00', '-'],
+    ])], week);
+
+    expect(reading.ok).toBe(true);
+    if (reading.ok === false) return;
+    expect(reading.candidates[0].sourceInput?.categories).toEqual([{ sourceCode: 'OV1', minutes: 480 }]);
+    expect(reading.candidates[1].sourceInput).toBeNull();
+  });
+
+  it('says which column it set aside when the column is not a duration at all', () => {
+    const reading = readHoursWorkbook([sheet('Week 37', [
+      ['Naam', 'Datum', 'Uren', 'Ploeg'],
+      ['Jan Kowalski', '07-09-2026', '8:00', 'nacht'],
+    ])], week);
+
+    expect(reading.ok).toBe(true);
+    if (reading.ok === false) return;
+    expect(reading.candidates[0].sourceInput).toBeNull();
+    expect(reading.skipped).toEqual([expect.objectContaining({ sheet: 'Week 37', text: 'Ploeg' })]);
+  });
+});

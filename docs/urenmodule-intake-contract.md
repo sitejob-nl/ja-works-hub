@@ -248,7 +248,9 @@ beoordeelde bron eist een pagina op elk nieuw voorstel, een tegensprekend pagina
   lijst gelezen — ook wanneer een regel toevallig een tweede datum bevat (een geboorte- of ingangsdatum).
   Voor een kruistabel moeten de dagkolommen bovendien **naast elkaar** staan; een banner als
   "Periode: 07-09-2026 t/m 13-09-2026" draagt óók twee datums, maar met iets ertussen, en die als kop
-  lezen zou elke kolom op de verkeerde dag boeken.
+  lezen zou elke kolom op de verkeerde dag boeken. Staan de datums van zo'n banner tóch naast elkaar, dan
+  helpt de tweede eis: de dagenrij staat **direct boven de medewerkers**, dus de regel eronder moet een
+  medewerker van deze week noemen.
 - **Broncategorieën blijven letterlijk staan.** In een lijstblad wordt elke overige kolomkop als broncode
   overgenomen (`OV1`, `OV3`, …) met de duur uit die cel. Er wordt niets naar een interne uursoort vertaald;
   dat is het werk van de matrix, later en op de vastgelegde dagrevisie. Een kolom telt alleen als broncode
@@ -259,6 +261,8 @@ beoordeelde bron eist een pagina op elk nieuw voorstel, een tegensprekend pagina
   Op een dag zónder uren wordt helemaal geen indeling voorgesteld: die combinatie kan de servercontrole
   niet afhandelen, en de RPC weigert haar dan ook. Een kolom wordt beoordeeld op de regels die de uitlezer
   werkelijk leest, zodat een eindtotaalregel onderaan het blad geen aangeleverde broncode wegneemt.
+  Eén ontbrekende of onleesbare cel bewijst niets over de kolom en laat die staan; de cel zelf wordt naast
+  het voorstel gemeld. Een kolom die aantoonbaar géén duren bevat wordt bij naam apart gezet.
   **Let op:** een kolom die een *deel* van de dag beschrijft (bijvoorbeeld alleen overwerk) telt per
   definitie niet op tot het dagtotaal en levert dus altijd een zichtbaar verschil. Dat is bedoeld gedrag —
   de klantspecificatie vraagt juist om dat verschil — maar het betekent dat zo'n kolom om beoordeling

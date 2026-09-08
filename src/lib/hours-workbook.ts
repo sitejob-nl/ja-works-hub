@@ -128,6 +128,8 @@ interface LongHeader {
   kind: 'long'; row: number; name: number; date: number; total: number;
   /** Every remaining titled column is a delivered source code, kept literally. */
   categories: { column: number; sourceCode: string }[];
+  /** Titled columns that turned out not to hold durations, named to the reviewer. */
+  setAside: string[];
 }
 
 function detectLongHeader(rows: WorkbookCell[][], members: WorkbookWeekMember[] = []): LongHeader | null {
@@ -136,28 +138,31 @@ function detectLongHeader(rows: WorkbookCell[][], members: WorkbookWeekMember[] 
     const date = row.findIndex(cell => headerMatches(cellText(cell), DATE_HEADERS));
     const total = row.findIndex(cell => headerMatches(cellText(cell), TOTAL_HEADERS));
     if (name < 0 || date < 0 || total < 0) continue;
-    const categories = row.flatMap((cell, column) => {
+    // Judged on the rows this reader will actually read. A trailing summary row
+    // belongs to nobody, so it may not disqualify a delivered code.
+    const dataRows = rows.slice(index + 1)
+      .filter(data => !members.length || matchMember(cellText((data ?? [])[name]), members) !== null);
+    const categories: { column: number; sourceCode: string }[] = [];
+    const setAside: string[] = [];
+    for (const [column, cell] of row.entries()) {
       const sourceCode = cellText(cell);
-      if (!sourceCode || column === name || column === date || column === total) return [];
-      if (headerMatches(sourceCode, [...NAME_HEADERS, ...DATE_HEADERS, ...TOTAL_HEADERS, ...IGNORED_HEADERS])) return [];
-      // A remaining column only carries a delivered code when every value under
-      // it really is a duration that could be part of that row's own total. A
-      // remarks column is left alone rather than dropping the whole row, and an
-      // hourly rate or amount never becomes a piece of the working day.
-      // Judged on the rows this reader will actually read. A trailing summary
-      // row belongs to nobody, so it may not disqualify a delivered code.
-      const dataRows = rows.slice(index + 1)
-        .filter(data => !members.length || matchMember(cellText((data ?? [])[name]), members) !== null);
+      if (!sourceCode || column === name || column === date || column === total) continue;
+      if (headerMatches(sourceCode, [...NAME_HEADERS, ...DATE_HEADERS, ...TOTAL_HEADERS, ...IGNORED_HEADERS])) continue;
+      // A remaining column only carries a delivered code when the values under
+      // it are durations that could be part of that row's own total. A missing
+      // or unreadable value proves nothing either way; a remarks column, an
+      // hourly rate or an amount does, and is set aside by name.
       const readable = dataRows.every(data => {
         const part = readDuration((data ?? [])[column], 1440, true);
-        if (part === null) return true;
+        if (part === null || 'issue' in part) return true;
         if (!('minutes' in part)) return false;
         const whole = readDuration((data ?? [])[total]);
-        return whole !== null && 'minutes' in whole && part.minutes <= whole.minutes;
+        return whole === null || !('minutes' in whole) || part.minutes <= whole.minutes;
       });
-      return readable ? [{ column, sourceCode: sourceCode.slice(0, 200) }] : [];
-    });
-    return { kind: 'long', row: index, name, date, total, categories };
+      if (readable) categories.push({ column, sourceCode: sourceCode.slice(0, 200) });
+      else setAside.push(sourceCode);
+    }
+    return { kind: 'long', row: index, name, date, total, categories, setAside };
   }
   return null;
 }
@@ -231,13 +236,17 @@ function readDuration(value: WorkbookCell, maxMinutes = 1440, allowZero = false)
  * The delivered breakdown, read as written. A code the sheet used stays that
  * code; nothing is mapped to an internal category here.
  */
-function readCategories(header: LongHeader, row: WorkbookCell[]): { sourceInput: HoursSourceInput | null } | { issue: HoursIssue } {
+function readCategories(header: LongHeader, row: WorkbookCell[], notices: HoursIssue[]):
+  { sourceInput: HoursSourceInput | null } | { issue: HoursIssue } {
   const categories: { sourceCode: string; minutes: number }[] = [];
   for (const category of header.categories) {
     const value = readDuration(row[category.column], 1440, true);
     if (value === null) continue;
     if ('issue' in value) {
-      return { issue: { code: value.issue.code, message: `Kolom ${category.sourceCode}: ${value.issue.message}` } };
+      // The column as a whole does carry durations, so one unreadable cell means
+      // "nothing delivered here" and is reported next to the proposal.
+      notices.push({ code: value.issue.code, message: `Kolom ${category.sourceCode}: ${value.issue.message}` });
+      continue;
     }
     if ('reason' in value) {
       return { issue: { code: 'INVALID_CATEGORY', message: `Kolom ${category.sourceCode} bevat geen duur maar tekst.` } };
@@ -259,7 +268,7 @@ interface WideHeader { row: number; name: number; days: { column: number; workDa
  * days across the top. Two or more date columns tell it apart from a list
  * worksheet, which carries exactly one date column.
  */
-function detectWideHeader(rows: WorkbookCell[][]): WideHeader | null {
+function detectWideHeader(rows: WorkbookCell[][], members: WorkbookWeekMember[]): WideHeader | null {
   for (const [index, row] of rows.entries()) {
     const days = row.flatMap((cell, column) => {
       const workDate = parseWorkDate(cell);
@@ -273,8 +282,14 @@ function detectWideHeader(rows: WorkbookCell[][]): WideHeader | null {
       position > 0 && day.column !== days[position - 1].column + 1)) continue;
     const first = days[0].column;
     const name = row.findIndex((cell, column) => column < first && headerMatches(cellText(cell), NAME_HEADERS));
+    const nameColumn = name < 0 ? 0 : name;
+    // The row of days stands directly above the employees. A banner higher up
+    // may carry two adjacent dates too — "Periode 08-09-2026 09-09-2026" — and
+    // reading that as the header would book every column one day across.
+    const next = rows.slice(index + 1).find(data => data.some(cell => cellText(cell)));
+    if (!next || matchMember(cellText(next[nameColumn]), members) === null) continue;
     const total = row.findIndex((cell, column) => column > first && headerMatches(cellText(cell), TOTAL_HEADERS));
-    return { row: index, name: name < 0 ? 0 : name, days, total: total < 0 ? null : total };
+    return { row: index, name: nameColumn, days, total: total < 0 ? null : total };
   }
   return null;
 }
@@ -369,7 +384,7 @@ export function readHoursWorkbook(sheets: WorkbookSheet[], context: WorkbookCont
     // days.
     const header = detectLongHeader(sheet.rows, context.members);
     if (!header) {
-      const wide = detectWideHeader(sheet.rows);
+      const wide = detectWideHeader(sheet.rows, context.members);
       if (!wide) {
         if (sheet.rows.some(row => row.some(cell => cellText(cell)))) sheetsIgnored.push(sheet.name);
         continue;
@@ -379,6 +394,12 @@ export function readHoursWorkbook(sheets: WorkbookSheet[], context: WorkbookCont
       continue;
     }
     sheetsRead.push(sheet.name);
+    for (const column of header.setAside) {
+      skipped.push({
+        sheet: sheet.name, row: header.row + 1, text: column,
+        reason: 'Deze kolom bevat geen aangeleverde uren en is niet als broncode overgenomen.',
+      });
+    }
     for (let index = header.row + 1; index < sheet.rows.length; index += 1) {
       const row = sheet.rows[index] ?? [];
       const nameText = cellText(row[header.name]);
@@ -412,7 +433,8 @@ export function readHoursWorkbook(sheets: WorkbookSheet[], context: WorkbookCont
       const minutes = 'minutes' in duration ? duration.minutes : 0;
       // No hours means no breakdown: the two together are a combination the
       // server refuses to classify, so a reader must never propose it.
-      const breakdown = minutes === 0 ? { sourceInput: null } : readCategories(header, row);
+      const notices: HoursIssue[] = [];
+      const breakdown = minutes === 0 ? { sourceInput: null } : readCategories(header, row, notices);
       if ('issue' in breakdown) { skipped.push({ ...place, reason: breakdown.issue.message }); continue; }
       candidates.push({
         dayId, memberId: match.member.id, employeeName: match.member.name, workDate,
@@ -421,7 +443,7 @@ export function readHoursWorkbook(sheets: WorkbookSheet[], context: WorkbookCont
         pageNumber: sheetIndex + 1, pageLabel: `blad ${sheet.name} · rij ${rowNumber}`,
         sheetName: sheet.name, row: rowNumber,
         assignmentUncertain: match.uncertain, employeeText: nameText,
-        notices: controlNotices(minutes, breakdown.sourceInput),
+        notices: [...notices, ...controlNotices(minutes, breakdown.sourceInput)],
       });
     }
   }
