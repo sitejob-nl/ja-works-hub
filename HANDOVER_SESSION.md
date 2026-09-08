@@ -35,13 +35,13 @@ projectsamenvatting.
   **Geen edge-function-deploy nodig.**
 - Verificatie: **157 echte PostgreSQL-tests** (`scripts/hours-workbook-db-test.py` — 12 nieuwe
   werkmapgevallen plus de volledige vrijgegeven pagina-/inname-/foundation-/classificatie-/poortregressies,
-  elf migraties elk tweemaal); **1.545 applicatietests**; lint 0 errors, typecheck en productiebuild groen.
+  elf migraties elk tweemaal); **1.548 applicatietests**; lint 0 errors, typecheck en productiebuild groen.
   De vrijgegeven harnassen zijn ongewijzigd gelaten; de nieuwe importeert `hours-pages-db-test.py` en
   overschrijft alleen de twee verwachtingen die echt bewogen (bucket-mediatypen, RPC-signaturen).
 - **JA Werkt blijft UIT, demo AAN** — vóór de migratie geverifieerd. Het geblokkeerde `QA_SUPERADMIN`-account
   is ongemoeid gelaten. Advisors na DDL: geen ERROR-bevindingen; de nieuwe RPC valt in dezelfde bewuste
   WARN-categorie "SECURITY DEFINER uitvoerbaar door authenticated" als alle bestaande urenfuncties.
-- **Elf codereviewrondes vonden veertig echte defecten, allemaal gerepareerd** met een test die eerst
+- **Twaalf codereviewrondes vonden drieënveertig echte defecten, allemaal gerepareerd** met een test die eerst
   rood stond. Ronde 1 (zeven): kolomkoppen op voorvoegsel matchen ("Aantal dagen" won het urentotaal, een
   1 werd een uur); een als tijd opgemaakte cel die als datum werd gelezen waardoor een heel lijstblad stil
   verdween; een tijd-nul zonder reden die de hele uitlezing liet weigeren; dubbele dagen die de server
@@ -89,7 +89,11 @@ projectsamenvatting.
   het legacy-mediatype aanbood werd als `.xls` bewaard en was daarmee voorgoed onleesbaar; een weektotaal
   links van de dagkolommen verdween zonder melding; een werkblad met gaten in de rijenlijst liet de
   uitlezer struikelen in plaats van "indeling niet herkend" te melden; en een mislukte codelading werd als
-  "dit bestand is geen werkmap" gemeld.
+  "dit bestand is geen werkmap" gemeld. Ronde 12 (drie): een streepje of nul in een dagcel zette de
+  weektotaalcontrole voor die hele regel uit — juist het gewone geval, dus de controle stond praktisch
+  altijd uit; bij een onzekere toewijzing toonde het scherm niet wát er in het bestand stond, terwijl dat
+  precies het bewijs is dat de beoordelaar moet wegen; en een "Aantal dagen"-kolom belandde als broncode
+  in de brongegevens.
 - **Nog open:** verbonden demo-QA in de browser is voor dit ticket **niet** uitgevoerd — de vier
   `pages`-QA-weken staan klaar (`scripts/prepare-hours-pages-demo.mjs`, dezelfde `HOURS_PAGES_RUN_ID`
   hergebruiken). PR #266 (T2) moet nog gemerged worden vóór deze branch.

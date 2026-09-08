@@ -417,7 +417,7 @@ describe('a placeholder in a day cell', () => {
     if (reading.ok === false) return;
     expect(reading.candidates).toHaveLength(1);
     expect(reading.candidates[0].dayId).toBe('day-jan-mo');
-    expect(reading.skipped.map(row => row.reason)).toEqual([expect.stringMatching(/geen waarde/i)]);
+    expect(reading.candidates[0].noHoursReason).toBeNull();
   });
 });
 
@@ -561,7 +561,7 @@ describe('a plain number in a week total', () => {
 });
 
 describe('a full stop as a placeholder', () => {
-  it('does not turn a dot into a reason for no hours', () => {
+  it('does not turn a dot into a reason for no hours either', () => {
     const reading = readHoursWorkbook([sheet('Uren', [
       ['Medewerker', '07-09-2026', '08-09-2026'],
       ['Jan Kowalski', '8:00', '.'],
@@ -569,8 +569,7 @@ describe('a full stop as a placeholder', () => {
 
     expect(reading.ok).toBe(true);
     if (reading.ok === false) return;
-    expect(reading.candidates).toHaveLength(1);
-    expect(reading.skipped.map(row => row.reason)).toEqual([expect.stringMatching(/geen waarde/i)]);
+    expect(reading.candidates.map(candidate => [candidate.dayId, candidate.minutes])).toEqual([['day-jan-mo', 480]]);
   });
 });
 
@@ -666,5 +665,44 @@ describe('a grid whose total stands before the days', () => {
     expect(reading.ok).toBe(true);
     if (reading.ok === false) return;
     expect(reading.candidates.map(candidate => candidate.minutes)).toEqual([480]);
+  });
+});
+
+describe('a delivered week total next to days that were left blank', () => {
+  it('keeps comparing when a day merely holds a dash', () => {
+    const reading = readHoursWorkbook([sheet('Uren', [
+      ['Medewerker', '07-09-2026', '08-09-2026', 'Totaal'],
+      ['Jan Kowalski', '8:00', '-', '20:00'],
+    ])], week);
+
+    expect(reading.ok).toBe(true);
+    if (reading.ok === false) return;
+    expect(reading.rowTotals).toEqual([expect.objectContaining({
+      deliveredMinutes: 1200, readMinutes: 480, unreadDays: ['2026-09-08'],
+    })]);
+  });
+
+  it('stops comparing when a day holds something it cannot read at all', () => {
+    const reading = readHoursWorkbook([sheet('Uren', [
+      ['Medewerker', '07-09-2026', '08-09-2026', 'Totaal'],
+      ['Jan Kowalski', '8:00', '#N/A', '20:00'],
+    ])], week);
+
+    expect(reading.ok).toBe(true);
+    if (reading.ok === false) return;
+    expect(reading.rowTotals).toEqual([]);
+  });
+});
+
+describe('a column that counts something other than time', () => {
+  it('leaves a day count out of the delivered breakdown', () => {
+    const reading = readHoursWorkbook([sheet('Week 37', [
+      ['Naam', 'Datum', 'Uren', 'Aantal dagen'],
+      ['Jan Kowalski', '07-09-2026', '8:00', '1'],
+    ])], week);
+
+    expect(reading.ok).toBe(true);
+    if (reading.ok === false) return;
+    expect(reading.candidates[0].sourceInput).toBeNull();
   });
 });

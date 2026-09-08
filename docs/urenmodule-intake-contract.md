@@ -312,7 +312,9 @@ beoordeelde bron eist een pagina op elk nieuw voorstel, een tegensprekend pagina
   voorstellen — maar blokkeert de uitlezing net als bij een onbekende kop.
 - **Lege dagen worden bij een afwijkend weektotaal benoemd.** Een verschil dat door een leeggelaten dag
   komt is iets anders dan een verschil in de aangeleverde cijfers, en het scherm zegt welke dagen leeg
-  waren.
+  waren. Een streepje of een kale nul telt daarbij als "niets aangeleverd voor die dag" en houdt de
+  vergelijking dus overeind; alleen een waarde die de uitlezer helemaal niet kan lezen maakt vergelijken
+  zinloos.
 - **Het mediatype is geen bewijs.** Windows meldt `application/vnd.ms-excel` voor een gewone `.csv`, en
   ook voor een moderne `.xlsx`. De browser controleert daarom de eerste bytes: een werkmap is een
   zip-container (`.xlsx`) of een OLE-document (`.xls`). Iets anders wordt geweigerd vóór het wordt bewaard,

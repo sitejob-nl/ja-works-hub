@@ -111,6 +111,10 @@ export function HoursWorkbookReading({ reading, alreadyProposed, onCancel, onSav
                 {candidate.sourceInput.categories.map(category => `${category.sourceCode} ${duration(category.minutes)}`).join(' · ')}
               </p> : null}
               <p className="text-xs text-muted-foreground" data-no-translate="true">Vindplaats: {candidate.pageLabel}</p>
+              {candidate.assignmentUncertain && <p className="text-xs">
+                In het bestand staat: <span className="font-medium" data-no-translate="true">{candidate.employeeText}</span>.
+                Bevestig na het bewaren of dit inderdaad {candidate.employeeName} is.
+              </p>}
               {candidate.notices.map((notice, index) => <p key={index} className="text-xs text-destructive">
                 {notice.message}
                 {notice.expectedMinutes !== undefined && notice.actualMinutes !== undefined

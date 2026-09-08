@@ -84,6 +84,7 @@ const TOTAL_HEADERS = ['uren', 'aantal uren', 'totaal uren', 'uren totaal', 'gew
 const IGNORED_HEADERS = ['opmerking', 'opmerkingen', 'notitie', 'toelichting', 'remark', 'remarks',
   'note', 'notes', 'project', 'kostenplaats', 'afdeling', 'functie', 'ploeg', 'week', 'weeknummer',
   'nr', 'nummer', 'id', 'personeelsnummer', 'akkoord', 'paraaf', 'handtekening',
+  'aantal', 'aantal dagen', 'dagen', 'stuks', 'ritten',
   // Money is never a piece of the working day, however neatly it fits under the total.
   'uurloon', 'uurtarief', 'tarief', 'loon', 'bedrag', 'totaalbedrag', 'prijs', 'rate',
   'km', 'kilometers', 'reiskosten', 'vergoeding',
@@ -374,8 +375,15 @@ function readWideSheet(
       const duration = readDuration(row[day.column]);
       if (duration === null) { unreadDays.push(day.workDate); continue; }
       if ('issue' in duration) {
-        wholeRowRead = false;
-        skipped.push({ ...where, reason: duration.issue.message });
+        // A dash or a bare nought says "nothing was delivered for this day", so
+        // the row total can still be compared against what was. A value the
+        // reader cannot read at all makes any comparison meaningless.
+        if (duration.issue.code === 'PLACEHOLDER' || duration.issue.code === 'ZERO_WITHOUT_REASON') {
+          unreadDays.push(day.workDate);
+        } else {
+          wholeRowRead = false;
+          skipped.push({ ...where, reason: duration.issue.message });
+        }
         continue;
       }
       const minutes = 'minutes' in duration ? duration.minutes : 0;
