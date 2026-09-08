@@ -9,6 +9,7 @@ De afhankelijke matrixbouw staat in `/Users/kas/dev/ja-works-hub/.worktrees/uren
 Matrixcheckpoint `da7dbaa` staat in afhankelijke draft [PR #263](https://github.com/sitejob-nl/ja-works-hub/pull/263).
 Actieve vervolgworktree: `/Users/kas/dev/ja-works-hub/.worktrees/urenmodule-classificatie`, branch
 `codex/urenmodule-classificatie`, vanaf matrixcheckpoint `69aee12`.
+Classificatiecheckpoint `773f3d0` staat in afhankelijke draft [PR #264](https://github.com/sitejob-nl/ja-works-hub/pull/264).
 
 Deze eerste bouwstap voert de handmatige weekcontrole uit de specificatie van 7 september uit.
 Het is de basis voor de volledige urenmodule; geen volledige oplevering of payrollpilot.
