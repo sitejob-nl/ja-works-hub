@@ -313,9 +313,11 @@ beoordeelde bron eist een pagina op elk nieuw voorstel, een tegensprekend pagina
 - **Lege dagen worden bij een afwijkend weektotaal benoemd.** Een verschil dat door een leeggelaten dag
   komt is iets anders dan een verschil in de aangeleverde cijfers, en het scherm zegt welke dagen leeg
   waren.
-- **Het mediatype is geen bewijs.** Windows meldt `application/vnd.ms-excel` voor een gewone `.csv`. De
-  browser controleert daarom de eerste bytes: een werkmap is een zip-container (`.xlsx`) of een
-  OLE-document (`.xls`); iets anders wordt geweigerd vóór het wordt bewaard.
+- **Het mediatype is geen bewijs.** Windows meldt `application/vnd.ms-excel` voor een gewone `.csv`, en
+  ook voor een moderne `.xlsx`. De browser controleert daarom de eerste bytes: een werkmap is een
+  zip-container (`.xlsx`) of een OLE-document (`.xls`). Iets anders wordt geweigerd vóór het wordt bewaard,
+  en een werkmap wordt bewaard als wát hij is — anders zou een perfect leesbare `.xlsx` voorgoed als
+  onleesbare `.xls` in de opslag staan.
 - **Een aangeleverd totaal is een controlegetal.** Klopt het weektotaal van een rij niet met de dagen
   eronder, of tellen de broncodes niet op tot het dagtotaal, dan blijft alles staan zoals aangeleverd en
   wordt **het verschil getoond**. Er wordt niets weggerekend en toepassen wordt niet stil geblokkeerd; de

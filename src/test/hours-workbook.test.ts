@@ -645,3 +645,26 @@ describe('a week total the spreadsheet stored as elapsed time', () => {
     expect(reading.rowTotals).toEqual([]);
   });
 });
+
+describe('a grid whose total stands before the days', () => {
+  it('still compares a week total to the left of the first day', () => {
+    const reading = readHoursWorkbook([sheet('Uren', [
+      ['Medewerker', 'Totaal', '07-09-2026', '08-09-2026'],
+      ['Jan Kowalski', '20:00', '8:00', '8:00'],
+    ])], week);
+
+    expect(reading.ok).toBe(true);
+    if (reading.ok === false) return;
+    expect(reading.rowTotals).toEqual([expect.objectContaining({ deliveredMinutes: 1200, readMinutes: 960 })]);
+  });
+
+  it('survives a worksheet with gaps in its row array', () => {
+    const rows = [['Naam', 'Datum', 'Uren']] as unknown[][];
+    rows[3] = ['Jan Kowalski', '07-09-2026', '8:00'];
+    const reading = readHoursWorkbook([sheet('Week 37', rows as never)], week);
+
+    expect(reading.ok).toBe(true);
+    if (reading.ok === false) return;
+    expect(reading.candidates.map(candidate => candidate.minutes)).toEqual([480]);
+  });
+});

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decodeWorkbook, workbookBytesError } from '@/lib/hours-workbook-file';
+import { decodeWorkbook, workbookBytesError, workbookContentType } from '@/lib/hours-workbook-file';
 import { buildLegacyXlsFile, buildWorkbookFile, formatted, formula, text } from './support/xlsx-workbook';
 
 describe('decoding a delivered spreadsheet', () => {
@@ -80,5 +80,18 @@ describe('what may be stored as a workbook at all', () => {
   it('accepts the two real workbook containers', () => {
     expect(workbookBytesError(buildWorkbookFile([{ name: 'Week 37', rows: [[text('Naam')]] }]))).toBeNull();
     expect(workbookBytesError(buildLegacyXlsFile())).toBeNull();
+  });
+});
+
+describe('what the bytes say the file really is', () => {
+  it('stores a workbook by what it is, not by what the browser called it', () => {
+    const xlsx = buildWorkbookFile([{ name: 'Week 37', rows: [[text('Naam')]] }]);
+    // Windows hands an .xlsx over as the legacy media type often enough.
+    expect(workbookContentType('application/vnd.ms-excel', xlsx))
+      .toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    expect(workbookContentType('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', xlsx))
+      .toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    expect(workbookContentType('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buildLegacyXlsFile()))
+      .toBe('application/vnd.ms-excel');
   });
 });

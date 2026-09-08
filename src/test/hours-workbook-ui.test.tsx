@@ -242,3 +242,22 @@ describe('a legacy binary workbook', () => {
     expect(screen.getByRole('button', { name: /Bron bekijken/ })).toBeInTheDocument();
   });
 });
+
+describe('a workbook the browser mislabelled', () => {
+  it('stores an .xlsx as what it really is, so it stays readable', async () => {
+    const bytes = buildWorkbookFile([{ name: 'Week 37', rows: [[text('Naam')]] }]);
+    const file = new File([new Uint8Array(bytes)], 'uren.xlsx', { type: 'application/vnd.ms-excel' });
+    Object.defineProperty(file, 'arrayBuffer', { value: async () => bytes });
+    upload.mockResolvedValue({ data: { path: 'stored' }, error: null });
+    vi.stubGlobal('crypto', { subtle: { digest: async () => new Uint8Array(32).fill(12).buffer } });
+    show();
+    await screen.findByRole('button', { name: 'Uitlezen' });
+    fireEvent.change(screen.getByLabelText('Urenbriefje uploaden'), { target: { files: [file] } });
+
+    const xlsx = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    await vi.waitFor(() => expect(upload).toHaveBeenCalledWith(
+      expect.stringMatching(/\.xlsx$/), expect.anything(), { contentType: xlsx, upsert: false }));
+    expect(rpc).toHaveBeenCalledWith('hours_add_week_source',
+      expect.objectContaining({ p_content_type: xlsx, p_page_count: 1 }));
+  });
+});

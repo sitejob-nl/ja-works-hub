@@ -9,6 +9,7 @@ import {
 import { countPdfPages } from '@/lib/hours-pdf-pages';
 import {
   countWorkbookSheets, decodeWorkbook, isReadableWorkbook, isWorkbookSource, workbookBytesError,
+  workbookContentType,
 } from '@/lib/hours-workbook-file';
 import { readHoursWorkbook, type WorkbookContext, type WorkbookReading } from '@/lib/hours-workbook';
 import type { HoursPageEntry, HoursReadingEntry } from '@/lib/hours-workflow-api';
@@ -38,11 +39,11 @@ export interface ReadingInput { sourceId: string; entries: HoursReadingEntry[] }
  * worksheets; a file that cannot be read stays honestly unknown rather than
  * being called a single page.
  */
-async function deliveredPageCount(file: File, bytes: ArrayBuffer): Promise<number | null> {
+async function deliveredPageCount(contentType: string, bytes: ArrayBuffer): Promise<number | null> {
   try {
-    if (file.type === 'application/pdf') return await countPdfPages(bytes);
+    if (contentType === 'application/pdf') return await countPdfPages(bytes);
     // A legacy .xls can never be read out, so there is nothing to count either.
-    if (isReadableWorkbook(file.type)) return await countWorkbookSheets(bytes);
+    if (isReadableWorkbook(contentType)) return await countWorkbookSheets(bytes);
     return null;
   } catch {
     return null;
@@ -69,18 +70,20 @@ export function useHoursWeekSources(organizationId: string, weekId: string | und
       const rejection = hoursSourceTypeError(file);
       if (rejection) throw new Error(rejection);
       const bytes = await file.arrayBuffer();
-      // The declared media type is not proof; a workbook has to be one.
+      // The declared media type is not proof; a workbook has to be one, and it
+      // is stored as what it really is so a mislabelled .xlsx stays readable.
       const notAWorkbook = isWorkbookSource(file.type) ? workbookBytesError(bytes) : null;
       if (notAWorkbook) throw new Error(notAWorkbook);
+      const contentType = (workbookContentType(file.type, bytes) ?? file.type) as HoursSourceContentType;
       const digest = await hoursSourceDigest(bytes);
-      const pageCount = await deliveredPageCount(file, bytes);
-      const path = hoursSourcePath(organizationId, weekId!, digest, file.type as HoursSourceContentType);
+      const pageCount = await deliveredPageCount(contentType, bytes);
+      const path = hoursSourcePath(organizationId, weekId!, digest, contentType);
       const { error } = await supabase.storage.from(HOURS_SOURCE_BUCKET)
-        .upload(path, file, { contentType: file.type, upsert: false });
+        .upload(path, file, { contentType, upsert: false });
       // The path is the digest, so an existing object already holds these bytes.
       if (error && !isAlreadyStored(error)) throw error;
       const result = await hoursWorkflowRpc('hours_add_week_source', {
-        p_week_id: weekId!, p_content_hash: digest, p_file_name: file.name, p_content_type: file.type,
+        p_week_id: weekId!, p_content_hash: digest, p_file_name: file.name, p_content_type: contentType,
         p_page_count: pageCount,
       }) as Record<string, unknown>;
       store(parseWeekSources(result));

@@ -20,6 +20,22 @@ export function isReadableWorkbook(contentType: string): boolean {
   return contentType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 }
 
+const isZipContainer = (bytes: ArrayBuffer): boolean => {
+  const header = new Uint8Array(bytes, 0, Math.min(2, bytes.byteLength));
+  return header[0] === 0x50 && header[1] === 0x4b;
+};
+
+/**
+ * What the file actually is, rather than what the browser called it. A modern
+ * .xlsx is handed over as the legacy media type often enough, and storing it
+ * under that name would leave a perfectly readable workbook unreadable forever.
+ */
+export function workbookContentType(declared: string, bytes: ArrayBuffer): HoursWorkbookContentType | null {
+  if (!isWorkbookSource(declared)) return null;
+  if (isZipContainer(bytes)) return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  return isLegacyWorkbook(bytes) ? 'application/vnd.ms-excel' : null;
+}
+
 /**
  * Windows browsers report `application/vnd.ms-excel` for a plain .csv, so the
  * declared media type is not enough. A workbook is either a zip container
@@ -27,9 +43,7 @@ export function isReadableWorkbook(contentType: string): boolean {
  * it is stored, with a message that says what to do.
  */
 export function workbookBytesError(bytes: ArrayBuffer): string | null {
-  const header = new Uint8Array(bytes, 0, Math.min(8, bytes.byteLength));
-  if (header[0] === 0x50 && header[1] === 0x4b) return null;
-  if (isLegacyWorkbook(bytes)) return null;
+  if (isZipContainer(bytes) || isLegacyWorkbook(bytes)) return null;
   return 'Dit bestand is geen Excel-werkmap. Sla het in Excel op als .xlsx en lever het opnieuw aan.';
 }
 
@@ -57,8 +71,10 @@ export async function decodeWorkbook(bytes: ArrayBuffer): Promise<WorkbookDecodi
     return blocked('LEGACY_WORKBOOK',
       'Dit is een oud binair Excel-bestand. Sla het in Excel op als .xlsx en lever het opnieuw aan, of leg de uren handmatig als voorstel vast.');
   }
+  // Loading the reader is a transport problem, not a problem with this file, so
+  // a failure there must not be reported as an unreadable workbook.
+  const readWorkbook = (await import('read-excel-file/browser')).default;
   try {
-    const readWorkbook = (await import('read-excel-file/browser')).default;
     const sheets = await readWorkbook(bytes);
     return {
       ok: true,

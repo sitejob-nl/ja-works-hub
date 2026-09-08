@@ -294,7 +294,7 @@ interface WideHeader { row: number; name: number; days: { column: number; workDa
  */
 function detectWideHeader(rows: WorkbookCell[][], members: WorkbookWeekMember[]): WideHeader | null {
   for (const [index, row] of rows.entries()) {
-    const days = row.flatMap((cell, column) => {
+    const days = (row ?? []).flatMap((cell, column) => {
       const workDate = parseWorkDate(cell);
       return workDate ? [{ column, workDate }] : [];
     });
@@ -310,9 +310,12 @@ function detectWideHeader(rows: WorkbookCell[][], members: WorkbookWeekMember[])
     // The row of days stands directly above the employees. A banner higher up
     // may carry two adjacent dates too — "Periode 08-09-2026 09-09-2026" — and
     // reading that as the header would book every column one day across.
-    const next = rows.slice(index + 1).find(data => data.some(cell => cellText(cell)));
+    const next = rows.slice(index + 1).find(data => (data ?? []).some(cell => cellText(cell)));
     if (!next || matchMember(cellText(next[nameColumn]), members) === null) continue;
-    const total = row.findIndex((cell, column) => column > first && headerMatches(cellText(cell), TOTAL_HEADERS));
+    // A delivered week total may stand on either side of the days.
+    const dayColumns = new Set(days.map(day => day.column));
+    const total = row.findIndex((cell, column) =>
+      column !== nameColumn && !dayColumns.has(column) && headerMatches(cellText(cell), TOTAL_HEADERS));
     return { row: index, name: nameColumn, days, total: total < 0 ? null : total };
   }
   return null;
@@ -503,7 +506,7 @@ export function readHoursWorkbook(sheets: WorkbookSheet[], context: WorkbookCont
       readWideSheet(sheet, sheetIndex, wideHeader, context, dayOf, candidates, skipped, rowTotals);
       continue;
     }
-    if (sheet.rows.some(row => row.some(cell => cellText(cell)))) sheetsIgnored.push(sheet.name);
+    if (sheet.rows.some(row => (row ?? []).some(cell => cellText(cell)))) sheetsIgnored.push(sheet.name);
   }
 
   if (!sheetsRead.length) {
