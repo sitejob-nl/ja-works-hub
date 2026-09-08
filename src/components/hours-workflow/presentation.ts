@@ -3,7 +3,7 @@ import type { HoursDayView, HoursLanguage } from './types';
 export const hoursCopy = {
   nl: {
     title: 'Mijn uren', introduction: 'Controleer je ontvangen uren. Bevestig de dagen die kloppen of geef aan wat er niet klopt.',
-    dormant: 'Deze urenstroom is nog niet ingeschakeld voor deze opdrachtgever.', empty: 'Er staan nog geen dagen klaar voor deze week.',
+    dormant: 'Deze urenstroom staat uit voor deze opdrachtgever. Je kunt je bestaande uren bekijken. Reageren kan zodra de urenstroom weer aan staat.', empty: 'Er staan nog geen dagen klaar voor deze week.',
     deadline: 'Reageren vóór', day: 'Dag', hours: 'uur', missing: 'Nog niet ontvangen', noHours: 'Geen uren',
     confirmed: 'Akkoord', disputed: 'Betwist', waiting: 'Wacht op jouw reactie', previousResponse: 'Gewijzigd na je reactie',
     source: 'Bron', note: 'Opmerking bij de uren', yourNote: 'Jouw opmerking', revision: 'Versie',
@@ -18,7 +18,7 @@ export const hoursCopy = {
   },
   en: {
     title: 'My hours', introduction: 'Check the hours received. Confirm the correct days or tell us what is wrong.',
-    dormant: 'This hours workflow has not yet been enabled for this company.', empty: 'No days are available for this week yet.',
+    dormant: 'This hours workflow is disabled for this company. You can view your existing hours. You can respond when it is enabled again.', empty: 'No days are available for this week yet.',
     deadline: 'Respond before', day: 'Day', hours: 'hours', missing: 'Not yet received', noHours: 'No hours',
     confirmed: 'Confirmed', disputed: 'Disputed', waiting: 'Awaiting your response', previousResponse: 'Changed after your response',
     source: 'Source', note: 'Note about these hours', yourNote: 'Your comment', revision: 'Version',
@@ -33,7 +33,7 @@ export const hoursCopy = {
   },
   pl: {
     title: 'Moje godziny', introduction: 'Sprawdź otrzymane godziny. Potwierdź poprawne dni lub zgłoś nieprawidłowości.',
-    dormant: 'Ten sposób rejestracji godzin nie został jeszcze włączony dla tej firmy.', empty: 'Nie ma jeszcze dni do sprawdzenia w tym tygodniu.',
+    dormant: 'Rejestracja godzin jest wyłączona dla tej firmy. Możesz przeglądać zapisane godziny. Odpowiedź będzie możliwa po ponownym włączeniu.', empty: 'Nie ma jeszcze dni do sprawdzenia w tym tygodniu.',
     deadline: 'Odpowiedz przed', day: 'Dzień', hours: 'godz.', missing: 'Jeszcze nie otrzymano', noHours: 'Brak godzin',
     confirmed: 'Potwierdzono', disputed: 'Zakwestionowano', waiting: 'Oczekuje na Twoją odpowiedź', previousResponse: 'Zmieniono po Twojej odpowiedzi',
     source: 'Źródło', note: 'Uwagi dotyczące godzin', yourNote: 'Twój komentarz', revision: 'Wersja',
