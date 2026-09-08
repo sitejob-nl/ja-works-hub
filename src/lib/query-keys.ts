@@ -16,6 +16,12 @@
  * This is intentionally partial: extend per domain as call sites are migrated.
  */
 export const qk = {
+  hoursMatrices: {
+    all: (orgId: string) => ['hours-matrices', orgId] as const,
+    detail: (orgId: string, id: string) => ['hours-matrices', orgId, id] as const,
+    companies: (orgId: string) => ['hours-matrices', orgId, 'companies'] as const,
+    binding: (orgId: string, companyId: string) => ['hours-matrices', orgId, 'binding', companyId] as const,
+  },
   hoursWorkflow: {
     all: (orgId: string) => ['hours-workflow', orgId] as const,
     list: (orgId: string, userId: string, zone: string, week: string) => ['hours-workflow', orgId, userId, zone, 'list', week] as const,

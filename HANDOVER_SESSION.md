@@ -10,7 +10,9 @@ projectsamenvatting.
 - Klantweken, handmatige dagrevisies, exacte medewerkerreacties, interne controle, Nederlandse deadlines, pure minuten-/matrixkern en mailplanningpreview gebouwd. Dit is een ontwikkelversie zonder vrijgave/export of automatische inname. Geen productieklanten geactiveerd en geen migratie gedeployed.
 - [Bouwstand](docs/urenmodule-bouw.md) en [databasecontract](docs/urenmodule-db-contract.md) beschrijven grenzen, checks en volgende stappen. De vaste prijs/specificatie blijft de klantafspraak; deze bouwstand is geen volledige opleverclaim.
 - Tijdelijke werkmap verdween vóór commit; succesvol uitgevoerde bestandsedits zijn uit sessielogs hersteld. Migratiehash exact behouden, 43 DB-tests opnieuw geslaagd; vervolgwerk blijft in vaste worktrees en krijgt Git-checkpoints.
-- Afhankelijke matrixbouw: `/Users/kas/dev/ja-works-hub/.worktrees/urenmodule-matrix`, branch `codex/urenmodule-matrix`, vanaf de urenfundering. Nog in ontwikkeling; eerst basiswijzigingen integreren vóór merge naar main.
+- Fundering is opgeslagen tot `47c408f`, draft PR #262; CI quality en Vercel preview geslaagd. Nog geen productiemigratie.
+- Afhankelijke matrixbouw: `/Users/kas/dev/ja-works-hub/.worktrees/urenmodule-matrix`, branch `codex/urenmodule-matrix`, vanaf `47c408f`. Matrixeditor, expliciete CAO-koppelingen, conceptpublicatie en immutable versies gebouwd. Opslag: 30 echte PG-tests + 85 pariteitsgevallen geslaagd; migratiehash `cee82deced978525e0d92544f6e8d25b027c0cc21e7a97ec97ecaffdd146a0fe`. Zie [matrixcontract](docs/urenmodule-matrix-contract.md). Eerst basiswijzigingen integreren vóór merge naar main.
+- Eerstvolgende implementatie is servermatige classificatie aan een exacte dagrevisie en matrixsnapshot, plus brongegevens voor diensten/categorieën. Huidige matrixpagina rekent alleen voorbeelden en schrijft geen urenindeling. Automatische inname, mailoutbox en payrollvrijgave blijven latere stappen.
 
 ## Correctie 2026-09-07 — vast AI-maandbudget (`codex/ai-monthly-budget-reset`)
 
