@@ -8,19 +8,26 @@ De eerdere fundering (#262), matrixbouw (#263) en classificatie zijn samengebrac
 Actieve werkmap: `/Users/kas/dev/ja-works-hub/.worktrees/urenmodule-classificatie`, branch
 `codex/urenmodule-classificatie`. Het SaaS-gatecheckpoint is `221b554`.
 
-De vier databasewijzigingen zijn op 8 september als één afgeschermde transactie gedeployed;
-`hours-classify-day` staat live en de database-types zijn opnieuw gegenereerd.
+De vier oorspronkelijke databasewijzigingen zijn op 8 september als één afgeschermde transactie
+gedeployed, gevolgd door de additieve HTTP-conflictreparatie. `hours-classify-day` is opnieuw
+gedeployed en de database-types zijn uit het live schema gegenereerd.
 **JA Werkt staat UIT, uitsluitend de geverifieerde demo staat AAN** voor `uren-workflow`.
 De nieuwe module werkt los van legacy `uren` en abonnementen. De SaaS-schakelaar bewaart historie
 en blokkeert bij UIT zowel schermen als RPC's en directe tabellezing.
 Zie [modulecontract](urenmodule-organization-gate.md) voor rechten en gelijktijdige wijzigingen.
 
-1.402 volledige applicatietests en 100 echte PostgreSQL-tests zijn geslaagd, plus gerichte tests
-voor de gegenereerde RPC-signatures. De echte verbonden demo-acceptatie en laatste frontendrelease
-lopen nog; `HANDOVER_SESSION.md` en de bewijsmappen bevatten de actuele status. De verbonden QA vond
-een race bij conceptopslag/publicatie; die is hersteld met een eerst falende, daarna geslaagde regressietest.
-Het geblokkeerde SaaS-admin-QA-account
-is niet gewijzigd; toestemming voor zijn tijdelijke beheertest staat nog open.
+**1.429 applicatietests, 106 echte PostgreSQL-tests en de verbonden demo-businessflow zijn geslaagd.**
+Ook lint (0 errors), typecheck, productiebuild en Deno-controle zijn groen. De echte browserrun
+gebruikte interne en medewerkerlogins, de live API en synthetische gegevens in de demo-organisatie.
+Die QA vond en verifieerde reparaties voor een race bij matrixopslag en een hangende opslag vanuit
+een verouderde browsertab. Zie [QA-verslag](urenmodule-demo-qa.md).
+
+De SaaS-schakelaar staat onder **SaaS-admin → Organisaties → Modules beheren →
+Urenmodule — weekcontrole en matrices**. De werkelijke SaaS-admin-browsertest van UIT/AAN staat
+nog open: het bestaande QA-account is geblokkeerd/inactief en is niet gewijzigd; toestemming voor
+tijdelijke activatie is gevraagd. De switch en blokkering zijn wel met unit- en databasetests
+gecontroleerd. De frontend wordt als één afgeschermde release via PR #264 gepubliceerd; de PR- en
+Vercel-status bepalen of publicatie voltooid is.
 
 Deze eerste bouwstap voert de handmatige weekcontrole uit de specificatie van 7 september uit.
 Het is de basis voor de volledige urenmodule; geen volledige oplevering of payrollpilot.
