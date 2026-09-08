@@ -113,7 +113,10 @@ function PageDecisionForm({ source, employees, existing, onCancel, onSubmit }: {
       <div className="space-y-1.5">
         <Label htmlFor="page-number">Pagina{source.page_count !== null ? ` (1 t/m ${source.page_count})` : ''}</Label>
         <Input id="page-number" value={pageNumber} inputMode="numeric" autoComplete="off"
-          onChange={event => setPageNumber(event.target.value)} />
+          disabled={existing !== null} onChange={event => setPageNumber(event.target.value)} />
+        {existing && <p className="text-xs text-muted-foreground">
+          Je wijzigt het besluit over deze pagina. Voor een andere pagina leg je een eigen toewijzing vast.
+        </p>}
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="page-assignment">Toewijzing</Label>
@@ -218,9 +221,11 @@ function PageTakeoverForm({ page, days, onCancel, onSubmit }: {
   </form>;
 }
 
-function ProposalForm({ targets, pageCount, onCancel, onSubmit }: {
+function ProposalForm({ targets, pageCount, pageDecided, onCancel, onSubmit }: {
   targets: DayTarget[];
   pageCount: number | null;
+  /** The source has been judged per page, so a proposal has to say which page. */
+  pageDecided: boolean;
   onCancel: () => void;
   onSubmit: (input: { dayId: string; minutes: number; noHoursReason: string | null; note: string | null; sourceInput: HoursSourceInput | null; pageLabel: string | null; pageNumber: number | null; assignmentUncertain: boolean }) => Promise<void>;
 }) {
@@ -250,6 +255,10 @@ function ProposalForm({ targets, pageCount, onCancel, onSubmit }: {
       setError(pageCount === null
         ? 'Vul een paginanummer van 1 of hoger in.'
         : `Deze bron heeft ${pageCount} ${pageCount === 1 ? 'pagina' : "pagina's"}.`);
+      return;
+    }
+    if (page === null && pageDecided) {
+      setError('Deze bron is per pagina beoordeeld; geef aan uit welke pagina dit voorstel komt.');
       return;
     }
     const parsed = noHours ? { ok: true as const, value: 0 } : parseHoursToMinutes(hours, { maxMinutes: 1440 });
@@ -545,7 +554,8 @@ export function HoursWeekSources({ organizationId, week, onReload }: HoursWeekSo
               days={targets.filter(target => target.memberId === page.member_id)}
               onCancel={() => setTakingOver(null)}
               onSubmit={async entries => { await sources.takeOverPage.mutateAsync({ sourceId: source.id, pageNumber: page.page_number, entries }); }} />)}
-            {proposingFor === source.id && <ProposalForm targets={targets} pageCount={source.page_count} onCancel={() => setProposingFor(null)}
+            {proposingFor === source.id && <ProposalForm targets={targets} pageCount={source.page_count}
+              pageDecided={source.pages.length > 0} onCancel={() => setProposingFor(null)}
               onSubmit={async input => { await sources.createProposal.mutateAsync({ sourceId: source.id, ...input }); }} />}
             {source.proposals.length === 0
               ? <p className="text-sm text-muted-foreground">Nog geen invoervoorstel uit deze bron.</p>

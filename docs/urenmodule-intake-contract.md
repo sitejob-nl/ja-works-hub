@@ -154,8 +154,21 @@ hieronder: `single` op een andere medewerker dan waarvoor er al een zeker voorst
 een later besluit een eerder voorstel stil overrulen: de inhoud van een voorstel is onveranderlijk, dus
 het kan achteraf niet alsnog als onzeker worden gemarkeerd en zou gewoon toepasbaar blijven. Wie het
 besluit wél juist vindt, verwerpt eerst die voorstellen — dezelfde weg als overal elders in deze module.
-Een voorstel dat zelf nog onbeslist is blokkeert niets, want het kan toch al niet worden toegepast.
-(`20260910100000_hours_page_decision_contradiction.sql`.)
+Een voorstel dat zelf nog onbeslist is blokkeert niets, want het kan toch al niet worden toegepast, en
+een **toegepast** voorstel telt hier evenmin mee: dat is historie die niet meer verworpen kán worden, dus
+zou het het besluit voorgoed op slot zetten. Voor de vraag of een pagina aantoonbaar meerdere mensen
+draagt telt een toegepast voorstel juist wél mee — dat is bewijs, geen blokkade.
+(`20260910100000` en `20260910110000`.)
+
+Bij die regel horen twee sluitstukken, want anders is hij om te lopen:
+
+- **Een bron die per pagina is beoordeeld eist een pagina op elk nieuw voorstel** (`22023`). Zonder
+  paginanummer is er geen besluit dat het voorstel kan sturen, en zou een `unclear`-pagina alsnog een
+  zeker, direct toepasbaar voorstel opleveren.
+- **Bevestigen leest het paginabesluit opnieuw.** Een onleesbare pagina is precies waarvoor bevestigen
+  bestaat, dus die blijft werken; maar een pagina die expliciet op een **andere** medewerker staat
+  blokkeert de bevestiging (`22023`). Anders zou de volgorde "onduidelijk → voorstel → pagina op iemand
+  anders → bevestigen" dezelfde tegenspraak alsnog binnenlaten.
 
 ### Een pagina in één handeling overnemen
 

@@ -284,12 +284,30 @@ describe('internal hours intake', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Wijzigen' }));
     const form = await screen.findByRole('form', { name: 'Paginatoewijzing vastleggen' });
     expect(within(form).getByLabelText(/Toelichting/)).toHaveValue('Handtekening onderaan gecontroleerd');
+    // Editing page one may never quietly replace the decision on another page.
+    expect(within(form).getByLabelText(/^Pagina/), 'the page being edited is fixed').toBeDisabled();
     fireEvent.change(within(form).getByLabelText('Toewijzing'), { target: { value: 'multiple' } });
     fireEvent.click(within(form).getByRole('button', { name: 'Toewijzing vastleggen' }));
     await waitFor(() => expect(rpc).toHaveBeenCalledWith('hours_set_source_page', {
       p_source_id: sourceId, p_page_number: 1, p_assignment: 'multiple', p_member_id: null,
       p_note: 'Handtekening onderaan gecontroleerd',
     }));
+  });
+
+  it('asks which page a proposal came from once the source has been judged per page', async () => {
+    const judged = {
+      id: '00000000-0000-4000-8000-00000000000c', page_number: 1, assignment: 'unclear',
+      member_id: null, candidate_name: null, note: null, created_at: '2026-09-08T08:10:00Z',
+    };
+    rpc.mockResolvedValue(ok(projection([], true, { pages: [judged] })));
+    show();
+    fireEvent.click(await screen.findByRole('button', { name: 'Voorstel maken' }));
+    const form = await screen.findByRole('form', { name: 'Invoervoorstel uit bron' });
+    fireEvent.change(within(form).getByLabelText('Medewerker en werkdag'), { target: { value: dayId } });
+    fireEvent.change(within(form).getByLabelText('Gewerkte uren volgens de bron'), { target: { value: '8:00' } });
+    fireEvent.click(within(form).getByRole('button', { name: 'Voorstel bewaren' }));
+    expect(await within(form).findByText(/uit welke pagina/)).toBeInTheDocument();
+    expect(rpc).not.toHaveBeenCalledWith('hours_create_source_proposal', expect.anything());
   });
 
   it('offers no one-click take-over for a page that carries several employees', async () => {

@@ -225,6 +225,68 @@ class PageTests(intake.IntakeTests):
         after = self.set_page(source["source_id"], 1, "unclear")
         self.assertEqual(self.active_pages(after)[0]["assignment"], "unclear")
 
+    def test_an_applied_proposal_does_not_lock_a_page_decision_forever(self):
+        """An applied proposal can never be discarded, so it must not block a re-decision."""
+        week = self.two_member_week()
+        first, second = week["members"][0], week["members"][1]
+        source, _ = self.add_source(pages=1)
+        proposal = self.only_proposal(self.propose(source["source_id"], first["days"][0]["id"], page_number=1))
+        self.set_page(source["source_id"], 1, "single", member=first["id"])
+        rpc("hours_apply_source_proposal", user=self.admin, p_proposal_id=proposal["id"],
+            p_expected_revision_id=None)
+        # History cannot be undone, so the decision must stay correctable.
+        corrected = self.set_page(source["source_id"], 1, "single", member=second["id"],
+                                  note="Handtekening bleek van de collega")
+        self.assertEqual(self.active_pages(corrected)[0]["member_id"], second["id"])
+        self.assertEqual(self.set_page(source["source_id"], 1, "unclear")["sources"][0]["pages"][0]["assignment"],
+                         "unclear")
+
+    def test_a_proposal_from_a_paged_source_must_say_which_page(self):
+        """Without a page there is no decision to steer it, so the guard would be idle."""
+        week = self.two_member_week()
+        member = week["members"][0]
+        source, _ = self.add_source(pages=2)
+        # Before any decision the page stays optional, exactly as released.
+        self.propose(source["source_id"], member["days"][0]["id"], page_number=None)
+        self.set_page(source["source_id"], 1, "unclear", note="Naam onleesbaar")
+        self.reject("hours_create_source_proposal", code="22023", user=self.admin,
+                    p_source_id=source["source_id"], p_day_id=member["days"][1]["id"], p_minutes=480,
+                    p_no_hours_reason=None, p_note=None, p_source_input=None, p_page_label=None,
+                    p_page_number=None, p_assignment_uncertain=False)
+        forced = self.propose(source["source_id"], member["days"][1]["id"], page_number=1)
+        self.assertTrue(forced["sources"][0]["proposals"][1]["assignment_uncertain"])
+
+    def test_confirming_cannot_route_around_a_page_that_names_someone_else(self):
+        week = self.two_member_week()
+        first, second = week["members"][0], week["members"][1]
+        source, _ = self.add_source(pages=1)
+        self.set_page(source["source_id"], 1, "unclear")
+        proposal = self.only_proposal(self.propose(source["source_id"], first["days"][0]["id"], page_number=1))
+        self.assertTrue(proposal["assignment_uncertain"])
+        # Re-deciding the page onto the colleague is allowed while nothing certain stands.
+        self.set_page(source["source_id"], 1, "single", member=second["id"])
+        self.reject("hours_confirm_proposal_assignment", code="22023", user=self.admin,
+                    p_proposal_id=proposal["id"], p_note=None)
+        self.reject("hours_apply_source_proposal", code="22023", user=self.admin,
+                    p_proposal_id=proposal["id"], p_expected_revision_id=None)
+        self.assertIsNone(self.revision_of(week["id"], first["days"][0]["id"]))
+        # An unreadable page is exactly what confirming is for, so that still works.
+        self.set_page(source["source_id"], 1, "unclear")
+        settled = self.only_proposal(rpc("hours_confirm_proposal_assignment", user=self.admin,
+                                         p_proposal_id=proposal["id"], p_note="Vergeleken met de plaatsingslijst"))
+        self.assertIsNotNone(settled["assignment_confirmed_at"])
+
+    def test_an_impossible_page_number_stays_a_readable_refusal(self):
+        week = self.two_member_week()
+        source, _ = self.add_source(pages=None, name="onleesbaar-aantal.pdf")
+        self.assertIsNone(source["sources"][0]["page_count"])
+        self.reject("hours_create_source_proposal", code="22023", user=self.admin,
+                    p_source_id=source["source_id"], p_day_id=week["members"][0]["days"][0]["id"],
+                    p_minutes=480, p_no_hours_reason=None, p_note=None, p_source_input=None,
+                    p_page_label=None, p_page_number=2001)
+        self.reject("hours_set_source_page", code="22023", user=self.admin, p_source_id=source["source_id"],
+                    p_page_number=2001, p_assignment="multiple", p_member_id=None, p_note=None)
+
     def test_an_unclear_page_makes_every_proposal_on_it_undecided(self):
         week = self.two_member_week()
         member = week["members"][0]
@@ -404,6 +466,7 @@ def main():
         "20260909090000_hours_week_sources_and_proposals.sql",
         "20260910090000_hours_source_pages_and_assignment.sql",
         "20260910100000_hours_page_decision_contradiction.sql",
+        "20260910110000_hours_page_assignment_hardening.sql",
     )]
     fixtures = [ROOT / "tests/db/hours-workflow-fixture.sql", ROOT / "tests/db/hours-module-gate-fixture.sql",
                 ROOT / "tests/db/hours-intake-fixture.sql"]

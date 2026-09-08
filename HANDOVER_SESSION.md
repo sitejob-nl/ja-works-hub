@@ -54,7 +54,21 @@ projectsamenvatting.
 - Advisors na DDL: geen ERROR-bevindingen. De drie nieuwe RPC's verschijnen in dezelfde WARN-categorie
   "SECURITY DEFINER uitvoerbaar door authenticated" als alle bestaande urenfuncties — bewuste conventie.
   Alle vijf foreign keys op `hours_source_pages` zijn geïndexeerd.
-- **Volgende actie:** PR openen, reviewen en mergen (alleen frontend; de migratie staat al live). Daarna
+- **Codereview vond acht echte defecten, allemaal gerepareerd** met een test die eerst rood stond. Drie in
+  de eerste ronde (een paginabesluit dat een staand voorstel stil overrulet; de overname die de pagina
+  dubbel in de herkomst zette — "pagina 1 · pagina 1"; een bewerkt paginabesluit dat zijn toelichting
+  verloor) en vijf in de tweede (een toegepast voorstel dat het besluit voorgoed op slot zette met een
+  onuitvoerbare foutmelding; een voorstel zónder paginanummer dat de forcering ontweek; bevestigen dat
+  het paginabesluit niet herlas, waardoor dezelfde tegenspraak via een andere volgorde binnenkwam; een
+  bewerkformulier waarin een typefout het besluit van een ándere pagina verving; en een tautologische
+  bovengrens die een rauwe Postgres-fout doorliet). Reparaties in de aanvullende migraties
+  `20260910100000_hours_page_decision_contradiction.sql` en
+  `20260910110000_hours_page_assignment_hardening.sql` — beide toegepast op productie — plus de UI.
+- Eindstand verificatie: **143 echte PostgreSQL-tests** (acht migraties elk tweemaal), **1.471
+  applicatietests**, lint 0 errors, typecheck en build, en **drie verbonden demo-QA-runs** (de laatste met
+  twaalf controles en 57 echte API-oproepen tegen de verharde code). De drie runs claimden samen vijf
+  werkdagen in drie eigen, verse QA-weken; de oude r3/r4-fixtures zijn niet aangeraakt.
+- **Volgende actie:** PR openen, reviewen en mergen (alleen frontend; de migraties staan al live). Daarna
   de frontier uit `docs/urenmodule-tickets.md`: **T3** (Excel-/tabelbestanden) en **T4** (scans/foto's via
   de VPS met AI-boekhouding) zijn nu gedeblokkeerd, naast de al open **T6** (klantweekpagina zonder
   inloggen) en de losstaande **T10**.

@@ -340,6 +340,15 @@ test('connected demo: source pages, controlled assignment and an undecided propo
     distinctMembers: 2, oneNameRefused: true, recordedAssignment: 'multiple',
   });
 
+  // --- a judged source no longer accepts a proposal without a page ---------
+  const pageless = await browserRequest(page, '/rest/v1/rpc/hours_create_source_proposal', {
+    p_source_id: source.id, p_day_id: fixture.takeoverDayIds[1], p_minutes: 300,
+    p_no_hours_reason: null, p_note: null, p_source_input: null, p_page_label: null,
+    p_page_number: null, p_assignment_uncertain: false,
+  });
+  expect(pageless.status, 'a judged source asks which page a proposal came from').toBe(400);
+  record('judged source requires a page on every proposal', { status: pageless.status });
+
   // --- the employee never sees the internal page decisions ----------------
   const portalContext = await browser.newContext();
   const portalPage = await portalContext.newPage();
