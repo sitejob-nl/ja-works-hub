@@ -16,6 +16,13 @@
  * This is intentionally partial: extend per domain as call sites are migrated.
  */
 export const qk = {
+  hoursWorkflow: {
+    all: (orgId: string) => ['hours-workflow', orgId] as const,
+    list: (orgId: string, userId: string, zone: string, week: string) => ['hours-workflow', orgId, userId, zone, 'list', week] as const,
+    week: (orgId: string, userId: string, zone: string, weekId: string) => ['hours-workflow', orgId, userId, zone, 'week', weekId] as const,
+    companies: (orgId: string) => ['hours-workflow', orgId, 'companies'] as const,
+    settings: (orgId: string, companyId: string) => ['hours-workflow', orgId, 'settings', companyId] as const,
+  },
   aiSettings: (orgId: string) => ['organization-ai-settings', orgId] as const,
   aiCredits: {
     all: () => ['ai-credits'] as const,

@@ -60,6 +60,8 @@ const VacancyNew = lazyRoute(() => import("@/pages/VacancyNew"));
 const VacancyDetail = lazyRoute(() => import("@/pages/VacancyDetail"));
 const VacancyEdit = lazyRoute(() => import("@/pages/VacancyEdit"));
 const Timesheets = lazyRoute(() => import("@/pages/Timesheets"));
+const HoursWorkflow = lazyRoute(() => import("@/pages/HoursWorkflow"));
+const PortalHoursWorkflow = lazyRoute(() => import("@/pages/portal/PortalHoursWorkflow"));
 const Transport = lazyRoute(() => import("@/pages/Transport"));
 const VehicleNew = lazyRoute(() => import("@/pages/VehicleNew"));
 const VehicleDetail = lazyRoute(() => import("@/pages/VehicleDetail"));
@@ -211,6 +213,8 @@ const App = () => (
                 <Route path="/plaatsingen" element={<PermissionRoute permission="placements.view"><PlacementsPage /></PermissionRoute>} />
                 <Route path="/plaatsingen/:id" element={<PermissionRoute permission="placements.view"><PlacementDetail /></PermissionRoute>} />
                 <Route path="/uren" element={<PermissionRoute permission="finance.view"><Timesheets /></PermissionRoute>} />
+                <Route path="/uren/weken" element={<PermissionRoute permission="finance.view"><HoursWorkflow /></PermissionRoute>} />
+                <Route path="/uren/weken/:weekId" element={<PermissionRoute permission="finance.view"><HoursWorkflow /></PermissionRoute>} />
                 <Route path="/facturatie" element={<PermissionRoute permission="finance.view"><InvoicesPage /></PermissionRoute>} />
                 <Route path="/uitstroom-analyse" element={<UitstroomAnalyse />} />
                 <Route path="/transport" element={<Transport />} />
@@ -260,6 +264,8 @@ const App = () => (
               }>
                 <Route index element={<PortalDashboard />} />
                 <Route path="uren" element={<PortalTimesheets />} />
+                <Route path="uren/weken" element={<PortalHoursWorkflow />} />
+                <Route path="uren/week/:weekId" element={<PortalHoursWorkflow />} />
                 <Route path="plaatsingen" element={<PortalPlacements />} />
                 <Route path="documenten" element={<PortalDocuments />} />
                 <Route path="vacatures" element={<PortalJobMarket />} />

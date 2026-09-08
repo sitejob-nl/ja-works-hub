@@ -1,10 +1,11 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import type { Tables } from '@/integrations/supabase/types';
 import { useSessionIdleTimeout } from '@/hooks/useSessionIdleTimeout';
 import { signOutAndRedirect } from '@/lib/session-security';
+import { getPortalLoginPath } from '@/lib/portal-return-path';
 
 type Profile = Tables<'profiles'>;
 
@@ -30,6 +31,11 @@ export const usePortal = () => useContext(PortalContext);
 
 export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const currentLocation = useRef(location);
+  currentLocation.current = location;
+  const currentNavigate = useRef(navigate);
+  currentNavigate.current = navigate;
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [employee, setEmployee] = useState<any | null>(null);
@@ -55,7 +61,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     if (!prof || prof.role !== 'medewerker') {
       // Not a medewerker, redirect to admin
-      navigate('/', { replace: true });
+      currentNavigate.current('/', { replace: true });
       setLoading(false);
       return;
     }
@@ -83,7 +89,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     setLoading(false);
-  }, [navigate]);
+  }, []);
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
@@ -95,7 +101,8 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setEmployee(null);
         setCandidate(null);
         setLoading(false);
-        navigate('/portaal/login', { replace: true });
+        const { pathname, search } = currentLocation.current;
+        currentNavigate.current(getPortalLoginPath(pathname, search), { replace: true });
       }
     });
 
@@ -105,12 +112,13 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         loadPortalData(session.user.id);
       } else {
         setLoading(false);
-        navigate('/portaal/login', { replace: true });
+        const { pathname, search } = currentLocation.current;
+        currentNavigate.current(getPortalLoginPath(pathname, search), { replace: true });
       }
     });
 
     return () => subscription.unsubscribe();
-  }, [loadPortalData, navigate]);
+  }, [loadPortalData]);
 
   const signOut = useCallback(async () => {
     setProfile(null);
