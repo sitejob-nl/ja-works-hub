@@ -177,3 +177,21 @@ describe('reading a delivered spreadsheet from the week screen', () => {
     expect(rpc).not.toHaveBeenCalledWith('hours_create_source_proposals', expect.anything());
   });
 });
+
+describe('a worksheet the reader could not lay out', () => {
+  it('names it in the panel instead of leaving it out without a word', async () => {
+    serveWorkbook(buildWorkbookFile([
+      { name: 'Week 37', rows: [
+        [text('Naam'), text('Datum'), text('Uren')],
+        [text('Jan Kowalski'), text('07-09-2026'), text('8:00')],
+      ] },
+      { name: 'Losse aantekeningen', rows: [[text('Bellen met kantoor over maandag')]] },
+    ]));
+    show();
+    fireEvent.click(await screen.findByRole('button', { name: 'Uitlezen' }));
+
+    const panel = await screen.findByRole('group', { name: 'Uitlezing van deze bron' });
+    expect(within(panel).getByText(/Dit werkblad is niet gelezen/)).toBeInTheDocument();
+    expect(within(panel).getByText('Losse aantekeningen')).toBeInTheDocument();
+  });
+});

@@ -420,3 +420,56 @@ describe('a placeholder in a day cell', () => {
     expect(reading.skipped.map(row => row.reason)).toEqual([expect.stringMatching(/geen waarde/i)]);
   });
 });
+
+describe('rows and sheets that are not about a member of this week', () => {
+  it('judges a breakdown column on the rows it will actually read', () => {
+    const reading = readHoursWorkbook([sheet('Week 37', [
+      ['Naam', 'Datum', 'Uren', 'OV1'],
+      ['Jan Kowalski', '07-09-2026', '8:00', '8:00'],
+      ['Eindtotaal', '', '40:00', '32:00'],
+    ])], week);
+
+    expect(reading.ok).toBe(true);
+    if (reading.ok === false) return;
+    expect(reading.candidates[0].sourceInput?.categories).toEqual([{ sourceCode: 'OV1', minutes: 480 }]);
+  });
+
+  it('says which worksheets it did not read instead of dropping them without a word', () => {
+    const reading = readHoursWorkbook([
+      sheet('Week 37', [['Naam', 'Datum', 'Uren'], ['Jan Kowalski', '07-09-2026', '8:00']]),
+      sheet('Losse aantekeningen', [['Jan Kowalski werkte maandag door'], ['bellen met kantoor']]),
+    ], week);
+
+    expect(reading.ok).toBe(true);
+    if (reading.ok === false) return;
+    expect(reading.sheetsRead).toEqual(['Week 37']);
+    expect(reading.sheetsIgnored).toEqual(['Losse aantekeningen']);
+  });
+});
+
+describe('a delivered breakdown that contradicts itself', () => {
+  it('warns when the same source code is delivered twice', () => {
+    const reading = readHoursWorkbook([sheet('Week 37', [
+      ['Naam', 'Datum', 'Uren', 'OV1', 'OV1'],
+      ['Jan Kowalski', '07-09-2026', '8:00', '4:00', '4:00'],
+    ])], week);
+
+    expect(reading.ok).toBe(true);
+    if (reading.ok === false) return;
+    expect(reading.candidates[0].notices.map(notice => notice.code)).toContain('DUPLICATE_SOURCE_CATEGORY');
+  });
+});
+
+describe('a grid that reaches past this week', () => {
+  it('does not call a week total wrong because a day of it falls outside the week', () => {
+    const reading = readHoursWorkbook([sheet('Uren', [
+      ['Medewerker', '06-09-2026', '07-09-2026', '08-09-2026', 'Totaal'],
+      ['Jan Kowalski', '4:00', '8:00', '8:00', '20:00'],
+    ])], week);
+
+    expect(reading.ok).toBe(true);
+    if (reading.ok === false) return;
+    expect(reading.rowTotals).toEqual([]);
+    expect(reading.skipped.map(row => row.text)).toContain('Jan Kowalski · 2026-09-06');
+  });
+});

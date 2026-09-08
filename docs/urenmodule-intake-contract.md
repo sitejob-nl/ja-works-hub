@@ -257,7 +257,12 @@ beoordeelde bron eist een pagina op elk nieuw voorstel, een tegensprekend pagina
   geen reden om de hele indeling te laten vervallen. Een opmerkingen- of referentiekolom wordt met rust gelaten in plaats van de
   hele regel te laten vervallen, en een uurloon- of bedragkolom wordt nooit een stuk van de werkdag.
   Op een dag zónder uren wordt helemaal geen indeling voorgesteld: die combinatie kan de servercontrole
-  niet afhandelen, en de RPC weigert haar dan ook.
+  niet afhandelen, en de RPC weigert haar dan ook. Een kolom wordt beoordeeld op de regels die de uitlezer
+  werkelijk leest, zodat een eindtotaalregel onderaan het blad geen aangeleverde broncode wegneemt.
+  **Let op:** een kolom die een *deel* van de dag beschrijft (bijvoorbeeld alleen overwerk) telt per
+  definitie niet op tot het dagtotaal en levert dus altijd een zichtbaar verschil. Dat is bedoeld gedrag —
+  de klantspecificatie vraagt juist om dat verschil — maar het betekent dat zo'n kolom om beoordeling
+  vraagt en niet om wegklikken.
 - **Eén werkdag draagt hoogstens één voorstel uit één aanlevering.** Staat dezelfde medewerker tweemaal
   op dezelfde dag, dan is het bestand over die dag dubbelzinnig; de uitlezing **blokkeert** met de beide
   vindplaatsen erbij. Een van de twee kiezen zou precies de gok zijn die deze module vermijdt.
@@ -274,6 +279,15 @@ beoordeelde bron eist een pagina op elk nieuw voorstel, een tegensprekend pagina
   12:00 — en niets in het bestand zegt welk van de twee. Waar beide lezingen passen meldt de uitlezer dat
   en maakt hij geen voorstel, in plaats van stilzwijgend door vierentwintig te delen. Een decimaal die als
   tekst staat is niet dubbelzinnig en wordt gewoon gelezen.
+- **Een werkblad dat de uitlezer niet kan indelen wordt bij naam genoemd.** Het blijft ongelezen — er
+  worden geen halve voorstellen uit gemaakt — maar het scherm meldt welk blad het betreft, zodat een
+  aanlevering niet stilzwijgend halveert.
+- **Een aangeleverd weektotaal wordt alleen vergeleken als de hele regel gelezen is.** Reikt de tabel
+  buiten deze week, of is één dagcel onleesbaar, dan zou een vergelijking een verschil melden dat het
+  bestand niet heeft.
+- **Dezelfde broncode tweemaal levert dezelfde waarschuwing als bij handmatige invoer.** De uitlezer
+  gebruikt letterlijk dezelfde controle (`sourceControlIssues`), zodat een mens en een machine over
+  dezelfde aanlevering hetzelfde te zien krijgen.
 - **Een streepje of kruisje is geen reden.** `-`, `x`, `.` en `n.v.t.` in een urencel betekenen "hier staat
   niets"; die worden als overgeslagen regel benoemd en niet als reden voor "geen uren" overgenomen.
 - **Een aangeleverd totaal is een controlegetal.** Klopt het weektotaal van een rij niet met de dagen

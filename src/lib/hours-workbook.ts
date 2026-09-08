@@ -1,5 +1,7 @@
-import { checkMinutesTotal, parseHoursToMinutes, type HoursIssue } from '../../supabase/functions/_shared/hours-calculation';
-import { hoursSourceInputSchema, type HoursSourceInput } from '@/components/hours-workflow/hours-day-source';
+import { parseHoursToMinutes, type HoursIssue } from '../../supabase/functions/_shared/hours-calculation';
+import {
+  hoursSourceInputSchema, sourceControlIssues, type HoursSourceInput,
+} from '@/components/hours-workflow/hours-day-source';
 
 /** A decoded cell exactly as the spreadsheet stored it; formulas are never run. */
 export type WorkbookCell = string | number | boolean | Date | null;
@@ -49,6 +51,8 @@ export type WorkbookReading =
   | {
       ok: true; candidates: WorkbookCandidate[]; skipped: WorkbookSkippedRow[];
       rowTotals: WorkbookRowTotal[]; sheetsRead: string[];
+      /** Worksheets whose layout was not recognised; named so none disappears silently. */
+      sheetsIgnored: string[];
     };
 
 const fail = (code: string, message: string): WorkbookReading => ({ ok: false, issues: [{ code, message }] });
@@ -126,7 +130,7 @@ interface LongHeader {
   categories: { column: number; sourceCode: string }[];
 }
 
-function detectLongHeader(rows: WorkbookCell[][]): LongHeader | null {
+function detectLongHeader(rows: WorkbookCell[][], members: WorkbookWeekMember[] = []): LongHeader | null {
   for (const [index, row] of rows.entries()) {
     const name = row.findIndex(cell => headerMatches(cellText(cell), NAME_HEADERS));
     const date = row.findIndex(cell => headerMatches(cellText(cell), DATE_HEADERS));
@@ -140,7 +144,11 @@ function detectLongHeader(rows: WorkbookCell[][]): LongHeader | null {
       // it really is a duration that could be part of that row's own total. A
       // remarks column is left alone rather than dropping the whole row, and an
       // hourly rate or amount never becomes a piece of the working day.
-      const readable = rows.slice(index + 1).every(data => {
+      // Judged on the rows this reader will actually read. A trailing summary
+      // row belongs to nobody, so it may not disqualify a delivered code.
+      const dataRows = rows.slice(index + 1)
+        .filter(data => !members.length || matchMember(cellText((data ?? [])[name]), members) !== null);
+      const readable = dataRows.every(data => {
         const part = readDuration((data ?? [])[column], 1440, true);
         if (part === null) return true;
         if (!('minutes' in part)) return false;
@@ -288,18 +296,27 @@ function readWideSheet(
       continue;
     }
     let readMinutes = 0;
+    // A delivered total covers the whole row. Once part of that row falls
+    // outside this week, comparing it would report a difference the file does
+    // not actually have.
+    let wholeRowRead = true;
     for (const day of header.days) {
       const dayId = dayOf.get(`${match.member.id}|${day.workDate}`);
       const where = { ...place, text: `${nameText} · ${day.workDate}` };
       if (!dayId) {
         if (cellText(row[day.column])) {
+          wholeRowRead = false;
           skipped.push({ ...where, reason: `${day.workDate} is geen werkdag van deze medewerker in deze week.` });
         }
         continue;
       }
       const duration = readDuration(row[day.column]);
       if (duration === null) continue;
-      if ('issue' in duration) { skipped.push({ ...where, reason: duration.issue.message }); continue; }
+      if ('issue' in duration) {
+        wholeRowRead = false;
+        skipped.push({ ...where, reason: duration.issue.message });
+        continue;
+      }
       const minutes = 'minutes' in duration ? duration.minutes : 0;
       readMinutes += minutes;
       candidates.push({
@@ -310,7 +327,7 @@ function readWideSheet(
         assignmentUncertain: match.uncertain, employeeText: nameText, notices: [],
       });
     }
-    if (header.total === null) continue;
+    if (header.total === null || !wholeRowRead) continue;
     // A week total legitimately exceeds a day, so it is read against the week bound.
     const delivered = readDuration(row[header.total], 10080);
     if (delivered === null) continue;
@@ -327,11 +344,13 @@ function readWideSheet(
   }
 }
 
-/** A delivered total is a control figure, never the truth about the parts. */
+/**
+ * A delivered total is a control figure, never the truth about the parts. This
+ * is the same check manual entry runs, so a reader and a person see the same
+ * warnings about the same delivery — including a source code delivered twice.
+ */
 function controlNotices(minutes: number, sourceInput: HoursSourceInput | null): HoursIssue[] {
-  if (!sourceInput?.categories?.length) return [];
-  const total = checkMinutesTotal(sourceInput.categories.map(category => category.minutes), minutes);
-  return total.ok === false ? total.issues : [];
+  return sourceControlIssues(minutes, sourceInput);
 }
 
 export function readHoursWorkbook(sheets: WorkbookSheet[], context: WorkbookContext): WorkbookReading {
@@ -340,6 +359,7 @@ export function readHoursWorkbook(sheets: WorkbookSheet[], context: WorkbookCont
   const skipped: WorkbookSkippedRow[] = [];
   const rowTotals: WorkbookRowTotal[] = [];
   const sheetsRead: string[] = [];
+  const sheetsIgnored: string[] = [];
   const dayOf = new Map(context.days.map(day => [`${day.memberId}|${day.workDate}`, day.id]));
 
   for (const [sheetIndex, sheet] of sheets.entries()) {
@@ -347,10 +367,13 @@ export function readHoursWorkbook(sheets: WorkbookSheet[], context: WorkbookCont
     // rows may well carry a second date — a date of birth, a start date — and
     // that must not turn the sheet into a grid whose columns land on the wrong
     // days.
-    const header = detectLongHeader(sheet.rows);
+    const header = detectLongHeader(sheet.rows, context.members);
     if (!header) {
       const wide = detectWideHeader(sheet.rows);
-      if (!wide) continue;
+      if (!wide) {
+        if (sheet.rows.some(row => row.some(cell => cellText(cell)))) sheetsIgnored.push(sheet.name);
+        continue;
+      }
       sheetsRead.push(sheet.name);
       readWideSheet(sheet, sheetIndex, wide, context, dayOf, candidates, skipped, rowTotals);
       continue;
@@ -423,5 +446,5 @@ export function readHoursWorkbook(sheets: WorkbookSheet[], context: WorkbookCont
       `${first.employeeName} staat meer dan één keer op ${first.workDate}: ${where}. `
       + 'Maak in het bestand duidelijk welke regel geldt; er zijn geen voorstellen gemaakt.');
   }
-  return { ok: true, candidates, skipped, rowTotals, sheetsRead };
+  return { ok: true, candidates, skipped, rowTotals, sheetsRead, sheetsIgnored };
 }

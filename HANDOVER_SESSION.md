@@ -35,13 +35,13 @@ projectsamenvatting.
   **Geen edge-function-deploy nodig.**
 - Verificatie: **157 echte PostgreSQL-tests** (`scripts/hours-workbook-db-test.py` — 12 nieuwe
   werkmapgevallen plus de volledige vrijgegeven pagina-/inname-/foundation-/classificatie-/poortregressies,
-  elf migraties elk tweemaal); **1.518 applicatietests**; lint 0 errors, typecheck en productiebuild groen.
+  elf migraties elk tweemaal); **1.523 applicatietests**; lint 0 errors, typecheck en productiebuild groen.
   De vrijgegeven harnassen zijn ongewijzigd gelaten; de nieuwe importeert `hours-pages-db-test.py` en
   overschrijft alleen de twee verwachtingen die echt bewogen (bucket-mediatypen, RPC-signaturen).
 - **JA Werkt blijft UIT, demo AAN** — vóór de migratie geverifieerd. Het geblokkeerde `QA_SUPERADMIN`-account
   is ongemoeid gelaten. Advisors na DDL: geen ERROR-bevindingen; de nieuwe RPC valt in dezelfde bewuste
   WARN-categorie "SECURITY DEFINER uitvoerbaar door authenticated" als alle bestaande urenfuncties.
-- **Drie codereviewrondes vonden vijftien echte defecten, allemaal gerepareerd** met een test die eerst
+- **Vier codereviewrondes vonden negentien echte defecten, allemaal gerepareerd** met een test die eerst
   rood stond. Ronde 1 (zeven): kolomkoppen op voorvoegsel matchen ("Aantal dagen" won het urentotaal, een
   1 werd een uur); een als tijd opgemaakte cel die als datum werd gelezen waardoor een heel lijstblad stil
   verdween; een tijd-nul zonder reden die de hele uitlezing liet weigeren; dubbele dagen die de server
@@ -56,7 +56,14 @@ projectsamenvatting.
   (12:00 → 0:30, een weektotaal van 36:00 → 1:30) — waar beide lezingen passen weigert de uitlezer nu te
   kiezen; één nul in een broncodekolom liet de hele indeling van het blad vervallen; en een streepje in
   een dagcel werd de letterlijke reden voor "geen uren", vooraf aangevinkt. De testhulp schrijft nu ook
-  getalnotaties, zodat het echte bestandspad — waar bevinding 1 zat — meetest.
+  getalnotaties, zodat het echte bestandspad — waar bevinding 1 zat — meetest. Ronde 4 (vier): een
+  eindtotaalregel onderaan een blad nam de aangeleverde broncodes weg uit álle voorstellen; een werkblad
+  met een onbekende indeling verdween zonder één woord; dezelfde broncode tweemaal werd niet gemeld
+  terwijl handmatige invoer daar wél voor waarschuwt (de uitlezer gebruikt nu letterlijk dezelfde
+  controle); en een tabel die buiten de week reikte meldde een weektotaalverschil dat het bestand niet
+  had. De vijfde bevinding uit die ronde is **bewust gedrag**: een kolom die maar een deel van de dag
+  beschrijft telt per definitie niet op tot het dagtotaal, en juist dat verschil vraagt de
+  klantspecificatie te tonen.
 - **Nog open:** verbonden demo-QA in de browser is voor dit ticket **niet** uitgevoerd — de vier
   `pages`-QA-weken staan klaar (`scripts/prepare-hours-pages-demo.mjs`, dezelfde `HOURS_PAGES_RUN_ID`
   hergebruiken). PR #266 (T2) moet nog gemerged worden vóór deze branch.

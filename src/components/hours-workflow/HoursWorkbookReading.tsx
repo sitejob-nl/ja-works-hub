@@ -116,6 +116,15 @@ export function HoursWorkbookReading({ reading, alreadyProposed, onCancel, onSav
         })}
       </ul>}
 
+    {reading.sheetsIgnored.length > 0 && <Alert><AlertDescription>
+      <p className="font-medium">
+        {reading.sheetsIgnored.length === 1 ? 'Dit werkblad is niet gelezen' : 'Deze werkbladen zijn niet gelezen'}:{' '}
+        <span data-no-translate="true">{reading.sheetsIgnored.join(', ')}</span>.
+      </p>
+      <p className="mt-1">De indeling is daar niet herkend. Bekijk de bron zelf en leg die uren zo nodig
+        handmatig als voorstel vast.</p>
+    </AlertDescription></Alert>}
+
     {reading.rowTotals.length > 0 && <Alert><AlertDescription>
       <p className="font-medium">Een aangeleverd totaal klopt niet met de dagen eronder.</p>
       <ul className="mt-1 space-y-1 text-sm">
