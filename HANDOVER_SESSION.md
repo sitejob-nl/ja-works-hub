@@ -71,7 +71,11 @@ projectsamenvatting.
   applicatietests**, lint 0 errors, typecheck en build, en **vier verbonden demo-QA-runs** (de laatste twee
   met twaalf controles en 57 echte API-oproepen tegen de verharde code). De runs claimden samen zeven
   werkdagen in vier eigen, verse QA-weken; de oude r3/r4-intakefixtures zijn niet aangeraakt.
-- **Volgende actie:** PR openen, reviewen en mergen (alleen frontend; de migraties staan al live). Daarna
+- Bewijsmap: `/Users/kas/.codex/visualizations/2026/09/07/01a07bd6-9fd4-7440-a463-9fc32ece3f91/JA-Werkt-urenmodule/bouw/pages-20260910/`
+  (vier QA-resultaten + fixtures + README).
+- Frontendrelease loopt via [PR #266](https://github.com/sitejob-nl/ja-works-hub/pull/266) op `main`.
+  Niet gemerged — merge is een productiedeploy en blijft aan Kas.
+- **Volgende actie:** PR #266 reviewen en mergen (alleen frontend; de migraties staan al live). Daarna
   de frontier uit `docs/urenmodule-tickets.md`: **T3** (Excel-/tabelbestanden) en **T4** (scans/foto's via
   de VPS met AI-boekhouding) zijn nu gedeblokkeerd, naast de al open **T6** (klantweekpagina zonder
   inloggen) en de losstaande **T10**.
