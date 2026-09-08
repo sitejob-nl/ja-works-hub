@@ -8,7 +8,7 @@ import {
 } from '@/lib/hours-sources';
 import { countPdfPages } from '@/lib/hours-pdf-pages';
 import {
-  countWorkbookSheets, decodeWorkbook, isWorkbookSource, workbookBytesError,
+  countWorkbookSheets, decodeWorkbook, isReadableWorkbook, isWorkbookSource, workbookBytesError,
 } from '@/lib/hours-workbook-file';
 import { readHoursWorkbook, type WorkbookContext, type WorkbookReading } from '@/lib/hours-workbook';
 import type { HoursPageEntry, HoursReadingEntry } from '@/lib/hours-workflow-api';
@@ -41,7 +41,8 @@ export interface ReadingInput { sourceId: string; entries: HoursReadingEntry[] }
 async function deliveredPageCount(file: File, bytes: ArrayBuffer): Promise<number | null> {
   try {
     if (file.type === 'application/pdf') return await countPdfPages(bytes);
-    if (isWorkbookSource(file.type)) return await countWorkbookSheets(bytes);
+    // A legacy .xls can never be read out, so there is nothing to count either.
+    if (isReadableWorkbook(file.type)) return await countWorkbookSheets(bytes);
     return null;
   } catch {
     return null;

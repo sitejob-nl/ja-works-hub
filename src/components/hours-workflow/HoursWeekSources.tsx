@@ -18,7 +18,7 @@ import {
   type HoursWeekSourceFile, type HoursWeekSources as HoursWeekSourcesData,
 } from '@/lib/hours-sources';
 import type { HoursPageEntry } from '@/lib/hours-workflow-api';
-import { isWorkbookSource } from '@/lib/hours-workbook-file';
+import { isReadableWorkbook } from '@/lib/hours-workbook-file';
 import type { WorkbookContext, WorkbookReading } from '@/lib/hours-workbook';
 import { hoursSourceViewUrl, useApplyHoursProposal, useHoursWeekSources } from '@/hooks/useHoursWeekSources';
 import { HoursWorkbookReading } from './HoursWorkbookReading';
@@ -479,22 +479,24 @@ export function HoursWeekSources({ organizationId, week, onReload }: HoursWeekSo
   const [takingOver, setTakingOver] = useState<string | null>(null);
   const [reading, setReading] = useState<{ sourceId: string; result: WorkbookReading } | null>(null);
   const [readingError, setReadingError] = useState<string | null>(null);
+  const [readingSource, setReadingSource] = useState<string | null>(null);
   const targets = dayTargets(week);
   const targetById = new Map(targets.map(target => [target.dayId, target]));
   // One panel at a time: every one of them writes to the same source.
-  const busyElsewhere = !!proposingFor || !!takingOver || !!pagingFor || !!reading
-    || sources.readWorkbook.isPending;
+  const busyElsewhere = !!proposingFor || !!takingOver || !!pagingFor || !!reading || !!readingSource;
   const employees = week.employees.map(employee => ({ id: employee.id, name: employee.name }));
   const data: HoursWeekSourcesData | undefined = sources.data;
   const canManage = (data?.can_manage ?? false) && week.enabled;
 
   /** Reading is deliberately explicit: it never happens as a side effect of uploading. */
   async function readSource(sourceId: string, path: string) {
-    setReadingError(null); setNotice(null);
+    setReadingError(null); setNotice(null); setReadingSource(sourceId);
     try {
       setReading({ sourceId, result: await sources.readWorkbook.mutateAsync({ path, context: workbookContext(week) }) });
     } catch (failure) {
       setReadingError(hoursWorkflowError(failure));
+    } finally {
+      setReadingSource(null);
     }
   }
 
@@ -561,11 +563,11 @@ export function HoursWeekSources({ organizationId, week, onReload }: HoursWeekSo
               </div>
               <div className="flex flex-wrap gap-2">
                 <ViewSourceButton path={source.storage_path} fileName={source.file_name} />
-                {canManage && isWorkbookSource(source.content_type) && reading?.sourceId !== source.id &&
-                  <Button type="button" size="sm" variant="outline" disabled={busyElsewhere || sources.readWorkbook.isPending}
+                {canManage && isReadableWorkbook(source.content_type) && reading?.sourceId !== source.id &&
+                  <Button type="button" size="sm" variant="outline" disabled={busyElsewhere}
                     onClick={() => void readSource(source.id, source.storage_path)}>
                     <TableProperties className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
-                    {sources.readWorkbook.isPending ? 'Uitlezen…' : 'Uitlezen'}
+                    {readingSource === source.id ? 'Uitlezen…' : 'Uitlezen'}
                   </Button>}
                 {canManage && !pagingFor && <Button type="button" size="sm" variant="outline" disabled={busyElsewhere}
                   onClick={() => setPagingFor({ sourceId: source.id, page: null })}>

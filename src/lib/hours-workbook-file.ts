@@ -13,6 +13,14 @@ export function isWorkbookSource(contentType: string): contentType is HoursWorkb
 }
 
 /**
+ * A legacy binary .xls is kept as a source — the reviewer can open it and record
+ * a proposal by hand — but it can never be read out, so it is never offered.
+ */
+export function isReadableWorkbook(contentType: string): boolean {
+  return contentType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+}
+
+/**
  * Windows browsers report `application/vnd.ms-excel` for a plain .csv, so the
  * declared media type is not enough. A workbook is either a zip container
  * (.xlsx) or an OLE compound document (.xls); anything else is refused before

@@ -228,3 +228,17 @@ describe('a spreadsheet that failed its own sum', () => {
     expect(within(panel).queryByText(/Geen uren/)).not.toBeInTheDocument();
   });
 });
+
+describe('a legacy binary workbook', () => {
+  it('is kept as a source but never offered for reading', async () => {
+    rpc.mockImplementation(async () => ok({
+      ...projection(),
+      sources: [{ ...projection().sources[0], file_name: 'uren.xls', content_type: 'application/vnd.ms-excel' }],
+    }));
+    show();
+
+    expect(await screen.findByText('uren.xls')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Uitlezen' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Bron bekijken/ })).toBeInTheDocument();
+  });
+});

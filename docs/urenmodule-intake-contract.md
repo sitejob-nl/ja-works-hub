@@ -326,7 +326,12 @@ beoordeelde bron eist een pagina op elk nieuw voorstel, een tegensprekend pagina
   wordt als overgeslagen regel benoemd. Een datum die niet in deze week valt, idem.
 - **Een oud binair `.xls` blijft een eerlijke blokkade.** Het bestand wordt wel als bron bewaard — de
   beoordelaar kan het openen en handmatig een voorstel vastleggen — maar er wordt geen tekstgok op
-  losgelaten.
+  losgelaten. De knop **Uitlezen** verschijnt daar dan ook niet: een handeling aanbieden die altijd
+  mislukt is geen eerlijke blokkade maar een omweg.
+- **Het uitlezen gebeurt in de browser, op het moment dat iemand erom vraagt.** Dat is dezelfde plek waar
+  een PDF zijn pagina's telt. Een zeer groot bestand kost dus even tijd in het tabblad; dat is bewust
+  gekozen boven een serveraanroep, omdat er geen betaalde dienst en geen extra vertrouwensgrens aan te
+  pas komt.
 
 ### Eén uitlezing, één handeling
 
