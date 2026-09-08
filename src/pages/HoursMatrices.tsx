@@ -79,13 +79,22 @@ function MatrixWorkspace({ orgId, matrixId, canManage }: { orgId: string; matrix
   const activeId = selectedVersion ?? data.versions[0]?.id ?? 'new';
   const version = data.versions.find(item => item.id === activeId);
   const canEdit = canManage && data.can_manage;
-  return <div className="space-y-5">
+  return <fieldset disabled={matrix.mutation.isPending} aria-busy={matrix.mutation.isPending} className="min-w-0 space-y-5">
+    <legend className="sr-only">Urenmatrix beheren</legend>
     <Card><CardContent className="space-y-4 pt-6">
       <div><h2 className="font-semibold" data-no-translate="true">{data.name}</h2><p className="text-sm text-muted-foreground" data-no-translate="true">{data.scope === 'client' ? data.company_name : 'CAO-basis'}</p></div>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end"><div className="min-w-0 flex-1 space-y-1"><Label htmlFor="matrix-version">Versie bekijken</Label><select id="matrix-version" className={matrixSelectClass} value={activeId} onChange={event => setSelectedVersion(event.target.value)}>{(activeId === 'new' || !data.versions.length) && <option value="new">Nieuwe conceptversie</option>}{data.versions.map(item => <option key={item.id} value={item.id}>Versie {item.version_number} · {item.status === 'published' ? 'gepubliceerd' : 'concept'} · vanaf {item.valid_from}</option>)}</select></div>{canEdit && <Button variant="outline" onClick={() => { setSelectedVersion('new'); setEditorRevision(value => value + 1); }}>Nieuwe versie</Button>}</div>
     </CardContent></Card>
-    {!canEdit && !version ? <p className="text-sm text-muted-foreground">Deze matrix heeft nog geen versies.</p> : <Card><CardContent className="pt-6"><MatrixVersionEditor key={`${matrixId}-${activeId}-${editorRevision}`} matrix={data} version={version} canManage={canEdit} onSave={async draft => selectResult(await matrix.mutation.mutateAsync({ type: 'save', draft, version }), version?.id)} onPublish={async current => selectResult(await matrix.mutation.mutateAsync({ type: 'publish', version: current }), current.id)} onReload={() => { void matrix.refetch().then(result => { if (result.data) selectResult(result.data, version?.id); }); }} /></CardContent></Card>}
-  </div>;
+    {!canEdit && !version ? <p className="text-sm text-muted-foreground">Deze matrix heeft nog geen versies.</p> : <Card><CardContent className="pt-6"><MatrixVersionEditor key={`${matrixId}-${activeId}-${editorRevision}`} matrix={data} version={version} canManage={canEdit} onSave={async draft => {
+      // The mutation updates its cache before related refetches finish. Keep the
+      // current editor mounted until its final result selects the saved version.
+      setSelectedVersion(activeId);
+      selectResult(await matrix.mutation.mutateAsync({ type: 'save', draft, version }), version?.id);
+    }} onPublish={async current => {
+      setSelectedVersion(activeId);
+      selectResult(await matrix.mutation.mutateAsync({ type: 'publish', version: current }), current.id);
+    }} onReload={() => { void matrix.refetch().then(result => { if (result.data) selectResult(result.data, version?.id); }); }} /></CardContent></Card>}
+  </fieldset>;
 }
 
 export default function HoursMatrices() {

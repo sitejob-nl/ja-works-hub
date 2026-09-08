@@ -3,13 +3,24 @@
 Start: 8 september 2026. Werkmap `/Users/kas/dev/ja-works-hub/.worktrees/urenmodule-bouw`, branch `codex/urenmodule-bouw`,
 base `aedc6dc` (PR #261). De bestaande dirty checkout blijft onaangeraakt.
 
-De fundering staat als draft in [PR #262](https://github.com/sitejob-nl/ja-works-hub/pull/262), met geslaagde CI.
-De afhankelijke matrixbouw staat in `/Users/kas/dev/ja-works-hub/.worktrees/urenmodule-matrix`, branch
-`codex/urenmodule-matrix`, vanaf fundering `47c408f`. Beide bouwstappen zijn nog niet naar productie uitgerold.
-Matrixcheckpoint `da7dbaa` staat in afhankelijke draft [PR #263](https://github.com/sitejob-nl/ja-works-hub/pull/263).
-Actieve vervolgworktree: `/Users/kas/dev/ja-works-hub/.worktrees/urenmodule-classificatie`, branch
-`codex/urenmodule-classificatie`, vanaf matrixcheckpoint `69aee12`.
-Classificatiecheckpoint `773f3d0` staat in afhankelijke draft [PR #264](https://github.com/sitejob-nl/ja-works-hub/pull/264).
+De eerdere fundering (#262), matrixbouw (#263) en classificatie zijn samengebracht in
+[PR #264](https://github.com/sitejob-nl/ja-works-hub/pull/264), inmiddels rechtstreeks gericht op main.
+Actieve werkmap: `/Users/kas/dev/ja-works-hub/.worktrees/urenmodule-classificatie`, branch
+`codex/urenmodule-classificatie`. Het SaaS-gatecheckpoint is `221b554`.
+
+De vier databasewijzigingen zijn op 8 september als één afgeschermde transactie gedeployed;
+`hours-classify-day` staat live en de database-types zijn opnieuw gegenereerd.
+**JA Werkt staat UIT, uitsluitend de geverifieerde demo staat AAN** voor `uren-workflow`.
+De nieuwe module werkt los van legacy `uren` en abonnementen. De SaaS-schakelaar bewaart historie
+en blokkeert bij UIT zowel schermen als RPC's en directe tabellezing.
+Zie [modulecontract](urenmodule-organization-gate.md) voor rechten en gelijktijdige wijzigingen.
+
+1.402 volledige applicatietests en 100 echte PostgreSQL-tests zijn geslaagd, plus gerichte tests
+voor de gegenereerde RPC-signatures. De echte verbonden demo-acceptatie en laatste frontendrelease
+lopen nog; `HANDOVER_SESSION.md` en de bewijsmappen bevatten de actuele status. De verbonden QA vond
+een race bij conceptopslag/publicatie; die is hersteld met een eerst falende, daarna geslaagde regressietest.
+Het geblokkeerde SaaS-admin-QA-account
+is niet gewijzigd; toestemming voor zijn tijdelijke beheertest staat nog open.
 
 Deze eerste bouwstap voert de handmatige weekcontrole uit de specificatie van 7 september uit.
 Het is de basis voor de volledige urenmodule; geen volledige oplevering of payrollpilot.
