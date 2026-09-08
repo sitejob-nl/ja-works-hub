@@ -1,8 +1,10 @@
 import { useState, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useOrganizationId } from '@/hooks/useOrganizationId';
+import { useHoursModuleAccess } from '@/hooks/useHoursModuleAccess';
 import { startOfWeek, endOfWeek, addWeeks, subWeeks, format, getISOWeek } from 'date-fns';
 import { nl } from 'date-fns/locale';
 import { Clock, Plus, Upload, ChevronLeft, ChevronRight, CheckCircle2, XCircle, AlertTriangle, Sparkles, FileText } from 'lucide-react';
@@ -64,7 +66,8 @@ const sourceLabel: Record<string, string> = {
 };
 
 const Timesheets = () => {
-  const { user } = useAuth();
+  const { user, profile, loading: authLoading } = useAuth();
+  const hoursModule = useHoursModuleAccess({ organizationId: profile?.id === user?.id ? profile?.organization_id : null, userId: user?.id, zone: 'internal', loading: authLoading });
   const canManageFinance = useRolePermission('finance.manage');
   const qc = useQueryClient();
   const [weekRef, setWeekRef] = useState(new Date());
@@ -285,22 +288,27 @@ const Timesheets = () => {
           <h1 className="text-xl sm:text-2xl font-semibold">Uren</h1>
           <p className="text-muted-foreground text-sm mt-1 hidden sm:block">Urenregistratie en goedkeuring</p>
         </div>
-        {canManageFinance && <div className="flex gap-2 flex-wrap">
-          {employeeFilter !== 'all' && timesheets.length > 0 && (
-            <Button variant="outline" size="sm" onClick={() => generateHourLetter.mutate()} disabled={generateHourLetter.isPending} className="gap-1.5">
-              <FileText className="h-4 w-4" /> <span className="hidden sm:inline">{generateHourLetter.isPending ? 'Genereren...' : 'Urenbrief'}</span><span className="sm:hidden">Brief</span>
+        <div className="flex gap-2 flex-wrap">
+          {hoursModule.enabled && <Button asChild variant="outline" size="sm" className="gap-1.5">
+            <Link to="/uren/weken"><CheckCircle2 className="h-4 w-4" />Weekcontrole</Link>
+          </Button>}
+          {canManageFinance && <>
+            {employeeFilter !== 'all' && timesheets.length > 0 && (
+              <Button variant="outline" size="sm" onClick={() => generateHourLetter.mutate()} disabled={generateHourLetter.isPending} className="gap-1.5">
+                <FileText className="h-4 w-4" /> <span className="hidden sm:inline">{generateHourLetter.isPending ? 'Genereren...' : 'Urenbrief'}</span><span className="sm:hidden">Brief</span>
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={() => aiValidation.mutate()} disabled={aiValidation.isPending} className="gap-1.5">
+              <Sparkles className="h-4 w-4" /> <span className="hidden sm:inline">{aiValidation.isPending ? 'Valideren...' : 'AI Validatie'}</span><span className="sm:hidden">AI</span>
             </Button>
-          )}
-          <Button variant="outline" size="sm" onClick={() => aiValidation.mutate()} disabled={aiValidation.isPending} className="gap-1.5">
-            <Sparkles className="h-4 w-4" /> <span className="hidden sm:inline">{aiValidation.isPending ? 'Valideren...' : 'AI Validatie'}</span><span className="sm:hidden">AI</span>
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setCsvOpen(true)} className="gap-1.5">
-            <Upload className="h-4 w-4" /> <span className="hidden sm:inline">CSV importeren</span><span className="sm:hidden">CSV</span>
-          </Button>
-          <Button size="sm" onClick={() => setEntryOpen(true)} className="gap-1.5">
-            <Plus className="h-4 w-4" /> <span className="hidden sm:inline">Uren invoeren</span><span className="sm:hidden">Nieuw</span>
-          </Button>
-        </div>}
+            <Button variant="outline" size="sm" onClick={() => setCsvOpen(true)} className="gap-1.5">
+              <Upload className="h-4 w-4" /> <span className="hidden sm:inline">CSV importeren</span><span className="sm:hidden">CSV</span>
+            </Button>
+            <Button size="sm" onClick={() => setEntryOpen(true)} className="gap-1.5">
+              <Plus className="h-4 w-4" /> <span className="hidden sm:inline">Uren invoeren</span><span className="sm:hidden">Nieuw</span>
+            </Button>
+          </>}
+        </div>
       </div>
 
       {/* Week selector + filters */}

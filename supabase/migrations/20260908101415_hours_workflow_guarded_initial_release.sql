@@ -1,0 +1,11 @@
+-- Deployment receipt marker, 2026-09-08.
+-- Supabase apply_migration atomically applied the four source migrations below,
+-- their schema_migrations entries and initial organization flags (JA Werkt OFF,
+-- verified demo ON). The database receipt contains the complete 141410-byte SQL.
+-- On a fresh database these source files implement the same schema; this marker
+-- performs no additional DDL or tenant activation.
+-- 20260908090000_hours_workflow_foundation.sql
+-- 20260908120000_hours_matrix_versions.sql
+-- 20260908140000_hours_day_sources_and_classification.sql
+-- 20260908160000_hours_workflow_organization_gate.sql
+-- Bundle SHA256: 8603f2db3bd24066504a75050945254cb0de259897280640963ee530055ca942

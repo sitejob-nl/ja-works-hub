@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { LanguageToggle } from '@/components/translation/LanguageToggle';
 import { useTranslation } from '@/hooks/useTranslation';
 import { ForgotPasswordDialog } from '@/components/auth/ForgotPasswordDialog';
+import { getPortalReturnPath } from '@/lib/portal-return-path';
 
 const copy = {
   nl: {
@@ -35,6 +36,7 @@ const copy = {
 
 const PortalLogin = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { language } = useTranslation();
   const t = copy[language] ?? copy.nl;
   const [email, setEmail] = useState('');
@@ -57,7 +59,8 @@ const PortalLogin = () => {
         .single();
 
       if (profile?.role === 'medewerker') {
-        navigate('/portaal', { replace: true });
+        const returnTo = new URLSearchParams(location.search).get('returnTo');
+        navigate(getPortalReturnPath(returnTo), { replace: true });
       } else {
         navigate('/', { replace: true });
       }

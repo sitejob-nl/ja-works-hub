@@ -1,0 +1,6 @@
+-- Deployment receipt marker, 2026-09-08.
+-- Supabase apply_migration applied 20260908180000_hours_conflict_http_status.sql
+-- and recorded that source version in the same transaction. This marker keeps
+-- the remote receipt represented locally; a fresh database applies the actual
+-- later source migration after the four prerequisites.
+-- Source SHA256: 521eb713e62b540445d9c364bc3e5113f472515a7f6ca8bae3590c9ba8b1c97e

@@ -16,6 +16,25 @@
  * This is intentionally partial: extend per domain as call sites are migrated.
  */
 export const qk = {
+  hoursModule: {
+    all: () => ['hours-module-access'] as const,
+    access: (orgId: string, userId: string, zone: string, authRevision = 0) => ['hours-module-access', orgId, userId, zone, authRevision] as const,
+    adminAll: () => ['sa-org-modules'] as const,
+    adminModules: (userId: string, orgId: string) => ['sa-org-modules', userId, orgId] as const,
+  },
+  hoursMatrices: {
+    all: (orgId: string) => ['hours-matrices', orgId] as const,
+    detail: (orgId: string, id: string) => ['hours-matrices', orgId, id] as const,
+    companies: (orgId: string) => ['hours-matrices', orgId, 'companies'] as const,
+    binding: (orgId: string, companyId: string) => ['hours-matrices', orgId, 'binding', companyId] as const,
+  },
+  hoursWorkflow: {
+    all: (orgId: string) => ['hours-workflow', orgId] as const,
+    list: (orgId: string, userId: string, zone: string, week: string) => ['hours-workflow', orgId, userId, zone, 'list', week] as const,
+    week: (orgId: string, userId: string, zone: string, weekId: string) => ['hours-workflow', orgId, userId, zone, 'week', weekId] as const,
+    companies: (orgId: string) => ['hours-workflow', orgId, 'companies'] as const,
+    settings: (orgId: string, companyId: string) => ['hours-workflow', orgId, 'settings', companyId] as const,
+  },
   aiSettings: (orgId: string) => ['organization-ai-settings', orgId] as const,
   aiCredits: {
     all: () => ['ai-credits'] as const,

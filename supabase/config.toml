@@ -305,3 +305,7 @@ verify_jwt = false
 
 [functions.carerix-doc-relabel]
 verify_jwt = false
+
+# Urenclassificatie: actieve interne sessie + finance.manage, geen service-token bypass.
+[functions.hours-classify-day]
+verify_jwt = false

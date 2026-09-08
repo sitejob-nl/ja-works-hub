@@ -15,6 +15,7 @@ import { ClientPortalProvider } from "@/contexts/ClientPortalContext";
 import { TranslationProvider } from "@/contexts/TranslationContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import PermissionRoute from "@/components/PermissionRoute";
+import { InternalHoursModuleRoute, PortalHoursModuleRoute } from "@/components/hours-workflow/HoursModuleRoute";
 import FacilityRouteScope from "@/components/FacilityRouteScope";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import TenantHostGuard from "@/components/TenantHostGuard";
@@ -60,6 +61,9 @@ const VacancyNew = lazyRoute(() => import("@/pages/VacancyNew"));
 const VacancyDetail = lazyRoute(() => import("@/pages/VacancyDetail"));
 const VacancyEdit = lazyRoute(() => import("@/pages/VacancyEdit"));
 const Timesheets = lazyRoute(() => import("@/pages/Timesheets"));
+const HoursWorkflow = lazyRoute(() => import("@/pages/HoursWorkflow"));
+const HoursMatrices = lazyRoute(() => import("@/pages/HoursMatrices"));
+const PortalHoursWorkflow = lazyRoute(() => import("@/pages/portal/PortalHoursWorkflow"));
 const Transport = lazyRoute(() => import("@/pages/Transport"));
 const VehicleNew = lazyRoute(() => import("@/pages/VehicleNew"));
 const VehicleDetail = lazyRoute(() => import("@/pages/VehicleDetail"));
@@ -211,6 +215,10 @@ const App = () => (
                 <Route path="/plaatsingen" element={<PermissionRoute permission="placements.view"><PlacementsPage /></PermissionRoute>} />
                 <Route path="/plaatsingen/:id" element={<PermissionRoute permission="placements.view"><PlacementDetail /></PermissionRoute>} />
                 <Route path="/uren" element={<PermissionRoute permission="finance.view"><Timesheets /></PermissionRoute>} />
+                <Route path="/uren/weken" element={<InternalHoursModuleRoute><PermissionRoute permission="finance.view"><HoursWorkflow /></PermissionRoute></InternalHoursModuleRoute>} />
+                <Route path="/uren/weken/:weekId" element={<InternalHoursModuleRoute><PermissionRoute permission="finance.view"><HoursWorkflow /></PermissionRoute></InternalHoursModuleRoute>} />
+                <Route path="/uren/matrices" element={<InternalHoursModuleRoute><PermissionRoute permission="finance.view"><HoursMatrices /></PermissionRoute></InternalHoursModuleRoute>} />
+                <Route path="/uren/matrices/:matrixId" element={<InternalHoursModuleRoute><PermissionRoute permission="finance.view"><HoursMatrices /></PermissionRoute></InternalHoursModuleRoute>} />
                 <Route path="/facturatie" element={<PermissionRoute permission="finance.view"><InvoicesPage /></PermissionRoute>} />
                 <Route path="/uitstroom-analyse" element={<UitstroomAnalyse />} />
                 <Route path="/transport" element={<Transport />} />
@@ -260,6 +268,8 @@ const App = () => (
               }>
                 <Route index element={<PortalDashboard />} />
                 <Route path="uren" element={<PortalTimesheets />} />
+                <Route path="uren/weken" element={<PortalHoursModuleRoute><PortalHoursWorkflow /></PortalHoursModuleRoute>} />
+                <Route path="uren/week/:weekId" element={<PortalHoursModuleRoute><PortalHoursWorkflow /></PortalHoursModuleRoute>} />
                 <Route path="plaatsingen" element={<PortalPlacements />} />
                 <Route path="documenten" element={<PortalDocuments />} />
                 <Route path="vacatures" element={<PortalJobMarket />} />

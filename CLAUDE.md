@@ -18,6 +18,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Status:** Originally built in Lovable; now actively developed in Claude Code/Codex + VS Code.
 
+> **Urenmodule in ontwikkeling (september 2026):** de nieuwe klantweken/dagrevisies staan naast legacy
+> `timesheets`. Brongegevens, matrixversies, medewerkerreacties en servermatige uurindeling hebben elk
+> een eigen contract; een geslaagde indeling is nog geen payrollvrijgave. Zie
+> [bouwstand](docs/urenmodule-bouw.md), [weekcontract](docs/urenmodule-db-contract.md),
+> [matrixcontract](docs/urenmodule-matrix-contract.md) en [classificatiecontract](docs/urenmodule-classification-contract.md).
+> Het aparte SaaS-recht `uren-workflow` is opt-in en geldt voor routes, RPC's en directe tabellezing;
+> legacy `uren` of een abonnement geeft dit recht niet. Zie [modulecontract](docs/urenmodule-organization-gate.md).
+> De backend is atomisch uitgerold op 8 september: JA Werkt UIT, geverifieerde demo AAN.
+> Controleer PR #264 en `HANDOVER_SESSION.md` voor de actuele frontend- en acceptatiestatus.
+
 > **Naast dit document:** zie [docs/handover-deep.md](docs/handover-deep.md) voor een diepe technische rondleiding (live Supabase-schema, RPCs, triggers, cron, edge function clusters, env vars, deployment). Bedoeld voor nieuwe ontwikkelaars en als referentie bij infra-werk.
 
 ## Commands
