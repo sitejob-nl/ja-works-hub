@@ -29,18 +29,29 @@ projectsamenvatting.
   bewaarde resultaat. Dat is bewezen met een echte in-memory `.xlsx` waarin de formule `4+5` een bewaard
   resultaat `7` heeft: de uitlezer geeft 7.
 - Migratie `20260911090000_hours_spreadsheet_sources.sql` (SHA256
-  `9a82838ef0108f7637b52ed3eee7a56e9f843445a199994748222eee7e12495c`) is op 8 september toegepast; de
+  `9551c620d76a2d01cd854d35c586fa4acb5f47ada8f5c9f760d44f15c50bea33`) is op 8 september toegepast; de
   bronversie is in dezelfde transactie in `schema_migrations` geregistreerd. Additief: bucket-mediatypen,
   één CHECK, één gewijzigde en één nieuwe RPC. Live types hergenereerd (+4 regels).
   **Geen edge-function-deploy nodig.**
-- Verificatie: **156 echte PostgreSQL-tests** (`scripts/hours-workbook-db-test.py` — 11 nieuwe
+- Verificatie: **157 echte PostgreSQL-tests** (`scripts/hours-workbook-db-test.py` — 12 nieuwe
   werkmapgevallen plus de volledige vrijgegeven pagina-/inname-/foundation-/classificatie-/poortregressies,
-  elf migraties elk tweemaal); **1.497 applicatietests**; lint 0 errors, typecheck en productiebuild groen.
+  elf migraties elk tweemaal); **1.511 applicatietests**; lint 0 errors, typecheck en productiebuild groen.
   De vrijgegeven harnassen zijn ongewijzigd gelaten; de nieuwe importeert `hours-pages-db-test.py` en
   overschrijft alleen de twee verwachtingen die echt bewogen (bucket-mediatypen, RPC-signaturen).
 - **JA Werkt blijft UIT, demo AAN** — vóór de migratie geverifieerd. Het geblokkeerde `QA_SUPERADMIN`-account
   is ongemoeid gelaten. Advisors na DDL: geen ERROR-bevindingen; de nieuwe RPC valt in dezelfde bewuste
   WARN-categorie "SECURITY DEFINER uitvoerbaar door authenticated" als alle bestaande urenfuncties.
+- **Twee codereviewrondes vonden twaalf echte defecten, allemaal gerepareerd** met een test die eerst
+  rood stond. Ronde 1 (zeven): kolomkoppen op voorvoegsel matchen ("Aantal dagen" won het urentotaal, een
+  1 werd een uur); een als tijd opgemaakte cel die als datum werd gelezen waardoor een heel lijstblad stil
+  verdween; een tijd-nul zonder reden die de hele uitlezing liet weigeren; dubbele dagen die de server
+  weigerde en in het scherm niet los te vinken waren; een opmerkingenkolom die de hele regel liet
+  vervallen; een negatief getal dat een reden werd; en de ontbrekende client-side bovengrens van
+  vijfhonderd. Ronde 2 (vijf): een periode-banner boven de tabel die als dagkop werd genomen (dinsdag
+  verdween, woensdag landde op zondag); een tijdwaarde boven 24 uur die modulo 24 werd afgekapt (40:00 →
+  16:00); een lijstblad met een tweede datumkolom dat als kruistabel werd gelezen; elke ongenoemde
+  getallenkolom die een uurindeling werd (een uurloon van 15,5 werd 930 minuten); en nul uren met
+  brongegevens, een combinatie die de servercontrole nooit kan afhandelen.
 - **Nog open:** verbonden demo-QA in de browser is voor dit ticket **niet** uitgevoerd — de vier
   `pages`-QA-weken staan klaar (`scripts/prepare-hours-pages-demo.mjs`, dezelfde `HOURS_PAGES_RUN_ID`
   hergebruiken). PR #266 (T2) moet nog gemerged worden vóór deze branch.

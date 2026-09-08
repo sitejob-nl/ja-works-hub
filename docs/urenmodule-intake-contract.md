@@ -244,12 +244,19 @@ beoordeelde bron eist een pagina op elk nieuw voorstel, een tegensprekend pagina
   kolom "Aantal dagen" de wedstrijd om het urentotaal wint en een `1` een uur wordt. Een onbekende kop
   maakt van het blad simpelweg geen lijstblad, wat op een eerlijke blokkade uitkomt in plaats van op
   verkeerde uren.
+- **Een lijstblad blijft een lijstblad.** Draagt een blad de koppen naam, datum en uren, dan wordt het als
+  lijst gelezen — ook wanneer een regel toevallig een tweede datum bevat (een geboorte- of ingangsdatum).
+  Voor een kruistabel moeten de dagkolommen bovendien **naast elkaar** staan; een banner als
+  "Periode: 07-09-2026 t/m 13-09-2026" draagt óók twee datums, maar met iets ertussen, en die als kop
+  lezen zou elke kolom op de verkeerde dag boeken.
 - **Broncategorieën blijven letterlijk staan.** In een lijstblad wordt elke overige kolomkop als broncode
   overgenomen (`OV1`, `OV3`, …) met de duur uit die cel. Er wordt niets naar een interne uursoort vertaald;
   dat is het werk van de matrix, later en op de vastgelegde dagrevisie. Een kolom telt alleen als broncode
-  wanneer **elke** waarde eronder een duur is; een opmerkingen- of referentiekolom wordt met rust gelaten
-  in plaats van de hele regel te laten vervallen. Glipt er tóch een getallenkolom doorheen, dan is dat
-  zichtbaar: de optelling klopt dan niet met het dagtotaal en dat verschil wordt getoond.
+  wanneer **elke** waarde eronder een duur is die in het dagtotaal van diezelfde regel past — een deel is
+  nooit groter dan het geheel. Een opmerkingen- of referentiekolom wordt met rust gelaten in plaats van de
+  hele regel te laten vervallen, en een uurloon- of bedragkolom wordt nooit een stuk van de werkdag.
+  Op een dag zónder uren wordt helemaal geen indeling voorgesteld: die combinatie kan de servercontrole
+  niet afhandelen, en de RPC weigert haar dan ook.
 - **Eén werkdag draagt hoogstens één voorstel uit één aanlevering.** Staat dezelfde medewerker tweemaal
   op dezelfde dag, dan is het bestand over die dag dubbelzinnig; de uitlezing **blokkeert** met de beide
   vindplaatsen erbij. Een van de twee kiezen zou precies de gok zijn die deze module vermijdt.
@@ -258,8 +265,9 @@ beoordeelde bron eist een pagina op elk nieuw voorstel, een tegensprekend pagina
   niet als duur te lezen is (negatief, buiten bereik, subminuut) is een probleem en geen reden. Een nul,
   ook een als tijd opgemaakte `0:00`, levert bewust géén voorstel: daar hoort een reden bij.
 - **Een als tijd opgemaakte cel is een duur, nooit een werkdatum.** Een spreadsheet bewaart `8:30` als een
-  tijdstip op zijn eigen jaartelling; dat als datum lezen zou een lijstblad op een kruistabel doen lijken
-  en het hele blad stil laten verdwijnen.
+  breuk van een dag op zijn eigen jaartelling; dat als datum lezen zou een lijstblad op een kruistabel doen
+  lijken en het hele blad stil laten verdwijnen. De dagcomponent telt mee, zodat een weektotaal van `40:00`
+  ook veertig uur blijft en niet zestien.
 - **Een aangeleverd totaal is een controlegetal.** Klopt het weektotaal van een rij niet met de dagen
   eronder, of tellen de broncodes niet op tot het dagtotaal, dan blijft alles staan zoals aangeleverd en
   wordt **het verschil getoond**. Er wordt niets weggerekend en toepassen wordt niet stil geblokkeerd; de

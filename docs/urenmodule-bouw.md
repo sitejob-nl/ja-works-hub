@@ -226,7 +226,7 @@ productiebuild. De databaseproef `scripts/hours-workbook-db-test.py` draait **15
 de nieuwe werkmapgevallen plus de volledige vrijgegeven pagina-, inname-, foundation-, classificatie- en
 modulepoortregressies op het nieuwe schema, met alle elf migraties tweemaal toegepast. De
 spreadsheetmigratie heeft SHA256
-`9a82838ef0108f7637b52ed3eee7a56e9f843445a199994748222eee7e12495c`.
+`9551c620d76a2d01cd854d35c586fa4acb5f47ada8f5c9f760d44f15c50bea33`.
 
 Een `.xlsx`/`.xls` wordt als bron aanvaard en deterministisch uitgelezen — geen model, geen betaalde
 aanroep. Een werkblad is de pagina van dit formaat, dus alle paginaregels van T2 gelden ongewijzigd. De

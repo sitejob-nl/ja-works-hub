@@ -122,6 +122,11 @@ begin
         using errcode = '22023';
     end if;
     perform private.hours_validate_source_input(v_input);
+    -- Zero hours with a delivered breakdown is a combination the classifier
+    -- refuses, so a proposal carrying it could never be applied usefully.
+    if v_minutes = 0 and v_input is not null then
+      raise exception 'Geen uren kan niet samengaan met aangeleverde brongegevens' using errcode = '22023';
+    end if;
     v_uncertain := coalesce((v_entry->>'assignment_uncertain')::boolean, false)
       or private.hours_page_contradicts(p_source_id, v_page, v_day.member_id);
     insert into public.hours_source_proposals(organization_id, week_id, source_id, day_id, minutes,

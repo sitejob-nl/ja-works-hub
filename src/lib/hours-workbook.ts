@@ -86,7 +86,7 @@ const headerMatches = (value: string, options: string[]): boolean =>
 function parseWorkDate(value: WorkbookCell): string | null {
   // A cell formatted as a time comes back as a Date on the spreadsheet's own
   // epoch. Reading that as a work date makes a list worksheet look like a grid.
-  if (value instanceof Date) return value.getUTCFullYear() < 1901 ? null : value.toISOString().slice(0, 10);
+  if (value instanceof Date) return isStoredDuration(value) ? null : value.toISOString().slice(0, 10);
   const text = cellText(value);
   const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
   if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
@@ -137,12 +137,15 @@ function detectLongHeader(rows: WorkbookCell[][]): LongHeader | null {
       if (!sourceCode || column === name || column === date || column === total) return [];
       if (headerMatches(sourceCode, [...NAME_HEADERS, ...DATE_HEADERS, ...TOTAL_HEADERS, ...IGNORED_HEADERS])) return [];
       // A remaining column only carries a delivered code when every value under
-      // it really is a duration. A remarks or reference column is left alone
-      // rather than turned into hours or into a reason to drop the whole row.
-      const values = rows.slice(index + 1).map(data => (data ?? [])[column]);
-      const readable = values.every(value => {
-        const duration = readDuration(value);
-        return duration === null || 'minutes' in duration;
+      // it really is a duration that could be part of that row's own total. A
+      // remarks column is left alone rather than dropping the whole row, and an
+      // hourly rate or amount never becomes a piece of the working day.
+      const readable = rows.slice(index + 1).every(data => {
+        const part = readDuration((data ?? [])[column]);
+        if (part === null) return true;
+        if (!('minutes' in part)) return false;
+        const whole = readDuration((data ?? [])[total]);
+        return whole !== null && 'minutes' in whole && part.minutes <= whole.minutes;
       });
       return readable ? [{ column, sourceCode: sourceCode.slice(0, 200) }] : [];
     });
@@ -150,6 +153,16 @@ function detectLongHeader(rows: WorkbookCell[][]): LongHeader | null {
   }
   return null;
 }
+
+/**
+ * A spreadsheet stores a duration as a fraction of a day counted from
+ * 1899-12-30. Reading only the clock part of that date would silently turn a
+ * week total of 40:00 into 16:00.
+ */
+const SPREADSHEET_EPOCH = Date.UTC(1899, 11, 30);
+const isStoredDuration = (value: Date): boolean => value.getUTCFullYear() < 1901;
+const storedDurationMinutes = (value: Date): number =>
+  Math.round((value.getTime() - SPREADSHEET_EPOCH) / 60_000);
 
 const ZERO_WITHOUT_REASON: HoursIssue = {
   code: 'ZERO_WITHOUT_REASON',
@@ -161,11 +174,15 @@ function readDuration(value: WorkbookCell, maxMinutes = 1440): { minutes: number
   if (value === null || value === undefined || cellText(value) === '') return null;
   if (value instanceof Date) {
     // Excel stores a typed "8:30" as a time on its own epoch; a real work date never lands there.
-    if (value.getUTCFullYear() >= 1901) {
+    if (!isStoredDuration(value)) {
       return { issue: { code: 'INVALID_HOURS', message: 'Deze cel bevat een datum in plaats van een duur.' } };
     }
-    const minutes = value.getUTCHours() * 60 + value.getUTCMinutes();
-    return minutes === 0 ? { issue: ZERO_WITHOUT_REASON } : { minutes };
+    const minutes = storedDurationMinutes(value);
+    if (minutes === 0) return { issue: ZERO_WITHOUT_REASON };
+    if (minutes < 0 || minutes > maxMinutes) {
+      return { issue: { code: 'HOURS_OUT_OF_RANGE', message: `De duur mag niet meer dan ${maxMinutes} minuten zijn.` } };
+    }
+    return { minutes };
   }
   const text = cellText(value);
   const parsed = parseHoursToMinutes(typeof value === 'number' ? String(value) : text.replace(/\s*uur$/i, ''), { maxMinutes });
@@ -216,7 +233,12 @@ function detectWideHeader(rows: WorkbookCell[][]): WideHeader | null {
       const workDate = parseWorkDate(cell);
       return workDate ? [{ column, workDate }] : [];
     });
-    if (days.length < 2) continue;
+    // The days of a grid stand next to each other. A banner such as
+    // "Periode: 07-09-2026 t/m 13-09-2026" also holds two dates, but with
+    // something else between them, and reading it as the header would book
+    // every column onto the wrong day.
+    if (days.length < 2 || days.some((day, position) =>
+      position > 0 && day.column !== days[position - 1].column + 1)) continue;
     const first = days[0].column;
     const name = row.findIndex((cell, column) => column < first && headerMatches(cellText(cell), NAME_HEADERS));
     const total = row.findIndex((cell, column) => column > first && headerMatches(cellText(cell), TOTAL_HEADERS));
@@ -297,14 +319,18 @@ export function readHoursWorkbook(sheets: WorkbookSheet[], context: WorkbookCont
   const dayOf = new Map(context.days.map(day => [`${day.memberId}|${day.workDate}`, day.id]));
 
   for (const [sheetIndex, sheet] of sheets.entries()) {
-    const wide = detectWideHeader(sheet.rows);
-    if (wide) {
+    // A worksheet that titles a name, a date and an hours column is a list. Its
+    // rows may well carry a second date — a date of birth, a start date — and
+    // that must not turn the sheet into a grid whose columns land on the wrong
+    // days.
+    const header = detectLongHeader(sheet.rows);
+    if (!header) {
+      const wide = detectWideHeader(sheet.rows);
+      if (!wide) continue;
       sheetsRead.push(sheet.name);
       readWideSheet(sheet, sheetIndex, wide, context, dayOf, candidates, skipped, rowTotals);
       continue;
     }
-    const header = detectLongHeader(sheet.rows);
-    if (!header) continue;
     sheetsRead.push(sheet.name);
     for (let index = header.row + 1; index < sheet.rows.length; index += 1) {
       const row = sheet.rows[index] ?? [];
@@ -337,7 +363,9 @@ export function readHoursWorkbook(sheets: WorkbookSheet[], context: WorkbookCont
         continue;
       }
       const minutes = 'minutes' in duration ? duration.minutes : 0;
-      const breakdown = readCategories(header, row);
+      // No hours means no breakdown: the two together are a combination the
+      // server refuses to classify, so a reader must never propose it.
+      const breakdown = minutes === 0 ? { sourceInput: null } : readCategories(header, row);
       if ('issue' in breakdown) { skipped.push({ ...place, reason: breakdown.issue.message }); continue; }
       candidates.push({
         dayId, memberId: match.member.id, employeeName: match.member.name, workDate,

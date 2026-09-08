@@ -282,3 +282,71 @@ describe('the same workday on two worksheets', () => {
     expect(reading.issues[0].message).toMatch(/blad Week 37, rij 2 en blad Correcties, rij 2/);
   });
 });
+
+/** A time cell is a serial on the 1899-12-30 epoch; the day part carries hours beyond 24. */
+const excelDuration = (minutes: number) => new Date(Date.UTC(1899, 11, 30) + minutes * 60_000);
+
+describe('rows that only look like a header', () => {
+  it('does not let a period banner above the grid act as the day header', () => {
+    const reading = readHoursWorkbook([sheet('Uren', [
+      ['Periode:', '07-09-2026', 't/m', '13-09-2026'],
+      ['Medewerker', '07-09-2026', '08-09-2026', 'Totaal'],
+      ['Jan Kowalski', '8:00', '7:00', '15:00'],
+    ])], week);
+
+    expect(reading.ok).toBe(true);
+    if (reading.ok === false) return;
+    expect(reading.candidates.map(candidate => [candidate.dayId, candidate.minutes])).toEqual([
+      ['day-jan-mo', 480], ['day-jan-tu', 420],
+    ]);
+  });
+
+  it('reads a list worksheet as a list even when a row carries a second date', () => {
+    const reading = readHoursWorkbook([sheet('Week 37', [
+      ['Naam', 'Datum', 'In dienst sinds', 'Uren'],
+      ['Jan Kowalski', '07-09-2026', '01-03-2026', '8:00'],
+    ])], week);
+
+    expect(reading.ok).toBe(true);
+    if (reading.ok === false) return;
+    expect(reading.candidates.map(candidate => [candidate.dayId, candidate.minutes])).toEqual([['day-jan-mo', 480]]);
+  });
+});
+
+describe('durations a spreadsheet stores as a time', () => {
+  it('keeps the hours beyond a full day in a delivered week total', () => {
+    const reading = readHoursWorkbook([sheet('Uren', [
+      ['Medewerker', '07-09-2026', '08-09-2026', 'Totaal'],
+      ['Jan Kowalski', excelDuration(480), excelDuration(480), excelDuration(2400)],
+    ])], week);
+
+    expect(reading.ok).toBe(true);
+    if (reading.ok === false) return;
+    expect(reading.rowTotals).toEqual([expect.objectContaining({ deliveredMinutes: 2400, readMinutes: 960 })]);
+  });
+});
+
+describe('columns that carry something other than a breakdown', () => {
+  it('leaves an hourly rate alone instead of booking it as delivered hours', () => {
+    const reading = readHoursWorkbook([sheet('Week 37', [
+      ['Naam', 'Datum', 'Uren', 'Uurloon'],
+      ['Jan Kowalski', '07-09-2026', '8:00', '15,5'],
+    ])], week);
+
+    expect(reading.ok).toBe(true);
+    if (reading.ok === false) return;
+    expect(reading.candidates[0].sourceInput).toBeNull();
+    expect(reading.candidates[0].notices).toEqual([]);
+  });
+
+  it('records no breakdown on a day that has no hours at all', () => {
+    const reading = readHoursWorkbook([sheet('Week 37', [
+      ['Naam', 'Datum', 'Uren', 'OV1'],
+      ['Jan Kowalski', '07-09-2026', 'ziek', '8:00'],
+    ])], week);
+
+    expect(reading.ok).toBe(true);
+    if (reading.ok === false) return;
+    expect(reading.candidates[0]).toMatchObject({ minutes: 0, noHoursReason: 'ziek', sourceInput: null });
+  });
+});

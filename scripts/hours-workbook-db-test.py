@@ -215,6 +215,21 @@ class WorkbookTests(pages.PageTests):
             {"kind": "upload", "label": "uren-week37.xlsx", "reference": "pagina 1 · blad Week 37 · rij 3"}])
         self.assertEqual(self.count("hours_day_revisions"), "1")
 
+    def test_a_reading_may_not_record_no_hours_with_a_breakdown(self):
+        """Zero hours plus delivered detail is a day the classifier can never settle."""
+        week = self.two_member_week()
+        member = week["members"][0]
+        source, _ = self.add_workbook(sheets=1)
+        self.read_into_proposals(source["source_id"], [
+            {"day_id": member["days"][0]["id"], "minutes": 0, "no_hours_reason": "Ziek", "page_number": 1,
+             "source_input": {"schemaVersion": 1, "categories": [{"sourceCode": "OV1", "minutes": 480}]}}],
+            code="22023")
+        self.assertEqual(self.count("hours_source_proposals"), "0")
+        # Without the breakdown the same day is recorded normally.
+        self.read_into_proposals(source["source_id"], [
+            {"day_id": member["days"][0]["id"], "minutes": 0, "no_hours_reason": "Ziek", "page_number": 1}])
+        self.assertEqual(self.count("hours_source_proposals"), "1")
+
     def test_a_portal_user_cannot_record_a_reading(self):
         week = self.two_member_week()
         source, _ = self.add_workbook(sheets=1)
