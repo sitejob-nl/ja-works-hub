@@ -482,7 +482,8 @@ export function HoursWeekSources({ organizationId, week, onReload }: HoursWeekSo
   const targets = dayTargets(week);
   const targetById = new Map(targets.map(target => [target.dayId, target]));
   // One panel at a time: every one of them writes to the same source.
-  const busyElsewhere = !!proposingFor || !!takingOver || !!pagingFor || !!reading;
+  const busyElsewhere = !!proposingFor || !!takingOver || !!pagingFor || !!reading
+    || sources.readWorkbook.isPending;
   const employees = week.employees.map(employee => ({ id: employee.id, name: employee.name }));
   const data: HoursWeekSourcesData | undefined = sources.data;
   const canManage = (data?.can_manage ?? false) && week.enabled;

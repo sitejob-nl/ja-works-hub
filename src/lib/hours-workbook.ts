@@ -80,8 +80,11 @@ const TOTAL_HEADERS = ['uren', 'aantal uren', 'totaal uren', 'uren totaal', 'gew
   'totaal', 'total', 'hours', 'godziny'];
 /** Titles that are certainly not a delivered duration; they are left alone. */
 const IGNORED_HEADERS = ['opmerking', 'opmerkingen', 'notitie', 'toelichting', 'remark', 'remarks',
-  'note', 'notes', 'project', 'kostenplaats', 'afdeling', 'functie', 'week', 'weeknummer',
-  'nr', 'nummer', 'id', 'personeelsnummer', 'akkoord', 'paraaf', 'handtekening'];
+  'note', 'notes', 'project', 'kostenplaats', 'afdeling', 'functie', 'ploeg', 'week', 'weeknummer',
+  'nr', 'nummer', 'id', 'personeelsnummer', 'akkoord', 'paraaf', 'handtekening',
+  // Money is never a piece of the working day, however neatly it fits under the total.
+  'uurloon', 'uurtarief', 'tarief', 'loon', 'bedrag', 'totaalbedrag', 'prijs', 'rate',
+  'km', 'kilometers', 'reiskosten', 'vergoeding'];
 
 const headerMatches = (value: string, options: string[]): boolean =>
   options.includes(normalizeName(value));
@@ -183,7 +186,8 @@ const ZERO_WITHOUT_REASON: HoursIssue = {
 };
 
 /** Marks that a cell is empty in intent: a dash, a cross, a "not applicable". */
-const PLACEHOLDERS = ['-', '\u2013', '\u2014', 'x', '.', '/', 'nvt', 'n v t', 'geen'];
+const PLACEHOLDERS = ['-', '\u2013', '\u2014', 'x', '.', '/', '\\', 'nvt', 'n.v.t.', 'geen'];
+const isPlaceholder = (text: string): boolean => PLACEHOLDERS.includes(text.trim().toLowerCase());
 
 const asDuration = (minutes: number) => `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')}`;
 
@@ -195,7 +199,7 @@ const asDuration = (minutes: number) => `${Math.floor(minutes / 60)}:${String(mi
 function readDuration(value: WorkbookCell, maxMinutes = 1440, allowZero = false):
   { minutes: number } | { reason: string } | { issue: HoursIssue } | null {
   if (value === null || value === undefined || cellText(value) === '') return null;
-  if (typeof value !== 'number' && PLACEHOLDERS.includes(normalizeName(cellText(value)))) {
+  if (typeof value !== 'number' && isPlaceholder(cellText(value))) {
     return { issue: { code: 'PLACEHOLDER', message: 'Deze cel bevat geen waarde, alleen een streepje of kruisje.' } };
   }
   if (value instanceof Date) {
@@ -215,7 +219,7 @@ function readDuration(value: WorkbookCell, maxMinutes = 1440, allowZero = false)
   // either half an hour written as a decimal or twelve hours written as a time,
   // and nothing in the file says which. Where both readings fit, the reader
   // refuses to choose rather than quietly dividing a day by twenty-four.
-  if (typeof value === 'number' && value > 0 && value * 1440 <= maxMinutes) {
+  if (typeof value === 'number' && value > 0 && value < 1) {
     return { issue: { code: 'AMBIGUOUS_DURATION',
       message: `Deze cel kan zowel ${asDuration(Math.round(value * 60))} als `
         + `${asDuration(Math.round(value * 1440))} betekenen. Leg de duur zelf als voorstel vast.` } };
@@ -368,6 +372,65 @@ function controlNotices(minutes: number, sourceInput: HoursSourceInput | null): 
   return sourceControlIssues(minutes, sourceInput);
 }
 
+/** One list worksheet: a heading of name, date and hours, one row per workday. */
+function readLongSheet(
+  sheet: WorkbookSheet, sheetIndex: number, header: LongHeader, context: WorkbookContext,
+  dayOf: Map<string, string>, candidates: WorkbookCandidate[], skipped: WorkbookSkippedRow[],
+): void {
+  for (const column of header.setAside) {
+    skipped.push({
+      sheet: sheet.name, row: header.row + 1, text: column,
+      reason: 'Deze kolom bevat geen aangeleverde uren en is niet als broncode overgenomen.',
+    });
+  }
+  for (let index = header.row + 1; index < sheet.rows.length; index += 1) {
+    const row = sheet.rows[index] ?? [];
+    const nameText = cellText(row[header.name]);
+    if (!nameText && !row.some(cell => cellText(cell))) continue;
+    const rowNumber = index + 1;
+    const place = { sheet: sheet.name, row: rowNumber, text: nameText };
+    const match = matchMember(nameText, context.members);
+    if (!match) {
+      skipped.push({ ...place, reason: 'Deze naam hoort bij geen enkele medewerker van deze week, of bij meer dan één.' });
+      continue;
+    }
+    const workDate = parseWorkDate(row[header.date]);
+    if (!workDate) {
+      skipped.push({ ...place, reason: 'De datum in deze regel is niet eenduidig te lezen.' });
+      continue;
+    }
+    const dayId = dayOf.get(`${match.member.id}|${workDate}`);
+    if (!dayId) {
+      skipped.push({ ...place, reason: `${workDate} is geen werkdag van deze medewerker in deze week.` });
+      continue;
+    }
+    const duration = readDuration(row[header.total]);
+    if (duration === null) {
+      skipped.push({ ...place, reason: 'Er staan geen uren in deze regel; er wordt niets ingevuld wat er niet staat.' });
+      continue;
+    }
+    if ('issue' in duration) {
+      skipped.push({ ...place, reason: duration.issue.message });
+      continue;
+    }
+    const minutes = 'minutes' in duration ? duration.minutes : 0;
+    // No hours means no breakdown: the two together are a combination the
+    // server refuses to classify, so a reader must never propose it.
+    const notices: HoursIssue[] = [];
+    const breakdown = minutes === 0 ? { sourceInput: null } : readCategories(header, row, notices);
+    if ('issue' in breakdown) { skipped.push({ ...place, reason: breakdown.issue.message }); continue; }
+    candidates.push({
+      dayId, memberId: match.member.id, employeeName: match.member.name, workDate,
+      minutes, noHoursReason: 'reason' in duration ? duration.reason : null,
+      sourceInput: breakdown.sourceInput,
+      pageNumber: sheetIndex + 1, pageLabel: `blad ${sheet.name} · rij ${rowNumber}`,
+      sheetName: sheet.name, row: rowNumber,
+      assignmentUncertain: match.uncertain, employeeText: nameText,
+      notices: [...notices, ...controlNotices(minutes, breakdown.sourceInput)],
+    });
+  }
+}
+
 export function readHoursWorkbook(sheets: WorkbookSheet[], context: WorkbookContext): WorkbookReading {
   if (!sheets.length) return fail('EMPTY_WORKBOOK', 'Dit bestand bevat geen werkbladen.');
   const candidates: WorkbookCandidate[] = [];
@@ -381,71 +444,27 @@ export function readHoursWorkbook(sheets: WorkbookSheet[], context: WorkbookCont
     // A worksheet that titles a name, a date and an hours column is a list. Its
     // rows may well carry a second date — a date of birth, a start date — and
     // that must not turn the sheet into a grid whose columns land on the wrong
-    // days.
-    const header = detectLongHeader(sheet.rows, context.members);
-    if (!header) {
-      const wide = detectWideHeader(sheet.rows, context.members);
-      if (!wide) {
-        if (sheet.rows.some(row => row.some(cell => cellText(cell)))) sheetsIgnored.push(sheet.name);
+    // days. A list heading with nothing under it is not this sheet's real shape
+    // either, so a grid underneath still gets its turn.
+    const longHeader = detectLongHeader(sheet.rows, context.members);
+    const wideHeader = detectWideHeader(sheet.rows, context.members);
+    if (longHeader) {
+      const read: WorkbookCandidate[] = [];
+      const left: WorkbookSkippedRow[] = [];
+      readLongSheet(sheet, sheetIndex, longHeader, context, dayOf, read, left);
+      if (read.length || !wideHeader) {
+        sheetsRead.push(sheet.name);
+        candidates.push(...read);
+        skipped.push(...left);
         continue;
       }
+    }
+    if (wideHeader) {
       sheetsRead.push(sheet.name);
-      readWideSheet(sheet, sheetIndex, wide, context, dayOf, candidates, skipped, rowTotals);
+      readWideSheet(sheet, sheetIndex, wideHeader, context, dayOf, candidates, skipped, rowTotals);
       continue;
     }
-    sheetsRead.push(sheet.name);
-    for (const column of header.setAside) {
-      skipped.push({
-        sheet: sheet.name, row: header.row + 1, text: column,
-        reason: 'Deze kolom bevat geen aangeleverde uren en is niet als broncode overgenomen.',
-      });
-    }
-    for (let index = header.row + 1; index < sheet.rows.length; index += 1) {
-      const row = sheet.rows[index] ?? [];
-      const nameText = cellText(row[header.name]);
-      if (!nameText && !row.some(cell => cellText(cell))) continue;
-      const rowNumber = index + 1;
-      const place = { sheet: sheet.name, row: rowNumber, text: nameText };
-      const match = matchMember(nameText, context.members);
-      if (!match) {
-        skipped.push({ ...place, reason: 'Deze naam hoort bij geen enkele medewerker van deze week, of bij meer dan één.' });
-        continue;
-      }
-      const workDate = parseWorkDate(row[header.date]);
-      if (!workDate) {
-        skipped.push({ ...place, reason: 'De datum in deze regel is niet eenduidig te lezen.' });
-        continue;
-      }
-      const dayId = dayOf.get(`${match.member.id}|${workDate}`);
-      if (!dayId) {
-        skipped.push({ ...place, reason: `${workDate} is geen werkdag van deze medewerker in deze week.` });
-        continue;
-      }
-      const duration = readDuration(row[header.total]);
-      if (duration === null) {
-        skipped.push({ ...place, reason: 'Er staan geen uren in deze regel; er wordt niets ingevuld wat er niet staat.' });
-        continue;
-      }
-      if ('issue' in duration) {
-        skipped.push({ ...place, reason: duration.issue.message });
-        continue;
-      }
-      const minutes = 'minutes' in duration ? duration.minutes : 0;
-      // No hours means no breakdown: the two together are a combination the
-      // server refuses to classify, so a reader must never propose it.
-      const notices: HoursIssue[] = [];
-      const breakdown = minutes === 0 ? { sourceInput: null } : readCategories(header, row, notices);
-      if ('issue' in breakdown) { skipped.push({ ...place, reason: breakdown.issue.message }); continue; }
-      candidates.push({
-        dayId, memberId: match.member.id, employeeName: match.member.name, workDate,
-        minutes, noHoursReason: 'reason' in duration ? duration.reason : null,
-        sourceInput: breakdown.sourceInput,
-        pageNumber: sheetIndex + 1, pageLabel: `blad ${sheet.name} · rij ${rowNumber}`,
-        sheetName: sheet.name, row: rowNumber,
-        assignmentUncertain: match.uncertain, employeeText: nameText,
-        notices: [...notices, ...controlNotices(minutes, breakdown.sourceInput)],
-      });
-    }
+    if (sheet.rows.some(row => row.some(cell => cellText(cell)))) sheetsIgnored.push(sheet.name);
   }
 
   if (!sheetsRead.length) {

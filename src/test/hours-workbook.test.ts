@@ -506,13 +506,70 @@ describe('a gap in a breakdown column', () => {
 
   it('says which column it set aside when the column is not a duration at all', () => {
     const reading = readHoursWorkbook([sheet('Week 37', [
-      ['Naam', 'Datum', 'Uren', 'Ploeg'],
-      ['Jan Kowalski', '07-09-2026', '8:00', 'nacht'],
+      ['Naam', 'Datum', 'Uren', 'Werkplek'],
+      ['Jan Kowalski', '07-09-2026', '8:00', 'hal 3'],
     ])], week);
 
     expect(reading.ok).toBe(true);
     if (reading.ok === false) return;
     expect(reading.candidates[0].sourceInput).toBeNull();
-    expect(reading.skipped).toEqual([expect.objectContaining({ sheet: 'Week 37', text: 'Ploeg' })]);
+    expect(reading.skipped).toEqual([expect.objectContaining({ sheet: 'Week 37', text: 'Werkplek' })]);
+  });
+});
+
+describe('columns that hold money rather than time', () => {
+  it('leaves an hourly rate that happens to fit under the total alone', () => {
+    const reading = readHoursWorkbook([sheet('Week 37', [
+      ['Naam', 'Datum', 'Uren', 'Uurtarief'],
+      ['Jan Kowalski', '07-09-2026', '8:00', '7,5'],
+    ])], week);
+
+    expect(reading.ok).toBe(true);
+    if (reading.ok === false) return;
+    expect(reading.candidates[0].sourceInput).toBeNull();
+    expect(reading.candidates[0].notices).toEqual([]);
+  });
+});
+
+describe('a worksheet that carries both kinds of heading', () => {
+  it('falls back to the grid when the list reading yields nothing', () => {
+    const reading = readHoursWorkbook([sheet('Uren', [
+      ['Naam', 'Datum', 'Uren'],
+      ['Medewerker', '07-09-2026', '08-09-2026'],
+      ['Jan Kowalski', '8:00', '7:00'],
+    ])], week);
+
+    expect(reading.ok).toBe(true);
+    if (reading.ok === false) return;
+    expect(reading.candidates.map(candidate => [candidate.dayId, candidate.minutes])).toEqual([
+      ['day-jan-mo', 480], ['day-jan-tu', 420],
+    ]);
+  });
+});
+
+describe('a plain number in a week total', () => {
+  it('reads a small week total as decimal hours rather than calling it ambiguous', () => {
+    const reading = readHoursWorkbook([sheet('Uren', [
+      ['Medewerker', '07-09-2026', '08-09-2026', 'Totaal'],
+      ['Jan Kowalski', '4:00', '3:00', 6],
+    ])], week);
+
+    expect(reading.ok).toBe(true);
+    if (reading.ok === false) return;
+    expect(reading.rowTotals).toEqual([expect.objectContaining({ deliveredMinutes: 360, readMinutes: 420 })]);
+  });
+});
+
+describe('a full stop as a placeholder', () => {
+  it('does not turn a dot into a reason for no hours', () => {
+    const reading = readHoursWorkbook([sheet('Uren', [
+      ['Medewerker', '07-09-2026', '08-09-2026'],
+      ['Jan Kowalski', '8:00', '.'],
+    ])], week);
+
+    expect(reading.ok).toBe(true);
+    if (reading.ok === false) return;
+    expect(reading.candidates).toHaveLength(1);
+    expect(reading.skipped.map(row => row.reason)).toEqual([expect.stringMatching(/geen waarde/i)]);
   });
 });

@@ -35,13 +35,13 @@ projectsamenvatting.
   **Geen edge-function-deploy nodig.**
 - Verificatie: **157 echte PostgreSQL-tests** (`scripts/hours-workbook-db-test.py` — 12 nieuwe
   werkmapgevallen plus de volledige vrijgegeven pagina-/inname-/foundation-/classificatie-/poortregressies,
-  elf migraties elk tweemaal); **1.526 applicatietests**; lint 0 errors, typecheck en productiebuild groen.
+  elf migraties elk tweemaal); **1.530 applicatietests**; lint 0 errors, typecheck en productiebuild groen.
   De vrijgegeven harnassen zijn ongewijzigd gelaten; de nieuwe importeert `hours-pages-db-test.py` en
   overschrijft alleen de twee verwachtingen die echt bewogen (bucket-mediatypen, RPC-signaturen).
 - **JA Werkt blijft UIT, demo AAN** — vóór de migratie geverifieerd. Het geblokkeerde `QA_SUPERADMIN`-account
   is ongemoeid gelaten. Advisors na DDL: geen ERROR-bevindingen; de nieuwe RPC valt in dezelfde bewuste
   WARN-categorie "SECURITY DEFINER uitvoerbaar door authenticated" als alle bestaande urenfuncties.
-- **Vijf codereviewrondes vonden eenentwintig echte defecten, allemaal gerepareerd** met een test die eerst
+- **Zes codereviewrondes vonden zesentwintig echte defecten, allemaal gerepareerd** met een test die eerst
   rood stond. Ronde 1 (zeven): kolomkoppen op voorvoegsel matchen ("Aantal dagen" won het urentotaal, een
   1 werd een uur); een als tijd opgemaakte cel die als datum werd gelezen waardoor een heel lijstblad stil
   verdween; een tijd-nul zonder reden die de hele uitlezing liet weigeren; dubbele dagen die de server
@@ -66,7 +66,12 @@ projectsamenvatting.
   klantspecificatie te tonen. Ronde 5 (twee): een banner waarvan de datums wél naast elkaar stonden werd
   alsnog als dagkop genomen (maandag landde op dinsdag) — de dagenrij moet nu direct boven de medewerkers
   staan; en één streepje of dubbelzinnig getal onder een broncodekolom liet die kolom voor het hele blad
-  vervallen, zonder melding. De derde bevinding van die ronde is dezelfde bewuste ontwerpkeuze.
+  vervallen, zonder melding. De derde bevinding van die ronde is dezelfde bewuste ontwerpkeuze. Ronde 6 (vijf): een
+  uurtarief dat toevallig onder het dagtotaal paste werd een broncode in de brongegevens; een blad met
+  lijstkoppen bleef "gelezen" terwijl er niets uit kwam en de kruistabel eronder geen beurt kreeg; de
+  dubbelzinnigheidsgrens schaalde mee met de weekgrens waardoor een weektotaal van 6 werd geweigerd; een
+  punt als plaatshouder werd een reden voor "geen uren"; en tijdens een lopende uitlezing kon een tweede
+  paneel op dezelfde bron worden geopend.
 - **Nog open:** verbonden demo-QA in de browser is voor dit ticket **niet** uitgevoerd — de vier
   `pages`-QA-weken staan klaar (`scripts/prepare-hours-pages-demo.mjs`, dezelfde `HOURS_PAGES_RUN_ID`
   hergebruiken). PR #266 (T2) moet nog gemerged worden vóór deze branch.

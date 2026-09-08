@@ -246,6 +246,8 @@ beoordeelde bron eist een pagina op elk nieuw voorstel, een tegensprekend pagina
   verkeerde uren.
 - **Een lijstblad blijft een lijstblad.** Draagt een blad de koppen naam, datum en uren, dan wordt het als
   lijst gelezen — ook wanneer een regel toevallig een tweede datum bevat (een geboorte- of ingangsdatum).
+  Levert die lezing niets op, dan krijgt een kruistabel op datzelfde blad alsnog zijn beurt, zodat een blad
+  nooit als "gelezen" geldt terwijl er niets uit komt.
   Voor een kruistabel moeten de dagkolommen bovendien **naast elkaar** staan; een banner als
   "Periode: 07-09-2026 t/m 13-09-2026" draagt óók twee datums, maar met iets ertussen, en die als kop
   lezen zou elke kolom op de verkeerde dag boeken. Staan de datums van zo'n banner tóch naast elkaar, dan
@@ -262,7 +264,10 @@ beoordeelde bron eist een pagina op elk nieuw voorstel, een tegensprekend pagina
   niet afhandelen, en de RPC weigert haar dan ook. Een kolom wordt beoordeeld op de regels die de uitlezer
   werkelijk leest, zodat een eindtotaalregel onderaan het blad geen aangeleverde broncode wegneemt.
   Eén ontbrekende of onleesbare cel bewijst niets over de kolom en laat die staan; de cel zelf wordt naast
-  het voorstel gemeld. Een kolom die aantoonbaar géén duren bevat wordt bij naam apart gezet.
+  het voorstel gemeld. Een kolom die aantoonbaar géén duren bevat wordt bij naam apart gezet. Kolommen die
+  geld of een verwijzing dragen (uurloon, tarief, bedrag, kilometers, project, kostenplaats, ploeg,
+  opmerking) worden op hun kop herkend en nooit als deel van de werkdag overgenomen — ook niet wanneer de
+  waarde toevallig onder het dagtotaal past.
   **Let op:** een kolom die een *deel* van de dag beschrijft (bijvoorbeeld alleen overwerk) telt per
   definitie niet op tot het dagtotaal en levert dus altijd een zichtbaar verschil. Dat is bedoeld gedrag —
   de klantspecificatie vraagt juist om dat verschil — maar het betekent dat zo'n kolom om beoordeling
@@ -280,8 +285,10 @@ beoordeelde bron eist een pagina op elk nieuw voorstel, een tegensprekend pagina
   ook veertig uur blijft en niet zestien.
 - **Een kaal getal dat twee dingen kan betekenen wordt niet gekozen.** De verstreken-tijdnotatie `[h]:mm`
   komt niet als tijd maar als kale breuk van een dag binnen. `0,5` is dan óf een half uur decimaal, óf
-  12:00 — en niets in het bestand zegt welk van de twee. Waar beide lezingen passen meldt de uitlezer dat
-  en maakt hij geen voorstel, in plaats van stilzwijgend door vierentwintig te delen. Een decimaal die als
+  12:00 — en niets in het bestand zegt welk van de twee. Een kaal getal **onder de 1** is daarom
+  dubbelzinnig: de uitlezer meldt beide lezingen en maakt geen voorstel, in plaats van stilzwijgend door
+  vierentwintig te delen. Een getal van 1 of hoger wordt als decimale uren gelezen; wijkt dat af van de
+  gelezen dagen, dan is dat zichtbaar in het controlegetal. Een decimaal die als
   tekst staat is niet dubbelzinnig en wordt gewoon gelezen.
 - **Een werkblad dat de uitlezer niet kan indelen wordt bij naam genoemd.** Het blijft ongelezen — er
   worden geen halve voorstellen uit gemaakt — maar het scherm meldt welk blad het betreft, zodat een
