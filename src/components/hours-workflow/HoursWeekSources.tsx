@@ -76,7 +76,7 @@ function PageDecisionForm({ source, employees, existing, onCancel, onSubmit }: {
   const [pageNumber, setPageNumber] = useState(String(existing?.page_number ?? 1));
   const [assignment, setAssignment] = useState<HoursPageAssignment>(existing?.assignment ?? 'single');
   const [memberId, setMemberId] = useState(existing?.member_id ?? '');
-  const [note, setNote] = useState('');
+  const [note, setNote] = useState(existing?.note ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -179,7 +179,7 @@ function PageTakeoverForm({ page, days, onCancel, onSubmit }: {
         setError(`Geef bij ${formatHoursDate(day.workDate)} een reden op om nul uren voor te stellen.`);
         return;
       }
-      entries.push({ day_id: day.dayId, minutes: parsed.value, page_label: `pagina ${page.page_number}` });
+      entries.push({ day_id: day.dayId, minutes: parsed.value });
     }
     if (!entries.length) { setError('Vul minstens één dag in om over te nemen.'); return; }
     setBusy(true);

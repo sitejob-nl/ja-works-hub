@@ -203,6 +203,28 @@ class PageTests(intake.IntakeTests):
         self.assertEqual(len(rpc("hours_get_week_sources", user=self.admin,
                                  p_week_id=week["id"])["sources"][1]["proposals"]), 0)
 
+    def test_a_page_decision_may_not_contradict_proposals_that_already_stand(self):
+        """A decision only steers new proposals, so a contradicting one must be refused."""
+        week = self.two_member_week()
+        first, second = week["members"][0], week["members"][1]
+        source, _ = self.add_source(pages=2)
+        proposal = self.only_proposal(self.propose(source["source_id"], first["days"][0]["id"], page_number=1))
+        self.assertFalse(proposal["assignment_uncertain"])
+        # Handing the page to somebody else would leave this certain proposal standing.
+        self.reject("hours_set_source_page", code="22023", user=self.admin, p_source_id=source["source_id"],
+                    p_page_number=1, p_assignment="single", p_member_id=second["id"], p_note=None)
+        # Calling the page unreadable contradicts it just as much.
+        self.reject("hours_set_source_page", code="22023", user=self.admin, p_source_id=source["source_id"],
+                    p_page_number=1, p_assignment="unclear", p_member_id=None, p_note=None)
+        self.assertEqual(self.count("hours_source_pages"), "0", "A refused decision writes nothing")
+        # The owner it actually belongs to, and "several employees", both stay possible.
+        self.set_page(source["source_id"], 1, "single", member=first["id"])
+        self.set_page(source["source_id"], 1, "multiple")
+        # Once the proposal is out of the way, the page is free again.
+        rpc("hours_discard_source_proposal", user=self.admin, p_proposal_id=proposal["id"], p_note="Verkeerde pagina")
+        after = self.set_page(source["source_id"], 1, "unclear")
+        self.assertEqual(self.active_pages(after)[0]["assignment"], "unclear")
+
     def test_an_unclear_page_makes_every_proposal_on_it_undecided(self):
         week = self.two_member_week()
         member = week["members"][0]
@@ -381,6 +403,7 @@ def main():
         "20260908180000_hours_conflict_http_status.sql",
         "20260909090000_hours_week_sources_and_proposals.sql",
         "20260910090000_hours_source_pages_and_assignment.sql",
+        "20260910100000_hours_page_decision_contradiction.sql",
     )]
     fixtures = [ROOT / "tests/db/hours-workflow-fixture.sql", ROOT / "tests/db/hours-module-gate-fixture.sql",
                 ROOT / "tests/db/hours-intake-fixture.sql"]

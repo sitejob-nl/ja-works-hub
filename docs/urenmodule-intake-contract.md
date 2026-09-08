@@ -148,6 +148,15 @@ zei dat een pagina bij één persoon hoorde.
 er staan al niet-verworpen voorstellen voor meer dan één medewerker op die pagina (`22023`). Dat is geen
 mening maar een feit uit de eigen administratie, en het is niet te omzeilen door harder te klikken.
 
+**Een besluit mag geen voorstel tegenspreken dat al staat.** Dat is het spiegelbeeld van de forcering
+hieronder: `single` op een andere medewerker dan waarvoor er al een zeker voorstel op die pagina ligt, en
+`unclear` op een pagina die al zulke voorstellen draagt, worden geweigerd (`22023`). Zonder die regel zou
+een later besluit een eerder voorstel stil overrulen: de inhoud van een voorstel is onveranderlijk, dus
+het kan achteraf niet alsnog als onzeker worden gemarkeerd en zou gewoon toepasbaar blijven. Wie het
+besluit wél juist vindt, verwerpt eerst die voorstellen — dezelfde weg als overal elders in deze module.
+Een voorstel dat zelf nog onbeslist is blokkeert niets, want het kan toch al niet worden toegepast.
+(`20260910100000_hours_page_decision_contradiction.sql`.)
+
 ### Een pagina in één handeling overnemen
 
 `hours_create_page_proposals` maakt uit één pagina in één handeling een voorstel per werkdag. Dit is de

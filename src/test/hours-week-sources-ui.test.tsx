@@ -273,6 +273,25 @@ describe('internal hours intake', () => {
     expect(await screen.findByRole('button', { name: 'Hele pagina overnemen' })).toBeInTheDocument();
   });
 
+  it('keeps an existing page explanation when the decision is edited', async () => {
+    const decided = {
+      id: '00000000-0000-4000-8000-00000000000c', page_number: 1, assignment: 'single',
+      member_id: memberId, candidate_name: 'Testmedewerker', note: 'Handtekening onderaan gecontroleerd',
+      created_at: '2026-09-08T08:10:00Z',
+    };
+    rpc.mockResolvedValue(ok(projection([], true, { pages: [decided] })));
+    show();
+    fireEvent.click(await screen.findByRole('button', { name: 'Wijzigen' }));
+    const form = await screen.findByRole('form', { name: 'Paginatoewijzing vastleggen' });
+    expect(within(form).getByLabelText(/Toelichting/)).toHaveValue('Handtekening onderaan gecontroleerd');
+    fireEvent.change(within(form).getByLabelText('Toewijzing'), { target: { value: 'multiple' } });
+    fireEvent.click(within(form).getByRole('button', { name: 'Toewijzing vastleggen' }));
+    await waitFor(() => expect(rpc).toHaveBeenCalledWith('hours_set_source_page', {
+      p_source_id: sourceId, p_page_number: 1, p_assignment: 'multiple', p_member_id: null,
+      p_note: 'Handtekening onderaan gecontroleerd',
+    }));
+  });
+
   it('offers no one-click take-over for a page that carries several employees', async () => {
     const shared = {
       id: '00000000-0000-4000-8000-00000000000d', page_number: 1, assignment: 'multiple',
@@ -295,9 +314,11 @@ describe('internal hours intake', () => {
     const form = await screen.findByRole('form', { name: 'Pagina 2 overnemen' });
     fireEvent.change(within(form).getByLabelText('Uren'), { target: { value: '8:15' } });
     fireEvent.click(within(form).getByRole('button', { name: 'Voorstellen bewaren' }));
+    // The page number is stored on the proposal itself, so repeating it as a
+    // free-text location would show up twice on the applied revision's origin.
     await waitFor(() => expect(rpc).toHaveBeenCalledWith('hours_create_page_proposals', {
       p_source_id: sourceId, p_page_number: 2,
-      p_entries: [{ day_id: dayId, minutes: 495, page_label: 'pagina 2' }],
+      p_entries: [{ day_id: dayId, minutes: 495 }],
     }));
     expect(rpc).not.toHaveBeenCalledWith('hours_save_day_source', expect.anything());
     expect(rpc).not.toHaveBeenCalledWith('hours_apply_source_proposal', expect.anything());

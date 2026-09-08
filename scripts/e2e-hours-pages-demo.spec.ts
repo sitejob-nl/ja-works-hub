@@ -207,6 +207,26 @@ test('connected demo: source pages, controlled assignment and an undecided propo
     proposals: takenOver.length, minutes: takenOver.map(item => item.minutes).sort((a, b) => a - b), revisionsWritten: 0,
   });
 
+  // --- applying a taken-over day names its page exactly once ---------------
+  const takenRow = sourceCard(page, fileName).getByRole('group', { name: /^Voorstel / }).filter({ hasText: '8:00 uur' }).first();
+  const takenApply = page.waitForResponse(response => new URL(response.url()).pathname === '/rest/v1/rpc/hours_apply_source_proposal');
+  await takenRow.getByRole('button', { name: 'Toepassen als dagversie' }).click();
+  expect((await takenApply).status(), 'the taken-over day applied').toBe(200);
+  const takenDay = dayOf(await readWeek(page, fixture.weekId), fixture.secondaryMemberId, fixture.takeoverDayIds[0]);
+  expect(takenDay.current_revision?.source_references, 'the page appears once, not twice').toEqual([
+    { kind: 'upload', label: fileName, reference: 'pagina 1' },
+  ]);
+  record('taken-over day names its page exactly once', { origin: takenDay.current_revision?.source_references });
+
+  // --- a page decision may not contradict what already stands --------------
+  const contradiction = await browserRequest(page, '/rest/v1/rpc/hours_set_source_page', {
+    p_source_id: source.id, p_page_number: 1, p_assignment: 'unclear', p_member_id: null, p_note: null,
+  });
+  expect(contradiction.status, 'calling a decided page unreadable is refused while its proposals stand').toBe(400);
+  expect((await readSources(page, fixture.weekId)).sources.find(item => item.id === source.id)!.pages
+    .find(item => item.page_number === 1)!.assignment, 'the standing decision is untouched').toBe('single');
+  record('contradicting page decision refused', { status: contradiction.status });
+
   // --- the shortcut can never reach another employee -----------------------
   const foreign = await browserRequest(page, '/rest/v1/rpc/hours_create_page_proposals', {
     p_source_id: source.id, p_page_number: 1, p_entries: [{ day_id: fixture.applyDayId, minutes: 300 }],
@@ -336,7 +356,8 @@ test('connected demo: source pages, controlled assignment and an undecided propo
 
   const finalWeek = await readWeek(page, fixture.weekId);
   const writtenDays = finalWeek.members.flatMap(member => member.days).filter(day => day.current_revision !== null);
-  expect(writtenDays.map(day => day.id), 'exactly one workday was claimed by this run').toEqual([fixture.applyDayId]);
+  expect(writtenDays.map(day => day.id).sort(), 'exactly the two intended workdays were claimed by this run')
+    .toEqual([fixture.applyDayId, fixture.takeoverDayIds[0]].sort());
 
   Object.assign(evidence, {
     result: 'pages-flow-passed',
