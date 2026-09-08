@@ -25,7 +25,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > [matrixcontract](docs/urenmodule-matrix-contract.md), [classificatiecontract](docs/urenmodule-classification-contract.md)
 > en [innamecontract](docs/urenmodule-intake-contract.md). De resterende bouw staat als tickets met
 > blokkades in [docs/urenmodule-tickets.md](docs/urenmodule-tickets.md).
-> **Broninname (09-09- en 10-09-migratie):** een geüpload urenbriefje, een paginatoewijzing en het
+> **Broninname (09-09-, 10-09- en 11-09-migratie):** een geüpload urenbriefje, een paginatoewijzing en het
 > daaruit afgeleide invoervoorstel zijn géén uren — alleen `hours_apply_source_proposal` schrijft een
 > dagrevisie, en dat neemt het voorstel letterlijk over. Nieuwe uitlezers (Excel, OCR, mail) sluiten op
 > die grens aan, niet op de dagrevisies. **Eén bestand kan meerdere medewerkers bevatten:**
@@ -35,6 +35,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > die medewerker raken. Een voorstel met `assignment_uncertain` blokkeert toepassen tot
 > `hours_confirm_proposal_assignment`; de bevestigingstoelichting staat in `assignment_note` en nooit in
 > `note`, want `note` is voorgestelde inhoud die letterlijk wordt toegepast.
+> **Excel/tabelbestanden (11-09-migratie):** `.xlsx`/`.xls` zijn aanvaarde brontypen en worden
+> **deterministisch** uitgelezen (`src/lib/hours-workbook.ts` + `-file.ts`, geen model en geen betaalde
+> aanroep). Een **werkblad is de pagina** van dit formaat, dus elke paginaregel hierboven geldt
+> ongewijzigd. Formules en macro's worden nooit uitgevoerd — alleen het bewaarde resultaat wordt gelezen.
+> `hours_create_source_proposals` legt één hele uitlezing all-or-nothing als voorstellen vast; een
+> geweigerde regel laat niets achter.
 > Het aparte SaaS-recht `uren-workflow` is opt-in en geldt voor routes, RPC's en directe tabellezing;
 > legacy `uren` of een abonnement geeft dit recht niet. Zie [modulecontract](docs/urenmodule-organization-gate.md).
 > De backend is atomisch uitgerold op 8 september: JA Werkt UIT, geverifieerde demo AAN.
@@ -411,7 +417,7 @@ Canonical in [src/integrations/supabase/types.ts](src/integrations/supabase/type
 - **organization-logos** — company branding logos
 - **property-contracts** — huurcontracten per pand (privé, interne rollen)
 - **hours-sources** — originele urenbriefjes per klantweek (privé, append-only: geen update-/delete-policy).
-  Pad `<org>/<week>/<sha256>.<pdf|jpg|png>`, 25 MiB en mediatypen door Storage zelf afgedwongen; toegang via
+  Pad `<org>/<week>/<sha256>.<pdf|jpg|png|xlsx|xls>`, 25 MiB en mediatypen door Storage zelf afgedwongen; toegang via
   `private.hours_source_object_allowed()` (SaaS-module + `finance.view`/`finance.manage`). Bekijken met een
   signed URL van 5 minuten. Zie [innamecontract](docs/urenmodule-intake-contract.md).
 

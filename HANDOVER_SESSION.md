@@ -4,6 +4,47 @@ Overdracht voor wie verdergaat (Codex / Claude Code). Lees [AGENTS.md](AGENTS.md
 commands, [CLAUDE.md](CLAUDE.md) voor de canonieke codebase-diepte, [HANDOVER.md](HANDOVER.md) voor de formele
 projectsamenvatting.
 
+## Voorstellen uit Excel- en tabelbestanden — 8 september 2026 (`feat/urenmodule-excel-uitlezer`)
+
+- Nieuwe duurzame worktree `/Users/kas/dev/ja-works-hub/.worktrees/urenmodule-excel-uitlezer`, branch
+  `feat/urenmodule-excel-uitlezer`. **PR #266 (T2) was nog niet gemerged**, dus deze branch staat op
+  `origin/feat/urenmodule-bronpaginas` — niet op `origin/main`, dat de T2-frontend nog mist. De stale
+  hoofdcheckout en alle overige worktrees zijn ongemoeid gelaten.
+- **T3 uit [docs/urenmodule-tickets.md](docs/urenmodule-tickets.md) is gebouwd** — voorstellen uit Excel-
+  en tabelbestanden. Alle vijf acceptatiecriteria zijn afgevinkt. Zie de nieuwe sectie
+  ["Excel- en tabelbestanden als bron (T3)"](docs/urenmodule-intake-contract.md#excel--en-tabelbestanden-als-bron-t3).
+- **Wat er nu kan:** een `.xlsx`/`.xls` wordt als bron aanvaard (Storage, tabel-CHECK en de RPC kennen de
+  twee mediatypen), het aantal werkbladen wordt als `page_count` vastgelegd, en de knop **Uitlezen** haalt
+  het bewaarde origineel via een kortlopende link terug en leest het **deterministisch** uit. Twee
+  indelingen worden herkend: een kruistabel (medewerkers onder elkaar, dagen als kolomkoppen) en een lijst
+  (naam/datum/uren, één regel per medewerker/dag). Broncodes uit kolomkoppen (`OV1`…) blijven letterlijk
+  staan. Het paneel toont per regel de vindplaats (`blad Week 37 · rij 3`), de gelezen duur, onzekere
+  toewijzingen, niet-sluitende optellingen mét het verschil, en de regels waar met opzet niets van gemaakt
+  is. De gekozen regels worden in één handeling als voorstellen vastgelegd.
+- **De grens is ongewijzigd:** een werkblad is de pagina van dit formaat, dus alle paginaregels van T2
+  gelden onveranderd (een beoordeelde bron eist een pagina, een tegensprekend paginabesluit forceert
+  `assignment_uncertain`). Alleen `hours_apply_source_proposal` schrijft een dagrevisie. Nul writes naar
+  `timesheets`, facturatie of communicatie; **nul betaalde AI-aanroepen** — de uitlezer is pure code.
+- **Formules en macro's worden niet uitgevoerd.** De uitlezer leest uitsluitend het in het bestand
+  bewaarde resultaat. Dat is bewezen met een echte in-memory `.xlsx` waarin de formule `4+5` een bewaard
+  resultaat `7` heeft: de uitlezer geeft 7.
+- Migratie `20260911090000_hours_spreadsheet_sources.sql` (SHA256
+  `9a82838ef0108f7637b52ed3eee7a56e9f843445a199994748222eee7e12495c`) is op 8 september toegepast; de
+  bronversie is in dezelfde transactie in `schema_migrations` geregistreerd. Additief: bucket-mediatypen,
+  één CHECK, één gewijzigde en één nieuwe RPC. Live types hergenereerd (+4 regels).
+  **Geen edge-function-deploy nodig.**
+- Verificatie: **156 echte PostgreSQL-tests** (`scripts/hours-workbook-db-test.py` — 11 nieuwe
+  werkmapgevallen plus de volledige vrijgegeven pagina-/inname-/foundation-/classificatie-/poortregressies,
+  elf migraties elk tweemaal); **1.497 applicatietests**; lint 0 errors, typecheck en productiebuild groen.
+  De vrijgegeven harnassen zijn ongewijzigd gelaten; de nieuwe importeert `hours-pages-db-test.py` en
+  overschrijft alleen de twee verwachtingen die echt bewogen (bucket-mediatypen, RPC-signaturen).
+- **JA Werkt blijft UIT, demo AAN** — vóór de migratie geverifieerd. Het geblokkeerde `QA_SUPERADMIN`-account
+  is ongemoeid gelaten. Advisors na DDL: geen ERROR-bevindingen; de nieuwe RPC valt in dezelfde bewuste
+  WARN-categorie "SECURITY DEFINER uitvoerbaar door authenticated" als alle bestaande urenfuncties.
+- **Nog open:** verbonden demo-QA in de browser is voor dit ticket **niet** uitgevoerd — de vier
+  `pages`-QA-weken staan klaar (`scripts/prepare-hours-pages-demo.mjs`, dezelfde `HOURS_PAGES_RUN_ID`
+  hergebruiken). PR #266 (T2) moet nog gemerged worden vóór deze branch.
+
 ## Bronpagina's en gecontroleerde toewijzing — 8 september 2026 (`feat/urenmodule-bronpaginas`)
 
 - Nieuwe duurzame worktree `/Users/kas/dev/ja-works-hub/.worktrees/urenmodule-bronpaginas`, branch

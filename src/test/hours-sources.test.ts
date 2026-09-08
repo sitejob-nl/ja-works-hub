@@ -12,16 +12,17 @@ const shiftSource: HoursSourceInput = {
 };
 
 describe('hours source acceptance', () => {
-  it.each(['application/pdf', 'image/jpeg', 'image/png'])('accepts %s within the size limit', type => {
+  it.each([
+    'application/pdf', 'image/jpeg', 'image/png',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel',
+  ])('accepts %s within the size limit', type => {
     expect(hoursSourceTypeError({ type, size: 2048 })).toBeNull();
   });
 
-  it.each([
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    'message/rfc822', 'application/msword', 'text/html', '',
-  ])('rejects %s with an explanation instead of storing it', type => {
-    expect(hoursSourceTypeError({ type, size: 2048 })).toMatch(/Alleen PDF, JPG en PNG/);
-  });
+  it.each(['message/rfc822', 'application/msword', 'text/html', 'text/csv', ''])(
+    'rejects %s with an explanation instead of storing it', type => {
+      expect(hoursSourceTypeError({ type, size: 2048 })).toMatch(/Alleen PDF, JPG, PNG en Excel/);
+    });
 
   it('rejects an empty file and one over the limit', () => {
     expect(hoursSourceTypeError({ type: 'application/pdf', size: 0 })).toMatch(/leeg/);
@@ -34,6 +35,9 @@ describe('hours source acceptance', () => {
     expect(hoursSourcePath('org-1', 'week-1', digest, 'application/pdf')).toBe(`org-1/week-1/${digest}.pdf`);
     expect(hoursSourcePath('org-1', 'week-1', digest, 'image/jpeg')).toBe(`org-1/week-1/${digest}.jpg`);
     expect(hoursSourcePath('org-1', 'week-1', digest, 'image/png')).toBe(`org-1/week-1/${digest}.png`);
+    expect(hoursSourcePath('org-1', 'week-1', digest,
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')).toBe(`org-1/week-1/${digest}.xlsx`);
+    expect(hoursSourcePath('org-1', 'week-1', digest, 'application/vnd.ms-excel')).toBe(`org-1/week-1/${digest}.xls`);
   });
 
   it('formats sizes for a reader instead of raw bytes', () => {

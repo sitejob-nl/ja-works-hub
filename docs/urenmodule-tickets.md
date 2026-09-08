@@ -13,8 +13,8 @@ bevestigde klant-/CAO-matrices inclusief pauze-, afrondings- en samenloopregels 
 het exportvoorbeeld van de payroller met uurcodes en correctieprocedure (T12, T13),
 ontvangers/verantwoordelijken per partij (T8), en de keuze van pilotklanten (T14).
 
-Stand 08-09-2026: **T1 en T2 gebouwd, gedeployed en met verbonden demo-QA bewezen** (migraties
-`20260909090000` en `20260910090000`). T3 t/m T14 nog niet gestart.
+Stand 08-09-2026: **T1, T2 en T3 gebouwd en gedeployed** (migraties `20260909090000`, `20260910090000`
+en `20260911090000`); T1 en T2 zijn ook met verbonden demo-QA bewezen. T4 t/m T14 nog niet gestart.
 
 ---
 
@@ -83,14 +83,17 @@ voorstellen op dezelfde grens als T1: werkbladen, cellen, datum-/tijdduren, deci
 categorieën (OV1–OV5) blijven behouden. Een meegeleverd totaal is een controlegetal, geen waarheid.
 De interne gebruiker beoordeelt en past toe; er wordt niets automatisch geboekt.
 
+**Status:** gebouwd en gedeployed op 8 september 2026; zie het
+[innamecontract](urenmodule-intake-contract.md#excel--en-tabelbestanden-als-bron-t3).
+
 **Geblokkeerd door:** T2.
 
-- [ ] Een werkblad met dagen per medewerker levert per medewerker/dag één voorstel op
-- [ ] Broncategorieën blijven letterlijk staan; ontbrekende tijden worden niet verzonnen
-- [ ] Een niet-sluitende optelling (4 + 5 = 8) wordt gesignaleerd en blokkeert toepassen niet stil,
+- [x] Een werkblad met dagen per medewerker levert per medewerker/dag één voorstel op
+- [x] Broncategorieën blijven letterlijk staan; ontbrekende tijden worden niet verzonnen
+- [x] Een niet-sluitende optelling (4 + 5 = 8) wordt gesignaleerd en blokkeert toepassen niet stil,
       maar toont het verschil
-- [ ] Formules en macro's worden niet uitgevoerd; alleen bewaarde resultaten worden gelezen
-- [ ] Een niet-leesbaar of onverwacht ingedeeld bestand levert een begrijpelijke blokkade en géén
+- [x] Formules en macro's worden niet uitgevoerd; alleen bewaarde resultaten worden gelezen
+- [x] Een niet-leesbaar of onverwacht ingedeeld bestand levert een begrijpelijke blokkade en géén
       halve voorstellen
 
 ---

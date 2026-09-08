@@ -7,7 +7,9 @@ import {
   parseWeekSources, type HoursSourceContentType, type HoursWeekSources,
 } from '@/lib/hours-sources';
 import { countPdfPages } from '@/lib/hours-pdf-pages';
-import type { HoursPageEntry } from '@/lib/hours-workflow-api';
+import { countWorkbookSheets, decodeWorkbook, isWorkbookSource } from '@/lib/hours-workbook-file';
+import { readHoursWorkbook, type WorkbookContext, type WorkbookReading } from '@/lib/hours-workbook';
+import type { HoursPageEntry, HoursReadingEntry } from '@/lib/hours-workflow-api';
 import type { HoursPageAssignment } from '@/lib/hours-sources';
 import type { HoursSourceInput } from '@/components/hours-workflow/hours-day-source';
 
@@ -27,14 +29,18 @@ export interface SetSourcePageInput {
 
 export interface PageTakeoverInput { sourceId: string; pageNumber: number; entries: HoursPageEntry[] }
 
+export interface ReadingInput { sourceId: string; entries: HoursReadingEntry[] }
+
 /**
- * A photo is one page. A PDF is counted here; a file that cannot be read stays
- * honestly unknown rather than being called a single page.
+ * A photo is one page. A PDF is counted here and a workbook reports its
+ * worksheets; a file that cannot be read stays honestly unknown rather than
+ * being called a single page.
  */
 async function deliveredPageCount(file: File, bytes: ArrayBuffer): Promise<number | null> {
-  if (file.type !== 'application/pdf') return null;
   try {
-    return await countPdfPages(bytes);
+    if (file.type === 'application/pdf') return await countPdfPages(bytes);
+    if (isWorkbookSource(file.type)) return await countWorkbookSheets(bytes);
+    return null;
   } catch {
     return null;
   }
@@ -103,6 +109,29 @@ export function useHoursWeekSources(organizationId: string, weekId: string | und
     onSuccess: store,
   });
 
+  /**
+   * Reading a delivered spreadsheet. The stored original is fetched back and
+   * interpreted here; nothing is written until the reviewer saves the reading as
+   * proposals, and even then a proposal is not an hour.
+   */
+  const readWorkbook = useMutation({
+    mutationFn: async (input: { path: string; context: WorkbookContext }): Promise<WorkbookReading> => {
+      const response = await fetch(await hoursSourceViewUrl(input.path));
+      if (!response.ok) throw new Error('De bewaarde bron kon niet worden opgehaald. Probeer het opnieuw.');
+      const decoding = await decodeWorkbook(await response.arrayBuffer());
+      if (decoding.ok === false) return { ok: false, issues: decoding.issues };
+      return readHoursWorkbook(decoding.sheets, input.context);
+    },
+  });
+
+  /** One reading becomes proposals in one handling: all of it, or none of it. */
+  const saveReading = useMutation({
+    mutationFn: async (input: ReadingInput) => parseWeekSources(await hoursWorkflowRpc('hours_create_source_proposals', {
+      p_source_id: input.sourceId, p_entries: input.entries,
+    })),
+    onSuccess: store,
+  });
+
   const confirmAssignment = useMutation({
     mutationFn: async (input: { proposalId: string; note: string | null }) => parseWeekSources(
       await hoursWorkflowRpc('hours_confirm_proposal_assignment', {
@@ -117,7 +146,10 @@ export function useHoursWeekSources(organizationId: string, weekId: string | und
     onSuccess: store,
   });
 
-  return { ...query, upload, createProposal, discardProposal, setPage, takeOverPage, confirmAssignment };
+  return {
+    ...query, upload, createProposal, discardProposal, setPage, takeOverPage, confirmAssignment,
+    readWorkbook, saveReading,
+  };
 }
 
 /** Applying changes the week itself, so both caches are refreshed together. */

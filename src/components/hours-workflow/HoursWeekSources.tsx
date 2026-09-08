@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { ExternalLink, FileUp, Layers, Paperclip } from 'lucide-react';
+import { ExternalLink, FileUp, Layers, Paperclip, TableProperties } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -18,7 +18,10 @@ import {
   type HoursWeekSourceFile, type HoursWeekSources as HoursWeekSourcesData,
 } from '@/lib/hours-sources';
 import type { HoursPageEntry } from '@/lib/hours-workflow-api';
+import { isWorkbookSource } from '@/lib/hours-workbook-file';
+import type { WorkbookContext, WorkbookReading } from '@/lib/hours-workbook';
 import { hoursSourceViewUrl, useApplyHoursProposal, useHoursWeekSources } from '@/hooks/useHoursWeekSources';
+import { HoursWorkbookReading } from './HoursWorkbookReading';
 import { parseHoursToMinutes } from '../../../supabase/functions/_shared/hours-calculation';
 import { compileHoursSourceInput, sourceControlIssues, sourceDraftFromInput, type HoursSourceInput } from './hours-day-source';
 import { HoursSourceEditor } from './HoursSourceEditor';
@@ -45,6 +48,16 @@ function dayTargets(week: HoursWeekView): DayTarget[] {
       notes: day.revision.notes, sourceInput: day.revision.sourceInput, revisionId: day.revision.id,
     } : null,
   })));
+}
+
+/** What the reader is allowed to recognise: the members and days of this week. */
+function workbookContext(week: HoursWeekView): WorkbookContext {
+  return {
+    members: week.employees.map(employee => ({ id: employee.id, name: employee.name })),
+    days: week.employees.flatMap(employee => employee.days.map(day => ({
+      id: day.id, memberId: employee.id, workDate: day.workDate,
+    }))),
+  };
 }
 
 function ViewSourceButton({ path, fileName }: { path: string; fileName: string }) {
@@ -464,11 +477,25 @@ export function HoursWeekSources({ organizationId, week, onReload }: HoursWeekSo
   const [proposingFor, setProposingFor] = useState<string | null>(null);
   const [pagingFor, setPagingFor] = useState<{ sourceId: string; page: HoursSourcePage | null } | null>(null);
   const [takingOver, setTakingOver] = useState<string | null>(null);
+  const [reading, setReading] = useState<{ sourceId: string; result: WorkbookReading } | null>(null);
+  const [readingError, setReadingError] = useState<string | null>(null);
   const targets = dayTargets(week);
   const targetById = new Map(targets.map(target => [target.dayId, target]));
+  // One panel at a time: every one of them writes to the same source.
+  const busyElsewhere = !!proposingFor || !!takingOver || !!pagingFor || !!reading;
   const employees = week.employees.map(employee => ({ id: employee.id, name: employee.name }));
   const data: HoursWeekSourcesData | undefined = sources.data;
   const canManage = (data?.can_manage ?? false) && week.enabled;
+
+  /** Reading is deliberately explicit: it never happens as a side effect of uploading. */
+  async function readSource(sourceId: string, path: string) {
+    setReadingError(null); setNotice(null);
+    try {
+      setReading({ sourceId, result: await sources.readWorkbook.mutateAsync({ path, context: workbookContext(week) }) });
+    } catch (failure) {
+      setReadingError(hoursWorkflowError(failure));
+    }
+  }
 
   async function handleFiles(files: FileList | null) {
     if (!files?.length) return;
@@ -492,8 +519,8 @@ export function HoursWeekSources({ organizationId, week, onReload }: HoursWeekSo
       <CardTitle className="text-base">Ontvangen bronnen</CardTitle>
       <p className="text-sm text-muted-foreground">
         Bewaar het originele urenbriefje privé bij deze week, leg per pagina vast wie erop staat, en pas een
-        voorstel pas na beoordeling toe als dagversie. PDF, JPG en PNG worden nu ondersteund; een bron levert
-        nooit vanzelf uren op.
+        voorstel pas na beoordeling toe als dagversie. PDF, JPG, PNG en Excel worden ondersteund; een Excel- of
+        tabelbestand kan worden uitgelezen, maar een bron levert nooit vanzelf uren op.
       </p>
     </CardHeader>
     <CardContent className="space-y-4">
@@ -505,11 +532,12 @@ export function HoursWeekSources({ organizationId, week, onReload }: HoursWeekSo
             <FileUp className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
             {sources.upload.isPending ? 'Bron bewaren…' : 'Urenbriefje uploaden'}
           </Button>
-          <span className="text-xs text-muted-foreground">PDF, JPG of PNG, maximaal 25 MB per bestand.</span>
+          <span className="text-xs text-muted-foreground">PDF, JPG, PNG of Excel, maximaal 25 MB per bestand.</span>
         </div>}
         {!week.enabled && <p className="text-sm text-muted-foreground">De urenstroom staat uit voor deze opdrachtgever. Bestaande bronnen blijven zichtbaar.</p>}
         {notice && <p role="status" className="text-sm">{notice}</p>}
         {uploadError && <Alert variant="destructive"><AlertDescription>{uploadError}</AlertDescription></Alert>}
+        {readingError && <Alert variant="destructive"><AlertDescription>{readingError}</AlertDescription></Alert>}
         {/* Counted by the server, so this covers the whole week and not just what is on screen. */}
         {(data?.open_proposals ?? 0) > 0 && <p className="text-sm">{data.open_proposals} {data.open_proposals === 1 ? 'voorstel wacht' : 'voorstellen wachten'} op beoordeling.</p>}
         {(data?.undecided_assignments ?? 0) > 0 && <p className="text-sm text-destructive">
@@ -532,11 +560,17 @@ export function HoursWeekSources({ organizationId, week, onReload }: HoursWeekSo
               </div>
               <div className="flex flex-wrap gap-2">
                 <ViewSourceButton path={source.storage_path} fileName={source.file_name} />
-                {canManage && !pagingFor && <Button type="button" size="sm" variant="outline" disabled={!!proposingFor || !!takingOver}
+                {canManage && isWorkbookSource(source.content_type) && reading?.sourceId !== source.id &&
+                  <Button type="button" size="sm" variant="outline" disabled={busyElsewhere || sources.readWorkbook.isPending}
+                    onClick={() => void readSource(source.id, source.storage_path)}>
+                    <TableProperties className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+                    {sources.readWorkbook.isPending ? 'Uitlezen…' : 'Uitlezen'}
+                  </Button>}
+                {canManage && !pagingFor && <Button type="button" size="sm" variant="outline" disabled={busyElsewhere}
                   onClick={() => setPagingFor({ sourceId: source.id, page: null })}>
                   <Layers className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />Paginatoewijzing
                 </Button>}
-                {canManage && proposingFor !== source.id && <Button type="button" size="sm" variant="outline" disabled={!!proposingFor || !!takingOver} onClick={() => setProposingFor(source.id)}>Voorstel maken</Button>}
+                {canManage && proposingFor !== source.id && <Button type="button" size="sm" variant="outline" disabled={busyElsewhere} onClick={() => setProposingFor(source.id)}>Voorstel maken</Button>}
               </div>
             </div>
             {pagingFor?.sourceId === source.id && <PageDecisionForm source={source} employees={employees}
@@ -552,9 +586,9 @@ export function HoursWeekSources({ organizationId, week, onReload }: HoursWeekSo
                 </span>
                 {canManage && <span className="flex flex-wrap gap-2">
                   {page.assignment === 'single' && takingOver !== page.id && <Button type="button" size="sm" variant="outline"
-                    disabled={!!proposingFor || !!takingOver || !!pagingFor}
+                    disabled={busyElsewhere}
                     onClick={() => setTakingOver(page.id)}>Hele pagina overnemen</Button>}
-                  <Button type="button" size="sm" variant="ghost" disabled={!!proposingFor || !!takingOver || !!pagingFor}
+                  <Button type="button" size="sm" variant="ghost" disabled={busyElsewhere}
                     onClick={() => setPagingFor({ sourceId: source.id, page })}>Wijzigen</Button>
                 </span>}
               </div>)}
@@ -563,6 +597,11 @@ export function HoursWeekSources({ organizationId, week, onReload }: HoursWeekSo
               days={targets.filter(target => target.memberId === page.member_id)}
               onCancel={() => setTakingOver(null)}
               onSubmit={async entries => { await sources.takeOverPage.mutateAsync({ sourceId: source.id, pageNumber: page.page_number, entries }); }} />)}
+            {reading?.sourceId === source.id && <HoursWorkbookReading reading={reading.result}
+              alreadyProposed={new Set(source.proposals.filter(proposal => proposal.status === 'open')
+                .map(proposal => proposal.day_id))}
+              onCancel={() => setReading(null)}
+              onSave={async entries => { await sources.saveReading.mutateAsync({ sourceId: source.id, entries }); }} />}
             {proposingFor === source.id && <ProposalForm targets={targets} pageCount={source.page_count}
               pageDecided={source.pages.length > 0} onCancel={() => setProposingFor(null)}
               onSubmit={async input => { await sources.createProposal.mutateAsync({ sourceId: source.id, ...input }); }} />}

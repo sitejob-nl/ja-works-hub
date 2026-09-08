@@ -1,8 +1,8 @@
 # Urenmodule: interne broninname en invoervoorstellen
 
-**Status: gedeployed op 8 september 2026** (migraties `20260909090000_hours_week_sources_and_proposals.sql`
-en `20260910090000_hours_source_pages_and_assignment.sql`). Beide zijn additief en veranderen geen
-bestaande urenafspraak. `timesheets`, facturatie, urenbrieven, CSV-import en communicatie worden niet
+**Status: gedeployed op 8 september 2026** (migraties `20260909090000_hours_week_sources_and_proposals.sql`,
+`20260910090000_hours_source_pages_and_assignment.sql` en `20260911090000_hours_spreadsheet_sources.sql`).
+Alle drie zijn additief en veranderen geen bestaande urenafspraak. `timesheets`, facturatie, urenbrieven, CSV-import en communicatie worden niet
 geschreven. **JA Werkt staat UIT, de geverifieerde demo staat AAN** voor `uren-workflow`; die SaaS-poort
 geldt ook voor de drie nieuwe tabellen en de privé-bronopslag.
 
@@ -24,8 +24,8 @@ heeft beoordeeld — belangrijk zodra een machine het voorstel aanlevert.
 ## Privé bronopslag
 
 Originelen staan in de niet-publieke Storage-bucket `hours-sources`, met een pad
-`<organisatie>/<week>/<sha256>.<pdf|jpg|png>`. Storage zelf dwingt de grens van 25 MiB (26.214.400 bytes)
-en de drie toegestane mediatypen af.
+`<organisatie>/<week>/<sha256>.<pdf|jpg|png|xlsx|xls>`. Storage zelf dwingt de grens van 25 MiB
+(26.214.400 bytes) en de vijf toegestane mediatypen af.
 
 - `private.hours_source_object_allowed(name, write)` is de enige nieuwe hulpfunctie die `authenticated`
   mag uitvoeren naast `private.hours_module_enabled()`. Zij geeft alleen een boolean over het eigen
@@ -75,7 +75,7 @@ De frontend leest de herkomst uit `source_references` in plaats van een vaste te
 
 ## Publieke RPC's
 
-Alle acht zijn uitvoerbaar voor `authenticated` en autoriseren opnieuw in de functie: actief profiel,
+Alle negen zijn uitvoerbaar voor `authenticated` en autoriseren opnieuw in de functie: actief profiel,
 eigen organisatie, `is_internal_user()`, de SaaS-module en `finance.view`/`finance.manage`. Geen enkele
 is uitvoerbaar voor `anon` of `service_role`.
 
@@ -88,6 +88,7 @@ is uitvoerbaar voor `anon` of `service_role`.
 | `hours_apply_source_proposal` | `p_proposal_id uuid`, `p_expected_revision_id uuid` | `WeekDetail` plus `applied_created_revision` en `sources` |
 | `hours_set_source_page` | `p_source_id uuid`, `p_page_number integer`, `p_assignment text`, `p_member_id uuid`, `p_note text` | Dezelfde projectie |
 | `hours_create_page_proposals` | `p_source_id uuid`, `p_page_number integer`, `p_entries jsonb` | Dezelfde projectie |
+| `hours_create_source_proposals` | `p_source_id uuid`, `p_entries jsonb` | Dezelfde projectie |
 | `hours_confirm_proposal_assignment` | `p_proposal_id uuid`, `p_note text` | Dezelfde projectie |
 
 De projectie telt daarnaast `open_proposals` en `undecided_assignments` **server-side over de hele
@@ -219,6 +220,54 @@ De twee gewijzigde RPC's kregen hun nieuwe parameters **met een default**, zodat
 parameterset geldig blijft. De migratie kan daardoor vóór de frontend live: de nog draaiende versie blijft
 werken en levert dan simpelweg geen paginanummer. Een databasetest bewijst dat expliciet.
 
+## Excel- en tabelbestanden als bron (T3)
+
+Een `.xlsx`- of `.xls`-bestand wordt als bron aanvaard en kan **deterministisch** worden uitgelezen. Er is
+geen model en geen betaalde aanroep in het spel: de uitlezer leest wat er staat.
+
+### Een werkblad is de pagina van dit formaat
+
+`page_count` is het aantal werkbladen; `page_number` op een voorstel is het werkbladnummer en `page_label`
+noemt blad en regel (`blad Week 37 · rij 3`). Daardoor gelden **alle paginaregels van T2 ongewijzigd**: een
+beoordeelde bron eist een pagina op elk nieuw voorstel, een tegensprekend paginabesluit forceert
+`assignment_uncertain`, en een werkblad met meerdere medewerkers kan niet op één naam worden gezet.
+
+### Wat de uitlezer wel en niet doet
+
+- **Formules worden niet uitgevoerd.** Er wordt uitsluitend het bewaarde resultaat gelezen dat in het
+  bestand staat; een werkmap met macro's wordt gelezen zonder die macro's te draaien. Een databestand is
+  geen programma.
+- **Twee indelingen worden herkend.** Een *kruistabel* (medewerkers onder elkaar, dagen als kolomkoppen)
+  en een *lijst* (kop met naam, datum en uren, één regel per medewerker/dag). Elke andere indeling levert
+  een blokkade en **géén halve voorstellen**.
+- **Broncategorieën blijven letterlijk staan.** In een lijstblad wordt elke overige kolomkop als broncode
+  overgenomen (`OV1`, `OV3`, …) met de duur uit die cel. Er wordt niets naar een interne uursoort vertaald;
+  dat is het werk van de matrix, later en op de vastgelegde dagrevisie.
+- **Ontbrekende tijden worden niet verzonnen.** Een lege cel levert geen voorstel; de regel wordt met reden
+  benoemd. Een tekstcel in een urenkolom wordt de letterlijke reden voor "geen uren"; een numerieke nul
+  zonder reden levert bewust géén voorstel.
+- **Een aangeleverd totaal is een controlegetal.** Klopt het weektotaal van een rij niet met de dagen
+  eronder, of tellen de broncodes niet op tot het dagtotaal, dan blijft alles staan zoals aangeleverd en
+  wordt **het verschil getoond**. Er wordt niets weggerekend en toepassen wordt niet stil geblokkeerd; de
+  bestaande servercontrole beoordeelt de vastgelegde dagrevisie.
+- **De uitlezer beslist niet wie iemand is.** Een exact geschreven naam (ook `Achternaam, Voornaam`) is
+  zeker. Een gedeeltelijke maar unieke naam (`J. Kowalski`) levert een voorstel met
+  `assignment_uncertain`; een naam die bij niemand of bij meerdere mensen past levert **geen** voorstel en
+  wordt als overgeslagen regel benoemd. Een datum die niet in deze week valt, idem.
+- **Een oud binair `.xls` blijft een eerlijke blokkade.** Het bestand wordt wel als bron bewaard — de
+  beoordelaar kan het openen en handmatig een voorstel vastleggen — maar er wordt geen tekstgok op
+  losgelaten.
+
+### Eén uitlezing, één handeling
+
+`hours_create_source_proposals` legt een hele uitlezing in één transactie vast: één tot vijfhonderd
+voorstellen, elke werkdag hoogstens één keer, vaste vergrendelvolgorde over de dagen. Wordt één regel
+geweigerd, dan wordt er **niets** vastgelegd — een halve uitlezing is erger dan geen. Wat eruit komt zijn
+nog steeds voorstellen: toepassen blijft per dag een aparte handeling.
+
+De interne gebruiker ziet vóór het bewaren precies wat gelezen is, per regel met vindplaats, en vinkt uit
+wat niet mee moet. Een dag die al een openstaand voorstel uit dezelfde bron heeft staat standaard uit.
+
 ## Portaalgrens
 
 Een medewerker ziet de bronherkomst van de eigen dag, maar:
@@ -233,7 +282,7 @@ Een medewerker ziet de bronherkomst van de eigen dag, maar:
 | SQLSTATE | Betekenis |
 | --- | --- |
 | `42501` | Geen bevoegdheid, verkeerde organisatie, ontoegankelijke week/dag/bron, of poging historie te wijzigen |
-| `22023` | Ongeldige invoer, niet-ondersteund bestandstype, ontbrekend of afwijkend opslagobject, uitgeschakelde opdrachtgever, al afgewikkeld voorstel, pagina buiten het bereik van de bron, "één medewerker" op een pagina die er aantoonbaar meerdere draagt, een overname die een dag van een andere medewerker raakt, of een nog onbesliste toewijzing bij toepassen |
+| `22023` | Ongeldige invoer, niet-ondersteund bestandstype, ontbrekend of afwijkend opslagobject, uitgeschakelde opdrachtgever, al afgewikkeld voorstel, pagina buiten het bereik van de bron, "één medewerker" op een pagina die er aantoonbaar meerdere draagt, een overname die een dag van een andere medewerker raakt, dezelfde werkdag tweemaal in één uitlezing, of een nog onbesliste toewijzing bij toepassen |
 | `PT409` | De dagversie is ondertussen gewijzigd; opnieuw laden en het voorstel opnieuw beoordelen |
 
 ## Verificatie
@@ -251,5 +300,5 @@ Een medewerker ziet de bronherkomst van de eigen dag, maar:
   onaangeroerde werkdag. Deze stroom verstuurt niets en doet geen betaalde AI-aanroepen, dus de
   communicatie-instelling van de demo is niet aangeraakt.
 
-Nog niet gebouwd: bestandslezers (Excel/Word/PDF-tekst/OCR), mailinname, de klantpagina zonder
+Nog niet gebouwd: uitlezers voor Word, PDF-tekst en OCR/Vision, mailinname, de klantpagina zonder
 inloggen, en vrijgave of export. Zie [de ticketlijst](urenmodule-tickets.md).
