@@ -20,10 +20,17 @@ interface HoursRpcArguments {
   hours_confirm_day: RpcArgs<'hours_confirm_day'> & { p_decision: 'confirmed' | 'disputed' };
   hours_confirm_days: Omit<RpcArgs<'hours_confirm_days'>, 'p_revisions'> & { p_revisions: { day_id: string; revision_id: string }[] };
   hours_review_day: RpcArgs<'hours_review_day'> & { p_status: 'checked' | 'blocked' };
+  hours_get_week_sources: RpcArgs<'hours_get_week_sources'>;
+  hours_add_week_source: RpcArgs<'hours_add_week_source'>;
+  hours_create_source_proposal: Omit<RpcArgs<'hours_create_source_proposal'>, 'p_source_input'> & { p_source_input: HoursSourceInput | null };
+  hours_discard_source_proposal: RpcArgs<'hours_discard_source_proposal'>;
+  hours_apply_source_proposal: RpcArgs<'hours_apply_source_proposal'>;
 }
 
 export async function hoursWorkflowRpc<K extends keyof HoursRpcArguments>(name: K, args: HoursRpcArguments[K]): Promise<unknown> {
-  return unwrap(supabase.rpc(name, args));
+  // Each entry above is derived from the generated signature; the client cannot
+  // correlate name and arguments across a union this wide.
+  return unwrap(supabase.rpc(name, args as Database['public']['Functions'][K]['Args']));
 }
 
 /** The server reads all facts and matrices; the browser sends identifiers only. */

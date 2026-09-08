@@ -34,6 +34,7 @@ export const qk = {
     week: (orgId: string, userId: string, zone: string, weekId: string) => ['hours-workflow', orgId, userId, zone, 'week', weekId] as const,
     companies: (orgId: string) => ['hours-workflow', orgId, 'companies'] as const,
     settings: (orgId: string, companyId: string) => ['hours-workflow', orgId, 'settings', companyId] as const,
+    sources: (orgId: string, weekId: string) => ['hours-workflow', orgId, 'sources', weekId] as const,
   },
   aiSettings: (orgId: string) => ['organization-ai-settings', orgId] as const,
   aiCredits: {

@@ -5147,6 +5147,112 @@ export type Database = {
           },
         ]
       }
+      hours_source_proposals: {
+        Row: {
+          applied_created_revision: boolean | null
+          applied_revision_id: string | null
+          created_at: string
+          created_by: string
+          day_id: string
+          id: string
+          minutes: number
+          no_hours_reason: string | null
+          note: string | null
+          organization_id: string
+          page_label: string | null
+          resolution_note: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          source_id: string
+          source_input: Json | null
+          status: string
+          week_id: string
+        }
+        Insert: {
+          applied_created_revision?: boolean | null
+          applied_revision_id?: string | null
+          created_at?: string
+          created_by: string
+          day_id: string
+          id?: string
+          minutes: number
+          no_hours_reason?: string | null
+          note?: string | null
+          organization_id: string
+          page_label?: string | null
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          source_id: string
+          source_input?: Json | null
+          status?: string
+          week_id: string
+        }
+        Update: {
+          applied_created_revision?: boolean | null
+          applied_revision_id?: string | null
+          created_at?: string
+          created_by?: string
+          day_id?: string
+          id?: string
+          minutes?: number
+          no_hours_reason?: string | null
+          note?: string | null
+          organization_id?: string
+          page_label?: string | null
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          source_id?: string
+          source_input?: Json | null
+          status?: string
+          week_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hours_source_proposals_applied_revision_id_day_id_organiza_fkey"
+            columns: ["applied_revision_id", "day_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "hours_day_revisions"
+            referencedColumns: ["id", "day_id", "organization_id"]
+          },
+          {
+            foreignKeyName: "hours_source_proposals_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_source_proposals_day_id_organization_id_fkey"
+            columns: ["day_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "hours_days"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "hours_source_proposals_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_source_proposals_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_source_proposals_source_id_week_id_organization_id_fkey"
+            columns: ["source_id", "week_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "hours_week_sources"
+            referencedColumns: ["id", "week_id", "organization_id"]
+          },
+        ]
+      }
       hours_week_members: {
         Row: {
           candidate_id: string
@@ -5215,6 +5321,77 @@ export type Database = {
           },
           {
             foreignKeyName: "hours_week_members_week_id_organization_id_fkey"
+            columns: ["week_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "hours_weeks"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
+      }
+      hours_week_sources: {
+        Row: {
+          byte_size: number
+          company_id: string
+          content_hash: string
+          content_type: string
+          created_at: string
+          created_by: string
+          file_name: string
+          id: string
+          organization_id: string
+          storage_path: string
+          week_id: string
+        }
+        Insert: {
+          byte_size: number
+          company_id: string
+          content_hash: string
+          content_type: string
+          created_at?: string
+          created_by: string
+          file_name: string
+          id?: string
+          organization_id: string
+          storage_path: string
+          week_id: string
+        }
+        Update: {
+          byte_size?: number
+          company_id?: string
+          content_hash?: string
+          content_type?: string
+          created_at?: string
+          created_by?: string
+          file_name?: string
+          id?: string
+          organization_id?: string
+          storage_path?: string
+          week_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hours_week_sources_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_week_sources_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_week_sources_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_week_sources_week_id_organization_id_fkey"
             columns: ["week_id", "organization_id"]
             isOneToOne: false
             referencedRelation: "hours_weeks"
@@ -11754,6 +11931,19 @@ export type Database = {
         Returns: Json
       }
       has_role_permission: { Args: { p_permission: string }; Returns: boolean }
+      hours_add_week_source: {
+        Args: {
+          p_content_hash: string
+          p_content_type: string
+          p_file_name: string
+          p_week_id: string
+        }
+        Returns: Json
+      }
+      hours_apply_source_proposal: {
+        Args: { p_expected_revision_id: string; p_proposal_id: string }
+        Returns: Json
+      }
       hours_confirm_day: {
         Args: {
           p_day_id: string
@@ -11780,8 +11970,24 @@ export type Database = {
         }
         Returns: Json
       }
+      hours_create_source_proposal: {
+        Args: {
+          p_day_id: string
+          p_minutes: number
+          p_no_hours_reason: string
+          p_note: string
+          p_page_label: string
+          p_source_id: string
+          p_source_input: Json
+        }
+        Returns: Json
+      }
       hours_create_week: {
         Args: { p_company_id: string; p_week_start: string }
+        Returns: Json
+      }
+      hours_discard_source_proposal: {
+        Args: { p_note: string; p_proposal_id: string }
         Returns: Json
       }
       hours_finalize_day_classification: {
@@ -11810,6 +12016,7 @@ export type Database = {
       hours_get_matrix: { Args: { p_matrix_id: string }; Returns: Json }
       hours_get_module_access: { Args: never; Returns: Json }
       hours_get_week: { Args: { p_week_id: string }; Returns: Json }
+      hours_get_week_sources: { Args: { p_week_id: string }; Returns: Json }
       hours_list_matrices: { Args: { p_company_id?: string }; Returns: Json }
       hours_list_weeks: { Args: { p_week_start?: string }; Returns: Json }
       hours_publish_matrix_version: {

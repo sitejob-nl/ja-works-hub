@@ -124,13 +124,43 @@ bronrevisie. Deze planner is nog niet aangesloten op een duurzame outbox of Outl
 geen berichten. Het huidige opdrachtgeverformulier bewaart de twee deadlines, nog geen volledig
 mailprofiel.
 
+## Interne broninname en invoervoorstellen
+
+Sinds 8 september kan een interne gebruiker met `finance.manage` bij een klantweek een urenbriefje als
+PDF, JPG of PNG uploaden. Het origineel gaat naar de niet-publieke bucket `hours-sources` onder
+`<organisatie>/<week>/<sha256>`; Storage dwingt daar zelf 25 MiB en de drie mediatypen af, en de
+SaaS-modulepoort plus `finance`-rechten gelden ook op die opslag. Er is geen update- of delete-policy:
+een origineel kan niet worden vervangen of verwijderd. Dezelfde bijlage opnieuw aanleveren binnen
+dezelfde week levert één bron op, geen tweede verwerking en geen tweede voorstel. Bekijken gebeurt met
+een ondertekende link van vijf minuten; de bucket is niet publiek benaderbaar.
+
+Uit een bron legt de beoordelaar een **invoervoorstel** vast: medewerkerdag, uren of expliciete
+nulreden, eventuele diensttijden en broncategorieën, en een vindplaats in de bron. Een voorstel is
+uitdrukkelijk nog geen uur. Toepassen is een aparte handeling die eerst toont wat er aan de dag
+verandert, en die het voorstel daarna **letterlijk** overneemt. Wijzigen betekent verwerpen en een
+nieuw voorstel vastleggen, zodat de toegepaste versie altijd precies is wat een met naam bekende
+persoon heeft beoordeeld. Dat is de grens waarop automatische uitlezers later aansluiten.
+
+Toepassen gebruikt dezelfde revisieregels als handmatige invoer: één gedeelde schrijver bepaalt of de
+feiten verschillen, een verouderde verwachte dagversie geeft `PT409` zonder iets te schrijven, en een
+al afgewikkeld voorstel kan geen tweede revisie maken. Een voorstel dat gelijk is aan de huidige
+dagversie wordt afgewikkeld zonder nieuwe versie, zodat een bestaand medewerkerakkoord geldig blijft.
+De dagrevisie draagt de herkomst (`kind: upload`, bestandsnaam, vindplaats) in plaats van "handmatige
+invoer"; interne identificatoren staan er bewust niet in en blijven op het voorstel. Medewerkers zien
+de bron van hun eigen dag, maar geen bronnen, voorstellen of interne classificaties.
+
+Zie het [innamecontract](urenmodule-intake-contract.md) voor tabellen, RPC's, opslagpolicies en fouten.
+
 ## Volgende bouwstappen
+
+De volledige resterende bouw staat als tickets met blokkades in [urenmodule-tickets.md](urenmodule-tickets.md);
+hieronder de inhoudelijke volgorde.
 
 1. Weekoverwerk, samenloop en eventuele fijnere tijdprecisie implementeren op basis van bevestigde
    klant-/CAO-regels. Een expliciete procedure voor het corrigeren van een reeds vastgelegde matrixbasis
    toevoegen voordat zulke uitzonderingen operationeel nodig zijn.
-2. Persoonlijke klantweeklinks, upload en duurzame mailinname. Originele bronnen privé bewaren,
-   dedupliceren en gecontroleerde correctievoorstellen aanmaken.
+2. Paginasplitsing en toewijzingscontrole bij meerdere medewerkers in één bestand, daarna persoonlijke
+   klantweeklinks en duurzame mailinname op dezelfde bron-/voorstelgrens.
 3. Bestandslezers en OCR/Vision aansluiten op de JA Werkt-VPS en centrale AI-accounting. Het vaste
    budget blijft €50 per Nederlandse kalendermaand zonder stapeling. Geen Qwen-terugval.
 4. Mailprofielen per partij, conceptgoedkeuring, outbox, deadlines en opvolgtaken aansluiten.
@@ -173,6 +203,23 @@ toegepast. De classificatiemigratie heeft SHA256
 Na verlies van de tijdelijke werkmap zijn de bestanden uit succesvolle sessie-edits hersteld in de
 vaste worktree en vastgelegd in Git. De migratiehash bleef exact
 `29db2584671ae0ea7feb1c73de94c0128fda984de765a9b79c6c065e93dd3c3a`.
+
+Inclusief de interne broninname slagen **1.458 applicatietests**, lint (nul errors), typecheck en de
+productiebuild. De databaseproef `scripts/hours-intake-db-test.py` draait **126 echte PostgreSQL-tests**:
+25 nieuwe innamegevallen plus de volledige vrijgegeven foundation-, classificatie- en
+modulepoortregressies op het nieuwe schema, met alle zes migraties tweemaal toegepast. De poortcontrole
+dekt nu vijftien tabellen en de vijf nieuwe RPC's. De innamemigratie heeft SHA256
+`37af2734e9cdd9c9b03e6bc276e8359cf5892031c0e7e31f49b3f74e5c38e270`.
+
+De verbonden demo-QA (`scripts/e2e-hours-intake-demo.spec.ts`) is geslaagd met echte interne en
+medewerkerlogins tegen de live API en uitsluitend synthetische bestanden: geweigerd bestandstype vóór
+opslag, privé bewaard origineel, herhaalde aanlevering als één bron, ondertekende link terwijl de
+publieke URL faalt, voorstel zonder dagwijziging, expliciete toepassing als versie 1 met de bron als
+herkomst, geweigerde tweede toepassing, geslaagde uursoortenindeling op de toegepaste revisie,
+medewerkerakkoord met afgeschermde interne gegevens, correctie die dat akkoord ongeldig maakt, en een
+verouderde toepassing die niets schrijft. Nul JavaScript-fouten, nul berichten, nul betaalde AI-calls.
+Die run vond en verifieerde één reparatie: de bevestiging na toepassen verdween omdat zij alleen bij
+open voorstellen werd getoond.
 
 De frontend gebruikt voorlopig een expliciet getypte en met Zod gecontroleerde RPC-grens in
 `hours-workflow-api.ts` en `hours-matrices.ts`. De auto-generated types blijven die van productie. Vóór merge/uitrol:
