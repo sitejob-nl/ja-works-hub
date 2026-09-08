@@ -122,7 +122,7 @@ export function HoursWorkbookReading({ reading, alreadyProposed, onCancel, onSav
                   : ''}
               </p>)}
               {alreadyProposed.has(candidate.dayId) && <p className="text-xs text-muted-foreground">
-                Deze dag heeft al een openstaand voorstel uit deze bron. Standaard niet opnieuw bewaard.
+                Deze dag heeft al een voorstel uit deze bron. Standaard niet opnieuw bewaard.
               </p>}
             </div>
             {candidate.assignmentUncertain && <Badge variant="destructive">Toewijzing onzeker</Badge>}

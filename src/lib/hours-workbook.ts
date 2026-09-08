@@ -129,7 +129,13 @@ function matchMember(text: string, members: WorkbookWeekMember[]): MemberMatch |
     const own = normalizeName(member.name).split(' ').filter(Boolean);
     if (!own.length) return false;
     const surname = own[own.length - 1];
-    return parts.includes(surname);
+    if (!parts.includes(surname)) return false;
+    // Sharing a surname is not enough: what the sheet writes in front of it has
+    // to fit this person. "J." fits Jan; "Piet" does not, and handing Piet's
+    // hours to Jan is exactly what a shared surname invites.
+    const given = own.slice(0, -1);
+    return parts.filter(part => part !== surname)
+      .every(part => given.some(name => name.startsWith(part) || part.startsWith(name)));
   });
   return weak.length === 1 ? { member: weak[0], uncertain: true } : null;
 }
@@ -307,6 +313,10 @@ function detectWideHeader(rows: WorkbookCell[][], members: WorkbookWeekMember[])
       position > 0 && day.column !== days[position - 1].column + 1)) continue;
     const first = days[0].column;
     const name = row.findIndex((cell, column) => column < first && headerMatches(cellText(cell), NAME_HEADERS));
+    // Without a titled name column the leftmost one has to serve, and there has
+    // to be one to the left of the days at all. A grid that starts with a date
+    // has nowhere to put the names, so it is not a grid this reader understands.
+    if (name < 0 && first === 0) continue;
     const nameColumn = name < 0 ? 0 : name;
     // The row of days stands directly above the employees. A banner higher up
     // may carry two adjacent dates too — "Periode 08-09-2026 09-09-2026" — and

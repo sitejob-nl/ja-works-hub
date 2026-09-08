@@ -327,7 +327,9 @@ beoordeelde bron eist een pagina op elk nieuw voorstel, een tegensprekend pagina
 - **De uitlezer beslist niet wie iemand is.** Een exact geschreven naam (ook `Achternaam, Voornaam`) is
   zeker. Een gedeeltelijke maar unieke naam (`J. Kowalski`) levert een voorstel met
   `assignment_uncertain`; een naam die bij niemand of bij meerdere mensen past levert **geen** voorstel en
-  wordt als overgeslagen regel benoemd. Een datum die niet in deze week valt, idem.
+  wordt als overgeslagen regel benoemd. Een gedeelde achternaam is daarbij niet genoeg: wat er vóór de
+  achternaam staat moet bij die persoon passen. "J." past bij Jan, "Piet" niet — en juist een gedeelde
+  achternaam nodigt uit tot die verwisseling. Een datum die niet in deze week valt, idem.
 - **Een oud binair `.xls` blijft een eerlijke blokkade.** Het bestand wordt wel als bron bewaard — de
   beoordelaar kan het openen en handmatig een voorstel vastleggen — maar er wordt geen tekstgok op
   losgelaten. De knop **Uitlezen** verschijnt daar dan ook niet: een handeling aanbieden die altijd

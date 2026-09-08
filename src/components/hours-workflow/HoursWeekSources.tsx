@@ -601,7 +601,7 @@ export function HoursWeekSources({ organizationId, week, onReload }: HoursWeekSo
               onCancel={() => setTakingOver(null)}
               onSubmit={async entries => { await sources.takeOverPage.mutateAsync({ sourceId: source.id, pageNumber: page.page_number, entries }); }} />)}
             {reading?.sourceId === source.id && <HoursWorkbookReading reading={reading.result}
-              alreadyProposed={new Set(source.proposals.filter(proposal => proposal.status === 'open')
+              alreadyProposed={new Set(source.proposals.filter(proposal => proposal.status !== 'discarded')
                 .map(proposal => proposal.day_id))}
               onCancel={() => setReading(null)}
               onSave={async entries => { await sources.saveReading.mutateAsync({ sourceId: source.id, entries }); }} />}

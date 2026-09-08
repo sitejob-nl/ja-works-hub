@@ -706,3 +706,44 @@ describe('a column that counts something other than time', () => {
     expect(reading.candidates[0].sourceInput).toBeNull();
   });
 });
+
+describe('a name that shares only its surname', () => {
+  it('does not hand another Kowalski’s hours to Jan', () => {
+    const reading = readHoursWorkbook([sheet('Week 37', [
+      ['Naam', 'Datum', 'Uren'],
+      ['Piet Kowalski', '07-09-2026', '8:00'],
+    ])], week);
+
+    expect(reading.ok).toBe(true);
+    if (reading.ok === false) return;
+    expect(reading.candidates).toHaveLength(0);
+    expect(reading.skipped[0].text).toBe('Piet Kowalski');
+  });
+
+  it('still accepts an initial that fits the given name', () => {
+    const reading = readHoursWorkbook([sheet('Week 37', [
+      ['Naam', 'Datum', 'Uren'],
+      ['J. Kowalski', '07-09-2026', '8:00'],
+      ['Nowak', '08-09-2026', '7:00'],
+    ])], week);
+
+    expect(reading.ok).toBe(true);
+    if (reading.ok === false) return;
+    expect(reading.candidates.map(candidate => [candidate.memberId, candidate.assignmentUncertain])).toEqual([
+      ['member-jan', true], ['member-ewa', true],
+    ]);
+  });
+});
+
+describe('a grid whose first column is already a day', () => {
+  it('blocks instead of reading the names as if they were hours', () => {
+    const reading = readHoursWorkbook([sheet('Uren', [
+      ['07-09-2026', '08-09-2026'],
+      ['Jan Kowalski', '8:00'],
+    ])], week);
+
+    expect(reading.ok).toBe(false);
+    if (reading.ok !== false) return;
+    expect(reading.issues[0].code).toBe('NO_LAYOUT');
+  });
+});
