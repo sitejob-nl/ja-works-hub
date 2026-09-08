@@ -1,6 +1,6 @@
 # Urenmodule — bouwstand
 
-Start: 8 september 2026. Werkmap `/tmp/ja-works-urenmodule`, branch `codex/urenmodule-bouw`,
+Start: 8 september 2026. Werkmap `/Users/kas/dev/ja-works-hub/.worktrees/urenmodule-bouw`, branch `codex/urenmodule-bouw`,
 base `aedc6dc` (PR #261). De bestaande dirty checkout blijft onaangeraakt.
 
 Deze eerste bouwstap voert de handmatige weekcontrole uit de specificatie van 7 september uit.
@@ -70,7 +70,18 @@ De databasecontracten staan in [urenmodule-db-contract.md](urenmodule-db-contrac
 Regressies draaien met synthetische data in een eigen PostgreSQL-testcontainer; de echte
 praktijkbronnen met persoonsgegevens worden niet in Git opgenomen.
 
-Releasebewijs en testuitslagen worden toegevoegd zodra de volledige eerste bouwstap is gecontroleerd.
+Gecontroleerd: 43 echte PostgreSQL-tests (migratie tweemaal toegepast), 133 reken-/planningtests,
+22 componenttests, 49 portaltests en 6 offline browsercontroles op desktop en mobiel. De volledige
+controle is geslaagd: 1.194 applicatietests, lint (nul errors), typecheck en productiebuild. Geen productie-DDL toegepast.
+
+Na verlies van de tijdelijke werkmap zijn de bestanden uit succesvolle sessie-edits hersteld in de
+vaste worktree en vastgelegd in Git. De migratiehash bleef exact
+`29db2584671ae0ea7feb1c73de94c0128fda984de765a9b79c6c065e93dd3c3a`.
+
+De frontend gebruikt voorlopig een expliciet getypte en met Zod gecontroleerde RPC-grens in
+`hours-workflow-api.ts`. De auto-generated types blijven die van productie. Vóór merge/uitrol:
+migratie toepassen, live types regenereren, adapter op de gegenereerde RPC-types aansluiten en
+smoketest uitvoeren.
 Alleen een frontendmerge is onvoldoende: eerst de additieve migratie en gegenereerde types controleren.
 Bij deze bouwstap worden geen productieklanten geactiveerd, geen echte uren ingeschreven en geen
 klantberichten verstuurd.

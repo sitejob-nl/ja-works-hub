@@ -4,6 +4,14 @@ Overdracht voor wie verdergaat (Codex / Claude Code). Lees [AGENTS.md](AGENTS.md
 commands, [CLAUDE.md](CLAUDE.md) voor de canonieke codebase-diepte, [HANDOVER.md](HANDOVER.md) voor de formele
 projectsamenvatting.
 
+## Bouw urenmodule — 8 september 2026
+
+- Vaste worktree `/Users/kas/dev/ja-works-hub/.worktrees/urenmodule-bouw`, branch `codex/urenmodule-bouw`, vanaf `aedc6dc` (#261). Eerste codecheckpoint `3530bcd`.
+- Klantweken, handmatige dagrevisies, exacte medewerkerreacties, interne controle, Nederlandse deadlines, pure minuten-/matrixkern en mailplanningpreview gebouwd. Dit is een ontwikkelversie zonder vrijgave/export of automatische inname. Geen productieklanten geactiveerd en geen migratie gedeployed.
+- [Bouwstand](docs/urenmodule-bouw.md) en [databasecontract](docs/urenmodule-db-contract.md) beschrijven grenzen, checks en volgende stappen. De vaste prijs/specificatie blijft de klantafspraak; deze bouwstand is geen volledige opleverclaim.
+- Tijdelijke werkmap verdween vóór commit; succesvol uitgevoerde bestandsedits zijn uit sessielogs hersteld. Migratiehash exact behouden, 43 DB-tests opnieuw geslaagd; vervolgwerk blijft in vaste worktrees en krijgt Git-checkpoints.
+- Afhankelijke matrixbouw: `/Users/kas/dev/ja-works-hub/.worktrees/urenmodule-matrix`, branch `codex/urenmodule-matrix`, vanaf de urenfundering. Nog in ontwikkeling; eerst basiswijzigingen integreren vóór merge naar main.
+
 ## Correctie 2026-09-07 — vast AI-maandbudget (`codex/ai-monthly-budget-reset`)
 
 - Expliciete klantcorrectie: **€50 budget per maand, geen cumulatief tegoed**. Ongebruikt budget vervalt bij de volgende Nederlandse kalendermaand.

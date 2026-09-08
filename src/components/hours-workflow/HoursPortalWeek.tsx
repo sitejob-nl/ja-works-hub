@@ -32,7 +32,8 @@ function PortalDayStatus({ day, language }: { day: HoursDayView; language: Hours
   return <Badge variant="outline">{day.confirmation ? copy.previousResponse : copy.waiting}</Badge>;
 }
 
-export function HoursPortalWeek({ week, language = 'nl', onRespond, onConfirmAll, onReload, readOnly = false }: HoursPortalWeekProps) {
+export function HoursPortalWeek({ week, language = 'nl', onRespond, onConfirmAll, onReload, readOnly: permissionReadOnly = false }: HoursPortalWeekProps) {
+  const readOnly = permissionReadOnly || !week.enabled;
   const copy = hoursCopy[language];
   const [draft, setDraft] = useState<ResponseDraft | null>(null);
   const [allComment, setAllComment] = useState('');
@@ -93,10 +94,9 @@ export function HoursPortalWeek({ week, language = 'nl', onRespond, onConfirmAll
     }
   }
 
-  if (!week.enabled) return <Alert data-no-translate="true" lang={language}><AlertDescription>{copy.dormant}</AlertDescription></Alert>;
-
   return <section className="space-y-4" data-no-translate="true" lang={language} aria-label={copy.title}>
     <PageHeader title={copy.title} description={copy.introduction} />
+    {!week.enabled && <Alert><AlertDescription>{copy.dormant}</AlertDescription></Alert>}
     <Card>
       <CardContent className="space-y-2 p-4">
         <p className="font-medium break-words">{week.companyName}</p>

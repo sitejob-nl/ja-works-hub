@@ -184,7 +184,8 @@ function DayEditor({ day, onSave, onCancel, onReload }: {
   );
 }
 
-export function HoursWeekWorkspace({ week, onSaveDay, onReview, onReload, readOnly = false }: HoursWeekWorkspaceProps) {
+export function HoursWeekWorkspace({ week, onSaveDay, onReview, onReload, readOnly: permissionReadOnly = false }: HoursWeekWorkspaceProps) {
+  const readOnly = permissionReadOnly || !week.enabled;
   const [editingDay, setEditingDay] = useState<string | null>(null);
   const [reviewing, setReviewing] = useState<{ dayId: string; status: HoursReviewInput['status'] } | null>(null);
   const [saved, setSaved] = useState(false);
@@ -193,12 +194,13 @@ export function HoursWeekWorkspace({ week, onSaveDay, onReview, onReload, readOn
   const confirmed = days.filter((day) => currentConfirmation(day)?.status === 'confirmed');
   const total = received.reduce((minutes, day) => minutes + (day.revision?.minutes ?? 0), 0);
 
-  if (!week.enabled) return <Alert><AlertDescription>Deze urenstroom is nog niet ingeschakeld voor deze opdrachtgever.</AlertDescription></Alert>;
+  const employeeCount = new Set(week.employees.map((employee) => employee.candidateId)).size;
 
   return <section className="space-y-5" aria-label="Klantweek uren">
     <PageHeader title={<span data-no-translate="true">{week.companyName}</span>} description={`Werkweek vanaf ${formatHoursDate(week.weekStart)}. Voer de ontvangen uren per medewerker en dag in.`} />
+    {!week.enabled && <Alert><AlertDescription>Deze urenstroom staat uit voor deze opdrachtgever. Bestaande uren blijven zichtbaar. Schakel de urenstroom in om uren te wijzigen of te controleren.</AlertDescription></Alert>}
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-      <Card><CardContent className="p-4"><Users className="mb-2 h-4 w-4 text-muted-foreground" aria-hidden="true" /><p className="text-xl font-semibold">{week.employees.length}</p><p className="text-xs text-muted-foreground">Verwachte medewerkers</p></CardContent></Card>
+      <Card><CardContent className="p-4"><Users className="mb-2 h-4 w-4 text-muted-foreground" aria-hidden="true" /><p className="text-xl font-semibold">{employeeCount}</p><p className="text-xs text-muted-foreground">Verwachte medewerkers</p></CardContent></Card>
       <Card><CardContent className="p-4"><FileText className="mb-2 h-4 w-4 text-muted-foreground" aria-hidden="true" /><p className="text-xl font-semibold">{received.length} / {days.length}</p><p className="text-xs text-muted-foreground">Dagen ontvangen</p></CardContent></Card>
       <Card><CardContent className="p-4"><Check className="mb-2 h-4 w-4 text-muted-foreground" aria-hidden="true" /><p className="text-xl font-semibold">{confirmed.length} / {received.length}</p><p className="text-xs text-muted-foreground">Medewerker akkoord</p></CardContent></Card>
       <Card><CardContent className="p-4"><Clock3 className="mb-2 h-4 w-4 text-muted-foreground" aria-hidden="true" /><p className="text-xl font-semibold">{formatHours(total)}</p><p className="text-xs text-muted-foreground">Uren ontvangen</p></CardContent></Card>

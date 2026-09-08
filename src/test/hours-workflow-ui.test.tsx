@@ -114,7 +114,9 @@ describe('HoursWeekWorkspace', () => {
 
   it('shows no intake controls while this company is disabled or user is read-only', () => {
     const view = render(<HoursWeekWorkspace week={{ ...weekFixture(), enabled: false }} onSaveDay={vi.fn()} />);
-    expect(screen.getByRole('alert')).toHaveTextContent('nog niet ingeschakeld');
+    expect(screen.getByRole('alert')).toHaveTextContent('Deze urenstroom staat uit');
+    expect(screen.getByRole('heading', { name: 'Voorbeeldbedrijf' })).toBeInTheDocument();
+    expect(screen.getByText('Bronnotitie')).toBeInTheDocument();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
     view.rerender(<HoursWeekWorkspace week={weekFixture()} onSaveDay={vi.fn()} readOnly />);
     expect(screen.queryByRole('button', { name: 'Invoeren' })).not.toBeInTheDocument();
@@ -131,6 +133,31 @@ describe('HoursWeekWorkspace', () => {
     fireEvent.change(screen.getByLabelText('Toelichting controle'), { target: { value: ' Pauze ontbreekt ' } });
     fireEvent.click(screen.getByRole('button', { name: 'Controle opslaan' }));
     await waitFor(() => expect(onReview).toHaveBeenCalledWith({ dayId: 'day-a', expectedRevisionId: 'revision-a', status: 'blocked', comment: 'Pauze ontbreekt' }));
+  });
+
+  it('counts each employee once when they have multiple placements', () => {
+    const week = weekFixture();
+    week.employees.push({ ...week.employees[0], id: 'member-b', placementLabel: 'Tweede plaatsing', days: [] });
+    render(<HoursWeekWorkspace week={week} onSaveDay={vi.fn()} />);
+    const metric = screen.getByText('Verwachte medewerkers').parentElement;
+    expect(within(metric).getByText('1')).toBeInTheDocument();
+    expect(screen.getByText('Tweede plaatsing')).toBeInTheDocument();
+  });
+
+  it.each(['invoer', 'controle'])('closes an active %s form when the workflow is disabled and keeps history readable', (form) => {
+    const onSaveDay = vi.fn();
+    const onReview = vi.fn();
+    const week = weekFixture();
+    week.employees[0].days[0].history = [{ id: 'old-revision', version: 0, minutes: 570, noHoursReason: null, notes: 'Eerdere bron' }];
+    const view = render(<HoursWeekWorkspace week={week} onSaveDay={onSaveDay} onReview={onReview} />);
+    fireEvent.click(screen.getByRole('button', { name: form === 'invoer' ? 'Wijzigen' : 'Afwijking vastleggen' }));
+    expect(screen.getByRole('form')).toBeInTheDocument();
+    view.rerender(<HoursWeekWorkspace week={{ ...week, enabled: false }} onSaveDay={onSaveDay} onReview={onReview} />);
+    expect(screen.queryByRole('form')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(screen.getByText('Eerdere bron')).toBeInTheDocument();
+    expect(onSaveDay).not.toHaveBeenCalled();
+    expect(onReview).not.toHaveBeenCalled();
   });
 
   it('does not mark an internal review complete after a version conflict', async () => {
@@ -217,5 +244,23 @@ describe('HoursPortalWeek', () => {
     view.rerender(<HoursPortalWeek week={weekFixture()} onRespond={onRespond} readOnly />);
     expect(screen.queryByRole('button', { name: 'Reactie opslaan' })).not.toBeInTheDocument();
     expect(onRespond).not.toHaveBeenCalled();
+  });
+
+  it('keeps existing hours and responses visible when the workflow is disabled and closes response controls', () => {
+    const onRespond = vi.fn();
+    const onConfirmAll = vi.fn();
+    const week = weekFixture();
+    week.employees[0].days[0].confirmation = { revisionId: 'revision-a', status: 'confirmed', comment: 'Eerdere reactie' };
+    const view = render(<HoursPortalWeek week={week} onRespond={onRespond} onConfirmAll={onConfirmAll} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Klopt niet' }));
+    expect(screen.getByRole('button', { name: 'Reactie opslaan' })).toBeInTheDocument();
+    view.rerender(<HoursPortalWeek week={{ ...week, enabled: false }} onRespond={onRespond} onConfirmAll={onConfirmAll} />);
+    expect(screen.getByRole('alert')).toHaveTextContent('Deze urenstroom staat uit');
+    expect(screen.getByRole('heading', { name: 'Mijn uren' })).toBeInTheDocument();
+    expect(screen.getByText(/Bronnotitie/)).toBeInTheDocument();
+    expect(screen.getByText(/Eerdere reactie/)).toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(onRespond).not.toHaveBeenCalled();
+    expect(onConfirmAll).not.toHaveBeenCalled();
   });
 });

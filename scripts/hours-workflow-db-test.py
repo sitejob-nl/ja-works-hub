@@ -6,12 +6,14 @@ credentials, real tenant writes, provider calls or mail. Public authorization
 helpers in the fixture are exact live definitions retrieved read-only.
 Run: python3 scripts/hours-workflow-db-test.py
 Then: python3 scripts/hours-workflow-db-test.py --cleanup
+Set HOURS_WORKFLOW_QA_OUTPUT to retain the report outside this worktree.
 """
 
 import argparse
 import concurrent.futures
 import hashlib
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -25,7 +27,7 @@ CONTAINER = "ja-works-hours-workflow-test-20260908"
 LABEL = "ja-werkt-hours-workflow-qa"
 LABEL_VALUE = "20260908"
 IMAGE = "public.ecr.aws/supabase/postgres:17.6.1.127"
-OUTPUT = Path("/tmp/ja-uren-build")
+OUTPUT = Path(os.environ.get("HOURS_WORKFLOW_QA_OUTPUT", ROOT / "test-results/hours-workflow-db"))
 
 
 def literal(value):
@@ -722,6 +724,7 @@ def main():
                         "sha256": applied_hashes[path]} for path in paths],
         "migration_unchanged_during_run": unchanged,
         "migration_applications": 2,
+        "output_directory": str(OUTPUT.resolve()),
         "fixture_sha256": hashlib.sha256((ROOT / "tests/db/hours-workflow-fixture.sql").read_bytes()).hexdigest(),
         "production_writes": 0, "real_provider_calls": 0, "communications_sent": 0,
         "auth_fixture": "Synthetic profiles/tables, Supabase auth.uid()/roles, exact public authorization helper definitions from production metadata 2026-09-08",
