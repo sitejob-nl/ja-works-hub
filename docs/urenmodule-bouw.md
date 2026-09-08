@@ -7,6 +7,8 @@ De fundering staat als draft in [PR #262](https://github.com/sitejob-nl/ja-works
 De afhankelijke matrixbouw staat in `/Users/kas/dev/ja-works-hub/.worktrees/urenmodule-matrix`, branch
 `codex/urenmodule-matrix`, vanaf fundering `47c408f`. Beide bouwstappen zijn nog niet naar productie uitgerold.
 Matrixcheckpoint `da7dbaa` staat in afhankelijke draft [PR #263](https://github.com/sitejob-nl/ja-works-hub/pull/263).
+Actieve vervolgworktree: `/Users/kas/dev/ja-works-hub/.worktrees/urenmodule-classificatie`, branch
+`codex/urenmodule-classificatie`, vanaf matrixcheckpoint `69aee12`.
 
 Deze eerste bouwstap voert de handmatige weekcontrole uit de specificatie van 7 september uit.
 Het is de basis voor de volledige urenmodule; geen volledige oplevering of payrollpilot.
@@ -30,6 +32,7 @@ Het is de basis voor de volledige urenmodule; geen volledige oplevering of payro
 Nieuwe schermen: `/uren/weken`, `/uren/weken/:weekId`, `/portaal/uren/weken` en
 `/portaal/uren/week/:weekId`. De bestaande dagadministratie en facturatie blijven legacy; er is nog
 geen projectie van nieuwe weekrevisies naar `timesheets` en dus geen dubbele payrolllevering.
+De bestaande urenpagina's bevatten nu een link naar de weekcontrole.
 
 ## Gedeelde berekening en planning
 
@@ -39,9 +42,9 @@ zoals OV1–OV5 blijven behouden. Ontbrekende en tegenstrijdige regels blokkeren
 
 Automatische dag-/weekoverwerkgrenzen, samenloop van toeslagen, feestdagen en berekening van echte
 verstreken diensttijd tijdens een klokwisseling zijn nog niet geïmplementeerd. De eerste matrixvorm
-weigert zulke configuratie; er wordt geen CAO geraden. Matrixopslag is nu gebouwd; het toepassen op persistente
-dagrevisies volgt in de volgende bouwstap. De huidige handmatige minuten zijn dus geen bewezen
-volledige uursoortenindeling.
+weigert zulke configuratie; er wordt geen CAO geraden. Matrixopslag en servermatige indeling van
+dagrevisies zijn nu gebouwd voor deze ondersteunde regels. Een ingevuld dagtotaal is niet automatisch
+een volledige uursoortenindeling: ontbrekende tijdinformatie blijft een blokkade.
 
 ## Matrixinrichting
 
@@ -59,9 +62,41 @@ Opvolgers beginnen later dan bestaande publicaties en niet vóór de huidige Ned
 ingeplande toekomstige publicaties kunnen in deze versie nog niet worden vervangen of ingehaald.
 
 Een CAO-basis wordt per opdrachtgever expliciet gekozen, met revisiecontrole en historie. Dit is nog
-geen historische koppeling met een eigen ingangsdatum. Persistente classificatie moet later de gekozen
-koppeling en matrix aan de exacte dagrevisie vastleggen. Het actuele formulier wijzigt geen uren.
+geen historische koppeling met een eigen ingangsdatum. De servermatige dagindeling legt de gekozen
+koppeling en matrix aan de exacte dagrevisie vast. Het matrixformulier wijzigt geen bestaande uren.
 Zie [matrixcontract](urenmodule-matrix-contract.md) voor het volledige opslag- en selectiecontract.
+
+## Brongegevens en servermatige dagindeling
+
+De interne daginvoer bewaart meerdere diensten met expliciete dagovergangen en bevestigde pauzes,
+broncategorieën of beide. Uren blijven hele minuten; subminuten worden zonder afronding afgewezen.
+Een tegenstrijdig aangeleverd totaal blijft zichtbaar als brongegeven en krijgt een blokkade bij de
+servercontrole. De invoer verwijdert bestaande details uitsluitend na expliciete bevestiging.
+
+Elke inhoudelijke wijziging maakt een nieuwe dagrevisie, ook wanneer alleen een dienst of broncategorie
+verandert. Het eerdere medewerkerakkoord en de eerdere controle gelden daarvoor niet meer. De oude
+eenvoudige opslag-RPC kan bestaande dienstgegevens niet ongemerkt wissen. Medewerkers zien de eigen
+bronfeiten in Nederlands, Engels of Pools; interne matrixfactoren en classificatiegegevens blijven afgeschermd.
+
+De browser stuurt bij **Uurindeling controleren** alleen dag-id en verwachte revisie-id naar
+`hours-classify-day`. De functie controleert de actieve interne gebruiker en `finance.manage`, leest
+canonieke gegevens en rekent met dezelfde gedeelde kern als het matrixvoorbeeld. Een afzonderlijke
+service-RPC controleert bevoegdheid, actuele dagrevisie en matrixcontext opnieuw voordat iets wordt bewaard.
+Gelijktijdige wijzigingen leveren een versieconflict op; er wordt geen achterhaald resultaat opgeslagen.
+
+De eerste geldige matrixselectie wordt onveranderlijk aan de werkdag gebonden, ook als ontbrekende
+bronfeiten de berekening vervolgens blokkeren. Latere correcties op die dag erven dezelfde basis.
+Een eerste ontbrekende matrix wordt niet vastgepind: na expliciete inrichting kan de controle opnieuw
+worden uitgevoerd. Opzettelijk wisselen van de vastgelegde basis vereist een latere, afzonderlijk
+gecontroleerde correctieprocedure en is in deze bouwstap niet beschikbaar.
+
+Resultaten blijven per revisie, rekenkernversie en context herleidbaar. Dezelfde volledige aanvraag,
+ook na het eerste vastpinnen, maakt geen dubbel resultaat. Het resultaat is een uurcodeverdeling,
+een blokkade met concrete redenen of expliciet geen uren. Nul uren met reden krijgt geen verzonnen
+looncode; tegenstrijdige dienstgegevens bij nul blijven geblokkeerd. Een geslaagde indeling is geen
+medewerkerakkoord, interne vrijgave of payrolllevering.
+
+Zie [classificatiecontract](urenmodule-classification-contract.md) voor de vertrouwensgrens en snapshots.
 
 `_shared/hours-schedule.ts` berekent onafhankelijke aanlever-/akkoorddeadlines en berichten per partij.
 De pure preview houdt rekening met zomer-/wintertijd, late aanlevering, uitgeschakelde berichten,
@@ -72,9 +107,9 @@ mailprofiel.
 
 ## Volgende bouwstappen
 
-1. Diensten en expliciete broncategorieën aan dagrevisies toevoegen, servermatige classificatie met
-   een vaste matrixsnapshot opslaan en blokkades zichtbaar maken. Daarna weekoverwerk en samenloop
-   implementeren op basis van bevestigde klant-/CAO-regels.
+1. Weekoverwerk, samenloop en eventuele fijnere tijdprecisie implementeren op basis van bevestigde
+   klant-/CAO-regels. Een expliciete procedure voor het corrigeren van een reeds vastgelegde matrixbasis
+   toevoegen voordat zulke uitzonderingen operationeel nodig zijn.
 2. Persoonlijke klantweeklinks, upload en duurzame mailinname. Originele bronnen privé bewaren,
    dedupliceren en gecontroleerde correctievoorstellen aanmaken.
 3. Bestandslezers en OCR/Vision aansluiten op de JA Werkt-VPS en centrale AI-accounting. Het vaste
@@ -108,6 +143,14 @@ Zeven offline browsercontroles toetsen de echte schermen met synthetische data o
 conceptopslag, actuele publicatiebevestiging, historie, versieconflicten, leesrechten en CAO-koppeling.
 Er zijn geen API-aanroepen of browserfouten; Google Fonts is in deze controle geblokkeerd.
 
+Inclusief brongegevens en serverclassificatie slagen 1.349 applicatietests, volledige lint (nul errors),
+typecheck en productiebuild. De Edge Function is apart met Deno gecontroleerd. De derde bouwstap heeft
+74 echte PostgreSQL-tests (waaronder 43 foundationregressies), 91 brongevallen en 9 offline
+browsercontroles doorstaan. De echte keten databasecontext → TypeScript-rekenkern → databasefinalisatie
+is getest, inclusief herhaling na de eerste vastgelegde matrixbasis. Alle drie migraties zijn tweemaal
+toegepast. De classificatiemigratie heeft SHA256
+`722e850c895e9cb876a44050c8d2aeaacf78dd2011f91c30677fe22f09c6a484`.
+
 Na verlies van de tijdelijke werkmap zijn de bestanden uit succesvolle sessie-edits hersteld in de
 vaste worktree en vastgelegd in Git. De migratiehash bleef exact
 `29db2584671ae0ea7feb1c73de94c0128fda984de765a9b79c6c065e93dd3c3a`.
@@ -117,5 +160,7 @@ De frontend gebruikt voorlopig een expliciet getypte en met Zod gecontroleerde R
 migratie toepassen, live types regenereren, adapter op de gegenereerde RPC-types aansluiten en
 smoketest uitvoeren.
 Alleen een frontendmerge is onvoldoende: eerst de additieve migratie en gegenereerde types controleren.
+Voor classificatie is daarnaast de nieuwe `hours-classify-day` Edge Function via de CLI vereist
+(`verify_jwt=false` uit `config.toml`; de functie valideert zelf de actieve gebruikerssessie).
 Bij deze bouwstap worden geen productieklanten geactiveerd, geen echte uren ingeschreven en geen
 klantberichten verstuurd.

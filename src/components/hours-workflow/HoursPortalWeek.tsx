@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { currentConfirmation, formatHours, formatHoursDate, formatHoursDeadline, hoursCopy, isHoursConflict } from './presentation';
 import type { HoursConfirmAllInput, HoursDayView, HoursLanguage, HoursRespondInput, HoursWeekView } from './types';
+import { HoursSourceSummary } from './HoursSourceSummary';
 
 export interface HoursPortalWeekProps {
   /** Must contain only the current employee's rows, returned by the authenticated RPC. */
@@ -125,6 +126,7 @@ export function HoursPortalWeek({ week, language = 'nl', onRespond, onConfirmAll
             </div>
             {day.revision?.noHoursReason && <p className="text-sm break-words">{day.revision.noHoursReason}</p>}
             {day.revision?.notes && <p className="text-sm whitespace-pre-wrap break-words"><span className="text-muted-foreground">{copy.note}: </span>{day.revision.notes}</p>}
+            <HoursSourceSummary source={day.revision?.sourceInput} language={language} />
             {day.revision && <div className="space-y-1 text-xs text-muted-foreground">
               <p>{copy.revision} {day.revision.version}</p>
               {day.revision.sourceLabel && <p className="break-words">{copy.source}: {day.revision.sourceLabel}{day.revision.sourceReference ? ` · ${day.revision.sourceReference}` : ''}</p>}

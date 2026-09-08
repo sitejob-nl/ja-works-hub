@@ -12,12 +12,17 @@ import { Textarea } from '@/components/ui/textarea';
 import { toFriendlyError } from '@/lib/errorMessages';
 import { parseHoursToMinutes } from '../../../supabase/functions/_shared/hours-calculation';
 import { currentConfirmation, formatHours, formatHoursDate, formatHoursDeadline, isHoursConflict } from './presentation';
-import type { HoursDayView, HoursReviewInput, HoursRevisionView, HoursSaveDayInput, HoursWeekView } from './types';
+import type { HoursClassifyInput, HoursDayView, HoursReviewInput, HoursRevisionView, HoursSaveDayInput, HoursWeekView } from './types';
+import { compileHoursSourceInput, removedSourceSections, sourceControlIssues, sourceDraftFromInput } from './hours-day-source';
+import { HoursSourceEditor } from './HoursSourceEditor';
+import { HoursSourceSummary } from './HoursSourceSummary';
+import { HoursClassificationDetails } from './HoursClassificationDetails';
 
 export interface HoursWeekWorkspaceProps {
   week: HoursWeekView;
   onSaveDay: (input: HoursSaveDayInput) => Promise<void>;
   onReview?: (input: HoursReviewInput) => Promise<void>;
+  onClassify?: (input: HoursClassifyInput) => Promise<void>;
   onReload?: () => void;
   readOnly?: boolean;
 }
@@ -68,6 +73,7 @@ function RevisionSource({ revision }: { revision: HoursRevisionView }) {
         <span>Bron: <span data-no-translate="true">{revision.sourceLabel || 'Bron niet beschikbaar'}{revision.sourceReference ? ` · ${revision.sourceReference}` : ''}</span></span>
       </p>
       {revision.notes && <p className="whitespace-pre-wrap break-words" data-no-translate="true">{revision.notes}</p>}
+      <HoursSourceSummary source={revision.sourceInput} />
     </div>
   );
 }
@@ -88,6 +94,7 @@ function DayDetails({ day }: { day: HoursDayView }) {
               <p>Versie {revision.version} · {revision.noHoursReason ? 'Geen uren' : revision.minutes == null ? 'Ontbreekt' : `${formatHours(revision.minutes)} uur`}</p>
               {revision.noHoursReason && <p data-no-translate="true">{revision.noHoursReason}</p>}
               <RevisionSource revision={revision} />
+              {revision.classification && <HoursClassificationDetails classification={revision.classification} revisionId={revision.id} />}
             </li>)}
           </ol>
         </details>
@@ -116,10 +123,19 @@ function DayEditor({ day, onSave, onCancel, onReload }: {
   const [noHours, setNoHours] = useState(Boolean(baseRevision?.noHoursReason));
   const [reason, setReason] = useState(baseRevision?.noHoursReason ?? '');
   const [notes, setNotes] = useState(baseRevision?.notes ?? '');
+  const [sourceDraft, setSourceDraft] = useState(() => sourceDraftFromInput(baseRevision?.sourceInput));
+  const [initialSourceDraft] = useState(JSON.stringify(sourceDraft));
+  const [sourceRemovalConfirmed, setSourceRemovalConfirmed] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [serverConflict, setServerConflict] = useState(false);
   const changed = (day.revision?.id ?? null) !== (baseRevision?.id ?? null) || serverConflict;
+  const sourceChanged = JSON.stringify(sourceDraft) !== initialSourceDraft;
+  const compiledSource = compileHoursSourceInput(sourceDraft);
+  const sourceInput = !sourceChanged ? baseRevision?.sourceInput ?? null : compiledSource.ok ? compiledSource.value : null;
+  const removesSource = sourceChanged && removedSourceSections(baseRevision?.sourceInput, sourceDraft);
+  const controlTotal = noHours ? { ok: true as const, value: 0 } : parseHoursToMinutes(hours, { maxMinutes: 1440 });
+  const sourceIssues = controlTotal.ok && compiledSource.ok ? sourceControlIssues(controlTotal.value, sourceInput) : [];
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -138,9 +154,11 @@ function DayEditor({ day, onSave, onCancel, onReload }: {
       setError('Kies “Geen uren” en geef een reden op om nul uren vast te leggen.');
       return;
     }
+    if (compiledSource.ok === false) { setError(compiledSource.issues.map(issue => issue.message).join(' ')); return; }
+    if (removesSource && !sourceRemovalConfirmed) { setError('Bevestig expliciet dat je de eerder vastgelegde brongegevens verwijdert.'); return; }
     setSaving(true);
     try {
-      await onSave({ dayId: day.id, expectedRevisionId: baseRevision?.id ?? null, minutes: parsed.value, noHoursReason: noHours ? reason.trim() : null, notes: notes.trim() || null });
+      await onSave({ dayId: day.id, expectedRevisionId: baseRevision?.id ?? null, minutes: parsed.value, noHoursReason: noHours ? reason.trim() : null, notes: notes.trim() || null, ...(sourceInput !== null || baseRevision?.sourceInput != null ? { sourceInput } : {}) });
       onCancel();
     } catch (failure) {
       if (isHoursConflict(failure)) setServerConflict(true);
@@ -151,9 +169,9 @@ function DayEditor({ day, onSave, onCancel, onReload }: {
   }
 
   return (
-    <form onSubmit={submit} className="mt-3 space-y-3 rounded-lg border bg-muted/20 p-3" aria-label={`Uren invoeren ${formatHoursDate(day.workDate)}`}>
+    <form onSubmit={submit} className="mt-3 min-w-0 space-y-3 rounded-lg border bg-muted/20 p-3" aria-label={`Uren invoeren ${formatHoursDate(day.workDate)}`}>
       {baseRevision && <p className="text-xs text-muted-foreground">Wijziging op versie {baseRevision.version}. Na opslaan moet de medewerker gewijzigde uren opnieuw bevestigen.</p>}
-      <fieldset disabled={saving || changed} className="space-y-3">
+      <fieldset disabled={saving || changed} className="min-w-0 space-y-3">
         <div className="flex items-center gap-2">
           <Checkbox id={`no-hours-${day.id}`} checked={noHours} onCheckedChange={(value) => setNoHours(value === true)} />
           <Label htmlFor={`no-hours-${day.id}`}>Geen uren</Label>
@@ -166,11 +184,14 @@ function DayEditor({ day, onSave, onCancel, onReload }: {
           <Input id={`hours-${day.id}`} value={hours} onChange={(event) => setHours(event.target.value)} inputMode="decimal" placeholder="8,5 of 8:30" aria-describedby={`hours-help-${day.id}`} autoComplete="off" />
           <p id={`hours-help-${day.id}`} className="text-xs text-muted-foreground">Een leeg veld blijft ontbrekend. Gebruik bijvoorbeeld 8,5 of 8:30 voor 8 uur en 30 minuten.</p>
         </div>}
+        <HoursSourceEditor idPrefix={day.id} value={sourceDraft} onChange={value => { setSourceDraft(value); setSourceRemovalConfirmed(false); }} />
+        {removesSource && <label className="flex items-start gap-2 text-sm"><input className="mt-0.5" type="checkbox" checked={sourceRemovalConfirmed} onChange={event => setSourceRemovalConfirmed(event.target.checked)} />Ik bevestig dat ik de uitgeschakelde brongegevens uit de nieuwe dagversie verwijder. De eerdere versie blijft bewaard.</label>}
         <div className="space-y-1.5">
           <Label htmlFor={`notes-${day.id}`}>Opmerking bij de invoer</Label>
           <Textarea id={`notes-${day.id}`} value={notes} maxLength={4000} onChange={(event) => setNotes(event.target.value)} rows={2} />
         </div>
       </fieldset>
+      {sourceIssues.length > 0 && <Alert><AlertDescription><p className="font-medium">De brongegevens vragen om controle.</p><ul className="mt-1 space-y-1">{sourceIssues.map((issue, index) => <li key={index}>{issue.message}{issue.expectedMinutes != null && issue.actualMinutes != null ? ` Berekend: ${formatHours(issue.expectedMinutes)} uur; aangeleverd: ${formatHours(issue.actualMinutes)} uur.` : ''}</li>)}</ul><p className="mt-2">Je kunt de aangeleverde feiten opslaan. De servercontrole bepaalt daarna welke afwijkingen de uurindeling blokkeren.</p></AlertDescription></Alert>}
       {changed && <Alert variant="destructive"><AlertDescription>
         Deze dag is ondertussen gewijzigd. Je invoer is niet opgeslagen. Sluit de invoer en controleer de actuele versie voordat je verdergaat.
         {onReload && <Button type="button" variant="outline" size="sm" className="mt-2" onClick={onReload}>Actuele uren laden</Button>}
@@ -184,15 +205,20 @@ function DayEditor({ day, onSave, onCancel, onReload }: {
   );
 }
 
-export function HoursWeekWorkspace({ week, onSaveDay, onReview, onReload, readOnly: permissionReadOnly = false }: HoursWeekWorkspaceProps) {
+export function HoursWeekWorkspace({ week, onSaveDay, onReview, onClassify, onReload, readOnly: permissionReadOnly = false }: HoursWeekWorkspaceProps) {
   const readOnly = permissionReadOnly || !week.enabled;
   const [editingDay, setEditingDay] = useState<string | null>(null);
   const [reviewing, setReviewing] = useState<{ dayId: string; status: HoursReviewInput['status'] } | null>(null);
   const [saved, setSaved] = useState(false);
+  const [classifying, setClassifying] = useState<string | null>(null);
+  const [classificationError, setClassificationError] = useState<{ dayId: string; revisionId: string; message: string; conflict: boolean } | null>(null);
   const days = week.employees.flatMap((employee) => employee.days);
   const received = days.filter((day) => day.revision);
   const confirmed = days.filter((day) => currentConfirmation(day)?.status === 'confirmed');
   const total = received.reduce((minutes, day) => minutes + (day.revision?.minutes ?? 0), 0);
+  const blockedDayCount = new Set(days.filter(day => currentConfirmation(day)?.status === 'disputed'
+    || (day.review?.revisionId === day.revision?.id && day.review?.status === 'blocked')
+    || (day.classification?.revisionId === day.revision?.id && day.classification?.status === 'blocked')).map(day => day.id)).size;
 
   const employeeCount = new Set(week.employees.map((employee) => employee.candidateId)).size;
 
@@ -210,6 +236,7 @@ export function HoursWeekWorkspace({ week, onSaveDay, onReview, onReload, readOn
       {week.confirmationDeadline && <p>Medewerkerakkoord vóór: <strong>{formatHoursDeadline(week.confirmationDeadline)}</strong></p>}
     </div>}
     <p className="text-sm text-muted-foreground">Een lege dag is ontbrekende informatie. Ook bij geen gewerkte uren is een reden nodig. Medewerkerakkoord en interne controle blijven afzonderlijk zichtbaar.</p>
+    {blockedDayCount > 0 && <p className="text-sm text-destructive">{blockedDayCount} {blockedDayCount === 1 ? 'dag vraagt' : 'dagen vragen'} aandacht door een betwisting, interne blokkade of geblokkeerde uurindeling.</p>}
     {saved && <p role="status" className="text-sm text-stat-green">De dag is opgeslagen. Gewijzigde uren wachten op een nieuwe reactie van de medewerker.</p>}
     {days.length === 0 && <Card><CardContent className="p-6 text-sm text-muted-foreground">Er staan nog geen medewerkers of dagen klaar voor deze week.</CardContent></Card>}
     {week.employees.map((employee) => <Card key={employee.id}>
@@ -224,12 +251,20 @@ export function HoursWeekWorkspace({ week, onSaveDay, onReview, onReload, readOn
                 {day.revision && <span className="text-xs text-muted-foreground">{day.review?.revisionId === day.revision.id ? day.review.status === 'checked' ? 'Handmatig gecontroleerd' : 'Controle geblokkeerd' : 'Intern te controleren'}</span>}
               </div>
             </div>
-            {!readOnly && editingDay !== day.id && <Button variant="outline" size="sm" disabled={editingDay !== null || reviewing !== null} onClick={() => { setEditingDay(day.id); setSaved(false); }}><Pencil className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />{day.revision ? 'Wijzigen' : 'Invoeren'}</Button>}
+            {!readOnly && editingDay !== day.id && <Button variant="outline" size="sm" disabled={editingDay !== null || reviewing !== null || classifying !== null} onClick={() => { setEditingDay(day.id); setSaved(false); }}><Pencil className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />{day.revision ? 'Wijzigen' : 'Invoeren'}</Button>}
           </div>
           <div className="mt-2"><DayDetails day={day} /></div>
+          {day.revision && <div className="mt-3"><HoursClassificationDetails classification={day.classification} revisionId={day.revision.id} /></div>}
+          {!readOnly && onClassify && day.revision && <div className="mt-3 space-y-2">
+            <Button type="button" size="sm" variant="outline" disabled={editingDay !== null || reviewing !== null || classifying !== null || (classificationError?.dayId === day.id && classificationError.revisionId === day.revision.id && classificationError.conflict)} onClick={async () => {
+              const revisionId = day.revision.id; setClassifying(day.id); setClassificationError(null);
+              try { await onClassify({ dayId: day.id, expectedRevisionId: revisionId }); } catch (failure) { setClassificationError({ dayId: day.id, revisionId, conflict: isHoursConflict(failure), message: isHoursConflict(failure) ? 'De dagversie of matrixbasis is ondertussen gewijzigd. Laad de actuele uren voordat je opnieuw controleert.' : toFriendlyError(failure, 'De uursoortencontrole is niet gelukt. Probeer het opnieuw.') }); } finally { setClassifying(null); }
+            }}>{classifying === day.id ? 'Uursoorten controleren…' : 'Uursoorten controleren'}</Button>
+            {classificationError?.dayId === day.id && classificationError.revisionId === day.revision.id && <Alert variant="destructive"><AlertDescription>{classificationError.message}{classificationError.conflict && onReload && <div className="mt-2"><Button type="button" variant="outline" size="sm" onClick={() => { setClassificationError(null); onReload(); }}>Actuele uren laden</Button></div>}</AlertDescription></Alert>}
+          </div>}
           {!readOnly && onReview && day.revision && reviewing?.dayId !== day.id && <div className="mt-3 flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" disabled={editingDay !== null || reviewing !== null} onClick={() => { setReviewing({ dayId: day.id, status: 'checked' }); setSaved(false); }}>Handmatig gecontroleerd</Button>
-            <Button size="sm" variant="outline" disabled={editingDay !== null || reviewing !== null} onClick={() => { setReviewing({ dayId: day.id, status: 'blocked' }); setSaved(false); }}>Afwijking vastleggen</Button>
+            <Button size="sm" variant="outline" disabled={editingDay !== null || reviewing !== null || classifying !== null} onClick={() => { setReviewing({ dayId: day.id, status: 'checked' }); setSaved(false); }}>Handmatig gecontroleerd</Button>
+            <Button size="sm" variant="outline" disabled={editingDay !== null || reviewing !== null || classifying !== null} onClick={() => { setReviewing({ dayId: day.id, status: 'blocked' }); setSaved(false); }}>Afwijking vastleggen</Button>
           </div>}
           {!readOnly && onReview && reviewing?.dayId === day.id && <ReviewEditor key={day.id} day={day} status={reviewing.status} onReview={onReview} onReload={onReload} onClose={() => setReviewing(null)} />}
           {editingDay === day.id && !readOnly && <DayEditor key={day.id} day={day} onReload={onReload} onCancel={() => setEditingDay(null)} onSave={async (input) => { await onSaveDay(input); setSaved(true); }} />}

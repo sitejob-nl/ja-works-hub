@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { usePortal } from '@/contexts/PortalContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -191,6 +192,12 @@ const PortalTimesheets = () => {
 
   return (
     <div className="space-y-4">
+      <div className="flex flex-col gap-3 rounded-xl border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm">Controleer de aangeleverde uren van je opdrachtgever per werkweek.</p>
+        <Button asChild variant="outline" className="shrink-0">
+          <Link to="/portaal/uren/weken">Uren controleren</Link>
+        </Button>
+      </div>
       {/* Week navigation */}
       <div className="bg-card rounded-xl border p-4">
         <div className="flex items-center justify-between">

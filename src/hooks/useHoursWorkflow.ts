@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { hoursWorkflowRpc } from '@/lib/hours-workflow-api';
+import { hoursClassifyDay, hoursWorkflowRpc } from '@/lib/hours-workflow-api';
 import { qk } from '@/lib/query-keys';
-import { hoursWeekSchema, hoursWeekListSchema } from '@/lib/hours-workflow';
+import { hoursClassificationSchema, hoursWeekSchema, hoursWeekListSchema } from '@/lib/hours-workflow';
+import type { HoursClassifyInput, HoursSaveDayInput } from '@/components/hours-workflow/types';
+import { z } from 'zod';
 
 export interface HoursActor { organizationId: string; userId: string; zone: 'internal' | 'portal' }
 
@@ -22,9 +24,7 @@ export function useHoursWeek(actor: HoursActor, weekId?: string) {
     enabled: !!actor.organizationId && !!actor.userId && !!weekId,
   });
   const mutation = useMutation({
-    mutationFn: async (action: {
-      type: 'save'; dayId: string; expectedRevisionId: string | null; minutes: number | null; noHoursReason: string | null; notes: string | null;
-    } | {
+    mutationFn: async (action: ({ type: 'save' } & HoursSaveDayInput) | {
       type: 'respond'; dayId: string; expectedRevisionId: string; response: 'confirmed' | 'disputed'; comment: string | null;
     } | {
       type: 'confirmAll'; revisions: { dayId: string; expectedRevisionId: string }[]; comment: string | null;
@@ -32,9 +32,10 @@ export function useHoursWeek(actor: HoursActor, weekId?: string) {
       type: 'review'; dayId: string; expectedRevisionId: string; status: 'checked' | 'blocked'; comment: string | null;
     }) => {
       const result = action.type === 'save'
-        ? await hoursWorkflowRpc('hours_save_day', {
+        ? await hoursWorkflowRpc('hours_save_day_source', {
           p_day_id: action.dayId, p_expected_revision_id: action.expectedRevisionId,
           p_minutes: action.minutes, p_no_hours_reason: action.noHoursReason, p_note: action.notes,
+          p_source_input: action.sourceInput ?? null,
         })
         : action.type === 'respond' ? await hoursWorkflowRpc('hours_confirm_day', {
           p_day_id: action.dayId, p_expected_revision_id: action.expectedRevisionId,
@@ -52,5 +53,13 @@ export function useHoursWeek(actor: HoursActor, weekId?: string) {
       await qc.invalidateQueries({ queryKey: qk.hoursWorkflow.all(actor.organizationId) });
     },
   });
-  return { ...query, mutation };
+  const classificationMutation = useMutation({
+    mutationFn: async (input: HoursClassifyInput) => {
+      const response = z.object({ classification: hoursClassificationSchema }).parse(await hoursClassifyDay(input));
+      if (response.classification.revision_id !== input.expectedRevisionId) throw new Error('De controle hoort bij een andere dagversie. Ververs de week voordat je verdergaat.');
+      return response;
+    },
+    onSuccess: async () => { await qc.invalidateQueries({ queryKey: qk.hoursWorkflow.all(actor.organizationId) }); },
+  });
+  return { ...query, mutation, classificationMutation };
 }

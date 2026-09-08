@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { unwrap } from '@/lib/db';
+import type { HoursSourceInput } from '@/components/hours-workflow/hours-day-source';
 
 /**
  * Explicit boundary for the additive, not-yet-deployed workflow RPCs. The existing
@@ -19,6 +20,7 @@ interface HoursRpcArguments {
     p_confirmation_day_offset: number; p_confirmation_time: string;
   };
   hours_save_day: { p_day_id: string; p_expected_revision_id: string | null; p_minutes: number; p_no_hours_reason: string | null; p_note: string | null };
+  hours_save_day_source: { p_day_id: string; p_expected_revision_id: string | null; p_minutes: number; p_no_hours_reason: string | null; p_note: string | null; p_source_input: HoursSourceInput | null };
   hours_confirm_day: { p_day_id: string; p_expected_revision_id: string; p_decision: 'confirmed' | 'disputed'; p_note: string | null };
   hours_confirm_days: { p_week_id: string; p_revisions: { day_id: string; revision_id: string }[]; p_note: string | null };
   hours_review_day: { p_day_id: string; p_expected_revision_id: string; p_status: 'checked' | 'blocked'; p_note: string | null };
@@ -26,4 +28,22 @@ interface HoursRpcArguments {
 
 export async function hoursWorkflowRpc<K extends keyof HoursRpcArguments>(name: K, args: HoursRpcArguments[K]): Promise<unknown> {
   return unwrap((supabase as SupabaseClient).rpc(name, args));
+}
+
+/** The server reads all facts and matrices; the browser sends identifiers only. */
+export async function hoursClassifyDay(input: { dayId: string; expectedRevisionId: string }): Promise<unknown> {
+  const { data, error } = await supabase.functions.invoke('hours-classify-day', {
+    body: { day_id: input.dayId, expected_revision_id: input.expectedRevisionId },
+  });
+  if (error) {
+    if (error.context instanceof Response) {
+      let body: unknown;
+      try { body = await error.context.clone().json(); } catch { /* Preserve the original transport error if the server returned no JSON. */ }
+      if (body && typeof body === 'object' && 'code' in body && typeof body.code === 'string') {
+        throw Object.assign(new Error('error' in body && typeof body.error === 'string' ? body.error : error.message), { code: body.code });
+      }
+    }
+    throw error;
+  }
+  return data;
 }
