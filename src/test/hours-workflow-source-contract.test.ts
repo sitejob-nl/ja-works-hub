@@ -80,9 +80,9 @@ describe('hours-classify-day transport', () => {
     expect(api.invoke).toHaveBeenCalledWith('hours-classify-day', { body: { day_id: id(4), expected_revision_id: id(5) } });
   });
 
-  it('preserves the server CAS code from a Supabase FunctionsHttpError response', async () => {
-    api.invoke.mockResolvedValue({ data: null, error: { message: 'Non-2xx status', context: new Response(JSON.stringify({ error: 'Revision or matrix context changed', code: '40001' }), { status: 409 }) } });
-    await expect(hoursClassifyDay({ dayId: id(4), expectedRevisionId: id(5) })).rejects.toMatchObject({ code: '40001', message: 'Revision or matrix context changed' });
+  it.each(['40001', 'PT409'])('preserves the server CAS code %s from a Supabase FunctionsHttpError response', async code => {
+    api.invoke.mockResolvedValue({ data: null, error: { message: 'Non-2xx status', context: new Response(JSON.stringify({ error: 'Revision or matrix context changed', code }), { status: 409 }) } });
+    await expect(hoursClassifyDay({ dayId: id(4), expectedRevisionId: id(5) })).rejects.toMatchObject({ code, message: 'Revision or matrix context changed' });
   });
 
   it('keeps an unreadable gateway response as an error, not a classification', async () => {

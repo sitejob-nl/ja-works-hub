@@ -103,7 +103,8 @@ export function createHoursClassificationHandler(ports: HoursClassificationPorts
   const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers });
   const rpcError = (error: { code?: string }) => {
     switch (error.code) {
-      case '40001': return json({ error: 'De dag of matrixbasis is gewijzigd. Vernieuw de week en controleer de nieuwste gegevens.', code: '40001' }, 409);
+      case 'PT409': case '40001':
+        return json({ error: 'De dag of matrixbasis is gewijzigd. Vernieuw de week en controleer de nieuwste gegevens.', code: error.code }, 409);
       case '42501': return json({ error: 'Geen toegang tot deze dag of onvoldoende rechten.', code: '42501' }, 403);
       case '22023': case '22P02': case '23514':
         return json({ error: 'De gegevens voor deze classificatie zijn ongeldig.', code: error.code }, 400);

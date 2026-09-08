@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { hoursWeekSchema, toHoursWeekView, hoursWorkflowError } from '@/lib/hours-workflow';
 import { qk } from '@/lib/query-keys';
+import { isHoursConflict } from '@/components/hours-workflow/presentation';
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const revision = { id: id(5), revision_number: 2, minutes: 510, no_hours_reason: null, note: '8:30 gecorrigeerd', source_references: [], created_at: '2026-09-08T08:00:00Z' };
@@ -59,7 +60,11 @@ describe('hours workflow boundary', () => {
     expect(base).not.toEqual(qk.hoursWorkflow.week('org-a', 'person-b', 'portal', 'week-a'));
     expect(base).not.toEqual(qk.hoursWorkflow.week('org-a', 'person-a', 'internal', 'week-a'));
   });
-  it('shows a reload action after an optimistic version conflict', () => {
-    expect(hoursWorkflowError({ code: '40001', message: 'internal debug' })).toContain('Ververs de week');
+  it.each(['40001', 'PT409'])('shows a reload action after an optimistic version conflict with code %s', code => {
+    const error = Object.freeze({ code, message: 'internal debug' });
+    expect(hoursWorkflowError(error)).toContain('Ververs de week');
+    expect(hoursWorkflowError(error)).not.toContain('internal debug');
+    expect(isHoursConflict(error)).toBe(true);
+    expect(error.code).toBe(code);
   });
 });

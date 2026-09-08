@@ -125,7 +125,9 @@ Bij een portalprojectie is `review.note` altijd `null`. Notities die de medewerk
 | --- | --- |
 | `42501` | Ontbrekende bevoegdheid, verkeerde organisatie/kandidaat, ontoegankelijke id of poging tot wijziging van historie |
 | `22023` | Ongeldige invoer/configuratie, uitgeschakelde workflow, geen relevante plaatsingen of ongeldige kandidaatkoppeling |
-| `40001` | Revisie of instellingen zijn gewijzigd; opnieuw laden en de nieuwe inhoud laten beoordelen |
+| `PT409` | Revisie of instellingen zijn gewijzigd; opnieuw laden en de nieuwe inhoud laten beoordelen |
+
+De aanvullende [conflictmigratie](urenmodule-conflicts.md) vervangt hiervoor de vroegere `40001`, zodat PostgREST direct HTTP 409 retourneert en de oude invoer niet blijft herhalen.
 
 Voor fysieke tabelconstraints kan PostgreSQL een specifieke constraintcode teruggeven; de RPC's valideren de normale gebruikersinvoer eerder. Ongeldige SQL-argumenttypen worden door PostgreSQL/PostgREST vóór de functie afgewezen.
 

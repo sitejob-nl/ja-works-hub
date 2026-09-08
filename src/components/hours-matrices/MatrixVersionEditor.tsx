@@ -42,7 +42,7 @@ export function MatrixVersionEditor({ matrix, version, canManage, onSave, onPubl
     setBusy(true); setError(null);
     try { await action(); } catch (failure) {
       setError(failure);
-      if (typeof failure === 'object' && failure !== null && 'code' in failure && failure.code === '40001') setConflict(true);
+      if (typeof failure === 'object' && failure !== null && 'code' in failure && (failure.code === 'PT409' || failure.code === '40001')) setConflict(true);
     } finally { setBusy(false); }
   };
   const canPublish = !readOnly && !!version && !dirty && !stale && !busy && validation.ok && !publicationIssue && previewReady && confirmed;

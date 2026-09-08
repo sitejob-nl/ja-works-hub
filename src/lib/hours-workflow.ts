@@ -89,7 +89,7 @@ export function toHoursClassificationView(value: z.infer<typeof hoursClassificat
 
 export function hoursWorkflowError(error: unknown): string {
   const code = typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : '';
-  if (code === '40001') return 'Deze uren zijn ondertussen gewijzigd. Ververs de week en controleer de nieuwe versie.';
+  if (code === 'PT409' || code === '40001') return 'Deze uren zijn ondertussen gewijzigd. Ververs de week en controleer de nieuwe versie.';
   if (code === '42501') return 'Je hebt geen toegang tot deze uren of deze actie.';
   if (error instanceof z.ZodError) return 'Het urenoverzicht kon niet betrouwbaar worden gelezen. Ververs de pagina.';
   if (typeof error === 'object' && error !== null && 'message' in error) return String(error.message);

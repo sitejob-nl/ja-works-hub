@@ -127,6 +127,8 @@ type CompanyMatrixBinding = {
 | --- | --- |
 | `42501` | Geen bevoegdheid, verkeerde organisatie/scope, ontoegankelijke identiteit of poging gepubliceerde historie te wijzigen |
 | `22023` | Ongeldige of niet ondersteunde configuratie, ontbrekende bevestiging, dubbele klantmatrix of ongeldige publicatietijdlijn |
-| `40001` | Concept- of koppelingsversie gewijzigd; opnieuw ophalen en de nieuwe inhoud beoordelen |
+| `PT409` | Concept- of koppelingsversie gewijzigd; opnieuw ophalen en de nieuwe inhoud beoordelen |
+
+De aanvullende [conflictmigratie](urenmodule-conflicts.md) vervangt hiervoor de vroegere `40001`, zodat PostgREST direct HTTP 409 retourneert.
 
 PostgreSQL/PostgREST valideert ongeldige SQL-argumenttypen vóór uitvoering. Directe constraints kunnen specifieke PostgreSQL-codes teruggeven; de RPC's valideren normale invoer eerder. Er zijn geen productie-DDL, voorbeeld-CAO's of automatische koppelingen uitgevoerd door deze migratievoorbereiding. Database-integratietests toetsen de echte migratie, rolgrenzen, gelijktijdige CAS/publicatie, configuratiepariteit en effectieve opvolging in een geïsoleerde database.

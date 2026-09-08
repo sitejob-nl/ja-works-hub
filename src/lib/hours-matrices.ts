@@ -123,7 +123,7 @@ export const formatMatrixMinutes = (minutes: number): string => `${Math.floor(mi
 
 export function hoursMatrixError(error: unknown): string {
   const code = typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : '';
-  if (code === '40001') return 'Dit concept is ondertussen gewijzigd. Laad de actuele versie en controleer je wijzigingen opnieuw.';
+  if (code === 'PT409' || code === '40001') return 'Dit concept is ondertussen gewijzigd. Laad de actuele versie en controleer je wijzigingen opnieuw.';
   if (code === '42501') return 'Je hebt geen toegang tot deze matrix of deze actie.';
   if (error instanceof z.ZodError) return 'De matrix bevat onbekende of ongeldige instellingen en kan niet veilig worden geopend.';
   if (code === '22023' || code === '23P01') return 'De matrix kan niet worden opgeslagen of gepubliceerd. Controleer de periode, uurcodes en regels. Een opvolgende versie moet later beginnen dan de vorige versie en mag niet vóór vandaag starten.';

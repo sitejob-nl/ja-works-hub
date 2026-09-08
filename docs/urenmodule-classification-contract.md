@@ -112,7 +112,7 @@ De vier resultaatvelden zijn exact. De database maakt input-, matrix- en koppeli
 
 Finaliseren controleert opnieuw het echte actieve profiel, de eigen organisatie, interne rol en actuele finance.manage-bevoegdheid. Het gebruikt de bestaande autorisatiehelpers inclusief rolmatrix en individuele uitzonderingen. De tijdelijke actorcontext vervangt alle drie JWT-GUC's die de live auth.uid()/auth.role()-helpers lezen. Alle drie worden bij succes en fouten hersteld; de browser krijgt geen RPC waarmee die context kan worden gezet. Profiel- en machtigingsrijen worden tijdens de controle vastgehouden.
 
-De lockvolgorde is werkweek → dag → opdrachtgever → matrixregisters in UUID-volgorde. Instellingen en CAO-koppeling delen het opdrachtgever-slot; publicatie deelt het matrixregister-slot. Vóór opslag worden huidige revisie, workflowstatus en de context-hash opnieuw gecontroleerd. Een wijziging tussen ophalen en finaliseren leidt tot 40001 en vereist een nieuwe berekening. De reeds vastgelegde dagbasis blijft daarbij de bron van waarheid.
+Na validatie en bescherming van de actieve actor begint de schrijfvergrendeling bij de organisatie, gevolgd door werkweek → dag → opdrachtgever → matrixregisters in UUID-volgorde. De organisatievergrendeling synchroniseert met de SaaS-schakelaar; zie het [modulecontract](urenmodule-organization-gate.md). Instellingen en CAO-koppeling delen het opdrachtgever-slot; publicatie deelt het matrixregister-slot. Vóór opslag worden huidige revisie, workflowstatus en de context-hash opnieuw gecontroleerd. Een wijziging tussen ophalen en finaliseren leidt tot PT409 en vereist een nieuwe berekening. De reeds vastgelegde dagbasis blijft daarbij de bron van waarheid.
 
 De database valideert resultaatstructuur, begrensde hele minuten, de som van de verdeling, uurcodes, letterlijk gelijke factorwaarden, regel-id's en expliciete bronverwijzingen tegen de vertrouwde context. Zij berekent geen tijdvensters of overwerk opnieuw. Een blokkade bevat bevindingen en geen definitieve verdeling. Een definitieve indeling vereist een toepasselijke matrix, positieve minuten, een sluitend controletotaal en geen blokkades.
 
@@ -149,7 +149,9 @@ De interne hours_list_weeks.blocked_day_count telt een dag zodra de actuele mede
 | --- | --- |
 | 42501 | Geen bevoegdheid, ontoegankelijke tenant/dag of poging de vertrouwde servergrens/historie te omzeilen |
 | 22023 | Ongeldige bronstructuur, uitgeschakelde workflow, ongeldige resultaatreferenties of niet ondersteunde engineversie |
-| 40001 | Revisie, relevante context of resultaat van dezelfde berekening conflicteert |
+| PT409 | Revisie, relevante context of resultaat van dezelfde berekening conflicteert |
+
+De aanvullende [conflictmigratie](urenmodule-conflicts.md) vervangt hiervoor de vroegere `40001`, zodat PostgREST direct HTTP 409 retourneert. De bijgewerkte edge-handler ondersteunt beide foutcodes.
 
 De rekenkern produceert inhoudelijke blokkades zoals ontbrekende matrices, niet sluitende totalen, overlappende diensten, ontbrekende mappings en klokwisseldagen. Deze worden als append-only blocked-pogingen bewaard en niet als geslaagde indeling gepresenteerd.
 

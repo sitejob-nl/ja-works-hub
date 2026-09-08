@@ -27,6 +27,11 @@ export default function PortalHoursWorkflow() {
     previousPortalLanguage.current = portalLanguage;
   }, [portalLanguage]);
   const t = copy[language];
+  const responseError = (error: unknown) => {
+    const code = typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : '';
+    const isConflict = code === 'PT409' || code === '40001';
+    return Object.assign(new Error(language === 'nl' ? hoursWorkflowError(error) : isConflict ? t.conflict : t.saveError), isConflict ? { code } : {});
+  };
   const weeks = useHoursWeeks(actor);
   const week = useHoursWeek(actor, weekId);
   const active = weekId ? week : weeks;
@@ -40,16 +45,10 @@ export default function PortalHoursWorkflow() {
     {weekId && <Button asChild variant="outline"><Link to="/portaal/uren/weken">{t.back}</Link></Button>}
     {!actor.organizationId || !actor.userId ? <p role="alert">{t.missingAccount}</p> : active.error ? <div role="alert" className="space-y-3"><p>{t.error}</p><Button variant="outline" onClick={() => void active.refetch()}>{t.retry}</Button></div> : active.isPending ? <p role="status">{t.loading}</p> : weekId && week.data ? <HoursPortalWeek key={week.data.id} week={toHoursWeekView(week.data)} language={language} readOnly={!week.data.can_confirm} onRespond={async input => {
       try { await week.mutation.mutateAsync({ type: 'respond', ...input }); }
-      catch (error) {
-        const isConflict = typeof error === 'object' && error !== null && 'code' in error && error.code === '40001';
-        throw Object.assign(new Error(language === 'nl' ? hoursWorkflowError(error) : isConflict ? t.conflict : t.saveError), isConflict ? { code: '40001' } : {});
-      }
+      catch (error) { throw responseError(error); }
     }} onConfirmAll={async input => {
       try { await week.mutation.mutateAsync({ type: 'confirmAll', ...input }); }
-      catch (error) {
-        const isConflict = typeof error === 'object' && error !== null && 'code' in error && error.code === '40001';
-        throw Object.assign(new Error(language === 'nl' ? hoursWorkflowError(error) : isConflict ? t.conflict : t.saveError), isConflict ? { code: '40001' } : {});
-      }
+      catch (error) { throw responseError(error); }
     }} onReload={() => void week.refetch()} /> : <>
       {!weeks.data?.weeks.length && <p className="text-muted-foreground">{t.empty}</p>}
       {weeks.data?.weeks.map(item => <Link key={item.id} to={`/portaal/uren/week/${item.id}`} className="block rounded-xl border p-4 hover:border-primary"><p className="font-medium">{item.company_name}</p><p className="text-sm text-muted-foreground">{t.week} {item.week_start}</p></Link>)}

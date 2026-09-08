@@ -192,10 +192,13 @@ describe('trusted hours classification HTTP boundary', () => {
     const h = harness({ context: invalid });
     expect((await h.call()).status).toBe(500); expect(h.serviceRpc).not.toHaveBeenCalled();
   });
-  it.each(['contextError', 'finalizeError'] as const)('returns stale context/revision as 409 from %s', async key => {
-    const h = harness({ [key]: { code: '40001', message: 'Private SQL detail' } });
+  it.each((['contextError', 'finalizeError'] as const).flatMap(key => ['40001', 'PT409'].map(code => ({ key, code }))))('returns stale context/revision as HTTP 409 from $key with $code', async ({ key, code }) => {
+    const h = harness({ [key]: { code, message: 'Private SQL detail' } });
     const response = await h.call();
-    expect(response.status).toBe(409); expect(await response.json()).toMatchObject({ code: '40001' });
+    expect(response.status).toBe(409);
+    const body = await response.json();
+    expect(body).toMatchObject({ code, error: expect.stringContaining('gewijzigd') });
+    expect(JSON.stringify(body)).not.toContain('Private SQL detail');
     expect(h.serviceRpc).toHaveBeenCalledTimes(key === 'contextError' ? 0 : 1);
   });
   it('persists missing facts as a successful blocked result rather than an HTTP failure', async () => {

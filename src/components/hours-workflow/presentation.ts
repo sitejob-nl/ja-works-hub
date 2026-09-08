@@ -69,5 +69,5 @@ export function currentConfirmation(day: HoursDayView) {
 export function isHoursConflict(error: unknown) {
   if (!error || typeof error !== 'object') return false;
   const value = error as { code?: string; message?: string };
-  return value.code === '40001' || /revision.*conflict|version.*conflict|stale.*revision|uren.*gewijzigd/i.test(value.message ?? '');
+  return value.code === 'PT409' || value.code === '40001' || /revision.*conflict|version.*conflict|stale.*revision|uren.*gewijzigd/i.test(value.message ?? '');
 }

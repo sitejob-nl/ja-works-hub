@@ -89,12 +89,19 @@ describe('portal hours integration', () => {
     expect(mocks.workspace).not.toHaveBeenCalled();
   });
 
-  it('preserves the revision conflict code after translating the error', async () => {
-    mocks.candidate!.portal_language = 'pl';
-    mocks.mutation.mockRejectedValue({ code: '40001', message: 'revision conflict' });
+  it.each([
+    { language: 'nl', message: 'Ververs de week' },
+    { language: 'en', message: 'These hours have changed' },
+    { language: 'pl', message: 'Godziny zostały zmienione' },
+  ].flatMap(translation => ['40001', 'PT409'].flatMap(code => ['onRespond', 'onConfirmAll'].map(action => ({ ...translation, code, action })))))('preserves $code and translates the $action conflict to $language', async ({ language, message, code, action }) => {
+    mocks.candidate!.portal_language = language;
+    mocks.mutation.mockRejectedValue({ code, message: 'Private SQL detail' });
     render(<Page />);
     const props = mocks.workspace.mock.lastCall![0];
-    await expect(props.onRespond({ dayId: 'day-1', expectedRevisionId: 'revision-1', response: 'confirmed', comment: null }))
-      .rejects.toMatchObject({ code: '40001', message: expect.stringContaining('Godziny zostały zmienione') });
+    const operation = action === 'onRespond'
+      ? props.onRespond({ dayId: 'day-1', expectedRevisionId: 'revision-1', response: 'confirmed', comment: null })
+      : props.onConfirmAll({ revisions: [{ dayId: 'day-1', expectedRevisionId: 'revision-1' }], comment: null });
+    await expect(operation).rejects.toMatchObject({ code, message: expect.stringContaining(message) });
+    await expect(operation).rejects.not.toHaveProperty('message', expect.stringContaining('Private SQL detail'));
   });
 });

@@ -100,7 +100,7 @@ describe('generated hours RPC contracts retain domain constraints', () => {
     expect(rpc).toHaveBeenCalledWith('hours_publish_matrix_version', args);
   });
 
-  it.each(['40001', '42501'])('keeps the server %s error intact so callers can distinguish conflicts and denied access', async (code) => {
+  it.each(['40001', 'PT409', '42501'])('keeps the server %s error intact so callers can distinguish conflicts and denied access', async (code) => {
     const error = { code, message: 'Server contract rejected this request', details: 'Expected revision or authorization changed', hint: null };
     rpc.mockResolvedValue({ data: null, error });
     await expect(hoursWorkflowRpc('hours_save_day_source', save)).rejects.toBe(error);

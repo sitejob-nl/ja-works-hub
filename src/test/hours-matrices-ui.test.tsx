@@ -171,14 +171,15 @@ describe('matrix version publication', () => {
 });
 
 describe('matrix editor concurrent changes', () => {
-  it('preserves typed changes after a CAS rejection and only reloads after an explicit action', async () => {
-    const { props } = mount({ onSave: vi.fn().mockRejectedValue({ code: '40001' }) });
+  it.each(['40001', 'PT409'])('preserves typed changes after CAS rejection %s and only reloads after an explicit action', async code => {
+    const { props } = mount({ onSave: vi.fn().mockRejectedValue({ code, message: 'Private SQL detail' }) });
     fill('Factor 1', '1.3750');
     fireEvent.click(screen.getByRole('button', { name: 'Concept opslaan' }));
     await screen.findByText(/Je invoer blijft zichtbaar/);
     expect(screen.getByLabelText('Factor 1')).toHaveValue('1.3750');
     expect(screen.getByRole('button', { name: 'Concept opslaan' })).toBeDisabled();
     expect(publish()).toBeDisabled();
+    expect(screen.queryByText(/Private SQL detail/)).not.toBeInTheDocument();
     expect(props.onSave).toHaveBeenCalledWith(expect.objectContaining({
       config: expect.objectContaining({ categories: [{ code: 'NOR', factor: '1.3750' }, { code: 'OV', factor: '1.250' }] }),
     }));
