@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   buildClientEntries,
   clientLinkStatusFromCode,
+  changedClientEntries,
   clientRefusalMessage,
+  clientReportNote,
   isAlreadyStoredObject,
   isClientLinkCode,
   MAX_CLIENT_ENTRIES,
@@ -138,6 +140,56 @@ describe('what the page says when a link does not work', () => {
     expect(isClientLinkCode('42501')).toBe(false);
     for (const code of ['PT410', 'PT403', 'PT404']) expect(isClientLinkCode(code)).toBe(true);
     for (const code of ['22023', '', null, undefined]) expect(isClientLinkCode(code)).toBe(false);
+  });
+});
+
+describe('what a delivery actually has to send', () => {
+  const delivered = (minutes: number) => ({ minutes, no_hours_reason: null, note: null });
+
+  it('leaves out a day the server already holds unchanged', () => {
+    const drafts = [
+      { day_id: DAY, hours: '8:30', no_hours: false, reason: '', note: '' },
+      { day_id: OTHER, hours: '8', no_hours: false, reason: '', note: '' },
+    ];
+    const changed = changedClientEntries(drafts, new Map([[DAY, delivered(510)]]));
+    expect(changed.map(entry => entry.day_id)).toEqual([OTHER]);
+  });
+
+  it('recognises every kind of change', () => {
+    const standing = new Map([[DAY, { minutes: 510, no_hours_reason: null, note: 'Overwerk' }]]);
+    const same = { day_id: DAY, hours: '8:30', no_hours: false, reason: '', note: 'Overwerk' };
+    expect(changedClientEntries([same], standing)).toEqual([]);
+    expect(changedClientEntries([{ ...same, hours: '9:00' }], standing)).toHaveLength(1);
+    expect(changedClientEntries([{ ...same, note: 'Anders' }], standing)).toHaveLength(1);
+    expect(changedClientEntries([{ day_id: DAY, hours: '', no_hours: true, reason: 'Ziek', note: '' }], standing))
+      .toHaveLength(1);
+    // An unreadable duration is a change: it has to reach the reader that says why.
+    expect(changedClientEntries([{ ...same, hours: 'acht' }], standing)).toHaveLength(1);
+  });
+
+  it('measures the delivery bound against what travels, not against the week', () => {
+    // A week larger than one delivery must still accept a one-day correction.
+    const standing = new Map<string, { minutes: number; no_hours_reason: string | null; note: string | null }>();
+    const drafts = Array.from({ length: MAX_CLIENT_ENTRIES + 1 }, (_, index) => {
+      const id = `00000000-0000-4000-8000-${(index + 1).toString().padStart(12, '0')}`;
+      standing.set(id, delivered(480));
+      return { day_id: id, hours: index === 0 ? '9:00' : '8', no_hours: false, reason: '', note: '' };
+    });
+    const changed = changedClientEntries(drafts, standing);
+    expect(changed).toHaveLength(1);
+    expect(buildClientEntries(changed).issues).toEqual([]);
+    expect(buildClientEntries(changed).entries[0].minutes).toBe(540);
+  });
+});
+
+describe('an over-long report note', () => {
+  it('is refused rather than quietly cut in half', () => {
+    expect(clientReportNote('Zaterdag volgt')).toEqual({ ok: true, note: 'Zaterdag volgt' });
+    expect(clientReportNote('   ')).toEqual({ ok: true, note: null });
+    expect(clientReportNote(undefined)).toEqual({ ok: true, note: null });
+    const long = clientReportNote('x'.repeat(2001));
+    expect(long.ok).toBe(false);
+    expect('message' in long && long.message).toMatch(/te lang/i);
   });
 });
 

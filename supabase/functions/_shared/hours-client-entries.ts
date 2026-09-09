@@ -132,6 +132,56 @@ export function buildClientEntries(input: unknown): ClientEntriesResult {
   return issues.length ? { entries: [], issues } : { entries, issues };
 }
 
+/** What the server currently holds for one workday, as this link delivered it. */
+export interface StandingDelivery {
+  minutes: number;
+  no_hours_reason: string | null;
+  note: string | null;
+}
+
+/**
+ * Which of the filled-in days actually have to travel.
+ *
+ * Resending every delivered day would make a large week grow past the bound on
+ * one delivery and lock itself out of even a one-day correction — which is why
+ * the bound is measured against this result and not against the whole week. A
+ * duration the reader cannot make sense of always counts as changed, so it
+ * reaches the reader that explains why.
+ */
+export function changedClientEntries(
+  drafts: ClientDayInput[],
+  standing: Map<string, StandingDelivery | null | undefined>,
+): ClientDayInput[] {
+  return drafts.filter(draft => {
+    const dayId = typeof draft.day_id === 'string' ? draft.day_id : '';
+    const current = standing.get(dayId);
+    if (!current) return true;
+    const note = text(draft.note);
+    if (note !== (current.note ?? null)) return true;
+    if (draft.no_hours === true) {
+      return current.minutes !== 0 || text(draft.reason) !== (current.no_hours_reason ?? null);
+    }
+    if (current.no_hours_reason !== null) return true;
+    const hours = text(draft.hours);
+    if (!hours) return true;
+    const parsed = parseHoursToMinutes(hours, { maxMinutes: 1440 });
+    return parsed.ok === false || parsed.value !== current.minutes;
+  });
+}
+
+/**
+ * A note about the delivery. Over-long input is refused with a message, exactly
+ * like every other free-text field here; silently cutting a sentence in half
+ * would change what the client said.
+ */
+export function clientReportNote(value: unknown): { ok: true; note: string | null } | { ok: false; message: string } {
+  const note = text(value);
+  if (note && note.length > MAX_NOTE) {
+    return { ok: false, message: 'Deze toelichting is te lang; kort hem in tot 2.000 tekens.' };
+  }
+  return { ok: true, note };
+}
+
 /** Why a personal link does not open, in terms the page can act on. */
 export type ClientLinkStatus = 'expired' | 'revoked' | 'invalid' | 'unavailable';
 

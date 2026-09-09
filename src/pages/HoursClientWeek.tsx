@@ -13,8 +13,9 @@ import {
   CLIENT_LINK_MESSAGES, formatClientHours, parseClientWeek,
   type ClientLinkStatus, type ClientWeek,
 } from '@/lib/hours-client-week';
-import { buildClientEntries } from '../../supabase/functions/_shared/hours-client-entries.ts';
-import { parseHoursToMinutes } from '../../supabase/functions/_shared/hours-calculation.ts';
+import {
+  buildClientEntries, changedClientEntries, clientReportNote,
+} from '../../supabase/functions/_shared/hours-client-entries.ts';
 import {
   HOURS_SOURCE_ACCEPT, HOURS_SOURCE_BUCKET, hoursSourceDigest, hoursSourceTypeError,
   type HoursSourceContentType,
@@ -263,28 +264,16 @@ export default function HoursClientWeek() {
         + 'contactpersoon.');
       return;
     }
-    const { issues } = buildClientEntries(filled);
-    if (issues.length) { setError(issues[0].message); return; }
     if (!filled.length) { setError('Er is niets ingevuld om op te slaan.'); return; }
-    // Only what actually moved travels. Resending every delivered day would make
-    // a large week grow past the server's bound on one delivery and lock itself
-    // out of even a one-day correction.
-    const delivered = new Map(week.members.flatMap(member => member.days)
+    // Only what actually moved travels, and the bound on one delivery is judged
+    // on exactly that: resending every delivered day would make a large week
+    // lock itself out of even a one-day correction.
+    const standing = new Map(week.members.flatMap(member => member.days)
       .map(day => [day.id, day.delivered]));
-    const changed = filled.filter(entry => {
-      const current = delivered.get(entry.day_id);
-      if (!current) return true;
-      const [minutes, reason] = entry.no_hours
-        ? [0, entry.reason.trim()]
-        : [parseHoursToMinutes(entry.hours, { maxMinutes: 1440 }), null] as const;
-      const currentHours = current.minutes;
-      const typed = entry.no_hours ? 0
-        : (typeof minutes === 'object' && minutes.ok === true ? minutes.value : -1);
-      return typed !== currentHours
-        || (reason ?? null) !== (current.no_hours_reason ?? null)
-        || (entry.note.trim() || null) !== (current.note ?? null);
-    });
+    const changed = changedClientEntries(filled, standing);
     if (!changed.length) { setError('Er is niets gewijzigd om door te geven.'); return; }
+    const { issues } = buildClientEntries(changed);
+    if (issues.length) { setError(issues[0].message); return; }
     save.mutate(changed, { onError: failure => setError(failure instanceof Error ? failure.message : 'Opslaan is niet gelukt.') });
   }
 
@@ -409,12 +398,16 @@ export default function HoursClientWeek() {
       </p>
       <div className="space-y-1">
         <Label htmlFor="report-note">Toelichting (optioneel)</Label>
-        <Textarea id="report-note" rows={2} value={reportNote} disabled={busy}
+        <Textarea id="report-note" rows={2} value={reportNote} disabled={busy} maxLength={2000}
           onChange={event => setReportNote(event.target.value)} />
       </div>
       <div className="flex flex-wrap gap-2">
-        <Button type="button" disabled={busy}
-          onClick={() => report.mutate({ kind: reporting, note: reportNote })}>Melding versturen</Button>
+        <Button type="button" disabled={busy} onClick={() => {
+          const checked = clientReportNote(reportNote);
+          if (checked.ok === false) { setError(checked.message); return; }
+          setError(null);
+          report.mutate({ kind: reporting, note: checked.note ?? '' });
+        }}>Melding versturen</Button>
         <Button type="button" variant="ghost" disabled={busy}
           onClick={() => { setReporting(null); setReportNote(''); }}>Annuleren</Button>
       </div>

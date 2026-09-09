@@ -485,6 +485,14 @@ upload, en de browser uploadt rechtstreeks. Storage dwingt de 25 MiB en de vijf 
 controleert bovendien de eerste bytes, zodat een `.csv` die zich als Excel aandient wordt geweigerd vóór
 opslag en een verkeerd gelabelde `.xlsx` als `.xlsx` wordt bewaard.
 
+**Voor deze route is de digest wél een vertrouwensgrens.** Bij de interne inname is hij dat niet: daar
+schrijft alleen vertrouwde interne code in die padruimte, en de beoordelaar ziet de werkelijke bytes. Hier
+schrijft een externe partij, en een ongecontroleerde digest zou een linkhouder toelaten om vervalste bytes
+te parkeren onder de digest van een bestand dat het kantoor daarna uploadt — die upload zou als duplicaat
+worden weggedeeld en de beoordelaar zou het bestand van de klant lezen onder de naam van het kantoor. De
+edge function haalt het bewaarde object daarom terug, berekent de SHA-256 en vergelijkt die met wat werd
+aangekondigd. Bij verschil wordt het object verwijderd en de aanlevering geweigerd.
+
 `hours_client_week_add_source` leest grootte en mediatype terug uit `storage.objects` en legt de bron
 vast met `client_link_id` en zonder interne auteur. Er komen **geen voorstellen** uit: het bestand is
 bewijs, en uitlezen blijft een aparte, beoordeelde handeling van een interne gebruiker — dezelfde grens
@@ -499,7 +507,7 @@ er niet omheen kan.
 
 | Wat | Waar |
 | --- | --- |
-| Rate-limit per gehashte IP (120/uur) en globaal (2000/uur) | `hours_client_link_attempts`, service-role-only, RLS aan zonder policy |
+| Rate-limit per gehashte IP (120/uur) en globaal (20.000/uur) | `hours_client_link_attempts`, service-role-only, RLS aan zonder policy |
 | Het geheim | Nooit gelogd; de throttle bewaart twaalf tekens van de **digest** |
 | Poort dicht bij storing | Kan de throttle niet schrijven, dan sluit het endpoint (503) in plaats van ongelimiteerd te bedienen |
 

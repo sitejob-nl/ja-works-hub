@@ -4,6 +4,7 @@ import {
   buildClientEntries,
   clientLinkStatusFromCode,
   clientRefusalMessage,
+  clientReportNote,
   isAlreadyStoredObject,
   isClientLinkCode,
   type ClientLinkStatus,
@@ -50,9 +51,15 @@ const MAX_GLOBAL_PER_HOUR = 20_000;
 const ACTIONS = ['get', 'save', 'report', 'upload', 'register'] as const;
 type Action = typeof ACTIONS[number];
 
+const toHex = (digest: ArrayBuffer) =>
+  [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('');
+
 async function sha256Hex(value: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
-  return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('');
+  return toHex(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)));
+}
+
+async function sha256Bytes(bytes: ArrayBuffer): Promise<string> {
+  return toHex(await crypto.subtle.digest('SHA-256', bytes));
 }
 
 function clientIp(req: Request): string {
@@ -143,8 +150,9 @@ Deno.serve(async (req) => {
     if (action === 'report') {
       const kind = body.kind === 'later' || body.kind === 'complete' ? body.kind : null;
       if (!kind) return json({ error: 'Onbekende melding over deze aanlevering.' }, 400);
-      const note = typeof body.note === 'string' ? body.note.trim().slice(0, 2000) : '';
-      const { data, error } = await call('hours_client_week_report', { p_kind: kind, p_note: note || null });
+      const note = clientReportNote(body.note);
+      if (note.ok === false) return json({ error: note.message }, 400);
+      const { data, error } = await call('hours_client_week_report', { p_kind: kind, p_note: note.note });
       if (error) return refusal(error);
       return json({ status: 'ok', week: data });
     }
@@ -178,10 +186,42 @@ Deno.serve(async (req) => {
     }
 
     // action === 'register'
+    //
+    // The digest decides the storage path *and* the deduplication key. For the
+    // internal route that is fine: only trusted internal code can write there,
+    // and the reviewer sees the actual bytes. Here an outside party can write,
+    // so an unverified digest would let a link holder park doctored bytes under
+    // the digest of a file the office is about to upload — the office's upload
+    // would then be deduplicated away and the reviewer would read the client's
+    // file under the office's name. So for this route the digest is a promise
+    // that gets checked before anything is recorded.
+    const contentHash = typeof body.content_hash === 'string' ? body.content_hash.trim().toLowerCase() : '';
+    const contentType = typeof body.content_type === 'string' ? body.content_type : '';
+    const { data: pathData, error: pathError } = await call('hours_client_week_upload_path', {
+      p_content_hash: contentHash, p_content_type: contentType,
+    });
+    if (pathError) return refusal(pathError);
+    const storedPath = (pathData as { path?: string } | null)?.path;
+    if (!storedPath) return json({ status: 'unavailable' });
+    const stored = await service.storage.from('hours-sources').download(storedPath);
+    if (stored.error || !stored.data) {
+      return json({ error: 'Uw bestand is niet gevonden. Probeer het opnieuw te versturen.' }, 400);
+    }
+    const actualHash = await sha256Bytes(await stored.data.arrayBuffer());
+    if (actualHash !== contentHash) {
+      // Leaving it there would keep that digest occupied for everyone, so the
+      // object goes; a failed removal is logged and still refuses the delivery.
+      const removal = await service.storage.from('hours-sources').remove([storedPath]);
+      if (removal.error) {
+        console.error('hours-client-week: mismatching upload could not be removed', removal.error.message);
+      }
+      console.error('hours-client-week: upload did not match its digest', storedPath);
+      return json({ error: 'Uw bestand kwam niet overeen met wat er werd aangekondigd en is niet bewaard.' }, 400);
+    }
     const { data, error } = await call('hours_client_week_add_source', {
-      p_content_hash: typeof body.content_hash === 'string' ? body.content_hash : '',
+      p_content_hash: contentHash,
       p_file_name: typeof body.file_name === 'string' ? body.file_name : '',
-      p_content_type: typeof body.content_type === 'string' ? body.content_type : '',
+      p_content_type: contentType,
       p_page_count: Number.isInteger(body.page_count) ? body.page_count : null,
     });
     if (error) return refusal(error);
