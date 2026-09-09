@@ -13,9 +13,10 @@ bevestigde klant-/CAO-matrices inclusief pauze-, afrondings- en samenloopregels 
 het exportvoorbeeld van de payroller met uurcodes en correctieprocedure (T12, T13),
 ontvangers/verantwoordelijken per partij (T8), en de keuze van pilotklanten (T14).
 
-Stand 09-09-2026: **T1, T2, T3 en T6 gebouwd en gedeployed** (migraties `20260909090000`,
-`20260910090000`, `20260911090000` en `20260912090000`); T1, T2, T3 en T6 zijn ook met verbonden demo-QA
-bewezen. T4, T5 en T7 t/m T14 nog niet gestart. T7 (duurzame mailinname) blijft geblokkeerd door T5.
+Stand 09-09-2026: **T1, T2, T3, T4 en T6 gebouwd en gedeployed** (migraties `20260909090000`,
+`20260910090000`, `20260911090000`, `20260912090000` en `20260913090000`); alle vijf zijn ook met
+verbonden demo-QA bewezen. T5 en T7 t/m T14 nog niet gestart. T7 (duurzame mailinname) blijft
+geblokkeerd door T5.
 
 ---
 
@@ -99,20 +100,25 @@ De interne gebruiker beoordeelt en past toe; er wordt niets automatisch geboekt.
 
 ---
 
-## T4 · Uitlezen van scans en foto's via de JA Werkt-VPS met centrale AI-boekhouding
+## T4 · Uitlezen van scans en foto's met centrale AI-boekhouding
 
-**Wat te bouwen:** een geüploade scan of foto wordt op de JA Werkt-VPS uitgelezen tot een voorstel met
+**Wat te bouwen:** een geüploade scan of foto wordt uitgelezen tot een voorstel met
 vindplaats per waarde. Handgeschreven pauzes en correcties worden meegenomen; onduidelijke cijfers
 worden expliciet onzeker gemeld en blokkeren toepassen. Iedere betaalde aanroep loopt via
 `_shared/ai-accounting.ts` binnen het vaste maandbudget van € 50 per Nederlandse kalendermaand.
 
+**Status:** gebouwd en gedeployed op 9 september 2026; zie het
+[uitleescontract](urenmodule-scan-reading.md). **De host is Gemini, niet de VPS** — dat is tegen
+productie nagegaan en in datzelfde document vastgelegd; er is geen documentvoorbewerking op de VPS
+en die is ook niet bereikbaar.
+
 **Geblokkeerd door:** T2.
 
-- [ ] Reserveren vóór de aanroep, één providercall, en aanvraag/verbruik/boeking atomair afrekenen
-- [ ] Een uitgeput maandbudget blokkeert het uitlezen zichtbaar; handmatige invoer blijft werken
-- [ ] Onzekere velden komen als onzeker in het voorstel en kunnen niet blind worden toegepast
-- [ ] Een zekerheidsscore overrulet nooit een ontbrekend gegeven of een foutieve optelling
-- [ ] Geen Qwen-terugval; documentvoorbewerking blijft op de gekozen host
+- [x] Reserveren vóór de aanroep, één providercall, en aanvraag/verbruik/boeking atomair afrekenen
+- [x] Een uitgeput maandbudget blokkeert het uitlezen zichtbaar; handmatige invoer blijft werken
+- [x] Onzekere velden komen als onzeker in het voorstel en kunnen niet blind worden toegepast
+- [x] Een zekerheidsscore overrulet nooit een ontbrekend gegeven of een foutieve optelling
+- [x] Geen Qwen-terugval; documentvoorbewerking blijft op de gekozen host
 
 ---
 
