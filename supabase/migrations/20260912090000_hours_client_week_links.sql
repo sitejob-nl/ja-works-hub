@@ -538,17 +538,28 @@ declare
   v_minutes integer; v_reason text; v_note text; v_ids uuid[];
   v_existing public.hours_source_proposals%rowtype;
 begin
-  v_link := private.hours_client_link_resolve(p_token_hash, true);
+  -- Deliberately without the week lock: the released order is proposal, then
+  -- week, then day (see the intake contract). Taking the week here and the
+  -- proposals afterwards would invert that against hours_apply_source_proposal
+  -- and hours_discard_source_proposal, and a client saving while the office
+  -- applies the very same day would deadlock.
+  v_link := private.hours_client_link_resolve(p_token_hash, false);
   if jsonb_typeof(p_entries) is distinct from 'array' or jsonb_array_length(p_entries) = 0
      or jsonb_array_length(p_entries) > 500 then
     raise exception 'Geef één tot vijfhonderd dagen op' using errcode = '22023';
   end if;
-  select array_agg(value->>'day_id' order by value->>'day_id')
+  select array_agg((value->>'day_id')::uuid order by value->>'day_id')
     into v_ids from jsonb_array_elements(p_entries) as value;
   if array_length(v_ids, 1) is distinct from (select count(distinct id) from unnest(v_ids) as id) then
     raise exception 'Elke werkdag mag maar één keer in deze aanlevering staan' using errcode = '22023';
   end if;
-  -- A fixed lock order over the days keeps this next to the existing day writers.
+  -- 1. The proposals this delivery can touch, in a fixed order over their ids.
+  perform p.id from public.hours_source_proposals p
+    where p.client_link_id = v_link.id and p.day_id = any(v_ids)
+      and p.status in ('open', 'applied') order by p.id for update;
+  -- 2. Then the week, and 3. the days, matching every other hours writer.
+  perform 1 from public.hours_weeks where id = v_link.week_id
+    and organization_id = v_link.organization_id for update;
   foreach v_entry in array (select array_agg(value order by value->>'day_id')
                             from jsonb_array_elements(p_entries) as value) loop
     v_day := private.hours_lock_client_day((v_entry->>'day_id')::uuid, v_link);
@@ -564,7 +575,7 @@ begin
     -- without changing anything may not put a settled day back on the desk.
     select * into v_existing from public.hours_source_proposals
       where day_id = v_day.id and client_link_id = v_link.id and status in ('open', 'applied')
-      order by (status = 'open') desc, created_at desc, id desc limit 1 for update;
+      order by (status = 'open') desc, created_at desc, id desc limit 1;
     if found and (v_existing.minutes, v_existing.no_hours_reason, v_existing.note)
        is not distinct from (v_minutes, v_reason, v_note) then
       continue;

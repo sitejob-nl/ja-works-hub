@@ -1,7 +1,8 @@
 # Urenmodule: interne broninname en invoervoorstellen
 
-**Status: gedeployed op 8 september 2026** (migraties `20260909090000_hours_week_sources_and_proposals.sql`,
-`20260910090000_hours_source_pages_and_assignment.sql` en `20260911090000_hours_spreadsheet_sources.sql`).
+**Status: gedeployed** (migraties `20260909090000_hours_week_sources_and_proposals.sql`,
+`20260910090000_hours_source_pages_and_assignment.sql`, `20260911090000_hours_spreadsheet_sources.sql`
+op 8 september 2026 en `20260912090000_hours_client_week_links.sql` op 9 september 2026).
 Alle drie zijn additief en veranderen geen bestaande urenafspraak. `timesheets`, facturatie, urenbrieven, CSV-import en communicatie worden niet
 geschreven. **JA Werkt staat UIT, de geverifieerde demo staat AAN** voor `uren-workflow`; die SaaS-poort
 geldt ook voor de drie nieuwe tabellen en de privé-bronopslag.
@@ -396,5 +397,149 @@ Een medewerker ziet de bronherkomst van de eigen dag, maar:
   onaangeroerde werkdag. Deze stroom verstuurt niets en doet geen betaalde AI-aanroepen, dus de
   communicatie-instelling van de demo is niet aangeraakt.
 
-Nog niet gebouwd: uitlezers voor Word, PDF-tekst en OCR/Vision, mailinname, de klantpagina zonder
-inloggen, en vrijgave of export. Zie [de ticketlijst](urenmodule-tickets.md).
+## Persoonlijke klantweekpagina zonder inloggen (T6)
+
+Een opdrachtgever opent een persoonlijke link naar **precies één klantweek**, ziet de verwachte
+medewerkers, vult per dag uren in of kiest "geen uren" met reden, kan zijn eigen urenbriefje meesturen,
+levert gedeeltelijk aan en kan melden dat er later meer volgt. Er komt geen login aan te pas.
+
+**De grens is ongewijzigd.** Wat de klant invult is een **voorstel**. Alleen
+`hours_apply_source_proposal` schrijft een dagrevisie, neemt het voorstel letterlijk over en eist nog
+steeds een met naam bekende interne gebruiker. Nul writes naar `timesheets`, facturatie of communicatie.
+
+### De link is het geheim
+
+`hours_client_week_links` bewaart **alleen de SHA-256** van het geheim. De server maakt het geheim
+(twee `gen_random_uuid()`-waarden, 244 bits, uit `pg_catalog` en dus zonder extensie-afhankelijkheid) en
+geeft het **exact één keer** terug bij uitgifte. Het staat nergens anders in de database, in geen enkele
+projectie en in geen enkel logregel. Een kwijtgeraakte link wordt vervangen, niet opgezocht.
+
+| Kolom | Betekenis |
+| --- | --- |
+| `week_id` + `company_id` | De scope. Er is geen parameter waarmee een klant een andere week kan noemen |
+| `expires_at` | Geldigheidsduur, één tot honderdtachtig dagen, verplicht bij uitgifte |
+| `revoked_at` / `revoked_by` / `revoke_note` | Intrekken is eenrichtingsverkeer en wist niets wat al is aangeleverd |
+| `last_opened_at` | Beweegt alleen vooruit; de guard-trigger houdt de rest onveranderlijk |
+
+De rij is append-only met actor, zoals elk ander urenfeit. `hours_client_week_reports` legt de meldingen
+van de klant append-only vast (`later` of `complete`), zodat een bedenking zichtbaar blijft als bedenking.
+
+### Waarom een klantvoorstel geen interne auteur heeft
+
+`hours_source_proposals.created_by` en `source_id` zijn nullable geworden, met een CHECK die precies één
+van twee vormen toelaat: **intern** (`created_by` én `source_id` gevuld, `client_link_id` leeg) of
+**klant** (`client_link_id` gevuld, de andere twee leeg). Niemand intern heeft dit voorstel gedaan, en de
+administratie zegt dat in plaats van de persoon te crediteren die de link verstrekte. Formulierinvoer is
+ook geen aangeleverd bestand, dus er is geen bron om naar te wijzen.
+
+De resolutie-CHECK kreeg één toevoeging: een `discarded` voorstel mag zonder interne actor als het een
+klantvoorstel is — de klant vervangt zijn eigen aanlevering. **`applied` eist nog steeds `resolved_by`**,
+en dat is de invariant die telt.
+
+Een partiële unieke index `(client_link_id, day_id) where status = 'open'` maakt "één staande aanlevering
+per werkdag per link" een databasefeit in plaats van een gewoonte van de schrijver.
+
+### Wat de klant ziet, en wat niet
+
+`private.hours_client_week_projection` levert de week (naam, maandag, aanleverdeadline), de verwachte
+medewerkers met hun werkdagen, en **de eigen aanlevering** van deze link per dag. Niet: dagrevisies,
+interne notities, controles, medewerkerakkoorden, classificaties, matrixgegevens, andere bronnen of
+voorstellen van iemand anders. De frontend parseert die projectie **strikt**: een payload die alsnog een
+intern feit zou dragen is een fout die opvalt, geen veld dat stil wordt genegeerd.
+
+### Wat een ingevuld veld betekent
+
+De duurlezing is de vrijgegeven `parseHoursToMinutes`, gedeeld door de pagina en de edge function
+(`_shared/hours-client-entries.ts`). `8,5`, `8.5` en `8:30` zijn dus dezelfde duur, en een subminuut
+wordt geweigerd in plaats van afgerond — precies zoals overal elders in deze module.
+
+- **Een leeg veld blijft onbekend.** Het reist niet mee, wordt geen nul en geen gok. Een klant mag een
+  deel van de week aanleveren.
+- **"Geen uren" eist een reden.** Een getypte `0` wordt geweigerd met de vraag om die keuze expliciet te
+  maken.
+- **Een opmerking zonder uren is een vraag, geen aanlevering.** Er is iets over die dag getypt, dus hem
+  stil weggooien en succes melden zou een leugen zijn.
+- **Een aanlevering is alles of niets.** Wordt één regel geweigerd, dan wordt er niets vastgelegd.
+
+### Een latere aanlevering vervangt de eigen eerdere
+
+Opnieuw opslaan met dezelfde inhoud verandert niets — ook niet wanneer het kantoor die dag al heeft
+toegepast; een afgehandelde dag komt niet terug op de beoordelingsstapel. Een échte correctie verwerpt de
+eigen staande aanlevering (`resolution_note` zegt dat het door een latere aanlevering is vervangen) en
+legt een nieuw voorstel vast. Het raakt per constructie alleen de eigen link en alleen die dag: een
+voorstel van een andere link, een intern voorstel of een al toegepast voorstel blijft ongemoeid.
+
+### Gedeeltelijk blijft zichtbaar als onvolledig
+
+`private.hours_client_link_progress` telt server-side: `expected_days` (alle werkdagen van de week),
+`provided_days` (dagen waarvoor deze link een niet-verworpen voorstel heeft), `outstanding_days` en
+`complete`. De klant ziet dezelfde telling als het kantoor. **De klant mag melden dat hij klaar is; de
+dagen beslissen of dat zo is** — een `complete`-melding op een week met openstaande dagen blijft
+onvolledig.
+
+### Een meegestuurd urenbriefje
+
+De bytes gaan **niet** door de edge function. `hours_client_week_upload_path` leidt het opslagpad af uit
+de link (`<organisatie>/<week>/<sha256>.<ext>`), de edge function ondertekent daarvoor een eenmalige
+upload, en de browser uploadt rechtstreeks. Storage dwingt de 25 MiB en de vijf mediatypen af; de browser
+controleert bovendien de eerste bytes, zodat een `.csv` die zich als Excel aandient wordt geweigerd vóór
+opslag en een verkeerd gelabelde `.xlsx` als `.xlsx` wordt bewaard.
+
+`hours_client_week_add_source` leest grootte en mediatype terug uit `storage.objects` en legt de bron
+vast met `client_link_id` en zonder interne auteur. Er komen **geen voorstellen** uit: het bestand is
+bewijs, en uitlezen blijft een aparte, beoordeelde handeling van een interne gebruiker — dezelfde grens
+als bij T1 tot en met T3. Hetzelfde bestand van klant en kantoor blijft één bron.
+
+### De publieke keten
+
+De vijf publieke RPC's zijn uitsluitend uitvoerbaar door `service_role` en controleren dat ook zelf
+(`auth.role()`). De edge function `hours-client-week` (`verify_jwt = false`) is de enige houder van die
+sleutel en **autoriseert zelf niets**: elke regel staat in de database, waar een vergissing in een scherm
+er niet omheen kan.
+
+| Wat | Waar |
+| --- | --- |
+| Rate-limit per gehashte IP (120/uur) en globaal (2000/uur) | `hours_client_link_attempts`, service-role-only, RLS aan zonder policy |
+| Het geheim | Nooit gelogd; de throttle bewaart twaalf tekens van de **digest** |
+| Poort dicht bij storing | Kan de throttle niet schrijven, dan sluit het endpoint (503) in plaats van ongelimiteerd te bedienen |
+
+De throttle wordt geschreven **vóór** het token wordt opgezocht en in een eigen statement: een exception
+in de database zou een teller die in dezelfde transactie is opgehoogd terugdraaien, en dat is precies het
+geval dat een throttle moet overleven.
+
+### Vergrendelvolgorde
+
+De klantaanlevering volgt de vrijgegeven volgorde **voorstel → week → dag**. Zij vergrendelt eerst de
+voorstellen die deze aanlevering kan raken (in vaste volgorde over hun id), dan de week, dan de dagen.
+Zou zij de week eerst nemen — de natuurlijke plek, want de link kent de week — dan staat zij omgekeerd
+ten opzichte van `hours_apply_source_proposal` en `hours_discard_source_proposal`, en een klant die
+opslaat terwijl het kantoor diezelfde dag toepast loopt vast (`40P01`).
+
+### Herkomst op de dagrevisie
+
+Een toegepast klantvoorstel schrijft
+`[{"kind":"client","label":"<naam van de opdrachtgever>","reference":null}]`. De medewerker ziet dus
+welke opdrachtgever zijn uren heeft aangeleverd, en **nooit het interne label van de link** — dat kan een
+persoonsnaam zijn. `describeSourceReferences` kent deze `kind` en geeft hem als "Aangeleverd door …".
+
+### Fouten
+
+| SQLSTATE | HTTP | Betekenis |
+| --- | --- | --- |
+| `PT404` | 404 | Deze link opent niet: onbekend token, of de urenmodule staat uit voor die organisatie |
+| `PT403` | 403 | Deze link is ingetrokken |
+| `PT410` | 410 | Deze link is verlopen |
+| `22023` | 400 | Ongeldige invoer, uitgeschakelde opdrachtgever, onbekende melding |
+| `42501` | 403 | Geen service-role, of een werkdag die niet bij deze link hoort |
+
+`42501` en "deze link opent niet" zijn bewust **verschillende** codes. Deelden ze er één, dan zou een
+werkdag die niet meer bij de week hoort worden gemeld als een dode link — de pagina zou worden vervangen
+en alles wat de klant had ingevuld zou verdwijnen. Alleen een `PT4xx` vervangt de pagina; al het andere
+wordt naast het formulier getoond.
+
+Wat de bezoeker leest is bovendien beperkt tot de meldingen die deze module zelf in het Nederlands heeft
+geschreven (`22023` en `42501`). Een deadlock, een indexnaam of een mislukte uuid-cast is Postgres die
+tegen een ontwikkelaar praat, en hoort niet op een pagina die iedereen met een link kan openen.
+
+Nog niet gebouwd: uitlezers voor Word, PDF-tekst en OCR/Vision, duurzame mailinname, en vrijgave of
+export. Zie [de ticketlijst](urenmodule-tickets.md).

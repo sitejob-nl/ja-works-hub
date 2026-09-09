@@ -2,12 +2,15 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import HoursClientWeek from '@/pages/HoursClientWeek';
+import HoursClientWeek, { CLIENT_WEEK_QUERY_OPTIONS, showRefusal } from '@/pages/HoursClientWeek';
+import { parseClientWeek } from '@/lib/hours-client-week';
 
-const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
+const { invoke, uploadToSignedUrl } = vi.hoisted(() => ({ invoke: vi.fn(), uploadToSignedUrl: vi.fn() }));
 vi.mock('@/integrations/supabase/client', () => ({
-  supabase: { functions: { invoke } },
+  supabase: { functions: { invoke }, storage: { from: () => ({ uploadToSignedUrl }) } },
 }));
+// pdf.js is loaded on demand in the browser; the count itself is what matters here.
+vi.mock('@/lib/hours-pdf-pages', () => ({ countPdfPages: vi.fn(async () => 2) }));
 
 const weekId = '00000000-0000-4000-8000-000000000002';
 const memberId = '00000000-0000-4000-8000-000000000006';
@@ -45,8 +48,11 @@ function show() {
 
 const hoursField = (name: string) => screen.getByLabelText(`Gewerkte uren ${name}`);
 
-beforeEach(() => { invoke.mockReset(); });
-afterEach(() => { cleanup(); clients.forEach(client => client.clear()); clients.length = 0; });
+beforeEach(() => {
+  invoke.mockReset(); uploadToSignedUrl.mockReset();
+  vi.stubGlobal('crypto', { subtle: { digest: async () => new Uint8Array(32).buffer } });
+});
+afterEach(() => { cleanup(); clients.forEach(client => client.clear()); clients.length = 0; vi.unstubAllGlobals(); });
 
 describe('opening a personal week link', () => {
   it('shows the expected employees and days of exactly one week', async () => {
@@ -240,6 +246,111 @@ describe('saying something about the delivery', () => {
     }) }));
     show();
     expect(await screen.findByText(/Alle dagen zijn aangeleverd/i)).toBeTruthy();
+  });
+});
+
+describe('keeping what the client is working on', () => {
+  it('only replaces the form when there is no week to show', () => {
+    // A failed *background* read still has the week in hand. Replacing the page
+    // there would destroy a form someone is halfway through filling in.
+    const open = { kind: 'open', week: parseClientWeek(payload()) } as const;
+    expect(showRefusal(open, true)).toBe(null);
+    expect(showRefusal(open, false)).toBe(null);
+    expect(showRefusal({ kind: 'loading' }, true)).toBe('unavailable');
+    expect(showRefusal({ kind: 'loading' }, false)).toBe(null);
+    expect(showRefusal({ kind: 'refused', status: 'expired' }, false)).toBe('expired');
+    expect(showRefusal({ kind: 'refused', status: 'revoked' }, true)).toBe('revoked');
+  });
+
+  it('never reloads by itself, because every read costs a throttled attempt', () => {
+    // Refocusing a tab must not spend an attempt against the public rate limit,
+    // and must not overwrite an open form with the server's older copy.
+    expect(CLIENT_WEEK_QUERY_OPTIONS.refetchOnWindowFocus).toBe(false);
+    expect(CLIENT_WEEK_QUERY_OPTIONS.refetchOnReconnect).toBe(false);
+    expect(CLIENT_WEEK_QUERY_OPTIONS.refetchOnMount).toBe(false);
+    expect(CLIENT_WEEK_QUERY_OPTIONS.retry).toBe(false);
+  });
+
+  it('says what it will not send instead of reporting a silent success', async () => {
+    invoke.mockResolvedValue(ok({ status: 'ok', week: payload() }));
+    show();
+    fireEvent.change(await screen.findByLabelText('Opmerking maandag 7 september (optioneel)'),
+      { target: { value: 'Anna heeft overgewerkt' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Uren opslaan' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/uren/i);
+    expect(invoke.mock.calls.filter(([, options]) => options?.body?.action === 'save')).toHaveLength(0);
+  });
+});
+
+describe('delivering the timesheet itself', () => {
+  /** jsdom's File has no arrayBuffer(); browsers do, so the reader is stubbed here. */
+  function file(name: string, type: string, bytes = new Uint8Array([0x25, 0x50, 0x44, 0x46])): File {
+    const handle = new File([bytes], name, { type });
+    Object.defineProperty(handle, 'arrayBuffer', {
+      value: async () => bytes.buffer.slice(0),
+    });
+    return handle;
+  }
+
+  it('uploads through a signed address and registers the source', async () => {
+    invoke.mockImplementation((_name: string, options: { body: { action: string } }) => {
+      if (options.body.action === 'get') return Promise.resolve(ok({ status: 'ok', week: payload() }));
+      if (options.body.action === 'upload') {
+        return Promise.resolve(ok({ status: 'ok', path: 'org/week/abc.pdf', token: 'signed-token' }));
+      }
+      return Promise.resolve(ok({ status: 'ok', week: payload(), duplicate: false, source_id: 'src-1' }));
+    });
+    uploadToSignedUrl.mockResolvedValue({ data: { path: 'org/week/abc.pdf' }, error: null });
+    show();
+    await screen.findByText('Acme BV');
+    fireEvent.change(screen.getByLabelText('Urenbriefje meesturen'),
+      { target: { files: [file('week37.pdf', 'application/pdf')] } });
+    await waitFor(() => expect(uploadToSignedUrl).toHaveBeenCalledWith(
+      'org/week/abc.pdf', 'signed-token', expect.anything(), { contentType: 'application/pdf' }));
+    const register = invoke.mock.calls.find(([, options]) => options?.body?.action === 'register');
+    expect(register?.[1].body.file_name).toBe('week37.pdf');
+    expect(register?.[1].body.content_type).toBe('application/pdf');
+    expect(await screen.findByText(/is meegestuurd/i)).toBeTruthy();
+  });
+
+  it('registers a file the server already holds without uploading it again', async () => {
+    invoke.mockImplementation((_name: string, options: { body: { action: string } }) => {
+      if (options.body.action === 'get') return Promise.resolve(ok({ status: 'ok', week: payload() }));
+      if (options.body.action === 'upload') {
+        return Promise.resolve(ok({ status: 'ok', path: 'org/week/abc.pdf', already_uploaded: true }));
+      }
+      return Promise.resolve(ok({ status: 'ok', week: payload(), duplicate: true, source_id: 'src-1' }));
+    });
+    show();
+    await screen.findByText('Acme BV');
+    fireEvent.change(screen.getByLabelText('Urenbriefje meesturen'),
+      { target: { files: [file('week37.pdf', 'application/pdf')] } });
+    await screen.findByText(/was al ontvangen/i);
+    expect(uploadToSignedUrl).not.toHaveBeenCalled();
+  });
+
+  it('refuses a file type that can never be a timesheet, before it travels', async () => {
+    invoke.mockResolvedValue(ok({ status: 'ok', week: payload() }));
+    show();
+    await screen.findByText('Acme BV');
+    fireEvent.change(screen.getByLabelText('Urenbriefje meesturen'),
+      { target: { files: [file('uren.txt', 'text/plain')] } });
+    expect(await screen.findByRole('alert')).toHaveTextContent(/PDF/i);
+    expect(invoke.mock.calls.filter(([, options]) => options?.body?.action === 'upload')).toHaveLength(0);
+  });
+
+  it('does not claim a delivery when the upload itself failed', async () => {
+    invoke.mockImplementation((_name: string, options: { body: { action: string } }) =>
+      options.body.action === 'get'
+        ? Promise.resolve(ok({ status: 'ok', week: payload() }))
+        : Promise.resolve(ok({ status: 'ok', path: 'org/week/abc.pdf', token: 'signed-token' })));
+    uploadToSignedUrl.mockResolvedValue({ data: null, error: new Error('storage unreachable') });
+    show();
+    await screen.findByText('Acme BV');
+    fireEvent.change(screen.getByLabelText('Urenbriefje meesturen'),
+      { target: { files: [file('week37.pdf', 'application/pdf')] } });
+    expect(await screen.findByRole('alert')).toHaveTextContent(/niet meegestuurd|opnieuw/i);
+    expect(invoke.mock.calls.filter(([, options]) => options?.body?.action === 'register')).toHaveLength(0);
   });
 });
 

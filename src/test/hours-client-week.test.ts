@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildClientEntries,
   clientLinkStatusFromCode,
+  clientRefusalMessage,
   isAlreadyStoredObject,
   isClientLinkCode,
   MAX_CLIENT_ENTRIES,
@@ -79,10 +80,11 @@ describe('what a client types becomes minutes, or stays unknown', () => {
     expect(result.entries[0].note).toBe('Overwerk avond');
   });
 
-  it('drops a note that stands on its own, because there is nothing to deliver', () => {
+  it('asks what a note on its own is about, instead of dropping it in silence', () => {
     const result = buildClientEntries([{ day_id: DAY, note: 'Alleen een opmerking' }]);
     expect(result.entries).toEqual([]);
-    expect(result.issues).toEqual([]);
+    expect(result.issues[0].message).toMatch(/uren/i);
+    expect(result.issues[0].day_id).toBe(DAY);
   });
 
   it('refuses the same workday twice in one delivery', () => {
@@ -135,6 +137,30 @@ describe('what the page says when a link does not work', () => {
     expect(isClientLinkCode('42501')).toBe(false);
     for (const code of ['PT410', 'PT403', 'PT404']) expect(isClientLinkCode(code)).toBe(true);
     for (const code of ['22023', '', null, undefined]) expect(isClientLinkCode(code)).toBe(false);
+  });
+});
+
+describe('what a refused write may say to an anonymous visitor', () => {
+  it('passes on the refusals this module wrote itself, in its own words', () => {
+    expect(clientRefusalMessage({ code: '22023', message: 'Vul geldige uren in; geen uren vereist een reden' }))
+      .toBe('Vul geldige uren in; geen uren vereist een reden');
+    expect(clientRefusalMessage({ code: '42501', message: 'Deze werkdag hoort niet bij deze urenweek' }))
+      .toBe('Deze werkdag hoort niet bij deze urenweek');
+  });
+
+  it('never leaks a database internal onto a public page', () => {
+    for (const failure of [
+      { code: '40P01', message: 'deadlock detected; Process 123 waits for ShareLock on transaction 456' },
+      { code: '23505', message: 'duplicate key value violates unique constraint "hours_proposals_open_client_day_idx"' },
+      { code: '22P02', message: 'invalid input syntax for type uuid: "geen-uuid"' },
+      { code: '42883', message: 'function public.hours_client_week_save(text, jsonb) does not exist' },
+      { code: null, message: 'connection to server was lost' },
+      null,
+    ]) {
+      const shown = clientRefusalMessage(failure);
+      expect(shown).toBe('Dit kon niet worden opgeslagen. Probeer het opnieuw of neem contact op met uw contactpersoon.');
+      expect(shown).not.toMatch(/hours_|constraint|deadlock|uuid|pg_/i);
+    }
   });
 });
 

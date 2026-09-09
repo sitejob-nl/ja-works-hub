@@ -3,6 +3,7 @@ import { CORS_HEADERS as corsHeaders } from '../_shared/http.ts';
 import {
   buildClientEntries,
   clientLinkStatusFromCode,
+  clientRefusalMessage,
   isAlreadyStoredObject,
   isClientLinkCode,
   type ClientLinkStatus,
@@ -58,10 +59,18 @@ function linkRefusal(error: { code?: string | null } | null): ClientLinkStatus |
   return isClientLinkCode(error?.code) ? clientLinkStatusFromCode(error?.code) : null;
 }
 
-/** A write refused by the database: a link problem the page can name, or the server's own words. */
+/**
+ * A write refused by the database: a link problem the page can name, or this
+ * module's own Dutch words about what it refused. Anything Postgres itself
+ * phrased stays out of a page that anyone with a link can open.
+ */
 function refusal(error: { code?: string | null; message?: string } | null): Response {
   const link = linkRefusal(error);
-  return link ? json({ status: link }) : json({ error: error?.message ?? 'Dit kon niet worden opgeslagen.' }, 400);
+  if (link) return json({ status: link });
+  if (!isClientLinkCode(error?.code) && error?.code && !['22023', '42501'].includes(error.code)) {
+    console.error('hours-client-week: refused write', error.code, error.message);
+  }
+  return json({ error: clientRefusalMessage(error) }, 400);
 }
 
 Deno.serve(async (req) => {
@@ -166,7 +175,10 @@ Deno.serve(async (req) => {
       p_page_count: Number.isInteger(body.page_count) ? body.page_count : null,
     });
     if (error) return refusal(error);
-    return json({ status: 'ok', week: data });
+    // The projection is returned with two extra keys; the client page parses the
+    // week strictly, so they travel beside it rather than inside it.
+    const { duplicate, source_id: sourceId, ...week } = (data ?? {}) as Record<string, unknown>;
+    return json({ status: 'ok', week, duplicate: duplicate === true, source_id: sourceId ?? null });
   } catch (error) {
     console.error('hours-client-week failed', error);
     return json({ error: 'Er ging iets mis. Probeer het later opnieuw.' }, 400);

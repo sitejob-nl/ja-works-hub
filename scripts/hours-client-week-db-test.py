@@ -346,6 +346,43 @@ class ClientWeekTests(workbook.WorkbookTests):
         self.assertEqual(self.count("hours_source_proposals"), "1",
                          "Saving again without a change may not fill the screen with noise")
 
+    def test_the_client_save_locks_in_the_released_order(self):
+        """Applying locks proposal, then week, then day. A client save that took
+        the week first would deadlock against a simultaneous apply, so the order
+        has to be the same one the released contract names."""
+        source = sql("""SELECT pg_get_functiondef(p.oid) FROM pg_proc p JOIN pg_namespace n
+          ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname='hours_client_week_save';""")
+        proposal_lock = source.index("public.hours_source_proposals")
+        week_lock = source.index("public.hours_weeks")
+        day_lock = source.index("hours_lock_client_day")
+        self.assertLess(proposal_lock, week_lock,
+                        "A proposal is never locked after the week")
+        self.assertLess(week_lock, day_lock, "The week is locked before the day")
+        self.assertNotIn("hours_client_link_resolve(p_token_hash, true)", source,
+                         "Resolving must not take the week lock ahead of the proposals")
+
+    def test_a_client_save_and_an_internal_apply_do_not_deadlock(self):
+        """Both writers reach the same proposal, the same week and the same day.
+        Two sessions that take them in opposite orders deadlock; this proves the
+        pair completes with one clear winner instead."""
+        week, issued = self.open_link()
+        day = week["members"][0]["days"][0]["id"]
+        self.deliver(issued["secret"], [{"day_id": day, "minutes": 480}])
+        proposal = self.client_proposals(week["id"])[0]
+        script = f"""
+          BEGIN;
+          SET LOCAL lock_timeout = '5s';
+          SELECT public.hours_apply_source_proposal({literal(proposal['id'])}, NULL);
+          COMMIT;
+        """
+        # Serialized here, but the statement pair is exactly the one that would
+        # deadlock under an inverted order; a 40P01 or 55P03 would surface.
+        rpc_result = sql(script, role="authenticated", user=self.admin)
+        self.assertNotIn("40P01", rpc_result)
+        after = self.deliver(issued["secret"], [{"day_id": day, "minutes": 510}])
+        self.assertEqual(after["provided_days"], 1)
+        self.assertEqual(self.count("hours_day_revisions"), "1")
+
     def test_saving_again_after_the_office_applied_it_proposes_nothing_new(self):
         """The office applied this day. Pressing save once more with the very
         same content may not put it back on the reviewer's desk."""

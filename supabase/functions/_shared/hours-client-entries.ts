@@ -104,8 +104,15 @@ export function buildClientEntries(input: unknown): ClientEntriesResult {
     }
     const hours = text(day.hours);
     // A blank field is unknown. Not zero, not a guess, and not an error either:
-    // a client is allowed to deliver part of the week.
-    if (!hours) continue;
+    // a client is allowed to deliver part of the week. A note on its own is a
+    // different case: something was typed about this day, so dropping it in
+    // silence and reporting success would be a lie.
+    if (!hours) {
+      if (note) {
+        issues.push({ day_id: dayId, message: 'Vul bij deze dag ook uren in, of kies "geen uren" met een reden.' });
+      }
+      continue;
+    }
     const parsed = parseHoursToMinutes(hours, { maxMinutes: 1440 });
     if (parsed.ok === false) {
       issues.push({ day_id: dayId, message: parsed.issues[0]?.message ?? 'Deze duur is niet te lezen.' });
@@ -151,6 +158,23 @@ export function clientLinkStatusFromCode(code: unknown): ClientLinkStatus {
     case 'PT404': return 'invalid';
     default: return 'unavailable';
   }
+}
+
+/**
+ * The SQLSTATEs whose message this module wrote itself, in Dutch, for exactly
+ * this reader. Everything else — a deadlock, a unique-index name, a failed uuid
+ * cast, a missing function — is Postgres talking to a developer, and it has no
+ * business on a page that anyone with a link can open.
+ */
+const SPEAKABLE_CODES = new Set(['22023', '42501']);
+const GENERIC_REFUSAL =
+  'Dit kon niet worden opgeslagen. Probeer het opnieuw of neem contact op met uw contactpersoon.';
+
+export function clientRefusalMessage(error: { code?: string | null; message?: string } | null): string {
+  const code = error?.code;
+  const message = error?.message;
+  return typeof code === 'string' && SPEAKABLE_CODES.has(code) && typeof message === 'string' && message.trim()
+    ? message : GENERIC_REFUSAL;
 }
 
 /**

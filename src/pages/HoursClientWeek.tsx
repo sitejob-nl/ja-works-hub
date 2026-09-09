@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -14,6 +14,14 @@ import {
   type ClientLinkStatus, type ClientWeek,
 } from '@/lib/hours-client-week';
 import { buildClientEntries } from '../../supabase/functions/_shared/hours-client-entries.ts';
+import {
+  HOURS_SOURCE_ACCEPT, HOURS_SOURCE_BUCKET, hoursSourceDigest, hoursSourceTypeError,
+  type HoursSourceContentType,
+} from '@/lib/hours-sources';
+import { countPdfPages } from '@/lib/hours-pdf-pages';
+import {
+  countWorkbookSheets, isReadableWorkbook, isWorkbookSource, workbookBytesError, workbookContentType,
+} from '@/lib/hours-workbook-file';
 
 /**
  * The personal client week page. No login, no session, no navigation into the
@@ -26,10 +34,34 @@ import { buildClientEntries } from '../../supabase/functions/_shared/hours-clien
 
 interface DayDraft { hours: string; noHours: boolean; reason: string; note: string }
 
-type PageState =
+export type PageState =
   | { kind: 'loading' }
   | { kind: 'refused'; status: ClientLinkStatus }
   | { kind: 'open'; week: ClientWeek };
+
+/**
+ * This page is a form someone fills in over minutes, not a dashboard. Every read
+ * also spends one attempt against the public rate limit and stamps the link as
+ * opened, so it reads exactly when the visitor asks for it and never on its own.
+ */
+export const CLIENT_WEEK_QUERY_OPTIONS = {
+  retry: false as const,
+  refetchOnWindowFocus: false as const,
+  refetchOnReconnect: false as const,
+  refetchOnMount: false as const,
+  staleTime: Infinity,
+};
+
+/**
+ * Which refusal to show, if any. A failed *background* read still has the week
+ * in hand: replacing the page there would destroy what is being typed, so only
+ * a page with nothing to show is replaced.
+ */
+export function showRefusal(state: PageState, isError: boolean): ClientLinkStatus | null {
+  if (state.kind === 'open') return null;
+  if (state.kind === 'refused') return state.status;
+  return isError ? 'unavailable' : null;
+}
 
 /** What the server sent back, without trusting that a week came with it. */
 function readResponse(data: unknown): PageState {
@@ -76,6 +108,7 @@ export default function HoursClientWeek() {
   const [notice, setNotice] = useState<string | null>(null);
   const [reporting, setReporting] = useState<'later' | 'complete' | null>(null);
   const [reportNote, setReportNote] = useState('');
+  const fileInput = useRef<HTMLInputElement>(null);
 
   /**
    * supabase-js hands a non-2xx back as an error with `data: null` and the body
@@ -102,7 +135,7 @@ export default function HoursClientWeek() {
     queryKey: ['hours-client-week', token],
     queryFn: () => call({ action: 'get' }),
     enabled: !!token,
-    retry: false,
+    ...CLIENT_WEEK_QUERY_OPTIONS,
   });
 
   const state: PageState = page.data ?? { kind: 'loading' };
@@ -138,6 +171,60 @@ export default function HoursClientWeek() {
     onSuccess: result => { store(result); setReporting(null); setReportNote(''); },
   });
 
+  /**
+   * Delivering the timesheet itself. The bytes never pass through the server
+   * that hands out the address: it signs a one-off upload for exactly this
+   * object, whose path it derives from the link. What arrives is a source, not
+   * hours — reading it stays a separate act by someone at the office.
+   */
+  const deliverFile = useMutation({
+    mutationFn: async (chosen: File) => {
+      const rejection = hoursSourceTypeError(chosen);
+      if (rejection) throw new Error(rejection);
+      const bytes = await chosen.arrayBuffer();
+      // The declared media type is not proof; a workbook has to be one, and is
+      // stored as what it really is so a mislabelled .xlsx stays readable.
+      const notAWorkbook = isWorkbookSource(chosen.type) ? workbookBytesError(bytes) : null;
+      if (notAWorkbook) throw new Error(notAWorkbook);
+      const contentType = (workbookContentType(chosen.type, bytes) ?? chosen.type) as HoursSourceContentType;
+      const digest = await hoursSourceDigest(bytes);
+      let pageCount: number | null = null;
+      try {
+        if (contentType === 'application/pdf') pageCount = await countPdfPages(bytes);
+        else if (isReadableWorkbook(contentType)) pageCount = await countWorkbookSheets(bytes);
+      } catch { pageCount = null; }
+
+      const { data, error: failure } = await supabase.functions.invoke('hours-client-week', {
+        body: { token, action: 'upload', content_hash: digest, content_type: contentType },
+      });
+      if (failure) throw failure;
+      const signed = (data ?? {}) as { status?: string; path?: string; token?: string; already_uploaded?: boolean; error?: string };
+      if (typeof signed.error === 'string') throw new Error(signed.error);
+      if (signed.status !== 'ok' || !signed.path) throw new Error(CLIENT_LINK_MESSAGES.unavailable);
+      if (!signed.already_uploaded) {
+        if (!signed.token) throw new Error('Uw bestand kon niet worden meegestuurd. Probeer het opnieuw.');
+        const upload = await supabase.storage.from(HOURS_SOURCE_BUCKET)
+          .uploadToSignedUrl(signed.path, signed.token, chosen, { contentType });
+        if (upload.error) {
+          throw new Error('Uw bestand is niet meegestuurd. Probeer het opnieuw.');
+        }
+      }
+      const result = await call({
+        action: 'register', content_hash: digest, file_name: chosen.name,
+        content_type: contentType, page_count: pageCount,
+      });
+      return { state: result, duplicate: signed.already_uploaded === true, name: chosen.name };
+    },
+    onSuccess: outcome => {
+      store(outcome.state);
+      setNotice(outcome.duplicate
+        ? `“${outcome.name}” was al ontvangen. Er is geen tweede bestand bewaard.`
+        : `“${outcome.name}” is meegestuurd met uw uren.`);
+    },
+    onError: failure => setError(failure instanceof Error ? failure.message
+      : 'Uw bestand is niet meegestuurd. Probeer het opnieuw.'),
+  });
+
   const update = (dayId: string, change: Partial<DayDraft>) => {
     setError(null); setNotice(null);
     setDrafts(current => ({ ...current, [dayId]: { ...current[dayId], ...change } }));
@@ -152,25 +239,19 @@ export default function HoursClientWeek() {
     setError(null); setNotice(null);
     // Only the days that were actually filled in travel: an untouched day stays
     // unknown. The same reader runs on the server, so nothing slips past here.
-    const filled = entries.filter(entry => entry.no_hours || entry.hours.trim() || entry.reason.trim());
+    const filled = entries.filter(entry =>
+      entry.no_hours || entry.hours.trim() || entry.reason.trim() || entry.note.trim());
     const { issues } = buildClientEntries(filled);
     if (issues.length) { setError(issues[0].message); return; }
     if (!filled.length) { setError('Er is niets ingevuld om op te slaan.'); return; }
     save.mutate(filled, { onError: failure => setError(failure instanceof Error ? failure.message : 'Opslaan is niet gelukt.') });
   }
 
-  if (!token || state.kind === 'refused') {
-    const status = state.kind === 'refused' ? state.status : 'invalid';
+  const refused = !token ? 'invalid' : showRefusal(state, page.isError);
+  if (refused) {
     return <main className="mx-auto max-w-lg p-6">
       <Card><CardHeader><CardTitle className="text-base">Urenweek</CardTitle></CardHeader>
-        <CardContent><p role="status">{CLIENT_LINK_MESSAGES[status]}</p></CardContent></Card>
-    </main>;
-  }
-
-  if (page.isError) {
-    return <main className="mx-auto max-w-lg p-6">
-      <Card><CardHeader><CardTitle className="text-base">Urenweek</CardTitle></CardHeader>
-        <CardContent><p role="status">{CLIENT_LINK_MESSAGES.unavailable}</p></CardContent></Card>
+        <CardContent><p role="status">{CLIENT_LINK_MESSAGES[refused]}</p></CardContent></Card>
     </main>;
   }
 
@@ -178,7 +259,7 @@ export default function HoursClientWeek() {
     return <main className="mx-auto max-w-lg p-6"><p role="status">Urenweek laden…</p></main>;
   }
 
-  const busy = save.isPending || report.isPending;
+  const busy = save.isPending || report.isPending || deliverFile.isPending;
   return <main className="mx-auto max-w-3xl space-y-5 p-4 sm:p-6">
     <header className="space-y-1">
       <h1 className="text-xl font-semibold" data-no-translate="true">{week.week.company_name}</h1>
@@ -189,8 +270,9 @@ export default function HoursClientWeek() {
           : ''}
       </p>
       <p className="text-sm text-muted-foreground">
-        Vul per medewerker de gewerkte uren in. Wat u doorgeeft wordt door uw contactpersoon beoordeeld
-        voordat het als uren wordt vastgelegd. Een dag die u leeg laat blijft open staan.
+        Vul per medewerker de gewerkte uren in. U kunt ook uw eigen urenbriefje meesturen als PDF, foto
+        of Excel. Wat u doorgeeft wordt door uw contactpersoon beoordeeld voordat het als uren wordt
+        vastgelegd. Een dag die u leeg laat blijft open staan.
       </p>
     </header>
 
@@ -252,6 +334,17 @@ export default function HoursClientWeek() {
     <div className="flex flex-wrap items-center gap-3">
       <Button type="button" disabled={busy} onClick={submit}>
         {save.isPending ? 'Uren doorgeven…' : 'Uren opslaan'}
+      </Button>
+      <input ref={fileInput} type="file" className="sr-only" accept={HOURS_SOURCE_ACCEPT}
+        aria-label="Urenbriefje meesturen" disabled={busy}
+        onChange={event => {
+          const chosen = event.target.files?.[0];
+          setError(null); setNotice(null);
+          if (chosen) deliverFile.mutate(chosen);
+          if (fileInput.current) fileInput.current.value = '';
+        }} />
+      <Button type="button" variant="outline" disabled={busy} onClick={() => fileInput.current?.click()}>
+        {deliverFile.isPending ? 'Bestand meesturen…' : 'Urenbriefje meesturen'}
       </Button>
       {!reporting && <>
         <Button type="button" variant="outline" disabled={busy} onClick={() => setReporting('later')}>
