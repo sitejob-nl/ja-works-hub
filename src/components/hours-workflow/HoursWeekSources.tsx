@@ -477,6 +477,9 @@ function ProposalRow({ proposal, target, canManage, onApply, onDiscard, onConfir
  * secret, so a lost link is replaced rather than looked up — the form says so
  * plainly rather than leaving the reader to find out later.
  */
+/** What still asks something of the reviewer; the rest is history. */
+const needsAttention = (proposal: HoursSourceProposal) => proposal.status === 'open';
+
 function ClientLinksSection({ organizationId, links, canManage, targets, onIssue, onRevoke, onApply,
   onDiscard, onConfirmAssignment, onReload }: {
   organizationId: string;
@@ -498,10 +501,11 @@ function ClientLinksSection({ organizationId, links, canManage, targets, onIssue
   const [busy, setBusy] = useState(false);
   const [revoking, setRevoking] = useState<string | null>(null);
   const [revokeNote, setRevokeNote] = useState('');
+  const [showHistory, setShowHistory] = useState<string | null>(null);
   // The organization's own verified domain, exactly as every other public token
   // link uses. The secret is shown once, so a link issued from a preview host
   // would be unrecoverable.
-  const { buildUrl } = usePublicUrlForOrg(organizationId);
+  const { buildUrl, isLoading: domainLoading } = usePublicUrlForOrg(organizationId);
 
   async function issue() {
     const trimmed = label.trim();
@@ -541,8 +545,11 @@ function ClientLinksSection({ organizationId, links, canManage, targets, onIssue
           en wordt pas een dagversie als u het toepast.
         </p>
       </div>
-      {canManage && !creating && <Button type="button" size="sm" variant="outline" disabled={busy}
-        onClick={() => { setCreating(true); setIssued(null); setError(null); }}>Klantlink maken</Button>}
+      {canManage && !creating && <div className="flex flex-wrap items-center gap-2">
+        {domainLoading && <span className="text-xs text-muted-foreground">Het adres van uw organisatie wordt opgehaald…</span>}
+        <Button type="button" size="sm" variant="outline" disabled={busy || domainLoading}
+          onClick={() => { setCreating(true); setIssued(null); setError(null); }}>Klantlink maken</Button>
+      </div>}
     </div>
 
     {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
@@ -562,7 +569,8 @@ function ClientLinksSection({ organizationId, links, canManage, targets, onIssue
         </div>
       </div>
       <div className="flex flex-wrap gap-2">
-        <Button type="button" size="sm" disabled={busy} onClick={() => void issue()}>Link aanmaken</Button>
+        <Button type="button" size="sm" disabled={busy || domainLoading}
+          onClick={() => void issue()}>Link aanmaken</Button>
         <Button type="button" size="sm" variant="ghost" disabled={busy}
           onClick={() => { setCreating(false); setError(null); }}>Annuleren</Button>
       </div>
@@ -583,6 +591,7 @@ function ClientLinksSection({ organizationId, links, canManage, targets, onIssue
       : links.map(link => {
         const state = clientLinkState(link);
         const openProposals = link.proposals.filter(proposal => proposal.status === 'open');
+        const settled = link.proposals.filter(proposal => !needsAttention(proposal));
         return <div key={link.id} className="space-y-2 rounded-md border p-3"
           role="group" aria-label={`Klantlink ${link.label}`}>
           <div className="flex flex-wrap items-start justify-between gap-2">
@@ -629,9 +638,19 @@ function ClientLinksSection({ organizationId, links, canManage, targets, onIssue
               {openProposals.length > 0 && <p className="text-sm">
                 {openProposals.length} {openProposals.length === 1 ? 'dag wacht' : 'dagen wachten'} op uw beoordeling.
               </p>}
-              {link.proposals.map(proposal => <ProposalRow key={proposal.id} proposal={proposal}
-                canManage={canManage} target={targets.get(proposal.day_id)} onReload={onReload}
-                onApply={onApply} onConfirmAssignment={onConfirmAssignment} onDiscard={onDiscard} />)}
+              {/* A client that keeps correcting leaves a withdrawn delivery
+                  behind each time. What needs a decision stays in view; the
+                  history is one click away instead of pushing it off screen. */}
+              {(showHistory === link.id ? link.proposals : link.proposals.filter(needsAttention))
+                .map(proposal => <ProposalRow key={proposal.id} proposal={proposal}
+                  canManage={canManage} target={targets.get(proposal.day_id)} onReload={onReload}
+                  onApply={onApply} onConfirmAssignment={onConfirmAssignment} onDiscard={onDiscard} />)}
+              {settled.length > 0 && <Button type="button" size="sm" variant="ghost"
+                onClick={() => setShowHistory(showHistory === link.id ? null : link.id)}>
+                {showHistory === link.id
+                  ? `${settled.length} eerdere aanleveringen verbergen`
+                  : `${settled.length} eerdere aanleveringen tonen`}
+              </Button>}
             </>}
         </div>;
       })}

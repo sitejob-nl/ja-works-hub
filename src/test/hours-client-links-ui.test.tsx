@@ -11,9 +11,12 @@ vi.mock('@/integrations/supabase/client', () => ({
   supabase: { rpc, storage: { from: () => ({ upload, createSignedUrl }) } },
 }));
 vi.mock('@/lib/hours-pdf-pages', () => ({ countPdfPages: vi.fn() }));
-const { buildUrl } = vi.hoisted(() => ({ buildUrl: vi.fn((path: string) => `https://uren.acme.nl${path}`) }));
+const { buildUrl, domainState } = vi.hoisted(() => ({
+  buildUrl: vi.fn((path: string) => `https://uren.acme.nl${path}`),
+  domainState: { isLoading: false },
+}));
 vi.mock('@/hooks/usePublicUrl', () => ({
-  usePublicUrlForOrg: () => ({ buildUrl, primaryDomain: null, isLoading: false }),
+  usePublicUrlForOrg: () => ({ buildUrl, primaryDomain: null, isLoading: domainState.isLoading }),
 }));
 
 const orgId = '00000000-0000-4000-8000-000000000001';
@@ -66,7 +69,7 @@ function show(view = week()) {
 }
 
 beforeEach(() => {
-  rpc.mockReset();
+  rpc.mockReset(); domainState.isLoading = false;
   vi.stubGlobal('location', { origin: 'https://ats.sitejob.nl' } as unknown as Location);
 });
 afterEach(() => { cleanup(); clients.forEach(client => client.clear()); clients.length = 0; vi.unstubAllGlobals(); });
@@ -101,6 +104,16 @@ describe('handing out a personal client week link', () => {
     expect(await screen.findByText('Planning Acme')).toBeTruthy();
     expect(screen.queryByText(new RegExp(secret))).toBeNull();
     expect(screen.queryByText(/urenweek\//)).toBeNull();
+  });
+
+  it('waits for the organization domain instead of handing out a fallback host', async () => {
+    // The secret is shown once, so a link built on the fallback host cannot be
+    // regenerated: recovery would mean revoking and issuing a new one.
+    domainState.isLoading = true;
+    rpc.mockResolvedValue(ok(projection()));
+    show();
+    expect(await screen.findByRole('button', { name: 'Klantlink maken' })).toBeDisabled();
+    expect(screen.getByText(/adres van uw organisatie/i)).toBeTruthy();
   });
 
   it('refuses to hand out a link without a name for it', async () => {
@@ -167,6 +180,24 @@ describe('what the office sees about a delivery', () => {
 });
 
 describe('a delivery is a proposal, and stays one', () => {
+  it('keeps a long history of corrections out of the way', async () => {
+    const many = Array.from({ length: 9 }, (_, index) => clientProposal({
+      id: `00000000-0000-4000-8000-0000000000${(index + 20).toString(16).padStart(2, '0')}`,
+      status: 'discarded', minutes: 400 + index,
+      resolution_note: 'Vervangen door een latere aanlevering van de opdrachtgever',
+      resolved_at: '2026-09-09T09:00:00Z',
+    }));
+    rpc.mockResolvedValue(ok(projection([link({ proposals: [...many, clientProposal()] })])));
+    show();
+    const row = await screen.findByRole('group', { name: /Klantlink Planning Acme/ });
+    expect(within(row).getAllByRole('button', { name: 'Toepassen als dagversie' })).toHaveLength(1);
+    const toggle = within(row).getByRole('button', { name: /eerdere aanleveringen/i });
+    expect(toggle).toBeTruthy();
+    expect(within(row).queryByText(/8:20 uur/)).toBeNull();
+    fireEvent.click(toggle);
+    expect(within(row).getAllByText(/Vervangen door een latere aanlevering/).length).toBeGreaterThan(1);
+  });
+
   it('offers the same review as any other proposal, never a direct write', async () => {
     rpc.mockResolvedValue(ok(projection([link({ proposals: [clientProposal()] })])));
     show();
@@ -185,8 +216,10 @@ describe('a delivery is a proposal, and stays one', () => {
     ] })])));
     show();
     const row = await screen.findByRole('group', { name: /Klantlink Planning Acme/ });
+    expect(within(row).getAllByRole('button', { name: 'Toepassen als dagversie' }),
+      'only the standing delivery asks for a decision').toHaveLength(1);
+    fireEvent.click(within(row).getByRole('button', { name: /eerdere aanleveringen/i }));
     expect(within(row).getByText(/Vervangen door een latere aanlevering/)).toBeTruthy();
-    expect(within(row).getAllByRole('button', { name: 'Toepassen als dagversie' })).toHaveLength(1);
   });
 
   it('withdraws a link only after an explicit act', async () => {

@@ -271,6 +271,28 @@ describe('keeping what the client is working on', () => {
     expect(CLIENT_WEEK_QUERY_OPTIONS.retry).toBe(false);
   });
 
+  it('never reports success for a day it silently dropped', async () => {
+    // Unchecking "geen uren" left the reason behind: the day passed the filter,
+    // produced neither an entry nor a complaint, and the page said "delivered".
+    invoke.mockResolvedValue(ok({ status: 'ok', week: payload({
+      provided_days: 1, outstanding_days: 1,
+      members: [{
+        id: memberId, candidate_name: 'Anna Nowak',
+        days: [
+          day(monday, '2026-09-07', { minutes: 0, no_hours_reason: 'Ziek', note: null,
+            status: 'open', created_at: '2026-09-08T09:00:00Z' }),
+          day(tuesday, '2026-09-08'),
+        ],
+      }],
+    }) }));
+    show();
+    await screen.findByText('Acme BV');
+    fireEvent.click(screen.getByLabelText('Geen uren maandag 7 september'));
+    fireEvent.click(screen.getByRole('button', { name: 'Uren opslaan' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/teruggenomen|vul/i);
+    expect(invoke.mock.calls.filter(([, options]) => options?.body?.action === 'save')).toHaveLength(0);
+  });
+
   it('says what it will not send instead of reporting a silent success', async () => {
     invoke.mockResolvedValue(ok({ status: 'ok', week: payload() }));
     show();

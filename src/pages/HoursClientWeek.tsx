@@ -248,6 +248,17 @@ export default function HoursClientWeek() {
     // unknown. The same reader runs on the server, so nothing slips past here.
     const filled = entries.filter(entry =>
       entry.no_hours || entry.hours.trim() || entry.reason.trim() || entry.note.trim());
+    // A day that was delivered and is now empty is an intention, not a blank
+    // field. An earlier delivery cannot be taken back from here, and reporting
+    // success while it still stands at the office would be a lie.
+    const emptied = week.members.flatMap(member => member.days)
+      .find(day => day.delivered && !filled.some(entry => entry.day_id === day.id));
+    if (emptied) {
+      setError(`U heeft ${dayLabel(emptied.work_date)} leeggemaakt. Een eerdere aanlevering kan hier niet `
+        + 'worden teruggenomen: vul uren in, kies "geen uren" met een reden, of neem contact op met uw '
+        + 'contactpersoon.');
+      return;
+    }
     const { issues } = buildClientEntries(filled);
     if (issues.length) { setError(issues[0].message); return; }
     if (!filled.length) { setError('Er is niets ingevuld om op te slaan.'); return; }
@@ -317,7 +328,11 @@ export default function HoursClientWeek() {
                 <label className="flex items-center gap-2 pt-4 text-sm">
                   <Checkbox id={`nohours-${day.id}`} checked={draft.noHours} disabled={busy}
                     aria-label={`Geen uren ${label}`}
-                    onCheckedChange={checked => update(day.id, { noHours: checked === true, hours: '' })} />
+                    onCheckedChange={checked => update(day.id,
+                      // Unchecking clears the reason too: a reason without hours
+                      // is neither a delivery nor a blank field, and would be
+                      // dropped in silence.
+                      checked === true ? { noHours: true, hours: '' } : { noHours: false, hours: '', reason: '' })} />
                   Geen uren
                 </label>
               </div>
