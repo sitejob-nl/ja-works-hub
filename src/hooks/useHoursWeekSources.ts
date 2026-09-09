@@ -162,7 +162,15 @@ export function useHoursWeekSources(organizationId: string, weekId: string | und
       const result = await hoursWorkflowRpc('hours_issue_client_week_link', {
         p_week_id: weekId!, p_label: input.label, p_valid_days: input.validDays,
       }) as Record<string, unknown>;
-      store(parseWeekSources(result));
+      // The link is already committed and only its digest is stored, so the
+      // one-time address must survive an unreadable neighbouring field. The
+      // cache simply refetches instead.
+      try {
+        store(parseWeekSources(result));
+      } catch (failure) {
+        console.warn('Klantweeklink: projectie niet leesbaar, cache wordt opnieuw geladen', failure);
+        void qc.invalidateQueries({ queryKey: qk.hoursWorkflow.sources(organizationId, weekId!) });
+      }
       return { secret: String(result.secret), linkId: String(result.link_id) };
     },
   });

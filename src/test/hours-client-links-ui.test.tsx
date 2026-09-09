@@ -98,6 +98,24 @@ describe('handing out a personal client week link', () => {
       { p_week_id: weekId, p_label: 'Planning Acme', p_valid_days: 14 });
   });
 
+  it('shows the address even when the rest of the projection cannot be read', async () => {
+    // The link is committed server-side and only its digest is stored. Losing
+    // the one-time address over an unreadable neighbouring field would mean
+    // revoking and issuing a new one.
+    rpc.mockImplementation((name: string) => {
+      if (name === 'hours_get_week_sources') return Promise.resolve(ok(projection()));
+      if (name === 'hours_issue_client_week_link') {
+        return Promise.resolve(ok({ ...projection([link()]), sources: 'kapot', secret, link_id: linkId }));
+      }
+      throw new Error(`unexpected ${name}`);
+    });
+    show();
+    fireEvent.click(await screen.findByRole('button', { name: 'Klantlink maken' }));
+    fireEvent.change(screen.getByLabelText('Voor wie is deze link?'), { target: { value: 'Planning Acme' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Link aanmaken' }));
+    expect(await screen.findByText(`https://uren.acme.nl/urenweek/${secret}`)).toBeTruthy();
+  });
+
   it('never shows the address again on a later read', async () => {
     rpc.mockResolvedValue(ok(projection([link({ last_opened_at: '2026-09-09T07:00:00Z' })])));
     show();

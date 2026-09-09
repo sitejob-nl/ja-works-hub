@@ -42,7 +42,12 @@ export interface ClientEntriesResult {
   issues: ClientEntryIssue[];
 }
 
-/** The server bound, mirrored here so a large delivery is narrowed, not refused whole. */
+/**
+ * The server's bound on one delivery, mirrored here so the page can say what is
+ * wrong before it sends. The page only ever sends the days that actually
+ * changed, so this is a guard against a runaway payload rather than a limit a
+ * real week runs into.
+ */
 export const MAX_CLIENT_ENTRIES = 500;
 const MAX_NOTE = 2000;
 const MAX_REASON = 500;

@@ -14,6 +14,7 @@ import {
   type ClientLinkStatus, type ClientWeek,
 } from '@/lib/hours-client-week';
 import { buildClientEntries } from '../../supabase/functions/_shared/hours-client-entries.ts';
+import { parseHoursToMinutes } from '../../supabase/functions/_shared/hours-calculation.ts';
 import {
   HOURS_SOURCE_ACCEPT, HOURS_SOURCE_BUCKET, hoursSourceDigest, hoursSourceTypeError,
   type HoursSourceContentType,
@@ -215,11 +216,14 @@ export default function HoursClientWeek() {
           throw new Error('Uw bestand is niet meegestuurd. Probeer het opnieuw.');
         }
       }
-      const result = await call({
+      const registered = await invoke({
         action: 'register', content_hash: digest, file_name: chosen.name,
         content_type: contentType, page_count: pageCount,
-      });
-      return { state: result, duplicate: signed.already_uploaded === true, name: chosen.name };
+      }) as { duplicate?: boolean };
+      // What counts is whether a *source* was recorded, not whether the bytes
+      // happened to be in storage already: an upload that landed but failed to
+      // register leaves the object behind, and the retry is a first delivery.
+      return { state: readResponse(registered), duplicate: registered.duplicate === true, name: chosen.name };
     },
     onSuccess: outcome => {
       if ('refused' in outcome) { store(outcome.refused); return; }
@@ -262,7 +266,26 @@ export default function HoursClientWeek() {
     const { issues } = buildClientEntries(filled);
     if (issues.length) { setError(issues[0].message); return; }
     if (!filled.length) { setError('Er is niets ingevuld om op te slaan.'); return; }
-    save.mutate(filled, { onError: failure => setError(failure instanceof Error ? failure.message : 'Opslaan is niet gelukt.') });
+    // Only what actually moved travels. Resending every delivered day would make
+    // a large week grow past the server's bound on one delivery and lock itself
+    // out of even a one-day correction.
+    const delivered = new Map(week.members.flatMap(member => member.days)
+      .map(day => [day.id, day.delivered]));
+    const changed = filled.filter(entry => {
+      const current = delivered.get(entry.day_id);
+      if (!current) return true;
+      const [minutes, reason] = entry.no_hours
+        ? [0, entry.reason.trim()]
+        : [parseHoursToMinutes(entry.hours, { maxMinutes: 1440 }), null] as const;
+      const currentHours = current.minutes;
+      const typed = entry.no_hours ? 0
+        : (typeof minutes === 'object' && minutes.ok === true ? minutes.value : -1);
+      return typed !== currentHours
+        || (reason ?? null) !== (current.no_hours_reason ?? null)
+        || (entry.note.trim() || null) !== (current.note ?? null);
+    });
+    if (!changed.length) { setError('Er is niets gewijzigd om door te geven.'); return; }
+    save.mutate(changed, { onError: failure => setError(failure instanceof Error ? failure.message : 'Opslaan is niet gelukt.') });
   }
 
   const refused = !token ? 'invalid' : showRefusal(state, page.isError);

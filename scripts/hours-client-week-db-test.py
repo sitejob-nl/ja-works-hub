@@ -346,6 +346,27 @@ class ClientWeekTests(workbook.WorkbookTests):
         self.assertEqual(self.count("hours_source_proposals"), "1",
                          "Saving again without a change may not fill the screen with noise")
 
+    def test_revoking_locks_the_week_before_the_link(self):
+        """Every client write reaches the link row through its foreign key, after
+        the week. A revoke that took the link first would deadlock against a
+        client saving or uploading at that very moment."""
+        source = sql("""SELECT pg_get_functiondef(p.oid) FROM pg_proc p JOIN pg_namespace n
+          ON n.oid=p.pronamespace WHERE n.nspname='public'
+          AND p.proname='hours_revoke_client_week_link';""")
+        week_lock = source.index("hours_lock_week")
+        link_lock = source.index("for update")
+        self.assertLess(week_lock, link_lock,
+                        "The week is locked before the link row, matching the client writers")
+
+    def test_revoking_still_refuses_another_tenant_and_a_second_time(self):
+        week, issued = self.open_link()
+        self.reject("hours_revoke_client_week_link", code="42501", user=self.other_admin,
+                    p_link_id=issued["link_id"], p_note=None)
+        rpc("hours_revoke_client_week_link", user=self.admin, p_link_id=issued["link_id"], p_note="Klaar")
+        self.reject("hours_revoke_client_week_link", code="22023", user=self.admin,
+                    p_link_id=issued["link_id"], p_note=None)
+        self.assertEqual(self.links_of(week["id"])[0]["revoke_note"], "Klaar")
+
     def test_the_client_save_locks_in_the_released_order(self):
         """Applying locks proposal, then week, then day. A client save that took
         the week first would deadlock against a simultaneous apply, so the order

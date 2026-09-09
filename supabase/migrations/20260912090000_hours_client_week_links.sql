@@ -407,11 +407,20 @@ end $$;
 
 create or replace function public.hours_revoke_client_week_link(p_link_id uuid, p_note text default null)
 returns jsonb language plpgsql security definer set search_path = '' as $$
-declare v_org uuid := private.hours_require_internal(true); v_link public.hours_client_week_links%rowtype; begin
+declare
+  v_org uuid := private.hours_require_internal(true); v_link public.hours_client_week_links%rowtype;
+  v_week_id uuid;
+begin
+  -- Week first, then the link row. Every client write reaches this same row
+  -- through its foreign key *after* taking the week, so locking the link first
+  -- would deadlock against a client saving or uploading at that very moment.
+  select week_id into v_week_id from public.hours_client_week_links
+    where id = p_link_id and organization_id = v_org;
+  if not found then raise exception 'Deze klantweeklink is niet beschikbaar' using errcode = '42501'; end if;
+  perform private.hours_lock_week(v_week_id);
   select * into v_link from public.hours_client_week_links
     where id = p_link_id and organization_id = v_org for update;
   if not found then raise exception 'Deze klantweeklink is niet beschikbaar' using errcode = '42501'; end if;
-  perform private.hours_lock_week(v_link.week_id);
   if v_link.revoked_at is not null then
     raise exception 'Deze klantweeklink is al ingetrokken' using errcode = '22023';
   end if;

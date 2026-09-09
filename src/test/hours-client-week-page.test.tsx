@@ -133,6 +133,48 @@ describe('filling in the week', () => {
     expect(invoke.mock.calls.filter(([, options]) => options?.body?.action === 'save')).toHaveLength(0);
   });
 
+  it('sends only the days that changed, not the whole week again', async () => {
+    invoke.mockResolvedValue(ok({ status: 'ok', week: payload({
+      provided_days: 1, outstanding_days: 1,
+      members: [{
+        id: memberId, candidate_name: 'Anna Nowak',
+        days: [
+          day(monday, '2026-09-07', { minutes: 510, no_hours_reason: null, note: null,
+            status: 'open', created_at: '2026-09-08T09:00:00Z' }),
+          day(tuesday, '2026-09-08'),
+        ],
+      }],
+    }) }));
+    show();
+    await screen.findByText('Acme BV');
+    fireEvent.change(hoursField('dinsdag 8 september'), { target: { value: '8' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Uren opslaan' }));
+    await waitFor(() => {
+      const call = invoke.mock.calls.find(([, options]) => options?.body?.action === 'save');
+      expect(call?.[1].body.entries.map((entry: { day_id: string }) => entry.day_id),
+        'a day the server already holds unchanged does not travel again').toEqual([tuesday]);
+    });
+  });
+
+  it('says nothing changed instead of resending an identical week', async () => {
+    invoke.mockResolvedValue(ok({ status: 'ok', week: payload({
+      provided_days: 1, outstanding_days: 1,
+      members: [{
+        id: memberId, candidate_name: 'Anna Nowak',
+        days: [
+          day(monday, '2026-09-07', { minutes: 510, no_hours_reason: null, note: null,
+            status: 'open', created_at: '2026-09-08T09:00:00Z' }),
+          day(tuesday, '2026-09-08'),
+        ],
+      }],
+    }) }));
+    show();
+    await screen.findByText('Acme BV');
+    fireEvent.click(screen.getByRole('button', { name: 'Uren opslaan' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/niets (gewijzigd|ingevuld)/i);
+    expect(invoke.mock.calls.filter(([, options]) => options?.body?.action === 'save')).toHaveLength(0);
+  });
+
   it('says there is nothing to save when nothing was filled in', async () => {
     invoke.mockResolvedValue(ok({ status: 'ok', week: payload() }));
     show();
@@ -349,6 +391,25 @@ describe('delivering the timesheet itself', () => {
       { target: { files: [file('week37.pdf', 'application/pdf')] } });
     await screen.findByText(/was al ontvangen/i);
     expect(uploadToSignedUrl).not.toHaveBeenCalled();
+  });
+
+  it('reports what was recorded, not merely that the bytes were already there', async () => {
+    // An upload that landed but whose registration failed leaves the object in
+    // place. The retry registers the source for the first time, and telling the
+    // client "nothing was stored" would be exactly backwards.
+    invoke.mockImplementation((_name: string, options: { body: { action: string } }) => {
+      if (options.body.action === 'get') return Promise.resolve(ok({ status: 'ok', week: payload() }));
+      if (options.body.action === 'upload') {
+        return Promise.resolve(ok({ status: 'ok', path: 'org/week/abc.pdf', already_uploaded: true }));
+      }
+      return Promise.resolve(ok({ status: 'ok', week: payload(), duplicate: false, source_id: 'src-1' }));
+    });
+    show();
+    await screen.findByText('Acme BV');
+    fireEvent.change(screen.getByLabelText('Urenbriefje meesturen'),
+      { target: { files: [file('week37.pdf', 'application/pdf')] } });
+    expect(await screen.findByText(/is meegestuurd/i)).toBeTruthy();
+    expect(screen.queryByText(/was al ontvangen/i)).toBeNull();
   });
 
   it('refuses a file type that can never be a timesheet, before it travels', async () => {
