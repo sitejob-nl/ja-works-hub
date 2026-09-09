@@ -1,5 +1,7 @@
-import { AiAccountingError } from './ai-accounting.ts';
-import { interpretScanReading, type ScanContext, type ScanReading } from './hours-scan.ts';
+import { AiAccountingError, type AiAccountingResult } from './ai-accounting.ts';
+import {
+  HOURS_READABLE_SCAN_TYPES, interpretScanReading, type ScanContext, type ScanReading,
+} from './hours-scan.ts';
 
 /**
  * The HTTP boundary of reading a scan or photo into proposals.
@@ -43,7 +45,41 @@ export interface HoursScanPorts {
  * hit; it has to say what still works.
  */
 export const HOURS_SCAN_MAX_FILE_BYTES = 10 * 1024 * 1024;
-const READABLE_TYPES = ['application/pdf', 'image/jpeg', 'image/png'];
+
+/** One identifier and nothing else; the body has no reason to be larger. */
+const MAX_REQUEST_BYTES = 1024;
+
+/**
+ * Reads the body while counting, and stops at the bound.
+ *
+ * A declared length is a hint, not a promise: it is absent on a chunked request,
+ * where `Number(null)` is zero and a header check would wave anything through
+ * to be buffered whole. Counting the bytes as they arrive refuses the same
+ * oversized body without ever holding it.
+ */
+async function readBounded(req: Request, limit: number): Promise<string | null> {
+  const declared = Number(req.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > limit) return null;
+  if (!req.body) return '';
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > limit) { await reader.cancel(); return null; }
+      chunks.push(value);
+    }
+  } catch {
+    return null;
+  }
+  const body = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) { body.set(chunk, offset); offset += chunk.byteLength; }
+  return new TextDecoder().decode(body);
+}
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -104,9 +140,8 @@ export function createHoursScanHandler(ports: HoursScanPorts, corsHeaders: Recor
       if (auth instanceof Response) return auth;
       // Only one identifier is accepted. The model, the tenant, the file and the
       // week are server-owned; a caller may not choose any of them.
-      if (Number(req.headers.get('content-length')) > 1024) return json({ error: 'De aanvraag is te groot.', code: 'invalid_input' }, 400);
-      const raw = await req.text();
-      if (raw.length > 1024) return json({ error: 'De aanvraag is te groot.', code: 'invalid_input' }, 400);
+      const raw = await readBounded(req, MAX_REQUEST_BYTES);
+      if (raw === null) return json({ error: 'De aanvraag is te groot.', code: 'invalid_input' }, 400);
       let input: unknown;
       try { input = JSON.parse(raw); } catch { return json({ error: 'Ongeldige JSON-aanvraag.', code: 'invalid_input' }, 400); }
       if (!isRecord(input) || Object.keys(input).length !== 1 || !uuid(input.source_id)) {
@@ -120,8 +155,12 @@ export function createHoursScanHandler(ports: HoursScanPorts, corsHeaders: Recor
       if (!context) {
         return json({ error: 'De brongegevens zijn onvolledig. Er is niets uitgelezen.', code: 'invalid_context' }, 500);
       }
-      if (!READABLE_TYPES.includes(context.contentType)) {
+      if (!(HOURS_READABLE_SCAN_TYPES as readonly string[]).includes(context.contentType)) {
         return json({ error: 'Alleen een PDF of foto kan worden uitgelezen.', code: 'unsupported_source' }, 400);
+      }
+      if (!context.scan.days.length) {
+        return json({ error: 'Deze week heeft nog geen werkdagen om aan te herkennen. Voeg eerst de medewerkers toe.',
+          code: 'week_without_days' }, 400);
       }
       if (context.byteSize > HOURS_SCAN_MAX_FILE_BYTES) {
         return json({ error: 'Dit bestand is te groot om te laten uitlezen. Bekijk het zelf en leg de uren handmatig als voorstel vast.',
@@ -153,8 +192,23 @@ export function createHoursScanHandler(ports: HoursScanPorts, corsHeaders: Recor
           const message = failure.status === 402
             ? 'Het AI-budget van deze maand is op, dus uitlezen kan nu niet. Handmatig een voorstel vastleggen werkt gewoon.'
             : failure.message;
+          console.error('hours_scan_failed', JSON.stringify({ code: failure.code, status: failure.status,
+            request_id: failure.requestId, cost_cents: failure.costCents }));
           return json({ error: message, code: failure.code, request_id: failure.requestId,
             cost_cents: failure.costCents, balance_cents: failure.balanceCents }, failure.status);
+        }
+        // The provider was already paid and settled: attachAiAccounting hangs
+        // the settlement on a plain error, so this is the only place the cost
+        // and the request id can still reach the office. Telling someone to try
+        // again here would charge them a second time for the same refusal.
+        const settled = failure as Partial<AiAccountingResult> & { message?: string };
+        if (settled?.providerAttempted === true) {
+          console.error('hours_scan_settled_failure', JSON.stringify({ request_id: settled.requestId,
+            cost_cents: settled.costCents, input_tokens: settled.inputTokens, output_tokens: settled.outputTokens }));
+          return json({ error: `${settled.message ?? 'Het uitlezen is mislukt.'} `
+            + 'Deze uitlezing is wel in rekening gebracht; leg de uren handmatig vast of pas de bron aan.',
+            code: 'scan_reading_unusable', request_id: settled.requestId,
+            cost_cents: settled.costCents, balance_cents: settled.balanceCents }, 502);
         }
         return json({ error: 'Het uitlezen is mislukt. Probeer het opnieuw of leg de uren handmatig vast.',
           code: 'scan_failed' }, 503);

@@ -237,6 +237,54 @@ class ScanTests(client.ClientWeekTests):
         self.assertEqual(sources["uncertain_values"], 1)
         self.assertEqual(sources["open_proposals"], 1)
 
+    def test_the_uncertainty_check_does_not_depend_on_a_changeable_function(self):
+        """A CHECK is re-evaluated on every UPDATE, on an append-only table.
+
+        If the constraint calls a project function holding the closed list, then
+        narrowing that list later makes existing rows violate it — and this
+        table has no DELETE path, so those proposals could never be applied,
+        discarded or confirmed again. The week would be stuck forever. The
+        constraint therefore has to be self-contained.
+        """
+        depends = sql("""SELECT count(*) FROM pg_constraint c
+          JOIN pg_depend d ON d.objid = c.oid AND d.classid = 'pg_constraint'::regclass
+          JOIN pg_proc p ON p.oid = d.refobjid AND d.refclassid = 'pg_proc'::regclass
+          WHERE c.conrelid = 'public.hours_source_proposals'::regclass;""")
+        self.assertEqual(depends, "0", "no CHECK on this table may depend on a project function")
+
+    def test_the_database_refuses_doubt_that_is_not_in_canonical_form(self):
+        """The RPC canonicalises; the trigger makes that a database fact."""
+        week = self.open_week()
+        source, _ = self.scan_source()
+        self.read_into_proposals(source["source_id"], [
+            {"day_id": self.day_of(week)["id"], "minutes": 480, "page_number": 1},
+        ])
+        proposal = self.only_proposal(rpc("hours_get_week_sources", user=self.admin, p_week_id=week["id"]))
+        for value in ("ARRAY['shift','total']", "ARRAY['total','total']", "ARRAY['handschrift']"):
+            outcome = sql(f"INSERT INTO public.hours_source_proposals(organization_id,week_id,source_id,"
+                          f"day_id,minutes,uncertain_fields,created_by) SELECT organization_id,week_id,"
+                          f"source_id,day_id,480,{value},created_by FROM public.hours_source_proposals "
+                          f"WHERE id={literal(proposal['id'])};", expect_error=True)
+            self.assertRegex(outcome, "22023|23514", value)
+
+    def test_recorded_doubt_is_bounded_like_every_other_field(self):
+        week = self.open_week()
+        source, _ = self.scan_source()
+        # Every other field in this RPC is capped; an unbounded array would be
+        # expanded and scanned inside a transaction that already holds locks.
+        self.read_into_proposals(source["source_id"], [{
+            "day_id": self.day_of(week)["id"], "minutes": 480, "page_number": 1,
+            "uncertain_fields": ["total"] * 200,
+        }], code="22023")
+
+    def test_the_reading_context_scopes_its_members_to_the_organization(self):
+        """Defence in depth: the days subquery filters on the tenant; so must the members."""
+        body = sql("""SELECT pg_get_functiondef(p.oid) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+          WHERE n.nspname='public' AND p.proname='hours_get_source_reading_context';""")
+        members = body[body.index("'members'"):body.index("'days'")]
+        self.assertIn("organization_id", members,
+                      "the members subquery must name the tenant, like the days subquery does")
+
     # --- what recorded doubt blocks -----------------------------------------
 
     def test_an_uncertain_reading_cannot_be_applied_before_it_is_confirmed(self):

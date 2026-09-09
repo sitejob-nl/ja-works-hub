@@ -4,6 +4,32 @@ Overdracht voor wie verdergaat (Codex / Claude Code). Lees [AGENTS.md](AGENTS.md
 commands, [CLAUDE.md](CLAUDE.md) voor de canonieke codebase-diepte, [HANDOVER.md](HANDOVER.md) voor de formele
 projectsamenvatting.
 
+## Scans en foto's uitlezen — 9 september 2026 (`feat/urenmodule-scanuitlezer`)
+
+- Duurzame worktree `/Users/kas/dev/ja-works-hub/.worktrees/urenmodule-scanuitlezer`, branch
+  `feat/urenmodule-scanuitlezer` vanaf `origin/main` (`751d0a4`).
+- **De host is Gemini, niet de VPS.** Het ticket noemde de JA Werkt-VPS; dat is tegen productie
+  nagegaan en onjuist gebleken. Elke betaalde aanroep van de afgelopen zestig dagen liep via Gemini,
+  de centrale transportlaag kent geen VPS-provider, beeldinvoer mag daar alleen op Gemini, het
+  Qwen-pad antwoordt 410, geen enkele regel code roept `OLLAMA_BASE_URL` aan, en de host zelf geeft
+  een verbindingstime-out. Vastgelegd in [docs/urenmodule-scan-reading.md](docs/urenmodule-scan-reading.md).
+  Documentvoorbewerking blijft waar zij al stond: in de browser, bij het uploaden.
+- **Live:** migratie `20260913090000_hours_scan_reading.sql` (plus de correctieronde uit de codereview)
+  en edge function `hours-read-scan`. JA Werkt UIT, demo AAN — ongewijzigd.
+- **De grens is ongewijzigd.** Een uitlezing landt als voorstel; alleen `hours_apply_source_proposal`
+  schrijft een dagrevisie en neemt het voorstel letterlijk over. Nieuw is `uncertain_fields`: wat de
+  uitlezing onzeker las blokkeert toepassen tot `hours_confirm_proposal_values`, precies zoals
+  `assignment_uncertain` dat doet voor de vraag wie.
+- **De verbonden QA vond twee echte fouten** vóór ze konden schaden: PostgREST draait een `STABLE`
+  functie read-only, waar de schrijfpoort van deze module een rijvergrendeling neemt (kale 405); en
+  Gemini's gestructureerde uitvoer vult alleen verplichte velden, dus een optioneel totaalveld kwam
+  niet terug en elke regel werd eerlijk overgeslagen. Beide gerepareerd met een test die eerst rood
+  stond; een databasetest bewaakt de eerste regel nu voor elke stabiele urenfunctie tegelijk.
+- **Kosten:** twee echte aanroepen in de hele QA, samen € 0,02 op de demo-organisatie (48,78 → 48,76),
+  geen openstaande reservering. Eén A4-briefje kost ongeveer één cent.
+- **Restpunt:** het QA-briefje is gerenderde tekst, dus de handschriftkwaliteit van het model is niet
+  bewezen. Dat hoort bij de acceptatieset van T14.
+
 ## Persoonlijke klantweekpagina zonder inloggen — 9 september 2026 (`feat/urenmodule-klantweek`)
 
 - Nieuwe duurzame worktree `/Users/kas/dev/ja-works-hub/.worktrees/urenmodule-klantweek`, branch
@@ -91,9 +117,8 @@ projectsamenvatting.
   (`aa05a37`); CI op `main` groen, Vercel-productiedeploy geslaagd. De edge function is daarna opnieuw
   gedeployd vanaf de gemergde stand, zodat runtime en `main` gelijk lopen. Rooktest op productie:
   `/urenweek/<token>` laadt en de edge function weigert een geraden token met `{"status":"invalid"}`.
-- **Volgende actie:** de frontier uit `docs/urenmodule-tickets.md`. Daarna de frontier uit
-  `docs/urenmodule-tickets.md`: **T4** (scans/foto's via de VPS), **T5** (Word/e-mail) en de losstaande
-  **T10** zijn open; **T7** (duurzame mailinname) is nu alleen nog door T5 geblokkeerd.
+- **Volgende actie:** de frontier uit `docs/urenmodule-tickets.md`: **T5** (Word/e-mail) en de
+  losstaande **T10** zijn open; **T7** (duurzame mailinname) is nu alleen nog door T5 geblokkeerd.
 
 ## Voorstellen uit Excel- en tabelbestanden — 8 september 2026 (`feat/urenmodule-excel-uitlezer`)
 

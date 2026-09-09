@@ -93,9 +93,16 @@ export function toHoursClassificationView(value: z.infer<typeof hoursClassificat
 }
 
 export function hoursWorkflowError(error: unknown): string {
+  const value = (error ?? {}) as Record<string, unknown>;
   const code = typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : '';
   if (code === 'PT409' || code === '40001') return 'Deze uren zijn ondertussen gewijzigd. Ververs de week en controleer de nieuwe versie.';
   if (code === '42501') return 'Je hebt geen toegang tot deze uren of deze actie.';
+  // A refusal that arrived after the provider was paid says so, with the id the
+  // office needs to find that charge back in the credit ledger.
+  if (typeof value.costCents === 'number' && value.costCents > 0 && typeof value.message === 'string') {
+    const euro = `€ ${(value.costCents / 100).toFixed(2).replace('.', ',')}`;
+    return `${value.message} (kosten ${euro}${value.requestId ? `, kenmerk ${value.requestId}` : ''})`;
+  }
   if (error instanceof z.ZodError) return 'Het urenoverzicht kon niet betrouwbaar worden gelezen. Ververs de pagina.';
   if (typeof error === 'object' && error !== null && 'message' in error) return String(error.message);
   return 'De uren konden niet worden verwerkt. Probeer het opnieuw.';

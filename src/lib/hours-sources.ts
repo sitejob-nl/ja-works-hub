@@ -1,6 +1,9 @@
 import { z } from 'zod';
 import { hoursSourceInputSchema, type HoursSourceInput } from '@/components/hours-workflow/hours-day-source';
 import { HOURS_WORKBOOK_TYPES } from '@/lib/hours-workbook-file';
+import {
+  SCAN_UNCERTAIN_FIELDS, type ScanUncertainField,
+} from '../../supabase/functions/_shared/hours-scan';
 
 /** Storage enforces both limits again; these keep the browser from uploading in vain. */
 export const HOURS_SOURCE_MAX_BYTES = 26_214_400;
@@ -18,9 +21,9 @@ const uuid = z.string().uuid();
 /** What an internal user decided about one page of one delivered file. */
 export const HOURS_PAGE_ASSIGNMENTS = ['single', 'multiple', 'unclear'] as const;
 export type HoursPageAssignment = (typeof HOURS_PAGE_ASSIGNMENTS)[number];
-/** What a reading may report as read but not certain; the database agrees. */
-export const HOURS_UNCERTAIN_FIELDS = ['total', 'shift', 'break', 'categories', 'reason'] as const;
-export type HoursUncertainField = (typeof HOURS_UNCERTAIN_FIELDS)[number];
+/** What a reading may report as read but not certain; the kernel owns the list. */
+export const HOURS_UNCERTAIN_FIELDS = SCAN_UNCERTAIN_FIELDS;
+export type HoursUncertainField = ScanUncertainField;
 export const hoursSourcePageSchema = z.object({
   id: uuid, page_number: z.number().int().min(1), assignment: z.enum(HOURS_PAGE_ASSIGNMENTS),
   member_id: uuid.nullable(), candidate_name: z.string().nullable(),
@@ -174,13 +177,19 @@ export function clientWeekPath(secret: string): string {
  * too; this only keeps the screen from offering an act it would reject. A
  * resolved proposal blocks nothing, matching the server-side open-point count.
  */
-export function proposalIsBlocked(
-  proposal: Pick<HoursSourceProposal, 'status' | 'assignment_uncertain' | 'assignment_confirmed_at'
-    | 'uncertain_fields' | 'values_confirmed_at'>,
-): boolean {
-  if (proposal.status !== 'open') return false;
-  return (proposal.assignment_uncertain && !proposal.assignment_confirmed_at)
-    || (!!proposal.uncertain_fields?.length && !proposal.values_confirmed_at);
+type ProposalDoubt = Pick<HoursSourceProposal, 'status' | 'assignment_uncertain' | 'assignment_confirmed_at'
+  | 'uncertain_fields' | 'values_confirmed_at'>;
+
+/** Who this proposal is about has not been established. */
+export function assignmentUndecided(proposal: ProposalDoubt): boolean {
+  return proposal.status === 'open' && proposal.assignment_uncertain && !proposal.assignment_confirmed_at;
+}
+/** What the reading made of the paper has not been checked against it. */
+export function valuesUndecided(proposal: ProposalDoubt): boolean {
+  return proposal.status === 'open' && !!proposal.uncertain_fields?.length && !proposal.values_confirmed_at;
+}
+export function proposalIsBlocked(proposal: ProposalDoubt): boolean {
+  return assignmentUndecided(proposal) || valuesUndecided(proposal);
 }
 
 /**

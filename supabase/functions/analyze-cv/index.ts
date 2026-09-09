@@ -11,6 +11,7 @@ import { analyzeWithGemini, GEMINI_DEFAULT_MODEL } from "../_shared/gemini-cv.ts
 import { writeCvAnalysisToCandidate } from "../_shared/cv-write.ts";
 import { sanitizeOrgPrompt } from "../_shared/sanitize-org-prompt.ts";
 import { buildCandidateDossier } from "../_shared/candidate-dossier.ts";
+import { bytesToBase64 } from "../_shared/edge-base64.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -21,17 +22,6 @@ const corsHeaders = {
 // Max bestandsgrootte die we als VISION-input naar Gemini sturen. Boven dit punt slaan
 // we het bestand over (Gemini-payloadlimiet + kosten). 10 MB.
 const VISION_MAX_BYTES = 10 * 1024 * 1024;
-
-// Base64-encoding zonder Node's Buffer (Deno edge runtime). btoa kan geen grote strings
-// in één keer aan via String.fromCharCode(...arr) (stack-overflow), dus chunked.
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = "";
-  const chunkSize = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
-  }
-  return btoa(binary);
-}
 
 // PRIVACY: de dossier-TEKST wordt gepseudonimiseerd, maar een meegestuurde CV-AFBEELDING
 // kan NIET gepseudonimiseerd worden — de ruwe scan (incl. naam) gaat naar Google. Daarom

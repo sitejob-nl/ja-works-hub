@@ -56,22 +56,45 @@ export async function hoursWorkflowRpc<K extends keyof HoursRpcArguments>(name: 
   return unwrap(supabase.rpc(name, args as Database['public']['Functions'][K]['Args']));
 }
 
+/**
+ * What an hours edge function reported when it refused.
+ *
+ * The accounting fields matter as much as the message: a refusal that arrives
+ * after the provider was already paid carries the request id that is the only
+ * key into the ledger for that charge, and the balance the server just read.
+ * Dropping them leaves a support case with nothing to quote.
+ */
+export interface HoursFunctionError extends Error {
+  code: string;
+  requestId?: string;
+  costCents?: number;
+  balanceCents?: number;
+}
+
+/** One place where an edge-function refusal becomes an error a screen can read. */
+async function invokeHoursFunction(name: string, body: Record<string, unknown>): Promise<unknown> {
+  const { data, error } = await supabase.functions.invoke(name, { body });
+  if (!error) return data;
+  if (error.context instanceof Response) {
+    let payload: unknown;
+    try { payload = await error.context.clone().json(); } catch { /* Preserve the transport error when the server sent no JSON. */ }
+    if (payload && typeof payload === 'object' && 'code' in payload && typeof payload.code === 'string') {
+      const value = payload as Record<string, unknown>;
+      const number = (field: unknown) => typeof field === 'number' ? field : undefined;
+      throw Object.assign(new Error(typeof value.error === 'string' ? value.error : error.message), {
+        code: value.code,
+        requestId: typeof value.request_id === 'string' ? value.request_id : undefined,
+        costCents: number(value.cost_cents), balanceCents: number(value.balance_cents),
+      }) as HoursFunctionError;
+    }
+  }
+  throw error;
+}
+
 /** The server reads all facts and matrices; the browser sends identifiers only. */
 export async function hoursClassifyDay(input: { dayId: string; expectedRevisionId: string }): Promise<unknown> {
-  const { data, error } = await supabase.functions.invoke('hours-classify-day', {
-    body: { day_id: input.dayId, expected_revision_id: input.expectedRevisionId },
-  });
-  if (error) {
-    if (error.context instanceof Response) {
-      let body: unknown;
-      try { body = await error.context.clone().json(); } catch { /* Preserve the original transport error if the server returned no JSON. */ }
-      if (body && typeof body === 'object' && 'code' in body && typeof body.code === 'string') {
-        throw Object.assign(new Error('error' in body && typeof body.error === 'string' ? body.error : error.message), { code: body.code });
-      }
-    }
-    throw error;
-  }
-  return data;
+  return invokeHoursFunction('hours-classify-day',
+    { day_id: input.dayId, expected_revision_id: input.expectedRevisionId });
 }
 
 /** What one paid reading of a scan or photo returned, and what it cost. */
@@ -91,20 +114,7 @@ export interface HoursScanReadingResult {
  * reading for review.
  */
 export async function hoursReadScan(sourceId: string): Promise<HoursScanReadingResult> {
-  const { data, error } = await supabase.functions.invoke('hours-read-scan', {
-    body: { source_id: sourceId },
-  });
-  if (error) {
-    if (error.context instanceof Response) {
-      let body: unknown;
-      try { body = await error.context.clone().json(); } catch { /* Keep the transport error when the server sent no JSON. */ }
-      if (body && typeof body === 'object' && 'code' in body && typeof body.code === 'string') {
-        throw Object.assign(new Error('error' in body && typeof body.error === 'string' ? body.error : error.message),
-          { code: body.code });
-      }
-    }
-    throw error;
-  }
+  const data = await invokeHoursFunction('hours-read-scan', { source_id: sourceId });
   const payload = (data ?? {}) as Record<string, unknown>;
   if (!payload.reading || typeof payload.reading !== 'object') {
     throw new Error('De uitlezing kwam onvolledig terug. Er zijn geen voorstellen gemaakt.');

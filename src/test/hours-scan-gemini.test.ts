@@ -95,3 +95,28 @@ describe('scan response', () => {
     expect(() => parseScanResponse('niet eens json')).toThrow();
   });
 });
+
+describe('one list, not six', () => {
+  it('offers the model exactly the uncertainties the reader accepts', async () => {
+    // A label the model may report but the reader rejects fails the whole paid
+    // reading; a label the reader accepts but the model is never offered can
+    // never be reported. Both are one-word drifts between two files.
+    const { REPORTABLE_UNCERTAINTY } = await import('../../supabase/functions/_shared/hours-scan');
+    const schema = build().generationConfig.responseSchema as Record<string, any>;
+    expect(schema.properties.entries.items.properties.uncertain.items.enum)
+      .toEqual([...REPORTABLE_UNCERTAINTY]);
+  });
+
+  it('reads the same media types the endpoint and the screen accept', async () => {
+    const kernel = await import('../../supabase/functions/_shared/hours-scan');
+    const { isReadableScan } = await import('@/lib/hours-workbook-file');
+    for (const type of kernel.HOURS_READABLE_SCAN_TYPES) expect(isReadableScan(type)).toBe(true);
+    for (const type of ['application/vnd.ms-excel', 'text/csv']) expect(isReadableScan(type)).toBe(false);
+  });
+
+  it('keeps the browser and the kernel on one uncertainty vocabulary', async () => {
+    const kernel = await import('../../supabase/functions/_shared/hours-scan');
+    const { HOURS_UNCERTAIN_FIELDS } = await import('@/lib/hours-sources');
+    expect([...HOURS_UNCERTAIN_FIELDS]).toEqual([...kernel.SCAN_UNCERTAIN_FIELDS]);
+  });
+});

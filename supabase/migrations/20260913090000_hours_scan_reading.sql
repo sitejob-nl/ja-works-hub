@@ -35,27 +35,53 @@ alter table public.hours_source_proposals add column if not exists values_confir
 -- is proposed content and is applied verbatim.
 alter table public.hours_source_proposals add column if not exists values_note text;
 
--- Comparing against the canonical form rejects an unknown label, a duplicate
--- and a different order in one check, so two readings of one file can never
--- describe the same doubt differently.
-do $$ begin
-  alter table public.hours_source_proposals add constraint hours_source_proposals_uncertain_fields_check
-    check (uncertain_fields is null
-      or (cardinality(uncertain_fields) > 0
-          and uncertain_fields = private.hours_canonical_uncertain_fields(uncertain_fields)));
-exception when duplicate_object then null; end $$;
-do $$ begin
-  alter table public.hours_source_proposals add constraint hours_source_proposals_values_check
-    check ((values_confirmed_at is null) = (values_confirmed_by is null)
-       and (values_confirmed_at is null or uncertain_fields is not null));
-exception when duplicate_object then null; end $$;
-do $$ begin
-  alter table public.hours_source_proposals add constraint hours_source_proposals_values_note_check
-    check (length(values_note) <= 2000 and (values_note is null or values_confirmed_at is not null));
-exception when duplicate_object then null; end $$;
+-- Written out rather than delegated to the canonicalisation function on
+-- purpose. A CHECK is re-evaluated on every UPDATE, and this table is
+-- append-only: if the constraint depended on a function whose list later
+-- narrowed, every existing row carrying a dropped label would become
+-- unapplyable, undiscardable and undeletable — the week would be stuck for
+-- good. Built-ins only, so the rule can only be changed by changing the rule.
+--
+-- Drop-and-recreate, not skip-on-exists: a corrected definition has to
+-- converge, not silently no-op against the old one.
+alter table public.hours_source_proposals drop constraint if exists hours_source_proposals_uncertain_fields_check;
+alter table public.hours_source_proposals add constraint hours_source_proposals_uncertain_fields_check
+  check (uncertain_fields is null
+    or (cardinality(uncertain_fields) between 1 and 5
+        and uncertain_fields <@ array['total', 'shift', 'break', 'categories', 'reason']));
+-- Order and duplicates are settled on the way in, by a trigger rather than a
+-- constraint. A CHECK cannot hold a subquery, and a CHECK that borrowed the
+-- canonicalisation function would be re-run against existing rows on every
+-- later UPDATE. A write-time trigger only ever judges the row being written.
+create or replace function private.hours_proposal_canonical_doubt()
+returns trigger language plpgsql set search_path = '' as $$ begin
+  if new.uncertain_fields is not null
+     and new.uncertain_fields is distinct from private.hours_canonical_uncertain_fields(new.uncertain_fields) then
+    raise exception 'Onbekende onzekerheid in deze uitlezing' using errcode = '22023';
+  end if;
+  return new;
+end $$;
+revoke all on function private.hours_proposal_canonical_doubt() from public, anon, authenticated, service_role;
+drop trigger if exists hours_proposal_canonical_doubt on public.hours_source_proposals;
+create trigger hours_proposal_canonical_doubt before insert on public.hours_source_proposals
+  for each row execute function private.hours_proposal_canonical_doubt();
 
-create index if not exists hours_proposals_uncertain_values_idx on public.hours_source_proposals(week_id)
-  where status = 'open' and uncertain_fields is not null and values_confirmed_at is null;
+alter table public.hours_source_proposals drop constraint if exists hours_source_proposals_values_check;
+alter table public.hours_source_proposals add constraint hours_source_proposals_values_check
+  check ((values_confirmed_at is null) = (values_confirmed_by is null)
+     and (values_confirmed_at is null or uncertain_fields is not null));
+alter table public.hours_source_proposals drop constraint if exists hours_source_proposals_values_note_check;
+alter table public.hours_source_proposals add constraint hours_source_proposals_values_note_check
+  check (length(values_note) <= 2000 and (values_note is null or values_confirmed_at is not null));
+
+-- No new partial index on (week_id) where status = 'open': hours_proposals_open_idx
+-- already covers that access pattern over at most a few hundred open rows per
+-- week, and the sibling count undecided_assignments needs none either. The new
+-- foreign key does need one, so it does not join the unindexed-FK backlog the
+-- performance advisor already tracks.
+drop index if exists public.hours_proposals_uncertain_values_idx;
+create index if not exists hours_proposals_values_confirmer_idx
+  on public.hours_source_proposals(values_confirmed_by);
 
 -- The proposal's content still never changes; uncertain_fields joins the tuple
 -- that may not move, so a reading can never be made to look surer afterwards.
@@ -210,9 +236,13 @@ declare v_org uuid := private.hours_require_internal(true); v_source public.hour
     'source_id', v_source.id, 'week_id', v_source.week_id, 'organization_id', v_org,
     'storage_path', v_source.storage_path, 'content_type', v_source.content_type,
     'byte_size', v_source.byte_size, 'file_name', v_source.file_name, 'page_count', v_source.page_count,
+    -- The tenant is named here as well as in the days subquery below. Today the
+    -- composite foreign key makes week_id imply the organization, but that
+    -- invariant is invisible from here and this function is SECURITY DEFINER
+    -- with no RLS behind it.
     'members', coalesce((select jsonb_agg(jsonb_build_object('id', m.id, 'name', m.candidate_name)
       order by m.candidate_name, m.id) from public.hours_week_members m
-      where m.week_id = v_source.week_id), '[]'::jsonb),
+      where m.week_id = v_source.week_id and m.organization_id = v_org), '[]'::jsonb),
     'days', coalesce((select jsonb_agg(jsonb_build_object('id', d.id, 'member_id', d.member_id,
       'work_date', d.work_date) order by d.work_date, d.member_id) from public.hours_days d
       join public.hours_week_members m on m.id = d.member_id
@@ -278,12 +308,19 @@ begin
     v_fields := null;
     if v_entry ? 'uncertain_fields' and jsonb_typeof(v_entry->'uncertain_fields') = 'array'
        and jsonb_array_length(v_entry->'uncertain_fields') > 0 then
+      -- Bounded like every other field here: an unbounded array would be
+      -- expanded and scanned inside a transaction that already holds locks.
+      if jsonb_array_length(v_entry->'uncertain_fields') > 5 then
+        raise exception 'Onbekende onzekerheid in deze uitlezing' using errcode = '22023';
+      end if;
       select array_agg(value) into v_fields
         from jsonb_array_elements_text(v_entry->'uncertain_fields') as value;
       -- An unknown label is refused rather than silently dropped: dropping it
-      -- would turn the reader's own doubt into apparent certainty.
-      if exists (select 1 from unnest(v_fields) as f
-                 where f is null or f <> all (array['total', 'shift', 'break', 'categories', 'reason'])) then
+      -- would turn the reader's own doubt into apparent certainty. Derived from
+      -- the canonical form so there is one list, not two that can drift.
+      if v_fields is null or exists (select 1 from unnest(v_fields) as f where f is null)
+         or (select count(distinct f) from unnest(v_fields) as f)
+            <> cardinality(private.hours_canonical_uncertain_fields(v_fields)) then
         raise exception 'Onbekende onzekerheid in deze uitlezing' using errcode = '22023';
       end if;
       v_fields := nullif(private.hours_canonical_uncertain_fields(v_fields), array[]::text[]);

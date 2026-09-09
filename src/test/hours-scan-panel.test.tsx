@@ -129,3 +129,33 @@ describe('recording a reading as proposals', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('maximaal 2 regels');
   });
 });
+
+describe('what happens after the reviewer presses save', () => {
+  it('closes the reading, so the same rows cannot be recorded twice', async () => {
+    const onCancel = vi.fn();
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<HoursScanReading reading={reading()} {...cost}
+      alreadyProposed={new Set()} onCancel={onCancel} onSave={onSave} />);
+    fireEvent.click(screen.getByRole('button', { name: '1 voorstel bewaren' }));
+    await vi.waitFor(() => expect(onCancel).toHaveBeenCalledOnce());
+  });
+
+  it('keeps the reading open and says why when saving was refused', async () => {
+    const onCancel = vi.fn();
+    const onSave = vi.fn().mockRejectedValue(Object.assign(new Error('Deze bron heeft die pagina niet'), { code: '22023' }));
+    render(<HoursScanReading reading={reading()} {...cost}
+      alreadyProposed={new Set()} onCancel={onCancel} onSave={onSave} />);
+    fireEvent.click(screen.getByRole('button', { name: '1 voorstel bewaren' }));
+    await vi.waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('die pagina niet'));
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
+  it('does not claim to have read pages when every line was skipped', () => {
+    render(<HoursScanReading {...cost}
+      reading={reading({ candidates: [], pagesRead: [],
+        skipped: [{ pageNumber: 1, text: 'Karel Appel · rij 2', reason: 'past bij niemand' }] })}
+      alreadyProposed={new Set()} onCancel={() => {}} onSave={vi.fn()} />);
+    expect(screen.queryByText(/Gelezen van/)).not.toBeInTheDocument();
+    expect(screen.getByText(/geen enkele regel gevonden/)).toBeInTheDocument();
+  });
+});

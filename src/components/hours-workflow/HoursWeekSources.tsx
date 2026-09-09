@@ -15,7 +15,7 @@ import {
   clientLinkState, clientWeekPath, describeClientLinkProgress, describePageCount, describeUncertainFields,
   formatSourceSize,
   visibleClientProposals, HOURS_CLIENT_REPORT_LABELS, HOURS_PAGE_ASSIGNMENTS,
-  HOURS_PAGE_ASSIGNMENT_LABELS, HOURS_SOURCE_ACCEPT, proposalChanges, proposalIsBlocked,
+  HOURS_PAGE_ASSIGNMENT_LABELS, HOURS_SOURCE_ACCEPT, assignmentUndecided, proposalChanges, valuesUndecided,
   type HoursClientLink, type HoursPageAssignment, type HoursSourcePage, type HoursSourceProposal,
   type HoursWeekSourceFile, type HoursWeekSources as HoursWeekSourcesData,
 } from '@/lib/hours-sources';
@@ -385,11 +385,11 @@ function ProposalRow({ proposal, target, canManage, onApply, onDiscard, onConfir
   const [confirming, setConfirming] = useState<null | 'assignment' | 'values'>(null);
   const [confirmNote, setConfirmNote] = useState('');
   const changes = proposal.status === 'open' ? proposalChanges(proposal, target?.current ?? null) : [];
-  const blocked = proposalIsBlocked(proposal);
-  const undecidedEmployee = proposal.status === 'open' && proposal.assignment_uncertain
-    && !proposal.assignment_confirmed_at;
-  const undecidedValues = proposal.status === 'open' && !!proposal.uncertain_fields?.length
-    && !proposal.values_confirmed_at;
+  // One rule, read once: proposalIsBlocked is exactly these two doubts, so the
+  // disabled button and the badges can never disagree about why.
+  const undecidedEmployee = assignmentUndecided(proposal);
+  const undecidedValues = valuesUndecided(proposal);
+  const blocked = undecidedEmployee || undecidedValues;
   const uncertainWords = describeUncertainFields(proposal.uncertain_fields);
 
   async function apply() {
@@ -717,6 +717,7 @@ export function HoursWeekSources({ organizationId, week, onReload }: HoursWeekSo
 
   /** Reading is deliberately explicit: it never happens as a side effect of uploading. */
   async function readSource(sourceId: string, path: string) {
+    if (readingSource) return;
     setReadingError(null); setNotice(null); setReadingSource(sourceId);
     try {
       setReading({ sourceId, result: await sources.readWorkbook.mutateAsync({ path, context: workbookContext(week) }) });
@@ -733,6 +734,9 @@ export function HoursWeekSources({ organizationId, week, onReload }: HoursWeekSo
    * it came back, because entering the hours by hand keeps working.
    */
   async function readScanSource(sourceId: string) {
+    // A disabled button is one render behind a double click, and every click
+    // here is a separate paid call with its own reservation.
+    if (readingSource || sources.readScan.isPending) return;
     setReadingError(null); setNotice(null); setReadingSource(sourceId);
     try {
       setScan({ sourceId, result: await sources.readScan.mutateAsync(sourceId) });

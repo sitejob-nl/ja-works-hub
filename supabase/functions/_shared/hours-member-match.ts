@@ -7,6 +7,33 @@
 export interface HoursWeekMember { id: string; name: string }
 export interface HoursMemberMatch { member: HoursWeekMember; uncertain: boolean }
 
+/**
+ * A member with its name already taken apart. Deriving this per line means
+ * normalising every name again for every row of a delivery — a few hundred
+ * thousand string passes on a large crew — for an answer that cannot change
+ * while the reading runs.
+ */
+export interface PreparedHoursMember {
+  member: HoursWeekMember;
+  normalized: string;
+  reversed: string;
+  surname: string;
+  given: string[];
+}
+
+export function prepareHoursMembers(members: HoursWeekMember[]): PreparedHoursMember[] {
+  return members.map(member => {
+    const normalized = normalizeHoursName(member.name);
+    const parts = normalized.split(' ').filter(Boolean);
+    return {
+      member, normalized,
+      reversed: parts.slice().reverse().join(' '),
+      surname: parts[parts.length - 1] ?? '',
+      given: parts.slice(0, -1),
+    };
+  });
+}
+
 export function normalizeHoursName(value: string): string {
   return value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
     .replace(/[.,]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -18,25 +45,24 @@ export function normalizeHoursName(value: string): string {
  * so a named internal user has to confirm it before it can be applied. Anything
  * that fits nobody or several people is not a match at all.
  */
-export function matchHoursMember(text: string, members: HoursWeekMember[]): HoursMemberMatch | null {
+export function matchHoursMember(
+  text: string, members: HoursWeekMember[] | PreparedHoursMember[],
+): HoursMemberMatch | null {
   const wanted = normalizeHoursName(text);
   if (!wanted) return null;
-  const exact = members.filter(member => normalizeHoursName(member.name) === wanted
-    || normalizeHoursName(member.name).split(' ').reverse().join(' ') === wanted);
-  if (exact.length === 1) return { member: exact[0], uncertain: false };
+  const prepared = members.length && 'normalized' in members[0]
+    ? members as PreparedHoursMember[] : prepareHoursMembers(members as HoursWeekMember[]);
+  const exact = prepared.filter(item => item.normalized === wanted || item.reversed === wanted);
+  if (exact.length === 1) return { member: exact[0].member, uncertain: false };
   if (exact.length > 1) return null;
   const parts = wanted.split(' ').filter(Boolean);
-  const weak = members.filter(member => {
-    const own = normalizeHoursName(member.name).split(' ').filter(Boolean);
-    if (!own.length) return false;
-    const surname = own[own.length - 1];
-    if (!parts.includes(surname)) return false;
+  const weak = prepared.filter(item => {
+    if (!item.surname || !parts.includes(item.surname)) return false;
     // Sharing a surname is not enough: what the file writes in front of it has
     // to fit this person. "J." fits Jan; "Piet" does not, and handing Piet's
     // hours to Jan is exactly what a shared surname invites.
-    const given = own.slice(0, -1);
-    return parts.filter(part => part !== surname)
-      .every(part => given.some(name => name.startsWith(part) || part.startsWith(name)));
+    return parts.filter(part => part !== item.surname)
+      .every(part => item.given.some(name => name.startsWith(part) || part.startsWith(name)));
   });
-  return weak.length === 1 ? { member: weak[0], uncertain: true } : null;
+  return weak.length === 1 ? { member: weak[0].member, uncertain: true } : null;
 }

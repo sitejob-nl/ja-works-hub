@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AiAccountingError } from '../../supabase/functions/_shared/ai-accounting';
+import { attachAiAccounting, AiAccountingError } from '../../supabase/functions/_shared/ai-accounting';
 import {
   createHoursScanHandler, HOURS_SCAN_MAX_FILE_BYTES, type HoursScanPorts,
 } from '../../supabase/functions/_shared/hours-scan-handler';
@@ -210,5 +210,80 @@ describe('scan reading endpoint — one paid call, and what it costs', () => {
     expect(doubles.userRpc).toHaveBeenCalledTimes(1);
     expect(doubles.userRpc.mock.calls[0][1]).toBe('hours_get_source_reading_context');
     expect(doubles.userRpc.mock.calls[0][2]).toEqual({ p_source_id: SOURCE });
+  });
+});
+
+describe('scan reading endpoint — after the money is spent', () => {
+  /** What readScanWithGemini actually throws: a plain error with the settlement attached. */
+  const settledFailure = (message: string) => attachAiAccounting(new Error(message), {
+    requestId: 'req-9', costCents: 4, balanceCents: 4872, inputTokens: 1500, outputTokens: 300,
+    thinkingTokens: 0, providerCostUsd: 0.004, providerAttempted: true,
+  });
+
+  it('reports what a failed reading still cost, instead of a bare failure', async () => {
+    const doubles = ports({ read: vi.fn(async () => { throw settledFailure('Het antwoord van de uitlezer is onvolledig (MAX_TOKENS).'); }) });
+    const response = await createHoursScanHandler(doubles)(post());
+    const body = await response.json();
+    expect(body.cost_cents).toBe(4);
+    expect(body.balance_cents).toBe(4872);
+    expect(body.request_id).toBe('req-9');
+    expect(body.error).toContain('onvolledig');
+  });
+
+  it('does not invite a retry of a reading that was already charged for', async () => {
+    const doubles = ports({ read: vi.fn(async () => { throw settledFailure('De uitlezer weigerde deze bron (SAFETY).'); }) });
+    const body = await (await createHoursScanHandler(doubles)(post())).json();
+    expect(body.error).not.toMatch(/opnieuw/i);
+    expect(body.error.toLowerCase()).toContain('handmatig');
+  });
+
+  it('still says try again when nothing was charged', async () => {
+    const doubles = ports({ read: vi.fn(async () => { throw new Error('boem'); }) });
+    const body = await (await createHoursScanHandler(doubles)(post())).json();
+    expect(body.code).toBe('scan_failed');
+    expect(body.cost_cents).toBeUndefined();
+  });
+
+  it('refuses to pay for a week that has no work days to recognise', async () => {
+    const doubles = ports({
+      userRpc: vi.fn(async () => ({ data: context({ members: [], days: [] }), error: null })),
+    });
+    const response = await createHoursScanHandler(doubles)(post());
+    expect(response.status).toBe(400);
+    expect(doubles.read).not.toHaveBeenCalled();
+  });
+
+  it('stops reading an oversized body that never declared its length', async () => {
+    // A chunked request has no content-length, so a header check would wave it
+    // through and the whole body would be buffered before anything refused it.
+    let delivered = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        delivered += 1;
+        if (delivered > 200) { controller.close(); return; }
+        controller.enqueue(new TextEncoder().encode('x'.repeat(1024)));
+      },
+    });
+    const request = new Request('https://edge.test/hours-read-scan',
+      { method: 'POST', body, duplex: 'half' } as RequestInit & { duplex: 'half' });
+    const doubles = ports();
+    const response = await createHoursScanHandler(doubles)(request);
+    expect(response.status).toBe(400);
+    expect(delivered, 'it stopped long before the body ended').toBeLessThan(10);
+    expect(doubles.userRpc).not.toHaveBeenCalled();
+  });
+
+  it('reports a stored file that came back empty as unavailable, not as a reading', async () => {
+    const doubles = ports({ download: vi.fn(async () => new Uint8Array()) });
+    expect((await createHoursScanHandler(doubles)(post())).status).toBe(503);
+    expect(doubles.read).not.toHaveBeenCalled();
+  });
+
+  it('trusts the bytes it actually holds, not the size the row claimed', async () => {
+    // Storage metadata can disagree with the object; the cap has to hold against
+    // what is about to be sent, not against what was recorded about it.
+    const doubles = ports({ download: vi.fn(async () => new Uint8Array(HOURS_SCAN_MAX_FILE_BYTES + 1)) });
+    expect((await createHoursScanHandler(doubles)(post())).status).toBe(503);
+    expect(doubles.read).not.toHaveBeenCalled();
   });
 });

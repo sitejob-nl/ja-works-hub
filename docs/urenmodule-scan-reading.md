@@ -131,6 +131,11 @@ Qwen-terugval.
 | Bestandsgrens | 10 MiB; daarboven een zichtbare blokkade en géén aanroep |
 | Gemeten kosten | ~1.500 invoertokens en ~275 uitvoertokens per A4-briefje; **1 cent per uitlezing** |
 
+De onzekerheidslijst die het model krijgt aangeboden ís de lijst die de uitlezer accepteert
+(`REPORTABLE_UNCERTAINTY`), en de lijst met uitleesbare mediatypen staat óók maar op één plek
+(`HOURS_READABLE_SCAN_TYPES`). Beide worden door het scherm, de edge function en een test gedeeld;
+één woord verschil zou anders een betaalde uitlezing laten stranden op een label dat niemand afwees.
+
 **Elk veld in het antwoordschema is verplicht.** Gestructureerde uitvoer vult wat zij moet vullen
 en slaat de rest over; een optioneel totaalveld kwam in een echte proef niet terug, waarna elke
 regel eerlijk werd overgeslagen. Een lege tekst is hoe het model zegt dat er niets staat.
@@ -142,6 +147,14 @@ bevestigen en toepassen zijn allemaal ongemoeid.
 
 Een onbekende provideruitkomst (time-out, ontbrekend verbruik) houdt zijn reservering vast en komt
 als zodanig terug; dat wordt nooit stil een gratis nieuwe poging.
+
+**Een mislukking ná betaling zegt wat zij kostte.** Het antwoord van het model kan afgekapt,
+geweigerd of onleesbaar zijn terwijl de provider al is afgerekend. Dan komt code
+`scan_reading_unusable` terug mét kosten, saldo en aanvraagkenmerk — het enige aanknopingspunt in het
+grootboek voor die boeking — en de melding nodigt niet uit tot opnieuw proberen, want dat zou een
+tweede keer kosten voor dezelfde weigering. Alleen een mislukking *vóór* de aanroep zegt "probeer het
+opnieuw". Uitlezen is bovendien per bron één handeling tegelijk: een tweede klik op de knop start
+geen tweede betaalde aanroep.
 
 ## De uitleesroute
 
@@ -181,14 +194,17 @@ vision-pad van de CV-analyse al maakt. De namenlijst van de week reist niet mee.
 
 ## Verificatie
 
-- **126 echte PostgreSQL-tests** (`scripts/hours-scan-db-test.py`): de nieuwe onzekerheidsregels
+- **130 echte PostgreSQL-tests** (`scripts/hours-scan-db-test.py`): de nieuwe onzekerheidsregels
   plus de volledige vrijgegeven klantweek-, inname-, pagina-, werkmap-, classificatie-,
   foundation- en modulepoortregressies op het nieuwe schema. Alle dertien migraties worden tweemaal
   toegepast. Eén van die tests bewaakt voortaan dat **elke** stabiele urenfunctie in de read-only
-  transactie van PostgREST kan draaien.
-- **Applicatietests**: `hours-scan.test.ts` (38), `hours-scan-handler.test.ts` (17),
-  `hours-scan-gemini.test.ts` (12), `hours-scan-panel.test.tsx` (12) plus uitgebreide
-  projectietests. Totaal 1.731 groen, met lint (0 errors), typecheck en productiebuild.
+  transactie van PostgREST kan draaien; een andere bewaakt dat geen enkele CHECK op de
+  voorstellentabel van een projectfunctie afhangt (die wordt bij elke UPDATE opnieuw beoordeeld, en
+  deze tabel kent geen verwijderpad — een later versmalde lijst zou bestaande voorstellen voorgoed
+  vastzetten).
+- **Applicatietests**: `hours-scan.test.ts` (55), `hours-scan-handler.test.ts` (24),
+  `hours-scan-gemini.test.ts` (15), `hours-scan-panel.test.tsx` (15) plus uitgebreide
+  projectietests. Totaal 1.762 groen, met lint (0 errors), typecheck en productiebuild.
 - **Verbonden demo-QA** (`scripts/e2e-hours-scan-demo.spec.ts`, hergebruikt de fixture van
   `scripts/prepare-hours-pages-demo.mjs`): echte interne en medewerkerlogin tegen de live API, met
   een in de test gerenderde foto van een urenbriefje. Bewezen: een werkmap krijgt geen betaalde
@@ -199,9 +215,11 @@ vision-pad van de CV-analyse al maakt. De namenlijst van de week reist niet mee.
   context als de uitlezer. **De run claimt bewust precies één onaangeroerde werkdag** — na afloop
   geverifieerd. Nul JavaScript-fouten, nul serverfouten, nul writes naar `timesheets`, nul
   berichten.
-- **Kosten van de hele QA**: twee echte aanroepen, samen **€ 0,02** afgeschreven; het saldo van de
-  demo-organisatie ging van € 48,78 naar € 48,76 en er bleef geen reservering open. De eerste
-  aanroep is de proef die het ontbrekende totaalveld aan het licht bracht.
+- **Kosten van de hele QA**: vijf echte aanroepen over alle rondes, samen **€ 0,05** afgeschreven;
+  het saldo van de demo-organisatie ging van € 48,78 naar € 48,73 en er bleef geen reservering open.
+  Eén A4-briefje kost ongeveer één cent (circa 1.500 invoer- en 275 uitvoertokens). De eerste twee
+  aanroepen zijn de proeven die de read-only-transactie en het ontbrekende totaalveld aan het licht
+  brachten.
 
 Wat deze QA **niet** bewijst is de handschriftkwaliteit van het model. Het briefje is gerenderde
 tekst; echte handgeschreven briefjes horen bij de acceptatieset van T14.

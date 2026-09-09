@@ -311,3 +311,143 @@ describe('scan reading — what the model itself reported as unsure', () => {
     expect(reading.candidates[0].uncertainFields).toEqual(['total', 'break']);
   });
 });
+
+describe('scan reading — what the review round found', () => {
+  it('places a break window on the day the shift is actually on', () => {
+    // The stored breakdown has to survive the calculation kernel: a break at
+    // 02:00 on a shift that started at 22:00 belongs to the next day, and
+    // stamping it as day 0 puts it twenty hours before the shift began.
+    const reading = ok(read([entry({
+      total_text: '8:00', start_text: '22:00', end_text: '06:30', break_text: '02:00-02:30',
+    })]));
+    const candidate = reading.candidates[0];
+    expect(candidate.sourceInput?.shifts?.[0].breaks).toEqual([
+      { start: '02:00', end: '02:30', startDayOffset: 1, endDayOffset: 1 },
+    ]);
+    expect(candidate.notices.some(notice => notice.code === 'BREAK_OUTSIDE_SHIFT')).toBe(false);
+  });
+
+  it('keeps a break window that is still on the first day of a night shift', () => {
+    const reading = ok(read([entry({
+      total_text: '8:00', start_text: '22:00', end_text: '06:30', break_text: '23:00-23:30',
+    })]));
+    expect(reading.candidates[0].sourceInput?.shifts?.[0].breaks).toEqual([
+      { start: '23:00', end: '23:30', startDayOffset: 0, endDayOffset: 0 },
+    ]);
+  });
+
+  it('marks a breakdown the calculation kernel rejects as uncertain, not merely as a note', () => {
+    // A contradiction that only lives in notices never reaches the proposal, so
+    // it would be applied blind and leave a day that can never be classified.
+    const reading = ok(read([entry({
+      total_text: '8:30', start_text: '08:00', end_text: '17:00', break_text: '18:00-18:30',
+    })]));
+    const candidate = reading.candidates[0];
+    expect(candidate.notices.some(notice => notice.code === 'BREAK_OUTSIDE_SHIFT')).toBe(true);
+    expect(candidate.uncertainFields.length).toBeGreaterThan(0);
+  });
+
+  it('names the shift it left out when only the break duration was written', () => {
+    const reading = ok(read([entry({
+      total_text: '8:00', start_text: '07:00', end_text: '15:30', break_text: '30',
+    })]));
+    const candidate = reading.candidates[0];
+    expect(candidate.sourceInput).toBeNull();
+    expect(candidate.notices.some(notice => notice.code === 'INCOMPLETE_SCAN_SHIFT')).toBe(true);
+  });
+
+  it('reports a total that does not add up exactly once', () => {
+    const reading = ok(read([entry({ total_text: '8:00', start_text: '07:00', end_text: '16:00' })]));
+    const mismatches = reading.candidates[0].notices.filter(notice => notice.code === 'TOTAL_MISMATCH');
+    expect(mismatches).toHaveLength(1);
+  });
+
+  it('lets a line it skipped free the work day for the line that follows it', () => {
+    const reading = ok(read([
+      entry({ total_text: 'ca 8', location_text: 'regel 3' }),
+      entry({ total_text: '8:00', location_text: 'regel 9' }),
+    ]));
+    expect(reading.candidates).toHaveLength(1);
+    expect(reading.candidates[0].pageLabel).toBe('regel 9');
+    expect(reading.skipped).toHaveLength(1);
+  });
+
+  it('skips a line the model filled in badly instead of discarding the whole reading', () => {
+    for (const broken of [{ employee_text: '' }, { work_date: 'maandag' }, { work_date: '2026-13-45' },
+      { location_text: 'x'.repeat(400) }, { page_number: 3000 }]) {
+      const reading = ok(read([entry(broken), entry({ work_date: '2026-09-08', location_text: 'regel 9' })],
+        { pageCount: null }));
+      expect(reading.candidates, JSON.stringify(broken)).toHaveLength(1);
+      expect(reading.skipped, JSON.stringify(broken)).toHaveLength(1);
+    }
+  });
+
+  it('still refuses a result whose shape breaks the contract outright', () => {
+    expect(read([entry({ verzonnen: 1 })]).ok).toBe(false);
+    expect(read([entry({ uncertain: ['handschrift'] })]).ok).toBe(false);
+  });
+
+  it('treats every dash and cross as nothing written, whichever glyph was used', () => {
+    for (const marker of ['-', '–', '—', '−', 'x', 'X', '.', 'n.v.t.']) {
+      const reading = ok(read([entry({ total_text: null, no_hours_text: marker })]));
+      expect(reading.candidates, marker).toHaveLength(0);
+    }
+  });
+
+  it('does not choose between two readings of a dotted total', () => {
+    // 7.30 is either seven hours eighteen or half past seven; nothing in the
+    // paper says which, so the reader says both and asks.
+    const reading = ok(read([entry({ total_text: '7.30' })]));
+    const candidate = reading.candidates[0];
+    expect(candidate.uncertainFields).toContain('total');
+    expect(candidate.notices.some(notice => notice.code === 'AMBIGUOUS_SCAN_TOTAL')).toBe(true);
+  });
+
+  it('leaves an unambiguous dotted total alone', () => {
+    // 8.00 reads the same either way, and 7,5 is Dutch decimal notation.
+    expect(ok(read([entry({ total_text: '8.00' })])).candidates[0].uncertainFields).toEqual([]);
+    expect(ok(read([entry({ total_text: '7,5' })])).candidates[0].uncertainFields).toEqual([]);
+  });
+
+  it('drops reported doubt about a field this proposal does not carry', () => {
+    const reading = ok(read([entry({ total_text: '8:00', uncertain: ['break', 'shift', 'reason'] })]));
+    expect(reading.candidates[0].uncertainFields).toEqual([]);
+  });
+
+  it('keeps reported doubt about a field the proposal does carry', () => {
+    const reading = ok(read([entry({
+      total_text: '8:00', start_text: '07:00', end_text: '15:00', break_text: '12:00-12:30',
+      uncertain: ['break'],
+    })]));
+    expect(reading.candidates[0].uncertainFields).toContain('break');
+  });
+
+  it('does not read a start equal to the end as a full day', () => {
+    const reading = ok(read([entry({ total_text: '8:00', start_text: '08:00', end_text: '08:00' })]));
+    const candidate = reading.candidates[0];
+    expect(candidate.sourceInput).toBeNull();
+    expect(candidate.notices.some(notice => notice.code === 'INCOMPLETE_SCAN_SHIFT')).toBe(true);
+  });
+
+  it('refuses a reading larger than one handling can record, for the right reason', () => {
+    const many = Array.from({ length: HOURS_SCAN_MAX_ENTRIES + 1 }, (_, index) =>
+      entry({ employee_text: `Medewerker ${index}` }));
+    const reading = interpretScanReading({ entries: many }, context());
+    expect(reading.ok).toBe(false);
+    if (reading.ok === false) expect(reading.issues[0].code).toBe('SCAN_TOO_LARGE');
+  });
+
+  it('says which pages it could not read, in the shape the panel expects', () => {
+    for (const bad of [{ unreadable: 'nee' }, { unreadable: [{ page_number: 'twee', reason: 'x' }] },
+      { unreadable: [{ page_number: 2 }] }]) {
+      expect(interpretScanReading({ entries: [], ...bad }, context()).ok, JSON.stringify(bad)).toBe(false);
+    }
+  });
+
+  it('names a delivered breakdown it refused to attach to a day without hours', () => {
+    const reading = ok(read([entry({
+      total_text: null, no_hours_text: 'vrij', categories: [{ code_text: 'OV1', duration_text: '1:00' }],
+    })]));
+    expect(reading.candidates[0].notices.some(notice => notice.code === 'INVALID_ZERO_SOURCE')).toBe(true);
+  });
+});

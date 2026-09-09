@@ -111,9 +111,12 @@ export function HoursScanReading({
   return <div className="min-w-0 space-y-3 rounded-lg border bg-muted/20 p-3" role="group" aria-label="Uitlezing van deze bron">
     <p className="text-sm font-medium">Wat er op dit briefje staat</p>
     <p className="text-xs text-muted-foreground">
-      Gelezen van {reading.pagesRead.length === 1 ? 'pagina' : 'de pagina’s'}{' '}
-      <span data-no-translate="true">{reading.pagesRead.join(', ')}</span>. Dit zijn nog geen uren: bewaren
-      maakt er voorstellen van, en toepassen blijft per dag een aparte handeling.
+      {reading.pagesRead.length > 0 && <>
+        Gelezen van {reading.pagesRead.length === 1 ? 'pagina' : 'de pagina’s'}{' '}
+        <span data-no-translate="true">{reading.pagesRead.join(', ')}</span>.{' '}
+      </>}
+      Dit zijn nog geen uren: bewaren maakt er voorstellen van, en toepassen blijft per dag een
+      aparte handeling.
     </p>
     {price}
 

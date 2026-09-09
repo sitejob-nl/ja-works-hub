@@ -153,6 +153,11 @@ test('connected demo: a delivered scan is read into reviewable proposals', async
   if (!fixturePath) throw new Error('Set HOURS_SCAN_FIXTURE to the prepared fixture file');
   const fixture = JSON.parse(readFileSync(resolve(fixturePath), 'utf8')) as Fixture;
   expect(fixture.organizationId, 'the fixture must target the verified demo organization').toBe(DEMO_ORG);
+  // This flow logs in with real credentials, spends real credits and writes
+  // immutable rows. If the base URL is not the local build under review, none of
+  // that is a test — it is production traffic reporting a pass.
+  const target = new URL(process.env.E2E_BASE_URL ?? 'http://127.0.0.1:8093');
+  expect(['127.0.0.1', 'localhost'], 'the scan QA only runs against a local build').toContain(target.hostname);
 
   const internal = await browser.newContext();
   const page = await internal.newPage();
@@ -164,7 +169,14 @@ test('connected demo: a delivered scan is read into reviewable proposals', async
   const week = await readWeek(page, fixture.weekId);
   const primary = week.members.find(member => member.id === fixture.primaryMemberId)!;
   const secondary = week.members.find(member => member.id === fixture.secondaryMemberId)!;
-  const applyDate = primary.days.find(day => day.id === fixture.applyDayId)!.work_date;
+  // The fixture names a day, but an earlier run may already have claimed it.
+  // Picking an untouched one here keeps a rerun honest: this run still claims
+  // exactly one workday, and never rewrites a day that is already recorded.
+  const applyDay = primary.days.find(day => day.id === fixture.applyDayId && day.current_revision === null)
+    ?? primary.days.find(day => day.current_revision === null);
+  expect(applyDay, 'the QA week needs an untouched day for this run to claim').toBeDefined();
+  const applyDayId = applyDay!.id;
+  const applyDate = applyDay!.work_date;
   const secondDay = secondary.days.find(day => day.current_revision === null && day.work_date !== applyDate);
   expect(secondDay, 'the QA week needs an untouched colleague day on another date').toBeDefined();
   const claimedBefore = week.members.flatMap(member => member.days)
@@ -251,7 +263,7 @@ test('connected demo: a delivered scan is read into reviewable proposals', async
   });
 
   // --- applying takes the proposal literally, with the page as origin ------
-  const applyProposal = saved.find(item => item.day_id === fixture.applyDayId)!;
+  const applyProposal = saved.find(item => item.day_id === applyDayId)!;
   expect(applyProposal.minutes, 'the reader read 8,5 as 510 minutes').toBe(510);
   const proposalRow = sourceCard(page, fileName)
     .getByRole('group', { name: new RegExp(`Voorstel .* ${applyDate}`) });
@@ -275,8 +287,8 @@ test('connected demo: a delivered scan is read into reviewable proposals', async
   const applied = await readWeek(page, fixture.weekId);
   const writtenDays = applied.members.flatMap(member => member.days).filter(day => day.current_revision !== null);
   expect(writtenDays.map(day => day.id).sort(), 'exactly one workday was added to what was already claimed')
-    .toEqual([...claimedBefore, fixture.applyDayId].sort());
-  const revision = writtenDays.find(day => day.id === fixture.applyDayId)!.current_revision!;
+    .toEqual([...claimedBefore, applyDayId].sort());
+  const revision = writtenDays.find(day => day.id === applyDayId)!.current_revision!;
   expect(revision.minutes, 'the day version is literally what the proposal said').toBe(510);
   expect(revision.source_references[0].kind).toBe('upload');
   expect(revision.source_references[0].label).toBe(fileName);
@@ -309,7 +321,12 @@ test('connected demo: a delivered scan is read into reviewable proposals', async
 
   expect(pageErrors, 'no JavaScript page errors').toEqual([]);
   expect(network.filter(item => item.status >= 500), 'no server errors').toEqual([]);
-  expect(network.some(item => item.path.includes('timesheets')), 'nothing touched the legacy hours route').toBe(false);
+  // The employee portal still has its own legacy hours page and reads that
+  // table when it loads; what this flow may never do is write to it, and the
+  // internal side may not reach it at all.
+  expect(network.filter(item => item.path.includes('timesheets')
+    && (item.method !== 'GET' || item.path.startsWith('internal:'))),
+    'nothing wrote to the legacy hours route').toEqual([]);
   const paidCalls = network.filter(item => item.path.endsWith('/functions/v1/hours-read-scan')
     && item.path.startsWith('internal:'));
   expect(paidCalls.length, 'this run asked for exactly one reading').toBe(1);
@@ -317,7 +334,7 @@ test('connected demo: a delivered scan is read into reviewable proposals', async
   const finalWeek = await readWeek(page, fixture.weekId);
   expect(finalWeek.members.flatMap(member => member.days).filter(day => day.current_revision !== null)
     .map(day => day.id).sort(), 'this run claimed exactly one extra workday and no more')
-    .toEqual([...claimedBefore, fixture.applyDayId].sort());
+    .toEqual([...claimedBefore, applyDayId].sort());
 
   Object.assign(evidence, {
     result: 'scan-flow-passed',
