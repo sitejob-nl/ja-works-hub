@@ -310,6 +310,14 @@ verify_jwt = false
 [functions.hours-classify-day]
 verify_jwt = false
 
+# Uitlezen van een gescand of gefotografeerd urenbriefje. Self-auth in de body
+# (interne finance.manage), de database autoriseert de bron opnieuw en levert het
+# enige opslagpad dat deze functie opent. De betaalde aanroep loopt via
+# _shared/ai-accounting.ts; er is geen tweede pad ernaast. Schrijft niets: de
+# uitlezing komt terug ter beoordeling.
+[functions.hours-read-scan]
+verify_jwt = false
+
 # Publieke klantweekpagina (token-based, geen login). Service-role validatie in de
 # database: gehasht token met scope op één klantweek, geldigheidsduur en
 # intrekbaarheid, plus IP-rate-limit via hours_client_link_attempts — zoals
