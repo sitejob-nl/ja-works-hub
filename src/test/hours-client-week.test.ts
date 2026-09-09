@@ -5,6 +5,7 @@ import {
   changedClientEntries,
   clientDeliveryBatches,
   clientRefusalMessage,
+  prepareClientDelivery,
   clientReportNote,
   isAlreadyStoredObject,
   isClientLinkCode,
@@ -196,6 +197,37 @@ describe('a delivery larger than one batch', () => {
     expect(batches.flat().map(entry => entry.day_id)).toEqual(drafts.map(draft => draft.day_id));
   });
 
+  it('batches before it validates, so a large week is deliverable at all', () => {
+    // Validating the whole delivery first hard-fails above the bound, and the
+    // batching below it would then never run.
+    const drafts = Array.from({ length: MAX_CLIENT_ENTRIES + 2 }, (_, index) => ({
+      day_id: `00000000-0000-4000-8000-${(index + 1).toString().padStart(12, '0')}`,
+      hours: '8', no_hours: false, reason: '', note: '',
+    }));
+    const prepared = prepareClientDelivery(drafts, new Map());
+    expect('issue' in prepared).toBe(false);
+    if ('issue' in prepared) return;
+    expect(prepared.batches).toHaveLength(2);
+    expect(prepared.batches.flat()).toHaveLength(MAX_CLIENT_ENTRIES + 2);
+    expect(prepared.batches[0][0], 'what travels is what the client typed').toHaveProperty('hours', '8');
+  });
+
+  it('names the first problem it finds, wherever in the delivery it sits', () => {
+    const drafts = Array.from({ length: MAX_CLIENT_ENTRIES + 2 }, (_, index) => ({
+      day_id: `00000000-0000-4000-8000-${(index + 1).toString().padStart(12, '0')}`,
+      hours: index === MAX_CLIENT_ENTRIES + 1 ? 'acht' : '8', no_hours: false, reason: '', note: '',
+    }));
+    const prepared = prepareClientDelivery(drafts, new Map());
+    expect('issue' in prepared && prepared.issue).toMatch(/8,5/);
+  });
+
+  it('says when nothing moved, rather than sending an empty delivery', () => {
+    const standing = new Map([[DAY, { minutes: 480, no_hours_reason: null, note: null }]]);
+    const prepared = prepareClientDelivery(
+      [{ day_id: DAY, hours: '8', no_hours: false, reason: '', note: '' }], standing);
+    expect('issue' in prepared && prepared.issue).toMatch(/niets gewijzigd/i);
+  });
+
   it('leaves a normal week in one handling', () => {
     const drafts = Array.from({ length: 14 }, (_, index) => ({
       day_id: `00000000-0000-4000-8000-${(index + 1).toString().padStart(12, '0')}`,
@@ -313,7 +345,6 @@ describe('the projection the client page reads', () => {
       week_start: '2026-09-07',
       submission_deadline_at: '2026-09-14T10:00:00+00:00',
     },
-    label: 'Planning Acme',
     expires_at: '2026-09-21T10:00:00+00:00',
     report: null,
     members: [{
@@ -332,10 +363,24 @@ describe('the projection the client page reads', () => {
     expect(parseClientWeek(week).complete).toBe(false);
   });
 
-  it('refuses a payload that carries internal facts it should never receive', () => {
-    expect(() => parseClientWeek({ ...week, members: [{ ...week.members[0], days: [{
-      id: DAY, work_date: '2026-09-07', delivered: null, current_revision: { id: DAY },
-    }] }] })).toThrow();
+  it('drops any field it does not know, instead of rendering it', () => {
+    // Migrations reach production before the frontend, so a projection that
+    // grows a field may not break every live link. It may not leak one either,
+    // so the unknown key is stripped rather than passed through.
+    const parsed = parseClientWeek({
+      ...week, internal_note: 'Alleen voor kantoor',
+      members: [{ ...week.members[0], days: [{
+        id: DAY, work_date: '2026-09-07', delivered: null, current_revision: { id: DAY },
+      }] }],
+    });
+    expect(JSON.stringify(parsed)).not.toContain('current_revision');
+    expect(JSON.stringify(parsed)).not.toContain('Alleen voor kantoor');
+    expect(parsed.members[0].days[0].id).toBe(DAY);
+  });
+
+  it('still refuses a payload whose shape it cannot trust', () => {
+    expect(() => parseClientWeek({ ...week, members: 'geen lijst' })).toThrow();
+    expect(() => parseClientWeek({ ...week, expected_days: -1 })).toThrow();
   });
 
   it('reads back a delivery so the client sees what it filled in', () => {

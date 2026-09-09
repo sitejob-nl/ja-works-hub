@@ -529,7 +529,9 @@ returns jsonb language sql stable set search_path = '' as $$
     'week', (select jsonb_build_object('id', w.id, 'company_name', w.company_name,
       'week_start', w.week_start, 'submission_deadline_at', w.submission_deadline_at)
       from public.hours_weeks w where w.id = p_link.week_id),
-    'label', p_link.label, 'expires_at', p_link.expires_at,
+    -- Deliberately not the link's label: that is the office's own note about who
+    -- it was handed to, and it has no business in a visitor's browser.
+    'expires_at', p_link.expires_at,
     'report', private.hours_client_link_report(p_link.id),
     'members', coalesce((select jsonb_agg(jsonb_build_object(
       'id', m.id, 'candidate_name', m.candidate_name,

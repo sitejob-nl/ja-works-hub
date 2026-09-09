@@ -26,7 +26,7 @@ const payload = (overrides: Record<string, unknown> = {}) => ({
     id: weekId, company_name: 'Acme BV', week_start: '2026-09-07',
     submission_deadline_at: '2026-09-14T10:00:00Z',
   },
-  label: 'Planning Acme', expires_at: '2099-09-22T08:00:00Z', report: null,
+  expires_at: '2099-09-22T08:00:00Z', report: null,
   members: [{
     id: memberId, candidate_name: 'Anna Nowak',
     days: [day(monday, '2026-09-07'), day(tuesday, '2026-09-08')],
@@ -154,6 +154,23 @@ describe('filling in the week', () => {
       expect(call?.[1].body.entries.map((entry: { day_id: string }) => entry.day_id),
         'a day the server already holds unchanged does not travel again').toEqual([tuesday]);
     });
+  });
+
+  it('stops sending the rest once a link refusal comes back', async () => {
+    // A refusal arrives as HTTP 200 with a status, so nothing throws; continuing
+    // would keep posting into a link that no longer accepts anything.
+    const sent: unknown[][] = [];
+    invoke.mockImplementation((_name: string, options: { body: { action: string; entries?: unknown[] } }) => {
+      if (options.body.action === 'get') return Promise.resolve(ok({ status: 'ok', week: payload() }));
+      sent.push(options.body.entries ?? []);
+      return Promise.resolve(ok({ status: 'revoked' }));
+    });
+    show();
+    fireEvent.change(await screen.findByLabelText('Gewerkte uren maandag 7 september'), { target: { value: '8' } });
+    fireEvent.change(hoursField('dinsdag 8 september'), { target: { value: '8' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Uren opslaan' }));
+    expect(await screen.findByText(/ingetrokken/i)).toBeTruthy();
+    expect(sent).toHaveLength(1);
   });
 
   it('says nothing changed instead of resending an identical week', async () => {
@@ -526,6 +543,6 @@ describe('what the page must never show', () => {
     await screen.findByText('Acme BV');
     expect(screen.queryByRole('link', { name: /inloggen/i })).toBeNull();
     expect(container.querySelectorAll('a[href^="/uren"]')).toHaveLength(0);
-    expect(screen.queryByText(/Planning Acme/)).toBeNull();
+    expect(screen.queryByText(/Planning Acme/), 'the internal link label never travels').toBeNull();
   });
 });

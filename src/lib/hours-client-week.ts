@@ -4,9 +4,11 @@ import type { ClientLinkStatus } from '../../supabase/functions/_shared/hours-cl
 /**
  * The client week page reads its whole world through this boundary.
  *
- * The schema is `strict()` on purpose. The page must never render an internal
- * fact, so a payload that grew a day revision, a classification or a review is
- * a bug to surface loudly, not something to quietly ignore.
+ * Unknown keys are dropped rather than refused. The page renders only what this
+ * schema names, so a field the server grows can never be shown — and refusing
+ * outright would break every live link the moment a migration reaches
+ * production ahead of the frontend, which is the usual order in this repo.
+ * A payload whose *shape* is wrong is still a hard failure.
  */
 const uuid = z.string().uuid();
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -17,29 +19,28 @@ export const clientDeliverySchema = z.object({
   note: z.string().nullable(),
   status: z.enum(['open', 'applied', 'discarded']),
   created_at: z.string(),
-}).strict();
+});
 
 export const clientWeekSchema = z.object({
   week: z.object({
     id: uuid, company_name: z.string(), week_start: date,
     submission_deadline_at: z.string().nullable(),
-  }).strict(),
-  label: z.string(),
+  }),
   expires_at: z.string(),
   report: z.object({
     kind: z.enum(['later', 'complete']), note: z.string().nullable(), created_at: z.string(),
-  }).strict().nullable(),
+  }).nullable(),
   members: z.array(z.object({
     id: uuid, candidate_name: z.string(),
     days: z.array(z.object({
       id: uuid, work_date: date, delivered: clientDeliverySchema.nullable(),
-    }).strict()),
-  }).strict()),
+    })),
+  })),
   expected_days: z.number().int().nonnegative(),
   provided_days: z.number().int().nonnegative(),
   outstanding_days: z.number().int().nonnegative(),
   complete: z.boolean(),
-}).strict();
+});
 
 /**
  * Declared rather than inferred: the relaxed compiler settings widen a Zod
@@ -54,7 +55,6 @@ export interface ClientWeekDay { id: string; work_date: string; delivered: Clien
 export interface ClientWeekMember { id: string; candidate_name: string; days: ClientWeekDay[] }
 export interface ClientWeek {
   week: { id: string; company_name: string; week_start: string; submission_deadline_at: string | null };
-  label: string;
   expires_at: string;
   report: { kind: 'later' | 'complete'; note: string | null; created_at: string } | null;
   members: ClientWeekMember[];

@@ -13,9 +13,8 @@ import {
   CLIENT_LINK_MESSAGES, formatClientHours, parseClientWeek,
   type ClientLinkStatus, type ClientWeek,
 } from '@/lib/hours-client-week';
-import type { ClientDayInput } from '../../supabase/functions/_shared/hours-client-entries.ts';
 import {
-  buildClientEntries, changedClientEntries, clientDeliveryBatches, clientReportNote,
+  clientReportNote, prepareClientDelivery,
 } from '../../supabase/functions/_shared/hours-client-entries.ts';
 import {
   HOURS_SOURCE_ACCEPT, HOURS_SOURCE_BUCKET, hoursSourceDigest, hoursSourceTypeError,
@@ -170,12 +169,14 @@ export default function HoursClientWeek() {
 
   const save = useMutation({
     // A week with more workdays than fit in one handling is sent in order. Each
-    // handling is all or nothing on the server; stopping at the first refusal
-    // keeps the page honest about how far the delivery got.
-    mutationFn: async (entries: ClientDayInput[]) => {
+    // handling is all or nothing on the server. A refusal arrives as a status
+    // rather than a throw, so the loop has to stop on it: posting the rest into
+    // a link that no longer accepts anything helps nobody.
+    mutationFn: async (batches: unknown[][]) => {
       let last: PageState = { kind: 'loading' };
-      for (const batch of clientDeliveryBatches(entries)) {
+      for (const batch of batches) {
         last = await call({ action: 'save', entries: batch });
+        if (last.kind !== 'open') return last;
       }
       return last;
     },
@@ -284,16 +285,16 @@ export default function HoursClientWeek() {
       return;
     }
     if (!filled.length) { setError('Er is niets ingevuld om op te slaan.'); return; }
-    // Only what actually moved travels, and the bound on one delivery is judged
-    // on exactly that: resending every delivered day would make a large week
+    // Only what actually moved travels, cut to the size the server accepts and
+    // checked per batch — resending every delivered day would make a large week
     // lock itself out of even a one-day correction.
     const standing = new Map(week.members.flatMap(member => member.days)
       .map(day => [day.id, day.delivered]));
-    const changed = changedClientEntries(filled, standing);
-    if (!changed.length) { setError('Er is niets gewijzigd om door te geven.'); return; }
-    const { issues } = buildClientEntries(changed);
-    if (issues.length) { setError(issues[0].message); return; }
-    save.mutate(changed, { onError: failure => setError(failure instanceof Error ? failure.message : 'Opslaan is niet gelukt.') });
+    const prepared = prepareClientDelivery(filled, standing);
+    if ('issue' in prepared) { setError(prepared.issue); return; }
+    save.mutate(prepared.batches, {
+      onError: failure => setError(failure instanceof Error ? failure.message : 'Opslaan is niet gelukt.'),
+    });
   }
 
   const refused = !token ? 'invalid' : showRefusal(state, page.isError);

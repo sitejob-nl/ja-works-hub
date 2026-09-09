@@ -187,6 +187,30 @@ export function clientDeliveryBatches(entries: ClientDayInput[]): ClientDayInput
 }
 
 /**
+ * Everything a delivery has to survive before it is sent, in the one order that
+ * works: drop what did not move, cut the rest to batches, then validate each
+ * batch. Validating first would hard-fail a week larger than one batch, and the
+ * batching below it would never run.
+ */
+export function prepareClientDelivery(
+  filled: ClientDayInput[],
+  standing: Map<string, StandingDelivery | null | undefined>,
+): { batches: ClientDayInput[][] } | { issue: string } {
+  const changed = changedClientEntries(filled, standing);
+  if (!changed.length) return { issue: 'Er is niets gewijzigd om door te geven.' };
+  const batches: ClientDayInput[][] = [];
+  for (const batch of clientDeliveryBatches(changed)) {
+    // Checked here so the client hears about a mistake while typing, but what
+    // travels is what they typed: the edge function does the reading, and the
+    // browser never decides how many minutes a day was.
+    const { issues } = buildClientEntries(batch);
+    if (issues.length) return { issue: issues[0].message };
+    batches.push(batch);
+  }
+  return { batches };
+}
+
+/**
  * A note about the delivery. Over-long input is refused with a message, exactly
  * like every other free-text field here; silently cutting a sentence in half
  * would change what the client said.
