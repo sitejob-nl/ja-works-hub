@@ -1,8 +1,96 @@
-# Session handover — 2026-09-08
+# Session handover — 2026-09-09
 
 Overdracht voor wie verdergaat (Codex / Claude Code). Lees [AGENTS.md](AGENTS.md) voor harde repo-conventies +
 commands, [CLAUDE.md](CLAUDE.md) voor de canonieke codebase-diepte, [HANDOVER.md](HANDOVER.md) voor de formele
 projectsamenvatting.
+
+## Persoonlijke klantweekpagina zonder inloggen — 9 september 2026 (`feat/urenmodule-klantweek`)
+
+- Nieuwe duurzame worktree `/Users/kas/dev/ja-works-hub/.worktrees/urenmodule-klantweek`, branch
+  `feat/urenmodule-klantweek` vanaf `origin/main` `f8b80c8` (de gemergde T3-release #267). De stale
+  hoofdcheckout en alle overige worktrees zijn ongemoeid gelaten.
+- **T6 uit [docs/urenmodule-tickets.md](docs/urenmodule-tickets.md) is gebouwd** — de persoonlijke
+  klantweekpagina zonder inloggen. Alle vijf acceptatiecriteria zijn afgevinkt en met echte
+  databasetests én verbonden demo-QA bewezen. Zie de nieuwe sectie
+  ["Persoonlijke klantweekpagina zonder inloggen (T6)"](docs/urenmodule-intake-contract.md#persoonlijke-klantweekpagina-zonder-inloggen-t6).
+- **Wat er nu kan:** een interne gebruiker met `finance.manage` geeft bij een klantweek een persoonlijke
+  link uit. De opdrachtgever opent die op `/urenweek/:token` zonder inloggen, ziet de verwachte
+  medewerkers en werkdagen, vult per dag uren in of kiest "geen uren" met reden, kan zijn eigen
+  urenbriefje meesturen (PDF, foto of Excel), levert gedeeltelijk aan, en meldt dat er later meer volgt
+  of dat dit alles is. Het kantoor ziet per link hoeveel van de week is aangeleverd, beoordeelt elke dag
+  als voorstel, en kan de link intrekken zonder te wissen wat al is doorgegeven.
+- **De grens is ongewijzigd:** klantinvoer landt als **voorstel**, nooit als dagversie. Alleen
+  `hours_apply_source_proposal` schrijft een dagrevisie, neemt het voorstel letterlijk over en eist nog
+  steeds een met naam bekende interne gebruiker. Nul writes naar `timesheets`, facturatie of
+  communicatie — na afloop in productie geverifieerd.
+- **Veiligheid:** de database bewaart **alleen de SHA-256** van het geheim; dat wordt exact één keer
+  getoond bij uitgifte. De week komt uit de link, dus er is geen parameter waarmee een klant een andere
+  week of werkdag kan noemen. De vijf `hours_client_week_*`-RPC's zijn **service-role-only** en
+  controleren `auth.role()` zelf; edge function `hours-client-week` (`verify_jwt=false`) is de enige
+  houder van die sleutel en autoriseert zelf niets. Een meegestuurd bestand gaat naar een eigen deelmap
+  `<org>/<week>/client/<link>/` — bewust niet de padruimte van het kantoor — en de digest wordt
+  server-side geverifieerd vóór registratie.
+- Migratie `20260912090000_hours_client_week_links.sql` (SHA256
+  `5a404360ea393bc9001e35f356187d9893076a657814e0f9dc84a60efc041336`) is op 9 september toegepast,
+  inclusief vijf opvolgende reparatiemigraties uit de codereviewrondes; de bronversie is in
+  `schema_migrations` geregistreerd. Additief: twee nieuwe org-gebonden tabellen
+  (`hours_client_week_links`, `hours_client_week_reports`), één service-role-only toegangslog
+  (`hours_client_link_attempts`), twee nieuwe kolommen op bestaande brontabellen, zeven nieuwe RPC's en
+  vier gewijzigde. Live types hergenereerd (+217 regels).
+- **Productie is byte-voor-byte gelijk aan de bewezen testcontainer.** Na elke productie-apply is de
+  genormaliseerde vingerafdruk van alle 80 `hours_*`-functies vergeleken met de container waarin de
+  volledige databaseproef groen draaide; ze zijn identiek (`1b7e1c01…`, laatst gecontroleerd na de
+  projectiereparatie).
+- Verificatie: **205 echte PostgreSQL-tests** (`scripts/hours-client-week-db-test.py` — nieuwe
+  klantweekgevallen plus de volledige vrijgegeven werkmap-/pagina-/inname-/foundation-/classificatie-/
+  poortregressies, twaalf migraties elk tweemaal, poortcontrole van zestien naar **achttien** tabellen);
+  **1.648 applicatietests**; lint 0 errors, typecheck en productiebuild groen; `deno check` op de nieuwe
+  edge function. De vrijgegeven harnassen zijn ongewijzigd gelaten; de nieuwe importeert
+  `hours-workbook-db-test.py` en overschrijft alleen de verwachtingen die echt bewogen.
+- **Verbonden demo-QA geslaagd** (`scripts/e2e-hours-client-week-demo.spec.ts` +
+  `scripts/playwright.hours-client-week.config.ts`, 7,9 s, `client-week-flow-passed`, 49 echte
+  API-oproepen) op de bestaande QA-week `Urenmodule QA 20260910-pages-r2`, met de klantkant in een
+  **eigen browsercontext zonder enige sessie**. Bewezen: uitgifte via het echte formulier met het adres
+  precies één keer in beeld en het geheim in geen enkele projectie; de pagina opent zonder sessie; 8,5 en
+  8:30 landen als dezelfde duur en schrijven **nul** dagrevisies; een correctie vervangt alleen de eigen
+  staande aanlevering van diezelfde link en dag; een melding "ik lever later aan" maakt de week niet
+  compleet; een dag van een andere week en een geraden token openen niets; toepassen door het kantoor
+  levert precies één dagversie met de **opdrachtgever** als herkomst en zonder het interne linklabel;
+  intrekken sluit de link zonder te wissen wat al was doorgegeven; en de publieke RPC is zonder de
+  service-sleutel onbereikbaar. Nul JavaScript-fouten, nul serverfouten, nul writes naar `timesheets`,
+  nul berichten, nul betaalde AI-aanroepen. Dev-server op eigen poort 8091 met `PLAYWRIGHT_SKIP_WEBSERVER=1`.
+- **De run claimde precies één onaangeroerde werkdag.** Over alle QA-weken staan er nog **51** klaar
+  (was 56; vijf runs, waarvan vier die op een selectorfout strandden ná het toepassen). JA Werkt UIT,
+  demo AAN, na afloop opnieuw geverifieerd. Het geblokkeerde `QA_SUPERADMIN`-account is ongemoeid gelaten.
+- Advisors na DDL: geen ERROR-bevindingen. De nieuwe RPC's vallen in dezelfde bewuste WARN-categorie
+  "SECURITY DEFINER uitvoerbaar door authenticated" als alle bestaande urenfuncties; de vijf publieke
+  functies staan daar juist **niet** in, want die zijn service-role-only. `hours_client_link_attempts`
+  geeft de verwachte INFO `rls_enabled_no_policy`, net als `match_response_attempts`.
+- **Dertien codereviewrondes vonden vijfenveertig echte defecten, allemaal gerepareerd** met een test die
+  eerst rood stond. De zwaarste vier: een **vergrendelvolgorde-inversie** waardoor een klant die opsloeg
+  terwijl het kantoor diezelfde dag toepaste kon vastlopen (40P01); een **race met intrekken**, waarbij
+  een aanlevering nog landde op een link die zojuist was ingetrokken omdat niemand na de weeklock opnieuw
+  keek; een **gedeelde opslagruimte** waarin een linkhouder vervalste bytes kon parkeren onder de digest
+  van een bestand dat het kantoor daarna zou uploaden, waarna die upload als duplicaat werd weggedeeld en
+  de beoordelaar het bestand van de klant las onder de naam van het kantoor; en een **rate-limit die open
+  faalde** doordat een mislukte telling als nul werd gelezen. Verder onder meer: servermeldingen die de
+  bezoeker nooit bereikten, rauwe databasemeldingen (deadlocktekst, indexnamen) die juist wél op de
+  publieke pagina belandden, een melding die alles wiste wat de klant had getypt, een week groter dan één
+  aanlevering die zichzelf blokkeerde, het interne linklabel dat naar de browser van de bezoeker reisde,
+  en een klantlink die op de terugvalhost werd gebouwd terwijl het adres maar één keer te zien is. De
+  verbonden QA vond er zelf nog twee: identieke veldlabels bij twee medewerkers op dezelfde dag (een
+  toegankelijkheidsdefect), en een net-toegepast voorstel dat samen met zijn bevestiging uit beeld
+  verdween.
+- **Bekende restpost (bewust, gedocumenteerd):** opslagretentie. Een klant kan een upload-adres vragen en
+  weglopen, en levert het kantoor hetzelfde bestand aan dat de klant al stuurde, dan dedupliceert de bron
+  op inhoud terwijl er twee objecten staan. Beide objecten zijn onbereikbaar voor buitenstaanders (de
+  bucket is privé); het gaat om bucketruimte, niet om correctheid of toegang. De zelfopruiming dekt het
+  gewone geval; de sluitende oplossing is een retentiebaan, die buiten dit ticket valt. Bewust **niet**
+  gekozen: een verwijderrecht op de bucket openen — het contract sluit dat uit.
+- **Volgende actie:** een PR openen en mergen (alleen frontend; de migraties en de edge function staan al
+  live). Merge blijft een productiedeploy en dus aan Kas. Daarna de frontier uit
+  `docs/urenmodule-tickets.md`: **T4** (scans/foto's via de VPS), **T5** (Word/e-mail) en de losstaande
+  **T10** zijn open; **T7** (duurzame mailinname) is nu alleen nog door T5 geblokkeerd.
 
 ## Voorstellen uit Excel- en tabelbestanden — 8 september 2026 (`feat/urenmodule-excel-uitlezer`)
 

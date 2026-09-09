@@ -46,7 +46,7 @@ function show() {
   </QueryClientProvider>);
 }
 
-const hoursField = (name: string) => screen.getByLabelText(`Gewerkte uren ${name}`);
+const hoursField = (name: string) => screen.getByLabelText(`Gewerkte uren Anna Nowak ${name}`);
 
 beforeEach(() => {
   invoke.mockReset(); uploadToSignedUrl.mockReset();
@@ -62,6 +62,8 @@ describe('opening a personal week link', () => {
     expect(screen.getByText('Anna Nowak')).toBeTruthy();
     expect(hoursField('maandag 7 september')).toBeTruthy();
     expect(hoursField('dinsdag 8 september')).toBeTruthy();
+    // Two employees would otherwise share one label per day.
+    expect(screen.queryByLabelText('Gewerkte uren maandag 7 september')).toBeNull();
     expect(invoke).toHaveBeenCalledWith('hours-client-week', { body: { token: secret, action: 'get' } });
   });
 
@@ -99,7 +101,7 @@ describe('filling in the week', () => {
   it('sends 8,5 and 8:30 as the same duration', async () => {
     invoke.mockResolvedValue(ok({ status: 'ok', week: payload() }));
     show();
-    fireEvent.change(await screen.findByLabelText('Gewerkte uren maandag 7 september'), { target: { value: '8,5' } });
+    fireEvent.change(await screen.findByLabelText('Gewerkte uren Anna Nowak maandag 7 september'), { target: { value: '8,5' } });
     fireEvent.change(hoursField('dinsdag 8 september'), { target: { value: '8:30' } });
     fireEvent.click(screen.getByRole('button', { name: 'Uren opslaan' }));
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('hours-client-week', {
@@ -116,7 +118,7 @@ describe('filling in the week', () => {
   it('leaves an untouched day out of the delivery entirely', async () => {
     invoke.mockResolvedValue(ok({ status: 'ok', week: payload() }));
     show();
-    fireEvent.change(await screen.findByLabelText('Gewerkte uren maandag 7 september'), { target: { value: '8' } });
+    fireEvent.change(await screen.findByLabelText('Gewerkte uren Anna Nowak maandag 7 september'), { target: { value: '8' } });
     fireEvent.click(screen.getByRole('button', { name: 'Uren opslaan' }));
     await waitFor(() => {
       const call = invoke.mock.calls.find(([, options]) => options?.body?.action === 'save');
@@ -129,7 +131,7 @@ describe('filling in the week', () => {
   it('asks for a reason before it will send no hours', async () => {
     invoke.mockResolvedValue(ok({ status: 'ok', week: payload() }));
     show();
-    fireEvent.click(await screen.findByLabelText('Geen uren maandag 7 september'));
+    fireEvent.click(await screen.findByLabelText('Geen uren Anna Nowak maandag 7 september'));
     fireEvent.click(screen.getByRole('button', { name: 'Uren opslaan' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(/reden/i);
     expect(invoke.mock.calls.filter(([, options]) => options?.body?.action === 'save')).toHaveLength(0);
@@ -138,7 +140,7 @@ describe('filling in the week', () => {
   it('refuses a duration it cannot read, without sending anything', async () => {
     invoke.mockResolvedValue(ok({ status: 'ok', week: payload() }));
     show();
-    fireEvent.change(await screen.findByLabelText('Gewerkte uren maandag 7 september'), { target: { value: 'acht' } });
+    fireEvent.change(await screen.findByLabelText('Gewerkte uren Anna Nowak maandag 7 september'), { target: { value: 'acht' } });
     fireEvent.click(screen.getByRole('button', { name: 'Uren opslaan' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(/8,5/);
     expect(invoke.mock.calls.filter(([, options]) => options?.body?.action === 'save')).toHaveLength(0);
@@ -177,7 +179,7 @@ describe('filling in the week', () => {
       return Promise.resolve(ok({ status: 'revoked' }));
     });
     show();
-    fireEvent.change(await screen.findByLabelText('Gewerkte uren maandag 7 september'), { target: { value: '8' } });
+    fireEvent.change(await screen.findByLabelText('Gewerkte uren Anna Nowak maandag 7 september'), { target: { value: '8' } });
     fireEvent.change(hoursField('dinsdag 8 september'), { target: { value: '8' } });
     fireEvent.click(screen.getByRole('button', { name: 'Uren opslaan' }));
     expect(await screen.findByText(/ingetrokken/i)).toBeTruthy();
@@ -242,7 +244,7 @@ describe('filling in the week', () => {
         ? Promise.resolve(ok({ status: 'ok', week: payload() }))
         : Promise.resolve({ data: null, error: refusal }));
     show();
-    fireEvent.change(await screen.findByLabelText('Gewerkte uren maandag 7 september'), { target: { value: '8' } });
+    fireEvent.change(await screen.findByLabelText('Gewerkte uren Anna Nowak maandag 7 september'), { target: { value: '8' } });
     fireEvent.click(screen.getByRole('button', { name: 'Uren opslaan' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(/geen uren vereist een reden/);
   });
@@ -259,7 +261,7 @@ describe('filling in the week', () => {
         ? Promise.resolve(ok({ status: 'ok', week: payload() }))
         : Promise.resolve({ data: null, error: refusal }));
     show();
-    fireEvent.change(await screen.findByLabelText('Gewerkte uren maandag 7 september'), { target: { value: '8' } });
+    fireEvent.change(await screen.findByLabelText('Gewerkte uren Anna Nowak maandag 7 september'), { target: { value: '8' } });
     fireEvent.click(screen.getByRole('button', { name: 'Uren opslaan' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(/hoort niet bij deze urenweek/);
     expect((hoursField('maandag 7 september') as HTMLInputElement).value).toBe('8');
@@ -292,7 +294,7 @@ describe('saying something about the delivery', () => {
             report: { kind: 'later', note: null, created_at: '2026-09-09T07:00:00Z' },
           }) })));
     show();
-    fireEvent.change(await screen.findByLabelText('Gewerkte uren maandag 7 september'), { target: { value: '8:15' } });
+    fireEvent.change(await screen.findByLabelText('Gewerkte uren Anna Nowak maandag 7 september'), { target: { value: '8:15' } });
     fireEvent.click(screen.getByRole('button', { name: 'Ik lever later aan' }));
     fireEvent.click(screen.getByRole('button', { name: 'Melding versturen' }));
     await screen.findByText(/U heeft gemeld dat u later aanlevert/i);
@@ -382,7 +384,7 @@ describe('keeping what the client is working on', () => {
     }) }));
     show();
     await screen.findByText('Acme BV');
-    fireEvent.click(screen.getByLabelText('Geen uren maandag 7 september'));
+    fireEvent.click(screen.getByLabelText('Geen uren Anna Nowak maandag 7 september'));
     fireEvent.click(screen.getByRole('button', { name: 'Uren opslaan' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(/teruggenomen|vul/i);
     expect(invoke.mock.calls.filter(([, options]) => options?.body?.action === 'save')).toHaveLength(0);
@@ -391,7 +393,7 @@ describe('keeping what the client is working on', () => {
   it('says what it will not send instead of reporting a silent success', async () => {
     invoke.mockResolvedValue(ok({ status: 'ok', week: payload() }));
     show();
-    fireEvent.change(await screen.findByLabelText('Opmerking maandag 7 september (optioneel)'),
+    fireEvent.change(await screen.findByLabelText('Opmerking Anna Nowak maandag 7 september (optioneel)'),
       { target: { value: 'Anna heeft overgewerkt' } });
     fireEvent.click(screen.getByRole('button', { name: 'Uren opslaan' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(/uren/i);

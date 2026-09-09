@@ -13,8 +13,8 @@ import { toFriendlyError } from '@/lib/errorMessages';
 import { hoursWorkflowError } from '@/lib/hours-workflow';
 import {
   clientLinkState, clientWeekPath, describeClientLinkProgress, describePageCount, formatSourceSize,
-  HOURS_CLIENT_REPORT_LABELS, HOURS_PAGE_ASSIGNMENTS, HOURS_PAGE_ASSIGNMENT_LABELS,
-  HOURS_SOURCE_ACCEPT, proposalChanges, proposalIsBlocked,
+  visibleClientProposals, HOURS_CLIENT_REPORT_LABELS, HOURS_PAGE_ASSIGNMENTS,
+  HOURS_PAGE_ASSIGNMENT_LABELS, HOURS_SOURCE_ACCEPT, proposalChanges, proposalIsBlocked,
   type HoursClientLink, type HoursPageAssignment, type HoursSourcePage, type HoursSourceProposal,
   type HoursWeekSourceFile, type HoursWeekSources as HoursWeekSourcesData,
 } from '@/lib/hours-sources';
@@ -477,9 +477,6 @@ function ProposalRow({ proposal, target, canManage, onApply, onDiscard, onConfir
  * secret, so a lost link is replaced rather than looked up — the form says so
  * plainly rather than leaving the reader to find out later.
  */
-/** What still asks something of the reviewer; the rest is history. */
-const needsAttention = (proposal: HoursSourceProposal) => proposal.status === 'open';
-
 function ClientLinksSection({ organizationId, links, canManage, targets, onIssue, onRevoke, onApply,
   onDiscard, onConfirmAssignment, onReload }: {
   organizationId: string;
@@ -502,6 +499,11 @@ function ClientLinksSection({ organizationId, links, canManage, targets, onIssue
   const [revoking, setRevoking] = useState<string | null>(null);
   const [revokeNote, setRevokeNote] = useState('');
   const [showHistory, setShowHistory] = useState<string | null>(null);
+  // What was handled in this sitting stays in view, so the reviewer reads what
+  // applying or discarding actually did.
+  const [justHandled, setJustHandled] = useState<Set<string>>(new Set());
+  const remember = (proposalId: string) =>
+    setJustHandled(current => new Set(current).add(proposalId));
   // The organization's own verified domain, exactly as every other public token
   // link uses. The secret is shown once, so a link issued from a preview host
   // would be unrecoverable.
@@ -598,7 +600,8 @@ function ClientLinksSection({ organizationId, links, canManage, targets, onIssue
       : links.map(link => {
         const state = clientLinkState(link);
         const openProposals = link.proposals.filter(proposal => proposal.status === 'open');
-        const settled = link.proposals.filter(proposal => !needsAttention(proposal));
+        const visible = visibleClientProposals(link.proposals, justHandled, showHistory === link.id);
+        const hidden = link.proposals.length - visible.length;
         return <div key={link.id} className="space-y-2 rounded-md border p-3"
           role="group" aria-label={`Klantlink ${link.label}`}>
           <div className="flex flex-wrap items-start justify-between gap-2">
@@ -648,15 +651,16 @@ function ClientLinksSection({ organizationId, links, canManage, targets, onIssue
               {/* A client that keeps correcting leaves a withdrawn delivery
                   behind each time. What needs a decision stays in view; the
                   history is one click away instead of pushing it off screen. */}
-              {(showHistory === link.id ? link.proposals : link.proposals.filter(needsAttention))
-                .map(proposal => <ProposalRow key={proposal.id} proposal={proposal}
-                  canManage={canManage} target={targets.get(proposal.day_id)} onReload={onReload}
-                  onApply={onApply} onConfirmAssignment={onConfirmAssignment} onDiscard={onDiscard} />)}
-              {settled.length > 0 && <Button type="button" size="sm" variant="ghost"
+              {visible.map(proposal => <ProposalRow key={proposal.id} proposal={proposal}
+                canManage={canManage} target={targets.get(proposal.day_id)} onReload={onReload}
+                onApply={async input => { const result = await onApply(input); remember(input.proposalId); return result; }}
+                onConfirmAssignment={onConfirmAssignment}
+                onDiscard={async input => { const result = await onDiscard(input); remember(input.proposalId); return result; }} />)}
+              {(hidden > 0 || showHistory === link.id) && <Button type="button" size="sm" variant="ghost"
                 onClick={() => setShowHistory(showHistory === link.id ? null : link.id)}>
                 {showHistory === link.id
-                  ? `${settled.length} eerdere aanleveringen verbergen`
-                  : `${settled.length} eerdere aanleveringen tonen`}
+                  ? 'Eerdere aanleveringen verbergen'
+                  : `${hidden} eerdere ${hidden === 1 ? 'aanlevering' : 'aanleveringen'} tonen`}
               </Button>}
             </>}
         </div>;

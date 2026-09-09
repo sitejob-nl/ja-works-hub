@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   describeSourceReferences, formatSourceSize, hoursSourcePath, hoursSourceTypeError,
-  parseWeekSources, proposalChanges, proposalIsBlocked, sourceOriginText, HOURS_SOURCE_MAX_BYTES,
-  type HoursSourceProposal,
+  parseWeekSources, proposalChanges, proposalIsBlocked, sourceOriginText, visibleClientProposals,
+  HOURS_SOURCE_MAX_BYTES, type HoursSourceProposal,
 } from '@/lib/hours-sources';
 import type { HoursSourceInput } from '@/components/hours-workflow/hours-day-source';
 
@@ -137,6 +137,30 @@ describe('week source projection', () => {
   it('refuses a projection that does not match the contract instead of rendering it', () => {
     expect(() => parseWeekSources({ ...projection, sources: [{ ...projection.sources[0], byte_size: 'veel' }] })).toThrow();
     expect(() => parseWeekSources({ ...projection, can_manage: 'ja' })).toThrow();
+  });
+});
+
+describe('which client deliveries a reviewer sees', () => {
+  const proposal = (id: string, status: 'open' | 'applied' | 'discarded') => ({
+    id, day_id: id, member_id: id, work_date: '2026-09-07', candidate_name: 'A',
+    status, minutes: 480, no_hours_reason: null, note: null, source_input: null,
+    page_label: null, page_number: null, assignment_uncertain: false,
+    assignment_confirmed_at: null, assignment_note: null, applied_revision_id: null,
+    applied_created_revision: null, resolution_note: null, resolved_at: null,
+    created_at: '2026-09-08T08:00:00Z',
+  });
+
+  it('shows what still asks for a decision and hides the history', () => {
+    const all = [proposal('a', 'open'), proposal('b', 'discarded'), proposal('c', 'applied')];
+    expect(visibleClientProposals(all, new Set(), false).map(item => item.id)).toEqual(['a']);
+    expect(visibleClientProposals(all, new Set(), true).map(item => item.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('keeps a delivery the reviewer just handled in view', () => {
+    // The confirmation of what applying did lives in that row; dropping it the
+    // moment the status changes would take the answer away with it.
+    const all = [proposal('a', 'open'), proposal('c', 'applied')];
+    expect(visibleClientProposals(all, new Set(['c']), false).map(item => item.id)).toEqual(['a', 'c']);
   });
 });
 

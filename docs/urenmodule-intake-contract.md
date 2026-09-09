@@ -507,8 +507,18 @@ niets zal er ooit nog naar wijzen. Opruimen is best effort: een mislukte opruimi
 aanlevering.
 
 De ruime IP-grens is er met opzet: een heel planningskantoor zit achter één adres, en vier planners die op
-de deadlinedag ieder een week invullen met foto's mogen elkaar niet buitensluiten. De smalle grens ligt op
-uploads, want daar zitten de bytes. Storage dwingt de 25 MiB en de vijf mediatypen af; de browser
+de deadlinedag ieder een week invullen met foto's mogen elkaar niet buitensluiten. De smalle grens dekt
+**beide helften** van een bestandsaanlevering: het aanvragen van een adres is goedkoop, maar het
+registreren haalt het object terug en berekent de digest — daar zitten de bytes en het werk.
+
+**Bekende restpost: opslagretentie.** Twee gevallen laten een object achter waar niets meer naar wijst.
+Een klant kan uploaden en weglopen zonder ooit nog een bestand aan te leveren, waardoor de zelfopruiming
+van die link niet meer draait; en levert het kantoor hetzelfde bestand aan dat de klant al had gestuurd,
+dan dedupliceert de bron op inhoud terwijl er twee objecten staan. In beide gevallen is het object
+onbereikbaar voor buitenstaanders (de bucket is privé) en gaat het om bucketruimte, niet om
+correctheid of toegang. De sluitende oplossing is een retentiebaan die objecten zonder bron opruimt; die
+valt buiten dit ticket. Bewust **niet** gekozen: een verwijderrecht op de bucket openen — het contract
+sluit dat expliciet uit, en een origineel dat kan verdwijnen ondermijnt de hele bewijsketen. Storage dwingt de 25 MiB en de vijf mediatypen af; de browser
 controleert bovendien de eerste bytes, zodat een `.csv` die zich als Excel aandient wordt geweigerd vóór
 opslag en een verkeerd gelabelde `.xlsx` als `.xlsx` wordt bewaard.
 
@@ -534,7 +544,7 @@ er niet omheen kan.
 
 | Wat | Waar |
 | --- | --- |
-| Rate-limit per gehashte IP (600/uur, waarvan 60 uploads) en globaal (20.000/uur) | `hours_client_link_attempts`, service-role-only, RLS aan zonder policy |
+| Rate-limit per gehashte IP (600/uur, waarvan 120 bestandshandelingen) en globaal (20.000/uur) | `hours_client_link_attempts`, service-role-only, RLS aan zonder policy |
 | Het geheim | Nooit gelogd; de throttle bewaart twaalf tekens van de **digest** |
 | Poort dicht bij storing | Kan de throttle niet schrijven, dan sluit het endpoint (503) in plaats van ongelimiteerd te bedienen |
 

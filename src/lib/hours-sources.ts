@@ -126,6 +126,22 @@ export function describeClientLinkProgress(link: Pick<HoursClientLink, 'expected
   return `${link.provided_days} van ${link.expected_days} dagen aangeleverd · ${link.outstanding_days} nog open`;
 }
 
+/**
+ * Which of a link's deliveries a reviewer sees.
+ *
+ * A client that keeps correcting leaves a withdrawn delivery behind each time,
+ * so only what still asks for a decision stays in view. The one exception is a
+ * delivery the reviewer just handled: the confirmation of what applying did
+ * lives in that row, and dropping it the moment the status changes would take
+ * the answer away with it.
+ */
+export function visibleClientProposals(
+  proposals: HoursSourceProposal[], justHandled: Set<string>, showHistory: boolean,
+): HoursSourceProposal[] {
+  if (showHistory) return proposals;
+  return proposals.filter(proposal => proposal.status === 'open' || justHandled.has(proposal.id));
+}
+
 export const HOURS_CLIENT_REPORT_LABELS: Record<'later' | 'complete', string> = {
   later: 'De opdrachtgever levert later aan',
   complete: 'De opdrachtgever meldt dit als volledig',

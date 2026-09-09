@@ -41,6 +41,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > ongewijzigd. Formules en macro's worden nooit uitgevoerd — alleen het bewaarde resultaat wordt gelezen.
 > `hours_create_source_proposals` legt één hele uitlezing all-or-nothing als voorstellen vast; een
 > geweigerde regel laat niets achter.
+> **Klantweekpagina zonder inloggen (12-09-migratie):** een opdrachtgever opent `/urenweek/:token`
+> (publiek, geen provider, geen sessie) en levert zijn week aan. De database bewaart **alleen de SHA-256**
+> van het geheim; dat wordt bij uitgifte exact één keer getoond. De week komt uit de link — er is geen
+> parameter waarmee een klant een andere week of werkdag kan noemen. De vijf `hours_client_week_*`-RPC's
+> zijn **service-role-only**; edge function `hours-client-week` (`verify_jwt=false`) is de enige houder van
+> die sleutel en autoriseert zelf niets. **Klantinvoer landt als voorstel**, nooit als dagversie; de
+> herkomst op de dagrevisie is `kind: 'client'` met de naam van de opdrachtgever, nooit het interne label
+> van de link. Een meegestuurd bestand gaat naar een eigen deelmap `<org>/<week>/client/<link>/` — bewust
+> niet de padruimte van het kantoor — en de digest wordt server-side geverifieerd vóór registratie.
 > Het aparte SaaS-recht `uren-workflow` is opt-in en geldt voor routes, RPC's en directe tabellezing;
 > legacy `uren` of een abonnement geeft dit recht niet. Zie [modulecontract](docs/urenmodule-organization-gate.md).
 > De backend is atomisch uitgerold op 8 september: JA Werkt UIT, geverifieerde demo AAN.
@@ -146,7 +155,7 @@ Routes live in [src/App.tsx](src/App.tsx) — read it for the full list. Pattern
 | `/klantportaal/*` | `ClientPortalProvider` + `ClientPortalLayout` | Opdrachtgever sees own placements + approves timesheets. `/klantportaal/login` and `/klantportaal/activeren/:token` are public. |
 | `/superadmin/*` | `SuperAdminProvider` + `SuperAdminLayout` | System admin — orgs, users, plans, errors, cv-backfill. |
 
-**Public token-based routes** (no provider, no login): `/onboarding/:token`, `/contract/sign/:token`, `/profiel/:token`, `/match/reageer/:token` (alias: `/match-response/:token`, opdrachtgever), `/baan/interesse/:token` (medewerker reageert op baanvoorstel), `/registreren`, `/installeren`.
+**Public token-based routes** (no provider, no login): `/onboarding/:token`, `/contract/sign/:token`, `/profiel/:token`, `/match/reageer/:token` (alias: `/match-response/:token`, opdrachtgever), `/baan/interesse/:token` (medewerker reageert op baanvoorstel), `/urenweek/:token` (opdrachtgever levert zijn urenweek aan; bewust **buiten** de `/uren`-prefix om botsing met de beschermde urenroutes uit te sluiten), `/registreren`, `/installeren`.
 
 Convention: Dutch URL slugs (`/kandidaten`, `/opdrachtgevers`, `/medewerkers`, `/uren`, `/huisvesting`, etc.) — see [Dutch Terminology](#dutch-terminology) for the mapping.
 
@@ -313,6 +322,7 @@ Canonical in [src/integrations/supabase/types.ts](src/integrations/supabase/type
 | `contract-sign` | Digital contract signing (token-based) |
 | `candidate-profile` | Public candidate profile endpoint |
 | `match-response` | Publieke voorstel-reactiepagina (token, geen login): rapport + CV-signed-URL + accepteren (op gesprek/direct starten)/afwijzen. Service-role validatie, single-use, IP-rate-limit via `match_response_attempts` |
+| `hours-client-week` | Publieke klantweekpagina (`/urenweek/:token`, geen login): week lezen, uren aanleveren, urenbriefje meesturen, melden dat er later meer volgt. Service-role validatie in de database (gehasht token, scope op één klantweek, geldigheidsduur, intrekbaarheid), IP-rate-limit via `hours_client_link_attempts`. Klantinvoer landt als **voorstel**, nooit als dagversie |
 | `candidate-interest` | Publieke medewerker-interesse (token uit de kandidaat-voorstelmail, `/baan/interesse/:token`): ja → `afspraak_voorgesteld` + opvolg-taak, nee → `afgewezen`. Zelfde transitie als de WhatsApp-ja/nee (`_shared/match-interest.ts`); service-role validatie, single-use, gedeelde IP-rate-limit |
 | `portal-activate` | Employee portal account activation |
 | `client-portal-activate` | Client portal (opdrachtgever) account activation |
@@ -417,7 +427,9 @@ Canonical in [src/integrations/supabase/types.ts](src/integrations/supabase/type
 - **organization-logos** — company branding logos
 - **property-contracts** — huurcontracten per pand (privé, interne rollen)
 - **hours-sources** — originele urenbriefjes per klantweek (privé, append-only: geen update-/delete-policy).
-  Pad `<org>/<week>/<sha256>.<pdf|jpg|png|xlsx|xls>`, 25 MiB en mediatypen door Storage zelf afgedwongen; toegang via
+  Pad `<org>/<week>/<sha256>.<pdf|jpg|png|xlsx|xls>` voor interne uploads en
+  `<org>/<week>/client/<link>/<sha256>.<ext>` voor wat een opdrachtgever via zijn klantweeklink meestuurt
+  (bewust gescheiden padruimtes), 25 MiB en mediatypen door Storage zelf afgedwongen; toegang via
   `private.hours_source_object_allowed()` (SaaS-module + `finance.view`/`finance.manage`). Bekijken met een
   signed URL van 5 minuten. Zie [innamecontract](docs/urenmodule-intake-contract.md).
 

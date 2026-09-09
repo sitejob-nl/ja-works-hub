@@ -137,6 +137,7 @@ test('connected demo: a client delivers its week through a personal link', async
   const claimedBefore = week.members.flatMap(member => member.days)
     .filter(day => day.current_revision !== null).map(day => day.id).sort();
   const expectedDays = week.members.reduce((total, member) => total + member.days.length, 0);
+  const primary = week.members.find(member => member.id === fixture.primaryMemberId)!;
   const secondary = week.members.find(member => member.id === fixture.secondaryMemberId)!;
   const partnerDay = secondary.days.find(day => day.current_revision === null
     && !fixture.takeoverDayIds.includes(day.id) && day.id !== fixture.applyDayId)!;
@@ -171,14 +172,16 @@ test('connected demo: a client delivers its week through a personal link', async
   const client = await openAsClient(browser, `${baseURL}/urenweek/${secret}`);
   await expect(client.page.getByRole('heading', { name: fixture.companyName })).toBeVisible();
   await expect(client.page.getByText(`0 van ${expectedDays} dagen aangeleverd`)).toBeVisible();
-  const applyLabel = `Gewerkte uren ${dutchDay(fixture.applyWorkDate)}`;
-  const partnerLabel = `Gewerkte uren ${dutchDay(partnerDay.work_date)}`;
-  await expect(client.page.getByLabel(applyLabel).first()).toBeVisible();
+  // Both the employee and the day, or a week with two people addresses the
+  // wrong field.
+  const applyLabel = `Gewerkte uren ${primary.candidate_name} ${dutchDay(fixture.applyWorkDate)}`;
+  const partnerLabel = `Gewerkte uren ${secondary.candidate_name} ${dutchDay(partnerDay.work_date)}`;
+  await expect(client.page.getByLabel(applyLabel, { exact: true })).toBeVisible();
   record('the client page opens without a session', { companyName: fixture.companyName });
 
   // --- 8,5 and 8:30 are the same duration; a blank day stays unknown -------
-  await client.page.getByLabel(applyLabel).first().fill('8,5');
-  await client.page.getByLabel(partnerLabel).last().fill('8:30');
+  await client.page.getByLabel(applyLabel, { exact: true }).fill('8,5');
+  await client.page.getByLabel(partnerLabel, { exact: true }).fill('8:30');
   await client.page.getByRole('button', { name: 'Uren opslaan' }).click();
   await expect(client.page.getByText(/doorgegeven aan uw contactpersoon/i)).toBeVisible();
 
@@ -199,7 +202,7 @@ test('connected demo: a client delivers its week through a personal link', async
   });
 
   // --- a later delivery replaces the client's own earlier one -------------
-  await client.page.getByLabel(applyLabel).first().fill('9:00');
+  await client.page.getByLabel(applyLabel, { exact: true }).fill('9:00');
   await client.page.getByRole('button', { name: 'Uren opslaan' }).click();
   await expect(client.page.getByText(/doorgegeven aan uw contactpersoon/i)).toBeVisible();
   const afterCorrection = await readSources(page, fixture.weekId);
@@ -259,11 +262,20 @@ test('connected demo: a client delivers its week through a personal link', async
   const card = linkCard(page, label);
   await expect(card).toBeVisible();
   await expect(card.getByText(/2 van .* dagen aangeleverd/)).toBeVisible();
-  const proposalRow = card.getByRole('group', { name: new RegExp(`Voorstel .* ${fixture.applyWorkDate}`) });
+  // Both employees have a workday on the same date, so the name has to be part
+  // of the selector or it matches two rows.
+  const proposalRow = card.getByRole('group',
+    { name: `Voorstel ${primary.candidate_name} ${fixture.applyWorkDate}`, exact: true });
   await proposalRow.getByRole('button', { name: 'Toepassen als dagversie' }).click();
-  await expect(card.getByText(/Toegepast als nieuwe dagversie/)).toBeVisible();
-
-  const applied = await readWeek(page, fixture.weekId);
+  // The day version is the fact worth proving; the wording that confirms it has
+  // its own unit test and is not what this run is about.
+  let applied = await readWeek(page, fixture.weekId);
+  for (let attemptNumber = 0; attemptNumber < 20; attemptNumber += 1) {
+    applied = await readWeek(page, fixture.weekId);
+    if (applied.members.flatMap(member => member.days)
+      .find(day => day.id === fixture.applyDayId)?.current_revision) break;
+    await page.waitForTimeout(500);
+  }
   const appliedDay = applied.members.flatMap(member => member.days)
     .find(day => day.id === fixture.applyDayId)!;
   expect(appliedDay.current_revision?.minutes, 'the proposal is applied literally').toBe(540);

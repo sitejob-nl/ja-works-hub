@@ -41,13 +41,18 @@ const json = (body: unknown, status = 200) =>
  * A 244-bit token is not going to be guessed; these limits exist against
  * scripted noise and against bandwidth. The per-IP ceiling is generous because
  * a whole planning office sits behind one address: four planners each filling in
- * a week and attaching photos on deadline day must not lock each other out. The
- * narrow limit is on uploads, which is where the bytes are. The global counter
- * is a last-resort brake shared by every organization, so it sits far above any
- * realistic use — a low ceiling there would let one abuser stop the platform.
+ * a week and attaching photos on deadline day must not lock each other out.
+ *
+ * The narrow limit covers both halves of delivering a file. `upload` only mints
+ * a signed address, but `register` downloads the whole object and hashes it
+ * inside this function, so that is where the bytes and the work actually are.
+ * The global counter is a last-resort brake shared by every organization, so it
+ * sits far above any realistic use — a low ceiling there would let one abuser
+ * stop the platform.
  */
 const MAX_PER_IP_PER_HOUR = 600;
-const MAX_UPLOADS_PER_IP_PER_HOUR = 60;
+const FILE_ACTIONS = new Set(['upload', 'register']);
+const MAX_FILE_ACTIONS_PER_IP_PER_HOUR = 120;
 const MAX_GLOBAL_PER_HOUR = 20_000;
 /** How long an uploaded object may sit around before it has become a source. */
 const ORPHAN_GRACE_MS = 60 * 60 * 1000;
@@ -168,15 +173,15 @@ Deno.serve(async (req) => {
     const tokenHash = await sha256Hex(token);
     const ipHash = await sha256Hex(clientIp(req));
     const since = new Date(Date.now() - 3_600_000).toISOString();
-    const uploading = action === 'upload';
+    const deliveringFile = FILE_ACTIONS.has(action);
     const [perIp, global, uploads] = await Promise.all([
       service.from('hours_client_link_attempts').select('id', { count: 'exact', head: true })
         .eq('ip_hash', ipHash).gte('created_at', since),
       service.from('hours_client_link_attempts').select('id', { count: 'exact', head: true })
         .gte('created_at', since),
-      uploading
+      deliveringFile
         ? service.from('hours_client_link_attempts').select('id', { count: 'exact', head: true })
-            .eq('ip_hash', ipHash).eq('action', 'upload').gte('created_at', since)
+            .eq('ip_hash', ipHash).in('action', [...FILE_ACTIONS]).gte('created_at', since)
         : Promise.resolve({ count: 0, error: null }),
     ]);
     // A count that fails or comes back empty says nothing about how many
@@ -189,7 +194,7 @@ Deno.serve(async (req) => {
       return json({ error: 'Deze pagina is tijdelijk niet beschikbaar. Probeer het later opnieuw.' }, 503);
     }
     if (perIp.count >= MAX_PER_IP_PER_HOUR || global.count >= MAX_GLOBAL_PER_HOUR
-        || (uploading && uploads.count >= MAX_UPLOADS_PER_IP_PER_HOUR)) {
+        || (deliveringFile && uploads.count >= MAX_FILE_ACTIONS_PER_IP_PER_HOUR)) {
       return json({ error: 'Te veel verzoeken. Probeer het later opnieuw.' }, 429);
     }
     // Logged before the token is resolved, and in its own statement: a database
@@ -273,6 +278,10 @@ Deno.serve(async (req) => {
     }
 
     // action === 'register'
+    //
+    // Sweeps here as well as on upload: a client that delivers one file and
+    // never returns still leaves through this path.
+    await sweepUnregistered(service, call);
     //
     // The digest decides the storage path *and* the deduplication key. For the
     // internal route that is fine: only trusted internal code can write there,

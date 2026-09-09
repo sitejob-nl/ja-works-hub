@@ -365,9 +365,12 @@ export default function HoursClientWeek() {
       <CardContent className="space-y-3">
         {member.days.map(day => {
           const draft = drafts[day.id] ?? { hours: '', noHours: false, reason: '', note: '' };
-          const label = `${dayLabel(day.work_date)}`;
+          // The employee's name belongs in the label: a week with two people has
+          // two "maandag 7 september" fields, and a screen reader — or anyone
+          // navigating by label — cannot tell them apart otherwise.
+          const label = `${member.candidate_name} ${dayLabel(day.work_date)}`;
           return <div key={day.id} className="grid gap-2 rounded-lg border p-3 sm:grid-cols-[10rem_1fr]">
-            <p className="text-sm font-medium">{label}</p>
+            <p className="text-sm font-medium">{dayLabel(day.work_date)}</p>
             <div className="space-y-2">
               <div className="flex flex-wrap items-center gap-3">
                 <div className="space-y-1">

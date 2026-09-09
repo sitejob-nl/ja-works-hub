@@ -216,7 +216,7 @@ describe('a delivery is a proposal, and stays one', () => {
     show();
     const row = await screen.findByRole('group', { name: /Klantlink Planning Acme/ });
     expect(within(row).getAllByRole('button', { name: 'Toepassen als dagversie' })).toHaveLength(1);
-    const toggle = within(row).getByRole('button', { name: /eerdere aanleveringen/i });
+    const toggle = within(row).getByRole('button', { name: /eerdere aanlevering/i });
     expect(toggle).toBeTruthy();
     expect(within(row).queryByText(/8:20 uur/)).toBeNull();
     fireEvent.click(toggle);
@@ -243,7 +243,7 @@ describe('a delivery is a proposal, and stays one', () => {
     const row = await screen.findByRole('group', { name: /Klantlink Planning Acme/ });
     expect(within(row).getAllByRole('button', { name: 'Toepassen als dagversie' }),
       'only the standing delivery asks for a decision').toHaveLength(1);
-    fireEvent.click(within(row).getByRole('button', { name: /eerdere aanleveringen/i }));
+    fireEvent.click(within(row).getByRole('button', { name: /eerdere aanlevering/i }));
     expect(within(row).getByText(/Vervangen door een latere aanlevering/)).toBeTruthy();
   });
 

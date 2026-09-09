@@ -13,8 +13,9 @@ bevestigde klant-/CAO-matrices inclusief pauze-, afrondings- en samenloopregels 
 het exportvoorbeeld van de payroller met uurcodes en correctieprocedure (T12, T13),
 ontvangers/verantwoordelijken per partij (T8), en de keuze van pilotklanten (T14).
 
-Stand 08-09-2026: **T1, T2 en T3 gebouwd en gedeployed** (migraties `20260909090000`, `20260910090000`
-en `20260911090000`); T1 en T2 zijn ook met verbonden demo-QA bewezen. T4 t/m T14 nog niet gestart.
+Stand 09-09-2026: **T1, T2, T3 en T6 gebouwd en gedeployed** (migraties `20260909090000`,
+`20260910090000`, `20260911090000` en `20260912090000`); T1, T2, T3 en T6 zijn ook met verbonden demo-QA
+bewezen. T4, T5 en T7 t/m T14 nog niet gestart. T7 (duurzame mailinname) blijft geblokkeerd door T5.
 
 ---
 
@@ -139,13 +140,16 @@ verwachte medewerkers, vult per dag uren in of kiest "geen uren" met reden, uplo
 slaat gedeeltelijk op en kan aangeven later aan te leveren. De pagina vereist geen inlog, geeft nooit
 toegang tot een andere klant of week, en gebruikt dezelfde bron-/voorstelgrens als T1.
 
+**Status:** gebouwd en gedeployed op 9 september 2026; zie het
+[innamecontract](urenmodule-intake-contract.md#persoonlijke-klantweekpagina-zonder-inloggen-t6).
+
 **Geblokkeerd door:** T1.
 
-- [ ] Gehasht token met scope op één klantweek, geldigheidsduur en intrekbaarheid
-- [ ] Een verlopen of ingetrokken token faalt; een token van klant A opent klant B niet
-- [ ] Klantinvoer landt als voorstel, niet rechtstreeks als dagversie
-- [ ] 8,5 en 8:30 leiden tot dezelfde duur; een leeg veld blijft onbekend
-- [ ] Gedeeltelijke aanlevering blijft zichtbaar als onvolledig
+- [x] Gehasht token met scope op één klantweek, geldigheidsduur en intrekbaarheid
+- [x] Een verlopen of ingetrokken token faalt; een token van klant A opent klant B niet
+- [x] Klantinvoer landt als voorstel, niet rechtstreeks als dagversie
+- [x] 8,5 en 8:30 leiden tot dezelfde duur; een leeg veld blijft onbekend
+- [x] Gedeeltelijke aanlevering blijft zichtbaar als onvolledig
 
 ---
 
