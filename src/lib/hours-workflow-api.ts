@@ -42,6 +42,8 @@ interface HoursRpcArguments {
   hours_set_source_page: RpcArgs<'hours_set_source_page'> & { p_assignment: HoursPageAssignment };
   hours_create_page_proposals: Omit<RpcArgs<'hours_create_page_proposals'>, 'p_entries'> & { p_entries: HoursPageEntry[] };
   hours_create_source_proposals: Omit<RpcArgs<'hours_create_source_proposals'>, 'p_entries'> & { p_entries: HoursReadingEntry[] };
+  hours_issue_client_week_link: RpcArgs<'hours_issue_client_week_link'>;
+  hours_revoke_client_week_link: RpcArgs<'hours_revoke_client_week_link'>;
 }
 
 export async function hoursWorkflowRpc<K extends keyof HoursRpcArguments>(name: K, args: HoursRpcArguments[K]): Promise<unknown> {

@@ -42,13 +42,13 @@ const week: HoursWeekView = {
 };
 
 const projection = (proposals: unknown[] = []) => ({
-  week_id: weekId, can_manage: true,
+  week_id: weekId, can_manage: true, client_links: [],
   open_proposals: proposals.length, undecided_assignments: 0,
   sources: [{
     id: sourceId, file_name: 'uren-week37.xlsx',
     content_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     byte_size: 4096, content_hash: 'c'.repeat(64), storage_path: storagePath,
-    created_at: '2026-09-08T08:00:00Z', page_count: 1, pages: [], proposals,
+    created_at: '2026-09-08T08:00:00Z', page_count: 1, client_link_id: null, pages: [], proposals,
   }],
 });
 

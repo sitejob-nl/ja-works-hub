@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { ExternalLink, FileUp, Layers, Paperclip, TableProperties } from 'lucide-react';
+import { ExternalLink, FileUp, Layers, Link2, Paperclip, TableProperties } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -12,9 +12,10 @@ import ErrorState from '@/components/shared/ErrorState';
 import { toFriendlyError } from '@/lib/errorMessages';
 import { hoursWorkflowError } from '@/lib/hours-workflow';
 import {
-  describePageCount, formatSourceSize, HOURS_PAGE_ASSIGNMENTS, HOURS_PAGE_ASSIGNMENT_LABELS,
+  clientLinkState, clientWeekUrl, describeClientLinkProgress, describePageCount, formatSourceSize,
+  HOURS_CLIENT_REPORT_LABELS, HOURS_PAGE_ASSIGNMENTS, HOURS_PAGE_ASSIGNMENT_LABELS,
   HOURS_SOURCE_ACCEPT, proposalChanges, proposalIsBlocked,
-  type HoursPageAssignment, type HoursSourcePage, type HoursSourceProposal,
+  type HoursClientLink, type HoursPageAssignment, type HoursSourcePage, type HoursSourceProposal,
   type HoursWeekSourceFile, type HoursWeekSources as HoursWeekSourcesData,
 } from '@/lib/hours-sources';
 import type { HoursPageEntry } from '@/lib/hours-workflow-api';
@@ -468,6 +469,169 @@ function ProposalRow({ proposal, target, canManage, onApply, onDiscard, onConfir
 }
 
 /** Internal intake: keep the original privately, propose per page, then apply explicitly. */
+/**
+ * Handing out a personal week link, and what came back through it.
+ *
+ * The address is shown exactly once. The database keeps only the digest of the
+ * secret, so a lost link is replaced rather than looked up — the form says so
+ * plainly rather than leaving the reader to find out later.
+ */
+function ClientLinksSection({ links, canManage, targets, onIssue, onRevoke, onApply, onDiscard,
+  onConfirmAssignment, onReload }: {
+  links: HoursClientLink[];
+  canManage: boolean;
+  targets: Map<string, DayTarget>;
+  onIssue: (input: { label: string; validDays: number }) => Promise<{ secret: string; linkId: string }>;
+  onRevoke: (input: { linkId: string; note: string | null }) => Promise<unknown>;
+  onApply: (input: { proposalId: string; expectedRevisionId: string | null }) => Promise<{ createdRevision: boolean }>;
+  onDiscard: (input: { proposalId: string; note: string | null }) => Promise<unknown>;
+  onConfirmAssignment: (input: { proposalId: string; note: string | null }) => Promise<unknown>;
+  onReload?: () => void;
+}) {
+  const [creating, setCreating] = useState(false);
+  const [label, setLabel] = useState('');
+  const [validDays, setValidDays] = useState('14');
+  const [issued, setIssued] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [revoking, setRevoking] = useState<string | null>(null);
+  const [revokeNote, setRevokeNote] = useState('');
+
+  async function issue() {
+    const trimmed = label.trim();
+    if (!trimmed) { setError('Geef een herkenbare naam aan deze link, bijvoorbeeld de contactpersoon.'); return; }
+    const days = Number(validDays);
+    if (!Number.isInteger(days) || days < 1 || days > 180) {
+      setError('Kies een geldigheidsduur van één tot honderdtachtig dagen.'); return;
+    }
+    setBusy(true); setError(null);
+    try {
+      const result = await onIssue({ label: trimmed, validDays: days });
+      setIssued(clientWeekUrl(result.secret, window.location.origin));
+      setCreating(false); setLabel('');
+    } catch (failure) {
+      setError(hoursWorkflowError(failure));
+    } finally { setBusy(false); }
+  }
+
+  async function revoke(linkId: string) {
+    setBusy(true); setError(null);
+    try {
+      await onRevoke({ linkId, note: revokeNote.trim() || null });
+      setRevoking(null); setRevokeNote('');
+    } catch (failure) {
+      setError(hoursWorkflowError(failure));
+    } finally { setBusy(false); }
+  }
+
+  return <div className="space-y-3 rounded-lg border p-3">
+    <div className="flex flex-wrap items-start justify-between gap-2">
+      <div>
+        <p className="flex items-center gap-1.5 font-medium">
+          <Link2 className="h-4 w-4 text-muted-foreground" aria-hidden="true" />Persoonlijke klantlinks
+        </p>
+        <p className="text-xs text-muted-foreground">
+          De opdrachtgever vult zijn uren in zonder inloggen. Wat hij doorgeeft komt hier als voorstel binnen
+          en wordt pas een dagversie als u het toepast.
+        </p>
+      </div>
+      {canManage && !creating && <Button type="button" size="sm" variant="outline" disabled={busy}
+        onClick={() => { setCreating(true); setIssued(null); setError(null); }}>Klantlink maken</Button>}
+    </div>
+
+    {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+
+    {creating && <div className="space-y-3 rounded-md bg-muted/40 p-3">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-1">
+          <Label htmlFor="client-link-label">Voor wie is deze link?</Label>
+          <Input id="client-link-label" value={label} disabled={busy} maxLength={200}
+            placeholder="Bijvoorbeeld: Planning Acme"
+            onChange={event => setLabel(event.target.value)} />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="client-link-days">Geldig (dagen)</Label>
+          <Input id="client-link-days" type="number" min={1} max={180} value={validDays} disabled={busy}
+            onChange={event => setValidDays(event.target.value)} />
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" size="sm" disabled={busy} onClick={() => void issue()}>Link aanmaken</Button>
+        <Button type="button" size="sm" variant="ghost" disabled={busy}
+          onClick={() => { setCreating(false); setError(null); }}>Annuleren</Button>
+      </div>
+    </div>}
+
+    {issued && <Alert>
+      <AlertDescription className="space-y-2">
+        <p>Stuur dit adres naar de opdrachtgever. Het is hierna <strong>niet opnieuw te zien</strong>:
+          er wordt alleen een versleutelde afdruk bewaard. Kwijt? Maak een nieuwe link en trek deze in.</p>
+        <code className="block break-all rounded bg-background p-2 text-xs" data-no-translate="true">{issued}</code>
+        <Button type="button" size="sm" variant="outline"
+          onClick={() => void navigator.clipboard?.writeText(issued)}>Adres kopiëren</Button>
+      </AlertDescription>
+    </Alert>}
+
+    {links.length === 0
+      ? <p className="text-sm text-muted-foreground">Er is nog geen klantlink voor deze week.</p>
+      : links.map(link => {
+        const state = clientLinkState(link);
+        const openProposals = link.proposals.filter(proposal => proposal.status === 'open');
+        return <div key={link.id} className="space-y-2 rounded-md border p-3"
+          role="group" aria-label={`Klantlink ${link.label}`}>
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="font-medium" data-no-translate="true">{link.label}</p>
+              <p className="text-xs text-muted-foreground">
+                {describeClientLinkProgress(link)}
+                {link.last_opened_at ? ` · voor het laatst geopend ${formatHoursDate(link.last_opened_at.slice(0, 10))}` : ' · nog niet geopend'}
+              </p>
+              {link.report && <p className="text-xs text-muted-foreground">
+                <span>{HOURS_CLIENT_REPORT_LABELS[link.report.kind]}</span>
+                {link.report.note ? <span data-no-translate="true"> · {link.report.note}</span> : null}
+              </p>}
+              {link.revoke_note && <p className="text-xs text-muted-foreground" data-no-translate="true">{link.revoke_note}</p>}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant={state === 'active' ? 'secondary' : 'outline'}>
+                {state === 'active' ? 'Actief' : state === 'revoked' ? 'Ingetrokken' : 'Verlopen'}
+              </Badge>
+              {canManage && state === 'active' && revoking !== link.id &&
+                <Button type="button" size="sm" variant="ghost" disabled={busy}
+                  onClick={() => { setRevoking(link.id); setRevokeNote(''); }}>Intrekken</Button>}
+            </div>
+          </div>
+          {revoking === link.id && <div className="space-y-2 rounded-md bg-muted/40 p-2">
+            <div className="space-y-1">
+              <Label htmlFor={`revoke-${link.id}`}>Waarom trekt u deze link in?</Label>
+              <Input id={`revoke-${link.id}`} value={revokeNote} disabled={busy} maxLength={2000}
+                onChange={event => setRevokeNote(event.target.value)} />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Wat de opdrachtgever al heeft doorgegeven blijft staan. Intrekken kan niet ongedaan worden gemaakt.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" size="sm" variant="destructive" disabled={busy}
+                onClick={() => void revoke(link.id)}>Definitief intrekken</Button>
+              <Button type="button" size="sm" variant="ghost" disabled={busy}
+                onClick={() => setRevoking(null)}>Annuleren</Button>
+            </div>
+          </div>}
+          {link.proposals.length === 0
+            ? <p className="text-sm text-muted-foreground">Deze opdrachtgever heeft nog niets doorgegeven.</p>
+            : <>
+              {openProposals.length > 0 && <p className="text-sm">
+                {openProposals.length} {openProposals.length === 1 ? 'dag wacht' : 'dagen wachten'} op uw beoordeling.
+              </p>}
+              {link.proposals.map(proposal => <ProposalRow key={proposal.id} proposal={proposal}
+                canManage={canManage} target={targets.get(proposal.day_id)} onReload={onReload}
+                onApply={onApply} onConfirmAssignment={onConfirmAssignment} onDiscard={onDiscard} />)}
+            </>}
+        </div>;
+      })}
+  </div>;
+}
+
 export function HoursWeekSources({ organizationId, week, onReload }: HoursWeekSourcesProps) {
   const sources = useHoursWeekSources(organizationId, week.id, true);
   const apply = useApplyHoursProposal(organizationId, week.id);
@@ -547,6 +711,13 @@ export function HoursWeekSources({ organizationId, week, onReload }: HoursWeekSo
           {data.undecided_assignments} {data.undecided_assignments === 1 ? 'voorstel heeft' : 'voorstellen hebben'} een
           onbesliste toewijzing en {data.undecided_assignments === 1 ? 'blokkeert' : 'blokkeren'} toepassen tot de medewerker is bevestigd.
         </p>}
+        {!sources.isPending && data && <ClientLinksSection links={data.client_links} canManage={canManage}
+          targets={targetById} onReload={onReload}
+          onIssue={input => sources.issueClientLink.mutateAsync(input)}
+          onRevoke={input => sources.revokeClientLink.mutateAsync(input)}
+          onApply={input => apply.mutateAsync(input)}
+          onConfirmAssignment={input => sources.confirmAssignment.mutateAsync(input)}
+          onDiscard={input => sources.discardProposal.mutateAsync(input)} />}
         {sources.isPending ? <p role="status" className="text-sm text-muted-foreground">Bronnen laden…</p>
           : data?.sources.length === 0 ? <p className="text-sm text-muted-foreground">Er zijn nog geen bronnen bij deze week bewaard.</p>
           : data?.sources.map(source => <div key={source.id} className="space-y-3 rounded-lg border p-3"

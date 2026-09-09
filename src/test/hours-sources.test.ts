@@ -50,19 +50,19 @@ describe('hours source acceptance', () => {
 describe('source provenance', () => {
   it('names manual entry and an uploaded original differently', () => {
     expect(describeSourceReferences([{ kind: 'manual', label: 'Handmatige invoer' }]))
-      .toEqual([{ label: 'Handmatige invoer', reference: null }]);
+      .toEqual([{ kind: 'manual', label: 'Handmatige invoer', reference: null }]);
     expect(describeSourceReferences([{ kind: 'upload', label: 'week36.pdf', reference: 'pagina 2' }]))
-      .toEqual([{ label: 'week36.pdf', reference: 'pagina 2' }]);
+      .toEqual([{ kind: 'upload', label: 'week36.pdf', reference: 'pagina 2' }]);
     expect(sourceOriginText([{ kind: 'upload', label: 'week36.pdf', reference: 'pagina 2' }]))
       .toBe('week36.pdf · pagina 2');
   });
 
   it('keeps an unknown future kind readable rather than presenting it as manual entry', () => {
     expect(describeSourceReferences([{ kind: 'mailbox', label: 'RE: uren week 35' }]))
-      .toEqual([{ label: 'RE: uren week 35', reference: null }]);
+      .toEqual([{ kind: 'unknown', label: 'RE: uren week 35', reference: null }]);
     expect(sourceOriginText([])).toBe('Bron niet beschikbaar');
     expect(sourceOriginText(undefined)).toBe('Bron niet beschikbaar');
-    expect(describeSourceReferences([{ kind: 'upload' }])).toEqual([{ label: 'Geüpload bestand', reference: null }]);
+    expect(describeSourceReferences([{ kind: 'upload' }])).toEqual([{ kind: 'upload', label: 'Geüpload bestand', reference: null }]);
   });
 });
 
@@ -99,12 +99,12 @@ describe('what applying a proposal changes', () => {
 
 describe('week source projection', () => {
   const projection = {
-    week_id: '00000000-0000-4000-8000-000000000001', can_manage: true,
+    week_id: '00000000-0000-4000-8000-000000000001', can_manage: true, client_links: [],
     open_proposals: 1, undecided_assignments: 0,
     sources: [{
       id: '00000000-0000-4000-8000-000000000002', file_name: 'week36.pdf', content_type: 'application/pdf',
       byte_size: 2048, content_hash: 'b'.repeat(64), storage_path: 'org/week/hash.pdf',
-      created_at: '2026-09-08T08:00:00Z', page_count: 1, pages: [],
+      created_at: '2026-09-08T08:00:00Z', page_count: 1, client_link_id: null, pages: [],
       proposals: [{
         id: '00000000-0000-4000-8000-000000000003', day_id: '00000000-0000-4000-8000-000000000004',
         member_id: '00000000-0000-4000-8000-000000000005', work_date: '2026-09-07',
@@ -146,11 +146,11 @@ describe('source pages and assignment', () => {
     created_at: '2026-09-08T08:05:00Z', ...overrides,
   });
   const projection = (overrides: Record<string, unknown> = {}, sourceOverrides: Record<string, unknown> = {}) => ({
-    week_id: day('1'), can_manage: true, open_proposals: 1, undecided_assignments: 0,
+    week_id: day('1'), can_manage: true, open_proposals: 1, undecided_assignments: 0, client_links: [],
     sources: [{
       id: day('2'), file_name: 'week36.pdf', content_type: 'application/pdf', byte_size: 2048,
       content_hash: 'b'.repeat(64), storage_path: 'org/week/hash.pdf', created_at: '2026-09-08T08:00:00Z',
-      page_count: 4, pages: [page()], proposals: [proposal()], ...sourceOverrides,
+      page_count: 4, client_link_id: null, pages: [page()], proposals: [proposal()], ...sourceOverrides,
     }],
     ...overrides,
   });
@@ -170,7 +170,7 @@ describe('source pages and assignment', () => {
 
   it('accepts an older source whose page count nobody could determine', () => {
     const parsed = parseWeekSources(projection({}, {
-      page_count: null, pages: [], proposals: [proposal({ page_number: null })],
+      page_count: null, client_link_id: null, pages: [], proposals: [proposal({ page_number: null })],
     }));
     expect(parsed.sources[0].page_count).toBeNull();
     expect(parsed.sources[0].proposals[0].page_number).toBeNull();

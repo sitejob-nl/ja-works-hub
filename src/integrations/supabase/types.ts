@@ -4414,6 +4414,159 @@ export type Database = {
           },
         ]
       }
+      hours_client_link_attempts: {
+        Row: {
+          action: string
+          created_at: string
+          id: string
+          ip_hash: string
+          token_prefix: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          id?: string
+          ip_hash: string
+          token_prefix?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          id?: string
+          ip_hash?: string
+          token_prefix?: string | null
+        }
+        Relationships: []
+      }
+      hours_client_week_links: {
+        Row: {
+          company_id: string
+          created_at: string
+          created_by: string
+          expires_at: string
+          id: string
+          label: string
+          last_opened_at: string | null
+          organization_id: string
+          revoke_note: string | null
+          revoked_at: string | null
+          revoked_by: string | null
+          token_hash: string
+          week_id: string
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          created_by: string
+          expires_at: string
+          id?: string
+          label: string
+          last_opened_at?: string | null
+          organization_id: string
+          revoke_note?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          token_hash: string
+          week_id: string
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          created_by?: string
+          expires_at?: string
+          id?: string
+          label?: string
+          last_opened_at?: string | null
+          organization_id?: string
+          revoke_note?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          token_hash?: string
+          week_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hours_client_week_links_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_client_week_links_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_client_week_links_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_client_week_links_revoked_by_fkey"
+            columns: ["revoked_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_client_week_links_week_id_organization_id_fkey"
+            columns: ["week_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "hours_weeks"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
+      }
+      hours_client_week_reports: {
+        Row: {
+          created_at: string
+          id: string
+          kind: string
+          link_id: string
+          note: string | null
+          organization_id: string
+          week_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          kind: string
+          link_id: string
+          note?: string | null
+          organization_id: string
+          week_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          kind?: string
+          link_id?: string
+          note?: string | null
+          organization_id?: string
+          week_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hours_client_week_reports_link_id_week_id_organization_id_fkey"
+            columns: ["link_id", "week_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "hours_client_week_links"
+            referencedColumns: ["id", "week_id", "organization_id"]
+          },
+          {
+            foreignKeyName: "hours_client_week_reports_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       hours_company_cao_binding_history: {
         Row: {
           cao_matrix_id: string | null
@@ -5239,8 +5392,9 @@ export type Database = {
           assignment_confirmed_by: string | null
           assignment_note: string | null
           assignment_uncertain: boolean
+          client_link_id: string | null
           created_at: string
-          created_by: string
+          created_by: string | null
           day_id: string
           id: string
           minutes: number
@@ -5252,7 +5406,7 @@ export type Database = {
           resolution_note: string | null
           resolved_at: string | null
           resolved_by: string | null
-          source_id: string
+          source_id: string | null
           source_input: Json | null
           status: string
           week_id: string
@@ -5264,8 +5418,9 @@ export type Database = {
           assignment_confirmed_by?: string | null
           assignment_note?: string | null
           assignment_uncertain?: boolean
+          client_link_id?: string | null
           created_at?: string
-          created_by: string
+          created_by?: string | null
           day_id: string
           id?: string
           minutes: number
@@ -5277,7 +5432,7 @@ export type Database = {
           resolution_note?: string | null
           resolved_at?: string | null
           resolved_by?: string | null
-          source_id: string
+          source_id?: string | null
           source_input?: Json | null
           status?: string
           week_id: string
@@ -5289,8 +5444,9 @@ export type Database = {
           assignment_confirmed_by?: string | null
           assignment_note?: string | null
           assignment_uncertain?: boolean
+          client_link_id?: string | null
           created_at?: string
-          created_by?: string
+          created_by?: string | null
           day_id?: string
           id?: string
           minutes?: number
@@ -5302,7 +5458,7 @@ export type Database = {
           resolution_note?: string | null
           resolved_at?: string | null
           resolved_by?: string | null
-          source_id?: string
+          source_id?: string | null
           source_input?: Json | null
           status?: string
           week_id?: string
@@ -5320,6 +5476,13 @@ export type Database = {
             columns: ["assignment_confirmed_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_source_proposals_client_link_id_fkey"
+            columns: ["client_link_id"]
+            isOneToOne: false
+            referencedRelation: "hours_client_week_links"
             referencedColumns: ["id"]
           },
           {
@@ -5437,11 +5600,12 @@ export type Database = {
       hours_week_sources: {
         Row: {
           byte_size: number
+          client_link_id: string | null
           company_id: string
           content_hash: string
           content_type: string
           created_at: string
-          created_by: string
+          created_by: string | null
           file_name: string
           id: string
           organization_id: string
@@ -5451,11 +5615,12 @@ export type Database = {
         }
         Insert: {
           byte_size: number
+          client_link_id?: string | null
           company_id: string
           content_hash: string
           content_type: string
           created_at?: string
-          created_by: string
+          created_by?: string | null
           file_name: string
           id?: string
           organization_id: string
@@ -5465,11 +5630,12 @@ export type Database = {
         }
         Update: {
           byte_size?: number
+          client_link_id?: string | null
           company_id?: string
           content_hash?: string
           content_type?: string
           created_at?: string
-          created_by?: string
+          created_by?: string | null
           file_name?: string
           id?: string
           organization_id?: string
@@ -5478,6 +5644,13 @@ export type Database = {
           week_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "hours_week_sources_client_link_id_fkey"
+            columns: ["client_link_id"]
+            isOneToOne: false
+            referencedRelation: "hours_client_week_links"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "hours_week_sources_company_id_fkey"
             columns: ["company_id"]
@@ -12054,6 +12227,33 @@ export type Database = {
         Args: { p_expected_revision_id: string; p_proposal_id: string }
         Returns: Json
       }
+      hours_client_week_add_source: {
+        Args: {
+          p_content_hash: string
+          p_content_type: string
+          p_file_name: string
+          p_page_count?: number
+          p_token_hash: string
+        }
+        Returns: Json
+      }
+      hours_client_week_report: {
+        Args: { p_kind: string; p_note?: string; p_token_hash: string }
+        Returns: Json
+      }
+      hours_client_week_save: {
+        Args: { p_entries: Json; p_token_hash: string }
+        Returns: Json
+      }
+      hours_client_week_upload_path: {
+        Args: {
+          p_content_hash: string
+          p_content_type: string
+          p_token_hash: string
+        }
+        Returns: Json
+      }
+      hours_client_week_view: { Args: { p_token_hash: string }; Returns: Json }
       hours_confirm_day: {
         Args: {
           p_day_id: string
@@ -12141,6 +12341,10 @@ export type Database = {
       hours_get_module_access: { Args: never; Returns: Json }
       hours_get_week: { Args: { p_week_id: string }; Returns: Json }
       hours_get_week_sources: { Args: { p_week_id: string }; Returns: Json }
+      hours_issue_client_week_link: {
+        Args: { p_label: string; p_valid_days: number; p_week_id: string }
+        Returns: Json
+      }
       hours_list_matrices: { Args: { p_company_id?: string }; Returns: Json }
       hours_list_weeks: { Args: { p_week_start?: string }; Returns: Json }
       hours_publish_matrix_version: {
@@ -12158,6 +12362,10 @@ export type Database = {
           p_note: string
           p_status: string
         }
+        Returns: Json
+      }
+      hours_revoke_client_week_link: {
+        Args: { p_link_id: string; p_note?: string }
         Returns: Json
       }
       hours_save_day: {

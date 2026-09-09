@@ -97,6 +97,7 @@ const PlacementsPage = lazyRoute(() => import("@/pages/Placements"));
 const PlacementDetail = lazyRoute(() => import("@/pages/PlacementDetail"));
 const MatchPipeline = lazyRoute(() => import("@/pages/MatchPipeline"));
 const MatchResponse = lazyRoute(() => import("@/pages/MatchResponse"));
+const HoursClientWeek = lazyRoute(() => import("@/pages/HoursClientWeek"));
 const RegulationAccept = lazyRoute(() => import("@/pages/RegulationAccept"));
 const CandidateInterest = lazyRoute(() => import("@/pages/CandidateInterest"));
 const UitstroomAnalyse = lazyRoute(() => import("@/pages/UitstroomAnalyse"));
@@ -251,6 +252,9 @@ const App = () => (
               <Route path="/contract/sign/:token" element={<ContractSign />} />
               <Route path="/match-response/:token" element={<MatchResponse />} />
               <Route path="/match/reageer/:token" element={<MatchResponse />} />
+              {/* Persoonlijke klantweekpagina: geen login, geen /uren-prefix om botsing met de
+                  beschermde urenroutes uit te sluiten. */}
+              <Route path="/urenweek/:token" element={<HoursClientWeek />} />
               <Route path="/reglement/:token" element={<RegulationAccept />} />
               <Route path="/baan/interesse/:token" element={<CandidateInterest />} />
               <Route path="/profiel/:token" element={<CandidateProfile />} />
