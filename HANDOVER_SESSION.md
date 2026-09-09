@@ -87,10 +87,11 @@ projectsamenvatting.
   bucket is privé); het gaat om bucketruimte, niet om correctheid of toegang. De zelfopruiming dekt het
   gewone geval; de sluitende oplossing is een retentiebaan, die buiten dit ticket valt. Bewust **niet**
   gekozen: een verwijderrecht op de bucket openen — het contract sluit dat uit.
-- **[PR #268](https://github.com/sitejob-nl/ja-works-hub/pull/268)** staat klaar op `main`. Niet gemerged
-  — merge is een productiedeploy en blijft aan Kas. Het betreft **alleen de frontend**; de migratie en de
-  edge function staan al live.
-- **Volgende actie:** PR #268 reviewen en mergen. Daarna de frontier uit
+- **[PR #268](https://github.com/sitejob-nl/ja-works-hub/pull/268) is gemerged** op 9 september
+  (`aa05a37`); CI op `main` groen, Vercel-productiedeploy geslaagd. De edge function is daarna opnieuw
+  gedeployd vanaf de gemergde stand, zodat runtime en `main` gelijk lopen. Rooktest op productie:
+  `/urenweek/<token>` laadt en de edge function weigert een geraden token met `{"status":"invalid"}`.
+- **Volgende actie:** de frontier uit `docs/urenmodule-tickets.md`. Daarna de frontier uit
   `docs/urenmodule-tickets.md`: **T4** (scans/foto's via de VPS), **T5** (Word/e-mail) en de losstaande
   **T10** zijn open; **T7** (duurzame mailinname) is nu alleen nog door T5 geblokkeerd.
 
