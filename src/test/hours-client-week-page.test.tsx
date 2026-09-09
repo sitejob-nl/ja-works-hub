@@ -292,13 +292,38 @@ describe('saying something about the delivery', () => {
 });
 
 describe('keeping what the client is working on', () => {
+  it('offers a retry when the page could not be loaded, instead of a dead end', async () => {
+    let calls = 0;
+    invoke.mockImplementation(() => {
+      calls += 1;
+      return calls === 1
+        ? Promise.resolve({ data: null, error: Object.assign(new Error('non-2xx'), {
+            context: new Response(JSON.stringify({ error: 'Te veel verzoeken. Probeer het later opnieuw.' }),
+              { status: 429, headers: { 'Content-Type': 'application/json' } }),
+          }) })
+        : Promise.resolve(ok({ status: 'ok', week: payload() }));
+    });
+    show();
+    expect(await screen.findByText(/Te veel verzoeken/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Opnieuw proberen' }));
+    expect(await screen.findByText('Acme BV'), 'a working link comes back').toBeTruthy();
+  });
+
+  it('offers no retry for a link that will never open again', async () => {
+    invoke.mockResolvedValue(ok({ status: 'revoked' }));
+    show();
+    expect(await screen.findByText(/ingetrokken/i)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Opnieuw proberen' })).toBeNull();
+  });
+
   it('only replaces the form when there is no week to show', () => {
     // A failed *background* read still has the week in hand. Replacing the page
     // there would destroy a form someone is halfway through filling in.
     const open = { kind: 'open', week: parseClientWeek(payload()) } as const;
     expect(showRefusal(open, true)).toBe(null);
     expect(showRefusal(open, false)).toBe(null);
-    expect(showRefusal({ kind: 'loading' }, true)).toBe('unavailable');
+    // A read that did not get through is worth retrying; a dead link is not.
+    expect(showRefusal({ kind: 'loading' }, true)).toBe('unreachable');
     expect(showRefusal({ kind: 'loading' }, false)).toBe(null);
     expect(showRefusal({ kind: 'refused', status: 'expired' }, false)).toBe('expired');
     expect(showRefusal({ kind: 'refused', status: 'revoked' }, true)).toBe('revoked');

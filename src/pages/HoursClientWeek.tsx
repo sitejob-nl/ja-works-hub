@@ -59,11 +59,16 @@ export const CLIENT_WEEK_QUERY_OPTIONS = {
  * Which refusal to show, if any. A failed *background* read still has the week
  * in hand: replacing the page there would destroy what is being typed, so only
  * a page with nothing to show is replaced.
+ *
+ * A read that simply did not get through — a throttled request, a moment of
+ * unavailability — is not the same as a link that will never open again. The
+ * first is worth trying once more; the second is not, and saying "contact your
+ * contact person" about a working link would send someone on an errand.
  */
-export function showRefusal(state: PageState, isError: boolean): ClientLinkStatus | null {
+export function showRefusal(state: PageState, isError: boolean): ClientLinkStatus | 'unreachable' | null {
   if (state.kind === 'open') return null;
   if (state.kind === 'refused') return state.status;
-  return isError ? 'unavailable' : null;
+  return isError ? 'unreachable' : null;
 }
 
 /** What the server sent back, without trusting that a week came with it. */
@@ -293,9 +298,17 @@ export default function HoursClientWeek() {
 
   const refused = !token ? 'invalid' : showRefusal(state, page.isError);
   if (refused) {
+    const retryable = refused === 'unreachable';
+    const message = retryable
+      ? (page.error instanceof Error && page.error.message) || 'Deze pagina kon nu niet worden geladen. Probeer het zo opnieuw.'
+      : CLIENT_LINK_MESSAGES[refused];
     return <main className="mx-auto max-w-lg p-6">
       <Card><CardHeader><CardTitle className="text-base">Urenweek</CardTitle></CardHeader>
-        <CardContent><p role="status">{CLIENT_LINK_MESSAGES[refused]}</p></CardContent></Card>
+        <CardContent className="space-y-3">
+          <p role="status">{message}</p>
+          {retryable && <Button type="button" onClick={() => void page.refetch()}
+            disabled={page.isFetching}>Opnieuw proberen</Button>}
+        </CardContent></Card>
     </main>;
   }
 

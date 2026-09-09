@@ -346,6 +346,36 @@ class ClientWeekTests(workbook.WorkbookTests):
         self.assertEqual(self.count("hours_source_proposals"), "1",
                          "Saving again without a change may not fill the screen with noise")
 
+    def test_a_write_rechecks_the_link_after_it_holds_the_week(self):
+        """Revoking commits under the week lock. A write that read the link
+        before taking that lock would land a proposal on a link the office had
+        just withdrawn, so every write re-reads once it holds the week."""
+        resolve = sql("""SELECT pg_get_functiondef(p.oid) FROM pg_proc p JOIN pg_namespace n
+          ON n.oid=p.pronamespace WHERE n.nspname='private' AND p.proname='hours_client_link_resolve';""")
+        self.assertLess(resolve.index("for update"), resolve.index("hours_client_link_assert_open"),
+                        "Resolving re-reads the link only after it holds the week")
+        for name in ("hours_client_week_save", "hours_client_week_add_source",
+                     "hours_client_week_report"):
+            with self.subTest(rpc=name):
+                source = sql(f"""SELECT pg_get_functiondef(p.oid) FROM pg_proc p JOIN pg_namespace n
+                  ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname={literal(name)};""")
+                # Either the writer takes the week itself and re-reads there, or
+                # it lets the resolver take the week and re-read on its behalf.
+                self.assertTrue("hours_client_link_assert_open" in source
+                                or "hours_client_link_resolve(p_token_hash, true)" in source,
+                                "A writer re-reads the link after it holds the week")
+        # The guard itself still tells the three cases apart.
+        week, issued = self.open_link()
+        digest_value = token_hash(issued["secret"])
+        # A composite IS NOT NULL is only true when every field is; ask for a column.
+        self.assertEqual(sql("SELECT (private.hours_client_link_assert_open("
+                             f"(SELECT id FROM public.hours_client_week_links WHERE token_hash={literal(digest_value)})"
+                             ")).id IS NOT NULL;"), "t")
+        rpc("hours_revoke_client_week_link", user=self.admin, p_link_id=issued["link_id"], p_note=None)
+        error = sql(f"SELECT private.hours_client_link_assert_open({literal(issued['link_id'])});",
+                    expect_error=True)
+        self.assertIn("PT403", error)
+
     def test_revoking_locks_the_week_before_the_link(self):
         """Every client write reaches the link row through its foreign key, after
         the week. A revoke that took the link first would deadlock against a

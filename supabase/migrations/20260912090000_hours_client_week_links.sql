@@ -476,10 +476,32 @@ declare v_link public.hours_client_week_links%rowtype; begin
   if p_write then
     perform 1 from public.hours_weeks where id = v_link.week_id
       and organization_id = v_link.organization_id for update;
+    -- Withdrawing commits under that lock, so the answer from before it is stale.
+    v_link := private.hours_client_link_assert_open(v_link.id);
   end if;
   return v_link;
 end $$;
 revoke all on function private.hours_client_link_resolve(text, boolean)
+  from public, anon, authenticated, service_role;
+
+-- Re-reads a link once the caller holds the week lock. Withdrawing commits
+-- under that very lock, so a writer that only checked before taking it could
+-- still land a delivery on a link the office had just withdrawn. Every writer
+-- calls this the moment it holds the week.
+create or replace function private.hours_client_link_assert_open(p_link_id uuid)
+returns public.hours_client_week_links language plpgsql volatile security definer set search_path = '' as $$
+declare v_link public.hours_client_week_links%rowtype; begin
+  select * into v_link from public.hours_client_week_links where id = p_link_id;
+  if not found then raise exception 'Deze link werkt niet' using errcode = 'PT404'; end if;
+  if v_link.revoked_at is not null then
+    raise exception 'Deze link is ingetrokken' using errcode = 'PT403';
+  end if;
+  if v_link.expires_at <= clock_timestamp() then
+    raise exception 'Deze link is verlopen' using errcode = 'PT410';
+  end if;
+  return v_link;
+end $$;
+revoke all on function private.hours_client_link_assert_open(uuid)
   from public, anon, authenticated, service_role;
 
 -- The week comes from the link, so a workday of another client simply is not
@@ -569,6 +591,8 @@ begin
   -- 2. Then the week, and 3. the days, matching every other hours writer.
   perform 1 from public.hours_weeks where id = v_link.week_id
     and organization_id = v_link.organization_id for update;
+  -- Withdrawing commits under that lock, so the answer from before it is stale.
+  v_link := private.hours_client_link_assert_open(v_link.id);
   foreach v_entry in array (select array_agg(value order by value->>'day_id')
                             from jsonb_array_elements(p_entries) as value) loop
     v_day := private.hours_lock_client_day((v_entry->>'day_id')::uuid, v_link);

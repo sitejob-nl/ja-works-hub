@@ -145,7 +145,14 @@ Deno.serve(async (req) => {
 
     if (action === 'get') {
       const { data, error } = await call('hours_client_week_view');
-      if (error) return json({ status: clientLinkStatusFromCode(error.code) });
+      if (error) {
+        // A missing grant or a broken projection would otherwise show every
+        // visitor "niet beschikbaar" while the logs stayed empty.
+        if (!isClientLinkCode(error.code) && error.code !== '22023') {
+          console.error('hours-client-week: read refused', error.code, error.message);
+        }
+        return json({ status: clientLinkStatusFromCode(error.code) });
+      }
       return json({ status: 'ok', week: data });
     }
 
