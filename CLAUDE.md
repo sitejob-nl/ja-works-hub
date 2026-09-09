@@ -25,9 +25,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > [matrixcontract](docs/urenmodule-matrix-contract.md), [classificatiecontract](docs/urenmodule-classification-contract.md)
 > en [innamecontract](docs/urenmodule-intake-contract.md). De resterende bouw staat als tickets met
 > blokkades in [docs/urenmodule-tickets.md](docs/urenmodule-tickets.md).
-> **Broninname (09-09-migratie):** een geüpload urenbriefje en het daaruit afgeleide invoervoorstel zijn
-> géén uren — alleen `hours_apply_source_proposal` schrijft een dagrevisie, en dat neemt het voorstel
-> letterlijk over. Nieuwe uitlezers (Excel, OCR, mail) sluiten op die grens aan, niet op de dagrevisies.
+> **Broninname (09-09- en 10-09-migratie):** een geüpload urenbriefje, een paginatoewijzing en het
+> daaruit afgeleide invoervoorstel zijn géén uren — alleen `hours_apply_source_proposal` schrijft een
+> dagrevisie, en dat neemt het voorstel letterlijk over. Nieuwe uitlezers (Excel, OCR, mail) sluiten op
+> die grens aan, niet op de dagrevisies. **Eén bestand kan meerdere medewerkers bevatten:**
+> `hours_source_pages` legt per pagina vast of er één medewerker, meerdere, of onduidelijk wie op staat.
+> "Eén medewerker" wordt geweigerd zodra die pagina aantoonbaar voorstellen voor meerdere medewerkers
+> draagt, en de overname-in-één-handeling (`hours_create_page_proposals`) kan alleen dagen van precies
+> die medewerker raken. Een voorstel met `assignment_uncertain` blokkeert toepassen tot
+> `hours_confirm_proposal_assignment`; de bevestigingstoelichting staat in `assignment_note` en nooit in
+> `note`, want `note` is voorgestelde inhoud die letterlijk wordt toegepast.
 > Het aparte SaaS-recht `uren-workflow` is opt-in en geldt voor routes, RPC's en directe tabellezing;
 > legacy `uren` of een abonnement geeft dit recht niet. Zie [modulecontract](docs/urenmodule-organization-gate.md).
 > De backend is atomisch uitgerold op 8 september: JA Werkt UIT, geverifieerde demo AAN.

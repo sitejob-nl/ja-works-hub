@@ -6,6 +6,9 @@ import {
   HOURS_SOURCE_BUCKET, hoursSourceDigest, hoursSourcePath, hoursSourceTypeError,
   parseWeekSources, type HoursSourceContentType, type HoursWeekSources,
 } from '@/lib/hours-sources';
+import { countPdfPages } from '@/lib/hours-pdf-pages';
+import type { HoursPageEntry } from '@/lib/hours-workflow-api';
+import type { HoursPageAssignment } from '@/lib/hours-sources';
 import type { HoursSourceInput } from '@/components/hours-workflow/hours-day-source';
 
 export interface HoursSourceUploadResult { duplicate: boolean; sourceId: string }
@@ -14,6 +17,27 @@ export interface CreateProposalInput {
   sourceId: string; dayId: string; minutes: number;
   noHoursReason: string | null; note: string | null;
   sourceInput: HoursSourceInput | null; pageLabel: string | null;
+  pageNumber: number | null; assignmentUncertain: boolean;
+}
+
+export interface SetSourcePageInput {
+  sourceId: string; pageNumber: number; assignment: HoursPageAssignment;
+  memberId: string | null; note: string | null;
+}
+
+export interface PageTakeoverInput { sourceId: string; pageNumber: number; entries: HoursPageEntry[] }
+
+/**
+ * A photo is one page. A PDF is counted here; a file that cannot be read stays
+ * honestly unknown rather than being called a single page.
+ */
+async function deliveredPageCount(file: File, bytes: ArrayBuffer): Promise<number | null> {
+  if (file.type !== 'application/pdf') return null;
+  try {
+    return await countPdfPages(bytes);
+  } catch {
+    return null;
+  }
 }
 
 /** Signed for minutes only; an original is never publicly reachable. */
@@ -37,6 +61,7 @@ export function useHoursWeekSources(organizationId: string, weekId: string | und
       if (rejection) throw new Error(rejection);
       const bytes = await file.arrayBuffer();
       const digest = await hoursSourceDigest(bytes);
+      const pageCount = await deliveredPageCount(file, bytes);
       const path = hoursSourcePath(organizationId, weekId!, digest, file.type as HoursSourceContentType);
       const { error } = await supabase.storage.from(HOURS_SOURCE_BUCKET)
         .upload(path, file, { contentType: file.type, upsert: false });
@@ -44,6 +69,7 @@ export function useHoursWeekSources(organizationId: string, weekId: string | und
       if (error && !isAlreadyStored(error)) throw error;
       const result = await hoursWorkflowRpc('hours_add_week_source', {
         p_week_id: weekId!, p_content_hash: digest, p_file_name: file.name, p_content_type: file.type,
+        p_page_count: pageCount,
       }) as Record<string, unknown>;
       store(parseWeekSources(result));
       return { duplicate: result.duplicate === true, sourceId: String(result.source_id) };
@@ -55,7 +81,33 @@ export function useHoursWeekSources(organizationId: string, weekId: string | und
       p_source_id: input.sourceId, p_day_id: input.dayId, p_minutes: input.minutes,
       p_no_hours_reason: input.noHoursReason, p_note: input.note,
       p_source_input: input.sourceInput, p_page_label: input.pageLabel,
+      p_page_number: input.pageNumber, p_assignment_uncertain: input.assignmentUncertain,
     })),
+    onSuccess: store,
+  });
+
+  /** Recording who a page belongs to; the server refuses one name for a page that carries several. */
+  const setPage = useMutation({
+    mutationFn: async (input: SetSourcePageInput) => parseWeekSources(await hoursWorkflowRpc('hours_set_source_page', {
+      p_source_id: input.sourceId, p_page_number: input.pageNumber, p_assignment: input.assignment,
+      p_member_id: input.memberId, p_note: input.note,
+    })),
+    onSuccess: store,
+  });
+
+  /** Taking over a whole page at once; still proposals, never hours. */
+  const takeOverPage = useMutation({
+    mutationFn: async (input: PageTakeoverInput) => parseWeekSources(await hoursWorkflowRpc('hours_create_page_proposals', {
+      p_source_id: input.sourceId, p_page_number: input.pageNumber, p_entries: input.entries,
+    })),
+    onSuccess: store,
+  });
+
+  const confirmAssignment = useMutation({
+    mutationFn: async (input: { proposalId: string; note: string | null }) => parseWeekSources(
+      await hoursWorkflowRpc('hours_confirm_proposal_assignment', {
+        p_proposal_id: input.proposalId, p_note: input.note,
+      })),
     onSuccess: store,
   });
 
@@ -65,7 +117,7 @@ export function useHoursWeekSources(organizationId: string, weekId: string | und
     onSuccess: store,
   });
 
-  return { ...query, upload, createProposal, discardProposal };
+  return { ...query, upload, createProposal, discardProposal, setPage, takeOverPage, confirmAssignment };
 }
 
 /** Applying changes the week itself, so both caches are refreshed together. */
