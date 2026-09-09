@@ -378,6 +378,18 @@ Een medewerker ziet de bronherkomst van de eigen dag, maar:
   `scripts/hours-intake-db-test.py` blijft ongewijzigd; de nieuwe harness importeert hem.
 - **Applicatietests**: `src/test/hours-sources.test.ts` en `src/test/hours-week-sources-ui.test.tsx`;
   totaal 1.472 groen, met lint (0 errors), typecheck en productiebuild.
+- **Verbonden demo-QA voor de uitlezer** (`scripts/e2e-hours-workbook-demo.spec.ts`, hergebruikt de
+  fixture van `scripts/prepare-hours-pages-demo.mjs`): echte interne en medewerkerlogin tegen de live API,
+  met een in de test gebouwde `.xlsx` van twee werkbladen. Bewezen: een als Excel aangeboden `.csv` wordt
+  vóór opslag geweigerd; het werkbladaantal komt uit het echte bestand; het uitlezen haalt het origineel
+  via een ondertekende link terug en toont de gelezen regels plus het werkblad dat het overslaat; een
+  weektotaal dat als verstreken tijd is opgeslagen wordt door de dagen van diezelfde regel opgelost (dus
+  géén onterecht verschil); de hele uitlezing wordt in één handeling als voorstellen vastgelegd zonder
+  ook maar één dagrevisie; toepassen schrijft precies één dagversie met "pagina 1 · blad Week · rij 2" als
+  herkomst; een onbekende indeling blokkeert zonder halve voorstellen; en een portaalgebruiker krijgt 403
+  op zowel de innameprojectie als de uitlezer-RPC. **De run claimt bewust precies één onaangeroerde
+  werkdag** — na afloop geverifieerd. Nul JavaScript-fouten, nul serverfouten, nul writes naar `timesheets`,
+  nul berichten, nul betaalde AI-aanroepen.
 - **Verbonden demo-QA** (`scripts/e2e-hours-pages-demo.spec.ts` + `scripts/prepare-hours-pages-demo.mjs`):
   echte interne en medewerkerlogin tegen de live API, met een synthetische PDF van drie pagina's die de
   browser zelf telt, in een eigen QA-week met **twee** medewerkers. De run claimt bewust precies één

@@ -104,9 +104,23 @@ projectsamenvatting.
   injecteerbaar, de test klein (92 ms), en tien volledige runs op rij zijn schoon.
 - **[PR #267](https://github.com/sitejob-nl/ja-works-hub/pull/267)** staat klaar, **basis
   `feat/urenmodule-bronpaginas`** (niet `main`). Merge #266 eerst; daarna kan #267 erachteraan.
-- **Nog open:** verbonden demo-QA in de browser is voor dit ticket **niet** uitgevoerd — de vier
-  `pages`-QA-weken staan klaar (`scripts/prepare-hours-pages-demo.mjs`, dezelfde `HOURS_PAGES_RUN_ID`
-  hergebruiken). PR #266 (T2) moet nog gemerged worden vóór deze branch.
+- **Verbonden demo-QA geslaagd** (`scripts/e2e-hours-workbook-demo.spec.ts` +
+  `scripts/playwright.hours-workbook.config.ts`, 4,8 s, `workbook-flow-passed`, 41 echte API-oproepen) op
+  de bestaande QA-week `Urenmodule QA 20260910-pages-r2` met twee medewerkers, met een in de test gebouwde
+  `.xlsx` van twee werkbladen. Bewezen: een als Excel aangeboden `.csv` geweigerd vóór opslag; werkbladaantal
+  uit het echte bestand (2); uitlezen via een ondertekende link met de gelezen regels én het overgeslagen
+  werkblad bij naam; een weektotaal dat als verstreken tijd was opgeslagen (`0,354166…`) door de dagen van
+  diezelfde regel opgelost tot 8:30 — géén onterecht verschil, en géén doorgerekende formule; de hele
+  uitlezing in één handeling als twee voorstellen vastgelegd met **nul** dagrevisies; toepassen als precies
+  één dagversie van 510 minuten met herkomst "pagina 1 · blad Week · rij 2"; een onbekende indeling die
+  blokkeert zonder halve voorstellen; en 403 voor een portaalgebruiker op zowel de innameprojectie als de
+  uitlezer-RPC. Nul JavaScript-fouten, nul serverfouten, nul writes naar `timesheets`, nul berichten, nul
+  betaalde AI-aanroepen. Dev-server op eigen poort 8089 met `PLAYWRIGHT_SKIP_WEBSERVER=1`.
+- **De run claimde precies één onaangeroerde werkdag** — na afloop geverifieerd (r2: 12 → 11). Over alle
+  QA-weken staan nog **56 onaangeroerde dagen** klaar. JA Werkt UIT, demo AAN, opnieuw geverifieerd na
+  afloop. Het geblokkeerde `QA_SUPERADMIN`-account is ongemoeid gelaten.
+- **Nog open:** PR #266 (T2) moet gemerged worden vóór deze branch; #267 heeft `feat/urenmodule-bronpaginas`
+  als basis. Merge blijft een productiedeploy en dus aan Kas.
 
 ## Bronpagina's en gecontroleerde toewijzing — 8 september 2026 (`feat/urenmodule-bronpaginas`)
 
