@@ -747,3 +747,30 @@ describe('a grid whose first column is already a day', () => {
     expect(reading.issues[0].code).toBe('NO_LAYOUT');
   });
 });
+
+describe('naming a placeholder in a grid', () => {
+  it('names a dash even when there is no total to explain', () => {
+    const reading = readHoursWorkbook([sheet('Uren', [
+      ['Medewerker', '07-09-2026', '08-09-2026'],
+      ['Jan Kowalski', '8:00', '-'],
+    ])], week);
+
+    expect(reading.ok).toBe(true);
+    if (reading.ok === false) return;
+    expect(reading.candidates).toHaveLength(1);
+    expect(reading.skipped).toEqual([expect.objectContaining({
+      sheet: 'Uren', row: 2, text: 'Jan Kowalski · 2026-09-08',
+    })]);
+  });
+
+  it('survives a hole in the rows above the header', () => {
+    const rows = [] as unknown[][];
+    rows[2] = ['Naam', 'Datum', 'Uren'];
+    rows[3] = ['Jan Kowalski', '07-09-2026', '8:00'];
+    const reading = readHoursWorkbook([sheet('Week 37', rows as never)], week);
+
+    expect(reading.ok).toBe(true);
+    if (reading.ok === false) return;
+    expect(reading.candidates.map(candidate => candidate.minutes)).toEqual([480]);
+  });
+});

@@ -35,13 +35,13 @@ projectsamenvatting.
   **Geen edge-function-deploy nodig.**
 - Verificatie: **157 echte PostgreSQL-tests** (`scripts/hours-workbook-db-test.py` — 12 nieuwe
   werkmapgevallen plus de volledige vrijgegeven pagina-/inname-/foundation-/classificatie-/poortregressies,
-  elf migraties elk tweemaal); **1.551 applicatietests**; lint 0 errors, typecheck en productiebuild groen.
+  elf migraties elk tweemaal); **1.555 applicatietests**; lint 0 errors, typecheck en productiebuild groen.
   De vrijgegeven harnassen zijn ongewijzigd gelaten; de nieuwe importeert `hours-pages-db-test.py` en
   overschrijft alleen de twee verwachtingen die echt bewogen (bucket-mediatypen, RPC-signaturen).
 - **JA Werkt blijft UIT, demo AAN** — vóór de migratie geverifieerd. Het geblokkeerde `QA_SUPERADMIN`-account
   is ongemoeid gelaten. Advisors na DDL: geen ERROR-bevindingen; de nieuwe RPC valt in dezelfde bewuste
   WARN-categorie "SECURITY DEFINER uitvoerbaar door authenticated" als alle bestaande urenfuncties.
-- **Dertien codereviewrondes vonden zesenveertig echte defecten, allemaal gerepareerd** met een test die eerst
+- **Veertien codereviewrondes vonden negenenveertig echte defecten, allemaal gerepareerd** met een test die eerst
   rood stond. Ronde 1 (zeven): kolomkoppen op voorvoegsel matchen ("Aantal dagen" won het urentotaal, een
   1 werd een uur); een als tijd opgemaakte cel die als datum werd gelezen waardoor een heel lijstblad stil
   verdween; een tijd-nul zonder reden die de hele uitlezing liet weigeren; dubbele dagen die de server
@@ -96,7 +96,12 @@ projectsamenvatting.
   in de brongegevens. Ronde 13 (drie): een gedeelde achternaam volstond voor een (onzekere) toewijzing, dus
   "Piet Kowalski" landde bij Jan Kowalski; een kruistabel die met een datumkolom begint las de namen als
   uren in plaats van te blokkeren; en na het toepassen van een voorstel stond diezelfde dag bij een nieuwe
-  uitlezing weer standaard aangevinkt.
+  uitlezing weer standaard aangevinkt. Ronde 14 (drie, alle klein): een streepje in een kruistabel werd
+  alleen genoemd wanneer er een afwijkend weektotaal was; een gat in de rijenlijst bóven de kopregel liet
+  de uitlezer struikelen; en boven de vijfhonderd regels was er geen praktische weg vooruit (nu een knop
+  "Beperk tot de eerste 500"). Een intermitterende testflake is opgespoord en verholpen: de paneeltest rende
+  501 rijen om de bovengrens te toetsen, wat in jsdom soms boven de vijf seconden uitkwam. De grens is nu
+  injecteerbaar, de test klein (92 ms), en tien volledige runs op rij zijn schoon.
 - **Nog open:** verbonden demo-QA in de browser is voor dit ticket **niet** uitgevoerd — de vier
   `pages`-QA-weken staan klaar (`scripts/prepare-hours-pages-demo.mjs`, dezelfde `HOURS_PAGES_RUN_ID`
   hergebruiken). PR #266 (T2) moet nog gemerged worden vóór deze branch.

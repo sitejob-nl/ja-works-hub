@@ -13,10 +13,12 @@ const duration = (minutes: number): string => `${Math.floor(minutes / 60)}:${Str
 
 export interface HoursWorkbookReadingProps {
   reading: WorkbookReading;
-  /** Days that already carry an open proposal from this same source. */
+  /** Days that already carry a proposal from this same source. */
   alreadyProposed: Set<string>;
   onCancel: () => void;
   onSave: (entries: HoursReadingEntry[]) => Promise<void>;
+  /** How many rows one handling may record; the server enforces the same bound. */
+  maxEntries?: number;
 }
 
 const entryOf = (candidate: WorkbookCandidate): HoursReadingEntry => ({
@@ -34,7 +36,9 @@ const entryOf = (candidate: WorkbookCandidate): HoursReadingEntry => ({
  * came from and what does not add up, so the reviewer decides on facts rather
  * than on a number that appeared out of nowhere.
  */
-export function HoursWorkbookReading({ reading, alreadyProposed, onCancel, onSave }: HoursWorkbookReadingProps) {
+export function HoursWorkbookReading({
+  reading, alreadyProposed, onCancel, onSave, maxEntries = HOURS_READING_MAX_ENTRIES,
+}: HoursWorkbookReadingProps) {
   const [excluded, setExcluded] = useState<Set<string>>(
     () => new Set(reading.ok === true ? reading.candidates.filter(c => alreadyProposed.has(c.dayId)).map(c => c.dayId) : []));
   const [busy, setBusy] = useState(false);
@@ -62,9 +66,9 @@ export function HoursWorkbookReading({ reading, alreadyProposed, onCancel, onSav
     if (busy) return;
     setError(null);
     if (!chosen.length) { setError('Kies minstens één regel om als voorstel te bewaren.'); return; }
-    if (chosen.length > HOURS_READING_MAX_ENTRIES) {
-      setError(`Er kunnen maximaal ${HOURS_READING_MAX_ENTRIES} regels in één keer worden bewaard. `
-        + `Vink er ${chosen.length - HOURS_READING_MAX_ENTRIES} uit en bewaar de rest daarna.`);
+    if (chosen.length > maxEntries) {
+      setError(`Er kunnen maximaal ${maxEntries} regels in één keer worden bewaard. `
+        + `Vink er ${chosen.length - maxEntries} uit en bewaar de rest daarna.`);
       return;
     }
     setBusy(true);
@@ -92,6 +96,12 @@ export function HoursWorkbookReading({ reading, alreadyProposed, onCancel, onSav
         </Button>
         <Button type="button" size="sm" variant="ghost" disabled={busy || chosen.length === reading.candidates.length}
           onClick={() => setExcluded(new Set())}>Alles aanvinken</Button>
+        {/* Recording is all-or-nothing, so a reading past the cap needs a way in. */}
+        {reading.candidates.length > maxEntries && <Button type="button" size="sm" variant="ghost"
+          disabled={busy} onClick={() => setExcluded(new Set(
+            reading.candidates.slice(maxEntries).map(candidate => candidate.dayId)))}>
+          Beperk tot de eerste {maxEntries}
+        </Button>}
       </div>
       <ul className="space-y-2">
         {reading.candidates.map(candidate => {

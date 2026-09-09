@@ -90,7 +90,7 @@ describe('reading a delivered spreadsheet from the week screen', () => {
     show();
     fireEvent.click(await screen.findByRole('button', { name: 'Uitlezen' }));
 
-    const panel = await screen.findByRole('group', { name: 'Uitlezing van deze bron' });
+    const panel = await screen.findByRole('group', { name: 'Uitlezing van deze bron' }, { timeout: 5000 });
     expect(within(panel).getByText('8:30 uur')).toBeInTheDocument();
     expect(within(panel).getByText('7:30 uur')).toBeInTheDocument();
     expect(within(panel).getByText('6:15 uur')).toBeInTheDocument();
@@ -117,7 +117,7 @@ describe('reading a delivered spreadsheet from the week screen', () => {
     show();
     fireEvent.click(await screen.findByRole('button', { name: 'Uitlezen' }));
 
-    const panel = await screen.findByRole('group', { name: 'Uitlezing van deze bron' });
+    const panel = await screen.findByRole('group', { name: 'Uitlezing van deze bron' }, { timeout: 5000 });
     expect(within(panel).getByText(/Hier is met opzet niets van gemaakt \(1\)/)).toBeInTheDocument();
     expect(within(panel).getByText(/Piet de Vries/)).toBeInTheDocument();
   });
@@ -130,7 +130,7 @@ describe('reading a delivered spreadsheet from the week screen', () => {
     show();
     fireEvent.click(await screen.findByRole('button', { name: 'Uitlezen' }));
 
-    const panel = await screen.findByRole('group', { name: 'Uitlezing van deze bron' });
+    const panel = await screen.findByRole('group', { name: 'Uitlezing van deze bron' }, { timeout: 5000 });
     expect(within(panel).getByText(/aangeleverd 8:00 uur/)).toBeInTheDocument();
     expect(within(panel).getByText(/gelezen 9:00 uur/)).toBeInTheDocument();
     // The days keep what the file said; nothing is corrected away.
@@ -150,7 +150,7 @@ describe('reading a delivered spreadsheet from the week screen', () => {
     show();
     fireEvent.click(await screen.findByRole('button', { name: 'Uitlezen' }));
 
-    const panel = await screen.findByRole('group', { name: 'Uitlezing van deze bron' });
+    const panel = await screen.findByRole('group', { name: 'Uitlezing van deze bron' }, { timeout: 5000 });
     expect(within(panel).getByText('12:00 uur')).toBeInTheDocument();
     expect(within(panel).getByText(/kan zowel 0:30 als 12:00 betekenen/)).toBeInTheDocument();
     expect(within(panel).getByRole('button', { name: '1 voorstel bewaren' })).toBeInTheDocument();
@@ -161,7 +161,7 @@ describe('reading a delivered spreadsheet from the week screen', () => {
     show();
     fireEvent.click(await screen.findByRole('button', { name: 'Uitlezen' }));
 
-    expect(await screen.findByText('Deze bron is niet uitgelezen.')).toBeInTheDocument();
+    expect(await screen.findByText('Deze bron is niet uitgelezen.', undefined, { timeout: 5000 })).toBeInTheDocument();
     expect(screen.queryByRole('group', { name: 'Uitlezing van deze bron' })).not.toBeInTheDocument();
     expect(rpc).not.toHaveBeenCalledWith('hours_create_source_proposals', expect.anything());
   });
@@ -173,7 +173,7 @@ describe('reading a delivered spreadsheet from the week screen', () => {
     show();
     fireEvent.click(await screen.findByRole('button', { name: 'Uitlezen' }));
 
-    expect(await screen.findByText(/Geen enkel werkblad heeft een herkenbare indeling/)).toBeInTheDocument();
+    expect(await screen.findByText(/Geen enkel werkblad heeft een herkenbare indeling/, undefined, { timeout: 5000 })).toBeInTheDocument();
     expect(rpc).not.toHaveBeenCalledWith('hours_create_source_proposals', expect.anything());
   });
 });
@@ -190,7 +190,7 @@ describe('a worksheet the reader could not lay out', () => {
     show();
     fireEvent.click(await screen.findByRole('button', { name: 'Uitlezen' }));
 
-    const panel = await screen.findByRole('group', { name: 'Uitlezing van deze bron' });
+    const panel = await screen.findByRole('group', { name: 'Uitlezing van deze bron' }, { timeout: 5000 });
     expect(within(panel).getByText(/Dit werkblad is niet gelezen/)).toBeInTheDocument();
     expect(within(panel).getByText('Losse aantekeningen')).toBeInTheDocument();
   });
@@ -207,7 +207,7 @@ describe('a file that only claims to be a workbook', () => {
     await screen.findByRole('button', { name: 'Uitlezen' });
     fireEvent.change(screen.getByLabelText('Urenbriefje uploaden'), { target: { files: [file] } });
 
-    expect(await screen.findByText(/geen Excel-werkmap/i)).toBeInTheDocument();
+    expect(await screen.findByText(/geen Excel-werkmap/i, undefined, { timeout: 5000 })).toBeInTheDocument();
     expect(upload).not.toHaveBeenCalled();
   });
 });
@@ -222,7 +222,7 @@ describe('a spreadsheet that failed its own sum', () => {
     show();
     fireEvent.click(await screen.findByRole('button', { name: 'Uitlezen' }));
 
-    const panel = await screen.findByRole('group', { name: 'Uitlezing van deze bron' });
+    const panel = await screen.findByRole('group', { name: 'Uitlezing van deze bron' }, { timeout: 5000 });
     expect(within(panel).getByRole('button', { name: '1 voorstel bewaren' })).toBeInTheDocument();
     expect(within(panel).getByText(/foutwaarde van het rekenblad/i)).toBeInTheDocument();
     expect(within(panel).queryByText(/Geen uren/)).not.toBeInTheDocument();

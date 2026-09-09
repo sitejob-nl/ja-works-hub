@@ -314,7 +314,8 @@ beoordeelde bron eist een pagina op elk nieuw voorstel, een tegensprekend pagina
   komt is iets anders dan een verschil in de aangeleverde cijfers, en het scherm zegt welke dagen leeg
   waren. Een streepje of een kale nul telt daarbij als "niets aangeleverd voor die dag" en houdt de
   vergelijking dus overeind; alleen een waarde die de uitlezer helemaal niet kan lezen maakt vergelijken
-  zinloos.
+  zinloos. Zo'n cel wordt hoe dan ook als overgeslagen regel benoemd, ook wanneer er geen totaal is dat
+  om uitleg vraagt.
 - **Het mediatype is geen bewijs.** Windows meldt `application/vnd.ms-excel` voor een gewone `.csv`, en
   ook voor een moderne `.xlsx`. De browser controleert daarom de eerste bytes: een werkmap is een
   zip-container (`.xlsx`) of een OLE-document (`.xls`). Iets anders wordt geweigerd vóór het wordt bewaard,

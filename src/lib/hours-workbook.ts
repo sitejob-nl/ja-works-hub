@@ -149,7 +149,8 @@ interface LongHeader {
 }
 
 function detectLongHeader(rows: WorkbookCell[][], members: WorkbookWeekMember[] = []): LongHeader | null {
-  for (const [index, row] of rows.entries()) {
+  for (const [index, header] of rows.entries()) {
+    const row = header ?? [];
     const columnsFor = (options: string[]) =>
       row.flatMap((cell, column) => headerMatches(cellText(cell), options) ? [column] : []);
     const [names, dates, totals] = [NAME_HEADERS, DATE_HEADERS, TOTAL_HEADERS].map(columnsFor);
@@ -390,6 +391,7 @@ function readWideSheet(
         // reader cannot read at all makes any comparison meaningless.
         if (duration.issue.code === 'PLACEHOLDER' || duration.issue.code === 'ZERO_WITHOUT_REASON') {
           unreadDays.push(day.workDate);
+          skipped.push({ ...where, reason: duration.issue.message });
         } else {
           wholeRowRead = false;
           skipped.push({ ...where, reason: duration.issue.message });
