@@ -170,6 +170,23 @@ export function changedClientEntries(
 }
 
 /**
+ * A delivery cut to the size the server accepts in one handling.
+ *
+ * Each batch is still all or nothing on the server, which is what the bound
+ * protects: a reading that half-lands is worse than none. A person filling in a
+ * very large week is a different case — delivering part of a week is explicitly
+ * allowed here — so a week with more workdays than fit in one handling is sent
+ * in order rather than refused outright.
+ */
+export function clientDeliveryBatches(entries: ClientDayInput[]): ClientDayInput[][] {
+  const batches: ClientDayInput[][] = [];
+  for (let index = 0; index < entries.length; index += MAX_CLIENT_ENTRIES) {
+    batches.push(entries.slice(index, index + MAX_CLIENT_ENTRIES));
+  }
+  return batches;
+}
+
+/**
  * A note about the delivery. Over-long input is refused with a message, exactly
  * like every other free-text field here; silently cutting a sentence in half
  * would change what the client said.

@@ -13,8 +13,9 @@ import {
   CLIENT_LINK_MESSAGES, formatClientHours, parseClientWeek,
   type ClientLinkStatus, type ClientWeek,
 } from '@/lib/hours-client-week';
+import type { ClientDayInput } from '../../supabase/functions/_shared/hours-client-entries.ts';
 import {
-  buildClientEntries, changedClientEntries, clientReportNote,
+  buildClientEntries, changedClientEntries, clientDeliveryBatches, clientReportNote,
 } from '../../supabase/functions/_shared/hours-client-entries.ts';
 import {
   HOURS_SOURCE_ACCEPT, HOURS_SOURCE_BUCKET, hoursSourceDigest, hoursSourceTypeError,
@@ -163,7 +164,16 @@ export default function HoursClientWeek() {
   const store = (result: PageState) => qc.setQueryData(['hours-client-week', token], result);
 
   const save = useMutation({
-    mutationFn: async (entries: unknown[]) => call({ action: 'save', entries }),
+    // A week with more workdays than fit in one handling is sent in order. Each
+    // handling is all or nothing on the server; stopping at the first refusal
+    // keeps the page honest about how far the delivery got.
+    mutationFn: async (entries: ClientDayInput[]) => {
+      let last: PageState = { kind: 'loading' };
+      for (const batch of clientDeliveryBatches(entries)) {
+        last = await call({ action: 'save', entries: batch });
+      }
+      return last;
+    },
     onSuccess: result => {
       store(result);
       if (result.kind === 'open') setNotice('Uw uren zijn doorgegeven aan uw contactpersoon.');
@@ -211,8 +221,12 @@ export default function HoursClientWeek() {
       }
       if (!signed.already_uploaded) {
         if (!signed.token) throw new Error('Uw bestand kon niet worden meegestuurd. Probeer het opnieuw.');
+        // Storage records the blob's own type. A workbook the browser
+        // mislabelled is stored as what it really is, so registering — which
+        // compares the stored type with the declared one — cannot trip over it.
+        const body = contentType === chosen.type ? chosen : new File([bytes], chosen.name, { type: contentType });
         const upload = await supabase.storage.from(HOURS_SOURCE_BUCKET)
-          .uploadToSignedUrl(signed.path, signed.token, chosen, { contentType });
+          .uploadToSignedUrl(signed.path, signed.token, body, { contentType });
         if (upload.error) {
           throw new Error('Uw bestand is niet meegestuurd. Probeer het opnieuw.');
         }

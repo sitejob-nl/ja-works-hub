@@ -412,6 +412,33 @@ describe('delivering the timesheet itself', () => {
     expect(screen.queryByText(/was al ontvangen/i)).toBeNull();
   });
 
+  it('uploads a mislabelled workbook as what it really is', async () => {
+    // Storage records the blob's own type, so the corrected type has to be on
+    // the blob itself; otherwise registering trips the media-type check and the
+    // orphan object makes every retry fail the same way.
+    const zip = new Uint8Array([0x50, 0x4b, 0x03, 0x04]);
+    invoke.mockImplementation((_name: string, options: { body: { action: string } }) => {
+      if (options.body.action === 'get') return Promise.resolve(ok({ status: 'ok', week: payload() }));
+      if (options.body.action === 'upload') {
+        return Promise.resolve(ok({ status: 'ok', path: 'org/week/abc.xlsx', token: 'signed-token' }));
+      }
+      return Promise.resolve(ok({ status: 'ok', week: payload(), duplicate: false, source_id: 'src-1' }));
+    });
+    uploadToSignedUrl.mockResolvedValue({ data: { path: 'org/week/abc.xlsx' }, error: null });
+    show();
+    await screen.findByText('Acme BV');
+    fireEvent.change(screen.getByLabelText('Urenbriefje meesturen'),
+      { target: { files: [file('week37.xlsx', 'application/vnd.ms-excel', zip)] } });
+    await waitFor(() => expect(uploadToSignedUrl).toHaveBeenCalled());
+    const [, , body] = uploadToSignedUrl.mock.calls[0];
+    expect((body as Blob).type,
+      'the corrected type travels on the blob, not only in the options')
+      .toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    const register = invoke.mock.calls.find(([, options]) => options?.body?.action === 'register');
+    expect(register?.[1].body.content_type)
+      .toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  });
+
   it('refuses a file type that can never be a timesheet, before it travels', async () => {
     invoke.mockResolvedValue(ok({ status: 'ok', week: payload() }));
     show();

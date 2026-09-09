@@ -459,7 +459,12 @@ wordt geweigerd in plaats van afgerond — precies zoals overal elders in deze m
   maken.
 - **Een opmerking zonder uren is een vraag, geen aanlevering.** Er is iets over die dag getypt, dus hem
   stil weggooien en succes melden zou een leugen zijn.
-- **Een aanlevering is alles of niets.** Wordt één regel geweigerd, dan wordt er niets vastgelegd.
+- **Een aanlevering is alles of niets.** Wordt één regel geweigerd, dan wordt er niets vastgelegd. Een
+  week met meer werkdagen dan er in één handeling passen (vijfhonderd) wordt op volgorde in delen
+  verstuurd; elk deel blijft alles-of-niets, en bij een weigering stopt de pagina en zegt hoever de
+  aanlevering kwam.
+- **Alleen wat is gewijzigd reist mee.** De pagina stuurt niet elke keer de hele week opnieuw, zodat een
+  grote week zichzelf niet buiten de bovengrens plaatst.
 
 ### Een latere aanlevering vervangt de eigen eerdere
 
@@ -538,7 +543,7 @@ persoonsnaam zijn. `describeSourceReferences` kent deze `kind` en geeft hem als 
 | `PT403` | 403 | Deze link is ingetrokken |
 | `PT410` | 410 | Deze link is verlopen |
 | `22023` | 400 | Ongeldige invoer, uitgeschakelde opdrachtgever, onbekende melding |
-| `42501` | 403 | Geen service-role, of een werkdag die niet bij deze link hoort |
+| `42501` | 400 | Geen service-role, of een werkdag die niet bij deze link hoort. De pagina toont de melding naast het formulier; alleen een `PT4xx` vervangt de pagina |
 
 `42501` en "deze link opent niet" zijn bewust **verschillende** codes. Deelden ze er één, dan zou een
 werkdag die niet meer bij de week hoort worden gemeld als een dode link — de pagina zou worden vervangen

@@ -3,6 +3,7 @@ import {
   buildClientEntries,
   clientLinkStatusFromCode,
   changedClientEntries,
+  clientDeliveryBatches,
   clientRefusalMessage,
   clientReportNote,
   isAlreadyStoredObject,
@@ -179,6 +180,29 @@ describe('what a delivery actually has to send', () => {
     expect(changed).toHaveLength(1);
     expect(buildClientEntries(changed).issues).toEqual([]);
     expect(buildClientEntries(changed).entries[0].minutes).toBe(540);
+  });
+});
+
+describe('a delivery larger than one batch', () => {
+  it('is cut into batches instead of being refused whole', () => {
+    const drafts = Array.from({ length: MAX_CLIENT_ENTRIES + 3 }, (_, index) => ({
+      day_id: `00000000-0000-4000-8000-${(index + 1).toString().padStart(12, '0')}`,
+      hours: '8', no_hours: false, reason: '', note: '',
+    }));
+    const batches = clientDeliveryBatches(drafts);
+    expect(batches).toHaveLength(2);
+    expect(batches[0]).toHaveLength(MAX_CLIENT_ENTRIES);
+    expect(batches[1]).toHaveLength(3);
+    expect(batches.flat().map(entry => entry.day_id)).toEqual(drafts.map(draft => draft.day_id));
+  });
+
+  it('leaves a normal week in one handling', () => {
+    const drafts = Array.from({ length: 14 }, (_, index) => ({
+      day_id: `00000000-0000-4000-8000-${(index + 1).toString().padStart(12, '0')}`,
+      hours: '8', no_hours: false, reason: '', note: '',
+    }));
+    expect(clientDeliveryBatches(drafts)).toHaveLength(1);
+    expect(clientDeliveryBatches([])).toEqual([]);
   });
 });
 

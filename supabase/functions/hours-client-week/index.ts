@@ -97,7 +97,10 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({})) as Record<string, unknown>;
     const token = typeof body.token === 'string' ? body.token.trim() : '';
     const requested = typeof body.action === 'string' ? body.action : 'get';
-    const action = (ACTIONS as readonly string[]).includes(requested) ? requested as Action : 'get';
+    if (!(ACTIONS as readonly string[]).includes(requested)) {
+      return json({ error: 'Onbekende handeling.' }, 400);
+    }
+    const action = requested as Action;
     if (!token) return json({ status: 'invalid' });
 
     const service = createClient(
@@ -108,13 +111,21 @@ Deno.serve(async (req) => {
     const tokenHash = await sha256Hex(token);
     const ipHash = await sha256Hex(clientIp(req));
     const since = new Date(Date.now() - 3_600_000).toISOString();
-    const [{ count: ipCount }, { count: globalCount }] = await Promise.all([
+    const [perIp, global] = await Promise.all([
       service.from('hours_client_link_attempts').select('id', { count: 'exact', head: true })
         .eq('ip_hash', ipHash).gte('created_at', since),
       service.from('hours_client_link_attempts').select('id', { count: 'exact', head: true })
         .gte('created_at', since),
     ]);
-    if ((ipCount ?? 0) >= MAX_PER_IP_PER_HOUR || (globalCount ?? 0) >= MAX_GLOBAL_PER_HOUR) {
+    // A count that fails or comes back empty says nothing about how many
+    // attempts there were. Treating that as zero would quietly switch the
+    // throttle off, so it closes just like a failing insert does below.
+    if (perIp.error || global.error || perIp.count === null || global.count === null) {
+      console.error('hours-client-week: throttle unreadable',
+        perIp.error?.message ?? global.error?.message ?? 'no count');
+      return json({ error: 'Deze pagina is tijdelijk niet beschikbaar. Probeer het later opnieuw.' }, 503);
+    }
+    if (perIp.count >= MAX_PER_IP_PER_HOUR || global.count >= MAX_GLOBAL_PER_HOUR) {
       return json({ error: 'Te veel verzoeken. Probeer het later opnieuw.' }, 429);
     }
     // Logged before the token is resolved, and in its own statement: a database

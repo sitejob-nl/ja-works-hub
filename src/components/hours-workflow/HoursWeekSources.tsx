@@ -757,6 +757,11 @@ export function HoursWeekSources({ organizationId, week, onReload }: HoursWeekSo
                 <p className="text-xs text-muted-foreground">
                   {describePageCount(source.page_count)} · {formatSourceSize(source.byte_size)} · ontvangen {formatHoursDate(source.created_at.slice(0, 10))}
                 </p>
+                {/* Who delivered this file matters for how it is weighed; an
+                    office upload and a client delivery look identical without it. */}
+                {source.client_link_id && <Badge variant="outline" className="mt-1">
+                  Meegestuurd door de opdrachtgever
+                </Badge>}
               </div>
               <div className="flex flex-wrap gap-2">
                 <ViewSourceButton path={source.storage_path} fileName={source.file_name} />

@@ -258,6 +258,30 @@ describe('a delivery is a proposal, and stays one', () => {
   });
 });
 
+describe('a file the client delivered', () => {
+  it('is marked as such next to the office\u2019s own uploads', async () => {
+    rpc.mockResolvedValue(ok({
+      ...projection([link()]),
+      sources: [{
+        id: '00000000-0000-4000-8000-0000000000f1', file_name: 'week37.pdf',
+        content_type: 'application/pdf', byte_size: 2048, content_hash: 'c'.repeat(64),
+        storage_path: `${orgId}/${weekId}/${'c'.repeat(64)}.pdf`, created_at: '2026-09-09T08:00:00Z',
+        page_count: 1, client_link_id: linkId, pages: [], proposals: [],
+      }, {
+        id: '00000000-0000-4000-8000-0000000000f2', file_name: 'kantoor.pdf',
+        content_type: 'application/pdf', byte_size: 2048, content_hash: 'd'.repeat(64),
+        storage_path: `${orgId}/${weekId}/${'d'.repeat(64)}.pdf`, created_at: '2026-09-09T09:00:00Z',
+        page_count: 1, client_link_id: null, pages: [], proposals: [],
+      }],
+    }));
+    show();
+    const delivered = await screen.findByRole('group', { name: 'Bron week37.pdf' });
+    expect(within(delivered).getByText(/door de opdrachtgever/i)).toBeTruthy();
+    const own = screen.getByRole('group', { name: 'Bron kantoor.pdf' });
+    expect(within(own).queryByText(/door de opdrachtgever/i)).toBeNull();
+  });
+});
+
 describe('a reader without the right to manage', () => {
   it('sees the delivery but cannot hand out or withdraw a link', async () => {
     rpc.mockResolvedValue(ok(projection([link({ provided_days: 2, outstanding_days: 5 })], false)));
