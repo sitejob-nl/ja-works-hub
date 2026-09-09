@@ -102,6 +102,8 @@ projectsamenvatting.
   "Beperk tot de eerste 500"). Een intermitterende testflake is opgespoord en verholpen: de paneeltest rende
   501 rijen om de bovengrens te toetsen, wat in jsdom soms boven de vijf seconden uitkwam. De grens is nu
   injecteerbaar, de test klein (92 ms), en tien volledige runs op rij zijn schoon.
+- **[PR #267](https://github.com/sitejob-nl/ja-works-hub/pull/267)** staat klaar, **basis
+  `feat/urenmodule-bronpaginas`** (niet `main`). Merge #266 eerst; daarna kan #267 erachteraan.
 - **Nog open:** verbonden demo-QA in de browser is voor dit ticket **niet** uitgevoerd — de vier
   `pages`-QA-weken staan klaar (`scripts/prepare-hours-pages-demo.mjs`, dezelfde `HOURS_PAGES_RUN_ID`
   hergebruiken). PR #266 (T2) moet nog gemerged worden vóór deze branch.
