@@ -1,0 +1,461 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useParams } from 'react-router-dom';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  CLIENT_LINK_MESSAGES, formatClientHours, parseClientWeek,
+  type ClientLinkStatus, type ClientWeek,
+} from '@/lib/hours-client-week';
+import {
+  clientReportNote, prepareClientDelivery,
+} from '../../supabase/functions/_shared/hours-client-entries.ts';
+import {
+  HOURS_SOURCE_ACCEPT, HOURS_SOURCE_BUCKET, hoursSourceDigest, hoursSourceTypeError,
+  type HoursSourceContentType,
+} from '@/lib/hours-sources';
+import { countPdfPages } from '@/lib/hours-pdf-pages';
+import {
+  countWorkbookSheets, isReadableWorkbook, isWorkbookSource, workbookBytesError, workbookContentType,
+} from '@/lib/hours-workbook-file';
+
+/**
+ * The personal client week page. No login, no session, no navigation into the
+ * rest of the platform: a token opens exactly one week of one client.
+ *
+ * Everything a client fills in here becomes a *proposal*. This page cannot write
+ * an hour, and the wording says so, so nobody mistakes a saved delivery for
+ * approved time.
+ */
+
+interface DayDraft { hours: string; noHours: boolean; reason: string; note: string }
+
+export type PageState =
+  | { kind: 'loading' }
+  | { kind: 'refused'; status: ClientLinkStatus }
+  | { kind: 'open'; week: ClientWeek };
+
+/**
+ * This page is a form someone fills in over minutes, not a dashboard. Every read
+ * also spends one attempt against the public rate limit and stamps the link as
+ * opened, so it reads exactly when the visitor asks for it and never on its own.
+ */
+export const CLIENT_WEEK_QUERY_OPTIONS = {
+  retry: false as const,
+  refetchOnWindowFocus: false as const,
+  refetchOnReconnect: false as const,
+  refetchOnMount: false as const,
+  staleTime: Infinity,
+};
+
+/**
+ * Which refusal to show, if any. A failed *background* read still has the week
+ * in hand: replacing the page there would destroy what is being typed, so only
+ * a page with nothing to show is replaced.
+ *
+ * A read that simply did not get through — a throttled request, a moment of
+ * unavailability — is not the same as a link that will never open again. The
+ * first is worth trying once more; the second is not, and saying "contact your
+ * contact person" about a working link would send someone on an errand.
+ */
+export function showRefusal(state: PageState, isError: boolean): ClientLinkStatus | 'unreachable' | null {
+  if (state.kind === 'open') return null;
+  if (state.kind === 'refused') return state.status;
+  return isError ? 'unreachable' : null;
+}
+
+/**
+ * What the server sent back, without trusting that a week came with it.
+ *
+ * A payload this page cannot read is "unavailable": retrying would meet exactly
+ * the same answer, and the parser's own words — field paths and expected types —
+ * are for a developer's log, never for a visitor's screen.
+ */
+function readResponse(data: unknown): PageState {
+  const body = (data ?? {}) as { status?: unknown; week?: unknown };
+  if (body.status !== 'ok' || !body.week) {
+    const status = typeof body.status === 'string' && body.status in CLIENT_LINK_MESSAGES
+      ? body.status as ClientLinkStatus : 'unavailable';
+    return { kind: 'refused', status };
+  }
+  try {
+    return { kind: 'open', week: parseClientWeek(body.week) };
+  } catch (failure) {
+    console.error('hours-client-week: onleesbare weekprojectie', failure);
+    return { kind: 'refused', status: 'unavailable' };
+  }
+}
+
+function draftsFor(week: ClientWeek): Record<string, DayDraft> {
+  const drafts: Record<string, DayDraft> = {};
+  for (const member of week.members) {
+    for (const day of member.days) {
+      const delivered = day.delivered;
+      drafts[day.id] = {
+        hours: delivered && delivered.minutes > 0 ? formatClientHours(delivered.minutes) : '',
+        noHours: !!delivered && delivered.minutes === 0,
+        reason: delivered?.no_hours_reason ?? '',
+        note: delivered?.note ?? '',
+      };
+    }
+  }
+  return drafts;
+}
+
+/**
+ * Written out in full. The internal screens abbreviate ("ma 7 sep") because a
+ * reviewer scans a whole week at a time; someone filling in this page once a
+ * week reads better with the day spelled out.
+ */
+function dayLabel(workDate: string): string {
+  return new Intl.DateTimeFormat('nl-NL', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })
+    .format(new Date(`${workDate}T12:00:00Z`));
+}
+
+export default function HoursClientWeek() {
+  const { token = '' } = useParams();
+  const qc = useQueryClient();
+  const [drafts, setDrafts] = useState<Record<string, DayDraft>>({});
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [reporting, setReporting] = useState<'later' | 'complete' | null>(null);
+  const [reportNote, setReportNote] = useState('');
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  /**
+   * The one place that speaks to the server. supabase-js hands a non-2xx back as
+   * an error with `data: null` and the body on `error.context`; reading only
+   * `data` would show the visitor the transport message instead of the server's
+   * own words about what it refused.
+   */
+  const invoke = async (body: Record<string, unknown>): Promise<Record<string, unknown>> => {
+    const { data, error: failure } = await supabase.functions.invoke('hours-client-week', {
+      body: { token, ...body },
+    });
+    if (failure) {
+      if (failure.context instanceof Response) {
+        const refusal = await failure.context.clone().json().catch(() => null) as { error?: unknown } | null;
+        if (refusal && typeof refusal.error === 'string') throw new Error(refusal.error);
+      }
+      throw failure;
+    }
+    const payload = (data ?? {}) as Record<string, unknown>;
+    if (typeof payload.error === 'string') throw new Error(payload.error);
+    return payload;
+  };
+
+  const call = async (body: Record<string, unknown>) => readResponse(await invoke(body));
+
+  const page = useQuery({
+    queryKey: ['hours-client-week', token],
+    queryFn: () => call({ action: 'get' }),
+    enabled: !!token,
+    ...CLIENT_WEEK_QUERY_OPTIONS,
+  });
+
+  const state: PageState = page.data ?? { kind: 'loading' };
+  const week = state.kind === 'open' ? state.week : null;
+
+  // The delivery is read back from the server, so a client that comes back later
+  // continues where it left off. It is keyed on the delivery itself and not on
+  // the payload: announcing a later delivery changes the week object but not one
+  // recorded hour, and re-seeding there would wipe what is being typed.
+  const deliverySignature = week ? JSON.stringify(week.members.map(member =>
+    member.days.map(day => [day.id, day.delivered?.minutes ?? null,
+      day.delivered?.no_hours_reason ?? null, day.delivered?.note ?? null]))) : '';
+  useEffect(() => {
+    if (week) setDrafts(draftsFor(week));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the delivery, deliberately not on the payload
+  }, [deliverySignature]);
+
+  // Every write returns the whole projection, so the screen shows exactly what
+  // the server now holds instead of a second, possibly different, read.
+  const store = (result: PageState) => qc.setQueryData(['hours-client-week', token], result);
+
+  const save = useMutation({
+    // A week with more workdays than fit in one handling is sent in order. Each
+    // handling is all or nothing on the server. A refusal arrives as a status
+    // rather than a throw, so the loop has to stop on it: posting the rest into
+    // a link that no longer accepts anything helps nobody.
+    mutationFn: async (batches: unknown[][]) => {
+      let last: PageState = { kind: 'loading' };
+      for (const batch of batches) {
+        last = await call({ action: 'save', entries: batch });
+        if (last.kind !== 'open') return last;
+      }
+      return last;
+    },
+    onSuccess: result => {
+      store(result);
+      if (result.kind === 'open') setNotice('Uw uren zijn doorgegeven aan uw contactpersoon.');
+    },
+  });
+
+  const report = useMutation({
+    mutationFn: async (input: { kind: 'later' | 'complete'; note: string }) =>
+      call({ action: 'report', kind: input.kind, note: input.note }),
+    onSuccess: result => { store(result); setReporting(null); setReportNote(''); },
+  });
+
+  /**
+   * Delivering the timesheet itself. The bytes never pass through the server
+   * that hands out the address: it signs a one-off upload for exactly this
+   * object, whose path it derives from the link. What arrives is a source, not
+   * hours — reading it stays a separate act by someone at the office.
+   */
+  const deliverFile = useMutation<
+    { refused: PageState } | { state: PageState; duplicate: boolean; name: string }, unknown, File
+  >({
+    mutationFn: async (chosen: File) => {
+      const rejection = hoursSourceTypeError(chosen);
+      if (rejection) throw new Error(rejection);
+      const bytes = await chosen.arrayBuffer();
+      // The declared media type is not proof; a workbook has to be one, and is
+      // stored as what it really is so a mislabelled .xlsx stays readable.
+      const notAWorkbook = isWorkbookSource(chosen.type) ? workbookBytesError(bytes) : null;
+      if (notAWorkbook) throw new Error(notAWorkbook);
+      const contentType = (workbookContentType(chosen.type, bytes) ?? chosen.type) as HoursSourceContentType;
+      const digest = await hoursSourceDigest(bytes);
+      let pageCount: number | null = null;
+      try {
+        if (contentType === 'application/pdf') pageCount = await countPdfPages(bytes);
+        else if (isReadableWorkbook(contentType)) pageCount = await countWorkbookSheets(bytes);
+      } catch { pageCount = null; }
+
+      const signed = await invoke({
+        action: 'upload', content_hash: digest, content_type: contentType,
+      }) as { status?: string; path?: string; token?: string; already_uploaded?: boolean };
+      // The link itself may have died between opening the page and choosing a
+      // file. Retrying a withdrawn link is pointless, so the page says so.
+      if (signed.status !== 'ok' || !signed.path) {
+        return { refused: readResponse(signed) };
+      }
+      if (!signed.already_uploaded) {
+        if (!signed.token) throw new Error('Uw bestand kon niet worden meegestuurd. Probeer het opnieuw.');
+        // Storage records the blob's own type. A workbook the browser
+        // mislabelled is stored as what it really is, so registering — which
+        // compares the stored type with the declared one — cannot trip over it.
+        const body = contentType === chosen.type ? chosen : new File([bytes], chosen.name, { type: contentType });
+        const upload = await supabase.storage.from(HOURS_SOURCE_BUCKET)
+          .uploadToSignedUrl(signed.path, signed.token, body, { contentType });
+        if (upload.error) {
+          throw new Error('Uw bestand is niet meegestuurd. Probeer het opnieuw.');
+        }
+      }
+      const registered = await invoke({
+        action: 'register', content_hash: digest, file_name: chosen.name,
+        content_type: contentType, page_count: pageCount,
+      }) as { duplicate?: boolean };
+      // What counts is whether a *source* was recorded, not whether the bytes
+      // happened to be in storage already: an upload that landed but failed to
+      // register leaves the object behind, and the retry is a first delivery.
+      return { state: readResponse(registered), duplicate: registered.duplicate === true, name: chosen.name };
+    },
+    onSuccess: outcome => {
+      if ('refused' in outcome) { store(outcome.refused); return; }
+      store(outcome.state);
+      setNotice(outcome.duplicate
+        ? `“${outcome.name}” was al ontvangen. Er is geen tweede bestand bewaard.`
+        : `“${outcome.name}” is meegestuurd met uw uren.`);
+    },
+    onError: failure => setError(failure instanceof Error ? failure.message
+      : 'Uw bestand is niet meegestuurd. Probeer het opnieuw.'),
+  });
+
+  const update = (dayId: string, change: Partial<DayDraft>) => {
+    setError(null); setNotice(null);
+    setDrafts(current => ({ ...current, [dayId]: { ...current[dayId], ...change } }));
+  };
+
+  const entries = useMemo(() => Object.entries(drafts).map(([dayId, draft]) => ({
+    day_id: dayId, hours: draft.hours, no_hours: draft.noHours,
+    reason: draft.reason, note: draft.note,
+  })), [drafts]);
+
+  function submit() {
+    setError(null); setNotice(null);
+    // Only the days that were actually filled in travel: an untouched day stays
+    // unknown. The same reader runs on the server, so nothing slips past here.
+    const filled = entries.filter(entry =>
+      entry.no_hours || entry.hours.trim() || entry.reason.trim() || entry.note.trim());
+    // A day that was delivered and is now empty is an intention, not a blank
+    // field. An earlier delivery cannot be taken back from here, and reporting
+    // success while it still stands at the office would be a lie.
+    const emptied = week.members.flatMap(member => member.days)
+      .find(day => day.delivered && !filled.some(entry => entry.day_id === day.id));
+    if (emptied) {
+      setError(`U heeft ${dayLabel(emptied.work_date)} leeggemaakt. Een eerdere aanlevering kan hier niet `
+        + 'worden teruggenomen: vul uren in, kies "geen uren" met een reden, of neem contact op met uw '
+        + 'contactpersoon.');
+      return;
+    }
+    if (!filled.length) { setError('Er is niets ingevuld om op te slaan.'); return; }
+    // Only what actually moved travels, cut to the size the server accepts and
+    // checked per batch — resending every delivered day would make a large week
+    // lock itself out of even a one-day correction.
+    const standing = new Map(week.members.flatMap(member => member.days)
+      .map(day => [day.id, day.delivered]));
+    const prepared = prepareClientDelivery(filled, standing);
+    if ('issue' in prepared) { setError(prepared.issue); return; }
+    save.mutate(prepared.batches, {
+      onError: failure => setError(failure instanceof Error ? failure.message : 'Opslaan is niet gelukt.'),
+    });
+  }
+
+  const refused = !token ? 'invalid' : showRefusal(state, page.isError);
+  if (refused) {
+    const retryable = refused === 'unreachable';
+    const message = retryable
+      ? (page.error instanceof Error && page.error.message) || 'Deze pagina kon nu niet worden geladen. Probeer het zo opnieuw.'
+      : CLIENT_LINK_MESSAGES[refused];
+    return <main className="mx-auto max-w-lg p-6">
+      <Card><CardHeader><CardTitle className="text-base">Urenweek</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <p role="status">{message}</p>
+          {retryable && <Button type="button" onClick={() => void page.refetch()}
+            disabled={page.isFetching}>Opnieuw proberen</Button>}
+        </CardContent></Card>
+    </main>;
+  }
+
+  if (!week) {
+    return <main className="mx-auto max-w-lg p-6"><p role="status">Urenweek laden…</p></main>;
+  }
+
+  const busy = save.isPending || report.isPending || deliverFile.isPending;
+  return <main className="mx-auto max-w-3xl space-y-5 p-4 sm:p-6">
+    <header className="space-y-1">
+      <h1 className="text-xl font-semibold" data-no-translate="true">{week.week.company_name}</h1>
+      <p className="text-sm text-muted-foreground">
+        Werkweek vanaf {dayLabel(week.week.week_start)}
+        {week.week.submission_deadline_at
+          ? ` · graag aanleveren vóór ${new Date(week.week.submission_deadline_at).toLocaleString('nl-NL', { dateStyle: 'long', timeStyle: 'short' })}`
+          : ''}
+      </p>
+      <p className="text-sm text-muted-foreground">
+        Vul per medewerker de gewerkte uren in. U kunt ook uw eigen urenbriefje meesturen als PDF, foto
+        of Excel. Wat u doorgeeft wordt door uw contactpersoon beoordeeld voordat het als uren wordt
+        vastgelegd. Een dag die u leeg laat blijft open staan.
+      </p>
+    </header>
+
+    <p className="rounded-lg bg-muted/40 p-3 text-sm" role="status">
+      {week.complete
+        ? 'Alle dagen zijn aangeleverd. U kunt een correctie doorgeven zolang deze link geldig is.'
+        : `${week.provided_days} van ${week.expected_days} dagen aangeleverd · ${week.outstanding_days} ${week.outstanding_days === 1 ? 'dag nog open' : 'dagen nog open'}.`}
+    </p>
+    {week.report && <p className="text-sm text-muted-foreground">
+      <span>{week.report.kind === 'later'
+        ? 'U heeft gemeld dat u later aanlevert.'
+        : 'U heeft deze week als volledig gemeld.'}</span>
+      {week.report.note ? <span data-no-translate="true"> {week.report.note}</span> : null}
+    </p>}
+
+    {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+    {notice && <p role="status" className="text-sm">{notice}</p>}
+
+    {week.members.map(member => <Card key={member.id}>
+      <CardHeader className="pb-3"><CardTitle className="text-base" data-no-translate="true">{member.candidate_name}</CardTitle></CardHeader>
+      <CardContent className="space-y-3">
+        {member.days.map(day => {
+          const draft = drafts[day.id] ?? { hours: '', noHours: false, reason: '', note: '' };
+          // The employee's name belongs in the label: a week with two people has
+          // two "maandag 7 september" fields, and a screen reader — or anyone
+          // navigating by label — cannot tell them apart otherwise.
+          const label = `${member.candidate_name} ${dayLabel(day.work_date)}`;
+          return <div key={day.id} className="grid gap-2 rounded-lg border p-3 sm:grid-cols-[10rem_1fr]">
+            <p className="text-sm font-medium">{dayLabel(day.work_date)}</p>
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="space-y-1">
+                  <Label htmlFor={`hours-${day.id}`} className="text-xs">Gewerkte uren {label}</Label>
+                  <Input id={`hours-${day.id}`} inputMode="text" placeholder="8,5 of 8:30"
+                    className="w-32" value={draft.hours} disabled={draft.noHours || busy}
+                    onChange={event => update(day.id, { hours: event.target.value })} />
+                </div>
+                <label className="flex items-center gap-2 pt-4 text-sm">
+                  <Checkbox id={`nohours-${day.id}`} checked={draft.noHours} disabled={busy}
+                    aria-label={`Geen uren ${label}`}
+                    onCheckedChange={checked => update(day.id,
+                      // Unchecking clears the reason too: a reason without hours
+                      // is neither a delivery nor a blank field, and would be
+                      // dropped in silence.
+                      checked === true ? { noHours: true, hours: '' } : { noHours: false, hours: '', reason: '' })} />
+                  Geen uren
+                </label>
+              </div>
+              {draft.noHours && <div className="space-y-1">
+                <Label htmlFor={`reason-${day.id}`} className="text-xs">Reden {label}</Label>
+                <Input id={`reason-${day.id}`} value={draft.reason} disabled={busy}
+                  placeholder="Bijvoorbeeld: ziek, vrij, feestdag"
+                  onChange={event => update(day.id, { reason: event.target.value })} />
+              </div>}
+              <div className="space-y-1">
+                <Label htmlFor={`note-${day.id}`} className="text-xs">Opmerking {label} (optioneel)</Label>
+                <Input id={`note-${day.id}`} value={draft.note} disabled={busy}
+                  onChange={event => update(day.id, { note: event.target.value })} />
+              </div>
+            </div>
+          </div>;
+        })}
+      </CardContent>
+    </Card>)}
+
+    <div className="flex flex-wrap items-center gap-3">
+      <Button type="button" disabled={busy} onClick={submit}>
+        {save.isPending ? 'Uren doorgeven…' : 'Uren opslaan'}
+      </Button>
+      <input ref={fileInput} type="file" className="sr-only" accept={HOURS_SOURCE_ACCEPT}
+        aria-label="Urenbriefje meesturen" disabled={busy}
+        onChange={event => {
+          const chosen = event.target.files?.[0];
+          setError(null); setNotice(null);
+          if (chosen) deliverFile.mutate(chosen);
+          if (fileInput.current) fileInput.current.value = '';
+        }} />
+      <Button type="button" variant="outline" disabled={busy} onClick={() => fileInput.current?.click()}>
+        {deliverFile.isPending ? 'Bestand meesturen…' : 'Urenbriefje meesturen'}
+      </Button>
+      {!reporting && <>
+        <Button type="button" variant="outline" disabled={busy} onClick={() => setReporting('later')}>
+          Ik lever later aan
+        </Button>
+        <Button type="button" variant="outline" disabled={busy} onClick={() => setReporting('complete')}>
+          Dit is alles
+        </Button>
+      </>}
+    </div>
+
+    {reporting && <Card><CardContent className="space-y-3 pt-4">
+      <p className="text-sm">
+        {reporting === 'later'
+          ? 'U laat uw contactpersoon weten dat er nog uren volgen.'
+          : 'U laat uw contactpersoon weten dat u alles heeft doorgegeven. De openstaande dagen blijven zichtbaar.'}
+      </p>
+      <div className="space-y-1">
+        <Label htmlFor="report-note">Toelichting (optioneel)</Label>
+        <Textarea id="report-note" rows={2} value={reportNote} disabled={busy} maxLength={2000}
+          onChange={event => setReportNote(event.target.value)} />
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" disabled={busy} onClick={() => {
+          const checked = clientReportNote(reportNote);
+          if (checked.ok === false) { setError(checked.message); return; }
+          setError(null);
+          report.mutate({ kind: reporting, note: checked.note ?? '' });
+        }}>Melding versturen</Button>
+        <Button type="button" variant="ghost" disabled={busy}
+          onClick={() => { setReporting(null); setReportNote(''); }}>Annuleren</Button>
+      </div>
+      {report.error && <Alert variant="destructive"><AlertDescription>
+        {report.error instanceof Error ? report.error.message : 'De melding kon niet worden verstuurd.'}
+      </AlertDescription></Alert>}
+    </CardContent></Card>}
+  </main>;
+}

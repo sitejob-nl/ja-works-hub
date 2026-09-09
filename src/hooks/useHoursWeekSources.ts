@@ -18,6 +18,9 @@ import type { HoursSourceInput } from '@/components/hours-workflow/hours-day-sou
 
 export interface HoursSourceUploadResult { duplicate: boolean; sourceId: string }
 
+/** The secret is shown once, right here; the database keeps only its digest. */
+export interface HoursClientLinkIssued { secret: string; linkId: string }
+
 export interface CreateProposalInput {
   sourceId: string; dayId: string; minutes: number;
   noHoursReason: string | null; note: string | null;
@@ -149,6 +152,37 @@ export function useHoursWeekSources(organizationId: string, weekId: string | und
     onSuccess: store,
   });
 
+  /**
+   * Handing out a personal week link. The secret comes back exactly once: it is
+   * never stored here and never returned by any later read, so a lost link is
+   * replaced rather than looked up.
+   */
+  const issueClientLink = useMutation({
+    mutationFn: async (input: { label: string; validDays: number }): Promise<HoursClientLinkIssued> => {
+      const result = await hoursWorkflowRpc('hours_issue_client_week_link', {
+        p_week_id: weekId!, p_label: input.label, p_valid_days: input.validDays,
+      }) as Record<string, unknown>;
+      // The link is already committed and only its digest is stored, so the
+      // one-time address must survive an unreadable neighbouring field. The
+      // cache simply refetches instead.
+      try {
+        store(parseWeekSources(result));
+      } catch (failure) {
+        console.warn('Klantweeklink: projectie niet leesbaar, cache wordt opnieuw geladen', failure);
+        void qc.invalidateQueries({ queryKey: qk.hoursWorkflow.sources(organizationId, weekId!) });
+      }
+      return { secret: String(result.secret), linkId: String(result.link_id) };
+    },
+  });
+
+  const revokeClientLink = useMutation({
+    mutationFn: async (input: { linkId: string; note: string | null }) => parseWeekSources(
+      await hoursWorkflowRpc('hours_revoke_client_week_link', {
+        p_link_id: input.linkId, p_note: input.note,
+      })),
+    onSuccess: store,
+  });
+
   const discardProposal = useMutation({
     mutationFn: async (input: { proposalId: string; note: string | null }) => parseWeekSources(
       await hoursWorkflowRpc('hours_discard_source_proposal', { p_proposal_id: input.proposalId, p_note: input.note })),
@@ -157,7 +191,7 @@ export function useHoursWeekSources(organizationId: string, weekId: string | und
 
   return {
     ...query, upload, createProposal, discardProposal, setPage, takeOverPage, confirmAssignment,
-    readWorkbook, saveReading,
+    readWorkbook, saveReading, issueClientLink, revokeClientLink,
   };
 }
 

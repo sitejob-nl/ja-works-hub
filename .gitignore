@@ -58,3 +58,6 @@ test vacatures/
 scripts/.qa/
 scripts/.qa-headed/
 scripts/.qa-*.png
+
+# TypeScript incremental build cache
+*.tsbuildinfo

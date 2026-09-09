@@ -44,19 +44,20 @@ const projection = (proposals: unknown[] = [], canManage = true, source: Record<
   const undecided = (proposals as { status?: string; assignment_uncertain?: boolean; assignment_confirmed_at?: string | null }[])
     .filter(entry => entry.status === 'open' && entry.assignment_uncertain && !entry.assignment_confirmed_at).length;
   return {
-    week_id: weekId, can_manage: canManage,
+    week_id: weekId, can_manage: canManage, client_links: [],
     open_proposals: (proposals as { status?: string }[]).filter(entry => entry.status === 'open').length,
     undecided_assignments: undecided,
     sources: [{
       id: sourceId, file_name: 'week36.pdf', content_type: 'application/pdf', byte_size: 2048,
       content_hash: 'c'.repeat(64), storage_path: `${orgId}/${weekId}/${'c'.repeat(64)}.pdf`,
-      created_at: '2026-09-08T08:00:00Z', page_count: 3, pages: [], proposals, ...source,
+      created_at: '2026-09-08T08:00:00Z', page_count: 3, client_link_id: null, pages: [], proposals, ...source,
     }],
   };
 };
 
 const emptyProjection = {
-  week_id: weekId, can_manage: true, open_proposals: 0, undecided_assignments: 0, sources: [],
+  week_id: weekId, can_manage: true, open_proposals: 0, undecided_assignments: 0,
+  client_links: [], sources: [],
 };
 const ok = <T,>(data: T) => ({ data, error: null });
 

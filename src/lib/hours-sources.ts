@@ -35,13 +35,34 @@ export const hoursProposalSchema = z.object({
   applied_created_revision: z.boolean().nullable(), resolution_note: z.string().nullable(),
   resolved_at: z.string().nullable(), created_at: z.string(),
 });
+/**
+ * A personal link to one client week. The token digest is deliberately absent
+ * from this projection: no screen ever needs it, and the secret itself exists
+ * nowhere but in the link that was handed out once.
+ */
+export const hoursClientLinkSchema = z.object({
+  id: uuid, label: z.string(), created_at: z.string(), expires_at: z.string(),
+  last_opened_at: z.string().nullable(), revoked_at: z.string().nullable(),
+  revoke_note: z.string().nullable(),
+  report: z.object({
+    kind: z.enum(['later', 'complete']), note: z.string().nullable(), created_at: z.string(),
+  }).nullable(),
+  expected_days: z.number().int().nonnegative(), provided_days: z.number().int().nonnegative(),
+  outstanding_days: z.number().int().nonnegative(), complete: z.boolean(),
+  proposals: z.array(hoursProposalSchema),
+});
 export const hoursWeekSourcesSchema = z.object({
   week_id: uuid, can_manage: z.boolean(),
   open_proposals: z.number().int().nonnegative(), undecided_assignments: z.number().int().nonnegative(),
+  // Defaulted rather than required: migrations land before the frontend here,
+  // but if that order ever slips the whole intake panel must not break over one
+  // missing key.
+  client_links: z.array(hoursClientLinkSchema).default([]),
   sources: z.array(z.object({
     id: uuid, file_name: z.string(), content_type: z.string(), byte_size: z.number().int().nonnegative(),
     content_hash: z.string(), storage_path: z.string(), created_at: z.string(),
     page_count: z.number().int().min(1).nullable(),
+    client_link_id: uuid.nullable().default(null),
     pages: z.array(hoursSourcePageSchema),
     proposals: z.array(hoursProposalSchema),
   })),
@@ -68,13 +89,71 @@ export interface HoursWeekSourceFile {
   id: string; file_name: string; content_type: string; byte_size: number;
   content_hash: string; storage_path: string; created_at: string;
   page_count: number | null;
+  /** Set when the client delivered this file through its own week page. */
+  client_link_id: string | null;
   pages: HoursSourcePage[];
+  proposals: HoursSourceProposal[];
+}
+export interface HoursClientLink {
+  id: string; label: string; created_at: string; expires_at: string;
+  last_opened_at: string | null; revoked_at: string | null; revoke_note: string | null;
+  report: { kind: 'later' | 'complete'; note: string | null; created_at: string } | null;
+  expected_days: number; provided_days: number; outstanding_days: number; complete: boolean;
   proposals: HoursSourceProposal[];
 }
 export interface HoursWeekSources {
   week_id: string; can_manage: boolean;
   open_proposals: number; undecided_assignments: number;
+  client_links: HoursClientLink[];
   sources: HoursWeekSourceFile[];
+}
+
+/**
+ * Whether a personal link can still be opened right now. Withdrawing wins over
+ * expiry, because that is the decision someone actually made.
+ */
+export type HoursClientLinkState = 'active' | 'revoked' | 'expired';
+export function clientLinkState(link: Pick<HoursClientLink, 'revoked_at' | 'expires_at'>,
+  now: Date = new Date()): HoursClientLinkState {
+  if (link.revoked_at) return 'revoked';
+  return new Date(link.expires_at) <= now ? 'expired' : 'active';
+}
+
+/** What a link has delivered, in the words the office uses about it. */
+export function describeClientLinkProgress(link: Pick<HoursClientLink, 'expected_days' | 'provided_days' | 'outstanding_days' | 'complete'>): string {
+  if (link.complete) return `Alle ${link.expected_days} dagen aangeleverd`;
+  if (link.provided_days === 0) return `Nog niets aangeleverd van ${link.expected_days} dagen`;
+  return `${link.provided_days} van ${link.expected_days} dagen aangeleverd · ${link.outstanding_days} nog open`;
+}
+
+/**
+ * Which of a link's deliveries a reviewer sees.
+ *
+ * A client that keeps correcting leaves a withdrawn delivery behind each time,
+ * so only what still asks for a decision stays in view. The one exception is a
+ * delivery the reviewer just handled: the confirmation of what applying did
+ * lives in that row, and dropping it the moment the status changes would take
+ * the answer away with it.
+ */
+export function visibleClientProposals(
+  proposals: HoursSourceProposal[], justHandled: Set<string>, showHistory: boolean,
+): HoursSourceProposal[] {
+  if (showHistory) return proposals;
+  return proposals.filter(proposal => proposal.status === 'open' || justHandled.has(proposal.id));
+}
+
+export const HOURS_CLIENT_REPORT_LABELS: Record<'later' | 'complete', string> = {
+  later: 'De opdrachtgever levert later aan',
+  complete: 'De opdrachtgever meldt dit als volledig',
+};
+
+/**
+ * The address the client opens. Public and token-based; it carries no session.
+ * Only the path lives here: the host has to be the organization's verified
+ * primary domain, which `usePublicUrl` resolves.
+ */
+export function clientWeekPath(secret: string): string {
+  return `/urenweek/${secret}`;
 }
 
 /**
@@ -130,7 +209,9 @@ export function formatSourceSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1).replace('.', ',')} MB`;
 }
 
-export interface HoursSourceOrigin { label: string; reference: string | null }
+/** `kind` travels with the origin so a reader can phrase it, not just print it. */
+export type HoursSourceOriginKind = 'manual' | 'upload' | 'client' | 'unknown';
+export interface HoursSourceOrigin { kind: HoursSourceOriginKind; label: string; reference: string | null }
 
 /**
  * Provenance is written by the server. Unknown kinds from later readers stay
@@ -142,16 +223,33 @@ export function describeSourceReferences(references: unknown[] | undefined): Hou
     const value = (entry ?? {}) as Record<string, unknown>;
     const label = typeof value.label === 'string' && value.label.trim() ? value.label : null;
     const reference = typeof value.reference === 'string' && value.reference.trim() ? value.reference : null;
-    if (value.kind === 'manual') return { label: label ?? 'Handmatige invoer', reference };
-    if (value.kind === 'upload') return { label: label ?? 'Geüpload bestand', reference };
-    return { label: label ?? 'Bron niet beschikbaar', reference };
+    if (value.kind === 'manual') return { kind: 'manual', label: label ?? 'Handmatige invoer', reference };
+    if (value.kind === 'upload') return { kind: 'upload', label: label ?? 'Geüpload bestand', reference };
+    // A client delivered these hours through its personal week page. The label is
+    // the client itself, never the internal label of the link that was handed out.
+    if (value.kind === 'client') return { kind: 'client', label: label ?? 'De opdrachtgever', reference };
+    return { kind: 'unknown', label: label ?? 'Bron niet beschikbaar', reference };
   });
+}
+
+/**
+ * How one origin reads on a screen. A client delivery needs the marker: without
+ * it an employee reads a bare company name next to their hours and has no way
+ * to tell who put them there. Manual entry and an uploaded file keep the
+ * released wording exactly.
+ */
+export function sourceOriginLabel(origin: HoursSourceOrigin | undefined): string {
+  if (!origin) return 'Bron niet beschikbaar';
+  return origin.kind === 'client' ? `Aangeleverd door ${origin.label}` : origin.label;
 }
 
 export function sourceOriginText(references: unknown[] | undefined): string {
   const origins = describeSourceReferences(references);
   if (!origins.length) return 'Bron niet beschikbaar';
-  return origins.map(origin => origin.reference ? `${origin.label} · ${origin.reference}` : origin.label).join(' · ');
+  return origins.map(origin => {
+    const label = sourceOriginLabel(origin);
+    return origin.reference ? `${label} · ${origin.reference}` : label;
+  }).join(' · ');
 }
 
 export interface HoursProposalChange { field: string; current: string; proposed: string }

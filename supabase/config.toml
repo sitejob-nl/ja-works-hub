@@ -309,3 +309,10 @@ verify_jwt = false
 # Urenclassificatie: actieve interne sessie + finance.manage, geen service-token bypass.
 [functions.hours-classify-day]
 verify_jwt = false
+
+# Publieke klantweekpagina (token-based, geen login). Service-role validatie in de
+# database: gehasht token met scope op één klantweek, geldigheidsduur en
+# intrekbaarheid, plus IP-rate-limit via hours_client_link_attempts — zoals
+# match-response. Klantinvoer landt als voorstel, nooit als dagversie.
+[functions.hours-client-week]
+verify_jwt = false

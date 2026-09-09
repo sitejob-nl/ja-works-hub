@@ -234,6 +234,24 @@ uitlezer voert **geen formules of macro's uit**: hij leest uitsluitend het bewaa
 onverwachte indeling levert een blokkade en géén halve voorstellen. Zie het
 [innamecontract](urenmodule-intake-contract.md#excel--en-tabelbestanden-als-bron-t3).
 
+## Persoonlijke klantweekpagina zonder inloggen (T6)
+
+Sinds 9 september kan een interne gebruiker met `finance.manage` bij een klantweek een **persoonlijke
+link** uitgeven. De opdrachtgever opent die zonder inloggen op `/urenweek/:token`, ziet de verwachte
+medewerkers en werkdagen, vult per dag uren in of kiest "geen uren" met reden, kan zijn eigen urenbriefje
+meesturen, levert gedeeltelijk aan, en kan melden dat er later meer volgt of dat dit alles is.
+
+De database bewaart **alleen de SHA-256** van het geheim; dat wordt exact één keer getoond bij uitgifte.
+De link heeft een geldigheidsduur en is intrekbaar, en de week komt uit de link: er is geen parameter
+waarmee een klant een andere week of werkdag kan noemen. De vijf publieke RPC's zijn uitsluitend
+uitvoerbaar door `service_role`; de edge function `hours-client-week` is de enige houder van die sleutel
+en autoriseert zelf niets.
+
+**De grens is ongewijzigd:** klantinvoer landt als **voorstel**. Alleen `hours_apply_source_proposal`
+schrijft een dagrevisie, neemt het voorstel letterlijk over en eist een met naam bekende interne
+gebruiker. De medewerker ziet als herkomst de naam van de opdrachtgever, nooit het interne label van de
+link. Zie het [innamecontract](urenmodule-intake-contract.md#persoonlijke-klantweekpagina-zonder-inloggen-t6).
+
 De frontend gebruikt voorlopig een expliciet getypte en met Zod gecontroleerde RPC-grens in
 `hours-workflow-api.ts` en `hours-matrices.ts`. De auto-generated types blijven die van productie. Vóór merge/uitrol:
 migratie toepassen, live types regenereren, adapter op de gegenereerde RPC-types aansluiten en
