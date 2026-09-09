@@ -58,4 +58,10 @@ const CONTROL_FIELD: Record<string, HoursDoubtField> = {
   MISSING_DAY_OFFSET: 'shift', INVALID_TIME: 'shift',
   DUPLICATE_SOURCE_CATEGORY: 'categories',
 };
-export const controlDoubtField = (code: string): HoursDoubtField => CONTROL_FIELD[code] ?? 'total';
+/**
+ * Null for anything this control does not raise. A reader has notices of its
+ * own — an unreadable cell, a skipped row — and those say nothing about the
+ * values in the proposal; letting them fall back to the total would send a
+ * reviewer to re-check a number that was read perfectly.
+ */
+export const controlDoubtField = (code: string): HoursDoubtField | null => CONTROL_FIELD[code] ?? null;

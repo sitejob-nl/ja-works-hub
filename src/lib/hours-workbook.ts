@@ -539,7 +539,8 @@ export function readHoursWorkbook(sheets: WorkbookSheet[], context: WorkbookCont
 export function workbookEntryDoubt(
   candidate: Pick<WorkbookCandidate, 'notices'>,
 ): HoursUncertainField[] | null {
-  const fields = new Set(candidate.notices.map(notice => controlDoubtField(notice.code)));
+  const fields = new Set(candidate.notices
+    .map(notice => controlDoubtField(notice.code)).filter(Boolean));
   const ordered = (['total', 'shift', 'break', 'categories', 'reason'] as HoursUncertainField[])
     .filter(field => fields.has(field));
   return ordered.length ? ordered : null;

@@ -150,10 +150,16 @@ bevestigen en toepassen zijn allemaal ongemoeid.
 Een onbekende provideruitkomst (time-out, ontbrekend verbruik) houdt zijn reservering vast en komt
 als zodanig terug; dat wordt nooit stil een gratis nieuwe poging.
 
+**Een kaal getal in de pauzekolom is minuten.** "15", "30", "45" zijn hoe een pauze op een briefje
+staat; een geschreven duur (`0,5`, `1:00`) blijft uren. Een streepje, "n.v.t." of een nul betekent
+dat er geen pauze was, en de dienst kan dan gewoon worden bewaard.
+
 **Elke uitlezing wordt geclaimd voordat er wordt betaald.** `hours_source_readings` legt per poging
 vast welk document, welke week, wie het vroeg, wat het kostte en hoeveel regels eruit kwamen — geen
 inhoud, alleen de overdracht. Een partiële unieke index laat per bron één lopende uitlezing toe, dus
-een tweede klik of een tweede tabblad krijgt `409` in plaats van een tweede rekening. Die claim is
+een tweede klik of een tweede tabblad krijgt `409` in plaats van een tweede rekening. Een claim die
+nooit is afgesloten — een edge-instantie die tussendoor omvalt — vervalt na een kwartier vanzelf, want
+de bron mag daar niet voorgoed door op slot komen. Die claim is
 tegelijk het antwoord op "welk document is wanneer naar de verwerker gegaan", dat het AI-grootboek
 zelf niet kan geven: dat kent organisatie, gebruiker en kosten, maar niet de bron. De tabel is
 append-only, service-role-only beschrijfbaar en intern leesbaar met `finance.view`.
@@ -206,7 +212,7 @@ vision-pad van de CV-analyse al maakt. De namenlijst van de week reist niet mee.
 
 ## Verificatie
 
-- **133 echte PostgreSQL-tests** (`scripts/hours-scan-db-test.py`): de nieuwe onzekerheidsregels
+- **135 echte PostgreSQL-tests** (`scripts/hours-scan-db-test.py`): de nieuwe onzekerheidsregels
   plus de volledige vrijgegeven klantweek-, inname-, pagina-, werkmap-, classificatie-,
   foundation- en modulepoortregressies op het nieuwe schema. Alle dertien migraties worden tweemaal
   toegepast. Eén van die tests bewaakt voortaan dat **elke** stabiele urenfunctie in de read-only
@@ -214,9 +220,9 @@ vision-pad van de CV-analyse al maakt. De namenlijst van de week reist niet mee.
   voorstellentabel van een projectfunctie afhangt (die wordt bij elke UPDATE opnieuw beoordeeld, en
   deze tabel kent geen verwijderpad — een later versmalde lijst zou bestaande voorstellen voorgoed
   vastzetten).
-- **Applicatietests**: `hours-scan.test.ts` (55), `hours-scan-handler.test.ts` (24),
-  `hours-scan-gemini.test.ts` (15), `hours-scan-panel.test.tsx` (15) plus uitgebreide
-  projectietests. Totaal 1.762 groen, met lint (0 errors), typecheck en productiebuild.
+- **Applicatietests**: `hours-scan.test.ts` (74), `hours-scan-handler.test.ts` (31),
+  `hours-scan-gemini.test.ts` (16), `hours-scan-panel.test.tsx` (16) plus uitgebreide projectie- en
+  werkmaptests. Totaal 1.784 groen, met lint (0 errors), typecheck en productiebuild.
 - **Verbonden demo-QA** (`scripts/e2e-hours-scan-demo.spec.ts`, hergebruikt de fixture van
   `scripts/prepare-hours-pages-demo.mjs`): echte interne en medewerkerlogin tegen de live API, met
   een in de test gerenderde foto van een urenbriefje. Bewezen: een werkmap krijgt geen betaalde
@@ -227,11 +233,11 @@ vision-pad van de CV-analyse al maakt. De namenlijst van de week reist niet mee.
   context als de uitlezer. **De run claimt bewust precies één onaangeroerde werkdag** — na afloop
   geverifieerd. Nul JavaScript-fouten, nul serverfouten, nul writes naar `timesheets`, nul
   berichten.
-- **Kosten van de hele QA**: vijf echte aanroepen over alle rondes, samen **€ 0,05** afgeschreven;
-  het saldo van de demo-organisatie ging van € 48,78 naar € 48,73 en er bleef geen reservering open.
+- **Kosten van de hele QA**: negen echte aanroepen over alle rondes, samen **€ 0,09** afgeschreven;
+  het saldo van de demo-organisatie ging van € 48,78 naar € 48,69 en er bleef geen reservering open.
   Eén A4-briefje kost ongeveer één cent (circa 1.500 invoer- en 275 uitvoertokens). De eerste twee
   aanroepen zijn de proeven die de read-only-transactie en het ontbrekende totaalveld aan het licht
-  brachten.
+  brachten; de latere zijn de herhalingen na elke reparatieronde.
 
 Wat deze QA **niet** bewijst is de handschriftkwaliteit van het model. Het briefje is gerenderde
 tekst; echte handgeschreven briefjes horen bij de acceptatieset van T14.

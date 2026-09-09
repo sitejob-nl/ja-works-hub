@@ -222,6 +222,41 @@ class ScanTests(client.ClientWeekTests):
                    f"WHERE source_id={literal(source['source_id'])};")
         self.assertEqual(rows, "2", "every paid reading leaves a record")
 
+    def test_a_claim_that_was_never_closed_does_not_lock_the_source_forever(self):
+        """An edge instance can die between claiming and finishing.
+
+        Without a way out the partial unique index would refuse every later
+        claim and the source could never be read again — and neither the finish
+        RPC (service-role) nor a delete (the guard refuses it) is reachable from
+        the app.
+        """
+        self.open_week()
+        source, _ = self.scan_source()
+        stuck = rpc("hours_claim_source_reading", user=None, role="service_role",
+                    p_source_id=source["source_id"], p_actor_id=self.admin)
+        # Ageing the row is the one thing the immutability guard rightly refuses,
+        # so the test steps around the trigger rather than around the rule.
+        sql("ALTER TABLE public.hours_source_readings DISABLE TRIGGER hours_reading_guard;"
+            f"UPDATE public.hours_source_readings SET started_at = now() - interval '30 minutes' "
+            f"WHERE id={literal(stuck['reading_id'])};"
+            "ALTER TABLE public.hours_source_readings ENABLE TRIGGER hours_reading_guard;")
+        fresh = rpc("hours_claim_source_reading", user=None, role="service_role",
+                    p_source_id=source["source_id"], p_actor_id=self.admin)
+        self.assertTrue(fresh["ok"])
+        self.assertNotEqual(fresh["reading_id"], stuck["reading_id"])
+        abandoned = sql(f"SELECT status || '/' || coalesce(error_code,'') FROM public.hours_source_readings "
+                        f"WHERE id={literal(stuck['reading_id'])};")
+        self.assertEqual(abandoned, "failed/abandoned", "the stuck claim is closed, and says so")
+
+    def test_a_claim_that_is_still_young_still_blocks(self):
+        self.open_week()
+        source, _ = self.scan_source()
+        rpc("hours_claim_source_reading", user=None, role="service_role",
+            p_source_id=source["source_id"], p_actor_id=self.admin)
+        self.assertIn("22023", sql(rpc_statement("hours_claim_source_reading",
+                      p_source_id=source["source_id"], p_actor_id=self.admin),
+                      role="service_role", expect_error=True))
+
     def test_the_reading_log_is_service_role_only_and_internal_to_read(self):
         week = self.open_week()
         source, _ = self.scan_source()

@@ -549,3 +549,30 @@ describe('scan reading — what the second review round found', () => {
     expect(reading.skipped).toHaveLength(1);
   });
 });
+
+describe('scan reading — what the third review round found', () => {
+  it('reads a bare number in the break column as minutes, whatever the number is', () => {
+    const minutesOf = (breakText: string) => {
+      const reading = ok(read([entry({
+        total_text: null, start_text: '07:00', end_text: '15:30', break_text: breakText,
+      })]));
+      return reading.candidates[0]?.minutes ?? null;
+    };
+    expect(minutesOf('15')).toBe(495);
+    expect(minutesOf('20')).toBe(490);
+    expect(minutesOf('30')).toBe(480);
+    expect(minutesOf('45')).toBe(465);
+    // A written duration keeps meaning hours; only a bare integer is minutes.
+    expect(minutesOf('1:00')).toBe(450);
+    expect(minutesOf('0,5')).toBe(480);
+  });
+
+  it('names the hours it read when a derived total contradicts a written reason', () => {
+    const reading = ok(read([entry({
+      total_text: null, start_text: '07:00', end_text: '15:00', no_hours_text: 'ziek',
+    })]));
+    expect(reading.candidates).toHaveLength(0);
+    expect(reading.skipped[0].reason).not.toContain('null');
+    expect(reading.skipped[0].reason).toContain('8:00');
+  });
+});

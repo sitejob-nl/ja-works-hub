@@ -90,6 +90,14 @@ declare v_source public.hours_week_sources%rowtype; v_id uuid; begin
                    and p.is_active is true) then
     raise exception 'Onbekende aanvrager voor deze bron' using errcode = '42501';
   end if;
+  -- An edge instance can die between claiming and finishing. Without a way out
+  -- the open claim would refuse every later reading of this source for good,
+  -- and neither the finish RPC nor a delete is reachable from the application.
+  -- A quarter of an hour is far beyond any real reading.
+  update public.hours_source_readings
+    set status = 'failed', finished_at = clock_timestamp(), error_code = 'abandoned'
+    where source_id = p_source_id and status = 'running'
+      and started_at < clock_timestamp() - interval '15 minutes';
   begin
     insert into public.hours_source_readings(organization_id, week_id, source_id, actor_id)
       values (v_source.organization_id, v_source.week_id, p_source_id, p_actor_id)

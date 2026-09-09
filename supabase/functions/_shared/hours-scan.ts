@@ -139,8 +139,16 @@ function readBreak(value: string): BreakReading {
   // tear "0,5" — ordinary Dutch for half an hour — into two unreadable halves.
   const single = window(value);
   if (single) return { windows: [single], durationMinutes: null, unreadable: false };
-  const bare = /^(\d{1,3})\s*min(?:uten|uut)?\.?$/i.exec(value.trim());
-  if (bare) return { windows: null, durationMinutes: Number(bare[1]), unreadable: false };
+  // A bare number in the break column is minutes: nobody writes a break of
+  // fifteen hours, and "15" or "45" is how it is written in this trade. It is
+  // read before the duration parser, which would take the same digits for
+  // decimal hours. A written duration — "0,5", "1:00" — keeps meaning hours.
+  const bare = /^(\d{1,3})\s*(?:min(?:uten|uut)?\.?)?$/i.exec(value.trim());
+  if (bare && Number(bare[1]) <= 1440) {
+    return Number(bare[1]) === 0
+      ? { windows: [], durationMinutes: 0, unreadable: false }
+      : { windows: null, durationMinutes: Number(bare[1]), unreadable: false };
+  }
   const duration = parseHoursToMinutes(value.trim(), { maxMinutes: 1440 });
   // Zero is "there was no break", not a duration whose place is unknown, so the
   // shift can still be stored.
@@ -148,14 +156,6 @@ function readBreak(value: string): BreakReading {
     return duration.value === 0
       ? { windows: [], durationMinutes: 0, unreadable: false }
       : { windows: null, durationMinutes: duration.value, unreadable: false };
-  }
-  // A bare integer is minutes: nobody writes a break of eight hours, and "30"
-  // in a break column is thirty minutes everywhere in this trade.
-  const digits = /^(\d{1,3})$/.exec(value.trim());
-  if (digits && Number(digits[1]) <= 1440) {
-    return Number(digits[1]) === 0
-      ? { windows: [], durationMinutes: 0, unreadable: false }
-      : { windows: null, durationMinutes: Number(digits[1]), unreadable: false };
   }
   const parts = value.split(/[;,]/).map(part => part.trim()).filter(Boolean);
   if (parts.length > 1) {
@@ -410,7 +410,7 @@ export function interpretScanReading(raw: unknown, context: ScanContext): ScanRe
     }
     const reason = line.noHoursText !== null && !isEmptyMarker(line.noHoursText) ? line.noHoursText : null;
     if (minutes !== null && minutes > 0 && reason) {
-      skip(`De bron noemt zowel ${line.totalText} uur als “${reason}”; die spreken elkaar tegen.`);
+      skip(`De bron noemt zowel ${formatMinutes(minutes)} uur als “${reason}”; die spreken elkaar tegen.`);
       continue;
     }
     if (minutes !== null && minutes > 0) {
@@ -509,7 +509,10 @@ export function interpretScanReading(raw: unknown, context: ScanContext): ScanRe
     // applied blind and leave a day that can never be classified.
     for (const issue of sourceControlIssues(minutes, sourceInput)) {
       notices.push(issue);
-      uncertain.add(controlDoubtField(issue.code));
+      // These issues all come from the shared control, so an unmapped code is a
+      // control this map has not caught up with: the total is the safe place
+      // for it.
+      uncertain.add(controlDoubtField(issue.code) ?? 'total');
     }
 
     // Every reported doubt is kept. An earlier round dropped doubt about a field

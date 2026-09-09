@@ -795,3 +795,21 @@ describe('a delivered breakdown the calculation kernel refuses', () => {
       .toEqual(['total', 'break']);
   });
 });
+
+describe('which spreadsheet notices become a blocking doubt', () => {
+  it('takes only the shared control, not this reader’s own remarks about a cell', () => {
+    const base = {
+      dayId: 'day-1', memberId: 'member-1', employeeName: 'A', workDate: '2026-09-07',
+      minutes: 480, noHoursReason: null, sourceInput: null,
+      pageNumber: 1, pageLabel: 'blad Week · rij 2', sheetName: 'Week', row: 2,
+      assignmentUncertain: false, employeeText: 'A',
+    };
+    // A remark about one unreadable cell must not tell the reviewer the day
+    // total is uncertain; the total was read perfectly.
+    expect(workbookEntryDoubt({ ...base, notices: [{ code: 'PLACEHOLDER', message: '' }] })).toBeNull();
+    expect(workbookEntryDoubt({ ...base, notices: [{ code: 'SPREADSHEET_ERROR', message: '' }] })).toBeNull();
+    expect(workbookEntryDoubt({ ...base,
+      notices: [{ code: 'PLACEHOLDER', message: '' }, { code: 'TOTAL_MISMATCH', message: '' }] }))
+      .toEqual(['total']);
+  });
+});
