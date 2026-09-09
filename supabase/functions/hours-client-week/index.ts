@@ -48,6 +48,8 @@ const json = (body: unknown, status = 200) =>
  */
 const MAX_PER_IP_PER_HOUR = 120;
 const MAX_GLOBAL_PER_HOUR = 20_000;
+/** How long an uploaded object may sit around before it has become a source. */
+const ORPHAN_GRACE_MS = 60 * 60 * 1000;
 const ACTIONS = ['get', 'save', 'report', 'upload', 'register'] as const;
 type Action = typeof ACTIONS[number];
 
@@ -88,6 +90,44 @@ function refusal(error: { code?: string | null; message?: string } | null): Resp
     console.error('hours-client-week: refused write', error.code, error.message);
   }
   return json({ error: clientRefusalMessage(error) }, 400);
+}
+
+/** The builder is thenable, so awaiting it yields exactly this shape. */
+type Call = (name: string, args?: Record<string, unknown>) =>
+  PromiseLike<{ data: unknown; error: { code?: string | null; message?: string } | null }>;
+/** Only the storage side is used here; the generic client type adds nothing. */
+type Storage = { storage: ReturnType<typeof createClient>['storage'] };
+
+/**
+ * Removes the objects this link uploaded but never turned into a source, once
+ * they are past the grace period. Best effort: a failure here must never block
+ * a delivery, so it is logged and the upload continues.
+ */
+async function sweepUnregistered(service: Storage, call: Call): Promise<void> {
+  try {
+    const { data, error } = await call('hours_client_week_stored_paths');
+    if (error) return;
+    const { prefix, paths } = (data ?? {}) as { prefix?: string; paths?: string[] };
+    if (!prefix) return;
+    const registered = new Set(paths ?? []);
+    const listing = await service.storage.from('hours-sources').list(prefix, { limit: 100 });
+    if (listing.error || !listing.data) return;
+    const cutoff = Date.now() - ORPHAN_GRACE_MS;
+    const stale = listing.data
+      .filter(entry => !registered.has(`${prefix}/${entry.name}`))
+      .filter(entry => {
+        const created = Date.parse(entry.created_at ?? '');
+        return Number.isFinite(created) && created < cutoff;
+      })
+      .map(entry => `${prefix}/${entry.name}`);
+    if (!stale.length) return;
+    const removal = await service.storage.from('hours-sources').remove(stale);
+    if (removal.error) {
+      console.error('hours-client-week: sweep failed', removal.error.message);
+    }
+  } catch (error) {
+    console.error('hours-client-week: sweep failed', error instanceof Error ? error.message : 'unknown');
+  }
 }
 
 Deno.serve(async (req) => {
@@ -180,6 +220,11 @@ Deno.serve(async (req) => {
     // bucket keeps enforcing the 25 MiB limit and the media types. The bytes
     // themselves never pass through this function.
     if (action === 'upload') {
+      // What this link uploaded but never registered has no owner, no lifecycle
+      // and nothing that can find it. Each new upload sweeps up its own link's
+      // leftovers, so a client cannot quietly fill the bucket by asking for
+      // addresses and walking away.
+      await sweepUnregistered(service, call);
       const { data, error } = await call('hours_client_week_upload_path', {
         p_content_hash: typeof body.content_hash === 'string' ? body.content_hash : '',
         p_content_type: typeof body.content_type === 'string' ? body.content_type : '',

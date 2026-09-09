@@ -485,8 +485,22 @@ onvolledig.
 ### Een meegestuurd urenbriefje
 
 De bytes gaan **niet** door de edge function. `hours_client_week_upload_path` leidt het opslagpad af uit
-de link (`<organisatie>/<week>/<sha256>.<ext>`), de edge function ondertekent daarvoor een eenmalige
-upload, en de browser uploadt rechtstreeks. Storage dwingt de 25 MiB en de vijf mediatypen af; de browser
+de link — **een eigen deelmap per link**: `<organisatie>/<week>/client/<link>/<sha256>.<ext>` — de edge
+function ondertekent daarvoor een eenmalige upload, en de browser uploadt rechtstreeks.
+
+**Waarom een eigen deelmap.** Deelde een klant de padruimte met het kantoor, dan kon een linkhouder
+vervalste bytes uploaden onder de digest van een bestand dat het kantoor daarna zou aanleveren en die
+simpelweg nooit registreren. De upload van het kantoor zou dan op een bestaand object stuiten, als
+duplicaat worden weggedeeld, en de beoordelaar zou de bytes van de klant lezen onder de bestandsnaam en
+de auteur van het kantoor. Gescheiden deelmappen maken dat per constructie onmogelijk. `UNIQUE (week_id,
+content_hash)` blijft: hetzelfde bestand van klant en kantoor blijft één bron, en die bron zegt wie hem
+heeft aangeleverd.
+
+**Wat nooit een bron wordt, verdwijnt.** Een klant kan een adres vragen en weglopen; zo'n object heeft
+geen eigenaar en niets in de applicatie kan het terugvinden. Elke nieuwe upload ruimt daarom eerst de
+objecten van diezelfde link op die ouder zijn dan een uur en geen bron zijn geworden
+(`hours_client_week_stored_paths` zegt welke dat wel zijn). Opruimen is best effort: een mislukte
+opruiming blokkeert nooit een aanlevering. Storage dwingt de 25 MiB en de vijf mediatypen af; de browser
 controleert bovendien de eerste bytes, zodat een `.csv` die zich als Excel aandient wordt geweigerd vóór
 opslag en een verkeerd gelabelde `.xlsx` als `.xlsx` wordt bewaard.
 

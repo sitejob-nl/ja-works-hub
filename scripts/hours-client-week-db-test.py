@@ -57,13 +57,14 @@ EXPECTED_SIGNATURES = workbook.EXPECTED_SIGNATURES + (
     "hours_client_week_save(text,jsonb)",
     "hours_client_week_add_source(text,text,text,text,integer)",
     "hours_client_week_upload_path(text,text,text)",
+    "hours_client_week_stored_paths(text)",
     "hours_client_week_report(text,text,text)",
 )
 # The five public functions are reached only by the trusted edge function, which
 # is the single holder of the service-role key.
 CLIENT_SERVICE_FUNCTIONS = {"hours_client_week_view", "hours_client_week_save",
                             "hours_client_week_add_source", "hours_client_week_upload_path",
-                            "hours_client_week_report"}
+                            "hours_client_week_stored_paths", "hours_client_week_report"}
 
 
 def token_hash(secret):
@@ -81,6 +82,14 @@ class ClientWeekTests(workbook.WorkbookTests):
         if code is not None:
             return self.reject("hours_issue_client_week_link", code=code, user=user or self.admin, **params)
         return rpc("hours_issue_client_week_link", user=user or self.admin, **params)
+
+    def store_client(self, content_hash, link_id, extension="pdf", mimetype=PDF, size=2048, week=None):
+        """The Storage row a client upload leaves behind, in its own subtree."""
+        path = f"{self.org}/{week or self.week_id}/client/{link_id}/{content_hash}.{extension}"
+        sql(f"""INSERT INTO storage.objects(bucket_id,name,metadata) VALUES ('hours-sources',{literal(path)},
+          jsonb_build_object('size',{size},'mimetype',{literal(mimetype)}))
+          ON CONFLICT (bucket_id,name) DO UPDATE SET metadata=EXCLUDED.metadata;""")
+        return path
 
     def client(self, name, secret, code=None, **params):
         """Every public call arrives through the service-role edge function."""
@@ -575,7 +584,7 @@ class ClientWeekTests(workbook.WorkbookTests):
     def test_the_client_can_deliver_a_file_that_stays_a_source_without_proposals(self):
         week, issued = self.open_link()
         content_hash = digest(str(uuid.uuid4()))
-        self.store(content_hash, extension="pdf", mimetype=PDF, week=week["id"])
+        self.store_client(content_hash, issued["link_id"], week=week["id"])
         added = self.client("hours_client_week_add_source", issued["secret"], p_content_hash=content_hash,
                             p_file_name="week37.pdf", p_content_type=PDF, p_page_count=2)
         self.assertFalse(added["duplicate"])
@@ -592,13 +601,39 @@ class ClientWeekTests(workbook.WorkbookTests):
     def test_the_same_file_from_client_and_office_stays_one_source(self):
         week, issued = self.open_link()
         content_hash = digest("gedeeld-briefje")
-        self.store(content_hash, extension="pdf", mimetype=PDF, week=week["id"])
+        self.store_client(content_hash, issued["link_id"], week=week["id"])
         self.client("hours_client_week_add_source", issued["secret"], p_content_hash=content_hash,
                     p_file_name="week37.pdf", p_content_type=PDF, p_page_count=1)
+        # The office writes its own object; the source row still deduplicates on
+        # the content, so one file stays one source whoever delivered it.
+        self.store(content_hash, extension="pdf", mimetype=PDF, week=week["id"])
         again = rpc("hours_add_week_source", user=self.admin, p_week_id=week["id"],
                     p_content_hash=content_hash, p_file_name="week37.pdf", p_content_type=PDF, p_page_count=1)
         self.assertTrue(again["duplicate"])
         self.assertEqual(self.count("hours_week_sources"), "1")
+
+    def test_the_office_reaches_a_client_file_it_did_not_upload(self):
+        """The internal reader opens client deliveries too, so the storage rule
+        has to accept the deeper path."""
+        week, issued = self.open_link()
+        content_hash = digest(str(uuid.uuid4()))
+        path = self.store_client(content_hash, issued["link_id"], week=week["id"])
+        self.assertEqual(sql(f"SELECT private.hours_source_object_allowed({literal(path)}, false);",
+                             role="authenticated", user=self.admin), "t")
+        self.assertEqual(sql(f"SELECT private.hours_source_object_allowed({literal(path)}, false);",
+                             role="authenticated", user=self.other_admin), "f")
+
+    def test_the_office_can_list_what_one_link_actually_registered(self):
+        """The cleanup of objects that were uploaded but never registered needs
+        to know which ones do belong to a source."""
+        week, issued = self.open_link()
+        content_hash = digest(str(uuid.uuid4()))
+        path = self.store_client(content_hash, issued["link_id"], week=week["id"])
+        self.assertEqual(self.client("hours_client_week_stored_paths", issued["secret"]),
+                         {"prefix": f"{self.org}/{week['id']}/client/{issued['link_id']}", "paths": []})
+        self.client("hours_client_week_add_source", issued["secret"], p_content_hash=content_hash,
+                    p_file_name="week37.pdf", p_content_type=PDF, p_page_count=1)
+        self.assertEqual(self.client("hours_client_week_stored_paths", issued["secret"])["paths"], [path])
 
     def test_an_upload_path_is_derived_from_the_link_and_never_from_the_request(self):
         week, issued = self.open_link()
@@ -609,8 +644,13 @@ class ClientWeekTests(workbook.WorkbookTests):
                            p_content_hash=content_hash, p_content_type=PDF)["path"]
         theirs = self.client("hours_client_week_upload_path", other["secret"],
                              p_content_hash=content_hash, p_content_type=PDF)["path"]
-        self.assertEqual(mine, f"{self.org}/{week['id']}/{content_hash}.pdf")
-        self.assertNotEqual(mine, theirs, "Each client writes only inside its own week")
+        # A client writes into its own link's subtree, never where the office
+        # writes: otherwise it could park bytes under the digest of a file the
+        # office is about to upload, and that upload would dedupe onto them.
+        self.assertEqual(mine, f"{self.org}/{week['id']}/client/{issued['link_id']}/{content_hash}.pdf")
+        self.assertNotIn(f"{self.org}/{week['id']}/{content_hash}.pdf", mine,
+                         "A client never writes in the office's own path namespace")
+        self.assertNotEqual(mine, theirs, "Each link writes only inside its own subtree")
         for bad in ("niet-hex", "", content_hash.upper()[:63]):
             self.client("hours_client_week_upload_path", issued["secret"], code="22023",
                         p_content_hash=bad, p_content_type=PDF)
@@ -626,7 +666,7 @@ class ClientWeekTests(workbook.WorkbookTests):
     def test_a_client_file_of_an_unsupported_type_is_refused(self):
         week, issued = self.open_link()
         content_hash = digest(str(uuid.uuid4()))
-        self.store(content_hash, extension="csv", mimetype="text/csv", week=week["id"])
+        self.store_client(content_hash, issued["link_id"], extension="csv", mimetype="text/csv", week=week["id"])
         self.client("hours_client_week_add_source", issued["secret"], code="22023",
                     p_content_hash=content_hash, p_file_name="uren.csv", p_content_type="text/csv",
                     p_page_count=1)
@@ -635,7 +675,7 @@ class ClientWeekTests(workbook.WorkbookTests):
     def test_an_internal_reader_can_work_on_a_file_the_client_delivered(self):
         week, issued = self.open_link()
         content_hash = digest(str(uuid.uuid4()))
-        self.store(content_hash, extension="xlsx", mimetype=XLSX, week=week["id"])
+        self.store_client(content_hash, issued["link_id"], extension="xlsx", mimetype=XLSX, week=week["id"])
         added = self.client("hours_client_week_add_source", issued["secret"], p_content_hash=content_hash,
                             p_file_name="week37.xlsx", p_content_type=XLSX, p_page_count=1)
         day = week["members"][0]["days"][0]["id"]
@@ -739,6 +779,7 @@ class ClientWeekModuleGateTests(workbook.WorkbookModuleGateTests):
                                                  p_page_count=1),
             "hours_client_week_upload_path": dict(p_token_hash=digest_value, p_content_hash=marker,
                                                   p_content_type=PDF),
+            "hours_client_week_stored_paths": dict(p_token_hash=digest_value),
             "hours_client_week_report": dict(p_token_hash=digest_value, p_kind="complete", p_note=None),
         })
         return day, calls

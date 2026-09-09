@@ -652,8 +652,7 @@ begin
   if p_page_count is not null and p_page_count not between 1 and 2000 then
     raise exception 'Het aantal pagina''s van deze bron is ongeldig' using errcode = '22023';
   end if;
-  v_path := v_link.organization_id::text || '/' || v_link.week_id::text || '/' || p_content_hash
-         || '.' || v_extension;
+  v_path := private.hours_client_link_prefix(v_link) || '/' || p_content_hash || '.' || v_extension;
   select (o.metadata->>'size')::bigint as byte_size, o.metadata->>'mimetype' as mimetype into v_object
     from storage.objects o where o.bucket_id = 'hours-sources' and o.name = v_path;
   if not found or v_object.byte_size is null or v_object.byte_size not between 1 and 26214400
@@ -674,8 +673,23 @@ begin
     || jsonb_build_object('duplicate', v_duplicate, 'source_id', v_id);
 end $$;
 
--- Where a client may upload. The path is derived from the link, never from the
--- request, so a client can only ever write inside its own organization and week.
+-- Where a client's files live: a subtree of its own link, never the namespace
+-- the office writes into.
+--
+-- Sharing that namespace was a real hole. A link holder could upload doctored
+-- bytes under the digest of a file the office was about to deliver and simply
+-- never register them; the office's own upload would then hit an object that
+-- was already there, be deduplicated away, and the reviewer would read the
+-- client's bytes under the office's file name and author. Separate subtrees
+-- make that impossible by construction, and they also make it possible to sweep
+-- up what a client uploaded but never registered.
+create or replace function private.hours_client_link_prefix(p_link public.hours_client_week_links)
+returns text language sql immutable set search_path = '' as $$
+  select p_link.organization_id::text || '/' || p_link.week_id::text || '/client/' || p_link.id::text;
+$$;
+revoke all on function private.hours_client_link_prefix(public.hours_client_week_links)
+  from public, anon, authenticated, service_role;
+
 -- Handing out this path is not access: the bucket has no policy for anon, and
 -- the edge function signs a one-off upload for exactly this object.
 create or replace function public.hours_client_week_upload_path(p_token_hash text, p_content_hash text,
@@ -688,8 +702,20 @@ declare v_link public.hours_client_week_links%rowtype; v_extension text; begin
   if p_content_hash !~ '^[0-9a-f]{64}$' or v_extension is null then
     raise exception 'Alleen PDF, JPG, PNG en Excel worden als bron aanvaard' using errcode = '22023';
   end if;
-  return jsonb_build_object('path', v_link.organization_id::text || '/' || v_link.week_id::text
+  return jsonb_build_object('path', private.hours_client_link_prefix(v_link)
     || '/' || p_content_hash || '.' || v_extension);
+end $$;
+
+-- What this link actually registered, so the edge function can sweep up the
+-- objects it uploaded but never turned into a source. Only paths of this one
+-- link travel; there is nothing here about any other delivery.
+create or replace function public.hours_client_week_stored_paths(p_token_hash text)
+returns jsonb language plpgsql stable security definer set search_path = '' as $$
+declare v_link public.hours_client_week_links%rowtype; begin
+  v_link := private.hours_client_link_resolve(p_token_hash, false);
+  return jsonb_build_object('prefix', private.hours_client_link_prefix(v_link),
+    'paths', coalesce((select jsonb_agg(s.storage_path order by s.storage_path)
+      from public.hours_week_sources s where s.client_link_id = v_link.id), '[]'::jsonb));
 end $$;
 
 create or replace function public.hours_client_week_report(p_token_hash text, p_kind text,
@@ -756,6 +782,7 @@ do $$ declare f text; begin
     'public.hours_client_week_save(text, jsonb)',
     'public.hours_client_week_add_source(text, text, text, text, integer)',
     'public.hours_client_week_upload_path(text, text, text)',
+    'public.hours_client_week_stored_paths(text)',
     'public.hours_client_week_report(text, text, text)'] loop
     execute format('revoke all on function %s from public, anon, authenticated, service_role', f);
     execute format('grant execute on function %s to service_role', f);
