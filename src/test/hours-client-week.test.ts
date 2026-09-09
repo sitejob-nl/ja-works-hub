@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   buildClientEntries,
   clientLinkStatusFromCode,
+  isAlreadyStoredObject,
+  isClientLinkCode,
   MAX_CLIENT_ENTRIES,
 } from '../../supabase/functions/_shared/hours-client-entries.ts';
 import { describeSourceReferences, sourceOriginText } from '@/lib/hours-sources';
@@ -115,13 +117,38 @@ describe('what the page says when a link does not work', () => {
   it('names the reason a visitor can act on', () => {
     expect(clientLinkStatusFromCode('PT410')).toBe('expired');
     expect(clientLinkStatusFromCode('PT403')).toBe('revoked');
-    expect(clientLinkStatusFromCode('42501')).toBe('invalid');
+    expect(clientLinkStatusFromCode('PT404')).toBe('invalid');
     expect(clientLinkStatusFromCode('22023')).toBe('unavailable');
   });
 
   it('treats anything it does not recognise as unavailable, never as valid', () => {
     for (const code of ['', null, undefined, 'XX999', '23505']) {
       expect(clientLinkStatusFromCode(code)).toBe('unavailable');
+    }
+  });
+
+  it('does not read a refused workday as a dead link', () => {
+    // 42501 also guards a day outside this link's week. Reporting that as
+    // "this link does not work" would replace the whole page and throw away
+    // what the client had just typed.
+    expect(clientLinkStatusFromCode('42501')).toBe('unavailable');
+    expect(isClientLinkCode('42501')).toBe(false);
+    for (const code of ['PT410', 'PT403', 'PT404']) expect(isClientLinkCode(code)).toBe(true);
+    for (const code of ['22023', '', null, undefined]) expect(isClientLinkCode(code)).toBe(false);
+  });
+});
+
+describe('an upload that could not be signed', () => {
+  it('recognises only an object that is genuinely already stored', () => {
+    expect(isAlreadyStoredObject({ statusCode: '409', message: 'Duplicate' })).toBe(true);
+    expect(isAlreadyStoredObject({ statusCode: 409 })).toBe(true);
+    expect(isAlreadyStoredObject({ message: 'The resource already exists' })).toBe(true);
+  });
+
+  it('never calls a real storage failure a delivered file', () => {
+    for (const failure of [{ statusCode: '500', message: 'Internal error' },
+      { statusCode: '403', message: 'Unauthorized' }, { message: 'network unreachable' }, null, {}]) {
+      expect(isAlreadyStoredObject(failure)).toBe(false);
     }
   });
 });

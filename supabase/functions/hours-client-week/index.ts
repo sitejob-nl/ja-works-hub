@@ -3,11 +3,13 @@ import { CORS_HEADERS as corsHeaders } from '../_shared/http.ts';
 import {
   buildClientEntries,
   clientLinkStatusFromCode,
+  isAlreadyStoredObject,
+  isClientLinkCode,
   type ClientLinkStatus,
 } from '../_shared/hours-client-entries.ts';
 
 /**
- * The personal client week page (/uren/klantweek/:token), without a login.
+ * The personal client week page (/urenweek/:token), without a login.
  *
  * There is no session here, so the released hours RPCs — which authorize an
  * active internal profile — do not apply. This function holds the service-role
@@ -36,12 +38,6 @@ const MAX_PER_IP_PER_HOUR = 120;
 const MAX_GLOBAL_PER_HOUR = 2000;
 const ACTIONS = ['get', 'save', 'report', 'upload', 'register'] as const;
 type Action = typeof ACTIONS[number];
-/**
- * The SQLSTATEs that say something about the *link* rather than about what was
- * filled in. Everything else — including a 22023 about an unreadable duration or
- * a switched-off client — is a refusal the visitor should read verbatim.
- */
-const LINK_CODES = new Set(['PT410', 'PT403', '42501']);
 
 async function sha256Hex(value: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
@@ -53,8 +49,13 @@ function clientIp(req: Request): string {
   return forwarded.split(',')[0].trim() || 'unknown';
 }
 
+/**
+ * Only a refusal about the *link itself* replaces the page. Everything else —
+ * a workday outside this week, an unreadable duration, a switched-off client —
+ * is reported verbatim, so the visitor keeps the page they were filling in.
+ */
 function linkRefusal(error: { code?: string | null } | null): ClientLinkStatus | null {
-  return error?.code && LINK_CODES.has(error.code) ? clientLinkStatusFromCode(error.code) : null;
+  return isClientLinkCode(error?.code) ? clientLinkStatusFromCode(error?.code) : null;
 }
 
 /** A write refused by the database: a link problem the page can name, or the server's own words. */
@@ -144,9 +145,15 @@ Deno.serve(async (req) => {
       const { data: signed, error: signError } = await service.storage
         .from('hours-sources').createSignedUploadUrl(objectPath);
       if (signError) {
-        // Already stored: the same file was delivered before, by this client or
-        // by the office. Registering it again yields one source, not a second.
-        return json({ status: 'ok', path: objectPath, already_uploaded: true });
+        // The path is the digest of the bytes, so an object that is already
+        // there holds exactly this file: registering it yields one source, not
+        // a second. Any other storage failure is a real failure, and calling it
+        // "already delivered" would surface later as a misleading "not found".
+        if (isAlreadyStoredObject(signError)) {
+          return json({ status: 'ok', path: objectPath, already_uploaded: true });
+        }
+        console.error('hours-client-week: upload could not be signed', signError.message);
+        return json({ error: 'Uw bestand kon nu niet worden aangeboden. Probeer het later opnieuw.' }, 503);
       }
       return json({ status: 'ok', path: objectPath, token: signed.token });
     }

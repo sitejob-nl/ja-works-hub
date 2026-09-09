@@ -77,11 +77,22 @@ export default function HoursClientWeek() {
   const [reporting, setReporting] = useState<'later' | 'complete' | null>(null);
   const [reportNote, setReportNote] = useState('');
 
+  /**
+   * supabase-js hands a non-2xx back as an error with `data: null` and the body
+   * on `error.context`. Reading only `data` would show the visitor the transport
+   * message instead of the server's own words about what it refused.
+   */
   const call = async (body: Record<string, unknown>) => {
     const { data, error: failure } = await supabase.functions.invoke('hours-client-week', {
       body: { token, ...body },
     });
-    if (failure) throw failure;
+    if (failure) {
+      if (failure.context instanceof Response) {
+        const refusal = await failure.context.clone().json().catch(() => null) as { error?: unknown } | null;
+        if (refusal && typeof refusal.error === 'string') throw new Error(refusal.error);
+      }
+      throw failure;
+    }
     const payload = (data ?? {}) as { error?: unknown };
     if (typeof payload.error === 'string') throw new Error(payload.error);
     return readResponse(data);
@@ -97,9 +108,17 @@ export default function HoursClientWeek() {
   const state: PageState = page.data ?? { kind: 'loading' };
   const week = state.kind === 'open' ? state.week : null;
 
-  // The delivery is read back from the server every time, so a client that comes
-  // back later continues where it left off rather than starting from blank.
-  useEffect(() => { if (week) setDrafts(draftsFor(week)); }, [week]);
+  // The delivery is read back from the server, so a client that comes back later
+  // continues where it left off. It is keyed on the delivery itself and not on
+  // the payload: announcing a later delivery changes the week object but not one
+  // recorded hour, and re-seeding there would wipe what is being typed.
+  const deliverySignature = week ? JSON.stringify(week.members.map(member =>
+    member.days.map(day => [day.id, day.delivered?.minutes ?? null,
+      day.delivered?.no_hours_reason ?? null, day.delivered?.note ?? null]))) : '';
+  useEffect(() => {
+    if (week) setDrafts(draftsFor(week));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the delivery, deliberately not on the payload
+  }, [deliverySignature]);
 
   // Every write returns the whole projection, so the screen shows exactly what
   // the server now holds instead of a second, possibly different, read.

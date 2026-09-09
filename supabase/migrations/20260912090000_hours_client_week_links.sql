@@ -258,6 +258,61 @@ returns jsonb language sql stable set search_path = '' as $$
 $$;
 revoke all on function private.hours_client_link_report(uuid) from public, anon, authenticated, service_role;
 
+-- One place decides how a media type is stored, so the path a client is handed
+-- and the path its registration looks up can never drift apart.
+create or replace function private.hours_source_extension(p_content_type text)
+returns text language sql immutable set search_path = '' as $$
+  select case p_content_type
+    when 'application/pdf' then 'pdf' when 'image/jpeg' then 'jpg' when 'image/png' then 'png'
+    when 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' then 'xlsx'
+    when 'application/vnd.ms-excel' then 'xls' else null end;
+$$;
+revoke all on function private.hours_source_extension(text) from public, anon, authenticated, service_role;
+
+-- The released intake now reads its extension from that same helper, so the
+-- comment above is a fact rather than an intention. Behaviour is unchanged.
+create or replace function public.hours_add_week_source(p_week_id uuid, p_content_hash text,
+  p_file_name text, p_content_type text, p_page_count integer default null)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare
+  v_week public.hours_weeks%rowtype; v_path text; v_extension text; v_object record;
+  v_id uuid; v_duplicate boolean := false;
+begin
+  v_week := private.hours_lock_week(p_week_id);
+  p_content_hash := lower(btrim(coalesce(p_content_hash, '')));
+  p_file_name := nullif(private.hours_source_trim(p_file_name), '');
+  if p_content_hash !~ '^[0-9a-f]{64}$' or p_file_name is null or length(p_file_name) > 255
+     or p_file_name ~ '[[:cntrl:]/\\]' then
+    raise exception 'Ongeldige bronverwijzing of bestandsnaam' using errcode = '22023';
+  end if;
+  v_extension := private.hours_source_extension(p_content_type);
+  if v_extension is null then
+    raise exception 'Alleen PDF, JPG, PNG en Excel worden als bron aanvaard' using errcode = '22023';
+  end if;
+  if p_content_type in ('image/jpeg', 'image/png') then p_page_count := 1; end if;
+  if p_page_count is not null and p_page_count not between 1 and 2000 then
+    raise exception 'Het aantal pagina''s van deze bron is ongeldig' using errcode = '22023';
+  end if;
+  v_path := v_week.organization_id::text || '/' || p_week_id::text || '/' || p_content_hash || '.' || v_extension;
+  select (o.metadata->>'size')::bigint as byte_size, o.metadata->>'mimetype' as mimetype into v_object
+    from storage.objects o where o.bucket_id = 'hours-sources' and o.name = v_path;
+  if not found or v_object.byte_size is null or v_object.byte_size not between 1 and 26214400
+     or v_object.mimetype is distinct from p_content_type then
+    raise exception 'Het geüploade bestand is niet gevonden of komt niet overeen' using errcode = '22023';
+  end if;
+  insert into public.hours_week_sources(organization_id, week_id, company_id, storage_path, file_name,
+    content_type, byte_size, content_hash, page_count, created_by)
+    values (v_week.organization_id, p_week_id, v_week.company_id, v_path, p_file_name, p_content_type,
+      v_object.byte_size, p_content_hash, p_page_count, auth.uid())
+  on conflict (week_id, content_hash) do nothing returning id into v_id;
+  if v_id is null then
+    v_duplicate := true;
+    select id into v_id from public.hours_week_sources where week_id = p_week_id and content_hash = p_content_hash;
+  end if;
+  return private.hours_week_sources_projection(p_week_id, v_week.organization_id)
+    || jsonb_build_object('duplicate', v_duplicate, 'source_id', v_id);
+end $$;
+
 -- The released projection, with the client links added. The token digest is
 -- deliberately absent: nothing in a screen ever needs it.
 create or replace function private.hours_week_sources_projection(p_week_id uuid, p_org uuid)
@@ -380,19 +435,23 @@ declare v_link public.hours_client_week_links%rowtype; begin
   if auth.role() is distinct from 'service_role' then
     raise exception 'Alleen de vertrouwde klantpagina kan deze gegevens lezen' using errcode = '42501';
   end if;
+  -- PT404 says "this link does not open", and nothing else does. 42501 stays
+  -- what it is everywhere in this module: a refusal about the request, such as
+  -- a workday outside this link's week. Sharing one code between the two would
+  -- make a stale workday replace the whole page and discard what was typed.
   if p_token_hash is null or p_token_hash !~ '^[0-9a-f]{64}$' then
-    raise exception 'Deze link werkt niet' using errcode = '42501';
+    raise exception 'Deze link werkt niet' using errcode = 'PT404';
   end if;
   select * into v_link from public.hours_client_week_links where token_hash = p_token_hash;
-  if not found then raise exception 'Deze link werkt niet' using errcode = '42501'; end if;
+  if not found then raise exception 'Deze link werkt niet' using errcode = 'PT404'; end if;
   if not exists (select 1 from public.organization_modules m
       where m.organization_id = v_link.organization_id and m.module_name = 'uren-workflow'
         and m.enabled is true) then
-    raise exception 'De urenmodule is niet beschikbaar voor dit bedrijf' using errcode = '42501';
+    raise exception 'De urenmodule is niet beschikbaar voor dit bedrijf' using errcode = 'PT404';
   end if;
   -- The PTxxx convention this module already uses for conflicts: PostgREST turns
   -- these into the matching HTTP status, so the page can say what is wrong
-  -- without parsing a sentence. Someone without a token gets 42501 either way,
+  -- without parsing a sentence. Someone without a token gets PT404 either way,
   -- so the distinction leaks nothing.
   if v_link.revoked_at is not null then
     raise exception 'Deze link is ingetrokken' using errcode = 'PT403';
@@ -500,10 +559,12 @@ begin
        or (v_minutes > 0 and v_reason is not null) or length(v_reason) > 500 or length(v_note) > 2000 then
       raise exception 'Vul geldige uren in; geen uren vereist een reden' using errcode = '22023';
     end if;
+    -- The client's own standing word about this day: the open delivery if there
+    -- is one, otherwise the one the office already applied. Pressing save again
+    -- without changing anything may not put a settled day back on the desk.
     select * into v_existing from public.hours_source_proposals
-      where day_id = v_day.id and client_link_id = v_link.id and status = 'open'
-      order by created_at desc, id desc limit 1 for update;
-    -- Saving again without a change may not fill the reviewer's screen with noise.
+      where day_id = v_day.id and client_link_id = v_link.id and status in ('open', 'applied')
+      order by (status = 'open') desc, created_at desc, id desc limit 1 for update;
     if found and (v_existing.minutes, v_existing.no_hours_reason, v_existing.note)
        is not distinct from (v_minutes, v_reason, v_note) then
       continue;
@@ -521,17 +582,6 @@ begin
   end loop;
   return private.hours_client_week_projection(v_link);
 end $$;
-
--- One place decides how a media type is stored, so the path a client is handed
--- and the path its registration looks up can never drift apart.
-create or replace function private.hours_source_extension(p_content_type text)
-returns text language sql immutable set search_path = '' as $$
-  select case p_content_type
-    when 'application/pdf' then 'pdf' when 'image/jpeg' then 'jpg' when 'image/png' then 'png'
-    when 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' then 'xlsx'
-    when 'application/vnd.ms-excel' then 'xls' else null end;
-$$;
-revoke all on function private.hours_source_extension(text) from public, anon, authenticated, service_role;
 
 -- A delivered file is evidence, not hours. It becomes a source with the client
 -- as its origin and produces no proposals: reading it stays a separate, reviewed

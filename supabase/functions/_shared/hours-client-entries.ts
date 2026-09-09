@@ -124,6 +124,22 @@ export function buildClientEntries(input: unknown): ClientEntriesResult {
 export type ClientLinkStatus = 'expired' | 'revoked' | 'invalid' | 'unavailable';
 
 /**
+ * The SQLSTATEs that say something about the *link itself*. Everything else —
+ * including a workday that does not belong to this link, or an unreadable
+ * duration — is a refusal about the request, and the visitor should read the
+ * server's own words instead of losing the page they were filling in.
+ *
+ * `42501` is deliberately absent: it also guards a day outside this link's
+ * week, and reporting that as a dead link would replace the whole page and
+ * throw away what the client had just typed.
+ */
+const LINK_CODES = new Set(['PT410', 'PT403', 'PT404']);
+
+export function isClientLinkCode(code: unknown): boolean {
+  return typeof code === 'string' && LINK_CODES.has(code);
+}
+
+/**
  * The database says why through its SQLSTATE, so the page never has to match on
  * a sentence. Anything unrecognised is "unavailable": a link is only ever open
  * when the server actually returned a week.
@@ -132,7 +148,21 @@ export function clientLinkStatusFromCode(code: unknown): ClientLinkStatus {
   switch (code) {
     case 'PT410': return 'expired';
     case 'PT403': return 'revoked';
-    case '42501': return 'invalid';
+    case 'PT404': return 'invalid';
     default: return 'unavailable';
   }
+}
+
+/**
+ * Whether a storage refusal means the object is already there. The upload path
+ * is the digest of the bytes, so an existing object holds exactly these bytes
+ * and registering it again yields one source. Any other failure is a real
+ * failure, and calling it "already delivered" would surface later as a
+ * misleading "file not found".
+ */
+export function isAlreadyStoredObject(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const value = error as { statusCode?: string | number; message?: string };
+  return String(value.statusCode ?? '') === '409'
+    || /already exists|duplicate/i.test(value.message ?? '');
 }

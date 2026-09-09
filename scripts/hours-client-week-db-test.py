@@ -179,7 +179,17 @@ class ClientWeekTests(workbook.WorkbookTests):
 
     def test_an_unknown_token_opens_nothing(self):
         self.open_link()
-        self.client_view(token_hash("not-a-real-secret"), code="42501")
+        self.client_view(token_hash("not-a-real-secret"), code="PT404")
+
+    def test_a_dead_link_and_a_refused_workday_do_not_share_one_code(self):
+        """Otherwise the page reports a stale workday as a dead link and throws
+        away what the client had just typed."""
+        week, issued = self.open_link()
+        other_week = self.second_client_week()
+        stranger = other_week["members"][0]["days"][0]["id"]
+        self.client_view(token_hash("bestaat-niet"), code="PT404")
+        self.deliver(issued["secret"], [{"day_id": stranger, "minutes": 480}], code="42501")
+        self.assertEqual(self.count("hours_source_proposals"), "0")
 
     def test_an_expired_link_opens_nothing_and_writes_nothing(self):
         week, issued = self.open_link()
@@ -335,6 +345,34 @@ class ClientWeekTests(workbook.WorkbookTests):
         self.deliver(issued["secret"], [{"day_id": day, "minutes": 480, "note": "Standaard"}])
         self.assertEqual(self.count("hours_source_proposals"), "1",
                          "Saving again without a change may not fill the screen with noise")
+
+    def test_saving_again_after_the_office_applied_it_proposes_nothing_new(self):
+        """The office applied this day. Pressing save once more with the very
+        same content may not put it back on the reviewer's desk."""
+        week, issued = self.open_link()
+        day = week["members"][0]["days"][0]["id"]
+        self.deliver(issued["secret"], [{"day_id": day, "minutes": 480}])
+        proposal = self.client_proposals(week["id"])[0]
+        rpc("hours_apply_source_proposal", user=self.admin, p_proposal_id=proposal["id"],
+            p_expected_revision_id=None)
+        self.deliver(issued["secret"], [{"day_id": day, "minutes": 480}])
+        statuses = sorted((p["minutes"], p["status"]) for p in self.client_proposals(week["id"]))
+        self.assertEqual(statuses, [(480, "applied")],
+                         "An unchanged delivery adds nothing, applied or not")
+        self.assertEqual(self.count("hours_day_revisions"), "1")
+
+    def test_a_real_correction_after_applying_is_still_a_new_proposal(self):
+        week, issued = self.open_link()
+        day = week["members"][0]["days"][0]["id"]
+        self.deliver(issued["secret"], [{"day_id": day, "minutes": 480}])
+        proposal = self.client_proposals(week["id"])[0]
+        rpc("hours_apply_source_proposal", user=self.admin, p_proposal_id=proposal["id"],
+            p_expected_revision_id=None)
+        self.deliver(issued["secret"], [{"day_id": day, "minutes": 510}])
+        statuses = sorted((p["minutes"], p["status"]) for p in self.client_proposals(week["id"]))
+        self.assertEqual(statuses, [(480, "applied"), (510, "open")])
+        self.assertEqual(self.revision_of(week["id"], day)["minutes"], 480,
+                         "A correction is reviewed, never applied by itself")
 
     def test_a_client_never_touches_another_links_or_an_internal_proposal(self):
         week, issued = self.open_link()
@@ -526,9 +564,9 @@ class ClientWeekTests(workbook.WorkbookTests):
         week, issued = self.open_link()
         day = week["members"][0]["days"][0]["id"]
         gate.toggle(self.org, False)
-        self.client_view(issued["secret"], code="42501")
-        self.deliver(issued["secret"], [{"day_id": day, "minutes": 480}], code="42501")
-        self.client_report(issued["secret"], code="42501")
+        self.client_view(issued["secret"], code="PT404")
+        self.deliver(issued["secret"], [{"day_id": day, "minutes": 480}], code="PT404")
+        self.client_report(issued["secret"], code="PT404")
         self.assertEqual(self.count("hours_source_proposals"), "0")
 
     def test_disabling_the_client_closes_the_public_page(self):
@@ -640,7 +678,10 @@ class ClientWeekModuleGateTests(workbook.WorkbookModuleGateTests):
                 with self.subTest(state=state, rpc=name):
                     is_service = name in service_calls
                     actor = self.worker if name in {"hours_confirm_day", "hours_confirm_days"} else self.admin
-                    self.reject(name, role="service_role" if is_service else "authenticated",
+                    # The public page has no session, so a switched-off module
+                    # reads as "this link does not open" rather than 42501.
+                    code = "PT404" if name in CLIENT_SERVICE_FUNCTIONS else "42501"
+                    self.reject(name, code=code, role="service_role" if is_service else "authenticated",
                                 user=None if is_service else actor, **params)
             for name in ("hours_get_week", "hours_list_weeks"):
                 self.reject(name, user=self.worker, **calls[name])

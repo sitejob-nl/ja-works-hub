@@ -154,14 +154,40 @@ describe('filling in the week', () => {
   });
 
   it('shows the server refusal instead of pretending the delivery landed', async () => {
+    // supabase-js hands a non-2xx back as an error with the body on `context`
+    // and `data: null`. Reading only `data.error` would show the visitor
+    // "Edge Function returned a non-2xx status code" and nothing useful.
+    const refusal = Object.assign(new Error('Edge Function returned a non-2xx status code'), {
+      context: new Response(JSON.stringify({ error: 'Vul geldige uren in; geen uren vereist een reden' }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }),
+    });
     invoke.mockImplementation((_name: string, options: { body: { action: string } }) =>
       options.body.action === 'get'
         ? Promise.resolve(ok({ status: 'ok', week: payload() }))
-        : Promise.resolve({ data: { error: 'Vul geldige uren in; geen uren vereist een reden' }, error: null }));
+        : Promise.resolve({ data: null, error: refusal }));
     show();
     fireEvent.change(await screen.findByLabelText('Gewerkte uren maandag 7 september'), { target: { value: '8' } });
     fireEvent.click(screen.getByRole('button', { name: 'Uren opslaan' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(/geen uren vereist een reden/);
+  });
+
+  it('keeps the filled-in page when one workday is refused', async () => {
+    // A day that no longer belongs to this week is a refusal about the request,
+    // not a dead link: replacing the whole page would discard the other days.
+    const refusal = Object.assign(new Error('non-2xx'), {
+      context: new Response(JSON.stringify({ error: 'Deze werkdag hoort niet bij deze urenweek' }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }),
+    });
+    invoke.mockImplementation((_name: string, options: { body: { action: string } }) =>
+      options.body.action === 'get'
+        ? Promise.resolve(ok({ status: 'ok', week: payload() }))
+        : Promise.resolve({ data: null, error: refusal }));
+    show();
+    fireEvent.change(await screen.findByLabelText('Gewerkte uren maandag 7 september'), { target: { value: '8' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Uren opslaan' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/hoort niet bij deze urenweek/);
+    expect((hoursField('maandag 7 september') as HTMLInputElement).value).toBe('8');
+    expect(screen.getByText('Anna Nowak')).toBeTruthy();
   });
 });
 
@@ -180,6 +206,22 @@ describe('saying something about the delivery', () => {
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('hours-client-week',
       { body: { token: secret, action: 'report', kind: 'later', note: 'Zaterdag volgt' } }));
     expect(await screen.findByText(/U heeft gemeld dat u later aanlevert/i)).toBeTruthy();
+  });
+
+  it('keeps hours the client typed but has not saved yet', async () => {
+    invoke.mockImplementation((_name: string, options: { body: { action: string } }) =>
+      options.body.action === 'get'
+        ? Promise.resolve(ok({ status: 'ok', week: payload() }))
+        : Promise.resolve(ok({ status: 'ok', week: payload({
+            report: { kind: 'later', note: null, created_at: '2026-09-09T07:00:00Z' },
+          }) })));
+    show();
+    fireEvent.change(await screen.findByLabelText('Gewerkte uren maandag 7 september'), { target: { value: '8:15' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Ik lever later aan' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Melding versturen' }));
+    await screen.findByText(/U heeft gemeld dat u later aanlevert/i);
+    expect((hoursField('maandag 7 september') as HTMLInputElement).value,
+      'a message about the delivery may not throw away the delivery').toBe('8:15');
   });
 
   it('keeps showing the open days after the client calls it complete', async () => {
