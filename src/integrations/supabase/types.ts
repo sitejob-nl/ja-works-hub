@@ -12102,6 +12102,10 @@ export type Database = {
         }
         Returns: Json
       }
+      hours_create_source_proposals: {
+        Args: { p_entries: Json; p_source_id: string }
+        Returns: Json
+      }
       hours_create_week: {
         Args: { p_company_id: string; p_week_start: string }
         Returns: Json

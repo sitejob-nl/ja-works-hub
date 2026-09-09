@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { hoursSourceInputSchema, type HoursSourceInput } from '@/components/hours-workflow/hours-day-source';
+import { HOURS_WORKBOOK_TYPES } from '@/lib/hours-workbook-file';
 
 /** Storage enforces both limits again; these keep the browser from uploading in vain. */
 export const HOURS_SOURCE_MAX_BYTES = 26_214_400;
@@ -7,6 +8,7 @@ export const HOURS_SOURCE_TYPES = {
   'application/pdf': { extension: 'pdf', label: 'PDF' },
   'image/jpeg': { extension: 'jpg', label: 'JPG' },
   'image/png': { extension: 'png', label: 'PNG' },
+  ...HOURS_WORKBOOK_TYPES,
 } as const;
 export type HoursSourceContentType = keyof typeof HOURS_SOURCE_TYPES;
 export const HOURS_SOURCE_ACCEPT = Object.keys(HOURS_SOURCE_TYPES).join(',');
@@ -105,7 +107,7 @@ export function parseWeekSources(value: unknown): HoursWeekSources {
 
 export function hoursSourceTypeError(file: { type: string; size: number }): string | null {
   if (!(file.type in HOURS_SOURCE_TYPES)) {
-    return 'Alleen PDF, JPG en PNG kunnen op dit moment als bron worden bewaard. Andere bestanden volgen in een latere stap.';
+    return 'Alleen PDF, JPG, PNG en Excel kunnen op dit moment als bron worden bewaard. Andere bestanden volgen in een latere stap.';
   }
   if (file.size <= 0) return 'Dit bestand is leeg.';
   if (file.size > HOURS_SOURCE_MAX_BYTES) return 'Dit bestand is groter dan 25 MB en kan niet worden bewaard.';

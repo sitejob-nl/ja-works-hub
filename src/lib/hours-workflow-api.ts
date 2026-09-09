@@ -11,6 +11,11 @@ export interface HoursPageEntry {
   source_input?: HoursSourceInput | null; page_label?: string | null;
 }
 
+/** One proposal out of one reading of a delivered file, recorded all at once. */
+export interface HoursReadingEntry extends HoursPageEntry {
+  page_number?: number | null; assignment_uncertain?: boolean;
+}
+
 /**
  * Domain arguments refine the generated database signatures; the typed Supabase
  * client checks every RPC call. Every read result is parsed with Zod by the caller.
@@ -36,6 +41,7 @@ interface HoursRpcArguments {
   hours_confirm_proposal_assignment: RpcArgs<'hours_confirm_proposal_assignment'>;
   hours_set_source_page: RpcArgs<'hours_set_source_page'> & { p_assignment: HoursPageAssignment };
   hours_create_page_proposals: Omit<RpcArgs<'hours_create_page_proposals'>, 'p_entries'> & { p_entries: HoursPageEntry[] };
+  hours_create_source_proposals: Omit<RpcArgs<'hours_create_source_proposals'>, 'p_entries'> & { p_entries: HoursReadingEntry[] };
 }
 
 export async function hoursWorkflowRpc<K extends keyof HoursRpcArguments>(name: K, args: HoursRpcArguments[K]): Promise<unknown> {

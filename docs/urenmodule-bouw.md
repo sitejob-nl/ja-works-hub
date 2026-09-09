@@ -221,6 +221,19 @@ verouderde toepassing die niets schrijft. Nul JavaScript-fouten, nul berichten, 
 Die run vond en verifieerde één reparatie: de bevestiging na toepassen verdween omdat zij alleen bij
 open voorstellen werd getoond.
 
+Inclusief de Excel-uitlezer slagen **1.497 applicatietests**, lint (nul errors), typecheck en de
+productiebuild. De databaseproef `scripts/hours-workbook-db-test.py` draait **156 echte PostgreSQL-tests**:
+de nieuwe werkmapgevallen plus de volledige vrijgegeven pagina-, inname-, foundation-, classificatie- en
+modulepoortregressies op het nieuwe schema, met alle elf migraties tweemaal toegepast. De
+spreadsheetmigratie heeft SHA256
+`9551c620d76a2d01cd854d35c586fa4acb5f47ada8f5c9f760d44f15c50bea33`.
+
+Een `.xlsx`/`.xls` wordt als bron aanvaard en deterministisch uitgelezen — geen model, geen betaalde
+aanroep. Een werkblad is de pagina van dit formaat, dus alle paginaregels van T2 gelden ongewijzigd. De
+uitlezer voert **geen formules of macro's uit**: hij leest uitsluitend het bewaarde resultaat. Een
+onverwachte indeling levert een blokkade en géén halve voorstellen. Zie het
+[innamecontract](urenmodule-intake-contract.md#excel--en-tabelbestanden-als-bron-t3).
+
 De frontend gebruikt voorlopig een expliciet getypte en met Zod gecontroleerde RPC-grens in
 `hours-workflow-api.ts` en `hours-matrices.ts`. De auto-generated types blijven die van productie. Vóór merge/uitrol:
 migratie toepassen, live types regenereren, adapter op de gegenereerde RPC-types aansluiten en

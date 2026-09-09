@@ -4,6 +4,124 @@ Overdracht voor wie verdergaat (Codex / Claude Code). Lees [AGENTS.md](AGENTS.md
 commands, [CLAUDE.md](CLAUDE.md) voor de canonieke codebase-diepte, [HANDOVER.md](HANDOVER.md) voor de formele
 projectsamenvatting.
 
+## Voorstellen uit Excel- en tabelbestanden — 8 september 2026 (`feat/urenmodule-excel-uitlezer`)
+
+- Nieuwe duurzame worktree `/Users/kas/dev/ja-works-hub/.worktrees/urenmodule-excel-uitlezer`, branch
+  `feat/urenmodule-excel-uitlezer`. **PR #266 (T2) was nog niet gemerged**, dus deze branch staat op
+  `origin/feat/urenmodule-bronpaginas` — niet op `origin/main`, dat de T2-frontend nog mist. De stale
+  hoofdcheckout en alle overige worktrees zijn ongemoeid gelaten.
+- **T3 uit [docs/urenmodule-tickets.md](docs/urenmodule-tickets.md) is gebouwd** — voorstellen uit Excel-
+  en tabelbestanden. Alle vijf acceptatiecriteria zijn afgevinkt. Zie de nieuwe sectie
+  ["Excel- en tabelbestanden als bron (T3)"](docs/urenmodule-intake-contract.md#excel--en-tabelbestanden-als-bron-t3).
+- **Wat er nu kan:** een `.xlsx`/`.xls` wordt als bron aanvaard (Storage, tabel-CHECK en de RPC kennen de
+  twee mediatypen), het aantal werkbladen wordt als `page_count` vastgelegd, en de knop **Uitlezen** haalt
+  het bewaarde origineel via een kortlopende link terug en leest het **deterministisch** uit. Twee
+  indelingen worden herkend: een kruistabel (medewerkers onder elkaar, dagen als kolomkoppen) en een lijst
+  (naam/datum/uren, één regel per medewerker/dag). Broncodes uit kolomkoppen (`OV1`…) blijven letterlijk
+  staan. Het paneel toont per regel de vindplaats (`blad Week 37 · rij 3`), de gelezen duur, onzekere
+  toewijzingen, niet-sluitende optellingen mét het verschil, en de regels waar met opzet niets van gemaakt
+  is. De gekozen regels worden in één handeling als voorstellen vastgelegd.
+- **De grens is ongewijzigd:** een werkblad is de pagina van dit formaat, dus alle paginaregels van T2
+  gelden onveranderd (een beoordeelde bron eist een pagina, een tegensprekend paginabesluit forceert
+  `assignment_uncertain`). Alleen `hours_apply_source_proposal` schrijft een dagrevisie. Nul writes naar
+  `timesheets`, facturatie of communicatie; **nul betaalde AI-aanroepen** — de uitlezer is pure code.
+- **Formules en macro's worden niet uitgevoerd.** De uitlezer leest uitsluitend het in het bestand
+  bewaarde resultaat. Dat is bewezen met een echte in-memory `.xlsx` waarin de formule `4+5` een bewaard
+  resultaat `7` heeft: de uitlezer geeft 7.
+- Migratie `20260911090000_hours_spreadsheet_sources.sql` (SHA256
+  `9551c620d76a2d01cd854d35c586fa4acb5f47ada8f5c9f760d44f15c50bea33`) is op 8 september toegepast; de
+  bronversie is in dezelfde transactie in `schema_migrations` geregistreerd. Additief: bucket-mediatypen,
+  één CHECK, één gewijzigde en één nieuwe RPC. Live types hergenereerd (+4 regels).
+  **Geen edge-function-deploy nodig.**
+- Verificatie: **157 echte PostgreSQL-tests** (`scripts/hours-workbook-db-test.py` — 12 nieuwe
+  werkmapgevallen plus de volledige vrijgegeven pagina-/inname-/foundation-/classificatie-/poortregressies,
+  elf migraties elk tweemaal); **1.555 applicatietests**; lint 0 errors, typecheck en productiebuild groen.
+  De vrijgegeven harnassen zijn ongewijzigd gelaten; de nieuwe importeert `hours-pages-db-test.py` en
+  overschrijft alleen de twee verwachtingen die echt bewogen (bucket-mediatypen, RPC-signaturen).
+- **JA Werkt blijft UIT, demo AAN** — vóór de migratie geverifieerd. Het geblokkeerde `QA_SUPERADMIN`-account
+  is ongemoeid gelaten. Advisors na DDL: geen ERROR-bevindingen; de nieuwe RPC valt in dezelfde bewuste
+  WARN-categorie "SECURITY DEFINER uitvoerbaar door authenticated" als alle bestaande urenfuncties.
+- **Veertien codereviewrondes vonden negenenveertig echte defecten, allemaal gerepareerd** met een test die eerst
+  rood stond. Ronde 1 (zeven): kolomkoppen op voorvoegsel matchen ("Aantal dagen" won het urentotaal, een
+  1 werd een uur); een als tijd opgemaakte cel die als datum werd gelezen waardoor een heel lijstblad stil
+  verdween; een tijd-nul zonder reden die de hele uitlezing liet weigeren; dubbele dagen die de server
+  weigerde en in het scherm niet los te vinken waren; een opmerkingenkolom die de hele regel liet
+  vervallen; een negatief getal dat een reden werd; en de ontbrekende client-side bovengrens van
+  vijfhonderd. Ronde 2 (vijf): een periode-banner boven de tabel die als dagkop werd genomen (dinsdag
+  verdween, woensdag landde op zondag); een tijdwaarde boven 24 uur die modulo 24 werd afgekapt (40:00 →
+  16:00); een lijstblad met een tweede datumkolom dat als kruistabel werd gelezen; elke ongenoemde
+  getallenkolom die een uurindeling werd (een uurloon van 15,5 werd 930 minuten); en nul uren met
+  brongegevens, een combinatie die de servercontrole nooit kan afhandelen. Ronde 3 (drie): de
+  verstreken-tijdnotatie `[h]:mm` komt als kale breuk van een dag binnen en werd als decimaal gelezen
+  (12:00 → 0:30, een weektotaal van 36:00 → 1:30) — waar beide lezingen passen weigert de uitlezer nu te
+  kiezen; één nul in een broncodekolom liet de hele indeling van het blad vervallen; en een streepje in
+  een dagcel werd de letterlijke reden voor "geen uren", vooraf aangevinkt. De testhulp schrijft nu ook
+  getalnotaties, zodat het echte bestandspad — waar bevinding 1 zat — meetest. Ronde 4 (vier): een
+  eindtotaalregel onderaan een blad nam de aangeleverde broncodes weg uit álle voorstellen; een werkblad
+  met een onbekende indeling verdween zonder één woord; dezelfde broncode tweemaal werd niet gemeld
+  terwijl handmatige invoer daar wél voor waarschuwt (de uitlezer gebruikt nu letterlijk dezelfde
+  controle); en een tabel die buiten de week reikte meldde een weektotaalverschil dat het bestand niet
+  had. De vijfde bevinding uit die ronde is **bewust gedrag**: een kolom die maar een deel van de dag
+  beschrijft telt per definitie niet op tot het dagtotaal, en juist dat verschil vraagt de
+  klantspecificatie te tonen. Ronde 5 (twee): een banner waarvan de datums wél naast elkaar stonden werd
+  alsnog als dagkop genomen (maandag landde op dinsdag) — de dagenrij moet nu direct boven de medewerkers
+  staan; en één streepje of dubbelzinnig getal onder een broncodekolom liet die kolom voor het hele blad
+  vervallen, zonder melding. De derde bevinding van die ronde is dezelfde bewuste ontwerpkeuze. Ronde 6 (vijf): een
+  uurtarief dat toevallig onder het dagtotaal paste werd een broncode in de brongegevens; een blad met
+  lijstkoppen bleef "gelezen" terwijl er niets uit kwam en de kruistabel eronder geen beurt kreeg; de
+  dubbelzinnigheidsgrens schaalde mee met de weekgrens waardoor een weektotaal van 6 werd geweigerd; een
+  punt als plaatshouder werd een reden voor "geen uren"; en tijdens een lopende uitlezing kon een tweede
+  paneel op dezelfde bron worden geopend. Ronde 7 (vijf): een foutwaarde van het rekenblad (`#N/A`) werd de
+  bewering dat iemand niet had gewerkt; twee kolommen die allebei het urentotaal claimden lieten de meest
+  linkse stil winnen; een leeggelaten dag in een kruistabel verklaarde een weektotaalverschil zonder dat
+  het scherm dat zei; boven vijfhonderd regels was er geen manier om in één keer uit te vinken; en een
+  `.csv` glipt op Windows binnen als `application/vnd.ms-excel` — de bytes worden nu gecontroleerd vóór
+  opslag. Ronde 8 (één): de herkenning van foutwaarden was te nauw — `#DIV/0!` bevat een cijfer en de
+  uitlezer levert `#ERROR_#DIV/0!` — waardoor die alsnog een reden voor "geen uren" werden. Dat geval
+  wordt nu door een echt bestand mét foutcel getest, niet door de tekst rechtstreeks in te voeren. Ronde 9
+  (twee): begin-, eind- en pauzekolommen belandden als broncode in de brongegevens terwijl ze diensttijden
+  zijn; en een weektotaal dat als verstreken tijd was opgeslagen (42:00 = 1,75) werd als 1:45 gelezen en
+  meldde een verschil op een bestand dat gewoon klopte — de dagen van diezelfde regel beslissen nu welke
+  lezing de aangeleverde waarde is. Ronde 10 (twee): de knop "Uitlezen" verscheen ook bij een oud binair
+  `.xls`, dat per definitie niet uitgelezen kan worden; en tijdens één uitlezing toonden álle
+  werkmapregels "Uitlezen…". De derde bevinding van die ronde — het uitlezen gebeurt in de browser en kost
+  bij een zeer groot bestand tijd — is een bewuste keuze en staat als zodanig in het contract. Ronde 11 (vier): een `.xlsx` die de browser als
+  het legacy-mediatype aanbood werd als `.xls` bewaard en was daarmee voorgoed onleesbaar; een weektotaal
+  links van de dagkolommen verdween zonder melding; een werkblad met gaten in de rijenlijst liet de
+  uitlezer struikelen in plaats van "indeling niet herkend" te melden; en een mislukte codelading werd als
+  "dit bestand is geen werkmap" gemeld. Ronde 12 (drie): een streepje of nul in een dagcel zette de
+  weektotaalcontrole voor die hele regel uit — juist het gewone geval, dus de controle stond praktisch
+  altijd uit; bij een onzekere toewijzing toonde het scherm niet wát er in het bestand stond, terwijl dat
+  precies het bewijs is dat de beoordelaar moet wegen; en een "Aantal dagen"-kolom belandde als broncode
+  in de brongegevens. Ronde 13 (drie): een gedeelde achternaam volstond voor een (onzekere) toewijzing, dus
+  "Piet Kowalski" landde bij Jan Kowalski; een kruistabel die met een datumkolom begint las de namen als
+  uren in plaats van te blokkeren; en na het toepassen van een voorstel stond diezelfde dag bij een nieuwe
+  uitlezing weer standaard aangevinkt. Ronde 14 (drie, alle klein): een streepje in een kruistabel werd
+  alleen genoemd wanneer er een afwijkend weektotaal was; een gat in de rijenlijst bóven de kopregel liet
+  de uitlezer struikelen; en boven de vijfhonderd regels was er geen praktische weg vooruit (nu een knop
+  "Beperk tot de eerste 500"). Een intermitterende testflake is opgespoord en verholpen: de paneeltest rende
+  501 rijen om de bovengrens te toetsen, wat in jsdom soms boven de vijf seconden uitkwam. De grens is nu
+  injecteerbaar, de test klein (92 ms), en tien volledige runs op rij zijn schoon.
+- **[PR #267](https://github.com/sitejob-nl/ja-works-hub/pull/267)** staat klaar, **basis
+  `feat/urenmodule-bronpaginas`** (niet `main`). Merge #266 eerst; daarna kan #267 erachteraan.
+- **Verbonden demo-QA geslaagd** (`scripts/e2e-hours-workbook-demo.spec.ts` +
+  `scripts/playwright.hours-workbook.config.ts`, 4,8 s, `workbook-flow-passed`, 41 echte API-oproepen) op
+  de bestaande QA-week `Urenmodule QA 20260910-pages-r2` met twee medewerkers, met een in de test gebouwde
+  `.xlsx` van twee werkbladen. Bewezen: een als Excel aangeboden `.csv` geweigerd vóór opslag; werkbladaantal
+  uit het echte bestand (2); uitlezen via een ondertekende link met de gelezen regels én het overgeslagen
+  werkblad bij naam; een weektotaal dat als verstreken tijd was opgeslagen (`0,354166…`) door de dagen van
+  diezelfde regel opgelost tot 8:30 — géén onterecht verschil, en géén doorgerekende formule; de hele
+  uitlezing in één handeling als twee voorstellen vastgelegd met **nul** dagrevisies; toepassen als precies
+  één dagversie van 510 minuten met herkomst "pagina 1 · blad Week · rij 2"; een onbekende indeling die
+  blokkeert zonder halve voorstellen; en 403 voor een portaalgebruiker op zowel de innameprojectie als de
+  uitlezer-RPC. Nul JavaScript-fouten, nul serverfouten, nul writes naar `timesheets`, nul berichten, nul
+  betaalde AI-aanroepen. Dev-server op eigen poort 8089 met `PLAYWRIGHT_SKIP_WEBSERVER=1`.
+- **De run claimde precies één onaangeroerde werkdag** — na afloop geverifieerd (r2: 12 → 11). Over alle
+  QA-weken staan nog **56 onaangeroerde dagen** klaar. JA Werkt UIT, demo AAN, opnieuw geverifieerd na
+  afloop. Het geblokkeerde `QA_SUPERADMIN`-account is ongemoeid gelaten.
+- **Nog open:** PR #266 (T2) moet gemerged worden vóór deze branch; #267 heeft `feat/urenmodule-bronpaginas`
+  als basis. Merge blijft een productiedeploy en dus aan Kas.
+
 ## Bronpagina's en gecontroleerde toewijzing — 8 september 2026 (`feat/urenmodule-bronpaginas`)
 
 - Nieuwe duurzame worktree `/Users/kas/dev/ja-works-hub/.worktrees/urenmodule-bronpaginas`, branch

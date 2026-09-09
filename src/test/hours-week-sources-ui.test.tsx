@@ -138,9 +138,9 @@ describe('internal hours intake', () => {
     show();
     await screen.findByText('Er zijn nog geen bronnen bij deze week bewaard.');
     fireEvent.change(screen.getByLabelText('Urenbriefje uploaden'), {
-      target: { files: [file('uren.xlsx', 'application/vnd.ms-excel')] },
+      target: { files: [file('uren.csv', 'text/csv')] },
     });
-    expect(await screen.findByRole('alert')).toHaveTextContent('Alleen PDF, JPG en PNG');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Alleen PDF, JPG, PNG en Excel');
     expect(upload).not.toHaveBeenCalled();
     expect(rpc).not.toHaveBeenCalledWith('hours_add_week_source', expect.anything());
   });
