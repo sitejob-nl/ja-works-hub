@@ -94,3 +94,13 @@ export async function countWorkbookSheets(bytes: ArrayBuffer): Promise<number | 
   const decoding = await decodeWorkbook(bytes);
   return decoding.ok && decoding.sheets.length ? decoding.sheets.length : null;
 }
+
+/**
+ * Which deliveries the paid reader will accept. A workbook has its own
+ * deterministic reader and a legacy .xls has none at all, so neither is offered
+ * a route that costs money and could not help them.
+ */
+const READABLE_SCAN_TYPES = ['application/pdf', 'image/jpeg', 'image/png'];
+export function isReadableScan(contentType: string): boolean {
+  return READABLE_SCAN_TYPES.includes(contentType);
+}

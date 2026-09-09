@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { hoursWorkflowRpc } from '@/lib/hours-workflow-api';
+import { hoursReadScan, hoursWorkflowRpc, type HoursScanReadingResult } from '@/lib/hours-workflow-api';
 import { qk } from '@/lib/query-keys';
 import {
   HOURS_SOURCE_BUCKET, hoursSourceDigest, hoursSourcePath, hoursSourceTypeError,
@@ -144,6 +144,16 @@ export function useHoursWeekSources(organizationId: string, weekId: string | und
     onSuccess: store,
   });
 
+  /**
+   * Reading a delivered scan or photo. This is the one act in this panel that
+   * costs money, so it never happens as a side effect of uploading: an internal
+   * user asks for it, per source. Nothing is written; the reading comes back for
+   * review and only saveReading records it as proposals.
+   */
+  const readScan = useMutation({
+    mutationFn: (sourceId: string): Promise<HoursScanReadingResult> => hoursReadScan(sourceId),
+  });
+
   const confirmAssignment = useMutation({
     mutationFn: async (input: { proposalId: string; note: string | null }) => parseWeekSources(
       await hoursWorkflowRpc('hours_confirm_proposal_assignment', {
@@ -175,6 +185,15 @@ export function useHoursWeekSources(organizationId: string, weekId: string | und
     },
   });
 
+  /** Settling the doubt a reading recorded about its own values. */
+  const confirmValues = useMutation({
+    mutationFn: async (input: { proposalId: string; note: string | null }) => parseWeekSources(
+      await hoursWorkflowRpc('hours_confirm_proposal_values', {
+        p_proposal_id: input.proposalId, p_note: input.note,
+      })),
+    onSuccess: store,
+  });
+
   const revokeClientLink = useMutation({
     mutationFn: async (input: { linkId: string; note: string | null }) => parseWeekSources(
       await hoursWorkflowRpc('hours_revoke_client_week_link', {
@@ -191,7 +210,7 @@ export function useHoursWeekSources(organizationId: string, weekId: string | und
 
   return {
     ...query, upload, createProposal, discardProposal, setPage, takeOverPage, confirmAssignment,
-    readWorkbook, saveReading, issueClientLink, revokeClientLink,
+    confirmValues, readWorkbook, readScan, saveReading, issueClientLink, revokeClientLink,
   };
 }
 

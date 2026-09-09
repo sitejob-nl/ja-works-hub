@@ -26,7 +26,9 @@ const modelOutput = {
   }],
 };
 
-function ports(overrides: Partial<HoursScanPorts> = {}) {
+type MockedPorts = { [K in keyof HoursScanPorts]: ReturnType<typeof vi.fn> } & HoursScanPorts;
+
+function ports(overrides: Partial<HoursScanPorts> = {}): MockedPorts {
   return {
     authorize: vi.fn(async () => ({ userId: USER, organizationId: ORG })),
     userRpc: vi.fn(async () => ({ data: context(), error: null })),
@@ -36,7 +38,7 @@ function ports(overrides: Partial<HoursScanPorts> = {}) {
       costCents: 2, balanceCents: 4876, durationMs: 900,
     })),
     ...overrides,
-  } as HoursScanPorts & Record<string, ReturnType<typeof vi.fn>>;
+  } as unknown as MockedPorts;
 }
 
 const post = (body: unknown = { source_id: SOURCE }) =>

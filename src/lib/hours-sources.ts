@@ -18,6 +18,9 @@ const uuid = z.string().uuid();
 /** What an internal user decided about one page of one delivered file. */
 export const HOURS_PAGE_ASSIGNMENTS = ['single', 'multiple', 'unclear'] as const;
 export type HoursPageAssignment = (typeof HOURS_PAGE_ASSIGNMENTS)[number];
+/** What a reading may report as read but not certain; the database agrees. */
+export const HOURS_UNCERTAIN_FIELDS = ['total', 'shift', 'break', 'categories', 'reason'] as const;
+export type HoursUncertainField = (typeof HOURS_UNCERTAIN_FIELDS)[number];
 export const hoursSourcePageSchema = z.object({
   id: uuid, page_number: z.number().int().min(1), assignment: z.enum(HOURS_PAGE_ASSIGNMENTS),
   member_id: uuid.nullable(), candidate_name: z.string().nullable(),
@@ -31,7 +34,14 @@ export const hoursProposalSchema = z.object({
   source_input: hoursSourceInputSchema.nullable(),
   page_label: z.string().nullable(), page_number: z.number().int().min(1).nullable(),
   assignment_uncertain: z.boolean(), assignment_confirmed_at: z.string().nullable(),
-  assignment_note: z.string().nullable(), applied_revision_id: uuid.nullable(),
+  assignment_note: z.string().nullable(),
+  // What a machine reader was unsure of. Defaulted rather than required: the
+  // migration lands before the frontend, and if that order ever slips the panel
+  // must not break over one missing key.
+  uncertain_fields: z.array(z.enum(HOURS_UNCERTAIN_FIELDS)).nullable().default(null),
+  values_confirmed_at: z.string().nullable().default(null),
+  values_note: z.string().nullable().default(null),
+  applied_revision_id: uuid.nullable(),
   applied_created_revision: z.boolean().nullable(), resolution_note: z.string().nullable(),
   resolved_at: z.string().nullable(), created_at: z.string(),
 });
@@ -54,6 +64,7 @@ export const hoursClientLinkSchema = z.object({
 export const hoursWeekSourcesSchema = z.object({
   week_id: uuid, can_manage: z.boolean(),
   open_proposals: z.number().int().nonnegative(), undecided_assignments: z.number().int().nonnegative(),
+  uncertain_values: z.number().int().nonnegative().default(0),
   // Defaulted rather than required: migrations land before the frontend here,
   // but if that order ever slips the whole intake panel must not break over one
   // missing key.
@@ -82,6 +93,7 @@ export interface HoursSourceProposal {
   no_hours_reason: string | null; note: string | null;
   source_input: HoursSourceInput | null; page_label: string | null; page_number: number | null;
   assignment_uncertain: boolean; assignment_confirmed_at: string | null; assignment_note: string | null;
+  uncertain_fields: HoursUncertainField[] | null; values_confirmed_at: string | null; values_note: string | null;
   applied_revision_id: string | null; applied_created_revision: boolean | null;
   resolution_note: string | null; resolved_at: string | null; created_at: string;
 }
@@ -103,7 +115,7 @@ export interface HoursClientLink {
 }
 export interface HoursWeekSources {
   week_id: string; can_manage: boolean;
-  open_proposals: number; undecided_assignments: number;
+  open_proposals: number; undecided_assignments: number; uncertain_values: number;
   client_links: HoursClientLink[];
   sources: HoursWeekSourceFile[];
 }
@@ -163,9 +175,27 @@ export function clientWeekPath(secret: string): string {
  * resolved proposal blocks nothing, matching the server-side open-point count.
  */
 export function proposalIsBlocked(
-  proposal: Pick<HoursSourceProposal, 'status' | 'assignment_uncertain' | 'assignment_confirmed_at'>,
+  proposal: Pick<HoursSourceProposal, 'status' | 'assignment_uncertain' | 'assignment_confirmed_at'
+    | 'uncertain_fields' | 'values_confirmed_at'>,
 ): boolean {
-  return proposal.status === 'open' && proposal.assignment_uncertain && !proposal.assignment_confirmed_at;
+  if (proposal.status !== 'open') return false;
+  return (proposal.assignment_uncertain && !proposal.assignment_confirmed_at)
+    || (!!proposal.uncertain_fields?.length && !proposal.values_confirmed_at);
+}
+
+/**
+ * A reading's doubt in the words a reviewer uses about the paper, so the screen
+ * says what to go and check rather than printing a field name.
+ */
+const UNCERTAIN_FIELD_LABELS: Record<HoursUncertainField, string> = {
+  total: 'het aantal uren', shift: 'de diensttijd', break: 'de pauze',
+  categories: 'de urensoorten', reason: 'de reden',
+};
+export function describeUncertainFields(fields: HoursUncertainField[] | null | undefined): string {
+  if (!fields?.length) return '';
+  const labels = fields.map(field => UNCERTAIN_FIELD_LABELS[field]);
+  if (labels.length === 1) return labels[0];
+  return `${labels.slice(0, -1).join(', ')} en ${labels[labels.length - 1]}`;
 }
 
 /** How a page decision reads on screen, in the language of the delivery. */

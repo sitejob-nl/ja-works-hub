@@ -5409,6 +5409,10 @@ export type Database = {
           source_id: string | null
           source_input: Json | null
           status: string
+          uncertain_fields: string[] | null
+          values_confirmed_at: string | null
+          values_confirmed_by: string | null
+          values_note: string | null
           week_id: string
         }
         Insert: {
@@ -5435,6 +5439,10 @@ export type Database = {
           source_id?: string | null
           source_input?: Json | null
           status?: string
+          uncertain_fields?: string[] | null
+          values_confirmed_at?: string | null
+          values_confirmed_by?: string | null
+          values_note?: string | null
           week_id: string
         }
         Update: {
@@ -5461,6 +5469,10 @@ export type Database = {
           source_id?: string | null
           source_input?: Json | null
           status?: string
+          uncertain_fields?: string[] | null
+          values_confirmed_at?: string | null
+          values_confirmed_by?: string | null
+          values_note?: string | null
           week_id?: string
         }
         Relationships: [
@@ -5519,6 +5531,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "hours_week_sources"
             referencedColumns: ["id", "week_id", "organization_id"]
+          },
+          {
+            foreignKeyName: "hours_source_proposals_values_confirmed_by_fkey"
+            columns: ["values_confirmed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -12245,6 +12264,10 @@ export type Database = {
         Args: { p_entries: Json; p_token_hash: string }
         Returns: Json
       }
+      hours_client_week_stored_paths: {
+        Args: { p_token_hash: string }
+        Returns: Json
+      }
       hours_client_week_upload_path: {
         Args: {
           p_content_hash: string
@@ -12268,6 +12291,10 @@ export type Database = {
         Returns: Json
       }
       hours_confirm_proposal_assignment: {
+        Args: { p_note?: string; p_proposal_id: string }
+        Returns: Json
+      }
+      hours_confirm_proposal_values: {
         Args: { p_note?: string; p_proposal_id: string }
         Returns: Json
       }
@@ -12339,6 +12366,10 @@ export type Database = {
       }
       hours_get_matrix: { Args: { p_matrix_id: string }; Returns: Json }
       hours_get_module_access: { Args: never; Returns: Json }
+      hours_get_source_reading_context: {
+        Args: { p_source_id: string }
+        Returns: Json
+      }
       hours_get_week: { Args: { p_week_id: string }; Returns: Json }
       hours_get_week_sources: { Args: { p_week_id: string }; Returns: Json }
       hours_issue_client_week_link: {
