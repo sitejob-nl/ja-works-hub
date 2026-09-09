@@ -220,9 +220,9 @@ vision-pad van de CV-analyse al maakt. De namenlijst van de week reist niet mee.
   voorstellentabel van een projectfunctie afhangt (die wordt bij elke UPDATE opnieuw beoordeeld, en
   deze tabel kent geen verwijderpad — een later versmalde lijst zou bestaande voorstellen voorgoed
   vastzetten).
-- **Applicatietests**: `hours-scan.test.ts` (74), `hours-scan-handler.test.ts` (31),
-  `hours-scan-gemini.test.ts` (16), `hours-scan-panel.test.tsx` (16) plus uitgebreide projectie- en
-  werkmaptests. Totaal 1.784 groen, met lint (0 errors), typecheck en productiebuild.
+- **Applicatietests**: `hours-scan.test.ts` (70), `hours-scan-handler.test.ts` (32),
+  `hours-scan-gemini.test.ts` (16), `hours-scan-panel.test.tsx` (16),
+  `hours-scan-reading-shape.test.ts` (3) plus uitgebreide projectie- en werkmaptests. Totaal 1.792 groen, met lint (0 errors), typecheck en productiebuild.
 - **Verbonden demo-QA** (`scripts/e2e-hours-scan-demo.spec.ts`, hergebruikt de fixture van
   `scripts/prepare-hours-pages-demo.mjs`): echte interne en medewerkerlogin tegen de live API, met
   een in de test gerenderde foto van een urenbriefje. Bewezen: een werkmap krijgt geen betaalde
@@ -233,8 +233,9 @@ vision-pad van de CV-analyse al maakt. De namenlijst van de week reist niet mee.
   context als de uitlezer. **De run claimt bewust precies één onaangeroerde werkdag** — na afloop
   geverifieerd. Nul JavaScript-fouten, nul serverfouten, nul writes naar `timesheets`, nul
   berichten.
-- **Kosten van de hele QA**: negen echte aanroepen over alle rondes, samen **€ 0,09** afgeschreven;
-  het saldo van de demo-organisatie ging van € 48,78 naar € 48,69 en er bleef geen reservering open.
+- **Kosten van de hele QA**: tien echte aanroepen over alle vier de reviewrondes, samen **€ 0,10**
+  afgeschreven op de demo-organisatie; het saldo ging van € 48,78 naar € 48,68 en er bleef geen
+  reservering open. Het maandbudget van JA Werkt is niet aangeraakt: nul aanroepen.
   Eén A4-briefje kost ongeveer één cent (circa 1.500 invoer- en 275 uitvoertokens). De eerste twee
   aanroepen zijn de proeven die de read-only-transactie en het ontbrekende totaalveld aan het licht
   brachten; de latere zijn de herhalingen na elke reparatieronde.

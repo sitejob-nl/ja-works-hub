@@ -27,12 +27,13 @@ projectsamenvatting.
   stond; een databasetest bewaakt de eerste regel nu voor elke stabiele urenfunctie tegelijk.
 - **Kosten:** twee echte aanroepen in de hele QA, samen € 0,02 op de demo-organisatie (48,78 → 48,76),
   geen openstaande reservering. Eén A4-briefje kost ongeveer één cent.
-- **Twee codereviewrondes** (twaalf resp. tien reviewers) leverden samen circa vijfenveertig echte
-  bevindingen op, elk gerepareerd met een test die eerst rood stond. De zwaarste: een pauze na
+- **Vier codereviewrondes** leverden samen ruim vijftig echte bevindingen op, elk gerepareerd met een test die eerst rood stond. De zwaarste: een pauze na
   middernacht landde op de verkeerde dag en maakte de dag voorgoed onclassificeerbaar; structurele
   tegenspraken reisden niet mee naar het voorstel en waren dus blind toepasbaar; een enkele slecht
   ingevulde regel liet een hele betaalde uitlezing vallen; en een mislukking ná afrekening kwam terug
-  als kale 503 met een uitnodiging om nóg een keer te betalen.
+  als kale 503 met een uitnodiging om nóg een keer te betalen. Ronde drie en vier vonden nog een kaal
+  pauzegetal dat als uren werd gelezen, een claim die een bron voorgoed op slot kon zetten, en een
+  uitlezing die ongevalideerd van de server werd overgenomen.
 - **Nieuw in ronde twee:** `hours_source_readings` (migratie `20260914090000`) claimt elke uitlezing
   vóór de betaling. Dat is tegelijk de single-flight (één lopende uitlezing per bron, als
   databasefeit) en het AVG-spoor: welk document, welke week, wie, wat het kostte — geen inhoud.

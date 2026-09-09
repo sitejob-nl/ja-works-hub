@@ -261,8 +261,14 @@ export function createHoursScanHandler(ports: HoursScanPorts, corsHeaders: Recor
       // catch, which would invite a second charge.
       try {
         const reading: ScanReading = interpretScanReading(outcome.output, context.scan);
-        await finish('succeeded', { p_request_id: outcome.requestId, p_cost_cents: outcome.costCents,
-          p_lines: reading.ok ? reading.candidates.length : 0 });
+        // A refused reading is not a succeeded one. Recording both as success
+        // would leave the log unable to tell an unusable answer from a correct
+        // reading of a sheet with nothing on it for this week.
+        await finish(reading.ok ? 'succeeded' : 'failed', {
+          p_request_id: outcome.requestId, p_cost_cents: outcome.costCents,
+          p_lines: reading.ok ? reading.candidates.length : 0,
+          p_error_code: reading.ok ? null : 'scan_reading_unusable',
+        });
         return json({ reading, model: outcome.model, request_id: outcome.requestId,
           cost_cents: outcome.costCents, balance_cents: outcome.balanceCents, duration_ms: outcome.durationMs });
       } catch {

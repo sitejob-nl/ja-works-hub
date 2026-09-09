@@ -195,6 +195,16 @@ describe('scan reading endpoint — one paid call, and what it costs', () => {
     expect((await response.json()).code).toBe('ai_provider_outcome_unknown');
   });
 
+  it('records a blocked reading as failed, so the log can tell it from an empty sheet', async () => {
+    const doubles = ports({
+      read: vi.fn(async () => ({ output: { entries: 'nonsense' }, model: 'gemini-3.5-flash',
+        requestId: 'req-4', costCents: 2, balanceCents: 4874, durationMs: 700 })),
+    });
+    await createHoursScanHandler(doubles)(post());
+    const finish = doubles.serviceRpc.mock.calls.find(call => call[0] === 'hours_finish_source_reading');
+    expect(finish?.[1]).toMatchObject({ p_status: 'failed', p_error_code: 'scan_reading_unusable' });
+  });
+
   it('reports an unusable model answer as a blocked reading, with the cost that was still incurred', async () => {
     const doubles = ports({
       read: vi.fn(async () => ({

@@ -116,6 +116,8 @@ interface BreakReading {
   /** Minutes, when the paper wrote a plain duration instead of a window. */
   durationMinutes: number | null;
   unreadable: boolean;
+  /** A bare number small enough to be either minutes or hours. */
+  ambiguous?: { minutes: number; hours: number };
 }
 
 /**
@@ -143,11 +145,22 @@ function readBreak(value: string): BreakReading {
   // fifteen hours, and "15" or "45" is how it is written in this trade. It is
   // read before the duration parser, which would take the same digits for
   // decimal hours. A written duration — "0,5", "1:00" — keeps meaning hours.
-  const bare = /^(\d{1,3})\s*(?:min(?:uten|uut)?\.?)?$/i.exec(value.trim());
+  const written = /^(\d{1,3})\s*min(?:uten|uut)?\.?$/i.exec(value.trim());
+  if (written && Number(written[1]) <= 1440) {
+    return { windows: null, durationMinutes: Number(written[1]), unreadable: false };
+  }
+  const bare = /^(\d{1,3})$/.exec(value.trim());
   if (bare && Number(bare[1]) <= 1440) {
-    return Number(bare[1]) === 0
-      ? { windows: [], durationMinutes: 0, unreadable: false }
-      : { windows: null, durationMinutes: Number(bare[1]), unreadable: false };
+    const number = Number(bare[1]);
+    if (number === 0) return { windows: [], durationMinutes: 0, unreadable: false };
+    // Below ten a bare number is either that many minutes or that many hours,
+    // and a timesheet writes both. Nothing in the cell says which, so the
+    // reader reports both rather than picking one.
+    if (number < 10) {
+      return { windows: null, durationMinutes: null, unreadable: false,
+        ambiguous: { minutes: number, hours: number * 60 } };
+    }
+    return { windows: null, durationMinutes: number, unreadable: false };
   }
   const duration = parseHoursToMinutes(value.trim(), { maxMinutes: 1440 });
   // Zero is "there was no break", not a duration whose place is unknown, so the
@@ -285,7 +298,6 @@ export function interpretScanReading(raw: unknown, context: ScanContext): ScanRe
 
   const candidates: ScanCandidate[] = [];
   const skipped: ScanSkippedLine[] = [];
-  const pagesRead = new Set<number>();
   const seenDays = new Map<string, string>();
   // The week does not change while a reading runs, so it is taken apart once
   // rather than per line: a large crew otherwise costs a linear scan of every
@@ -336,10 +348,15 @@ export function interpretScanReading(raw: unknown, context: ScanContext): ScanRe
     const earlier = seenDays.get(day.id);
     if (earlier) {
       const already = candidates.findIndex(candidate => candidate.dayId === day.id);
-      if (already >= 0) candidates.splice(already, 1);
-      const reason = `Deze bron beschrijft dezelfde werkdag van ${match.member.name} tweemaal `
+      const reason = `Deze bron beschrijft dezelfde werkdag van ${match.member.name} meer dan eens `
         + `(${earlier} en ${where}). Kies zelf welke regel klopt en leg die handmatig vast.`;
-      skipped.push({ pageNumber: line.pageNumber, text: `${line.employeeText} · ${earlier}`, reason });
+      // The first line is only set aside the first time; a third line for the
+      // same day names its own place and nothing else.
+      if (already >= 0) {
+        const dropped = candidates.splice(already, 1)[0];
+        skipped.push({ pageNumber: dropped.pageNumber,
+          text: `${dropped.employeeText} · ${earlier}`, reason });
+      }
       skip(reason);
       continue;
     }
@@ -360,6 +377,13 @@ export function interpretScanReading(raw: unknown, context: ScanContext): ScanRe
       uncertain.add('shift');
     }
     const breakReading = line.breakText ? readBreak(line.breakText) : null;
+    if (breakReading?.ambiguous) {
+      uncertain.add('break');
+      notices.push({ code: 'AMBIGUOUS_SCAN_BREAK',
+        message: `De pauze is gelezen als “${line.breakText}” en kan `
+          + `${formatMinutes(breakReading.ambiguous.minutes)} of ${formatMinutes(breakReading.ambiguous.hours)} betekenen; `
+          + 'de bron zegt niet welke van de twee.' });
+    }
     if (breakReading?.unreadable) {
       uncertain.add('break');
       notices.push({ code: 'UNREADABLE_SCAN_BREAK',
@@ -369,7 +393,8 @@ export function interpretScanReading(raw: unknown, context: ScanContext): ScanRe
     // A break the model reported doubt about but returned empty is an
     // unreadable break, not the absence of one; the shift may not go on to
     // claim there was none.
-    const breakUnknown = !!breakReading?.unreadable || (!line.breakText && line.uncertain.has('break'));
+    const breakUnknown = !!breakReading?.unreadable || !!breakReading?.ambiguous
+      || (!line.breakText && line.uncertain.has('break'));
     const equalTimes = !!(start && end && clockMinutes(end) === clockMinutes(start));
     if (equalTimes) {
       notices.push({ code: 'INCOMPLETE_SCAN_SHIFT',
@@ -533,8 +558,10 @@ export function interpretScanReading(raw: unknown, context: ScanContext): ScanRe
       readText: { total: line.totalText, start: line.startText, end: line.endText, break: line.breakText },
       notices,
     });
-    pagesRead.add(line.pageNumber);
   }
 
-  return { ok: true, candidates, skipped, pagesRead: [...pagesRead].sort((a, b) => a - b), pagesUnread };
+  // Derived from what survived, so a page whose only line was set aside is not
+  // claimed as read.
+  const pagesRead = [...new Set(candidates.map(candidate => candidate.pageNumber))].sort((a, b) => a - b);
+  return { ok: true, candidates, skipped, pagesRead, pagesUnread };
 }

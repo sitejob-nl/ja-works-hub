@@ -537,7 +537,7 @@ describe('scan reading — what the second review round found', () => {
     ]));
     expect(reading.candidates).toHaveLength(1);
     expect(reading.candidates[0].workDate).toBe('2026-09-08');
-    expect(reading.skipped.some(line => line.reason.includes('tweemaal'))).toBe(true);
+    expect(reading.skipped.some(line => line.reason.includes('meer dan eens'))).toBe(true);
   });
 
   it('skips a line without a usable page instead of refusing the whole reading', () => {
@@ -574,5 +574,47 @@ describe('scan reading — what the third review round found', () => {
     expect(reading.candidates).toHaveLength(0);
     expect(reading.skipped[0].reason).not.toContain('null');
     expect(reading.skipped[0].reason).toContain('8:00');
+  });
+});
+
+describe('scan reading — what the fourth review round found', () => {
+  it('does not choose between one hour and one minute for a bare small break', () => {
+    const reading = ok(read([entry({
+      total_text: '8:00', start_text: '07:00', end_text: '16:00', break_text: '1',
+    })]));
+    const candidate = reading.candidates[0];
+    expect(candidate.uncertainFields).toContain('break');
+    expect(candidate.notices.some(notice => notice.code === 'AMBIGUOUS_SCAN_BREAK')).toBe(true);
+  });
+
+  it('still reads an ordinary break in minutes without asking', () => {
+    for (const [text, minutes] of [['15', 525], ['30', 510], ['45', 495]] as const) {
+      const reading = ok(read([entry({
+        total_text: null, start_text: '07:00', end_text: '16:00', break_text: text,
+      })]));
+      expect(reading.candidates[0].minutes, text).toBe(minutes);
+      // The shift itself cannot be stored — a duration says how long, not when —
+      // and that is named, but nothing about the break is in doubt.
+      expect(reading.candidates[0].uncertainFields, text).toEqual(['shift']);
+    }
+  });
+
+  it('names a day read three times exactly once per place', () => {
+    const reading = ok(read([
+      entry({ location_text: 'rij 1' }), entry({ location_text: 'rij 2' }), entry({ location_text: 'rij 3' }),
+    ]));
+    expect(reading.candidates).toHaveLength(0);
+    const places = reading.skipped.map(line => line.text);
+    expect(new Set(places).size, 'each place is named once').toBe(places.length);
+  });
+
+  it('claims only the pages that a proposal actually came from', () => {
+    const reading = ok(read([
+      entry({ page_number: 1, location_text: 'rij 1' }),
+      entry({ page_number: 1, location_text: 'rij 2' }),
+      entry({ page_number: 2, work_date: '2026-09-08', location_text: 'rij 5' }),
+    ], { pageCount: 2 }));
+    expect(reading.candidates).toHaveLength(1);
+    expect(reading.pagesRead).toEqual([2]);
   });
 });
