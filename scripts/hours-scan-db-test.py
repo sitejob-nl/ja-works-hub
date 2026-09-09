@@ -152,6 +152,44 @@ class ScanTests(client.ClientWeekTests):
         self.reject("hours_get_source_reading_context", code="42501", user=self.worker,
                     p_source_id=source["source_id"])
 
+    def test_every_stable_hours_rpc_survives_a_read_only_transaction(self):
+        """PostgREST runs a STABLE function in a read-only transaction.
+
+        A function that takes the write gate locks a row, which a read-only
+        transaction refuses with 25006 — over HTTP that surfaces as a bare 405
+        and the whole route is dead. The unit tests cannot see this: they call
+        the function directly. So the rule is checked here, for every public
+        hours function at once, rather than for the one that happened to break.
+        """
+        functions = json.loads(sql("""SELECT jsonb_agg(jsonb_build_object(
+          'name', p.proname, 'args', pg_get_function_identity_arguments(p.oid)))
+          FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+          WHERE n.nspname='public' AND p.proname LIKE 'hours_%' AND p.provolatile IN ('s','i');"""))
+        self.assertTrue(functions, "there should be stable hours functions to check")
+        week = self.open_week()
+        source, _ = self.scan_source()
+        known = {"p_week_id": week["id"], "p_source_id": source["source_id"],
+                 "p_day_id": self.day_of(week)["id"], "p_company_id": self.company,
+                 "p_proposal_id": "00000000-0000-4000-8000-000000000000",
+                 "p_matrix_id": "00000000-0000-4000-8000-000000000000",
+                 "p_version_id": "00000000-0000-4000-8000-000000000000",
+                 "p_expected_revision_id": "00000000-0000-4000-8000-000000000000",
+                 "p_week_start": "2026-09-07", "p_link_id": "00000000-0000-4000-8000-000000000000"}
+        for function in functions:
+            arguments = [part.strip().split(" ")[0] for part in function["args"].split(",") if part.strip()]
+            call = ", ".join(f"{name} => {literal(known.get(name))}" for name in arguments)
+            statement = (f"BEGIN; SET TRANSACTION READ ONLY; "
+                         f"SELECT public.{function['name']}({call}); COMMIT;")
+            # Succeeding and refusing are both fine here — a made-up identifier
+            # is meant to be refused. Only 25006 says the transaction itself was
+            # the problem, and that is the failure this guards against.
+            try:
+                outcome = sql(statement, role="authenticated", user=self.admin)
+            except qa.SQLFailure as refusal:
+                outcome = str(refusal)
+            self.assertNotIn("25006", outcome,
+                             f"{function['name']} cannot run in the read-only transaction PostgREST uses")
+
     # --- recorded doubt -----------------------------------------------------
 
     def test_a_reading_may_record_the_fields_it_was_unsure_of(self):

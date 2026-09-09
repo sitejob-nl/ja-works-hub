@@ -68,7 +68,12 @@ const SCAN_RESPONSE_SCHEMA = {
             items: { type: 'string', enum: UNCERTAIN_ENUM },
           },
         },
-        required: ['employee_text', 'work_date', 'page_number', 'location_text'],
+        // Every field is required on purpose. Structured output fills what it
+        // must fill and skips the rest, so an optional total_text comes back
+        // missing and a whole delivery reads as "no hours anywhere". An empty
+        // string is how the model says nothing is written there.
+        required: ['employee_text', 'work_date', 'page_number', 'location_text', 'total_text',
+          'no_hours_text', 'start_text', 'end_text', 'break_text', 'categories', 'uncertain'],
         propertyOrdering: ['employee_text', 'work_date', 'page_number', 'location_text', 'total_text',
           'no_hours_text', 'start_text', 'end_text', 'break_text', 'categories', 'uncertain'],
       },
@@ -84,7 +89,7 @@ const SCAN_RESPONSE_SCHEMA = {
       },
     },
   },
-  required: ['entries'],
+  required: ['entries', 'unreadable'],
   propertyOrdering: ['entries', 'unreadable'],
 };
 
@@ -94,7 +99,9 @@ function systemPrompt(weekDates: string[], pageCount: number | null): string {
     '',
     'Je overtreedt je opdracht zodra je iets invult wat er niet staat. Neem elke waarde LETTERLIJK over zoals',
     'zij is opgeschreven — ook een doorhaling, een correctie of een handgeschreven pauze. Reken niets om, tel',
-    'niets op, rond niets af en verbeter geen namen. Staat er niets, laat het veld dan leeg.',
+    'niets op, rond niets af en verbeter geen namen. Staat er niets, geef dan een lege tekst ("") terug —',
+    'elk veld hoort in je antwoord te staan, ook als er niets is ingevuld. Vul het dagtotaal in zoals het er',
+    'staat; staat er geen totaal maar wel een begin- en eindtijd, laat het totaal dan leeg.',
     '',
     'Kun je iets niet met zekerheid lezen, zet dat onderdeel dan in "uncertain". Dat is geen falen maar precies',
     'wat er van je gevraagd wordt: een onzeker gelezen waarde wordt door een mens gecontroleerd, een verzonnen',

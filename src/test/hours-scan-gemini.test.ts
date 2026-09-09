@@ -33,6 +33,19 @@ describe('scan request', () => {
     expect(body.stream).toBeUndefined();
   });
 
+  it('demands every field, because an optional one comes back missing', () => {
+    // Structured output fills what it is required to fill. Leaving total_text
+    // optional cost a real reading: the model returned names and dates and no
+    // hours at all, and every line was honestly skipped. An empty string is the
+    // way to say "nothing is written here"; a missing key is not.
+    const schema = build().generationConfig.responseSchema as Record<string, any>;
+    const entry = schema.properties.entries.items;
+    expect(entry.required.sort()).toEqual(Object.keys(entry.properties).sort());
+    const unreadable = schema.properties.unreadable.items;
+    expect(unreadable.required.sort()).toEqual(Object.keys(unreadable.properties).sort());
+    expect(schema.required).toEqual(['entries', 'unreadable']);
+  });
+
   it('asks only for a shape the reader knows how to judge', () => {
     const schema = build().generationConfig.responseSchema as Record<string, any>;
     const entry = schema.properties.entries.items.properties;

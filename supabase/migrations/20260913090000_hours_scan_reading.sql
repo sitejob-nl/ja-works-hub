@@ -184,8 +184,13 @@ revoke all on function private.hours_week_sources_projection(uuid, uuid) from pu
 -- only a source id; the storage path, the media type and the week come from
 -- here, so no caller can point the reader at a file of its own choosing.
 -- Authorisation is the ordinary write gate: reading leads to proposals.
+-- Volatile, like the classification context beside it. This function takes the
+-- write gate, and that gate locks a row; PostgREST runs a STABLE function in a
+-- read-only transaction, where a lock fails with 25006 and the whole route dies
+-- behind a bare 405. Volatility is a promise about transactions here, not about
+-- what this function writes — it writes nothing.
 create or replace function public.hours_get_source_reading_context(p_source_id uuid)
-returns jsonb language plpgsql stable security definer set search_path = '' as $$
+returns jsonb language plpgsql volatile security definer set search_path = '' as $$
 declare v_org uuid := private.hours_require_internal(true); v_source public.hours_week_sources%rowtype; begin
   select * into v_source from public.hours_week_sources
     where id = p_source_id and organization_id = v_org;
