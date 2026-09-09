@@ -124,6 +124,13 @@ describe('handing out a personal client week link', () => {
     expect(screen.queryByText(/urenweek\//)).toBeNull();
   });
 
+  it('says which address the link will carry when there is no verified domain', async () => {
+    rpc.mockResolvedValue(ok(projection()));
+    show();
+    fireEvent.click(await screen.findByRole('button', { name: 'Klantlink maken' }));
+    expect(screen.getByText(/uren\.acme\.nl/), 'the host is named before the link is made').toBeTruthy();
+  });
+
   it('waits for the organization domain instead of handing out a fallback host', async () => {
     // The secret is shown once, so a link built on the fallback host cannot be
     // regenerated: recovery would mean revoking and issuing a new one.

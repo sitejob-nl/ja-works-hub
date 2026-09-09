@@ -50,6 +50,9 @@ const MAX_PER_IP_PER_HOUR = 120;
 const MAX_GLOBAL_PER_HOUR = 20_000;
 /** How long an uploaded object may sit around before it has become a source. */
 const ORPHAN_GRACE_MS = 60 * 60 * 1000;
+/** Bounded so one sweep stays fast; a client can upload far fewer per hour. */
+const SWEEP_PAGE_SIZE = 100;
+const SWEEP_PAGES = 5;
 const ACTIONS = ['get', 'save', 'report', 'upload', 'register'] as const;
 type Action = typeof ACTIONS[number];
 
@@ -110,16 +113,29 @@ async function sweepUnregistered(service: Storage, call: Call): Promise<void> {
     const { prefix, paths } = (data ?? {}) as { prefix?: string; paths?: string[] };
     if (!prefix) return;
     const registered = new Set(paths ?? []);
-    const listing = await service.storage.from('hours-sources').list(prefix, { limit: 100 });
-    if (listing.error || !listing.data) return;
+    // Ordered oldest first, and paged. The client picks the object *name* (it is
+    // the digest it announced), so a listing on name would let it park files
+    // under a high name that the window never reaches while fresh low names keep
+    // it busy. Age is the one ordering it cannot choose.
     const cutoff = Date.now() - ORPHAN_GRACE_MS;
-    const stale = listing.data
-      .filter(entry => !registered.has(`${prefix}/${entry.name}`))
-      .filter(entry => {
+    const stale: string[] = [];
+    for (let page = 0; page < SWEEP_PAGES; page += 1) {
+      const listing = await service.storage.from('hours-sources').list(prefix, {
+        limit: SWEEP_PAGE_SIZE, offset: page * SWEEP_PAGE_SIZE,
+        sortBy: { column: 'created_at', order: 'asc' },
+      });
+      if (listing.error || !listing.data?.length) break;
+      let reachedFresh = false;
+      for (const entry of listing.data) {
         const created = Date.parse(entry.created_at ?? '');
-        return Number.isFinite(created) && created < cutoff;
-      })
-      .map(entry => `${prefix}/${entry.name}`);
+        if (!Number.isFinite(created)) continue;
+        // Oldest first, so the first fresh object ends the sweep.
+        if (created >= cutoff) { reachedFresh = true; break; }
+        const path = `${prefix}/${entry.name}`;
+        if (!registered.has(path)) stale.push(path);
+      }
+      if (reachedFresh || listing.data.length < SWEEP_PAGE_SIZE) break;
+    }
     if (!stale.length) return;
     const removal = await service.storage.from('hours-sources').remove(stale);
     if (removal.error) {

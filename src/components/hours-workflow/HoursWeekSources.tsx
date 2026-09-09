@@ -505,7 +505,10 @@ function ClientLinksSection({ organizationId, links, canManage, targets, onIssue
   // The organization's own verified domain, exactly as every other public token
   // link uses. The secret is shown once, so a link issued from a preview host
   // would be unrecoverable.
-  const { buildUrl, isLoading: domainLoading } = usePublicUrlForOrg(organizationId);
+  const { buildUrl, isLoading: domainLoading, primaryDomain } = usePublicUrlForOrg(organizationId);
+  // The address is shown once, so name it before the link is made: on a host
+  // that is not the organization's own, the link is unusable and unrecoverable.
+  const linkHost = domainLoading ? null : new URL(buildUrl(clientWeekPath('x'))).host;
 
   async function issue() {
     const trimmed = label.trim();
@@ -555,6 +558,10 @@ function ClientLinksSection({ organizationId, links, canManage, targets, onIssue
     {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
 
     {creating && <div className="space-y-3 rounded-md bg-muted/40 p-3">
+      {linkHost && <p className="text-xs text-muted-foreground">
+        De link krijgt het adres <span data-no-translate="true">{linkHost}</span>
+        {primaryDomain ? '.' : '. Er is nog geen geverifieerd eigen domein ingesteld; controleer of dit adres klopt voordat u de link verstuurt.'}
+      </p>}
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1">
           <Label htmlFor="client-link-label">Voor wie is deze link?</Label>

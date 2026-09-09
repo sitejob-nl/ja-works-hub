@@ -70,7 +70,13 @@ export function showRefusal(state: PageState, isError: boolean): ClientLinkStatu
   return isError ? 'unreachable' : null;
 }
 
-/** What the server sent back, without trusting that a week came with it. */
+/**
+ * What the server sent back, without trusting that a week came with it.
+ *
+ * A payload this page cannot read is "unavailable": retrying would meet exactly
+ * the same answer, and the parser's own words — field paths and expected types —
+ * are for a developer's log, never for a visitor's screen.
+ */
 function readResponse(data: unknown): PageState {
   const body = (data ?? {}) as { status?: unknown; week?: unknown };
   if (body.status !== 'ok' || !body.week) {
@@ -78,7 +84,12 @@ function readResponse(data: unknown): PageState {
       ? body.status as ClientLinkStatus : 'unavailable';
     return { kind: 'refused', status };
   }
-  return { kind: 'open', week: parseClientWeek(body.week) };
+  try {
+    return { kind: 'open', week: parseClientWeek(body.week) };
+  } catch (failure) {
+    console.error('hours-client-week: onleesbare weekprojectie', failure);
+    return { kind: 'refused', status: 'unavailable' };
+  }
 }
 
 function draftsFor(week: ClientWeek): Record<string, DayDraft> {

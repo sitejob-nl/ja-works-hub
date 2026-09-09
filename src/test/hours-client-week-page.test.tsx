@@ -76,6 +76,17 @@ describe('opening a personal week link', () => {
     }
   });
 
+  it('never prints a parsing failure to the visitor', async () => {
+    invoke.mockResolvedValue(ok({ status: 'ok', week: { week: 'geen object' } }));
+    show();
+    expect(await screen.findByText(
+      'Deze urenweek is op dit moment niet beschikbaar. Neem contact op met uw contactpersoon.')).toBeTruthy();
+    expect(document.body.textContent, 'the parser\u2019s own words are for the log, not the screen')
+      .not.toMatch(/expected|invalid_type|zod/i);
+    expect(screen.queryByRole('button', { name: 'Opnieuw proberen' }),
+      'a retry could never succeed against a payload this page cannot read').toBeNull();
+  });
+
   it('never renders a week that the server refused', async () => {
     invoke.mockResolvedValue(ok({ status: 'expired', week: payload() }));
     show();
