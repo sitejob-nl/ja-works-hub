@@ -8,6 +8,7 @@ import {
   MAX_CLIENT_ENTRIES,
 } from '../../supabase/functions/_shared/hours-client-entries.ts';
 import { describeSourceReferences, sourceOriginText } from '@/lib/hours-sources';
+import { toHoursWeekView } from '@/lib/hours-workflow';
 import { parseClientWeek } from '@/lib/hours-client-week';
 
 const DAY = '11111111-1111-4111-8111-111111111111';
@@ -179,6 +180,26 @@ describe('an upload that could not be signed', () => {
   });
 });
 
+const weekWithOrigin = (references: unknown[]) => ({
+  id: '55555555-5555-4555-8555-555555555555', company_id: '66666666-6666-4666-8666-666666666666',
+  company_name: 'Acme BV', week_start: '2026-09-07',
+  submission_deadline_at: null, confirmation_deadline_at: null, settings_snapshot: {},
+  workflow_enabled: true, can_manage: true, can_confirm: false, release_available: false as const,
+  members: [{
+    id: '44444444-4444-4444-8444-444444444444', placement_id: '77777777-7777-4777-8777-777777777777',
+    candidate_id: '88888888-8888-4888-8888-888888888888', candidate_name: 'Anna Nowak',
+    start_date: '2026-09-07', end_date: '2026-09-13',
+    days: [{
+      id: DAY, work_date: '2026-09-07',
+      current_revision: {
+        id: OTHER, revision_number: 1, minutes: 510, no_hours_reason: null, note: null,
+        source_references: references, created_at: '2026-09-09T08:00:00Z',
+      },
+      classification: null, confirmation: null, review: null,
+    }],
+  }],
+});
+
 describe('the origin an employee sees', () => {
   it('says the client delivered these hours', () => {
     const [origin] = describeSourceReferences([{ kind: 'client', label: 'Acme BV', reference: null }]);
@@ -191,6 +212,20 @@ describe('the origin an employee sees', () => {
     expect(sourceOriginText([{ kind: 'manual', label: 'Handmatige invoer' }])).toBe('Handmatige invoer');
     expect(sourceOriginText([{ kind: 'upload', label: 'week37.pdf', reference: 'pagina 2' }]))
       .toBe('week37.pdf · pagina 2');
+  });
+
+  it('marks a client delivery on the screens that show a day version', () => {
+    // Both the office grid and the employee portal read `sourceLabel` from the
+    // week view. Without the marker an employee reads "Bron: Acme BV" and has
+    // no way to tell who put those hours there.
+    const view = toHoursWeekView(weekWithOrigin([{ kind: 'client', label: 'Acme BV', reference: null }]));
+    expect(view.employees[0].days[0].revision?.sourceLabel).toBe('Aangeleverd door Acme BV');
+    const upload = toHoursWeekView(weekWithOrigin([{ kind: 'upload', label: 'week37.pdf', reference: 'pagina 2' }]));
+    expect(upload.employees[0].days[0].revision?.sourceLabel, 'the released wording is untouched')
+      .toBe('week37.pdf');
+    expect(upload.employees[0].days[0].revision?.sourceReference).toBe('pagina 2');
+    const manual = toHoursWeekView(weekWithOrigin([{ kind: 'manual', label: 'Handmatige invoer' }]));
+    expect(manual.employees[0].days[0].revision?.sourceLabel).toBe('Handmatige invoer');
   });
 });
 

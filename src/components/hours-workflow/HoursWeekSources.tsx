@@ -12,7 +12,7 @@ import ErrorState from '@/components/shared/ErrorState';
 import { toFriendlyError } from '@/lib/errorMessages';
 import { hoursWorkflowError } from '@/lib/hours-workflow';
 import {
-  clientLinkState, clientWeekUrl, describeClientLinkProgress, describePageCount, formatSourceSize,
+  clientLinkState, clientWeekPath, describeClientLinkProgress, describePageCount, formatSourceSize,
   HOURS_CLIENT_REPORT_LABELS, HOURS_PAGE_ASSIGNMENTS, HOURS_PAGE_ASSIGNMENT_LABELS,
   HOURS_SOURCE_ACCEPT, proposalChanges, proposalIsBlocked,
   type HoursClientLink, type HoursPageAssignment, type HoursSourcePage, type HoursSourceProposal,
@@ -22,6 +22,7 @@ import type { HoursPageEntry } from '@/lib/hours-workflow-api';
 import { isReadableWorkbook } from '@/lib/hours-workbook-file';
 import type { WorkbookContext, WorkbookReading } from '@/lib/hours-workbook';
 import { hoursSourceViewUrl, useApplyHoursProposal, useHoursWeekSources } from '@/hooks/useHoursWeekSources';
+import { usePublicUrlForOrg } from '@/hooks/usePublicUrl';
 import { HoursWorkbookReading } from './HoursWorkbookReading';
 import { parseHoursToMinutes } from '../../../supabase/functions/_shared/hours-calculation';
 import { compileHoursSourceInput, sourceControlIssues, sourceDraftFromInput, type HoursSourceInput } from './hours-day-source';
@@ -476,8 +477,9 @@ function ProposalRow({ proposal, target, canManage, onApply, onDiscard, onConfir
  * secret, so a lost link is replaced rather than looked up — the form says so
  * plainly rather than leaving the reader to find out later.
  */
-function ClientLinksSection({ links, canManage, targets, onIssue, onRevoke, onApply, onDiscard,
-  onConfirmAssignment, onReload }: {
+function ClientLinksSection({ organizationId, links, canManage, targets, onIssue, onRevoke, onApply,
+  onDiscard, onConfirmAssignment, onReload }: {
+  organizationId: string;
   links: HoursClientLink[];
   canManage: boolean;
   targets: Map<string, DayTarget>;
@@ -496,6 +498,10 @@ function ClientLinksSection({ links, canManage, targets, onIssue, onRevoke, onAp
   const [busy, setBusy] = useState(false);
   const [revoking, setRevoking] = useState<string | null>(null);
   const [revokeNote, setRevokeNote] = useState('');
+  // The organization's own verified domain, exactly as every other public token
+  // link uses. The secret is shown once, so a link issued from a preview host
+  // would be unrecoverable.
+  const { buildUrl } = usePublicUrlForOrg(organizationId);
 
   async function issue() {
     const trimmed = label.trim();
@@ -507,7 +513,7 @@ function ClientLinksSection({ links, canManage, targets, onIssue, onRevoke, onAp
     setBusy(true); setError(null);
     try {
       const result = await onIssue({ label: trimmed, validDays: days });
-      setIssued(clientWeekUrl(result.secret, window.location.origin));
+      setIssued(buildUrl(clientWeekPath(result.secret)));
       setCreating(false); setLabel('');
     } catch (failure) {
       setError(hoursWorkflowError(failure));
@@ -711,7 +717,8 @@ export function HoursWeekSources({ organizationId, week, onReload }: HoursWeekSo
           {data.undecided_assignments} {data.undecided_assignments === 1 ? 'voorstel heeft' : 'voorstellen hebben'} een
           onbesliste toewijzing en {data.undecided_assignments === 1 ? 'blokkeert' : 'blokkeren'} toepassen tot de medewerker is bevestigd.
         </p>}
-        {!sources.isPending && data && <ClientLinksSection links={data.client_links} canManage={canManage}
+        {!sources.isPending && data && <ClientLinksSection organizationId={organizationId}
+          links={data.client_links} canManage={canManage}
           targets={targetById} onReload={onReload}
           onIssue={input => sources.issueClientLink.mutateAsync(input)}
           onRevoke={input => sources.revokeClientLink.mutateAsync(input)}

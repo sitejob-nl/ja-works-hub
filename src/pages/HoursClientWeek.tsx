@@ -111,11 +111,12 @@ export default function HoursClientWeek() {
   const fileInput = useRef<HTMLInputElement>(null);
 
   /**
-   * supabase-js hands a non-2xx back as an error with `data: null` and the body
-   * on `error.context`. Reading only `data` would show the visitor the transport
-   * message instead of the server's own words about what it refused.
+   * The one place that speaks to the server. supabase-js hands a non-2xx back as
+   * an error with `data: null` and the body on `error.context`; reading only
+   * `data` would show the visitor the transport message instead of the server's
+   * own words about what it refused.
    */
-  const call = async (body: Record<string, unknown>) => {
+  const invoke = async (body: Record<string, unknown>): Promise<Record<string, unknown>> => {
     const { data, error: failure } = await supabase.functions.invoke('hours-client-week', {
       body: { token, ...body },
     });
@@ -126,10 +127,12 @@ export default function HoursClientWeek() {
       }
       throw failure;
     }
-    const payload = (data ?? {}) as { error?: unknown };
+    const payload = (data ?? {}) as Record<string, unknown>;
     if (typeof payload.error === 'string') throw new Error(payload.error);
-    return readResponse(data);
+    return payload;
   };
+
+  const call = async (body: Record<string, unknown>) => readResponse(await invoke(body));
 
   const page = useQuery({
     queryKey: ['hours-client-week', token],
@@ -177,7 +180,9 @@ export default function HoursClientWeek() {
    * object, whose path it derives from the link. What arrives is a source, not
    * hours — reading it stays a separate act by someone at the office.
    */
-  const deliverFile = useMutation({
+  const deliverFile = useMutation<
+    { refused: PageState } | { state: PageState; duplicate: boolean; name: string }, unknown, File
+  >({
     mutationFn: async (chosen: File) => {
       const rejection = hoursSourceTypeError(chosen);
       if (rejection) throw new Error(rejection);
@@ -194,13 +199,14 @@ export default function HoursClientWeek() {
         else if (isReadableWorkbook(contentType)) pageCount = await countWorkbookSheets(bytes);
       } catch { pageCount = null; }
 
-      const { data, error: failure } = await supabase.functions.invoke('hours-client-week', {
-        body: { token, action: 'upload', content_hash: digest, content_type: contentType },
-      });
-      if (failure) throw failure;
-      const signed = (data ?? {}) as { status?: string; path?: string; token?: string; already_uploaded?: boolean; error?: string };
-      if (typeof signed.error === 'string') throw new Error(signed.error);
-      if (signed.status !== 'ok' || !signed.path) throw new Error(CLIENT_LINK_MESSAGES.unavailable);
+      const signed = await invoke({
+        action: 'upload', content_hash: digest, content_type: contentType,
+      }) as { status?: string; path?: string; token?: string; already_uploaded?: boolean };
+      // The link itself may have died between opening the page and choosing a
+      // file. Retrying a withdrawn link is pointless, so the page says so.
+      if (signed.status !== 'ok' || !signed.path) {
+        return { refused: readResponse(signed) };
+      }
       if (!signed.already_uploaded) {
         if (!signed.token) throw new Error('Uw bestand kon niet worden meegestuurd. Probeer het opnieuw.');
         const upload = await supabase.storage.from(HOURS_SOURCE_BUCKET)
@@ -216,6 +222,7 @@ export default function HoursClientWeek() {
       return { state: result, duplicate: signed.already_uploaded === true, name: chosen.name };
     },
     onSuccess: outcome => {
+      if ('refused' in outcome) { store(outcome.refused); return; }
       store(outcome.state);
       setNotice(outcome.duplicate
         ? `“${outcome.name}” was al ontvangen. Er is geen tweede bestand bewaard.`

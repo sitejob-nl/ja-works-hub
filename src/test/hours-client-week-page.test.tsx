@@ -339,6 +339,36 @@ describe('delivering the timesheet itself', () => {
     expect(invoke.mock.calls.filter(([, options]) => options?.body?.action === 'upload')).toHaveLength(0);
   });
 
+  it('shows the server refusal when the upload address is refused', async () => {
+    const refusal = Object.assign(new Error('non-2xx'), {
+      context: new Response(JSON.stringify({ error: 'Te veel verzoeken. Probeer het later opnieuw.' }),
+        { status: 429, headers: { 'Content-Type': 'application/json' } }),
+    });
+    invoke.mockImplementation((_name: string, options: { body: { action: string } }) =>
+      options.body.action === 'get'
+        ? Promise.resolve(ok({ status: 'ok', week: payload() }))
+        : Promise.resolve({ data: null, error: refusal }));
+    show();
+    await screen.findByText('Acme BV');
+    fireEvent.change(screen.getByLabelText('Urenbriefje meesturen'),
+      { target: { files: [file('week37.pdf', 'application/pdf')] } });
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Te veel verzoeken/);
+  });
+
+  it('replaces the page when the link died during an upload', async () => {
+    invoke.mockImplementation((_name: string, options: { body: { action: string } }) =>
+      options.body.action === 'get'
+        ? Promise.resolve(ok({ status: 'ok', week: payload() }))
+        : Promise.resolve(ok({ status: 'revoked' })));
+    show();
+    await screen.findByText('Acme BV');
+    fireEvent.change(screen.getByLabelText('Urenbriefje meesturen'),
+      { target: { files: [file('week37.pdf', 'application/pdf')] } });
+    expect(await screen.findByText(/ingetrokken/i),
+      'the client must stop retrying a dead link').toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Uren opslaan' })).toBeNull();
+  });
+
   it('does not claim a delivery when the upload itself failed', async () => {
     invoke.mockImplementation((_name: string, options: { body: { action: string } }) =>
       options.body.action === 'get'

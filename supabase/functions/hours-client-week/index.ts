@@ -34,9 +34,19 @@ const json = (body: unknown, status = 200) =>
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
 
-// Public and unauthenticated, so guessing a token has to run into a wall.
+/**
+ * Public and unauthenticated, so guessing a token has to run into a wall.
+ *
+ * The per-IP limit is the real defence: it stops a script long before it makes
+ * a dent in a 244-bit token. The global counter is a last-resort brake against
+ * a distributed flood, and it is deliberately far above any realistic use —
+ * it is shared by every client of every organization, so a low ceiling would
+ * let one abuser lock out every planner on the platform for a rolling hour.
+ * Roughly five requests per second is nothing for this endpoint and still stops
+ * a runaway loop.
+ */
 const MAX_PER_IP_PER_HOUR = 120;
-const MAX_GLOBAL_PER_HOUR = 2000;
+const MAX_GLOBAL_PER_HOUR = 20_000;
 const ACTIONS = ['get', 'save', 'report', 'upload', 'register'] as const;
 type Action = typeof ACTIONS[number];
 

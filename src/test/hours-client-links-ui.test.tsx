@@ -11,6 +11,10 @@ vi.mock('@/integrations/supabase/client', () => ({
   supabase: { rpc, storage: { from: () => ({ upload, createSignedUrl }) } },
 }));
 vi.mock('@/lib/hours-pdf-pages', () => ({ countPdfPages: vi.fn() }));
+const { buildUrl } = vi.hoisted(() => ({ buildUrl: vi.fn((path: string) => `https://uren.acme.nl${path}`) }));
+vi.mock('@/hooks/usePublicUrl', () => ({
+  usePublicUrlForOrg: () => ({ buildUrl, primaryDomain: null, isLoading: false }),
+}));
 
 const orgId = '00000000-0000-4000-8000-000000000001';
 const weekId = '00000000-0000-4000-8000-000000000002';
@@ -81,8 +85,11 @@ describe('handing out a personal client week link', () => {
     fireEvent.change(screen.getByLabelText('Voor wie is deze link?'), { target: { value: 'Planning Acme' } });
     fireEvent.click(screen.getByRole('button', { name: 'Link aanmaken' }));
 
-    const address = await screen.findByText(`https://ats.sitejob.nl/urenweek/${secret}`);
+    // The secret is shown once, so a link issued from a preview host would be
+    // unrecoverable: it has to carry the organization's verified primary domain.
+    const address = await screen.findByText(`https://uren.acme.nl/urenweek/${secret}`);
     expect(address).toBeTruthy();
+    expect(buildUrl).toHaveBeenCalledWith(`/urenweek/${secret}`);
     expect(screen.getByText(/niet opnieuw te zien/i)).toBeTruthy();
     expect(rpc).toHaveBeenCalledWith('hours_issue_client_week_link',
       { p_week_id: weekId, p_label: 'Planning Acme', p_valid_days: 14 });

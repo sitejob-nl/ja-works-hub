@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { HoursClassificationView, HoursWeekView } from '@/components/hours-workflow/types';
 import { hoursSourceInputSchema, type HoursSourceInput } from '@/components/hours-workflow/hours-day-source';
-import { describeSourceReferences } from '@/lib/hours-sources';
+import { describeSourceReferences, sourceOriginLabel } from '@/lib/hours-sources';
 
 const uuid = z.string().uuid();
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -54,7 +54,7 @@ export function toHoursWeekView(week: HoursWeek): HoursWeekView {
     return {
     id: revision.id, version: revision.revision_number, minutes: revision.minutes,
     noHoursReason: revision.no_hours_reason, notes: revision.note,
-    sourceLabel: origin?.label ?? 'Bron niet beschikbaar', sourceReference: origin?.reference ?? undefined,
+    sourceLabel: sourceOriginLabel(origin), sourceReference: origin?.reference ?? undefined,
     createdAt: revision.created_at,
     sourceInput: revision.source_input as HoursSourceInput | null | undefined,
     classification: revision.classification?.revision_id === revision.id ? toHoursClassificationView(revision.classification) : null,

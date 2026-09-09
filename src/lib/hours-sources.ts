@@ -128,9 +128,13 @@ export const HOURS_CLIENT_REPORT_LABELS: Record<'later' | 'complete', string> = 
   complete: 'De opdrachtgever meldt dit als volledig',
 };
 
-/** The address the client opens. Public and token-based; it carries no session. */
-export function clientWeekUrl(secret: string, origin: string): string {
-  return `${origin.replace(/\/$/, '')}/urenweek/${secret}`;
+/**
+ * The address the client opens. Public and token-based; it carries no session.
+ * Only the path lives here: the host has to be the organization's verified
+ * primary domain, which `usePublicUrl` resolves.
+ */
+export function clientWeekPath(secret: string): string {
+  return `/urenweek/${secret}`;
 }
 
 /**
@@ -209,11 +213,22 @@ export function describeSourceReferences(references: unknown[] | undefined): Hou
   });
 }
 
+/**
+ * How one origin reads on a screen. A client delivery needs the marker: without
+ * it an employee reads a bare company name next to their hours and has no way
+ * to tell who put them there. Manual entry and an uploaded file keep the
+ * released wording exactly.
+ */
+export function sourceOriginLabel(origin: HoursSourceOrigin | undefined): string {
+  if (!origin) return 'Bron niet beschikbaar';
+  return origin.kind === 'client' ? `Aangeleverd door ${origin.label}` : origin.label;
+}
+
 export function sourceOriginText(references: unknown[] | undefined): string {
   const origins = describeSourceReferences(references);
   if (!origins.length) return 'Bron niet beschikbaar';
   return origins.map(origin => {
-    const label = origin.kind === 'client' ? `Aangeleverd door ${origin.label}` : origin.label;
+    const label = sourceOriginLabel(origin);
     return origin.reference ? `${label} · ${origin.reference}` : label;
   }).join(' · ');
 }
