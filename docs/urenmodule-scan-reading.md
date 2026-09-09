@@ -1,7 +1,6 @@
 # Urenmodule: scans en foto's uitlezen tot invoervoorstellen (T4)
 
-**Status: in aanbouw.** Dit document legt eerst het hostbesluit vast; het contract volgt
-zodra de bouw af is.
+**Status: gedeployed.** Dit document legt eerst het hostbesluit vast; het contract staat eronder.
 
 ## Welke host het uitleeswerk doet — geverifieerd besluit
 
@@ -88,10 +87,13 @@ verkeerde persoon, de verkeerde dag of het verkeerde getal kan brengen valt in
 ## Wat "onzeker" betekent, en wat het blokkeert
 
 `hours_source_proposals.uncertain_fields` bewaart welke gelezen waarden onzeker waren: `total`,
-`shift`, `break`, `categories` of `reason`. De vorm is canoniek (vaste volgorde, geen dubbels) en
-wordt door een CHECK afgedwongen tegen `private.hours_canonical_uncertain_fields`. Een onbekend
-label wordt **geweigerd** (`22023`), nooit stil weggelaten — weglaten zou de twijfel van de
-uitlezer in schijnzekerheid veranderen.
+`shift`, `break`, `categories` of `reason`. De vorm is canoniek: vaste volgorde, geen dubbels. Een CHECK van louter ingebouwde functies bewaakt
+de inhoud en de omvang; de canonieke vorm zelf wordt door een schrijftrigger afgedwongen. Die
+verdeling is opzettelijk. Een CHECK wordt bij élke UPDATE opnieuw beoordeeld en deze tabel kent geen
+verwijderpad, dus een CHECK die van een projectfunctie afhing zou bestaande voorstellen voorgoed
+vastzetten zodra die functie ooit versmalde; een schrijftrigger beoordeelt alleen de rij die wordt
+geschreven. Een onbekend label wordt **geweigerd** (`22023`), nooit stil weggelaten — weglaten zou de
+twijfel van de uitlezer in schijnzekerheid veranderen.
 
 `employee` en `date` staan bewust niet in die lijst. Twijfel over wie stuurt `assignment_uncertain`
 aan; twijfel over welke dag laat de regel helemaal weg. Geen van beide heeft een plek in een
@@ -127,7 +129,7 @@ Qwen-terugval.
 | --- | --- |
 | Provider en model | Gemini, standaard `gemini-3.5-flash`; te overschrijven met `HOURS_SCAN_MODEL` |
 | Boekingskenmerk | `feature = 'hours_scan_reading'` |
-| Antwoordgrens | 16.384 uitvoertokens plus 1.024 denktokens, wat de reservering begrenst |
+| Antwoordgrens | 40.960 uitvoertokens plus 1.024 denktokens — genoeg voor de vijfhonderd regels die één aanlevering mag bevatten |
 | Bestandsgrens | 10 MiB; daarboven een zichtbare blokkade en géén aanroep |
 | Gemeten kosten | ~1.500 invoertokens en ~275 uitvoertokens per A4-briefje; **1 cent per uitlezing** |
 
@@ -148,13 +150,21 @@ bevestigen en toepassen zijn allemaal ongemoeid.
 Een onbekende provideruitkomst (time-out, ontbrekend verbruik) houdt zijn reservering vast en komt
 als zodanig terug; dat wordt nooit stil een gratis nieuwe poging.
 
+**Elke uitlezing wordt geclaimd voordat er wordt betaald.** `hours_source_readings` legt per poging
+vast welk document, welke week, wie het vroeg, wat het kostte en hoeveel regels eruit kwamen — geen
+inhoud, alleen de overdracht. Een partiële unieke index laat per bron één lopende uitlezing toe, dus
+een tweede klik of een tweede tabblad krijgt `409` in plaats van een tweede rekening. Die claim is
+tegelijk het antwoord op "welk document is wanneer naar de verwerker gegaan", dat het AI-grootboek
+zelf niet kan geven: dat kent organisatie, gebruiker en kosten, maar niet de bron. De tabel is
+append-only, service-role-only beschrijfbaar en intern leesbaar met `finance.view`.
+
 **Een mislukking ná betaling zegt wat zij kostte.** Het antwoord van het model kan afgekapt,
 geweigerd of onleesbaar zijn terwijl de provider al is afgerekend. Dan komt code
 `scan_reading_unusable` terug mét kosten, saldo en aanvraagkenmerk — het enige aanknopingspunt in het
 grootboek voor die boeking — en de melding nodigt niet uit tot opnieuw proberen, want dat zou een
 tweede keer kosten voor dezelfde weigering. Alleen een mislukking *vóór* de aanroep zegt "probeer het
-opnieuw". Uitlezen is bovendien per bron één handeling tegelijk: een tweede klik op de knop start
-geen tweede betaalde aanroep.
+opnieuw". Uitlezen is bovendien per bron één handeling tegelijk: dat wordt door de
+claim in de database afgedwongen, niet door de knop.
 
 ## De uitleesroute
 
@@ -187,6 +197,8 @@ vision-pad van de CV-analyse al maakt. De namenlijst van de week reist niet mee.
 | `42501` | 403 | Geen bevoegdheid, verkeerde organisatie, of een ontoegankelijke bron |
 | `22023` | 400 | Geen uitleesbaar bestandstype, uitgeschakelde opdrachtgever, onbekende onzekerheid, of een nog onbevestigde twijfel bij toepassen |
 | `source_too_large` | 400 | Boven 10 MiB; leg de uren handmatig vast |
+| `scan_already_running` | 409 | Deze bron wordt al uitgelezen; er komt geen tweede rekening |
+| `scan_reading_unusable` | 502 | Het antwoord was onbruikbaar, maar wel betaald; het kenmerk staat erbij |
 | `insufficient_credits` | 402 | Het maandbudget is op; handmatige invoer blijft werken |
 | `ai_provider_outcome_unknown` | 503 | Geen volledig providerantwoord; de reservering blijft staan voor controle |
 | `scan_unavailable` | 503 | Tijdelijk niet beschikbaar |
@@ -194,7 +206,7 @@ vision-pad van de CV-analyse al maakt. De namenlijst van de week reist niet mee.
 
 ## Verificatie
 
-- **130 echte PostgreSQL-tests** (`scripts/hours-scan-db-test.py`): de nieuwe onzekerheidsregels
+- **133 echte PostgreSQL-tests** (`scripts/hours-scan-db-test.py`): de nieuwe onzekerheidsregels
   plus de volledige vrijgegeven klantweek-, inname-, pagina-, werkmap-, classificatie-,
   foundation- en modulepoortregressies op het nieuwe schema. Alle dertien migraties worden tweemaal
   toegepast. Eén van die tests bewaakt voortaan dat **elke** stabiele urenfunctie in de read-only

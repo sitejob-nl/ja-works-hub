@@ -38,3 +38,24 @@ export function sourceControlIssues(minutes: number, source: HoursSourceInput | 
   }
   return issues;
 }
+
+/**
+ * Which reading a control issue casts doubt on.
+ *
+ * A contradiction the calculation kernel refuses has to reach the proposal, not
+ * just the review screen: a notice does not travel, recorded doubt does. Both
+ * readers judge deliveries with the same control, so both derive the field to
+ * check from the same map. Anything unlisted lands on the total, the one field
+ * every proposal carries.
+ */
+export type HoursDoubtField = 'total' | 'shift' | 'break' | 'categories' | 'reason';
+const CONTROL_FIELD: Record<string, HoursDoubtField> = {
+  TOTAL_MISMATCH: 'total', HOURS_OUT_OF_RANGE: 'total', INVALID_TOTAL: 'total',
+  INVALID_ZERO_SOURCE: 'total',
+  BREAK_OUTSIDE_SHIFT: 'break', OVERLAPPING_BREAKS: 'break', MISSING_BREAKS: 'break',
+  INVALID_BREAK: 'break',
+  OVERLAPPING_SHIFTS: 'shift', INVALID_SHIFT: 'shift', INVALID_SHIFT_RANGE: 'shift',
+  MISSING_DAY_OFFSET: 'shift', INVALID_TIME: 'shift',
+  DUPLICATE_SOURCE_CATEGORY: 'categories',
+};
+export const controlDoubtField = (code: string): HoursDoubtField => CONTROL_FIELD[code] ?? 'total';

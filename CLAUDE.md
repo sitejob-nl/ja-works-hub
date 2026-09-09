@@ -331,7 +331,6 @@ Canonical in [src/integrations/supabase/types.ts](src/integrations/supabase/type
 | `candidate-profile` | Public candidate profile endpoint |
 | `match-response` | Publieke voorstel-reactiepagina (token, geen login): rapport + CV-signed-URL + accepteren (op gesprek/direct starten)/afwijzen. Service-role validatie, single-use, IP-rate-limit via `match_response_attempts` |
 | `hours-client-week` | Publieke klantweekpagina (`/urenweek/:token`, geen login): week lezen, uren aanleveren, urenbriefje meesturen, melden dat er later meer volgt. Service-role validatie in de database (gehasht token, scope op één klantweek, geldigheidsduur, intrekbaarheid), IP-rate-limit via `hours_client_link_attempts`. Klantinvoer landt als **voorstel**, nooit als dagversie |
-| `hours-read-scan` | Leest een gescand of gefotografeerd urenbriefje uit tot invoervoorstellen. Self-auth (`finance.manage`); de browser stuurt alleen een bron-id, de database levert het opslagpad. Eén betaalde Gemini-aanroep via `_shared/ai-accounting.ts`, feature `hours_scan_reading`. Schrijft niets: de uitlezing komt terug ter beoordeling |
 | `candidate-interest` | Publieke medewerker-interesse (token uit de kandidaat-voorstelmail, `/baan/interesse/:token`): ja → `afspraak_voorgesteld` + opvolg-taak, nee → `afgewezen`. Zelfde transitie als de WhatsApp-ja/nee (`_shared/match-interest.ts`); service-role validatie, single-use, gedeelde IP-rate-limit |
 | `portal-activate` | Employee portal account activation |
 | `client-portal-activate` | Client portal (opdrachtgever) account activation |
@@ -403,6 +402,7 @@ Canonical in [src/integrations/supabase/types.ts](src/integrations/supabase/type
 | `analyze-cv-callback` | Receive async CV analysis results from LLM VPS |
 | `analyze-cv-batch` | **Backfill** voor bestaande kandidaten: select document/CV + notes/context → pseudonimiseer dossier → VPS. Superadmin-auth, throttle 1.5s/dossier |
 | `refresh-talentpool-members` | **Dynamische talentpools**: past `filter_criteria` toe + diff vs huidige leden. Single-mode (user-JWT) of cron-mode (`x-cron-secret`) |
+| `hours-read-scan` | Leest een gescand of gefotografeerd urenbriefje uit tot invoervoorstellen. Self-auth (`finance.manage`); de browser stuurt alleen een bron-id, de database levert het opslagpad. Eén betaalde Gemini-aanroep via `_shared/ai-accounting.ts` (feature `hours_scan_reading`), met een claim in `hours_source_readings` als single-flight en AVG-spoor. Schrijft geen uren: de uitlezing komt terug ter beoordeling |
 | `validate-timesheets` | AI validation of timesheet entries (6 rules) |
 | `recruiter-priorities` | Calculate recruiter task priorities |
 | `translate-platform` | DeepL-proxy. **Niet meer in gebruik** — de UI vertaalt via een meegebouwd woordenboek (zie [Meertaligheid](#meertaligheid-nl--en-via-een-meegebouwd-woordenboek)). Blijft staan, kan weg |

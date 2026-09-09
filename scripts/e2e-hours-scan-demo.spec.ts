@@ -267,17 +267,24 @@ test('connected demo: a delivered scan is read into reviewable proposals', async
   expect(applyProposal.minutes, 'the reader read 8,5 as 510 minutes').toBe(510);
   const proposalRow = sourceCard(page, fileName)
     .getByRole('group', { name: new RegExp(`Voorstel .* ${applyDate}`) });
-  // Whatever the reading recorded doubt about has to be settled first; the
-  // server refuses to apply it otherwise, and the screen says so.
-  const settle = proposalRow.getByRole('button', { name: 'Gelezen gegevens bevestigen' });
-  const hadDoubt = await settle.count() > 0;
-  if (hadDoubt) {
-    await settle.click();
+  // Both doubts have to be settled before applying — who this is about, and
+  // what the reading made of the paper. Each is its own act, so each is done
+  // separately here, exactly as a reviewer would.
+  const settled: string[] = [];
+  for (const [label, rpc] of [
+    ['Toewijzing bevestigen', 'hours_confirm_proposal_assignment'],
+    ['Gelezen gegevens bevestigen', 'hours_confirm_proposal_values'],
+  ] as const) {
+    const button = proposalRow.getByRole('button', { name: label });
+    if (await button.count() === 0) continue;
+    await button.click();
     const confirmResponse = page.waitForResponse(response =>
-      new URL(response.url()).pathname === '/rest/v1/rpc/hours_confirm_proposal_values');
-    await proposalRow.getByRole('button', { name: 'Gelezen gegevens bevestigen' }).click();
-    expect((await confirmResponse).status(), 'settling the doubt succeeded').toBe(200);
+      new URL(response.url()).pathname === `/rest/v1/rpc/${rpc}`);
+    await proposalRow.getByRole('button', { name: label }).click();
+    expect((await confirmResponse).status(), `settling ${label} succeeded`).toBe(200);
+    settled.push(label);
   }
+  const hadDoubt = settled.length > 0;
   const applyResponse = page.waitForResponse(response =>
     new URL(response.url()).pathname === '/rest/v1/rpc/hours_apply_source_proposal');
   await proposalRow.getByRole('button', { name: 'Toepassen als dagversie' }).click();
@@ -313,7 +320,7 @@ test('connected demo: a delivered scan is read into reviewable proposals', async
       body: JSON.stringify({ source_id: sourceId }),
     });
     return { status: response.status, body: await response.json().catch(() => null) };
-  }, { api: API, key: AUTH_KEY, publicKey: process.env.VITE_SUPABASE_PUBLISHABLE_KEY!, sourceId: source.id });
+  }, { api: API, key: AUTH_KEY, publicKey: required('VITE_SUPABASE_PUBLISHABLE_KEY'), sourceId: source.id });
   expect(readerProbe.status, 'and a portal user may not spend a cent of the budget').toBe(403);
   record('the reader stays internal', {
     contextStatus: contextProbe.status, readerStatus: readerProbe.status,
@@ -330,6 +337,12 @@ test('connected demo: a delivered scan is read into reviewable proposals', async
   const paidCalls = network.filter(item => item.path.endsWith('/functions/v1/hours-read-scan')
     && item.path.startsWith('internal:'));
   expect(paidCalls.length, 'this run asked for exactly one reading').toBe(1);
+  // The reading log is what the office can answer "which document went out" from.
+  const log = await browserRequest(page,
+    `/rest/v1/hours_source_readings?source_id=eq.${source.id}&select=status,cost_cents,line_count`);
+  expect(log.status).toBe(200);
+  expect((log.body as unknown[]).length, 'the paid reading left a record').toBe(1);
+  record('the paid reading is recorded with what it cost', { log: log.body });
 
   const finalWeek = await readWeek(page, fixture.weekId);
   expect(finalWeek.members.flatMap(member => member.days).filter(day => day.current_revision !== null)

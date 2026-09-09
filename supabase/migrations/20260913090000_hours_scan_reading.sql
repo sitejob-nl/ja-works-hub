@@ -88,17 +88,19 @@ create index if not exists hours_proposals_values_confirmer_idx
 -- Two doubts may now be settled, each exactly once and each in its own act.
 create or replace function private.hours_proposal_guard()
 returns trigger language plpgsql set search_path = '' as $$
-declare v_assignment boolean; v_values boolean; begin
+declare v_assignment boolean; v_values boolean; v_moving text[] := array['status',
+  'assignment_confirmed_by', 'assignment_confirmed_at', 'assignment_note',
+  'values_confirmed_by', 'values_confirmed_at', 'values_note',
+  'applied_revision_id', 'applied_created_revision', 'resolved_by', 'resolved_at', 'resolution_note'];
+begin
   if tg_op = 'DELETE' then
     raise exception 'Urenvoorstellen zijn onveranderlijk' using errcode = '42501';
   end if;
-  if (new.id, new.organization_id, new.week_id, new.source_id, new.day_id, new.minutes,
-      new.no_hours_reason, new.note, new.source_input, new.page_label, new.page_number,
-      new.assignment_uncertain, new.uncertain_fields, new.client_link_id, new.created_by, new.created_at)
-     is distinct from
-     (old.id, old.organization_id, old.week_id, old.source_id, old.day_id, old.minutes,
-      old.no_hours_reason, old.note, old.source_input, old.page_label, old.page_number,
-      old.assignment_uncertain, old.uncertain_fields, old.client_link_id, old.created_by, old.created_at) then
+  -- Everything except the twelve columns that are allowed to move is frozen.
+  -- Naming what may move rather than what may not means a column a later
+  -- migration adds is protected by default; a hand-kept list of frozen columns
+  -- silently leaves every new one unguarded.
+  if to_jsonb(new) - v_moving is distinct from to_jsonb(old) - v_moving then
     raise exception 'Urenvoorstellen zijn onveranderlijk' using errcode = '42501';
   end if;
   v_assignment := (new.assignment_confirmed_by, new.assignment_confirmed_at, new.assignment_note)
@@ -158,15 +160,19 @@ revoke all on function private.hours_proposal_projection(public.hours_source_pro
 -- never has to add up what happens to be on it.
 create or replace function private.hours_week_sources_projection(p_week_id uuid, p_org uuid)
 returns jsonb language sql stable set search_path = '' as $$
+  -- One scan for all three counts. This projection is the return value of every
+  -- write in the module, so it runs while those RPCs hold row locks; a fourth
+  -- kind of doubt should add a filter, not a fourth index scan.
+  with counts as (
+    select count(*) as open_proposals,
+      count(*) filter (where p.assignment_uncertain and p.assignment_confirmed_at is null) as undecided_assignments,
+      count(*) filter (where p.uncertain_fields is not null and p.values_confirmed_at is null) as uncertain_values
+    from public.hours_source_proposals p
+    where p.week_id = p_week_id and p.organization_id = p_org and p.status = 'open')
   select jsonb_build_object('week_id', p_week_id,
-    'open_proposals', (select count(*) from public.hours_source_proposals p
-      where p.week_id = p_week_id and p.organization_id = p_org and p.status = 'open'),
-    'undecided_assignments', (select count(*) from public.hours_source_proposals p
-      where p.week_id = p_week_id and p.organization_id = p_org and p.status = 'open'
-        and p.assignment_uncertain and p.assignment_confirmed_at is null),
-    'uncertain_values', (select count(*) from public.hours_source_proposals p
-      where p.week_id = p_week_id and p.organization_id = p_org and p.status = 'open'
-        and p.uncertain_fields is not null and p.values_confirmed_at is null),
+    'open_proposals', (select open_proposals from counts),
+    'undecided_assignments', (select undecided_assignments from counts),
+    'uncertain_values', (select uncertain_values from counts),
     'can_manage', public.is_internal_user() and public.has_role_permission('finance.manage')
       and exists (select 1 from public.hours_weeks w
         join public.hours_company_settings c on c.company_id = w.company_id and c.organization_id = w.organization_id

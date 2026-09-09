@@ -159,3 +159,22 @@ describe('what happens after the reviewer presses save', () => {
     expect(screen.getByText(/geen enkele regel gevonden/)).toBeInTheDocument();
   });
 });
+
+describe('a week that changed while the panel was open', () => {
+  it('unticks a day that gained a proposal elsewhere, and keeps a box the reviewer ticked', () => {
+    const two = reading({ candidates: [candidate(), candidate({ dayId: 'day-2', workDate: '2026-09-08' })] });
+    const { rerender } = render(<HoursScanReading reading={two} {...cost}
+      alreadyProposed={new Set()} onCancel={() => {}} onSave={vi.fn()} />);
+    expect(screen.getByText('2 van 2 gekozen.')).toBeInTheDocument();
+
+    // A colleague records a proposal for day-2 while this panel is open.
+    rerender(<HoursScanReading reading={two} {...cost}
+      alreadyProposed={new Set(['day-2'])} onCancel={() => {}} onSave={vi.fn()} />);
+    expect(screen.getByText('1 van 2 gekozen.')).toBeInTheDocument();
+
+    // The reviewer decides to record it anyway; that choice survives.
+    fireEvent.click(screen.getByLabelText(/2026|8 sep/i, { selector: 'button' })
+      ?? screen.getAllByRole('checkbox')[1]);
+    expect(screen.getByText('2 van 2 gekozen.')).toBeInTheDocument();
+  });
+});

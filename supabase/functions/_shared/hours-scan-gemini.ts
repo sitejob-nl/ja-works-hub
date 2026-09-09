@@ -25,8 +25,13 @@ const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models
 
 /** The strongest Flash: handwriting is the hard part of this reading. */
 export const HOURS_SCAN_DEFAULT_MODEL = 'gemini-3.5-flash';
-/** Enough for a full week of a large crew; a cut-off answer is a blocked reading. */
-const MAX_OUTPUT_TOKENS = 16384;
+/**
+ * One entry of the required eleven-field shape serialises to roughly seventy
+ * output tokens, so the five hundred entries the kernel and the database both
+ * allow need about thirty-five thousand. A budget below that turns a large
+ * delivery into a truncated answer that was paid for and cannot be used.
+ */
+const MAX_OUTPUT_TOKENS = 40960;
 const THINKING_BUDGET = 1024;
 
 export const scanRequestUrl = (model: string): string => `${GEMINI_API_BASE}/${model}:generateContent`;
@@ -105,7 +110,7 @@ function systemPrompt(weekDates: string[], pageCount: number | null): string {
     'zij is opgeschreven — ook een doorhaling, een correctie of een handgeschreven pauze. Reken niets om, tel',
     'niets op, rond niets af en verbeter geen namen. Staat er niets, geef dan een lege tekst ("") terug —',
     'elk veld hoort in je antwoord te staan, ook als er niets is ingevuld. Vul het dagtotaal in zoals het er',
-    'staat; staat er geen totaal maar wel een begin- en eindtijd, laat het totaal dan leeg.',
+    'staat; staat er geen totaal maar wel een begin- en eindtijd, laat het totaal leeg en geef die tijden.',
     '',
     'Kun je iets niet met zekerheid lezen, zet dat onderdeel dan in "uncertain". Dat is geen falen maar precies',
     'wat er van je gevraagd wordt: een onzeker gelezen waarde wordt door een mens gecontroleerd, een verzonnen',

@@ -56,14 +56,12 @@ describe('scan reading — the delivered shape', () => {
     expect(interpretScanReading({ entries: many }, context()).ok).toBe(false);
   });
 
-  it('blocks the whole reading when one work day is read twice', () => {
-    const reading = read([entry({ location_text: 'regel 3' }), entry({ location_text: 'regel 9' })]);
-    expect(reading.ok).toBe(false);
-    if (reading.ok === false) {
-      expect(reading.issues[0].code).toBe('DUPLICATE_SCAN_DAY');
-      expect(reading.issues[0].message).toContain('regel 3');
-      expect(reading.issues[0].message).toContain('regel 9');
-    }
+  it('sets both halves of a work day read twice aside, naming both places', () => {
+    const reading = ok(read([entry({ location_text: 'regel 3' }), entry({ location_text: 'regel 9' })]));
+    expect(reading.candidates).toHaveLength(0);
+    const message = reading.skipped.map(line => line.reason).join(' ');
+    expect(message).toContain('regel 3');
+    expect(message).toContain('regel 9');
   });
 });
 
@@ -212,7 +210,8 @@ describe('scan reading — shifts and handwritten breaks', () => {
     const candidate = reading.candidates[0];
     expect(candidate.sourceInput?.shifts).toBeUndefined();
     expect(candidate.readText.break).toBe('30');
-    expect(candidate.uncertainFields).toEqual([]);
+    // The shift was read and deliberately left out, which is something to check.
+    expect(candidate.uncertainFields).toEqual(['shift']);
   });
 
   it('shows the difference when a duration-only break does not add up to the written total', () => {
@@ -308,7 +307,7 @@ describe('scan reading — what the model itself reported as unsure', () => {
       total_text: '8:00', start_text: '07:00', end_text: '15:00', break_text: '30',
       uncertain: ['break', 'total', 'break'],
     })]));
-    expect(reading.candidates[0].uncertainFields).toEqual(['total', 'break']);
+    expect(reading.candidates[0].uncertainFields).toEqual(['total', 'shift', 'break']);
   });
 });
 
@@ -409,9 +408,16 @@ describe('scan reading — what the review round found', () => {
     expect(ok(read([entry({ total_text: '7,5' })])).candidates[0].uncertainFields).toEqual([]);
   });
 
-  it('drops reported doubt about a field this proposal does not carry', () => {
-    const reading = ok(read([entry({ total_text: '8:00', uncertain: ['break', 'shift', 'reason'] })]));
-    expect(reading.candidates[0].uncertainFields).toEqual([]);
+  it('keeps doubt about a field that came back empty, because empty means unreadable', () => {
+    // The model returns an empty string for a cell it could not read and says so
+    // in `uncertain`. Dropping that doubt would turn "I could not read the break"
+    // into the assertion that there was none.
+    const reading = ok(read([entry({ total_text: '8:00', start_text: '07:00', end_text: '15:00',
+      uncertain: ['break'] })]));
+    expect(reading.candidates[0].uncertainFields).toContain('break');
+    expect(reading.candidates[0].sourceInput?.shifts?.[0].breaks,
+      'a shift may not claim there were no breaks while the break was unreadable').toBeUndefined();
+    expect(reading.candidates[0].sourceInput).toBeNull();
   });
 
   it('keeps reported doubt about a field the proposal does carry', () => {
@@ -449,5 +455,97 @@ describe('scan reading — what the review round found', () => {
       total_text: null, no_hours_text: 'vrij', categories: [{ code_text: 'OV1', duration_text: '1:00' }],
     })]));
     expect(reading.candidates[0].notices.some(notice => notice.code === 'INVALID_ZERO_SOURCE')).toBe(true);
+  });
+});
+
+describe('scan reading — what the second review round found', () => {
+  it('places a break that spans midnight on both sides of it', () => {
+    const reading = ok(read([entry({
+      total_text: '7:30', start_text: '22:00', end_text: '06:00', break_text: '23:45-00:15',
+    })]));
+    expect(reading.candidates[0].sourceInput?.shifts?.[0].breaks).toEqual([
+      { start: '23:45', end: '00:15', startDayOffset: 0, endDayOffset: 1 },
+    ]);
+    expect(reading.candidates[0].notices.some(notice => notice.code === 'BREAK_OUTSIDE_SHIFT')).toBe(false);
+  });
+
+  it('works out the day total from the times when the paper wrote no total', () => {
+    // A timesheet that only records "van 07:00 tot 15:30, pauze 30" is the most
+    // ordinary shape there is. Adding it up is reading what is written, not
+    // guessing at what is missing.
+    const reading = ok(read([entry({
+      total_text: null, start_text: '07:00', end_text: '15:30', break_text: '30',
+    })]));
+    const candidate = reading.candidates[0];
+    expect(candidate.minutes).toBe(480);
+    expect(candidate.notices.some(notice => notice.code === 'SCAN_TOTAL_DERIVED')).toBe(true);
+    // The times were read and add up; the shift itself could not be stored,
+    // because a bare break duration says how long but not when.
+    expect(candidate.uncertainFields).toEqual(['shift']);
+    expect(candidate.notices.some(notice => notice.code === 'TOTAL_MISMATCH')).toBe(false);
+  });
+
+  it('stores the shift and leaves nothing to check when the break was a window', () => {
+    const reading = ok(read([entry({
+      total_text: null, start_text: '07:00', end_text: '15:30', break_text: '12:00-12:30',
+    })]));
+    const candidate = reading.candidates[0];
+    expect(candidate.minutes).toBe(480);
+    expect(candidate.sourceInput?.shifts?.[0].breaks).toHaveLength(1);
+    expect(candidate.uncertainFields).toEqual([]);
+  });
+
+  it('still makes no proposal when neither a total nor usable times were written', () => {
+    expect(ok(read([entry({ total_text: null, start_text: '07:00' })])).candidates).toHaveLength(0);
+  });
+
+  it('reads a break written as nothing, as a decimal, or as a list of windows', () => {
+    const minutesOf = (breakText: string) => {
+      const reading = ok(read([entry({
+        total_text: null, start_text: '08:00', end_text: '17:00', break_text: breakText,
+      })]));
+      return reading.candidates[0]?.minutes ?? null;
+    };
+    expect(minutesOf('-'), 'a dash means there was no break').toBe(540);
+    expect(minutesOf('n.v.t.')).toBe(540);
+    expect(minutesOf('0,5'), 'half an hour written the Dutch way').toBe(510);
+    expect(minutesOf('30')).toBe(510);
+    expect(minutesOf('12:00-12:30')).toBe(510);
+    expect(minutesOf('12:00-12:15, 15:00-15:15')).toBe(510);
+  });
+
+  it('names a shift it dropped as something to check, not only as a note', () => {
+    for (const line of [{ total_text: '8:00', start_text: '07:00' },
+      { total_text: '8:00', start_text: '08:00', end_text: '08:00' }]) {
+      const reading = ok(read([entry(line)]));
+      expect(reading.candidates[0].uncertainFields, JSON.stringify(line)).toContain('shift');
+    }
+  });
+
+  it('names a breakdown it refused to attach to a day without hours', () => {
+    const reading = ok(read([entry({
+      total_text: null, no_hours_text: 'vrij', categories: [{ code_text: 'OV1', duration_text: '1:00' }],
+    })]));
+    expect(reading.candidates[0].uncertainFields).toContain('categories');
+  });
+
+  it('skips both halves of a day that was read twice, and keeps the rest of the reading', () => {
+    const reading = ok(read([
+      entry({ location_text: 'rij 1' }),
+      entry({ location_text: 'rij 9' }),
+      entry({ work_date: '2026-09-08', location_text: 'rij 12' }),
+    ]));
+    expect(reading.candidates).toHaveLength(1);
+    expect(reading.candidates[0].workDate).toBe('2026-09-08');
+    expect(reading.skipped.some(line => line.reason.includes('tweemaal'))).toBe(true);
+  });
+
+  it('skips a line without a usable page instead of refusing the whole reading', () => {
+    const reading = ok(read([
+      { employee_text: 'Jan Kowalski', work_date: '2026-09-07', location_text: 'rij 1', total_text: '8:00' },
+      entry({ work_date: '2026-09-08', location_text: 'rij 9' }),
+    ]));
+    expect(reading.candidates).toHaveLength(1);
+    expect(reading.skipped).toHaveLength(1);
   });
 });

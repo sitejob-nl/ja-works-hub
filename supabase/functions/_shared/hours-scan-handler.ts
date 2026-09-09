@@ -35,6 +35,12 @@ export interface HoursScanOutcome {
 export interface HoursScanPorts {
   authorize(req: Request): Promise<HoursScanAuth | Response>;
   userRpc(req: Request, name: string, args: Record<string, unknown>): PromiseLike<HoursScanRpcResult>;
+  /**
+   * The reading log, written with the service role. Claiming is the single
+   * flight — one open reading per source — and the record of which document was
+   * sent to the provider, which the ledger does not hold.
+   */
+  serviceRpc(name: string, args: Record<string, unknown>): PromiseLike<HoursScanRpcResult>;
   download(path: string): Promise<Uint8Array>;
   read(request: HoursScanRequest): Promise<HoursScanOutcome>;
 }
@@ -57,10 +63,12 @@ const MAX_REQUEST_BYTES = 1024;
  * to be buffered whole. Counting the bytes as they arrive refuses the same
  * oversized body without ever holding it.
  */
-async function readBounded(req: Request, limit: number): Promise<string | null> {
+type BoundedBody = { ok: true; text: string } | { ok: false; reason: 'too_large' | 'unreadable' };
+
+async function readBounded(req: Request, limit: number): Promise<BoundedBody> {
   const declared = Number(req.headers.get('content-length'));
-  if (Number.isFinite(declared) && declared > limit) return null;
-  if (!req.body) return '';
+  if (Number.isFinite(declared) && declared > limit) return { ok: false, reason: 'too_large' };
+  if (!req.body) return { ok: true, text: '' };
   const reader = req.body.getReader();
   const chunks: Uint8Array[] = [];
   let size = 0;
@@ -69,16 +77,16 @@ async function readBounded(req: Request, limit: number): Promise<string | null> 
       const { done, value } = await reader.read();
       if (done) break;
       size += value.byteLength;
-      if (size > limit) { await reader.cancel(); return null; }
+      if (size > limit) { await reader.cancel(); return { ok: false, reason: 'too_large' }; }
       chunks.push(value);
     }
   } catch {
-    return null;
+    return { ok: false, reason: 'unreadable' };
   }
   const body = new Uint8Array(size);
   let offset = 0;
   for (const chunk of chunks) { body.set(chunk, offset); offset += chunk.byteLength; }
-  return new TextDecoder().decode(body);
+  return { ok: true, text: new TextDecoder().decode(body) };
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -92,11 +100,17 @@ interface ReadingContext {
 }
 
 function readContext(value: unknown, auth: HoursScanAuth, sourceId: string): ReadingContext | null {
-  if (!isRecord(value) || value.organization_id !== auth.organizationId || value.source_id !== sourceId
+  if (!isRecord(value) || value.organization_id !== auth.organizationId
+    || String(value.source_id).toLowerCase() !== sourceId.toLowerCase()
     || typeof value.storage_path !== 'string' || !value.storage_path
     || typeof value.content_type !== 'string' || typeof value.file_name !== 'string'
     || !Number.isSafeInteger(value.byte_size) || (value.byte_size as number) < 1
     || !Array.isArray(value.members) || !Array.isArray(value.days)) return null;
+  // Every path in this bucket is `<org>/<week>/<digest>.<ext>`, and the download
+  // runs with the service role, past storage's own rules. Today the RPC already
+  // scopes the row to the tenant, but that is an invariant three migrations
+  // away; asserting it here means a foreign path can never reach Google.
+  if (!(value.storage_path as string).startsWith(`${auth.organizationId}/`)) return null;
   const pageCount = value.page_count === null ? null
     : Number.isSafeInteger(value.page_count) && (value.page_count as number) > 0 ? value.page_count as number : undefined;
   if (pageCount === undefined) return null;
@@ -140,14 +154,18 @@ export function createHoursScanHandler(ports: HoursScanPorts, corsHeaders: Recor
       if (auth instanceof Response) return auth;
       // Only one identifier is accepted. The model, the tenant, the file and the
       // week are server-owned; a caller may not choose any of them.
-      const raw = await readBounded(req, MAX_REQUEST_BYTES);
-      if (raw === null) return json({ error: 'De aanvraag is te groot.', code: 'invalid_input' }, 400);
+      const body = await readBounded(req, MAX_REQUEST_BYTES);
+      if (body.ok === false) {
+        return body.reason === 'too_large'
+          ? json({ error: 'De aanvraag is te groot.', code: 'invalid_input' }, 400)
+          : json({ error: 'De aanvraag kwam niet volledig binnen.', code: 'invalid_request_body' }, 400);
+      }
       let input: unknown;
-      try { input = JSON.parse(raw); } catch { return json({ error: 'Ongeldige JSON-aanvraag.', code: 'invalid_input' }, 400); }
+      try { input = JSON.parse(body.text); } catch { return json({ error: 'Ongeldige JSON-aanvraag.', code: 'invalid_input' }, 400); }
       if (!isRecord(input) || Object.keys(input).length !== 1 || !uuid(input.source_id)) {
         return json({ error: 'Alleen source_id is toegestaan en moet een geldige identificatie zijn.', code: 'invalid_input' }, 400);
       }
-      const sourceId = input.source_id;
+      const sourceId = input.source_id.toLowerCase();
 
       const response = await ports.userRpc(req, 'hours_get_source_reading_context', { p_source_id: sourceId });
       if (response.error) return rpcError(response.error);
@@ -176,6 +194,24 @@ export function createHoursScanHandler(ports: HoursScanPorts, corsHeaders: Recor
         return json({ error: 'De bewaarde bron kon niet worden opgehaald. Er is niets uitgelezen.', code: 'source_unavailable' }, 503);
       }
 
+      // Claiming before paying does two things: it refuses a second reading of
+      // the same source while one is running, and it records which document
+      // went to the provider. A browser guard is always one render behind.
+      const claim = await ports.serviceRpc('hours_claim_source_reading',
+        { p_source_id: sourceId, p_actor_id: auth.userId });
+      if (claim.error) {
+        return claim.error.code === '22023'
+          ? json({ error: 'Deze bron wordt al uitgelezen. Wacht tot die uitlezing klaar is.',
+            code: 'scan_already_running' }, 409)
+          : rpcError(claim.error);
+      }
+      const readingId = isRecord(claim.data) && uuid(claim.data.reading_id) ? claim.data.reading_id : null;
+      const finish = async (status: 'succeeded' | 'failed', detail: Record<string, unknown>) => {
+        if (!readingId) return;
+        try { await ports.serviceRpc('hours_finish_source_reading', { p_reading_id: readingId, p_status: status, ...detail }); }
+        catch { /* The reading itself is what matters; a stuck claim is visible in the log. */ }
+      };
+
       let outcome: HoursScanOutcome;
       try {
         outcome = await ports.read({
@@ -189,6 +225,8 @@ export function createHoursScanHandler(ports: HoursScanPorts, corsHeaders: Recor
         });
       } catch (failure) {
         if (failure instanceof AiAccountingError) {
+          await finish('failed', { p_request_id: failure.requestId ?? null,
+            p_cost_cents: failure.costCents ?? 0, p_error_code: failure.code });
           const message = failure.status === 402
             ? 'Het AI-budget van deze maand is op, dus uitlezen kan nu niet. Handmatig een voorstel vastleggen werkt gewoon.'
             : failure.message;
@@ -202,6 +240,8 @@ export function createHoursScanHandler(ports: HoursScanPorts, corsHeaders: Recor
         // and the request id can still reach the office. Telling someone to try
         // again here would charge them a second time for the same refusal.
         const settled = failure as Partial<AiAccountingResult> & { message?: string };
+        await finish('failed', { p_request_id: settled?.requestId ?? null,
+          p_cost_cents: settled?.costCents ?? 0, p_error_code: 'scan_reading_unusable' });
         if (settled?.providerAttempted === true) {
           console.error('hours_scan_settled_failure', JSON.stringify({ request_id: settled.requestId,
             cost_cents: settled.costCents, input_tokens: settled.inputTokens, output_tokens: settled.outputTokens }));
@@ -216,10 +256,24 @@ export function createHoursScanHandler(ports: HoursScanPorts, corsHeaders: Recor
 
       // A paid call happened, so its cost is reported even when the answer turns
       // out to be unusable. An unusable answer is a blocked reading, never half
-      // a set of proposals.
-      const reading: ScanReading = interpretScanReading(outcome.output, context.scan);
-      return json({ reading, model: outcome.model, request_id: outcome.requestId,
-        cost_cents: outcome.costCents, balance_cents: outcome.balanceCents, duration_ms: outcome.durationMs });
+      // a set of proposals — and a failure in the interpretation itself is still
+      // a failure that was paid for, so it may not fall through to the outer
+      // catch, which would invite a second charge.
+      try {
+        const reading: ScanReading = interpretScanReading(outcome.output, context.scan);
+        await finish('succeeded', { p_request_id: outcome.requestId, p_cost_cents: outcome.costCents,
+          p_lines: reading.ok ? reading.candidates.length : 0 });
+        return json({ reading, model: outcome.model, request_id: outcome.requestId,
+          cost_cents: outcome.costCents, balance_cents: outcome.balanceCents, duration_ms: outcome.durationMs });
+      } catch {
+        await finish('failed', { p_request_id: outcome.requestId, p_cost_cents: outcome.costCents,
+          p_error_code: 'scan_reading_unusable' });
+        console.error('hours_scan_interpretation_failed', JSON.stringify({ request_id: outcome.requestId,
+          cost_cents: outcome.costCents }));
+        return json({ error: 'De uitlezing kon niet worden verwerkt. Deze uitlezing is wel in rekening gebracht; '
+          + 'leg de uren handmatig vast.', code: 'scan_reading_unusable', request_id: outcome.requestId,
+          cost_cents: outcome.costCents, balance_cents: outcome.balanceCents }, 502);
+      }
     } catch {
       // Never expose JWTs, provider payloads, database details or source content.
       return json({ error: 'Uitlezen is tijdelijk niet beschikbaar. Probeer het opnieuw.', code: 'scan_unavailable' }, 503);

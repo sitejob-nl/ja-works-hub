@@ -46,16 +46,18 @@ qa = gate.qa
 qa.CONTAINER = "ja-works-hours-scan-test-20260913"
 qa.LABEL = "ja-werkt-hours-scan-qa"
 qa.LABEL_VALUE = "20260913"
-sql, rpc, literal = qa.sql, qa.rpc, qa.literal
+sql, rpc, literal, rpc_statement = qa.sql, qa.rpc, qa.literal, qa.rpc_statement
 
 PDF = intake.PDF
 XLSX = workbook.XLSX
 JPEG = "image/jpeg"
 digest = intake.digest
-SCAN_TABLES = client.CLIENT_TABLES
+SCAN_TABLES = client.CLIENT_TABLES + ("hours_source_readings",)
 EXPECTED_SIGNATURES = client.EXPECTED_SIGNATURES + (
     "hours_get_source_reading_context(uuid)",
     "hours_confirm_proposal_values(uuid,text)",
+    "hours_claim_source_reading(uuid,uuid)",
+    "hours_finish_source_reading(uuid,text,text,integer,integer,text)",
 )
 
 
@@ -95,7 +97,8 @@ class ScanTests(client.ClientWeekTests):
             self.assertIn(expected, names)
         self.assertNotIn("hours_add_week_source(uuid,text,text,text)", names,
                          "The superseded signature must not stay callable next to the new one")
-        service_names = classification.SERVICE_FUNCTIONS | client.CLIENT_SERVICE_FUNCTIONS
+        service_names = (classification.SERVICE_FUNCTIONS | client.CLIENT_SERVICE_FUNCTIONS
+                         | {"hours_claim_source_reading", "hours_finish_source_reading"})
         for function in functions:
             signature = function["signature"]
             self.assertEqual(sql(f"SELECT has_function_privilege('anon',{literal(signature)},'EXECUTE');"), "f",
@@ -189,6 +192,81 @@ class ScanTests(client.ClientWeekTests):
                 outcome = str(refusal)
             self.assertNotIn("25006", outcome,
                              f"{function['name']} cannot run in the read-only transaction PostgREST uses")
+
+    def test_a_reading_is_claimed_before_it_is_paid_for(self):
+        """One reading per source at a time, and a record of what was sent.
+
+        Without a claim the only thing between two clicks and two charges is
+        browser state, and nothing anywhere says which document went to the
+        provider — which the AVG accountability duty needs and a processor
+        incident cannot be scoped without.
+        """
+        week = self.open_week()
+        source, _ = self.scan_source()
+        first = rpc("hours_claim_source_reading", user=None, role="service_role",
+                    p_source_id=source["source_id"], p_actor_id=self.admin)
+        self.assertTrue(first["ok"])
+        self.assertEqual(first["source_id"], source["source_id"])
+        self.assertEqual(first["week_id"], week["id"])
+        # A second claim while the first is open is refused, not charged.
+        self.assertIn("22023", sql(rpc_statement("hours_claim_source_reading",
+                      p_source_id=source["source_id"], p_actor_id=self.admin),
+                      role="service_role", expect_error=True))
+        rpc("hours_finish_source_reading", user=None, role="service_role",
+            p_reading_id=first["reading_id"], p_status="succeeded",
+            p_request_id=first["reading_id"], p_cost_cents=1, p_lines=3)
+        again = rpc("hours_claim_source_reading", user=None, role="service_role",
+                    p_source_id=source["source_id"], p_actor_id=self.admin)
+        self.assertTrue(again["ok"])
+        rows = sql(f"SELECT count(*) FROM public.hours_source_readings "
+                   f"WHERE source_id={literal(source['source_id'])};")
+        self.assertEqual(rows, "2", "every paid reading leaves a record")
+
+    def test_the_reading_log_is_service_role_only_and_internal_to_read(self):
+        week = self.open_week()
+        source, _ = self.scan_source()
+        rpc("hours_claim_source_reading", user=None, role="service_role",
+            p_source_id=source["source_id"], p_actor_id=self.admin)
+        self.reject("hours_claim_source_reading", code="42501", user=self.admin,
+                    p_source_id=source["source_id"], p_actor_id=self.admin)
+        # An internal finance reader sees its own organization's log; a portal
+        # user and another tenant see nothing.
+        self.assertEqual(sql("SELECT count(*) FROM public.hours_source_readings;",
+                             role="authenticated", user=self.admin), "1")
+        for actor in (self.worker, self.other_admin):
+            self.assertEqual(sql("SELECT count(*) FROM public.hours_source_readings;",
+                                 role="authenticated", user=actor), "0")
+        # anon has no grant at all, so it cannot even ask.
+        self.assertIn("42501", sql("SELECT count(*) FROM public.hours_source_readings;",
+                                   role="anon", expect_error=True))
+        _ = week
+
+    def test_the_database_accepts_exactly_the_labels_the_reader_can_emit(self):
+        """The TypeScript lists and their SQL twins are hand-written copies.
+
+        Nothing else bridges the two languages: a sixth label added on one side
+        makes a paid reading fail all-or-nothing on the other. This reads the
+        kernel's own list and checks the database against it.
+        """
+        kernel = (ROOT / "supabase/functions/_shared/hours-scan.ts").read_text()
+        labels = json.loads("[" + kernel.split("SCAN_UNCERTAIN_FIELDS = [")[1]
+                            .split("]")[0].replace("'", '"') + "]")
+        self.assertEqual(len(labels), 5, labels)
+        week = self.open_week()
+        source, _ = self.scan_source()
+        days = [day["id"] for member in week["members"] for day in member["days"]][:len(labels)]
+        self.read_into_proposals(source["source_id"], [
+            {"day_id": day, "minutes": 480, "page_number": 1, "uncertain_fields": [label]}
+            for day, label in zip(days, labels)])
+        stored = sql(f"SELECT count(*) FROM public.hours_source_proposals "
+                     f"WHERE week_id={literal(week['id'])} AND uncertain_fields IS NOT NULL;")
+        self.assertEqual(stored, str(len(labels)), "every label the reader can emit must be storable")
+        types = json.loads("[" + kernel.split("HOURS_READABLE_SCAN_TYPES = [")[1]
+                           .split("]")[0].replace("'", '"') + "]")
+        body = sql("""SELECT pg_get_functiondef(p.oid) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+          WHERE n.nspname='public' AND p.proname='hours_get_source_reading_context';""")
+        for media in types:
+            self.assertIn(media, body, f"the database must also accept {media}")
 
     # --- recorded doubt -----------------------------------------------------
 
@@ -450,6 +528,7 @@ def main():
         "20260911090000_hours_spreadsheet_sources.sql",
         "20260912090000_hours_client_week_links.sql",
         "20260913090000_hours_scan_reading.sql",
+        "20260914090000_hours_scan_reading_log.sql",
     )]
     fixtures = [ROOT / "tests/db/hours-workflow-fixture.sql", ROOT / "tests/db/hours-module-gate-fixture.sql",
                 ROOT / "tests/db/hours-intake-fixture.sql"]

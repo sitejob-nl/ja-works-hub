@@ -5541,6 +5541,73 @@ export type Database = {
           },
         ]
       }
+      hours_source_readings: {
+        Row: {
+          actor_id: string
+          ai_request_id: string | null
+          cost_cents: number | null
+          error_code: string | null
+          finished_at: string | null
+          id: string
+          line_count: number | null
+          organization_id: string
+          source_id: string
+          started_at: string
+          status: string
+          week_id: string
+        }
+        Insert: {
+          actor_id: string
+          ai_request_id?: string | null
+          cost_cents?: number | null
+          error_code?: string | null
+          finished_at?: string | null
+          id?: string
+          line_count?: number | null
+          organization_id: string
+          source_id: string
+          started_at?: string
+          status?: string
+          week_id: string
+        }
+        Update: {
+          actor_id?: string
+          ai_request_id?: string | null
+          cost_cents?: number | null
+          error_code?: string | null
+          finished_at?: string | null
+          id?: string
+          line_count?: number | null
+          organization_id?: string
+          source_id?: string
+          started_at?: string
+          status?: string
+          week_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hours_source_readings_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_source_readings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_source_readings_source_id_week_id_organization_id_fkey"
+            columns: ["source_id", "week_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "hours_week_sources"
+            referencedColumns: ["id", "week_id", "organization_id"]
+          },
+        ]
+      }
       hours_week_members: {
         Row: {
           candidate_id: string
@@ -12246,6 +12313,10 @@ export type Database = {
         Args: { p_expected_revision_id: string; p_proposal_id: string }
         Returns: Json
       }
+      hours_claim_source_reading: {
+        Args: { p_actor_id: string; p_source_id: string }
+        Returns: Json
+      }
       hours_client_week_add_source: {
         Args: {
           p_content_hash: string
@@ -12349,6 +12420,17 @@ export type Database = {
           p_expected_context_hash: string
           p_expected_revision_id: string
           p_result: Json
+        }
+        Returns: Json
+      }
+      hours_finish_source_reading: {
+        Args: {
+          p_cost_cents?: number
+          p_error_code?: string
+          p_lines?: number
+          p_reading_id: string
+          p_request_id?: string
+          p_status: string
         }
         Returns: Json
       }

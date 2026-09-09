@@ -16,6 +16,7 @@ Deno.serve(createHoursScanHandler({
     Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!,
     { global: { headers: { Authorization: req.headers.get('Authorization')! } }, auth: { persistSession: false } },
   ).rpc(name, args),
+  serviceRpc: (name, args) => createAdminClient().rpc(name, args),
   download: async (path) => {
     const { data, error } = await createAdminClient().storage.from('hours-sources').download(path);
     if (error || !data) throw error ?? new Error('source unavailable');

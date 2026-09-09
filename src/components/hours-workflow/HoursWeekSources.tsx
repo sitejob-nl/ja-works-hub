@@ -470,7 +470,8 @@ function ProposalRow({ proposal, target, canManage, onApply, onDiscard, onConfir
             catch (failure) { setError(hoursWorkflowError(failure)); }
             finally { setBusy(false); }
           }}>{confirming === 'assignment' ? 'Medewerker bevestigen' : 'Gelezen gegevens bevestigen'}</Button>
-          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => setConfirming(null)}>Annuleren</Button>
+          <Button type="button" size="sm" variant="outline" disabled={busy}
+            onClick={() => { setConfirming(null); setConfirmNote(''); }}>Annuleren</Button>
         </div>
       </div> : discarding ? <div className="space-y-2">
         <Label htmlFor={`discard-${proposal.id}`}>Waarom vervalt dit voorstel? (optioneel)</Label>

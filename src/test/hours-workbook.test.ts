@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readHoursWorkbook, type WorkbookContext, type WorkbookSheet } from '@/lib/hours-workbook';
+import { readHoursWorkbook, workbookEntryDoubt, type WorkbookContext, type WorkbookSheet } from '@/lib/hours-workbook';
 
 /** One QA week: two employees, Monday through Wednesday. */
 const week: WorkbookContext = {
@@ -772,5 +772,26 @@ describe('naming a placeholder in a grid', () => {
     expect(reading.ok).toBe(true);
     if (reading.ok === false) return;
     expect(reading.candidates.map(candidate => candidate.minutes)).toEqual([480]);
+  });
+});
+
+describe('a delivered breakdown the calculation kernel refuses', () => {
+  it('is recorded as doubt, so the spreadsheet path blocks applying just like the scan path', () => {
+    // Both readers judge a delivery with the same control. If only one of them
+    // turns a refused breakdown into recorded doubt, the same contradiction
+    // blocks on one route and writes an unclassifiable day on the other.
+    const candidate = {
+      dayId: 'day-1', memberId: 'member-1', employeeName: 'A', workDate: '2026-09-07',
+      minutes: 480, noHoursReason: null,
+      sourceInput: { schemaVersion: 1 as const, categories: [{ sourceCode: 'OV1', minutes: 240 }] },
+      pageNumber: 1, pageLabel: 'blad Week · rij 2', sheetName: 'Week', row: 2,
+      assignmentUncertain: false, employeeText: 'A',
+      notices: [{ code: 'TOTAL_MISMATCH', message: 'De som wijkt af van het aangeleverde totaal.' }],
+    };
+    expect(workbookEntryDoubt(candidate)).toEqual(['total']);
+    expect(workbookEntryDoubt({ ...candidate, notices: [] })).toBeNull();
+    expect(workbookEntryDoubt({ ...candidate,
+      notices: [{ code: 'BREAK_OUTSIDE_SHIFT', message: '' }, { code: 'TOTAL_MISMATCH', message: '' }] }))
+      .toEqual(['total', 'break']);
   });
 });

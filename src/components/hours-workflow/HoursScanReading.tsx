@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
+import { formatAiCreditEuro } from '@/lib/ai-credits';
 import { hoursWorkflowError } from '@/lib/hours-workflow';
 import { describeUncertainFields, type HoursUncertainField } from '@/lib/hours-sources';
 import type { HoursReadingEntry } from '@/lib/hours-workflow-api';
@@ -11,7 +12,7 @@ import { HOURS_SCAN_MAX_ENTRIES, type ScanCandidate, type ScanReading } from '..
 import { formatHoursDate } from './presentation';
 
 const duration = (minutes: number): string => `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')} uur`;
-const euro = (cents: number): string => `€ ${(cents / 100).toFixed(2).replace('.', ',')}`;
+
 
 export interface HoursScanReadingProps {
   reading: ScanReading;
@@ -62,15 +63,22 @@ export function HoursScanReading({
   reading, costCents, balanceCents, model, durationMs, alreadyProposed, onCancel, onSave,
   maxEntries = HOURS_SCAN_MAX_ENTRIES,
 }: HoursScanReadingProps) {
-  const [excluded, setExcluded] = useState<Set<string>>(
-    () => new Set(reading.ok === true ? reading.candidates.filter(c => alreadyProposed.has(c.dayId)).map(c => c.dayId) : []));
+  // What the reviewer touched, kept apart from what the week says. A day that
+  // gains a proposal while this panel is open — a colleague, another tab — is
+  // unticked as soon as that is known, so saving cannot quietly add a second
+  // open proposal for it, while a box the reviewer deliberately ticked stays
+  // ticked.
+  const [unticked, setUnticked] = useState<Set<string>>(new Set());
+  const [reticked, setReticked] = useState<Set<string>>(new Set());
+  const isExcluded = (dayId: string) =>
+    unticked.has(dayId) || (alreadyProposed.has(dayId) && !reticked.has(dayId));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // The call was paid for either way, so what it cost stays visible even when
   // the answer turned out to be unusable.
   const price = <p className="text-xs text-muted-foreground">
-    Deze uitlezing kostte {euro(costCents)}. Resterend tegoed {euro(balanceCents)}.
+    Deze uitlezing kostte {formatAiCreditEuro(costCents)}. Resterend tegoed {formatAiCreditEuro(balanceCents)}.
   </p>;
 
   if (reading.ok === false) {
@@ -86,20 +94,35 @@ export function HoursScanReading({
     </div>;
   }
 
-  const chosen = reading.candidates.filter(candidate => !excluded.has(candidate.dayId));
-  const toggle = (dayId: string, include: boolean) => setExcluded(current => {
-    const next = new Set(current);
-    if (include) next.delete(dayId); else next.add(dayId);
-    return next;
-  });
+  const chosen = reading.candidates.filter(candidate => !isExcluded(candidate.dayId));
+  const toggle = (dayId: string, include: boolean) => {
+    setUnticked(current => {
+      const next = new Set(current);
+      if (include) next.delete(dayId); else next.add(dayId);
+      return next;
+    });
+    setReticked(current => {
+      const next = new Set(current);
+      if (include) next.add(dayId); else next.delete(dayId);
+      return next;
+    });
+  };
+  const setAll = (include: boolean) => {
+    const days = reading.ok === true ? reading.candidates.map(candidate => candidate.dayId) : [];
+    setUnticked(include ? new Set() : new Set(days));
+    setReticked(include ? new Set(days) : new Set());
+  };
 
   async function save() {
     if (busy) return;
     setError(null);
     if (!chosen.length) { setError('Kies minstens één regel om als voorstel te bewaren.'); return; }
     if (chosen.length > maxEntries) {
+      // The reader already refuses a delivery past this bound, so a reading can
+      // never arrive here over it. Kept as the last line of defence, worded so
+      // it does not promise a remainder that closing this panel would lose.
       setError(`Er kunnen maximaal ${maxEntries} regels in één keer worden bewaard. `
-        + `Vink er ${chosen.length - maxEntries} uit en bewaar de rest daarna.`);
+        + `Vink er ${chosen.length - maxEntries} uit; de rest hoort bij een aparte aanlevering.`);
       return;
     }
     setBusy(true);
@@ -126,15 +149,15 @@ export function HoursScanReading({
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <span>{chosen.length} van {reading.candidates.length} gekozen.</span>
         <Button type="button" size="sm" variant="ghost" disabled={busy || !chosen.length}
-          onClick={() => setExcluded(new Set(reading.candidates.map(candidate => candidate.dayId)))}>
+          onClick={() => setAll(false)}>
           Alles uitvinken
         </Button>
         <Button type="button" size="sm" variant="ghost" disabled={busy || chosen.length === reading.candidates.length}
-          onClick={() => setExcluded(new Set())}>Alles aanvinken</Button>
+          onClick={() => setAll(true)}>Alles aanvinken</Button>
       </div>
       <ul className="space-y-2">
         {reading.candidates.map(candidate => {
-          const include = !excluded.has(candidate.dayId);
+          const include = !isExcluded(candidate.dayId);
           const inputId = `scan-${candidate.dayId}`;
           return <li key={candidate.dayId} className="flex flex-wrap items-start gap-2 rounded-md border bg-background p-2">
             <Checkbox id={inputId} checked={include} disabled={busy}

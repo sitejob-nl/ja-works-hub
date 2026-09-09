@@ -1,6 +1,6 @@
 import { parseHoursToMinutes, type HoursIssue } from './hours-calculation.ts';
 import { matchHoursMember, prepareHoursMembers, type HoursWeekMember } from './hours-member-match.ts';
-import { sourceControlIssues, type HoursSourceInput } from './hours-source-control.ts';
+import { controlDoubtField, sourceControlIssues, type HoursSourceInput } from './hours-source-control.ts';
 
 /**
  * Turning a scanned or photographed timesheet into reviewable proposals.
@@ -45,7 +45,11 @@ export const REPORTABLE_UNCERTAINTY = ['employee', 'date', ...SCAN_UNCERTAIN_FIE
  */
 export const HOURS_READABLE_SCAN_TYPES = ['application/pdf', 'image/jpeg', 'image/png'] as const;
 
-/** One reading may record at most this many proposals; the database agrees. */
+/**
+ * One reading may record at most this many proposals; the database agrees
+ * (`jsonb_array_length(p_entries) > 500`) and so does the spreadsheet reader,
+ * which re-exports this as HOURS_READING_MAX_ENTRIES.
+ */
 export const HOURS_SCAN_MAX_ENTRIES = 500;
 
 /** Exactly what a scan line offers for review, with where it was found. */
@@ -72,7 +76,7 @@ export type ScanReading =
       pagesRead: number[]; pagesUnread: ScanUnreadPage[];
     };
 
-const ENTRY_FIELDS = ['employee_text', 'work_date', 'page_number', 'location_text', 'total_text',
+export const SCAN_ENTRY_FIELDS = ['employee_text', 'work_date', 'page_number', 'location_text', 'total_text',
   'no_hours_text', 'start_text', 'end_text', 'break_text', 'categories', 'uncertain'];
 const CATEGORY_FIELDS = ['code_text', 'duration_text'];
 const UNREADABLE_FIELDS = ['page_number', 'reason'];
@@ -121,29 +125,58 @@ interface BreakReading {
  * breakdown and used only to check whether the day adds up.
  */
 function readBreak(value: string): BreakReading {
-  const parts = value.split(/[;,]/).map(part => part.trim()).filter(Boolean);
-  if (!parts.length) return { windows: null, durationMinutes: null, unreadable: true };
-  const windows: { start: string; end: string }[] = [];
-  for (const part of parts) {
-    const range = /^(.+?)\s*(?:-|–|—|t\/m|tot)\s*(.+)$/.exec(part);
+  // "Nothing here" first: a dash or "n.v.t." in the break column is a written
+  // fact — there was no break — and reading it as unreadable would block the
+  // proposal and throw away a shift that was read perfectly.
+  if (isEmptyMarker(value)) return { windows: [], durationMinutes: 0, unreadable: false };
+  const window = (part: string): { start: string; end: string } | null => {
+    const range = /^(.+?)\s*(?:-|–|—|t\/m|tot)\s*(.+)$/.exec(part.trim());
     const start = range ? clockText(range[1]) : null;
     const end = range ? clockText(range[2]) : null;
-    if (!start || !end) { windows.length = 0; break; }
-    windows.push({ start, end });
+    return start && end ? { start, end } : null;
+  };
+  // One window, then one duration, and only then a list. Splitting first would
+  // tear "0,5" — ordinary Dutch for half an hour — into two unreadable halves.
+  const single = window(value);
+  if (single) return { windows: [single], durationMinutes: null, unreadable: false };
+  const bare = /^(\d{1,3})\s*min(?:uten|uut)?\.?$/i.exec(value.trim());
+  if (bare) return { windows: null, durationMinutes: Number(bare[1]), unreadable: false };
+  const duration = parseHoursToMinutes(value.trim(), { maxMinutes: 1440 });
+  // Zero is "there was no break", not a duration whose place is unknown, so the
+  // shift can still be stored.
+  if (duration.ok) {
+    return duration.value === 0
+      ? { windows: [], durationMinutes: 0, unreadable: false }
+      : { windows: null, durationMinutes: duration.value, unreadable: false };
   }
-  if (windows.length === parts.length) return { windows, durationMinutes: null, unreadable: false };
-  if (parts.length > 1) return { windows: null, durationMinutes: null, unreadable: true };
-  const bare = /^(\d{1,3})\s*(?:min(?:uten|uut)?\.?)?$/i.exec(parts[0]);
-  if (bare) {
-    const minutes = Number(bare[1]);
-    return minutes <= 1440
-      ? { windows: null, durationMinutes: minutes, unreadable: false }
-      : { windows: null, durationMinutes: null, unreadable: true };
+  // A bare integer is minutes: nobody writes a break of eight hours, and "30"
+  // in a break column is thirty minutes everywhere in this trade.
+  const digits = /^(\d{1,3})$/.exec(value.trim());
+  if (digits && Number(digits[1]) <= 1440) {
+    return Number(digits[1]) === 0
+      ? { windows: [], durationMinutes: 0, unreadable: false }
+      : { windows: null, durationMinutes: Number(digits[1]), unreadable: false };
   }
-  const duration = parseHoursToMinutes(parts[0], { maxMinutes: 1440 });
-  return duration.ok
-    ? { windows: null, durationMinutes: duration.value, unreadable: false }
-    : { windows: null, durationMinutes: null, unreadable: true };
+  const parts = value.split(/[;,]/).map(part => part.trim()).filter(Boolean);
+  if (parts.length > 1) {
+    const windows = parts.map(window);
+    if (windows.every(item => item !== null)) {
+      return { windows: windows as { start: string; end: string }[], durationMinutes: null, unreadable: false };
+    }
+  }
+  return { windows: null, durationMinutes: null, unreadable: true };
+}
+
+/** Total break time of a set of written windows, in the day the shift is on. */
+function breakWindowMinutes(reading: BreakReading | null, start: string, crossesMidnight: boolean): number {
+  if (!reading?.windows?.length) return 0;
+  return reading.windows.reduce((total, window) => {
+    const offset = crossesMidnight && clockMinutes(window.start) < clockMinutes(start) ? 1440 : 0;
+    const from = clockMinutes(window.start) + offset;
+    let to = clockMinutes(window.end) + offset;
+    if (to < from) to += 1440;
+    return total + (to - from);
+  }, 0);
 }
 
 interface Line {
@@ -169,12 +202,14 @@ const brokenShape: LineReading = { ok: false, fatal: true, reason: '' };
 const badLine = (reason: string): LineReading => ({ ok: false, fatal: false, reason });
 
 function readLine(value: unknown): LineReading {
-  if (!isRecord(value) || !hasOnly(value, ENTRY_FIELDS)) return brokenShape;
+  if (!isRecord(value) || !hasOnly(value, SCAN_ENTRY_FIELDS)) return brokenShape;
   const employeeText = text(value.employee_text);
   const workDate = text(value.work_date);
   const locationText = text(value.location_text);
   const pageNumber = value.page_number;
-  if (typeof pageNumber !== 'number' || !Number.isSafeInteger(pageNumber)) return brokenShape;
+  if (pageNumber !== undefined && pageNumber !== null
+      && (typeof pageNumber !== 'number' || !Number.isSafeInteger(pageNumber))) return brokenShape;
+  if (typeof pageNumber !== 'number') return badLine('Deze regel noemt geen bruikbare pagina.');
   if (!employeeText) return badLine('Op deze regel staat geen naam.');
   if (!workDate || !/^\d{4}-\d{2}-\d{2}$/.test(workDate)) {
     return badLine('De datum van deze regel is niet als kalenderdatum gelezen.');
@@ -218,21 +253,6 @@ function readLine(value: unknown): LineReading {
     categories, uncertain,
   } };
 }
-
-/**
- * Which field a reviewer has to go and check when the shared control refuses a
- * delivered breakdown. Anything unlisted lands on the total, which is the one
- * field every proposal carries.
- */
-const CONTROL_FIELD: Record<string, ScanUncertainField> = {
-  TOTAL_MISMATCH: 'total', HOURS_OUT_OF_RANGE: 'total', INVALID_TOTAL: 'total',
-  INVALID_ZERO_SOURCE: 'total',
-  BREAK_OUTSIDE_SHIFT: 'break', OVERLAPPING_BREAKS: 'break', MISSING_BREAKS: 'break',
-  INVALID_BREAK: 'break', INVALID_BREAK_RANGE: 'break',
-  OVERLAPPING_SHIFTS: 'shift', INVALID_SHIFT: 'shift', INVALID_SHIFT_RANGE: 'shift',
-  MISSING_DAY_OFFSET: 'shift', INVALID_TIME: 'shift',
-  DUPLICATE_SOURCE_CATEGORY: 'categories',
-};
 
 /** Reported in a fixed order so two readings of one file describe it identically. */
 const orderUncertain = (fields: Set<string>): ScanUncertainField[] =>
@@ -310,17 +330,59 @@ export function interpretScanReading(raw: unknown, context: ScanContext): ScanRe
       skip('Deze datum is geen werkdag van deze medewerker in deze week.');
       continue;
     }
+    // The same day twice is a badly filled pair of lines, not a broken schema:
+    // both are set aside and named, and the rest of a reading that was already
+    // paid for stays usable.
     const earlier = seenDays.get(day.id);
     if (earlier) {
-      return fail('DUPLICATE_SCAN_DAY', `Deze bron beschrijft dezelfde werkdag van ${match.member.name} tweemaal `
-        + `(${earlier} en ${where}). Kies zelf welke regel klopt en leg die als voorstel vast.`);
+      const already = candidates.findIndex(candidate => candidate.dayId === day.id);
+      if (already >= 0) candidates.splice(already, 1);
+      const reason = `Deze bron beschrijft dezelfde werkdag van ${match.member.name} tweemaal `
+        + `(${earlier} en ${where}). Kies zelf welke regel klopt en leg die handmatig vast.`;
+      skipped.push({ pageNumber: line.pageNumber, text: `${line.employeeText} · ${earlier}`, reason });
+      skip(reason);
+      continue;
     }
 
     const uncertain = new Set<string>(line.uncertain);
     const notices: HoursIssue[] = [];
 
-    // Hours first: without a readable duration or an explicit reason there is
-    // nothing to propose, and no reported certainty changes that.
+    // The written times are read first, because a timesheet that records only
+    // "van 07:00 tot 15:30, pauze 30" is the most ordinary shape there is and
+    // its day total is the sum of what is written, not a missing fact.
+    const start = line.startText ? clockText(line.startText) : null;
+    const end = line.endText ? clockText(line.endText) : null;
+    if (line.startText && !start) notices.push({ code: 'INCOMPLETE_SCAN_SHIFT', message: `De begintijd is gelezen als “${line.startText}” en is geen tijdstip.` });
+    if (line.endText && !end) notices.push({ code: 'INCOMPLETE_SCAN_SHIFT', message: `De eindtijd is gelezen als “${line.endText}” en is geen tijdstip.` });
+    if ((line.startText || line.endText) && !(start && end)) {
+      notices.push({ code: 'INCOMPLETE_SCAN_SHIFT',
+        message: 'Er is maar een deel van de diensttijd gelezen; de dienst is daarom niet overgenomen.' });
+      uncertain.add('shift');
+    }
+    const breakReading = line.breakText ? readBreak(line.breakText) : null;
+    if (breakReading?.unreadable) {
+      uncertain.add('break');
+      notices.push({ code: 'UNREADABLE_SCAN_BREAK',
+        message: `De pauze is gelezen als “${line.breakText}” en is niet te herleiden; `
+          + 'de dienst is daarom niet overgenomen.' });
+    }
+    // A break the model reported doubt about but returned empty is an
+    // unreadable break, not the absence of one; the shift may not go on to
+    // claim there was none.
+    const breakUnknown = !!breakReading?.unreadable || (!line.breakText && line.uncertain.has('break'));
+    const equalTimes = !!(start && end && clockMinutes(end) === clockMinutes(start));
+    if (equalTimes) {
+      notices.push({ code: 'INCOMPLETE_SCAN_SHIFT',
+        message: `Begin- en eindtijd zijn allebei als ${start} gelezen; de dienst is daarom niet overgenomen.` });
+      uncertain.add('shift');
+    }
+    const crossesMidnight = !!(start && end) && clockMinutes(end) < clockMinutes(start);
+    const grossMinutes = start && end && !equalTimes
+      ? clockMinutes(end) + (crossesMidnight ? 1440 : 0) - clockMinutes(start) : null;
+    const netMinutes = grossMinutes !== null && !breakUnknown
+      ? grossMinutes - (breakReading?.durationMinutes ?? breakWindowMinutes(breakReading, start!, crossesMidnight))
+      : null;
+
     let minutes: number | null = null;
     let noHoursReason: string | null = null;
     if (line.totalText !== null && !isEmptyMarker(line.totalText)) {
@@ -341,6 +403,11 @@ export function interpretScanReading(raw: unknown, context: ScanContext): ScanRe
             + 'de bron zegt niet welke van de twee.' });
       }
     }
+    if (minutes === null && netMinutes !== null && netMinutes > 0 && netMinutes <= 1440) {
+      minutes = netMinutes;
+      notices.push({ code: 'SCAN_TOTAL_DERIVED',
+        message: `Er staat geen dagtotaal op de bron; ${formatMinutes(netMinutes)} is de gelezen diensttijd min de pauze.` });
+    }
     const reason = line.noHoursText !== null && !isEmptyMarker(line.noHoursText) ? line.noHoursText : null;
     if (minutes !== null && minutes > 0 && reason) {
       skip(`De bron noemt zowel ${line.totalText} uur als “${reason}”; die spreken elkaar tegen.`);
@@ -358,46 +425,30 @@ export function interpretScanReading(raw: unknown, context: ScanContext): ScanRe
       continue;
     }
 
-    // A shift is only stored when both ends are on the paper. Half a shift is a
-    // missing fact, not an uncertain one, so it is named instead of guessed at.
+    // The times were read above; here they become the stored breakdown, but
+    // only when the paper said enough for a complete one.
     const source: HoursSourceInput = { schemaVersion: 1 };
-    const start = line.startText ? clockText(line.startText) : null;
-    const end = line.endText ? clockText(line.endText) : null;
-    if (line.startText && !start) notices.push({ code: 'INCOMPLETE_SCAN_SHIFT', message: `De begintijd is gelezen als “${line.startText}” en is geen tijdstip.` });
-    if (line.endText && !end) notices.push({ code: 'INCOMPLETE_SCAN_SHIFT', message: `De eindtijd is gelezen als “${line.endText}” en is geen tijdstip.` });
-    if ((line.startText || line.endText) && !(start && end)) {
-      notices.push({ code: 'INCOMPLETE_SCAN_SHIFT',
-        message: 'Er is maar een deel van de diensttijd gelezen; de dienst is daarom niet overgenomen.' });
+    if (crossesMidnight) {
+      // Reading an earlier end as the next day is the likely meaning and never
+      // a silent one: it changes the length of the day, so it is marked.
+      uncertain.add('shift');
+      notices.push({ code: 'SCAN_SHIFT_CROSSES_MIDNIGHT',
+        message: 'De eindtijd ligt vóór de begintijd; de dienst is gelezen als doorlopend naar de volgende dag.' });
     }
-    const breakReading = line.breakText ? readBreak(line.breakText) : null;
-    if (breakReading?.unreadable) {
-      uncertain.add('break');
-      notices.push({ code: 'UNREADABLE_SCAN_BREAK', message: `De pauze is gelezen als “${line.breakText}” en is niet te herleiden.` });
-    }
-    if (start && end && minutes > 0 && clockMinutes(end) === clockMinutes(start)) {
-      // A start equal to the end is a repeated cell, never a twenty-four hour
-      // day. Reading it as one would put a full day on the paper's authority.
-      notices.push({ code: 'INCOMPLETE_SCAN_SHIFT',
-        message: `Begin- en eindtijd zijn allebei als ${start} gelezen; de dienst is daarom niet overgenomen.` });
-    } else if (start && end && minutes > 0 && !breakReading?.unreadable) {
-      const crossesMidnight = clockMinutes(end) < clockMinutes(start);
-      if (crossesMidnight) {
-        // Reading an earlier end as the next day is the likely meaning and never
-        // a silent one: it changes the length of the day, so it is marked.
-        uncertain.add('shift');
-        notices.push({ code: 'SCAN_SHIFT_CROSSES_MIDNIGHT',
-          message: 'De eindtijd ligt vóór de begintijd; de dienst is gelezen als doorlopend naar de volgende dag.' });
-      }
+    if (start && end && minutes > 0 && !equalTimes && !breakUnknown) {
       if (breakReading?.windows) {
         // A break belongs to the day the shift is on at that hour. Stamping
         // every window as day zero puts a two-o'clock break twenty hours before
         // a shift that began at ten in the evening, which the calculation
-        // kernel then rejects for the rest of that day's life.
+        // kernel then rejects for the rest of that day's life. A window that
+        // spans midnight moves only its own end.
         source.shifts = [{
           start, end, endDayOffset: crossesMidnight ? 1 : 0,
           breaks: breakReading.windows.map(window => {
-            const offset = crossesMidnight && clockMinutes(window.start) < clockMinutes(start) ? 1 : 0;
-            return { ...window, startDayOffset: offset as 0 | 1, endDayOffset: offset as 0 | 1 };
+            const startOffset = crossesMidnight && clockMinutes(window.start) < clockMinutes(start) ? 1 : 0;
+            const endOffset = crossesMidnight
+              && (startOffset === 1 || clockMinutes(window.end) < clockMinutes(window.start)) ? 1 : 0;
+            return { ...window, startDayOffset: startOffset as 0 | 1, endDayOffset: endOffset as 0 | 1 };
           }),
         }];
       } else if (!breakReading) {
@@ -405,20 +456,23 @@ export function interpretScanReading(raw: unknown, context: ScanContext): ScanRe
       } else {
         // A bare duration says how long the break was, never when. The stored
         // shape has no room for that, so the shift is left out — and said so,
-        // because a fact this reader dropped is never dropped silently. It still
-        // decides whether the written times and the written total agree.
+        // because a fact this reader dropped is never dropped silently, and it
+        // is something a person has to go and check against the paper.
         notices.push({ code: 'INCOMPLETE_SCAN_SHIFT',
           message: `De pauze is als duur gelezen (“${line.breakText}”) en niet als tijdvak, `
             + 'dus de dienst is niet overgenomen. De uren zelf blijven staan.' });
-        const gross = clockMinutes(end) + (crossesMidnight ? 1440 : 0) - clockMinutes(start);
-        const net = gross - (breakReading.durationMinutes ?? 0);
-        if (net !== minutes) {
-          uncertain.add('total');
-          notices.push({ code: 'TOTAL_MISMATCH',
-            message: 'De gelezen diensttijd wijkt af van het opgeschreven totaal.',
-            expectedMinutes: net > 0 ? net : 0, actualMinutes: minutes });
-        }
+        uncertain.add('shift');
       }
+    }
+    // The written times and the written total have to agree. When the total was
+    // worked out from those times they agree by construction, so this only
+    // judges a total the paper itself carried.
+    if (netMinutes !== null && line.totalText !== null && !isEmptyMarker(line.totalText)
+      && minutes > 0 && !source.shifts && netMinutes !== minutes) {
+      uncertain.add('total');
+      notices.push({ code: 'TOTAL_MISMATCH',
+        message: 'De gelezen diensttijd wijkt af van het opgeschreven totaal.',
+        expectedMinutes: netMinutes > 0 ? netMinutes : 0, actualMinutes: minutes });
     }
 
     if (line.categories?.length && minutes > 0) {
@@ -440,6 +494,7 @@ export function interpretScanReading(raw: unknown, context: ScanContext): ScanRe
         }));
       }
     } else if (line.categories?.length) {
+      uncertain.add('categories');
       notices.push({ code: 'INVALID_ZERO_SOURCE',
         message: 'Er is een indeling gelezen bij een dag zonder uren; die is niet overgenomen.' });
     }
@@ -454,21 +509,15 @@ export function interpretScanReading(raw: unknown, context: ScanContext): ScanRe
     // applied blind and leave a day that can never be classified.
     for (const issue of sourceControlIssues(minutes, sourceInput)) {
       notices.push(issue);
-      uncertain.add(CONTROL_FIELD[issue.code] ?? 'total');
+      uncertain.add(controlDoubtField(issue.code));
     }
 
-    // Doubt about something the paper never showed has nowhere to land: it would
-    // block applying on a field the reviewer cannot go and check. Doubt about
-    // something that *was* written stays, even when the reader decided not to
-    // carry it into the proposal — that is exactly the case a person has to
-    // look at.
-    const written: Record<ScanUncertainField, boolean> = {
-      total: true, shift: !!(line.startText || line.endText), break: !!line.breakText,
-      categories: !!line.categories?.length, reason: noHoursReason !== null,
-    };
-    for (const field of [...uncertain]) {
-      if (!written[field as ScanUncertainField]) uncertain.delete(field);
-    }
+    // Every reported doubt is kept. An earlier round dropped doubt about a field
+    // that came back empty, on the theory that the paper never showed it — but
+    // an empty field the model flagged is exactly a field it could not read, and
+    // dropping the flag turned "I could not read the break" into the assertion
+    // that there was none. Only 'employee' and 'date' are steered elsewhere,
+    // and orderUncertain drops those.
 
     seenDays.set(day.id, where);
     candidates.push({

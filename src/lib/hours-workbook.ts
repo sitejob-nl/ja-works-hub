@@ -2,6 +2,9 @@ import { parseHoursToMinutes, type HoursIssue } from '../../supabase/functions/_
 import {
   hoursSourceInputSchema, sourceControlIssues, type HoursSourceInput,
 } from '@/components/hours-workflow/hours-day-source';
+import { controlDoubtField } from '../../supabase/functions/_shared/hours-source-control';
+import { HOURS_SCAN_MAX_ENTRIES } from '../../supabase/functions/_shared/hours-scan';
+import type { HoursUncertainField } from '@/lib/hours-sources';
 import {
   matchHoursMember, normalizeHoursName, type HoursMemberMatch, type HoursWeekMember,
 } from '../../supabase/functions/_shared/hours-member-match';
@@ -36,9 +39,9 @@ export interface WorkbookCandidate {
 /**
  * How many proposals one handling may record. The server enforces the same
  * bound; the screen checks it first so a large reading is narrowed down rather
- * than refused as a whole after the fact.
+ * than refused as a whole after the fact. One number, owned by the kernel.
  */
-export const HOURS_READING_MAX_ENTRIES = 500;
+export const HOURS_READING_MAX_ENTRIES = HOURS_SCAN_MAX_ENTRIES;
 
 /** A row the reader deliberately left alone, named so nothing disappears silently. */
 export interface WorkbookSkippedRow { sheet: string; row: number; text: string; reason: string }
@@ -523,4 +526,21 @@ export function readHoursWorkbook(sheets: WorkbookSheet[], context: WorkbookCont
       + 'Maak in het bestand duidelijk welke regel geldt; er zijn geen voorstellen gemaakt.');
   }
   return { ok: true, candidates, skipped, rowTotals, sheetsRead, sheetsIgnored };
+}
+
+/**
+ * What a reviewer has to check before this row may be applied.
+ *
+ * The spreadsheet reader runs the same control as the scan reader, so a
+ * breakdown the calculation kernel refuses has to reach the proposal here too.
+ * Without it the identical contradiction would block on one route and write an
+ * unclassifiable day revision on the other.
+ */
+export function workbookEntryDoubt(
+  candidate: Pick<WorkbookCandidate, 'notices'>,
+): HoursUncertainField[] | null {
+  const fields = new Set(candidate.notices.map(notice => controlDoubtField(notice.code)));
+  const ordered = (['total', 'shift', 'break', 'categories', 'reason'] as HoursUncertainField[])
+    .filter(field => fields.has(field));
+  return ordered.length ? ordered : null;
 }

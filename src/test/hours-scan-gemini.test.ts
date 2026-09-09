@@ -30,7 +30,9 @@ describe('scan request', () => {
     expect(body.generationConfig.candidateCount).toBeUndefined();
     expect(body.generationConfig.responseMimeType).toBe('application/json');
     expect(body.generationConfig.responseSchema).toBeTruthy();
-    expect(body.stream).toBeUndefined();
+    // The ledger refuses a streamed body; the URL is what selects streaming, and
+    // the address is pinned separately below.
+    expect(body.generationConfig.thinkingConfig).toBeTruthy();
   });
 
   it('demands every field, because an optional one comes back missing', () => {
@@ -40,9 +42,9 @@ describe('scan request', () => {
     // way to say "nothing is written here"; a missing key is not.
     const schema = build().generationConfig.responseSchema as Record<string, any>;
     const entry = schema.properties.entries.items;
-    expect(entry.required.sort()).toEqual(Object.keys(entry.properties).sort());
+    expect([...entry.required].sort()).toEqual(Object.keys(entry.properties).sort());
     const unreadable = schema.properties.unreadable.items;
-    expect(unreadable.required.sort()).toEqual(Object.keys(unreadable.properties).sort());
+    expect([...unreadable.required].sort()).toEqual(Object.keys(unreadable.properties).sort());
     expect(schema.required).toEqual(['entries', 'unreadable']);
   });
 
@@ -118,5 +120,14 @@ describe('one list, not six', () => {
     const kernel = await import('../../supabase/functions/_shared/hours-scan');
     const { HOURS_UNCERTAIN_FIELDS } = await import('@/lib/hours-sources');
     expect([...HOURS_UNCERTAIN_FIELDS]).toEqual([...kernel.SCAN_UNCERTAIN_FIELDS]);
+  });
+});
+
+describe('the field list the model may return', () => {
+  it('is the list the reader accepts, so no line can fail on a name only one side knows', async () => {
+    const { SCAN_ENTRY_FIELDS } = await import('../../supabase/functions/_shared/hours-scan');
+    const schema = build().generationConfig.responseSchema as Record<string, any>;
+    expect(Object.keys(schema.properties.entries.items.properties).sort())
+      .toEqual([...SCAN_ENTRY_FIELDS].sort());
   });
 });

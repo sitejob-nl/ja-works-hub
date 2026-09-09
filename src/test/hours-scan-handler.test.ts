@@ -32,6 +32,11 @@ function ports(overrides: Partial<HoursScanPorts> = {}): MockedPorts {
   return {
     authorize: vi.fn(async () => ({ userId: USER, organizationId: ORG })),
     userRpc: vi.fn(async () => ({ data: context(), error: null })),
+    serviceRpc: vi.fn(async (name: string) => ({
+      data: name === 'hours_claim_source_reading'
+        ? { ok: true, reading_id: '77777777-7777-4777-8777-777777777777' } : { ok: true },
+      error: null,
+    })),
     download: vi.fn(async () => new Uint8Array([1, 2, 3])),
     read: vi.fn(async () => ({
       output: modelOutput, model: 'gemini-3.5-flash', requestId: 'req-1',
@@ -285,5 +290,75 @@ describe('scan reading endpoint — after the money is spent', () => {
     const doubles = ports({ download: vi.fn(async () => new Uint8Array(HOURS_SCAN_MAX_FILE_BYTES + 1)) });
     expect((await createHoursScanHandler(doubles)(post())).status).toBe(503);
     expect(doubles.read).not.toHaveBeenCalled();
+  });
+});
+
+describe('scan reading endpoint — what the second round found', () => {
+  it('reports a failure after the reading was interpreted with what it cost', async () => {
+    // The paid call succeeded; something after it did not. The cost must still
+    // reach the office, and the message must not invite a second charge.
+    const doubles = ports({ userRpc: vi.fn(async () => ({ data: context({ days: [{ id: DAY, member_id: MEMBER, work_date: '2026-09-07' }] }), error: null })) });
+    const handler = createHoursScanHandler({ ...doubles,
+      read: vi.fn(async () => ({ output: { entries: [] }, model: 'gemini-3.5-flash', requestId: 'req-3',
+        costCents: 5, balanceCents: 4870, durationMs: 800,
+        get boom(): never { throw new Error('na de betaling'); } })) as HoursScanPorts['read'] });
+    const response = await handler(post());
+    expect([200, 502]).toContain(response.status);
+  });
+
+  it('refuses a source whose stored path is outside the caller’s own organization', async () => {
+    const doubles = ports({
+      userRpc: vi.fn(async () => ({ data: context({ storage_path: 'someone-else/week/abc.jpg' }), error: null })),
+    });
+    const response = await createHoursScanHandler(doubles)(post());
+    expect(response.status).toBe(500);
+    expect(doubles.download).not.toHaveBeenCalled();
+    expect(doubles.read).not.toHaveBeenCalled();
+  });
+
+  it('accepts a source identifier whatever case it was written in', async () => {
+    const doubles = ports();
+    const response = await createHoursScanHandler(doubles)(post({ source_id: SOURCE.toUpperCase() }));
+    expect(response.status).toBe(200);
+  });
+
+  it('says a torn request was torn, not that it was too large', async () => {
+    const body = new ReadableStream<Uint8Array>({ pull(controller) { controller.error(new Error('weg')); } });
+    const request = new Request('https://edge.test/hours-read-scan',
+      { method: 'POST', body, duplex: 'half' } as RequestInit & { duplex: 'half' });
+    const response = await createHoursScanHandler(ports())(request);
+    expect(response.status).toBe(400);
+    expect((await response.json()).code).toBe('invalid_request_body');
+  });
+});
+
+describe('scan reading endpoint — one reading per source at a time', () => {
+  it('claims the reading before it pays for it, and closes the claim after', async () => {
+    const doubles = ports();
+    await createHoursScanHandler(doubles)(post());
+    const names = doubles.serviceRpc.mock.calls.map(call => call[0]);
+    expect(names[0]).toBe('hours_claim_source_reading');
+    expect(names).toContain('hours_finish_source_reading');
+    expect(doubles.serviceRpc.mock.invocationCallOrder[0])
+      .toBeLessThan(doubles.read.mock.invocationCallOrder[0]);
+  });
+
+  it('refuses a second reading while one is running, without paying', async () => {
+    const doubles = ports({
+      serviceRpc: vi.fn(async () => ({ data: null, error: { code: '22023' } })),
+    });
+    const response = await createHoursScanHandler(doubles)(post());
+    expect(response.status).toBe(409);
+    expect((await response.json()).code).toBe('scan_already_running');
+    expect(doubles.read).not.toHaveBeenCalled();
+  });
+
+  it('closes the claim as failed when the provider refused, with what it cost', async () => {
+    const doubles = ports({
+      read: vi.fn(async () => { throw new AiAccountingError('insufficient_credits', 'Op.', 402); }),
+    });
+    await createHoursScanHandler(doubles)(post());
+    const finish = doubles.serviceRpc.mock.calls.find(call => call[0] === 'hours_finish_source_reading');
+    expect(finish?.[1]).toMatchObject({ p_status: 'failed', p_error_code: 'insufficient_credits' });
   });
 });

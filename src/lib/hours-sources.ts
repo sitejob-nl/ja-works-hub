@@ -186,7 +186,10 @@ export function assignmentUndecided(proposal: ProposalDoubt): boolean {
 }
 /** What the reading made of the paper has not been checked against it. */
 export function valuesUndecided(proposal: ProposalDoubt): boolean {
-  return proposal.status === 'open' && !!proposal.uncertain_fields?.length && !proposal.values_confirmed_at;
+  // `is not null`, matching hours_apply_source_proposal exactly. An empty array
+  // cannot reach the database, but the two rules may not be written differently.
+  return proposal.status === 'open' && proposal.uncertain_fields !== null
+    && proposal.uncertain_fields !== undefined && !proposal.values_confirmed_at;
 }
 export function proposalIsBlocked(proposal: ProposalDoubt): boolean {
   return assignmentUndecided(proposal) || valuesUndecided(proposal);
