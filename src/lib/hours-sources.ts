@@ -54,12 +54,15 @@ export const hoursClientLinkSchema = z.object({
 export const hoursWeekSourcesSchema = z.object({
   week_id: uuid, can_manage: z.boolean(),
   open_proposals: z.number().int().nonnegative(), undecided_assignments: z.number().int().nonnegative(),
-  client_links: z.array(hoursClientLinkSchema),
+  // Defaulted rather than required: migrations land before the frontend here,
+  // but if that order ever slips the whole intake panel must not break over one
+  // missing key.
+  client_links: z.array(hoursClientLinkSchema).default([]),
   sources: z.array(z.object({
     id: uuid, file_name: z.string(), content_type: z.string(), byte_size: z.number().int().nonnegative(),
     content_hash: z.string(), storage_path: z.string(), created_at: z.string(),
     page_count: z.number().int().min(1).nullable(),
-    client_link_id: uuid.nullable(),
+    client_link_id: uuid.nullable().default(null),
     pages: z.array(hoursSourcePageSchema),
     proposals: z.array(hoursProposalSchema),
   })),

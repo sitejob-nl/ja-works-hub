@@ -38,15 +38,16 @@ const json = (body: unknown, status = 200) =>
 /**
  * Public and unauthenticated, so guessing a token has to run into a wall.
  *
- * The per-IP limit is the real defence: it stops a script long before it makes
- * a dent in a 244-bit token. The global counter is a last-resort brake against
- * a distributed flood, and it is deliberately far above any realistic use —
- * it is shared by every client of every organization, so a low ceiling would
- * let one abuser lock out every planner on the platform for a rolling hour.
- * Roughly five requests per second is nothing for this endpoint and still stops
- * a runaway loop.
+ * A 244-bit token is not going to be guessed; these limits exist against
+ * scripted noise and against bandwidth. The per-IP ceiling is generous because
+ * a whole planning office sits behind one address: four planners each filling in
+ * a week and attaching photos on deadline day must not lock each other out. The
+ * narrow limit is on uploads, which is where the bytes are. The global counter
+ * is a last-resort brake shared by every organization, so it sits far above any
+ * realistic use — a low ceiling there would let one abuser stop the platform.
  */
-const MAX_PER_IP_PER_HOUR = 120;
+const MAX_PER_IP_PER_HOUR = 600;
+const MAX_UPLOADS_PER_IP_PER_HOUR = 60;
 const MAX_GLOBAL_PER_HOUR = 20_000;
 /** How long an uploaded object may sit around before it has become a source. */
 const ORPHAN_GRACE_MS = 60 * 60 * 1000;
@@ -167,21 +168,28 @@ Deno.serve(async (req) => {
     const tokenHash = await sha256Hex(token);
     const ipHash = await sha256Hex(clientIp(req));
     const since = new Date(Date.now() - 3_600_000).toISOString();
-    const [perIp, global] = await Promise.all([
+    const uploading = action === 'upload';
+    const [perIp, global, uploads] = await Promise.all([
       service.from('hours_client_link_attempts').select('id', { count: 'exact', head: true })
         .eq('ip_hash', ipHash).gte('created_at', since),
       service.from('hours_client_link_attempts').select('id', { count: 'exact', head: true })
         .gte('created_at', since),
+      uploading
+        ? service.from('hours_client_link_attempts').select('id', { count: 'exact', head: true })
+            .eq('ip_hash', ipHash).eq('action', 'upload').gte('created_at', since)
+        : Promise.resolve({ count: 0, error: null }),
     ]);
     // A count that fails or comes back empty says nothing about how many
     // attempts there were. Treating that as zero would quietly switch the
     // throttle off, so it closes just like a failing insert does below.
-    if (perIp.error || global.error || perIp.count === null || global.count === null) {
+    if (perIp.error || global.error || uploads.error
+        || perIp.count === null || global.count === null || uploads.count === null) {
       console.error('hours-client-week: throttle unreadable',
-        perIp.error?.message ?? global.error?.message ?? 'no count');
+        perIp.error?.message ?? global.error?.message ?? uploads.error?.message ?? 'no count');
       return json({ error: 'Deze pagina is tijdelijk niet beschikbaar. Probeer het later opnieuw.' }, 503);
     }
-    if (perIp.count >= MAX_PER_IP_PER_HOUR || global.count >= MAX_GLOBAL_PER_HOUR) {
+    if (perIp.count >= MAX_PER_IP_PER_HOUR || global.count >= MAX_GLOBAL_PER_HOUR
+        || (uploading && uploads.count >= MAX_UPLOADS_PER_IP_PER_HOUR)) {
       return json({ error: 'Te veel verzoeken. Probeer het later opnieuw.' }, 429);
     }
     // Logged before the token is resolved, and in its own statement: a database
@@ -304,9 +312,23 @@ Deno.serve(async (req) => {
       p_page_count: Number.isInteger(body.page_count) ? body.page_count : null,
     });
     if (error) return refusal(error);
-    // The projection is returned with two extra keys; the client page parses the
-    // week strictly, so they travel beside it rather than inside it.
+    // The projection is returned with two extra keys; the client page reads the
+    // week through its own schema, so they travel beside it rather than inside it.
     const { duplicate, source_id: sourceId, ...week } = (data ?? {}) as Record<string, unknown>;
+    if (duplicate === true) {
+      // The source already existed under another path — the office delivered the
+      // same file, or another link did. This object will therefore never be
+      // referenced by anything, so it goes now rather than waiting for a sweep
+      // that only runs if this link happens to upload again.
+      const { data: stored } = await call('hours_client_week_stored_paths');
+      const paths = new Set(((stored ?? {}) as { paths?: string[] }).paths ?? []);
+      if (!paths.has(storedPath)) {
+        const removal = await service.storage.from('hours-sources').remove([storedPath]);
+        if (removal.error) {
+          console.error('hours-client-week: unreferenced upload could not be removed', removal.error.message);
+        }
+      }
+    }
     return json({ status: 'ok', week, duplicate: duplicate === true, source_id: sourceId ?? null });
   } catch (error) {
     console.error('hours-client-week failed', error);

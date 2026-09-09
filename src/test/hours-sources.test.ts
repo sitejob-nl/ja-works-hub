@@ -118,6 +118,16 @@ describe('week source projection', () => {
     }],
   };
 
+  it('survives a frontend that arrives before the migration', () => {
+    // The migration lands first in this repo, but if that order ever slips the
+    // whole intake panel must not break over one missing key.
+    const { client_links: _links, ...older } = projection;
+    const { client_link_id: _id, ...olderSource } = projection.sources[0];
+    const parsed = parseWeekSources({ ...older, sources: [olderSource] });
+    expect(parsed.client_links).toEqual([]);
+    expect(parsed.sources[0].client_link_id).toBeNull();
+  });
+
   it('accepts the server projection and keeps the exact source facts', () => {
     const parsed = parseWeekSources(projection);
     expect(parsed.sources[0].proposals[0].source_input).toEqual(shiftSource);

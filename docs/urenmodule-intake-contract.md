@@ -499,8 +499,16 @@ heeft aangeleverd.
 **Wat nooit een bron wordt, verdwijnt.** Een klant kan een adres vragen en weglopen; zo'n object heeft
 geen eigenaar en niets in de applicatie kan het terugvinden. Elke nieuwe upload ruimt daarom eerst de
 objecten van diezelfde link op die ouder zijn dan een uur en geen bron zijn geworden
-(`hours_client_week_stored_paths` zegt welke dat wel zijn). Opruimen is best effort: een mislukte
-opruiming blokkeert nooit een aanlevering. Storage dwingt de 25 MiB en de vijf mediatypen af; de browser
+(`hours_client_week_stored_paths` zegt welke dat wel zijn). De opruiming loopt op **leeftijd**, van oud
+naar nieuw: de klant kiest de objectnaam zelf (het is de digest die hij aankondigde), dus op naam sorteren
+zou hem toelaten bestanden buiten het venster te parkeren. Levert een registratie een duplicaat op — het
+kantoor of een andere link had dat bestand al — dan wordt het zojuist geüploade object meteen verwijderd:
+niets zal er ooit nog naar wijzen. Opruimen is best effort: een mislukte opruiming blokkeert nooit een
+aanlevering.
+
+De ruime IP-grens is er met opzet: een heel planningskantoor zit achter één adres, en vier planners die op
+de deadlinedag ieder een week invullen met foto's mogen elkaar niet buitensluiten. De smalle grens ligt op
+uploads, want daar zitten de bytes. Storage dwingt de 25 MiB en de vijf mediatypen af; de browser
 controleert bovendien de eerste bytes, zodat een `.csv` die zich als Excel aandient wordt geweigerd vóór
 opslag en een verkeerd gelabelde `.xlsx` als `.xlsx` wordt bewaard.
 
@@ -526,7 +534,7 @@ er niet omheen kan.
 
 | Wat | Waar |
 | --- | --- |
-| Rate-limit per gehashte IP (120/uur) en globaal (20.000/uur) | `hours_client_link_attempts`, service-role-only, RLS aan zonder policy |
+| Rate-limit per gehashte IP (600/uur, waarvan 60 uploads) en globaal (20.000/uur) | `hours_client_link_attempts`, service-role-only, RLS aan zonder policy |
 | Het geheim | Nooit gelogd; de throttle bewaart twaalf tekens van de **digest** |
 | Poort dicht bij storing | Kan de throttle niet schrijven, dan sluit het endpoint (503) in plaats van ongelimiteerd te bedienen |
 
