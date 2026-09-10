@@ -2,83 +2,27 @@ import { parseHoursToMinutes, type HoursIssue } from '../../supabase/functions/_
 import {
   hoursSourceInputSchema, sourceControlIssues, type HoursSourceInput,
 } from '@/components/hours-workflow/hours-day-source';
-import { controlDoubtField } from '../../supabase/functions/_shared/hours-source-control';
+import { readingEntryDoubt } from '../../supabase/functions/_shared/hours-source-control';
 import { HOURS_SCAN_MAX_ENTRIES } from '../../supabase/functions/_shared/hours-scan';
 import type { HoursUncertainField } from '@/lib/hours-sources';
+// The vocabulary every reader speaks lives beside the calculation kernel, so a
+// Deno edge function can reach it too; re-exported here because this module has
+// been its address since the spreadsheet reader was written.
+export type {
+  WorkbookCell, WorkbookSheet, WorkbookWeekMember, WorkbookWeekDay, WorkbookContext,
+  WorkbookCandidate, WorkbookSkippedRow, WorkbookRowTotal, WorkbookSourceKind,
+  WorkbookReading, WorkbookReadingOptions,
+} from '../../supabase/functions/_shared/hours-reading-types';
+import type {
+  WorkbookCell, WorkbookSheet, WorkbookWeekMember, WorkbookContext,
+  WorkbookCandidate, WorkbookSkippedRow, WorkbookRowTotal, WorkbookSourceKind,
+  WorkbookReading, WorkbookReadingOptions,
+} from '../../supabase/functions/_shared/hours-reading-types';
 import {
   matchHoursMember, normalizeHoursName, type HoursMemberMatch, type HoursWeekMember,
 } from '../../supabase/functions/_shared/hours-member-match';
 
-/** A decoded cell exactly as the spreadsheet stored it; formulas are never run. */
-export type WorkbookCell = string | number | boolean | Date | null;
-export interface WorkbookSheet { name: string; rows: WorkbookCell[][] }
-
-export type WorkbookWeekMember = HoursWeekMember;
-export interface WorkbookWeekDay { id: string; memberId: string; workDate: string }
-export interface WorkbookContext { members: WorkbookWeekMember[]; days: WorkbookWeekDay[] }
-
-/**
- * One reviewable proposal candidate. It carries exactly what the sheet said and
- * where it said it; it is not an hour until an internal user saves it as a
- * proposal and then applies that proposal.
- */
-export interface WorkbookCandidate {
-  dayId: string; memberId: string; employeeName: string; workDate: string;
-  minutes: number; noHoursReason: string | null;
-  /** The delivered breakdown, kept exactly as the sheet wrote it. */
-  sourceInput: HoursSourceInput | null;
-  pageNumber: number; pageLabel: string;
-  /** Where this came from, for a message that can name the row. */
-  sheetName: string; row: number;
-  assignmentUncertain: boolean;
-  /** What the sheet literally said about this employee. */
-  employeeText: string;
-  /**
-   * What this row supersedes, as the delivery wrote it. A message that corrects
-   * itself ("zaterdag was geen 9,5 maar 4,75") says two things about one day;
-   * the reviewer has to see both, or the correction looks like a plain reading.
-   */
-  correctionOf?: string;
-  notices: HoursIssue[];
-}
-
-/**
- * How many proposals one handling may record. The server enforces the same
- * bound; the screen checks it first so a large reading is narrowed down rather
- * than refused as a whole after the fact. One number, owned by the kernel.
- */
 export const HOURS_READING_MAX_ENTRIES = HOURS_SCAN_MAX_ENTRIES;
-
-/** A row the reader deliberately left alone, named so nothing disappears silently. */
-export interface WorkbookSkippedRow { sheet: string; row: number; text: string; reason: string }
-
-/** A delivered row total that does not match the days read from that same row. */
-export interface WorkbookRowTotal {
-  sheet: string; row: number; employeeName: string;
-  deliveredMinutes: number; readMinutes: number;
-  /** Days of this week the row left empty; they explain part of a difference. */
-  unreadDays: string[];
-}
-
-/**
- * Which kind of delivery a reading came out of. The rules are identical; only
- * the words a screen uses for "where it stood" differ, and a worksheet, a table
- * and a message are not the same place.
- */
-export type WorkbookSourceKind = 'workbook' | 'document' | 'message';
-
-export type WorkbookReading =
-  | { ok: false; issues: HoursIssue[] }
-  | {
-      ok: true; sourceKind: WorkbookSourceKind;
-      candidates: WorkbookCandidate[]; skipped: WorkbookSkippedRow[];
-      rowTotals: WorkbookRowTotal[]; sheetsRead: string[];
-      /** Worksheets whose layout was not recognised; named so none disappears silently. */
-      sheetsIgnored: string[];
-    };
-
-/** What a delivery calls the thing a row stands on. */
-export interface WorkbookReadingOptions { sheetNoun?: string; sourceKind?: WorkbookSourceKind }
 
 const fail = (code: string, message: string): WorkbookReading => ({ ok: false, issues: [{ code, message }] });
 
@@ -555,19 +499,12 @@ export function readHoursWorkbook(
 }
 
 /**
- * What a reviewer has to check before this row may be applied.
- *
- * The spreadsheet reader runs the same control as the scan reader, so a
- * breakdown the calculation kernel refuses has to reach the proposal here too.
- * Without it the identical contradiction would block on one route and write an
- * unclassifiable day revision on the other.
+ * What a reviewer has to check before this row may be applied. The rule itself
+ * lives beside the control it reads, so every reader — this one, the mail intake
+ * and the scan route — asks the same question.
  */
 export function workbookEntryDoubt(
   candidate: Pick<WorkbookCandidate, 'notices'>,
 ): HoursUncertainField[] | null {
-  const fields = new Set(candidate.notices
-    .map(notice => controlDoubtField(notice.code)).filter(Boolean));
-  const ordered = (['total', 'shift', 'break', 'categories', 'reason'] as HoursUncertainField[])
-    .filter(field => fields.has(field));
-  return ordered.length ? ordered : null;
+  return readingEntryDoubt(candidate.notices) as HoursUncertainField[] | null;
 }

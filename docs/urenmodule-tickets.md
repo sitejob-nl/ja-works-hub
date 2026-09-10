@@ -13,10 +13,11 @@ bevestigde klant-/CAO-matrices inclusief pauze-, afrondings- en samenloopregels 
 het exportvoorbeeld van de payroller met uurcodes en correctieprocedure (T12, T13),
 ontvangers/verantwoordelijken per partij (T8), en de keuze van pilotklanten (T14).
 
-Stand 10-09-2026: **T1 tot en met T6 gebouwd** (migraties `20260909090000`, `20260910090000`,
-`20260911090000`, `20260912090000`, `20260913090000` en `20260915090000`). T7 t/m T14 nog niet gestart.
-Met T5 af is **T7 (duurzame mailinname) niet langer geblokkeerd**; T8 is technisch vrij maar wacht op de
-klantinput over ontvangers en momenten, en T10 was nooit geblokkeerd.
+Stand 16-09-2026: **T1 tot en met T7 gebouwd** (migraties `20260909090000`, `20260910090000`,
+`20260911090000`, `20260912090000`, `20260913090000`, `20260915090000` en `20260916090000`).
+T8 t/m T14 nog niet gestart. **T8 is technisch vrij** — de uitvraagreferentie die hij moet meesturen
+staat er, hij hoeft hem alleen in het onderwerp te zetten — maar wacht op de klantinput over
+ontvangers en momenten. T10 was nooit geblokkeerd.
 
 ---
 
@@ -172,13 +173,19 @@ Outlook-mailbox en worden bron + voorstel, zonder dat iemand de inbox opent. Kop
 uitvraagreferentie plus klantweek; onbekende of tegenstrijdige toewijzing gaat naar een interne
 controlebak in plaats van naar een gok.
 
+**Status:** gebouwd en gedeployed op 16 september 2026; zie het
+[innamecontract voor mail](urenmodule-mail-intake.md). De uitvraagreferentie bestond nog niet en is
+in dit ticket ontworpen en gebouwd: `hours_week_requests`, met een niet-geheime code die in het
+onderwerp meereist. T8 hoeft die alleen mee te sturen. De postbus wordt **strikt gelezen** en er is
+op deze route geen betaalde aanroep: een bijlage wordt bewaard, niet uitgelezen.
+
 **Geblokkeerd door:** T5, T6.
 
-- [ ] Duurzame cursor per gevolgde map, hervatbaar na onderbreking of verlopen cursor
-- [ ] Stabiele bericht-id's; hetzelfde bericht tweemaal ophalen levert geen tweede bron
-- [ ] Verwijderde of verplaatste berichten laten geen halve verwerking achter
-- [ ] Een wachtrij met claim, lease en beperkte hernieuwingen; geen verloren opdrachten
-- [ ] Onbekende afzender of week landt zichtbaar in de controlebak
+- [x] Duurzame cursor per gevolgde map, hervatbaar na onderbreking of verlopen cursor
+- [x] Stabiele bericht-id's; hetzelfde bericht tweemaal ophalen levert geen tweede bron
+- [x] Verwijderde of verplaatste berichten laten geen halve verwerking achter
+- [x] Een wachtrij met claim, lease en beperkte hernieuwingen; geen verloren opdrachten
+- [x] Onbekende afzender of week landt zichtbaar in de controlebak
 
 ---
 

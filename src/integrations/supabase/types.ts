@@ -5158,6 +5158,245 @@ export type Database = {
           },
         ]
       }
+      hours_mail_folders: {
+        Row: {
+          created_at: string
+          created_by: string
+          cursor_updated_at: string | null
+          delta_link: string | null
+          enabled: boolean
+          folder_id: string
+          folder_label: string
+          id: string
+          last_error: string | null
+          last_run_at: string | null
+          mail_account_id: string
+          organization_id: string
+          resync_count: number
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          cursor_updated_at?: string | null
+          delta_link?: string | null
+          enabled?: boolean
+          folder_id: string
+          folder_label: string
+          id?: string
+          last_error?: string | null
+          last_run_at?: string | null
+          mail_account_id: string
+          organization_id: string
+          resync_count?: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          cursor_updated_at?: string | null
+          delta_link?: string | null
+          enabled?: boolean
+          folder_id?: string
+          folder_label?: string
+          id?: string
+          last_error?: string | null
+          last_run_at?: string | null
+          mail_account_id?: string
+          organization_id?: string
+          resync_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hours_mail_folders_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_mail_folders_mail_account_id_fkey"
+            columns: ["mail_account_id"]
+            isOneToOne: false
+            referencedRelation: "mail_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_mail_folders_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hours_mail_messages: {
+        Row: {
+          assigned_at: string | null
+          assigned_by: string | null
+          assigned_week_id: string | null
+          attachment_count: number
+          attempt_count: number
+          claim_token: string | null
+          claimed_at: string | null
+          first_seen_at: string
+          folder_row_id: string
+          from_address: string | null
+          from_name: string | null
+          graph_message_id: string
+          has_attachments: boolean
+          id: string
+          internet_message_id: string | null
+          last_seen_at: string
+          lease_expires_at: string | null
+          mail_account_id: string
+          message_key: string
+          organization_id: string
+          proposal_count: number
+          reason_code: string | null
+          reason_note: string | null
+          received_at: string | null
+          renewal_count: number
+          request_id: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          source_id: string | null
+          status: string
+          subject: string | null
+          week_id: string | null
+        }
+        Insert: {
+          assigned_at?: string | null
+          assigned_by?: string | null
+          assigned_week_id?: string | null
+          attachment_count?: number
+          attempt_count?: number
+          claim_token?: string | null
+          claimed_at?: string | null
+          first_seen_at?: string
+          folder_row_id: string
+          from_address?: string | null
+          from_name?: string | null
+          graph_message_id: string
+          has_attachments?: boolean
+          id?: string
+          internet_message_id?: string | null
+          last_seen_at?: string
+          lease_expires_at?: string | null
+          mail_account_id: string
+          message_key: string
+          organization_id: string
+          proposal_count?: number
+          reason_code?: string | null
+          reason_note?: string | null
+          received_at?: string | null
+          renewal_count?: number
+          request_id?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          source_id?: string | null
+          status?: string
+          subject?: string | null
+          week_id?: string | null
+        }
+        Update: {
+          assigned_at?: string | null
+          assigned_by?: string | null
+          assigned_week_id?: string | null
+          attachment_count?: number
+          attempt_count?: number
+          claim_token?: string | null
+          claimed_at?: string | null
+          first_seen_at?: string
+          folder_row_id?: string
+          from_address?: string | null
+          from_name?: string | null
+          graph_message_id?: string
+          has_attachments?: boolean
+          id?: string
+          internet_message_id?: string | null
+          last_seen_at?: string
+          lease_expires_at?: string | null
+          mail_account_id?: string
+          message_key?: string
+          organization_id?: string
+          proposal_count?: number
+          reason_code?: string | null
+          reason_note?: string | null
+          received_at?: string | null
+          renewal_count?: number
+          request_id?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          source_id?: string | null
+          status?: string
+          subject?: string | null
+          week_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hours_mail_messages_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_mail_messages_assigned_week_id_organization_id_fkey"
+            columns: ["assigned_week_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "hours_weeks"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "hours_mail_messages_folder_row_id_fkey"
+            columns: ["folder_row_id"]
+            isOneToOne: false
+            referencedRelation: "hours_mail_folders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_mail_messages_mail_account_id_fkey"
+            columns: ["mail_account_id"]
+            isOneToOne: false
+            referencedRelation: "mail_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_mail_messages_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_mail_messages_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "hours_week_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_mail_messages_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_mail_messages_source_id_week_id_organization_id_fkey"
+            columns: ["source_id", "week_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "hours_week_sources"
+            referencedColumns: ["id", "week_id", "organization_id"]
+          },
+          {
+            foreignKeyName: "hours_mail_messages_week_id_organization_id_fkey"
+            columns: ["week_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "hours_weeks"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
+      }
       hours_matrices: {
         Row: {
           company_id: string | null
@@ -5397,6 +5636,7 @@ export type Database = {
           created_by: string | null
           day_id: string
           id: string
+          mail_message_id: string | null
           minutes: number
           no_hours_reason: string | null
           note: string | null
@@ -5427,6 +5667,7 @@ export type Database = {
           created_by?: string | null
           day_id: string
           id?: string
+          mail_message_id?: string | null
           minutes: number
           no_hours_reason?: string | null
           note?: string | null
@@ -5457,6 +5698,7 @@ export type Database = {
           created_by?: string | null
           day_id?: string
           id?: string
+          mail_message_id?: string | null
           minutes?: number
           no_hours_reason?: string | null
           note?: string | null
@@ -5510,6 +5752,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "hours_days"
             referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "hours_source_proposals_mail_message_id_fkey"
+            columns: ["mail_message_id"]
+            isOneToOne: false
+            referencedRelation: "hours_mail_messages"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "hours_source_proposals_organization_id_fkey"
@@ -5683,6 +5932,89 @@ export type Database = {
           },
         ]
       }
+      hours_week_requests: {
+        Row: {
+          code: string
+          company_id: string
+          conversation_id: string | null
+          created_at: string
+          created_by: string
+          expires_at: string
+          id: string
+          label: string | null
+          organization_id: string
+          outbound_message_id: string | null
+          recipients: Json
+          revoke_note: string | null
+          revoked_at: string | null
+          sent_at: string | null
+          week_id: string
+        }
+        Insert: {
+          code: string
+          company_id: string
+          conversation_id?: string | null
+          created_at?: string
+          created_by: string
+          expires_at: string
+          id?: string
+          label?: string | null
+          organization_id: string
+          outbound_message_id?: string | null
+          recipients?: Json
+          revoke_note?: string | null
+          revoked_at?: string | null
+          sent_at?: string | null
+          week_id: string
+        }
+        Update: {
+          code?: string
+          company_id?: string
+          conversation_id?: string | null
+          created_at?: string
+          created_by?: string
+          expires_at?: string
+          id?: string
+          label?: string | null
+          organization_id?: string
+          outbound_message_id?: string | null
+          recipients?: Json
+          revoke_note?: string | null
+          revoked_at?: string | null
+          sent_at?: string | null
+          week_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hours_week_requests_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_week_requests_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_week_requests_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_week_requests_week_id_organization_id_fkey"
+            columns: ["week_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "hours_weeks"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
+      }
       hours_week_sources: {
         Row: {
           byte_size: number
@@ -5694,6 +6026,7 @@ export type Database = {
           created_by: string | null
           file_name: string
           id: string
+          mail_message_id: string | null
           organization_id: string
           page_count: number | null
           received_with_source_id: string | null
@@ -5710,6 +6043,7 @@ export type Database = {
           created_by?: string | null
           file_name: string
           id?: string
+          mail_message_id?: string | null
           organization_id: string
           page_count?: number | null
           received_with_source_id?: string | null
@@ -5726,6 +6060,7 @@ export type Database = {
           created_by?: string | null
           file_name?: string
           id?: string
+          mail_message_id?: string | null
           organization_id?: string
           page_count?: number | null
           received_with_source_id?: string | null
@@ -5752,6 +6087,13 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_week_sources_mail_message_id_fkey"
+            columns: ["mail_message_id"]
+            isOneToOne: false
+            referencedRelation: "hours_mail_messages"
             referencedColumns: ["id"]
           },
           {
@@ -12469,8 +12811,105 @@ export type Database = {
         Args: { p_label: string; p_valid_days: number; p_week_id: string }
         Returns: Json
       }
+      hours_issue_week_request: {
+        Args: { p_label?: string; p_valid_days?: number; p_week_id: string }
+        Returns: Json
+      }
       hours_list_matrices: { Args: { p_company_id?: string }; Returns: Json }
       hours_list_weeks: { Args: { p_week_start?: string }; Returns: Json }
+      hours_mail_assign_message: {
+        Args: { p_message_id: string; p_note?: string; p_week_id: string }
+        Returns: Json
+      }
+      hours_mail_claim_messages: {
+        Args: {
+          p_folder_row_id: string
+          p_lease_seconds?: number
+          p_limit?: number
+        }
+        Returns: Json
+      }
+      hours_mail_clear_cursor: {
+        Args: { p_folder_row_id: string }
+        Returns: Json
+      }
+      hours_mail_dismiss_message: {
+        Args: { p_message_id: string; p_note?: string }
+        Returns: Json
+      }
+      hours_mail_due_folders: {
+        Args: { p_limit?: number; p_organization_id?: string }
+        Returns: Json
+      }
+      hours_mail_fail_message: {
+        Args: {
+          p_claim_token: string
+          p_message_id: string
+          p_reason_code: string
+          p_reason_note?: string
+          p_status: string
+        }
+        Returns: Json
+      }
+      hours_mail_file_message: {
+        Args: {
+          p_attachments?: Json
+          p_claim_token: string
+          p_message_id: string
+          p_proposals?: Json
+          p_source: Json
+        }
+        Returns: Json
+      }
+      hours_mail_match_message: {
+        Args: {
+          p_claim_token: string
+          p_codes?: string[]
+          p_conversation_id?: string
+          p_message_id: string
+          p_reply_ids?: string[]
+        }
+        Returns: Json
+      }
+      hours_mail_overview: { Args: never; Returns: Json }
+      hours_mail_record_messages: {
+        Args: {
+          p_folder_row_id: string
+          p_messages: Json
+          p_removed?: string[]
+        }
+        Returns: Json
+      }
+      hours_mail_release_message: {
+        Args: { p_claim_token: string; p_message_id: string }
+        Returns: Json
+      }
+      hours_mail_renew_lease: {
+        Args: {
+          p_claim_token: string
+          p_lease_seconds?: number
+          p_message_id: string
+        }
+        Returns: Json
+      }
+      hours_mail_set_cursor: {
+        Args: {
+          p_delta_link: string
+          p_error?: string
+          p_folder_row_id: string
+          p_resynced?: boolean
+        }
+        Returns: Json
+      }
+      hours_mail_set_folder: {
+        Args: {
+          p_enabled?: boolean
+          p_folder_id: string
+          p_folder_label: string
+          p_mail_account_id: string
+        }
+        Returns: Json
+      }
       hours_publish_matrix_version: {
         Args: {
           p_confirmed: boolean
@@ -12490,6 +12929,10 @@ export type Database = {
       }
       hours_revoke_client_week_link: {
         Args: { p_link_id: string; p_note?: string }
+        Returns: Json
+      }
+      hours_revoke_week_request: {
+        Args: { p_note?: string; p_request_id: string }
         Returns: Json
       }
       hours_save_day: {

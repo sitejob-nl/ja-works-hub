@@ -44,3 +44,9 @@ export function serveEdge(handler: EdgeHandler): EdgeHandler {
     }
   };
 }
+
+// The bound itself lives in a module without imports, so a test of a handler
+// that only needs the bound does not have to resolve the Supabase client.
+// This stays its address for edge functions, which is where it was asked for.
+export { readBoundedStream, readBoundedBody } from './bounded-read.ts';
+export type { BoundedRead } from './bounded-read.ts';

@@ -74,6 +74,18 @@ export const hoursClientLinkSchema = z.object({
   outstanding_days: z.number().int().nonnegative(), complete: z.boolean(),
   proposals: z.array(hoursProposalSchema),
 });
+/**
+ * One outgoing hours request, scoped to exactly one client week. The code is
+ * deliberately not a secret: it says which week a reply belongs to, it gives no
+ * access and it makes no hours, and it travels in a subject line that will be
+ * quoted and forwarded.
+ */
+export const hoursWeekRequestSchema = z.object({
+  id: uuid, code: z.string(), label: z.string().nullable(),
+  created_at: z.string(), expires_at: z.string(),
+  revoked_at: z.string().nullable(), revoke_note: z.string().nullable(),
+  sent_at: z.string().nullable(), received: z.number().int().nonnegative(),
+});
 export const hoursWeekSourcesSchema = z.object({
   week_id: uuid, can_manage: z.boolean(),
   open_proposals: z.number().int().nonnegative(), undecided_assignments: z.number().int().nonnegative(),
@@ -82,12 +94,15 @@ export const hoursWeekSourcesSchema = z.object({
   // but if that order ever slips the whole intake panel must not break over one
   // missing key.
   client_links: z.array(hoursClientLinkSchema).default([]),
+  requests: z.array(hoursWeekRequestSchema).default([]),
   sources: z.array(z.object({
     id: uuid, file_name: z.string(), content_type: z.string(), byte_size: z.number().int().nonnegative(),
     content_hash: z.string(), storage_path: z.string(), created_at: z.string(),
     page_count: z.number().int().min(1).nullable(),
     client_link_id: uuid.nullable().default(null),
     received_with_source_id: uuid.nullable().default(null),
+    mail_message_id: uuid.nullable().default(null),
+    mail_from: z.string().nullable().default(null),
     pages: z.array(hoursSourcePageSchema),
     proposals: z.array(hoursProposalSchema),
   })),
@@ -119,6 +134,10 @@ export interface HoursWeekSourceFile {
   client_link_id: string | null;
   /** Set when this file came out of a delivered e-mail; the two are one receipt. */
   received_with_source_id: string | null;
+  /** Set when the intake fetched this out of the mailbox rather than a person uploading it. */
+  mail_message_id: string | null;
+  /** Who sent that message, so the reviewer sees where a mailed delivery came from. */
+  mail_from: string | null;
   pages: HoursSourcePage[];
   proposals: HoursSourceProposal[];
 }
@@ -129,11 +148,32 @@ export interface HoursClientLink {
   expected_days: number; provided_days: number; outstanding_days: number; complete: boolean;
   proposals: HoursSourceProposal[];
 }
+export interface HoursWeekRequest {
+  id: string; code: string; label: string | null;
+  created_at: string; expires_at: string;
+  revoked_at: string | null; revoke_note: string | null;
+  sent_at: string | null;
+  /** How many replies the intake has actually filed against this request. */
+  received: number;
+}
 export interface HoursWeekSources {
   week_id: string; can_manage: boolean;
   open_proposals: number; undecided_assignments: number; uncertain_values: number;
   client_links: HoursClientLink[];
+  requests: HoursWeekRequest[];
   sources: HoursWeekSourceFile[];
+}
+
+/** A request is open, withdrawn or past its date; withdrawing wins over expiry. */
+export function weekRequestState(request: Pick<HoursWeekRequest, 'revoked_at' | 'expires_at'>,
+  now: Date = new Date()): HoursClientLinkState {
+  if (request.revoked_at) return 'revoked';
+  return Date.parse(request.expires_at) <= now.getTime() ? 'expired' : 'active';
+}
+
+/** What goes in the subject line of the request mail, and what a reply carries back. */
+export function weekRequestSubjectTag(code: string): string {
+  return `[${code}]`;
 }
 
 /**

@@ -1,6 +1,9 @@
 import { HOURS_READABLE_SCAN_TYPES } from '../../supabase/functions/_shared/hours-scan';
 import type { HoursIssue } from '../../supabase/functions/_shared/hours-calculation';
 import type { WorkbookCell, WorkbookSheet } from '@/lib/hours-workbook';
+// The sniffer lives beside the kernel: a mailed attachment and an uploaded one
+// must be judged by exactly the same first bytes.
+export { attachmentSourceType } from '../../supabase/functions/_shared/hours-attachment-type';
 
 /** Spreadsheet media types accepted as a delivered source. */
 export const HOURS_WORKBOOK_TYPES = {
@@ -143,43 +146,6 @@ export async function decodeWorkbook(bytes: ArrayBuffer): Promise<WorkbookDecodi
 export async function countWorkbookSheets(bytes: ArrayBuffer): Promise<number | null> {
   const decoding = await decodeWorkbook(bytes);
   return decoding.ok && decoding.sheets.length ? decoding.sheets.length : null;
-}
-
-const MAGIC: Record<string, (bytes: Uint8Array) => boolean> = {
-  'application/pdf': bytes => bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46,
-  'image/jpeg': bytes => bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff,
-  'image/png': bytes => bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47,
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': bytes => bytes[0] === 0x50 && bytes[1] === 0x4b,
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': bytes => bytes[0] === 0x50 && bytes[1] === 0x4b,
-  'application/vnd.ms-excel': bytes => bytes[0] === 0xd0 && bytes[1] === 0xcf,
-  'application/msword': bytes => bytes[0] === 0xd0 && bytes[1] === 0xcf,
-};
-
-const EXTENSION_TYPES: Record<string, string> = {
-  pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
-  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  xls: 'application/vnd.ms-excel',
-  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  doc: 'application/msword',
-};
-
-/**
- * What one file out of a message may be stored as.
- *
- * A mail program labels an attachment with whatever it happened to know, and
- * `application/octet-stream` is the usual answer for a workbook. So the name is
- * consulted too, and the first bytes decide: a file whose content does not match
- * what it claims to be is not stored at all. A message inside a message is
- * deliberately absent — one receipt is one level deep.
- */
-export function attachmentSourceType(fileName: string, declared: string, bytes: Uint8Array): string | null {
-  const extension = /\.([A-Za-z0-9]{1,5})$/.exec(fileName)?.[1]?.toLowerCase() ?? '';
-  const candidates = [declared.toLowerCase(), EXTENSION_TYPES[extension]].filter(Boolean);
-  for (const candidate of candidates) {
-    const magic = MAGIC[candidate];
-    if (magic && magic(bytes)) return candidate;
-  }
-  return null;
 }
 
 /** The one list the endpoint and the database also read; see the scan kernel. */

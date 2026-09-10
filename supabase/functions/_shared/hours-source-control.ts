@@ -65,3 +65,18 @@ const CONTROL_FIELD: Record<string, HoursDoubtField> = {
  * reviewer to re-check a number that was read perfectly.
  */
 export const controlDoubtField = (code: string): HoursDoubtField | null => CONTROL_FIELD[code] ?? null;
+
+/**
+ * What a reviewer has to check before a read row may be applied.
+ *
+ * Every reader runs the same control, so a breakdown the calculation kernel
+ * refuses has to reach the proposal on every route. Without it the identical
+ * contradiction would block on one route and write an unclassifiable day
+ * revision on another.
+ */
+export function readingEntryDoubt(notices: { code: string }[]): HoursDoubtField[] | null {
+  const fields = new Set(notices.map(notice => controlDoubtField(notice.code)).filter(Boolean));
+  const ordered = (['total', 'shift', 'break', 'categories', 'reason'] as HoursDoubtField[])
+    .filter(field => fields.has(field));
+  return ordered.length ? ordered : null;
+}

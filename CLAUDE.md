@@ -23,7 +23,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > een eigen contract; een geslaagde indeling is nog geen payrollvrijgave. Zie
 > [bouwstand](docs/urenmodule-bouw.md), [weekcontract](docs/urenmodule-db-contract.md),
 > [matrixcontract](docs/urenmodule-matrix-contract.md), [classificatiecontract](docs/urenmodule-classification-contract.md),
-> [innamecontract](docs/urenmodule-intake-contract.md) en [uitleescontract](docs/urenmodule-scan-reading.md).
+> [innamecontract](docs/urenmodule-intake-contract.md), [uitleescontract](docs/urenmodule-scan-reading.md)
+> en [mailinnamecontract](docs/urenmodule-mail-intake.md).
 > De resterende bouw staat als tickets met
 > blokkades in [docs/urenmodule-tickets.md](docs/urenmodule-tickets.md).
 > **Broninname (09-09-, 10-09- en 11-09-migratie):** een geüpload urenbriefje, een paginatoewijzing en het
@@ -58,6 +59,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > herkomst op de dagrevisie is `kind: 'client'` met de naam van de opdrachtgever, nooit het interne label
 > van de link. Een meegestuurd bestand gaat naar een eigen deelmap `<org>/<week>/client/<link>/` — bewust
 > niet de padruimte van het kantoor — en de digest wordt server-side geverifieerd vóór registratie.
+> **Mailinname (16-09-migratie):** antwoorden op de urenuitvraag worden zelfstandig uit de gekoppelde
+> Outlook-postbus gehaald door edge function `hours-mail-intake` (`verify_jwt=false`; cron elk kwartier
+> met `x-cron-secret`, of handmatig door een interne gebruiker met `finance.manage`). De koppeling is de
+> **uitvraagreferentie** `hours_week_requests` — een korte, bewust **niet-geheime** code (`UR-XXXX-XXXX`)
+> die in het onderwerp meereist; T8 hoeft hem alleen mee te sturen. De postbus wordt **strikt gelezen**:
+> de enige twee poorten zijn `graphJson`/`graphBytes`, er wordt niets gemarkeerd, verplaatst, gewist of
+> verstuurd, en er is op deze route **geen betaalde aanroep** (een bijlage wordt bewaard, niet
+> uitgelezen). Een bericht wordt gelezen door **dezelfde** deterministische lezer als een geüploade
+> `.eml` — `_shared/hours-eml.ts` + `_shared/hours-mail-text.ts` zijn daarvoor uit `src/lib/` verhuisd,
+> met een doorgeefluik op de oude plek. Onbekende afzender, onbekende week of tegenstrijdige koppeling
+> gaat **zichtbaar** naar de controlebak op `/uren/mailinname`; er staat dan geen bron en geen voorstel
+> tegenover. Van élk bericht in een gevolgde map worden onderwerp en afzender vastgelegd, dus volg een
+> aparte map en niet Postvak IN. Zie [mailinnamecontract](docs/urenmodule-mail-intake.md).
 > Het aparte SaaS-recht `uren-workflow` is opt-in en geldt voor routes, RPC's en directe tabellezing;
 > legacy `uren` of een abonnement geeft dit recht niet. Zie [modulecontract](docs/urenmodule-organization-gate.md).
 > De backend is atomisch uitgerold op 8 september: JA Werkt UIT, geverifieerde demo AAN.
@@ -315,6 +329,7 @@ Canonical in [src/integrations/supabase/types.ts](src/integrations/supabase/type
 | `0 9 * * *` | onboarding-reminders | `automated-messages` (`?job=onboarding-reminders`) |
 | `30 2 * * *` | housing-reminder daily | `housing-reminder-cron` |
 | `45 2 * * *` | vehicle-APK daily | `check-vehicle-apk` |
+| `*/15 * * * *` | urenmail ophalen | `hours-mail-intake` |
 
 ### Public (verify_jwt = false)
 
@@ -402,6 +417,7 @@ Canonical in [src/integrations/supabase/types.ts](src/integrations/supabase/type
 | `analyze-cv-callback` | Receive async CV analysis results from LLM VPS |
 | `analyze-cv-batch` | **Backfill** voor bestaande kandidaten: select document/CV + notes/context → pseudonimiseer dossier → VPS. Superadmin-auth, throttle 1.5s/dossier |
 | `refresh-talentpool-members` | **Dynamische talentpools**: past `filter_criteria` toe + diff vs huidige leden. Single-mode (user-JWT) of cron-mode (`x-cron-secret`) |
+| `hours-mail-intake` | Haalt antwoorden op de urenuitvraag uit de gekoppelde Outlook-postbus en maakt er bron + voorstel van. Cron (`x-cron-secret`) of handmatig (`finance.manage`). **Strikt lezend** en **nooit betaald**; koppeling via `hours_week_requests`, alles wat niet sluit gaat zichtbaar naar de controlebak |
 | `hours-read-scan` | Leest een gescand of gefotografeerd urenbriefje uit tot invoervoorstellen. Self-auth (`finance.manage`); de browser stuurt alleen een bron-id, de database levert het opslagpad. Eén betaalde Gemini-aanroep via `_shared/ai-accounting.ts` (feature `hours_scan_reading`), met een claim in `hours_source_readings` als single-flight en AVG-spoor. Schrijft geen uren: de uitlezing komt terug ter beoordeling |
 | `validate-timesheets` | AI validation of timesheet entries (6 rules) |
 | `recruiter-priorities` | Calculate recruiter task priorities |

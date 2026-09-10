@@ -1,4 +1,5 @@
 import { AiAccountingError, type AiAccountingResult } from './ai-accounting.ts';
+import { readBoundedBody } from './bounded-read.ts';
 import {
   HOURS_READABLE_SCAN_TYPES, interpretScanReading, type ScanContext, type ScanReading,
 } from './hours-scan.ts';
@@ -54,40 +55,6 @@ export const HOURS_SCAN_MAX_FILE_BYTES = 10 * 1024 * 1024;
 
 /** One identifier and nothing else; the body has no reason to be larger. */
 const MAX_REQUEST_BYTES = 1024;
-
-/**
- * Reads the body while counting, and stops at the bound.
- *
- * A declared length is a hint, not a promise: it is absent on a chunked request,
- * where `Number(null)` is zero and a header check would wave anything through
- * to be buffered whole. Counting the bytes as they arrive refuses the same
- * oversized body without ever holding it.
- */
-type BoundedBody = { ok: true; text: string } | { ok: false; reason: 'too_large' | 'unreadable' };
-
-async function readBounded(req: Request, limit: number): Promise<BoundedBody> {
-  const declared = Number(req.headers.get('content-length'));
-  if (Number.isFinite(declared) && declared > limit) return { ok: false, reason: 'too_large' };
-  if (!req.body) return { ok: true, text: '' };
-  const reader = req.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      size += value.byteLength;
-      if (size > limit) { await reader.cancel(); return { ok: false, reason: 'too_large' }; }
-      chunks.push(value);
-    }
-  } catch {
-    return { ok: false, reason: 'unreadable' };
-  }
-  const body = new Uint8Array(size);
-  let offset = 0;
-  for (const chunk of chunks) { body.set(chunk, offset); offset += chunk.byteLength; }
-  return { ok: true, text: new TextDecoder().decode(body) };
-}
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -154,14 +121,14 @@ export function createHoursScanHandler(ports: HoursScanPorts, corsHeaders: Recor
       if (auth instanceof Response) return auth;
       // Only one identifier is accepted. The model, the tenant, the file and the
       // week are server-owned; a caller may not choose any of them.
-      const body = await readBounded(req, MAX_REQUEST_BYTES);
+      const body = await readBoundedBody(req, MAX_REQUEST_BYTES);
       if (body.ok === false) {
         return body.reason === 'too_large'
           ? json({ error: 'De aanvraag is te groot.', code: 'invalid_input' }, 400)
           : json({ error: 'De aanvraag kwam niet volledig binnen.', code: 'invalid_request_body' }, 400);
       }
       let input: unknown;
-      try { input = JSON.parse(body.text); } catch { return json({ error: 'Ongeldige JSON-aanvraag.', code: 'invalid_input' }, 400); }
+      try { input = JSON.parse(body.value); } catch { return json({ error: 'Ongeldige JSON-aanvraag.', code: 'invalid_input' }, 400); }
       if (!isRecord(input) || Object.keys(input).length !== 1 || !uuid(input.source_id)) {
         return json({ error: 'Alleen source_id is toegestaan en moet een geldige identificatie zijn.', code: 'invalid_input' }, 400);
       }
