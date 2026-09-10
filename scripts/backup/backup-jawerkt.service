@@ -1,0 +1,11 @@
+[Unit]
+Description=Dagelijkse backup JA Werkt (Supabase) naar Hetzner Storage Box
+Documentation=https://github.com/sitejob-nl/ja-works-hub/blob/main/scripts/backup/README.md
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/jawerkt-backup.sh
+Nice=10
+IOSchedulingClass=idle

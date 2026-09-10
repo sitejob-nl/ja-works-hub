@@ -8,8 +8,15 @@ import {
 } from "../_shared/domain-instructions.ts";
 import { sendViaOutlookAccount } from "../_shared/outlook-send.ts";
 import { type BrandTheme, escapeHtml, loadBrandTheme, renderBrandedEmail } from "../_shared/email-layout.ts";
+import { captureEdgeException, withCronMonitor } from "../_shared/sentry.ts";
 
 import { CORS_HEADERS as corsHeaders } from "../_shared/http.ts";
+
+const FN = "domain-management";
+// pg_cron leest de crontab in de Postgres-tijdzone, en die staat op productie op UTC.
+// Sentry moet dus óók UTC krijgen (de helper default is Europe/Amsterdam) — anders staat
+// de monitor 1-2 uur scheef en meldt Sentry runs als 'gemist' die gewoon gedraaid zijn.
+const CRON_TZ = "UTC";
 
 type DomainStatus = "pending" | "verified" | "misconfigured" | "error" | "removed";
 
@@ -468,13 +475,28 @@ function buildDnsInstructionEmail(data: {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
 
+  // Buiten de try zodat het catch-blok weet of withCronMonitor de fout al heeft gemeld.
+  let reportedByMonitor = false;
+
   try {
     // Cron-modus (pg_cron): hercontroleert alle domeinen over alle organisaties. Staat
     // vóór de gebruikersauthenticatie omdat er geen JWT bij een cron-aanroep zit.
     const cronSecret = Deno.env.get("CRON_SECRET");
     const providedSecret = req.headers.get("x-cron-secret");
     if (cronSecret && providedSecret === cronSecret) {
-      const result = await runDomainStatusSweep(createAdminClient());
+      // Alleen deze sweep is de geplande run; de action-gebaseerde UI-aanroepen hieronder niet.
+      reportedByMonitor = true;
+      const result = await withCronMonitor(
+        {
+          monitorSlug: "domain-status-sweep-daily",
+          schedule: "15 3 * * *",
+          timezone: CRON_TZ,
+          maxRuntimeMinutes: 10,
+          checkinMarginMinutes: 5,
+          fn: FN,
+        },
+        () => runDomainStatusSweep(createAdminClient()),
+      );
       return json({ mode: "cron", ...result });
     }
 
@@ -694,6 +716,10 @@ Deno.serve(async (req) => {
     return json({ error: "Onbekende actie" }, 400);
   } catch (err) {
     console.error("domain-management error:", err);
+    // withCronMonitor rapporteert de fouten van het werk dat het omhult al zelf.
+    if (!reportedByMonitor) {
+      await captureEdgeException(err, { fn: FN });
+    }
     const message = (err as Error).message || "Onbekende fout";
     if (/^VERCEL_(TOKEN|PROJECT_ID|TEAM_ID)?/.test(message) || message.includes("VERCEL_TOKEN") || message.includes("VERCEL_PROJECT_ID")) {
       return json({
