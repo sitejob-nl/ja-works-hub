@@ -186,12 +186,15 @@ function recordable(entry: Record<string, unknown>): Record<string, unknown> {
     received_at: typeof entry.receivedDateTime === 'string'
       && Number.isFinite(Date.parse(entry.receivedDateTime)) ? entry.receivedDateTime : null,
     has_attachments: entry.hasAttachments === true,
-    conversation_id: typeof entry.conversationId === 'string' ? entry.conversationId : null,
+    conversation_id: typeof entry.conversationId === 'string'
+      ? entry.conversationId.slice(0, 512) : null,
   };
 }
 
 interface ClaimedMessage {
   id: string; graphId: string; subject: string; fromAddress: string | null;
+  /** Graph's own thread identity: the fourth and last net under the coupling. */
+  conversationId: string | null;
   organizationId: string;
 }
 
@@ -205,6 +208,8 @@ function readClaim(value: unknown): { token: string; messages: ClaimedMessage[] 
       id: row.id, graphId: row.graph_message_id,
       subject: typeof row.subject === 'string' ? row.subject : '',
       fromAddress: typeof row.from_address === 'string' ? row.from_address : null,
+      conversationId: typeof row.conversation_id === 'string' && row.conversation_id
+        ? row.conversation_id : null,
       organizationId: row.organization_id,
     });
   }
@@ -212,7 +217,7 @@ function readClaim(value: unknown): { token: string; messages: ClaimedMessage[] 
 }
 
 interface WeekMatch {
-  weekId: string; organizationId: string;
+  weekId: string;
   members: { id: string; name: string }[];
   days: { id: string; memberId: string; workDate: string }[];
 }
@@ -238,7 +243,7 @@ function readMatch(value: unknown): { ok: true; match: WeekMatch } | { ok: false
     }
   }
   if (typeof value.week_id !== 'string' || !days.length) return { ok: false, reason: 'geen_werkdagen' };
-  return { ok: true, match: { weekId: value.week_id, organizationId: '', members, days } };
+  return { ok: true, match: { weekId: value.week_id, members, days } };
 }
 
 const EXTENSIONS: Record<string, string> = {
@@ -328,14 +333,6 @@ export function createHoursMailIntakeHandler(ports: HoursMailPorts,
     const started = clock();
     const raw = await ports.graphBytes(folder.accountId,
       `/messages/${encodeURIComponent(message.graphId)}/$value`);
-    // A 25 MB message over a slow line can eat most of the lease before anything
-    // is written. Renewing once here keeps a second instance from picking the
-    // message up halfway through filing it; the renewals themselves are bounded
-    // by the database, so a worker that is truly stuck still loses its claim.
-    if (clock() - started > (LEASE_SECONDS * 1000) / 2) {
-      await ports.serviceRpc('hours_mail_renew_lease',
-        { p_message_id: message.id, p_claim_token: token, p_lease_seconds: LEASE_SECONDS });
-    }
     // Between seeing it and fetching it, the message can be gone. Nothing has
     // been written, and nothing will be: this is where "no half processing" is.
     if (raw.status === 404 || raw.status === 410) {
@@ -355,6 +352,15 @@ export function createHoursMailIntakeHandler(ports: HoursMailPorts,
         { p_message_id: message.id, p_claim_token: token });
       return 'retry';
     }
+    // A 25 MB message over a slow line can eat most of the lease before anything
+    // is written. Renewing once, and only for a message there is still work to do
+    // on, keeps a second instance from picking it up halfway through filing it;
+    // the renewals themselves are bounded by the database, so a worker that is
+    // truly stuck still loses its claim.
+    if (clock() - started > (LEASE_SECONDS * 1000) / 2) {
+      await ports.serviceRpc('hours_mail_renew_lease',
+        { p_message_id: message.id, p_claim_token: token, p_lease_seconds: LEASE_SECONDS });
+    }
 
     const buffer = raw.bytes.slice().buffer as ArrayBuffer;
     const decoded = decodeEmailMessage(buffer);
@@ -373,7 +379,7 @@ export function createHoursMailIntakeHandler(ports: HoursMailPorts,
       p_message_id: message.id, p_claim_token: token,
       p_codes: codes.length ? codes : null,
       p_reply_ids: replyIds.length ? replyIds : null,
-      p_conversation_id: null,
+      p_conversation_id: message.conversationId,
     });
     if (answer.error) {
       await ports.serviceRpc('hours_mail_release_message',

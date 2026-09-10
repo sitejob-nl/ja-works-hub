@@ -2,7 +2,8 @@
 
 **Status: gedeployed** (migraties `20260916090000_hours_mail_intake.sql`,
 `20260916100000_hours_mail_intake_review_fixes.sql`, `20260916110000_hours_mail_intake_cron.sql` en
-`20260916120000_hours_mail_intake_revive.sql`, plus edge function `hours-mail-intake`,
+`20260916120000_hours_mail_intake_revive.sql` en
+`20260916130000_hours_mail_message_conversation.sql`, plus edge function `hours-mail-intake`,
 16 september 2026). Additief: drie nieuwe org-gebonden tabellen, twee nieuwe kolommen op bestaande
 brontabellen, zestien nieuwe RPC's en één cronjob.
 `timesheets`, facturatie, urenbrieven, CSV-import en communicatie worden niet geschreven.
@@ -79,7 +80,9 @@ doorgeraden naar de volgende.
    zou een gok zijn.
 3. **De antwoordketen.** `In-Reply-To` en `References` worden vergeleken met
    `hours_week_requests.outbound_message_id`.
-4. **Het gesprek.** `conversationId` tegen `hours_week_requests.conversation_id`.
+4. **Het gesprek.** Het `conversationId` dat het bericht zelf draagt, tegen
+   `hours_week_requests.conversation_id`. De draad hoort bij wát een bericht is, dus hij ligt vast
+   zodra hij is waargenomen.
 
 Levert dat precies één uitvraag op, dan volgt de afzenderscontrole. De afzender wordt herkend als
 zijn adres hoort bij de opdrachtgever van die week: een contactpersoon (`company_contacts.email`),
@@ -268,14 +271,14 @@ als een `.eml` die iemand zelf uploadt.
 
 ## Verificatie (T7)
 
-- **315 echte PostgreSQL-tests** (`scripts/hours-mail-intake-db-test.py`): de nieuwe uitvraag-,
+- **318 echte PostgreSQL-tests** (`scripts/hours-mail-intake-db-test.py`): de nieuwe uitvraag-,
   cursor-, wachtrij-, koppelings- en controlebakgevallen plus de volledige vrijgegeven Word/mail-,
   scan-, klantweek-, werkmap-, pagina-, inname-, classificatie-, modulepoort- en
-  foundationregressies op het nieuwe schema. Alle achttien migraties worden tweemaal toegepast; de
+  foundationregressies op het nieuwe schema. Alle negentien migraties worden tweemaal toegepast; de
   poortproef dekt nu **tweeëntwintig** tabellen.
 - **Applicatietests**: `hours-mail-intake.test.ts` (35 gevallen over de hele innamegrens, met
   gefixeerde Graph-antwoorden), `hours-mail-link.test.ts` (11), `hours-mail-intake-ui.test.tsx` (16)
-  en `hours-week-requests-ui.test.tsx` (7). Totaal 1.900 groen, met lint (0 errors), typecheck en
+  en `hours-week-requests-ui.test.tsx` (7). Totaal 1.902 groen, met lint (0 errors), typecheck en
   productiebuild. De hele suite draait ook **zonder** Supabase-omgevingsvariabelen, zoals CI hem
   draait: het mailinname-woordenboek staat daarom in `src/lib/hours-mail.ts`, los van de datalaag.
 - **Verbonden demo-QA** (`scripts/e2e-hours-mail-demo.spec.ts`): echte interne login, één echte

@@ -56,6 +56,7 @@ function ports(overrides: Partial<HoursMailPorts> & { recorded?: Recorded } = {}
             messages: recorded.rpc.filter(([n]) => n === 'hours_mail_claim_messages').length > 1 ? []
               : [{ id: 'msg-1', graph_message_id: 'AAMkMsg1', message_key: '<reply-1@klant.invalid>',
                    subject: 'RE: Uren week 37 [UR-7K3M-2XQ9]', from_address: 'planner@klant.invalid',
+                   conversation_id: 'AAQkConversation',
                    has_attachments: false, assigned_week_id: null, organization_id: 'org-1' }],
           }, error: null,
         };
@@ -67,6 +68,7 @@ function ports(overrides: Partial<HoursMailPorts> & { recorded?: Recorded } = {}
     graphJson: async (_account, url) => {
       recorded.graph.push(url);
       return { status: 200, body: { value: [{ id: 'AAMkMsg1', internetMessageId: '<reply-1@klant.invalid>',
+        conversationId: 'AAQkConversation',
         subject: 'RE: Uren week 37 [UR-7K3M-2XQ9]', from: { emailAddress: { address: 'planner@klant.invalid', name: 'Planner' } },
         receivedDateTime: '2026-09-14T08:00:00Z', hasAttachments: false }], '@odata.deltaLink': DELTA } };
     },
@@ -580,5 +582,26 @@ describe('bevindingen uit de vierde codereviewronde', () => {
     // The one that fell over handed its claim back instead of staying held.
     expect(given.recorded.rpc.some(([name, args]) =>
       name === 'hours_mail_release_message' && args.p_message_id === 'msg-1')).toBe(true);
+  });
+});
+
+
+describe('bevindingen uit de zesde codereviewronde', () => {
+  it('stuurt het gesprek-id mee, anders is het vierde vangnet dood', async () => {
+    const given = ports();
+    await run(given);
+    const recorded = given.recorded.rpc.find(([name]) => name === 'hours_mail_record_messages')![1];
+    expect(recorded.p_messages[0].conversation_id).toBe('AAQkConversation');
+    const matched = given.recorded.rpc.find(([name]) => name === 'hours_mail_match_message')![1];
+    expect(matched.p_conversation_id).toBe('AAQkConversation');
+  });
+
+  it('verlengt de claim niet voor een bericht dat toch al weg is', async () => {
+    const given = ports({
+      graphBytes: async () => ({ status: 404, bytes: new Uint8Array() }),
+      now: (() => { let call = 0; return () => (call++ === 0 ? 0 : 200_000); })(),
+    });
+    await run(given);
+    expect(given.recorded.rpc.some(([name]) => name === 'hours_mail_renew_lease')).toBe(false);
   });
 });

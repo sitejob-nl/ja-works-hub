@@ -42,7 +42,7 @@ projectsamenvatting.
   `hours_*`-tabellen is na elke apply vergeleken; beide zijn identiek. Twee vrijgegeven functies
   (`hours_create_source_proposals`, `hours_get_source_reading_context`) verschillen alleen in een
   SQL-**commentaarregel**: die zijn ooit zonder commentaar toegepast. Gedrag identiek.
-- **Vijf codereviewrondes vonden zestien echte defecten**, elk gerepareerd met een test die eerst rood
+- **Zes codereviewrondes vonden achttien echte defecten**, elk gerepareerd met een test die eerst rood
   stond. De zwaarste:
   - **Twee vrijgegeven service-role-routes stonden open terwijl de module uit stond.**
     `hours_claim_source_reading` en `hours_finish_source_reading` schreven met de servicesleutel nog
@@ -66,15 +66,19 @@ projectsamenvatting.
   - **De CI-gate viel om waar lokaal niets aan de hand was**: het controlebakscherm trok via de
     datalaag de Supabase-client mee, en CI heeft geen omgevingsvariabelen. Het woordenboek staat nu
     in `src/lib/hours-mail.ts`, en de hele suite is bewezen groen mét én zonder `.env`.
+  - **De vierde koppelingsweg uit het contract kon niet vuren.** Het gesprek-id werd wél tegen de
+    uitvraag gematcht, maar het bericht droeg zijn draad nergens: het vastleggen liet hem vallen en
+    de claim gaf hem niet terug. Een gedocumenteerd mechanisme dat niet kan werken is erger dan een
+    dat er niet is.
   - Verder: een te groot bericht bleef eeuwig herhalen in plaats van zichtbaar te stranden; één
     kapotte postbus of één kapot bericht nam de hele run mee; een onleesbare datum of een te lange
     Graph-id liet een hele doorloop vallen; de twijfel van de lezer kon op deze route niet meereizen;
     en de hele functie was **onbereikbaar vanuit de UI** — er was geen manier om een map te gaan
     volgen, en handmatig toewijzen bestond alleen in de database.
-- Verificatie: **315 echte PostgreSQL-tests** (`scripts/hours-mail-intake-db-test.py` — nieuwe
+- Verificatie: **318 echte PostgreSQL-tests** (`scripts/hours-mail-intake-db-test.py` — nieuwe
   mailinnamegevallen plus de volledige vrijgegeven Word/mail-, scan-, klantweek-, werkmap-, pagina-,
-  inname-, classificatie-, poort- en foundationregressies; achttien migraties elk tweemaal,
-  poortcontrole van achttien naar **tweeëntwintig** tabellen); **1.900 applicatietests**, ook bewezen
+  inname-, classificatie-, poort- en foundationregressies; negentien migraties elk tweemaal,
+  poortcontrole van achttien naar **tweeëntwintig** tabellen); **1.902 applicatietests**, ook bewezen
   groen zónder `.env` zoals CI draait; lint 0 errors, typecheck en productiebuild groen; `deno check`
   op de nieuwe edge function.
 - **Verbonden demo-QA geslaagd** (`scripts/e2e-hours-mail-demo.spec.ts` +

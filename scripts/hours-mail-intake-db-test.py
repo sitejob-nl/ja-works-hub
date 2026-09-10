@@ -146,12 +146,14 @@ class MailIntakeTests(wordmail.WordMailTests):
         return identifier
 
     def observe(self, folder, key="<msg-1@example.invalid>", graph="AAMkGraph1",
-                sender="planner@klant.invalid", subject="RE: uren", attachments=False, removed=None):
+                sender="planner@klant.invalid", subject="RE: uren", attachments=False, removed=None,
+                conversation=None):
         return rpc("hours_mail_record_messages", role="service_role", p_folder_row_id=folder,
                    p_messages=[{"message_key": key, "graph_message_id": graph,
                                 "internet_message_id": key, "subject": subject,
                                 "from_address": sender, "from_name": "Planner",
                                 "received_at": "2026-09-14T08:00:00Z",
+                                "conversation_id": conversation,
                                 "has_attachments": attachments}],
                    p_removed=text_array(removed))
 
@@ -940,6 +942,38 @@ class MailIntakeTests(wordmail.WordMailTests):
         self.assertEqual(sql(f"SELECT status FROM public.hours_mail_messages "
                              f"WHERE organization_id={literal(self.org)};"), "filed")
 
+    def test_the_conversation_travels_with_the_message(self):
+        """The fourth net can only work if the message carries its own thread id."""
+        self.open_week()
+        folder = self.folder_id(self.follow())
+        self.observe(folder, conversation="AAQkGesprek")
+        claimed = self.claim(folder)["messages"][0]
+        self.assertEqual(claimed["conversation_id"], "AAQkGesprek")
+
+    def test_the_conversation_is_the_last_net_end_to_end(self):
+        self.open_week()
+        folder = self.folder_id(self.follow())
+        request_id, _ = self.request()
+        self.contact("planner@klant.invalid")
+        sql(f"""UPDATE public.hours_week_requests SET conversation_id='AAQkGesprek', sent_at=now()
+          WHERE id={literal(request_id)};""")
+        self.observe(folder, conversation="AAQkGesprek")
+        claimed = self.claim(folder)
+        matched = rpc("hours_mail_match_message", role="service_role",
+                      p_message_id=claimed["messages"][0]["id"],
+                      p_claim_token=claimed["claim_token"], p_codes=text_array(None),
+                      p_reply_ids=text_array(None),
+                      p_conversation_id=claimed["messages"][0]["conversation_id"])
+        self.assertTrue(matched["ok"])
+        self.assertEqual(matched["request_id"], request_id)
+
+    def test_the_thread_of_a_message_never_moves(self):
+        self.open_week()
+        folder = self.folder_id(self.follow())
+        self.observe(folder, conversation="AAQkGesprek")
+        self.assertIn("42501", sql(f"UPDATE public.hours_mail_messages SET conversation_id='anders' "
+                                   f"WHERE organization_id={literal(self.org)};", expect_error=True))
+
 
 class MailFoundationRegression(wordmail.WordMailFoundationRegression):
     """The released foundation contract, unchanged on the mail-intake schema."""
@@ -1122,6 +1156,7 @@ def main():
         "20260916090000_hours_mail_intake.sql",
         "20260916100000_hours_mail_intake_review_fixes.sql",
         "20260916120000_hours_mail_intake_revive.sql",
+        "20260916130000_hours_mail_message_conversation.sql",
     )]
     fixtures = [ROOT / "tests/db/hours-workflow-fixture.sql", ROOT / "tests/db/hours-module-gate-fixture.sql",
                 ROOT / "tests/db/hours-intake-fixture.sql", ROOT / "tests/db/hours-mail-intake-fixture.sql"]

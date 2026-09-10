@@ -5237,6 +5237,7 @@ export type Database = {
           attempt_count: number
           claim_token: string | null
           claimed_at: string | null
+          conversation_id: string | null
           first_seen_at: string
           folder_row_id: string
           from_address: string | null
@@ -5271,6 +5272,7 @@ export type Database = {
           attempt_count?: number
           claim_token?: string | null
           claimed_at?: string | null
+          conversation_id?: string | null
           first_seen_at?: string
           folder_row_id: string
           from_address?: string | null
@@ -5305,6 +5307,7 @@ export type Database = {
           attempt_count?: number
           claim_token?: string | null
           claimed_at?: string | null
+          conversation_id?: string | null
           first_seen_at?: string
           folder_row_id?: string
           from_address?: string | null
