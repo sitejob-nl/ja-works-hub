@@ -901,6 +901,45 @@ class MailIntakeTests(wordmail.WordMailTests):
                                   "page_number": 1, "assignment_uncertain": False,
                                   "uncertain_fields": ["verzonnen"]}])
 
+    def test_a_message_that_comes_back_is_picked_up_again(self):
+        """Gone and back is the same message, and nothing was written for it."""
+        self.open_week()
+        folder = self.folder_id(self.follow())
+        self.observe(folder)
+        self.observe(folder, key="<msg-2@example.invalid>", graph="AAMkOther",
+                     removed=["AAMkGraph1"])
+        self.assertEqual(sql(f"SELECT status FROM public.hours_mail_messages "
+                             f"WHERE graph_message_id='AAMkGraph1' "
+                             f"AND organization_id={literal(self.org)};"), "dismissed")
+        # Somebody put it back in the followed folder; Graph reports it as added.
+        self.observe(folder, graph="AAMkGraph1")
+        self.assertEqual(sql(f"SELECT status FROM public.hours_mail_messages "
+                             f"WHERE graph_message_id='AAMkGraph1' "
+                             f"AND organization_id={literal(self.org)};"), "pending")
+        claimed = [m["graph_message_id"] for m in self.claim(folder)["messages"]]
+        self.assertIn("AAMkGraph1", claimed)
+
+    def test_a_decision_of_a_person_is_not_undone_by_the_mailbox(self):
+        """Only the mailbox's own 'gone' is revived; a human's dismissal stands."""
+        _, _, _, token, message = self.prepare_claimed()
+        rpc("hours_mail_fail_message", role="service_role", p_message_id=message, p_claim_token=token,
+            p_status="needs_attention", p_reason_code="onbekende_afzender", p_reason_note=None)
+        rpc("hours_mail_dismiss_message", user=self.admin, p_message_id=message, p_note="Nieuwsbrief")
+        folder = self.folder_id()
+        self.observe(folder)
+        self.assertEqual(sql(f"SELECT status || '/' || reason_code FROM public.hours_mail_messages "
+                             f"WHERE organization_id={literal(self.org)};"),
+                         "dismissed/handmatig_afgehandeld")
+
+    def test_a_filed_message_is_never_revived_by_the_mailbox(self):
+        _, _, token, message = self.matched_message()
+        rpc("hours_mail_file_message", role="service_role", p_message_id=message, p_claim_token=token,
+            p_source=self.stored_file(), p_attachments=[], p_proposals=[])
+        folder = self.folder_id()
+        self.observe(folder)
+        self.assertEqual(sql(f"SELECT status FROM public.hours_mail_messages "
+                             f"WHERE organization_id={literal(self.org)};"), "filed")
+
 
 class MailFoundationRegression(wordmail.WordMailFoundationRegression):
     """The released foundation contract, unchanged on the mail-intake schema."""
@@ -1082,6 +1121,7 @@ def main():
         "20260915090000_hours_word_and_mail_sources.sql",
         "20260916090000_hours_mail_intake.sql",
         "20260916100000_hours_mail_intake_review_fixes.sql",
+        "20260916120000_hours_mail_intake_revive.sql",
     )]
     fixtures = [ROOT / "tests/db/hours-workflow-fixture.sql", ROOT / "tests/db/hours-module-gate-fixture.sql",
                 ROOT / "tests/db/hours-intake-fixture.sql", ROOT / "tests/db/hours-mail-intake-fixture.sql"]

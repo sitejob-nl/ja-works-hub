@@ -42,7 +42,7 @@ projectsamenvatting.
   `hours_*`-tabellen is na elke apply vergeleken; beide zijn identiek. Twee vrijgegeven functies
   (`hours_create_source_proposals`, `hours_get_source_reading_context`) verschillen alleen in een
   SQL-**commentaarregel**: die zijn ooit zonder commentaar toegepast. Gedrag identiek.
-- **Vier codereviewrondes vonden dertien echte defecten**, elk gerepareerd met een test die eerst rood
+- **Vijf codereviewrondes vonden zestien echte defecten**, elk gerepareerd met een test die eerst rood
   stond. De zwaarste:
   - **Twee vrijgegeven service-role-routes stonden open terwijl de module uit stond.**
     `hours_claim_source_reading` en `hours_finish_source_reading` schreven met de servicesleutel nog
@@ -60,16 +60,23 @@ projectsamenvatting.
   - **Een lezer schreef in `note`**, het veld dat letterlijk op een dagrevisie wordt toegepast.
   - **De lijst met te pollen mappen liet alles na de tiende verhongeren** en kon niet om één
     organisatie vragen, wat een handmatige run nodig heeft.
+  - **Een bericht dat terugkwam in de map werd nooit meer opgepakt.** De postbus meldde het als weg,
+    de rij sloot het met `verdwenen`, en toen het terugkwam deed het vastleggen stil niets meer dan
+    de Graph-id bijwerken. Nu wordt alleen dát hersteld; een besluit van een mens staat.
+  - **De CI-gate viel om waar lokaal niets aan de hand was**: het controlebakscherm trok via de
+    datalaag de Supabase-client mee, en CI heeft geen omgevingsvariabelen. Het woordenboek staat nu
+    in `src/lib/hours-mail.ts`, en de hele suite is bewezen groen mét én zonder `.env`.
   - Verder: een te groot bericht bleef eeuwig herhalen in plaats van zichtbaar te stranden; één
     kapotte postbus of één kapot bericht nam de hele run mee; een onleesbare datum of een te lange
     Graph-id liet een hele doorloop vallen; de twijfel van de lezer kon op deze route niet meereizen;
     en de hele functie was **onbereikbaar vanuit de UI** — er was geen manier om een map te gaan
     volgen, en handmatig toewijzen bestond alleen in de database.
-- Verificatie: **312 echte PostgreSQL-tests** (`scripts/hours-mail-intake-db-test.py` — nieuwe
+- Verificatie: **315 echte PostgreSQL-tests** (`scripts/hours-mail-intake-db-test.py` — nieuwe
   mailinnamegevallen plus de volledige vrijgegeven Word/mail-, scan-, klantweek-, werkmap-, pagina-,
-  inname-, classificatie-, poort- en foundationregressies; zeventien migraties elk tweemaal,
-  poortcontrole van achttien naar **tweeëntwintig** tabellen); **1.897 applicatietests**; lint 0
-  errors, typecheck en productiebuild groen; `deno check` op de nieuwe edge function.
+  inname-, classificatie-, poort- en foundationregressies; achttien migraties elk tweemaal,
+  poortcontrole van achttien naar **tweeëntwintig** tabellen); **1.900 applicatietests**, ook bewezen
+  groen zónder `.env` zoals CI draait; lint 0 errors, typecheck en productiebuild groen; `deno check`
+  op de nieuwe edge function.
 - **Verbonden demo-QA geslaagd** (`scripts/e2e-hours-mail-demo.spec.ts` +
   `scripts/playwright.hours-mail.config.ts`, 4,6 s, 69 API-oproepen waarvan 6 echte postbusaanroepen)
   op een verse fixture `20260916-mail-r1`. Bewezen tegen de echte Microsoft Graph: het bewaarde token

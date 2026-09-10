@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { formatDate } from '@/lib/format';
-import { describeMailReason, type HoursMailAttention, type HoursMailFollowed } from '@/lib/hours-workflow-api';
+import { describeMailReason, type HoursMailAttention, type HoursMailFollowed } from '@/lib/hours-mail';
 
 /**
  * What the office sees of a mailbox nobody has to open.
@@ -113,6 +113,13 @@ function FolderRow({ folder }: { folder: HoursMailFollowed }) {
         : 'Deze map is nog niet opgehaald; de eerstvolgende doorloop leest hem in zijn geheel.'}
       {folder.resync_count > 0 && ` De cursor is ${folder.resync_count}× opnieuw opgebouwd.`}
     </p>
+    {/* A folder that is switched off keeps whatever is already in its queue, and
+        nothing works it off. Without saying so, a message somebody assigned by
+        hand would simply never be seen again. */}
+    {!folder.enabled && folder.pending > 0 && <p role="alert" className="mt-1 text-destructive">
+      Deze map staat uit, dus deze wachtrij wordt niet verwerkt. Zet de map weer aan om
+      {' '}{folder.pending === 1 ? 'dit bericht' : 'deze berichten'} alsnog op te halen.
+    </p>}
     {folder.last_error && <p role="alert" className="mt-1 text-destructive">
       De laatste doorloop stopte met “{folder.last_error}”. De cursor is blijven staan, dus er is niets overgeslagen.
     </p>}
@@ -182,9 +189,12 @@ function AttentionRow({ message, canManage, onDismiss, weeks, onAssign }: {
       </div>
     </form>}
     {canManage && !open && !assigning && <div className="mt-3 flex flex-wrap gap-2">
-      <Button type="button" size="sm" variant="outline" onClick={() => setOpen(true)}>Afhandelen</Button>
+      {/* The note belongs to the action being taken, not to the row: carrying
+          text over from one form to the other puts words in somebody's mouth. */}
+      <Button type="button" size="sm" variant="outline"
+        onClick={() => { setNote(''); setOpen(true); }}>Afhandelen</Button>
       {onAssign && <Button type="button" size="sm" variant="ghost"
-        onClick={() => setAssigning(true)}>Aan een week hangen</Button>}
+        onClick={() => { setNote(''); setAssigning(true); }}>Aan een week hangen</Button>}
     </div>}
   </li>;
 }

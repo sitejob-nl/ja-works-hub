@@ -1,9 +1,10 @@
 # Urenmodule: duurzame mailinname vanuit de gekoppelde mailbox (T7)
 
 **Status: gedeployed** (migraties `20260916090000_hours_mail_intake.sql`,
-`20260916100000_hours_mail_intake_review_fixes.sql` en `20260916110000_hours_mail_intake_cron.sql`,
-plus edge function `hours-mail-intake`, 16 september 2026). Additief: drie nieuwe org-gebonden
-tabellen, twee nieuwe kolommen op bestaande brontabellen, zestien nieuwe RPC's en één cronjob.
+`20260916100000_hours_mail_intake_review_fixes.sql`, `20260916110000_hours_mail_intake_cron.sql` en
+`20260916120000_hours_mail_intake_revive.sql`, plus edge function `hours-mail-intake`,
+16 september 2026). Additief: drie nieuwe org-gebonden tabellen, twee nieuwe kolommen op bestaande
+brontabellen, zestien nieuwe RPC's en één cronjob.
 `timesheets`, facturatie, urenbrieven, CSV-import en communicatie worden niet geschreven.
 **JA Werkt staat UIT, de geverifieerde demo staat AAN** voor `uren-workflow`.
 
@@ -135,6 +136,10 @@ het eind van een delta-doorloop. De volgende run begint daar.
 - **Mislukt vastleggen.** Gaat het wegschrijven van wat is gezien mis, dan blijft de cursor staan.
   Eroverheen stappen zou precies die berichten voorgoed verliezen, wat een duurzame cursor moet
   voorkomen.
+- **Terug in de map.** Een bericht dat de postbus als weg meldde is met `verdwenen` afgesloten en er
+  is niets voor geschreven. Zet iemand het terug, dan pakt de eerstvolgende doorloop het weer op.
+  Alleen dát wordt hersteld: wie het van de controlebak haalde heeft besloten, en een al verwerkt
+  bericht blijft verwerkt.
 
 ## Stabiele bericht-id's
 
@@ -263,15 +268,16 @@ als een `.eml` die iemand zelf uploadt.
 
 ## Verificatie (T7)
 
-- **312 echte PostgreSQL-tests** (`scripts/hours-mail-intake-db-test.py`): de nieuwe uitvraag-,
+- **315 echte PostgreSQL-tests** (`scripts/hours-mail-intake-db-test.py`): de nieuwe uitvraag-,
   cursor-, wachtrij-, koppelings- en controlebakgevallen plus de volledige vrijgegeven Word/mail-,
   scan-, klantweek-, werkmap-, pagina-, inname-, classificatie-, modulepoort- en
-  foundationregressies op het nieuwe schema. Alle zeventien migraties worden tweemaal toegepast; de
+  foundationregressies op het nieuwe schema. Alle achttien migraties worden tweemaal toegepast; de
   poortproef dekt nu **tweeëntwintig** tabellen.
 - **Applicatietests**: `hours-mail-intake.test.ts` (35 gevallen over de hele innamegrens, met
   gefixeerde Graph-antwoorden), `hours-mail-link.test.ts` (11), `hours-mail-intake-ui.test.tsx` (16)
-  en `hours-week-requests-ui.test.tsx` (7). Totaal 1.897 groen, met lint (0 errors), typecheck en
-  productiebuild.
+  en `hours-week-requests-ui.test.tsx` (7). Totaal 1.900 groen, met lint (0 errors), typecheck en
+  productiebuild. De hele suite draait ook **zonder** Supabase-omgevingsvariabelen, zoals CI hem
+  draait: het mailinname-woordenboek staat daarom in `src/lib/hours-mail.ts`, los van de datalaag.
 - **Verbonden demo-QA** (`scripts/e2e-hours-mail-demo.spec.ts`): echte interne login, één echte
   gevolgde map in de demo-postbus, twee echte doorlopen tegen Microsoft Graph. Bewezen: het bewaarde
   token wordt ontsleuteld en gebruikt, de delta-vraag antwoordt, de cursor die Graph teruggeeft wordt

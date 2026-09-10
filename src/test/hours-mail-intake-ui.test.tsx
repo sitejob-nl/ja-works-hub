@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { HoursMailIntakePanel } from '@/components/hours-workflow/HoursMailIntakePanel';
-import type { HoursMailAttention, HoursMailFollowed } from '@/lib/hours-workflow-api';
+import type { HoursMailAttention, HoursMailFollowed } from '@/lib/hours-mail';
 
 const folder = (overrides: Partial<HoursMailFollowed> = {}): HoursMailFollowed => ({
   id: 'f1', mail_account_id: 'acc-1', folder_id: 'AAMk', folder_label: 'Uren',
@@ -142,5 +142,38 @@ describe('wat een gevolgde map van de mailbox vastlegt', () => {
     render(<HoursMailIntakePanel canManage folders={[]} attention={[]} {...noop} {...picker} />);
     expect(screen.getByText(/elk bericht in die map/i)).toBeInTheDocument();
     expect(screen.getByText(/aparte map/i)).toBeInTheDocument();
+  });
+});
+
+
+describe('bevindingen uit de vijfde codereviewronde', () => {
+  const picker = {
+    mailboxes: [{ id: 'acc-1', label: 'Algemeen', email: 'uren@jawerkt.invalid' }],
+    mailboxFolders: [{ id: 'AAMkFolder', display_name: 'Uren' }],
+    selectedMailbox: 'acc-1', onSelectMailbox: vi.fn(),
+    onFollow: vi.fn(), folderBusy: false,
+    weeks: [{ id: 'week-1', label: 'Acme — week 37' }], onAssign: vi.fn(),
+  };
+
+  it('zegt dat een uitgezette map zijn wachtrij niet verwerkt', () => {
+    render(<HoursMailIntakePanel canManage
+      folders={[folder({ enabled: false, pending: 3 })]} attention={[]} {...noop} {...picker} />);
+    expect(screen.getByText(/staat uit, dus deze wachtrij wordt niet verwerkt/i)).toBeInTheDocument();
+  });
+
+  it('zwijgt daarover als een uitgezette map niets meer te doen heeft', () => {
+    render(<HoursMailIntakePanel canManage
+      folders={[folder({ enabled: false, pending: 0 })]} attention={[]} {...noop} {...picker} />);
+    expect(screen.queryByText(/wachtrij wordt niet verwerkt/i)).not.toBeInTheDocument();
+  });
+
+  it('draagt een getypte toelichting niet over van afhandelen naar toewijzen', () => {
+    render(<HoursMailIntakePanel canManage folders={[folder()]} attention={[attention()]}
+      {...noop} {...picker} />);
+    fireEvent.click(screen.getByRole('button', { name: /afhandelen/i }));
+    fireEvent.change(screen.getByLabelText(/toelichting/i), { target: { value: 'nieuwsbrief' } });
+    fireEvent.click(screen.getByRole('button', { name: /annuleren/i }));
+    fireEvent.click(screen.getByRole('button', { name: /aan een week hangen/i }));
+    expect((screen.getByLabelText(/toelichting/i) as HTMLInputElement).value).toBe('');
   });
 });
