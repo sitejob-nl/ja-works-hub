@@ -11,7 +11,8 @@ const candidate = (index: number): WorkbookCandidate => ({
 });
 
 const reading = (count: number): WorkbookReading => ({
-  ok: true, candidates: Array.from({ length: count }, (_, index) => candidate(index)),
+  ok: true, sourceKind: 'workbook',
+  candidates: Array.from({ length: count }, (_, index) => candidate(index)),
   skipped: [], rowTotals: [], sheetsRead: ['Week 37'], sheetsIgnored: [],
 });
 

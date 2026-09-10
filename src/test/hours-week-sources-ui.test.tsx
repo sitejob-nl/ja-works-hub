@@ -19,6 +19,7 @@ const dayId = '00000000-0000-4000-8000-000000000003';
 const sourceId = '00000000-0000-4000-8000-000000000004';
 const proposalId = '00000000-0000-4000-8000-000000000005';
 const memberId = '00000000-0000-4000-8000-000000000006';
+const attachmentId = '00000000-0000-4000-8000-000000000007';
 const revisionA = '00000000-0000-4000-8000-00000000000a';
 const revisionB = '00000000-0000-4000-8000-00000000000b';
 const clients: QueryClient[] = [];
@@ -74,6 +75,32 @@ function file(name: string, type: string): File {
   return value;
 }
 const pdf = (name = 'week36.pdf') => file(name, 'application/pdf');
+
+/** A file whose bytes matter, because a reader is going to look at them. */
+function bytesFile(name: string, type: string, contents: string): File {
+  const value = new File([contents], name, { type });
+  Object.defineProperty(value, 'arrayBuffer', { value: async () => {
+    const encoded = new TextEncoder().encode(contents);
+    const buffer = new ArrayBuffer(encoded.length);
+    new Uint8Array(buffer).set(encoded);
+    return buffer;
+  } });
+  return value;
+}
+
+const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+/** `UEsDBAo=` is a zip container's first bytes: what an .xlsx actually is. */
+const MAIL_WITH_ATTACHMENT = [
+  'From: Peter <peter@acme.nl>', 'Subject: Uren week 37',
+  'Content-Type: multipart/mixed; boundary="grens"', '',
+  '--grens', 'Content-Type: text/plain; charset=utf-8', '',
+  'Jan Kowalski', 'maandag 8', '',
+  '--grens',
+  'Content-Type: application/octet-stream; name="urenbriefje.xlsx"',
+  'Content-Disposition: attachment; filename="urenbriefje.xlsx"',
+  'Content-Transfer-Encoding: base64', '',
+  'UEsDBAo=', '', '--grens--',
+].join('\r\n');
 
 beforeEach(() => {
   vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
@@ -141,9 +168,56 @@ describe('internal hours intake', () => {
     fireEvent.change(screen.getByLabelText('Urenbriefje uploaden'), {
       target: { files: [file('uren.csv', 'text/csv')] },
     });
-    expect(await screen.findByRole('alert')).toHaveTextContent('Alleen PDF, JPG, PNG en Excel');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Alleen PDF, JPG, PNG, Excel, Word en e-mailbestanden');
     expect(upload).not.toHaveBeenCalled();
     expect(rpc).not.toHaveBeenCalledWith('hours_add_week_source', expect.anything());
+  });
+
+  it('keeps a delivered message and its attachment together as one receipt', async () => {
+    let stored = 0;
+    rpc.mockImplementation(async (name: string) => {
+      if (name === 'hours_get_week_sources') return ok(emptyProjection);
+      stored += 1;
+      return ok({ ...emptyProjection, duplicate: false, source_id: stored === 1 ? sourceId : attachmentId });
+    });
+    show();
+    await screen.findByText('Er zijn nog geen bronnen bij deze week bewaard.');
+    fireEvent.change(screen.getByLabelText('Urenbriefje uploaden'), {
+      target: { files: [bytesFile('uren week 37.eml', 'message/rfc822', MAIL_WITH_ATTACHMENT)] },
+    });
+
+    await screen.findByText(/1 bijlage is als bron van diezelfde ontvangst bewaard/);
+    const calls = rpc.mock.calls.filter(call => call[0] === 'hours_add_week_source').map(call => call[1]);
+    expect(calls).toHaveLength(2);
+    expect(calls[0]).toMatchObject({
+      p_content_type: 'message/rfc822', p_file_name: 'uren week 37.eml', p_received_with: null,
+    });
+    // The attachment was labelled application/octet-stream; its bytes say otherwise.
+    expect(calls[1]).toMatchObject({
+      p_content_type: XLSX_TYPE, p_file_name: 'urenbriefje.xlsx', p_received_with: sourceId,
+    });
+  });
+
+  it('shows an attachment under the message it came out of', async () => {
+    const message = {
+      id: sourceId, file_name: 'uren week 37.eml', content_type: 'message/rfc822', byte_size: 900,
+      content_hash: 'c'.repeat(64), storage_path: `${orgId}/${weekId}/${'c'.repeat(64)}.eml`,
+      created_at: '2026-09-08T08:00:00Z', page_count: 1, client_link_id: null,
+      received_with_source_id: null, pages: [], proposals: [],
+    };
+    const attachment = {
+      ...message, id: attachmentId, file_name: 'urenbriefje.xlsx', content_type: XLSX_TYPE,
+      content_hash: 'd'.repeat(64), storage_path: `${orgId}/${weekId}/${'d'.repeat(64)}.xlsx`,
+      created_at: '2026-09-08T08:00:01Z', received_with_source_id: sourceId,
+    };
+    rpc.mockResolvedValue(ok({ ...emptyProjection, sources: [message, attachment] }));
+    show();
+
+    const groups = await screen.findAllByRole('group', { name: /^Bron / });
+    expect(groups.map(group => group.getAttribute('aria-label')))
+      .toEqual(['Bron uren week 37.eml', 'Bron urenbriefje.xlsx']);
+    expect(within(groups[1]).getByText(/Bijlage bij/)).toHaveTextContent('uren week 37.eml');
+    expect(within(groups[0]).queryByText(/Bijlage bij/)).toBeNull();
   });
 
   it('opens the original through a short-lived link instead of a public url', async () => {

@@ -3,7 +3,7 @@ import {
   describeSourceReferences, formatSourceSize, hoursSourcePath, hoursSourceTypeError,
   describeUncertainFields,
   parseWeekSources, proposalChanges, proposalIsBlocked, sourceOriginText, visibleClientProposals,
-  HOURS_SOURCE_MAX_BYTES, type HoursSourceProposal,
+  HOURS_CLIENT_SOURCE_ACCEPT, HOURS_SOURCE_MAX_BYTES, type HoursSourceProposal,
 } from '@/lib/hours-sources';
 import type { HoursSourceInput } from '@/components/hours-workflow/hours-day-source';
 
@@ -16,14 +16,30 @@ describe('hours source acceptance', () => {
   it.each([
     'application/pdf', 'image/jpeg', 'image/png',
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/msword',
+    'message/rfc822',
   ])('accepts %s within the size limit', type => {
     expect(hoursSourceTypeError({ type, size: 2048 })).toBeNull();
   });
 
-  it.each(['message/rfc822', 'application/msword', 'text/html', 'text/csv', ''])(
+  it.each(['text/html', 'text/csv', 'application/zip', ''])(
     'rejects %s with an explanation instead of storing it', type => {
-      expect(hoursSourceTypeError({ type, size: 2048 })).toMatch(/Alleen PDF, JPG, PNG en Excel/);
+      expect(hoursSourceTypeError({ type, size: 2048 })).toMatch(/Alleen PDF, JPG, PNG, Excel, Word en e-mail/);
     });
+
+  /**
+   * The client week page delivers timesheets, not the office's mailbox, and its
+   * endpoint refuses Word and e-mail. Offering them there would be a refusal
+   * dressed up as a button.
+   */
+  it.each([
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/msword',
+    'message/rfc822',
+  ])('keeps %s out of what a client may hand in', type => {
+    expect(hoursSourceTypeError({ type, size: 2048 }, HOURS_CLIENT_SOURCE_ACCEPT))
+      .toMatch(/Alleen PDF, JPG, PNG en Excel/);
+    expect(hoursSourceTypeError({ type: 'application/pdf', size: 2048 }, HOURS_CLIENT_SOURCE_ACCEPT)).toBeNull();
+  });
 
   it('rejects an empty file and one over the limit', () => {
     expect(hoursSourceTypeError({ type: 'application/pdf', size: 0 })).toMatch(/leeg/);

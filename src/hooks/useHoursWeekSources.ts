@@ -3,20 +3,30 @@ import { supabase } from '@/integrations/supabase/client';
 import { hoursReadScan, hoursWorkflowRpc, type HoursScanReadingResult } from '@/lib/hours-workflow-api';
 import { qk } from '@/lib/query-keys';
 import {
-  HOURS_SOURCE_BUCKET, hoursSourceDigest, hoursSourcePath, hoursSourceTypeError,
+  HOURS_SOURCE_BUCKET, HOURS_SOURCE_MAX_BYTES, hoursSourceDigest, hoursSourcePath, hoursSourceTypeError,
   parseWeekSources, type HoursSourceContentType, type HoursWeekSources,
 } from '@/lib/hours-sources';
 import { countPdfPages } from '@/lib/hours-pdf-pages';
 import {
-  countWorkbookSheets, decodeWorkbook, isReadableWorkbook, isWorkbookSource, workbookBytesError,
+  attachmentSourceType, countWorkbookSheets, decodeWorkbook, isMailSource, isReadableWorkbook,
+  isWordSource, isWorkbookSource, wordBytesError, workbookBytesError, wordSourceContentType,
   workbookContentType,
 } from '@/lib/hours-workbook-file';
+import { countWordTables, decodeWordDocument } from '@/lib/hours-docx';
+import { decodeEmailMessage, type EmailAttachment } from '@/lib/hours-eml';
+import { readHoursFromMailText, type MailReadingContext } from '@/lib/hours-mail-text';
 import { readHoursWorkbook, type WorkbookContext, type WorkbookReading } from '@/lib/hours-workbook';
 import type { HoursPageEntry, HoursReadingEntry } from '@/lib/hours-workflow-api';
 import type { HoursPageAssignment } from '@/lib/hours-sources';
 import type { HoursSourceInput } from '@/components/hours-workflow/hours-day-source';
 
-export interface HoursSourceUploadResult { duplicate: boolean; sourceId: string }
+export interface HoursSourceUploadResult {
+  duplicate: boolean; sourceId: string;
+  /** Attachments of a delivered message, stored as sources of this same receipt. */
+  attachmentsStored: number;
+  /** Attachments left alone, named so a delivery never halves in silence. */
+  attachmentsSkipped: string[];
+}
 
 /** The secret is shown once, right here; the database keeps only its digest. */
 export interface HoursClientLinkIssued { secret: string; linkId: string }
@@ -38,19 +48,42 @@ export interface PageTakeoverInput { sourceId: string; pageNumber: number; entri
 export interface ReadingInput { sourceId: string; entries: HoursReadingEntry[] }
 
 /**
- * A photo is one page. A PDF is counted here and a workbook reports its
- * worksheets; a file that cannot be read stays honestly unknown rather than
- * being called a single page.
+ * A photo is one page and so is the body of a message. A PDF is counted here, a
+ * workbook reports its worksheets and a Word file its tables; a file that cannot
+ * be read stays honestly unknown rather than being called a single page.
  */
 async function deliveredPageCount(contentType: string, bytes: ArrayBuffer): Promise<number | null> {
   try {
     if (contentType === 'application/pdf') return await countPdfPages(bytes);
-    // A legacy .xls can never be read out, so there is nothing to count either.
+    // A legacy .xls or .doc can never be read out, so there is nothing to count.
     if (isReadableWorkbook(contentType)) return await countWorkbookSheets(bytes);
+    if (contentType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+      return await countWordTables(bytes);
+    }
+    if (isMailSource(contentType)) return 1;
     return null;
   } catch {
     return null;
   }
+}
+
+/**
+ * What the browser refuses to store before it costs a round trip. The declared
+ * media type is not proof: Windows reports the legacy Office types for modern
+ * files and for a plain .csv alike, so the first bytes decide.
+ */
+function storedContentType(file: { type: string }, bytes: ArrayBuffer): HoursSourceContentType {
+  if (isWorkbookSource(file.type)) {
+    const rejection = workbookBytesError(bytes);
+    if (rejection) throw new Error(rejection);
+    return (workbookContentType(file.type, bytes) ?? file.type) as HoursSourceContentType;
+  }
+  if (isWordSource(file.type)) {
+    const rejection = wordBytesError(bytes);
+    if (rejection) throw new Error(rejection);
+    return (wordSourceContentType(file.type, bytes) ?? file.type) as HoursSourceContentType;
+  }
+  return file.type as HoursSourceContentType;
 }
 
 /** Signed for minutes only; an original is never publicly reachable. */
@@ -68,29 +101,82 @@ export function useHoursWeekSources(organizationId: string, weekId: string | und
     qc.setQueryData(qk.hoursWorkflow.sources(organizationId, data.week_id), data);
   };
 
+  /**
+   * One delivered file, stored and then recorded. The bytes go to their own
+   * digest as a path, so the same delivery twice is the same object and the
+   * server answers `duplicate` instead of making a second source.
+   */
+  async function storeSource(
+    file: File | Blob, fileName: string, contentType: HoursSourceContentType,
+    bytes: ArrayBuffer, receivedWith: string | null,
+  ): Promise<Record<string, unknown>> {
+    const digest = await hoursSourceDigest(bytes);
+    const pageCount = await deliveredPageCount(contentType, bytes);
+    const path = hoursSourcePath(organizationId, weekId!, digest, contentType);
+    const { error } = await supabase.storage.from(HOURS_SOURCE_BUCKET)
+      .upload(path, file, { contentType, upsert: false });
+    // The path is the digest, so an existing object already holds these bytes.
+    if (error && !isAlreadyStored(error)) throw error;
+    return await hoursWorkflowRpc('hours_add_week_source', {
+      p_week_id: weekId!, p_content_hash: digest, p_file_name: fileName, p_content_type: contentType,
+      p_page_count: pageCount, p_received_with: receivedWith,
+    }) as Record<string, unknown>;
+  }
+
+  /**
+   * A message and what came with it are one receipt: the attachments are stored
+   * as sources of their own and each names the message it arrived with, so the
+   * screen keeps them together and a reader can tell an office upload from
+   * something that came in over mail.
+   *
+   * An attachment this module does not accept is named rather than dropped. So
+   * is a signature logo, which is an image the body points at and not a
+   * delivery of hours.
+   */
+  async function storeAttachments(attachments: EmailAttachment[], receiptId: string):
+  Promise<{ stored: number; skipped: string[] }> {
+    let stored = 0;
+    const skipped: string[] = [];
+    for (const attachment of attachments) {
+      if (attachment.inline) { skipped.push(`${attachment.fileName} (afbeelding uit de handtekening)`); continue; }
+      const contentType = attachmentSourceType(attachment.fileName, attachment.contentType, attachment.bytes);
+      if (!contentType) { skipped.push(`${attachment.fileName} (dit bestandstype wordt niet als bron bewaard)`); continue; }
+      // The bytes are already in hand; a Blob is only how Storage wants them.
+      const bytes = attachment.bytes.slice().buffer as ArrayBuffer;
+      if (bytes.byteLength <= 0 || bytes.byteLength > HOURS_SOURCE_MAX_BYTES) {
+        skipped.push(`${attachment.fileName} (leeg of groter dan 25 MB)`);
+        continue;
+      }
+      const blob = new Blob([attachment.bytes as BlobPart], { type: contentType });
+      const result = await storeSource(blob, attachment.fileName, contentType as HoursSourceContentType,
+        bytes, receiptId);
+      store(parseWeekSources(result));
+      stored += 1;
+    }
+    return { stored, skipped };
+  }
+
   const upload = useMutation({
     mutationFn: async (file: File): Promise<HoursSourceUploadResult> => {
       const rejection = hoursSourceTypeError(file);
       if (rejection) throw new Error(rejection);
       const bytes = await file.arrayBuffer();
-      // The declared media type is not proof; a workbook has to be one, and it
-      // is stored as what it really is so a mislabelled .xlsx stays readable.
-      const notAWorkbook = isWorkbookSource(file.type) ? workbookBytesError(bytes) : null;
-      if (notAWorkbook) throw new Error(notAWorkbook);
-      const contentType = (workbookContentType(file.type, bytes) ?? file.type) as HoursSourceContentType;
-      const digest = await hoursSourceDigest(bytes);
-      const pageCount = await deliveredPageCount(contentType, bytes);
-      const path = hoursSourcePath(organizationId, weekId!, digest, contentType);
-      const { error } = await supabase.storage.from(HOURS_SOURCE_BUCKET)
-        .upload(path, file, { contentType, upsert: false });
-      // The path is the digest, so an existing object already holds these bytes.
-      if (error && !isAlreadyStored(error)) throw error;
-      const result = await hoursWorkflowRpc('hours_add_week_source', {
-        p_week_id: weekId!, p_content_hash: digest, p_file_name: file.name, p_content_type: contentType,
-        p_page_count: pageCount,
-      }) as Record<string, unknown>;
+      const contentType = storedContentType(file, bytes);
+      const result = await storeSource(file, file.name, contentType, bytes, null);
       store(parseWeekSources(result));
-      return { duplicate: result.duplicate === true, sourceId: String(result.source_id) };
+      const sourceId = String(result.source_id);
+      const duplicate = result.duplicate === true;
+      // A message that was already received keeps the attachments it already
+      // has; storing them again would be the same objects and the same answer.
+      const attachments = isMailSource(contentType) && !duplicate
+        ? decodeEmailMessage(bytes) : null;
+      const outcome = attachments?.ok
+        ? await storeAttachments(attachments.message.attachments, sourceId)
+        : { stored: 0, skipped: [] };
+      return {
+        duplicate, sourceId,
+        attachmentsStored: outcome.stored, attachmentsSkipped: outcome.skipped,
+      };
     },
   });
 
@@ -122,15 +208,34 @@ export function useHoursWeekSources(organizationId: string, weekId: string | und
   });
 
   /**
-   * Reading a delivered spreadsheet. The stored original is fetched back and
-   * interpreted here; nothing is written until the reviewer saves the reading as
-   * proposals, and even then a proposal is not an hour.
+   * Reading a delivered spreadsheet, Word file or message. The stored original is
+   * fetched back and interpreted here; nothing is written until the reviewer
+   * saves the reading as proposals, and even then a proposal is not an hour.
+   *
+   * All three run in the browser without a model and without a paid call, and
+   * all three end in the same reviewable shape. A worksheet, a table and a
+   * message are the same kind of page, so the page rules that already govern a
+   * delivery govern these too.
    */
   const readWorkbook = useMutation({
-    mutationFn: async (input: { path: string; context: WorkbookContext }): Promise<WorkbookReading> => {
+    mutationFn: async (input: { path: string; contentType: string; context: MailReadingContext }):
+    Promise<WorkbookReading> => {
       const response = await fetch(await hoursSourceViewUrl(input.path));
       if (!response.ok) throw new Error('De bewaarde bron kon niet worden opgehaald. Probeer het opnieuw.');
-      const decoding = await decodeWorkbook(await response.arrayBuffer());
+      const bytes = await response.arrayBuffer();
+      if (isMailSource(input.contentType)) {
+        const decoding = decodeEmailMessage(bytes);
+        if (decoding.ok === false) return { ok: false, issues: decoding.issues };
+        return readHoursFromMailText(decoding.message.text,
+          { ...input.context, subject: decoding.message.subject });
+      }
+      if (isWordSource(input.contentType)) {
+        const decoding = await decodeWordDocument(bytes);
+        if (decoding.ok === false) return { ok: false, issues: decoding.issues };
+        return readHoursWorkbook(decoding.tables, input.context,
+          { sheetNoun: 'tabel', sourceKind: 'document' });
+      }
+      const decoding = await decodeWorkbook(bytes);
       if (decoding.ok === false) return { ok: false, issues: decoding.issues };
       return readHoursWorkbook(decoding.sheets, input.context);
     },

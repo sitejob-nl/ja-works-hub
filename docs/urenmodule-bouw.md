@@ -128,7 +128,7 @@ mailprofiel.
 
 Sinds 8 september kan een interne gebruiker met `finance.manage` bij een klantweek een urenbriefje als
 PDF, JPG of PNG uploaden. Het origineel gaat naar de niet-publieke bucket `hours-sources` onder
-`<organisatie>/<week>/<sha256>`; Storage dwingt daar zelf 25 MiB en de drie mediatypen af, en de
+`<organisatie>/<week>/<sha256>`; Storage dwingt daar zelf 25 MiB en de toegestane mediatypen af, en de
 SaaS-modulepoort plus `finance`-rechten gelden ook op die opslag. Er is geen update- of delete-policy:
 een origineel kan niet worden vervangen of verwijderd. Dezelfde bijlage opnieuw aanleveren binnen
 dezelfde week levert één bron op, geen tweede verwerking en geen tweede voorstel. Bekijken gebeurt met
@@ -148,6 +148,16 @@ dagversie wordt afgewikkeld zonder nieuwe versie, zodat een bestaand medewerkera
 De dagrevisie draagt de herkomst (`kind: upload`, bestandsnaam, vindplaats) in plaats van "handmatige
 invoer"; interne identificatoren staan er bewust niet in en blijven op het voorstel. Medewerkers zien
 de bron van hun eigen dag, maar geen bronnen, voorstellen of interne classificaties.
+
+Sinds 10 september aanvaardt die inname ook **Word (`.docx`, `.doc`) en e-mailbestanden (`.eml`)**. Word
+en mail worden, net als Excel, deterministisch in de browser gelezen: geen model, geen betaalde aanroep.
+De tabellen van een `.docx` gaan door dezelfde uitlezer als een werkblad. Van een bericht wordt alleen de
+**nieuwe** tekst gelezen — geciteerde geschiedenis wordt weggesneden, zodat een eerder besproken week
+zichzelf niet opnieuw voorstelt — en een correctie in de mailtekst ("zaterdag was geen 9,5 maar 4,75")
+komt als correctievoorstel op diezelfde dag. Bijlagen van een bericht worden bronnen van zichzelf en
+noemen het bericht waaruit ze komen: één ontvangst. Oud binair `.doc` blijft, net als `.xls`, een
+eerlijke blokkade — het bestand wordt bewaard, maar er wordt geen tekstgok op losgelaten. De
+klantweekpagina wordt hier bewust niet breder van.
 
 Zie het [innamecontract](urenmodule-intake-contract.md) voor tabellen, RPC's, opslagpolicies en fouten.
 
