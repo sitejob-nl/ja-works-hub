@@ -5,7 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { hoursWorkflowError } from '@/lib/hours-workflow';
-import { HOURS_READING_MAX_ENTRIES, type WorkbookCandidate, type WorkbookReading } from '@/lib/hours-workbook';
+import {
+  HOURS_READING_MAX_ENTRIES, workbookEntryDoubt, type WorkbookCandidate, type WorkbookReading,
+} from '@/lib/hours-workbook';
 import type { HoursReadingEntry } from '@/lib/hours-workflow-api';
 import { formatHoursDate } from './presentation';
 
@@ -29,6 +31,9 @@ const entryOf = (candidate: WorkbookCandidate): HoursReadingEntry => ({
   page_number: candidate.pageNumber,
   page_label: candidate.pageLabel,
   assignment_uncertain: candidate.assignmentUncertain,
+  // A contradiction this reader found has to travel with the proposal, exactly
+  // as it does on the scan route; a notice on this screen does not.
+  uncertain_fields: workbookEntryDoubt(candidate),
 });
 
 /**

@@ -2,12 +2,18 @@ import { parseHoursToMinutes, type HoursIssue } from '../../supabase/functions/_
 import {
   hoursSourceInputSchema, sourceControlIssues, type HoursSourceInput,
 } from '@/components/hours-workflow/hours-day-source';
+import { controlDoubtField } from '../../supabase/functions/_shared/hours-source-control';
+import { HOURS_SCAN_MAX_ENTRIES } from '../../supabase/functions/_shared/hours-scan';
+import type { HoursUncertainField } from '@/lib/hours-sources';
+import {
+  matchHoursMember, normalizeHoursName, type HoursMemberMatch, type HoursWeekMember,
+} from '../../supabase/functions/_shared/hours-member-match';
 
 /** A decoded cell exactly as the spreadsheet stored it; formulas are never run. */
 export type WorkbookCell = string | number | boolean | Date | null;
 export interface WorkbookSheet { name: string; rows: WorkbookCell[][] }
 
-export interface WorkbookWeekMember { id: string; name: string }
+export type WorkbookWeekMember = HoursWeekMember;
 export interface WorkbookWeekDay { id: string; memberId: string; workDate: string }
 export interface WorkbookContext { members: WorkbookWeekMember[]; days: WorkbookWeekDay[] }
 
@@ -33,9 +39,9 @@ export interface WorkbookCandidate {
 /**
  * How many proposals one handling may record. The server enforces the same
  * bound; the screen checks it first so a large reading is narrowed down rather
- * than refused as a whole after the fact.
+ * than refused as a whole after the fact. One number, owned by the kernel.
  */
-export const HOURS_READING_MAX_ENTRIES = 500;
+export const HOURS_READING_MAX_ENTRIES = HOURS_SCAN_MAX_ENTRIES;
 
 /** A row the reader deliberately left alone, named so nothing disappears silently. */
 export interface WorkbookSkippedRow { sheet: string; row: number; text: string; reason: string }
@@ -65,9 +71,7 @@ const cellText = (value: WorkbookCell): string => {
   return String(value).trim();
 };
 
-const normalizeName = (value: string): string =>
-  value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
-    .replace(/[.,]/g, ' ').replace(/\s+/g, ' ').trim();
+const normalizeName = normalizeHoursName;
 
 /**
  * Column titles are matched exactly. A prefix rule looks helpful until a column
@@ -109,36 +113,8 @@ function parseWorkDate(value: WorkbookCell): string | null {
   return null;
 }
 
-interface MemberMatch { member: WorkbookWeekMember; uncertain: boolean }
-
-/**
- * An exactly written name is certain. A weaker but unique match — a surname, or
- * an initial with a surname — is recorded as a match the reader is unsure about,
- * so a named internal user has to confirm it before it can be applied. Anything
- * that fits nobody or several people is not a match at all.
- */
-function matchMember(text: string, members: WorkbookWeekMember[]): MemberMatch | null {
-  const wanted = normalizeName(text);
-  if (!wanted) return null;
-  const exact = members.filter(member => normalizeName(member.name) === wanted
-    || normalizeName(member.name).split(' ').reverse().join(' ') === wanted);
-  if (exact.length === 1) return { member: exact[0], uncertain: false };
-  if (exact.length > 1) return null;
-  const parts = wanted.split(' ').filter(Boolean);
-  const weak = members.filter(member => {
-    const own = normalizeName(member.name).split(' ').filter(Boolean);
-    if (!own.length) return false;
-    const surname = own[own.length - 1];
-    if (!parts.includes(surname)) return false;
-    // Sharing a surname is not enough: what the sheet writes in front of it has
-    // to fit this person. "J." fits Jan; "Piet" does not, and handing Piet's
-    // hours to Jan is exactly what a shared surname invites.
-    const given = own.slice(0, -1);
-    return parts.filter(part => part !== surname)
-      .every(part => given.some(name => name.startsWith(part) || part.startsWith(name)));
-  });
-  return weak.length === 1 ? { member: weak[0], uncertain: true } : null;
-}
+type MemberMatch = HoursMemberMatch;
+const matchMember = matchHoursMember;
 
 interface LongHeader {
   kind: 'long'; row: number; name: number; date: number; total: number;
@@ -550,4 +526,22 @@ export function readHoursWorkbook(sheets: WorkbookSheet[], context: WorkbookCont
       + 'Maak in het bestand duidelijk welke regel geldt; er zijn geen voorstellen gemaakt.');
   }
   return { ok: true, candidates, skipped, rowTotals, sheetsRead, sheetsIgnored };
+}
+
+/**
+ * What a reviewer has to check before this row may be applied.
+ *
+ * The spreadsheet reader runs the same control as the scan reader, so a
+ * breakdown the calculation kernel refuses has to reach the proposal here too.
+ * Without it the identical contradiction would block on one route and write an
+ * unclassifiable day revision on the other.
+ */
+export function workbookEntryDoubt(
+  candidate: Pick<WorkbookCandidate, 'notices'>,
+): HoursUncertainField[] | null {
+  const fields = new Set(candidate.notices
+    .map(notice => controlDoubtField(notice.code)).filter(Boolean));
+  const ordered = (['total', 'shift', 'break', 'categories', 'reason'] as HoursUncertainField[])
+    .filter(field => fields.has(field));
+  return ordered.length ? ordered : null;
 }

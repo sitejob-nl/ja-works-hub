@@ -1,8 +1,11 @@
 import { z } from 'zod';
-import {
-  calculateShiftMinutes, checkMinutesTotal, parseHoursToMinutes,
-  type HoursIssue, type HoursResult, type HoursShift,
-} from '../../../supabase/functions/_shared/hours-calculation';
+import { parseHoursToMinutes, type HoursResult, type HoursShift } from '../../../supabase/functions/_shared/hours-calculation';
+import { sourceControlIssues, type HoursSourceInput } from '../../../supabase/functions/_shared/hours-source-control';
+
+// Both live beside the calculation kernel now: every reader has to reach them,
+// and a Deno edge function cannot import from the browser bundle.
+export { sourceControlIssues };
+export type { HoursSourceInput };
 
 const time = z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/);
 const offset = z.union([z.literal(0), z.literal(1)]);
@@ -12,7 +15,6 @@ export const hoursSourceInputSchema = z.object({
   schemaVersion: z.literal(1), shifts: z.array(shiftSchema).max(32).optional(),
   categories: z.array(z.object({ sourceCode: z.string().max(200).refine(value => value.trim().length > 0), minutes: z.number().int().min(0).max(1440) }).strict()).max(256).optional(),
 }).strict();
-export interface HoursSourceInput { schemaVersion: 1; shifts?: HoursShift[]; categories?: { sourceCode: string; minutes: number }[] }
 export interface SourceBreakDraft { start: string; end: string; startDayOffset: '' | '0' | '1'; endDayOffset: '' | '0' | '1' }
 export interface SourceShiftDraft { start: string; end: string; endDayOffset: '' | '0' | '1'; breaks: SourceBreakDraft[]; breaksConfirmed: boolean }
 export interface HoursSourceDraft {
@@ -65,25 +67,3 @@ export function removedSourceSections(original: HoursSourceInput | null | undefi
   return !!(original && ((!draft.includeShifts && !draft.includeCategories) || (original.shifts && !draft.includeShifts) || (original.categories && !draft.includeCategories)));
 }
 
-/** Informational only: the server will classify the immutable saved revision. */
-export function sourceControlIssues(minutes: number, source: HoursSourceInput | null): HoursIssue[] {
-  if (!source) return [];
-  const issues: HoursIssue[] = [];
-  if (minutes === 0) issues.push({ code: 'INVALID_ZERO_SOURCE', message: 'Geen uren is gecombineerd met brongegevens. Controleer de uren of verwijder de brongegevens expliciet; de server blokkeert deze combinatie.' });
-  if (source.categories) {
-    const total = checkMinutesTotal(source.categories.map(category => category.minutes), minutes);
-    if (total.ok === false) issues.push(...total.issues);
-    if (new Set(source.categories.map(category => category.sourceCode)).size !== source.categories.length) issues.push({ code: 'DUPLICATE_SOURCE_CATEGORY', message: 'Een broncode komt meerdere keren voor. De servercontrole moet deze indeling beoordelen.' });
-  }
-  if (source.shifts) {
-    const calculated = source.shifts.map(calculateShiftMinutes);
-    calculated.forEach(result => { if (result.ok === false) issues.push(...result.issues); });
-    if (calculated.every(result => result.ok)) {
-      const total = checkMinutesTotal(calculated.map(result => result.ok ? result.value.netMinutes : 0), minutes);
-      if (total.ok === false) issues.push(...total.issues);
-      const ranges = source.shifts.map(shift => ({ start: Number(shift.start.slice(0, 2)) * 60 + Number(shift.start.slice(3)), end: Number(shift.end.slice(0, 2)) * 60 + Number(shift.end.slice(3)) + shift.endDayOffset * 1440 })).sort((a, b) => a.start - b.start);
-      if (ranges.some((range, index) => index > 0 && range.start < ranges[index - 1].end)) issues.push({ code: 'OVERLAPPING_SHIFTS', message: 'De aangeleverde diensten overlappen. Dit wordt als broninformatie bewaard en blokkeert de urenindeling.' });
-    }
-  }
-  return issues;
-}

@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { ExternalLink, FileUp, Layers, Link2, Paperclip, TableProperties } from 'lucide-react';
+import { ExternalLink, FileUp, Layers, Link2, Paperclip, ScanLine, TableProperties } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -12,18 +12,21 @@ import ErrorState from '@/components/shared/ErrorState';
 import { toFriendlyError } from '@/lib/errorMessages';
 import { hoursWorkflowError } from '@/lib/hours-workflow';
 import {
-  clientLinkState, clientWeekPath, describeClientLinkProgress, describePageCount, formatSourceSize,
+  clientLinkState, clientWeekPath, describeClientLinkProgress, describePageCount, describeUncertainFields,
+  formatSourceSize,
   visibleClientProposals, HOURS_CLIENT_REPORT_LABELS, HOURS_PAGE_ASSIGNMENTS,
-  HOURS_PAGE_ASSIGNMENT_LABELS, HOURS_SOURCE_ACCEPT, proposalChanges, proposalIsBlocked,
+  HOURS_PAGE_ASSIGNMENT_LABELS, HOURS_SOURCE_ACCEPT, assignmentUndecided, proposalChanges, valuesUndecided,
   type HoursClientLink, type HoursPageAssignment, type HoursSourcePage, type HoursSourceProposal,
   type HoursWeekSourceFile, type HoursWeekSources as HoursWeekSourcesData,
 } from '@/lib/hours-sources';
 import type { HoursPageEntry } from '@/lib/hours-workflow-api';
-import { isReadableWorkbook } from '@/lib/hours-workbook-file';
+import { isReadableScan, isReadableWorkbook } from '@/lib/hours-workbook-file';
 import type { WorkbookContext, WorkbookReading } from '@/lib/hours-workbook';
 import { hoursSourceViewUrl, useApplyHoursProposal, useHoursWeekSources } from '@/hooks/useHoursWeekSources';
 import { usePublicUrlForOrg } from '@/hooks/usePublicUrl';
 import { HoursWorkbookReading } from './HoursWorkbookReading';
+import { HoursScanReading } from './HoursScanReading';
+import type { HoursScanReadingResult } from '@/lib/hours-workflow-api';
 import { parseHoursToMinutes } from '../../../supabase/functions/_shared/hours-calculation';
 import { compileHoursSourceInput, sourceControlIssues, sourceDraftFromInput, type HoursSourceInput } from './hours-day-source';
 import { HoursSourceEditor } from './HoursSourceEditor';
@@ -360,13 +363,15 @@ function ProposalForm({ targets, pageCount, pageDecided, onCancel, onSubmit }: {
   </form>;
 }
 
-function ProposalRow({ proposal, target, canManage, onApply, onDiscard, onConfirmAssignment, onReload }: {
+function ProposalRow({ proposal, target, canManage, onApply, onDiscard, onConfirmAssignment,
+  onConfirmValues, onReload }: {
   proposal: HoursSourceProposal;
   target: DayTarget | undefined;
   canManage: boolean;
   onApply: (input: { proposalId: string; expectedRevisionId: string | null }) => Promise<{ createdRevision: boolean }>;
   onDiscard: (input: { proposalId: string; note: string | null }) => Promise<unknown>;
   onConfirmAssignment: (input: { proposalId: string; note: string | null }) => Promise<unknown>;
+  onConfirmValues: (input: { proposalId: string; note: string | null }) => Promise<unknown>;
   onReload?: () => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -375,10 +380,17 @@ function ProposalRow({ proposal, target, canManage, onApply, onDiscard, onConfir
   const [outcome, setOutcome] = useState<string | null>(null);
   const [discarding, setDiscarding] = useState(false);
   const [discardNote, setDiscardNote] = useState('');
-  const [confirming, setConfirming] = useState(false);
+  // Two doubts can stand on one proposal and each is settled in its own act, so
+  // the form remembers which one is open rather than which button was pressed.
+  const [confirming, setConfirming] = useState<null | 'assignment' | 'values'>(null);
   const [confirmNote, setConfirmNote] = useState('');
   const changes = proposal.status === 'open' ? proposalChanges(proposal, target?.current ?? null) : [];
-  const blocked = proposalIsBlocked(proposal);
+  // One rule, read once: proposalIsBlocked is exactly these two doubts, so the
+  // disabled button and the badges can never disagree about why.
+  const undecidedEmployee = assignmentUndecided(proposal);
+  const undecidedValues = valuesUndecided(proposal);
+  const blocked = undecidedEmployee || undecidedValues;
+  const uncertainWords = describeUncertainFields(proposal.uncertain_fields);
 
   async function apply() {
     setBusy(true); setError(null);
@@ -410,19 +422,28 @@ function ProposalRow({ proposal, target, canManage, onApply, onDiscard, onConfir
         <HoursSourceSummary source={proposal.source_input} />
       </div>
       <div className="flex flex-wrap items-start gap-2">
-        {blocked && <Badge variant="destructive">Toewijzing onbeslist</Badge>}
+        {undecidedEmployee && <Badge variant="destructive">Toewijzing onbeslist</Badge>}
+        {undecidedValues && <Badge variant="destructive">Gelezen waarde onzeker</Badge>}
         {proposal.status === 'open' ? <Badge variant="outline">Nog te beoordelen</Badge>
           : proposal.status === 'applied' ? <Badge variant="secondary">{proposal.applied_created_revision ? 'Toegepast' : 'Toegepast · geen wijziging'}</Badge>
           : <Badge variant="outline">Verworpen</Badge>}
       </div>
     </div>
-    {blocked && <p className="text-sm">
+    {undecidedEmployee && <p className="text-sm">
       Er is nog niet vastgesteld om welke medewerker dit voorstel gaat. Toepassen kan pas nadat iemand dat
       bevestigt; klopt de medewerker niet, verwerp dit voorstel dan en leg een nieuw voorstel vast.
+    </p>}
+    {undecidedValues && <p className="text-sm">
+      De uitlezing was niet zeker van {uncertainWords}. Leg de bron ernaast en bevestig wat er staat;
+      klopt het niet, verwerp dit voorstel dan en leg een nieuw voorstel vast.
     </p>}
     {proposal.assignment_uncertain && proposal.assignment_confirmed_at && <p className="text-xs text-muted-foreground">
       Toewijzing bevestigd{proposal.assignment_note ? <> — <span data-no-translate="true">{proposal.assignment_note}</span></> : null}
     </p>}
+    {proposal.uncertain_fields?.length && proposal.values_confirmed_at ? <p className="text-xs text-muted-foreground">
+      Onzeker gelezen ({uncertainWords}) en bevestigd{proposal.values_note
+        ? <> — <span data-no-translate="true">{proposal.values_note}</span></> : null}
+    </p> : null}
     {proposal.status === 'discarded' && proposal.resolution_note && <p className="text-xs text-muted-foreground" data-no-translate="true">Reden: {proposal.resolution_note}</p>}
     {/* The outcome stays visible after the proposal has resolved and the actions are gone. */}
     {outcome && <p role="status" className="text-sm text-stat-green">{outcome}</p>}
@@ -437,16 +458,20 @@ function ProposalRow({ proposal, target, canManage, onApply, onDiscard, onConfir
         </ul>}
       </div>
       {confirming ? <div className="space-y-2">
-        <Label htmlFor={`confirm-${proposal.id}`}>Hoe heb je vastgesteld dat het om {proposal.candidate_name} gaat? (optioneel)</Label>
+        <Label htmlFor={`confirm-${proposal.id}`}>{confirming === 'assignment'
+          ? `Hoe heb je vastgesteld dat het om ${proposal.candidate_name} gaat? (optioneel)`
+          : `Hoe heb je ${uncertainWords} gecontroleerd? (optioneel)`}</Label>
         <Textarea id={`confirm-${proposal.id}`} rows={2} maxLength={2000} value={confirmNote} onChange={event => setConfirmNote(event.target.value)} />
         <div className="flex flex-wrap gap-2">
           <Button type="button" size="sm" disabled={busy} onClick={async () => {
+            const settle = confirming === 'assignment' ? onConfirmAssignment : onConfirmValues;
             setBusy(true); setError(null);
-            try { await onConfirmAssignment({ proposalId: proposal.id, note: confirmNote.trim() || null }); setConfirming(false); }
+            try { await settle({ proposalId: proposal.id, note: confirmNote.trim() || null }); setConfirming(null); setConfirmNote(''); }
             catch (failure) { setError(hoursWorkflowError(failure)); }
             finally { setBusy(false); }
-          }}>Medewerker bevestigen</Button>
-          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => setConfirming(false)}>Annuleren</Button>
+          }}>{confirming === 'assignment' ? 'Medewerker bevestigen' : 'Gelezen gegevens bevestigen'}</Button>
+          <Button type="button" size="sm" variant="outline" disabled={busy}
+            onClick={() => { setConfirming(null); setConfirmNote(''); }}>Annuleren</Button>
         </div>
       </div> : discarding ? <div className="space-y-2">
         <Label htmlFor={`discard-${proposal.id}`}>Waarom vervalt dit voorstel? (optioneel)</Label>
@@ -461,7 +486,8 @@ function ProposalRow({ proposal, target, canManage, onApply, onDiscard, onConfir
           <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => setDiscarding(false)}>Annuleren</Button>
         </div>
       </div> : <div className="flex flex-wrap gap-2">
-        {blocked && <Button type="button" size="sm" disabled={busy} onClick={() => setConfirming(true)}>Toewijzing bevestigen</Button>}
+        {undecidedEmployee && <Button type="button" size="sm" disabled={busy} onClick={() => setConfirming('assignment')}>Toewijzing bevestigen</Button>}
+        {undecidedValues && <Button type="button" size="sm" disabled={busy} onClick={() => setConfirming('values')}>Gelezen gegevens bevestigen</Button>}
         <Button type="button" size="sm" disabled={busy || conflict || blocked} onClick={apply}>{busy ? 'Toepassen…' : 'Toepassen als dagversie'}</Button>
         <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => setDiscarding(true)}>Verwerpen</Button>
       </div>}
@@ -478,7 +504,7 @@ function ProposalRow({ proposal, target, canManage, onApply, onDiscard, onConfir
  * plainly rather than leaving the reader to find out later.
  */
 function ClientLinksSection({ organizationId, links, canManage, targets, onIssue, onRevoke, onApply,
-  onDiscard, onConfirmAssignment, onReload }: {
+  onDiscard, onConfirmAssignment, onConfirmValues, onReload }: {
   organizationId: string;
   links: HoursClientLink[];
   canManage: boolean;
@@ -488,6 +514,7 @@ function ClientLinksSection({ organizationId, links, canManage, targets, onIssue
   onApply: (input: { proposalId: string; expectedRevisionId: string | null }) => Promise<{ createdRevision: boolean }>;
   onDiscard: (input: { proposalId: string; note: string | null }) => Promise<unknown>;
   onConfirmAssignment: (input: { proposalId: string; note: string | null }) => Promise<unknown>;
+  onConfirmValues: (input: { proposalId: string; note: string | null }) => Promise<unknown>;
   onReload?: () => void;
 }) {
   const [creating, setCreating] = useState(false);
@@ -654,7 +681,7 @@ function ClientLinksSection({ organizationId, links, canManage, targets, onIssue
               {visible.map(proposal => <ProposalRow key={proposal.id} proposal={proposal}
                 canManage={canManage} target={targets.get(proposal.day_id)} onReload={onReload}
                 onApply={async input => { const result = await onApply(input); remember(input.proposalId); return result; }}
-                onConfirmAssignment={onConfirmAssignment}
+                onConfirmAssignment={onConfirmAssignment} onConfirmValues={onConfirmValues}
                 onDiscard={async input => { const result = await onDiscard(input); remember(input.proposalId); return result; }} />)}
               {(hidden > 0 || showHistory === link.id) && <Button type="button" size="sm" variant="ghost"
                 onClick={() => setShowHistory(showHistory === link.id ? null : link.id)}>
@@ -678,21 +705,42 @@ export function HoursWeekSources({ organizationId, week, onReload }: HoursWeekSo
   const [pagingFor, setPagingFor] = useState<{ sourceId: string; page: HoursSourcePage | null } | null>(null);
   const [takingOver, setTakingOver] = useState<string | null>(null);
   const [reading, setReading] = useState<{ sourceId: string; result: WorkbookReading } | null>(null);
+  const [scan, setScan] = useState<{ sourceId: string; result: HoursScanReadingResult } | null>(null);
   const [readingError, setReadingError] = useState<string | null>(null);
   const [readingSource, setReadingSource] = useState<string | null>(null);
   const targets = dayTargets(week);
   const targetById = new Map(targets.map(target => [target.dayId, target]));
   // One panel at a time: every one of them writes to the same source.
-  const busyElsewhere = !!proposingFor || !!takingOver || !!pagingFor || !!reading || !!readingSource;
+  const busyElsewhere = !!proposingFor || !!takingOver || !!pagingFor || !!reading || !!scan || !!readingSource;
   const employees = week.employees.map(employee => ({ id: employee.id, name: employee.name }));
   const data: HoursWeekSourcesData | undefined = sources.data;
   const canManage = (data?.can_manage ?? false) && week.enabled;
 
   /** Reading is deliberately explicit: it never happens as a side effect of uploading. */
   async function readSource(sourceId: string, path: string) {
+    if (readingSource) return;
     setReadingError(null); setNotice(null); setReadingSource(sourceId);
     try {
       setReading({ sourceId, result: await sources.readWorkbook.mutateAsync({ path, context: workbookContext(week) }) });
+    } catch (failure) {
+      setReadingError(hoursWorkflowError(failure));
+    } finally {
+      setReadingSource(null);
+    }
+  }
+
+  /**
+   * Reading a scan or photo costs money, so it is asked for per source and never
+   * happens on its own. A refusal — an exhausted budget above all — is shown as
+   * it came back, because entering the hours by hand keeps working.
+   */
+  async function readScanSource(sourceId: string) {
+    // A disabled button is one render behind a double click, and every click
+    // here is a separate paid call with its own reservation.
+    if (readingSource || sources.readScan.isPending) return;
+    setReadingError(null); setNotice(null); setReadingSource(sourceId);
+    try {
+      setScan({ sourceId, result: await sources.readScan.mutateAsync(sourceId) });
     } catch (failure) {
       setReadingError(hoursWorkflowError(failure));
     } finally {
@@ -723,7 +771,8 @@ export function HoursWeekSources({ organizationId, week, onReload }: HoursWeekSo
       <p className="text-sm text-muted-foreground">
         Bewaar het originele urenbriefje privé bij deze week, leg per pagina vast wie erop staat, en pas een
         voorstel pas na beoordeling toe als dagversie. PDF, JPG, PNG en Excel worden ondersteund; een Excel- of
-        tabelbestand kan worden uitgelezen, maar een bron levert nooit vanzelf uren op.
+        tabelbestand wordt hier uitgelezen, een scan of foto door de AI-uitlezer. Een bron levert nooit vanzelf
+        uren op.
       </p>
     </CardHeader>
     <CardContent className="space-y-4">
@@ -747,6 +796,10 @@ export function HoursWeekSources({ organizationId, week, onReload }: HoursWeekSo
           {data.undecided_assignments} {data.undecided_assignments === 1 ? 'voorstel heeft' : 'voorstellen hebben'} een
           onbesliste toewijzing en {data.undecided_assignments === 1 ? 'blokkeert' : 'blokkeren'} toepassen tot de medewerker is bevestigd.
         </p>}
+        {(data?.uncertain_values ?? 0) > 0 && <p className="text-sm text-destructive">
+          {data.uncertain_values} {data.uncertain_values === 1 ? 'voorstel is' : 'voorstellen zijn'} onzeker uitgelezen
+          en {data.uncertain_values === 1 ? 'blokkeert' : 'blokkeren'} toepassen tot de gelezen gegevens zijn bevestigd.
+        </p>}
         {!sources.isPending && data && <ClientLinksSection organizationId={organizationId}
           links={data.client_links} canManage={canManage}
           targets={targetById} onReload={onReload}
@@ -754,6 +807,7 @@ export function HoursWeekSources({ organizationId, week, onReload }: HoursWeekSo
           onRevoke={input => sources.revokeClientLink.mutateAsync(input)}
           onApply={input => apply.mutateAsync(input)}
           onConfirmAssignment={input => sources.confirmAssignment.mutateAsync(input)}
+          onConfirmValues={input => sources.confirmValues.mutateAsync(input)}
           onDiscard={input => sources.discardProposal.mutateAsync(input)} />}
         {sources.isPending ? <p role="status" className="text-sm text-muted-foreground">Bronnen laden…</p>
           : data?.sources.length === 0 ? <p className="text-sm text-muted-foreground">Er zijn nog geen bronnen bij deze week bewaard.</p>
@@ -781,6 +835,12 @@ export function HoursWeekSources({ organizationId, week, onReload }: HoursWeekSo
                     onClick={() => void readSource(source.id, source.storage_path)}>
                     <TableProperties className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
                     {readingSource === source.id ? 'Uitlezen…' : 'Uitlezen'}
+                  </Button>}
+                {canManage && isReadableScan(source.content_type) && scan?.sourceId !== source.id &&
+                  <Button type="button" size="sm" variant="outline" disabled={busyElsewhere}
+                    onClick={() => void readScanSource(source.id)}>
+                    <ScanLine className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+                    {readingSource === source.id ? 'Uitlezen…' : 'Uitlezen met AI'}
                   </Button>}
                 {canManage && !pagingFor && <Button type="button" size="sm" variant="outline" disabled={busyElsewhere}
                   onClick={() => setPagingFor({ sourceId: source.id, page: null })}>
@@ -813,6 +873,13 @@ export function HoursWeekSources({ organizationId, week, onReload }: HoursWeekSo
               days={targets.filter(target => target.memberId === page.member_id)}
               onCancel={() => setTakingOver(null)}
               onSubmit={async entries => { await sources.takeOverPage.mutateAsync({ sourceId: source.id, pageNumber: page.page_number, entries }); }} />)}
+            {scan?.sourceId === source.id && <HoursScanReading reading={scan.result.reading}
+              costCents={scan.result.costCents} balanceCents={scan.result.balanceCents}
+              model={scan.result.model} durationMs={scan.result.durationMs}
+              alreadyProposed={new Set(source.proposals.filter(proposal => proposal.status !== 'discarded')
+                .map(proposal => proposal.day_id))}
+              onCancel={() => setScan(null)}
+              onSave={async entries => { await sources.saveReading.mutateAsync({ sourceId: source.id, entries }); }} />}
             {reading?.sourceId === source.id && <HoursWorkbookReading reading={reading.result}
               alreadyProposed={new Set(source.proposals.filter(proposal => proposal.status !== 'discarded')
                 .map(proposal => proposal.day_id))}
@@ -827,6 +894,7 @@ export function HoursWeekSources({ organizationId, week, onReload }: HoursWeekSo
                   target={targetById.get(proposal.day_id)} onReload={onReload}
                   onApply={input => apply.mutateAsync(input)}
                   onConfirmAssignment={input => sources.confirmAssignment.mutateAsync(input)}
+                  onConfirmValues={input => sources.confirmValues.mutateAsync(input)}
                   onDiscard={input => sources.discardProposal.mutateAsync(input)} />)}
           </div>)}
       </>}

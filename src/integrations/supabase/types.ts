@@ -5409,6 +5409,10 @@ export type Database = {
           source_id: string | null
           source_input: Json | null
           status: string
+          uncertain_fields: string[] | null
+          values_confirmed_at: string | null
+          values_confirmed_by: string | null
+          values_note: string | null
           week_id: string
         }
         Insert: {
@@ -5435,6 +5439,10 @@ export type Database = {
           source_id?: string | null
           source_input?: Json | null
           status?: string
+          uncertain_fields?: string[] | null
+          values_confirmed_at?: string | null
+          values_confirmed_by?: string | null
+          values_note?: string | null
           week_id: string
         }
         Update: {
@@ -5461,6 +5469,10 @@ export type Database = {
           source_id?: string | null
           source_input?: Json | null
           status?: string
+          uncertain_fields?: string[] | null
+          values_confirmed_at?: string | null
+          values_confirmed_by?: string | null
+          values_note?: string | null
           week_id?: string
         }
         Relationships: [
@@ -5515,6 +5527,80 @@ export type Database = {
           },
           {
             foreignKeyName: "hours_source_proposals_source_id_week_id_organization_id_fkey"
+            columns: ["source_id", "week_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "hours_week_sources"
+            referencedColumns: ["id", "week_id", "organization_id"]
+          },
+          {
+            foreignKeyName: "hours_source_proposals_values_confirmed_by_fkey"
+            columns: ["values_confirmed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hours_source_readings: {
+        Row: {
+          actor_id: string
+          ai_request_id: string | null
+          cost_cents: number | null
+          error_code: string | null
+          finished_at: string | null
+          id: string
+          line_count: number | null
+          organization_id: string
+          source_id: string
+          started_at: string
+          status: string
+          week_id: string
+        }
+        Insert: {
+          actor_id: string
+          ai_request_id?: string | null
+          cost_cents?: number | null
+          error_code?: string | null
+          finished_at?: string | null
+          id?: string
+          line_count?: number | null
+          organization_id: string
+          source_id: string
+          started_at?: string
+          status?: string
+          week_id: string
+        }
+        Update: {
+          actor_id?: string
+          ai_request_id?: string | null
+          cost_cents?: number | null
+          error_code?: string | null
+          finished_at?: string | null
+          id?: string
+          line_count?: number | null
+          organization_id?: string
+          source_id?: string
+          started_at?: string
+          status?: string
+          week_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hours_source_readings_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_source_readings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_source_readings_source_id_week_id_organization_id_fkey"
             columns: ["source_id", "week_id", "organization_id"]
             isOneToOne: false
             referencedRelation: "hours_week_sources"
@@ -12227,6 +12313,10 @@ export type Database = {
         Args: { p_expected_revision_id: string; p_proposal_id: string }
         Returns: Json
       }
+      hours_claim_source_reading: {
+        Args: { p_actor_id: string; p_source_id: string }
+        Returns: Json
+      }
       hours_client_week_add_source: {
         Args: {
           p_content_hash: string
@@ -12243,6 +12333,10 @@ export type Database = {
       }
       hours_client_week_save: {
         Args: { p_entries: Json; p_token_hash: string }
+        Returns: Json
+      }
+      hours_client_week_stored_paths: {
+        Args: { p_token_hash: string }
         Returns: Json
       }
       hours_client_week_upload_path: {
@@ -12268,6 +12362,10 @@ export type Database = {
         Returns: Json
       }
       hours_confirm_proposal_assignment: {
+        Args: { p_note?: string; p_proposal_id: string }
+        Returns: Json
+      }
+      hours_confirm_proposal_values: {
         Args: { p_note?: string; p_proposal_id: string }
         Returns: Json
       }
@@ -12325,6 +12423,17 @@ export type Database = {
         }
         Returns: Json
       }
+      hours_finish_source_reading: {
+        Args: {
+          p_cost_cents?: number
+          p_error_code?: string
+          p_lines?: number
+          p_reading_id: string
+          p_request_id?: string
+          p_status: string
+        }
+        Returns: Json
+      }
       hours_get_company_matrix_binding: {
         Args: { p_company_id: string }
         Returns: Json
@@ -12339,6 +12448,10 @@ export type Database = {
       }
       hours_get_matrix: { Args: { p_matrix_id: string }; Returns: Json }
       hours_get_module_access: { Args: never; Returns: Json }
+      hours_get_source_reading_context: {
+        Args: { p_source_id: string }
+        Returns: Json
+      }
       hours_get_week: { Args: { p_week_id: string }; Returns: Json }
       hours_get_week_sources: { Args: { p_week_id: string }; Returns: Json }
       hours_issue_client_week_link: {

@@ -22,8 +22,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > `timesheets`. Brongegevens, matrixversies, medewerkerreacties en servermatige uurindeling hebben elk
 > een eigen contract; een geslaagde indeling is nog geen payrollvrijgave. Zie
 > [bouwstand](docs/urenmodule-bouw.md), [weekcontract](docs/urenmodule-db-contract.md),
-> [matrixcontract](docs/urenmodule-matrix-contract.md), [classificatiecontract](docs/urenmodule-classification-contract.md)
-> en [innamecontract](docs/urenmodule-intake-contract.md). De resterende bouw staat als tickets met
+> [matrixcontract](docs/urenmodule-matrix-contract.md), [classificatiecontract](docs/urenmodule-classification-contract.md),
+> [innamecontract](docs/urenmodule-intake-contract.md) en [uitleescontract](docs/urenmodule-scan-reading.md).
+> De resterende bouw staat als tickets met
 > blokkades in [docs/urenmodule-tickets.md](docs/urenmodule-tickets.md).
 > **Broninname (09-09-, 10-09- en 11-09-migratie):** een geüpload urenbriefje, een paginatoewijzing en het
 > daaruit afgeleide invoervoorstel zijn géén uren — alleen `hours_apply_source_proposal` schrijft een
@@ -41,6 +42,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > ongewijzigd. Formules en macro's worden nooit uitgevoerd — alleen het bewaarde resultaat wordt gelezen.
 > `hours_create_source_proposals` legt één hele uitlezing all-or-nothing als voorstellen vast; een
 > geweigerde regel laat niets achter.
+> **Scans en foto's (13-09-migratie):** een PDF of foto wordt door edge function `hours-read-scan`
+> **op Gemini** uitgelezen — niet op de VPS; die doet geen documentvoorbewerking en is uitgefaseerd.
+> Eén betaalde aanroep per uitlezing via `_shared/ai-accounting.ts`. Het model leest en meldt, de kern
+> (`_shared/hours-scan.ts`) beslist: wie, welke dag en hoeveel worden deterministisch bepaald, en de
+> namen van de week gaan bewust **niet** naar het model. Een voorstel kan `uncertain_fields` dragen;
+> zolang die twijfel staat blokkeert toepassen, net als bij `assignment_uncertain`. Zie het
+> [uitleescontract](docs/urenmodule-scan-reading.md).
 > **Klantweekpagina zonder inloggen (12-09-migratie):** een opdrachtgever opent `/urenweek/:token`
 > (publiek, geen provider, geen sessie) en levert zijn week aan. De database bewaart **alleen de SHA-256**
 > van het geheim; dat wordt bij uitgifte exact één keer getoond. De week komt uit de link — er is geen
@@ -394,6 +402,7 @@ Canonical in [src/integrations/supabase/types.ts](src/integrations/supabase/type
 | `analyze-cv-callback` | Receive async CV analysis results from LLM VPS |
 | `analyze-cv-batch` | **Backfill** voor bestaande kandidaten: select document/CV + notes/context → pseudonimiseer dossier → VPS. Superadmin-auth, throttle 1.5s/dossier |
 | `refresh-talentpool-members` | **Dynamische talentpools**: past `filter_criteria` toe + diff vs huidige leden. Single-mode (user-JWT) of cron-mode (`x-cron-secret`) |
+| `hours-read-scan` | Leest een gescand of gefotografeerd urenbriefje uit tot invoervoorstellen. Self-auth (`finance.manage`); de browser stuurt alleen een bron-id, de database levert het opslagpad. Eén betaalde Gemini-aanroep via `_shared/ai-accounting.ts` (feature `hours_scan_reading`), met een claim in `hours_source_readings` als single-flight en AVG-spoor. Schrijft geen uren: de uitlezing komt terug ter beoordeling |
 | `validate-timesheets` | AI validation of timesheet entries (6 rules) |
 | `recruiter-priorities` | Calculate recruiter task priorities |
 | `translate-platform` | DeepL-proxy. **Niet meer in gebruik** — de UI vertaalt via een meegebouwd woordenboek (zie [Meertaligheid](#meertaligheid-nl--en-via-een-meegebouwd-woordenboek)). Blijft staan, kan weg |
@@ -771,8 +780,10 @@ Project-management state (closed sprints, open client-meeting items, Fase 2 miss
 - `VITE_SUPABASE_PUBLISHABLE_KEY` — Supabase publishable/anon key
 
 **Edge function secrets (Supabase Dashboard or CLI):**
-- `OLLAMA_BASE_URL` — Hetzner VPS for LLM
-- `OLLAMA_API_KEY` — LLM API key
+- `GEMINI_API_KEY` — Gemini (CV-analyse, skills, rerank, urenbriefjes uitlezen)
+- `HOURS_SCAN_MODEL` — optioneel: ander Gemini-model voor `hours-read-scan`
+- `OLLAMA_BASE_URL` / `OLLAMA_API_KEY` — legacy VPS-secrets; **geen enkele functie roept ze meer aan**
+  (alleen `analyze-cv-callback` valideert er inkomende worker-auth mee)
 - `ANTHROPIC_API_KEY` — optional Cloud candidate-dossier analysis provider (Claude Haiku 4.5)
 - `KVK_API_KEY` — Chamber of Commerce API
 - `APIFY_API_TOKEN` — Apify web scraping
@@ -821,4 +832,4 @@ npx supabase gen types typescript --project-id noaupcteygfvlyymqtew > src/integr
 - **Client:** JA Werkt, Jeroen Adriaans, Mierlo
 - **Supabase project ID:** `noaupcteygfvlyymqtew`
 - **GitHub repo:** `sitejob-nl/ja-works-hub`
-- **LLM infra:** Gemini voor CV-analyse/skills/rerank en Anthropic Claude Sonnet voor vacatureteksten; centrale reserveringen en per-org creditboekingen. Qwen is uitgefaseerd; documentvoorbewerking op de JA Werkt-VPS staat hiervan los.
+- **LLM infra:** Gemini voor CV-analyse/skills/rerank en het uitlezen van urenbriefjes, Anthropic Claude Sonnet voor vacatureteksten; centrale reserveringen en per-org creditboekingen. Qwen is uitgefaseerd en de JA Werkt-VPS doet **geen** documentvoorbewerking meer (op 09-09-2026 nagegaan: geen code roept `OLLAMA_BASE_URL` aan en de host antwoordt niet).

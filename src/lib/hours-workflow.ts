@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { HoursClassificationView, HoursWeekView } from '@/components/hours-workflow/types';
 import { hoursSourceInputSchema, type HoursSourceInput } from '@/components/hours-workflow/hours-day-source';
+import { formatAiCreditEuro } from '@/lib/ai-credits';
 import { describeSourceReferences, sourceOriginLabel } from '@/lib/hours-sources';
 
 const uuid = z.string().uuid();
@@ -93,9 +94,22 @@ export function toHoursClassificationView(value: z.infer<typeof hoursClassificat
 }
 
 export function hoursWorkflowError(error: unknown): string {
+  const value = (error ?? {}) as Record<string, unknown>;
   const code = typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : '';
   if (code === 'PT409' || code === '40001') return 'Deze uren zijn ondertussen gewijzigd. Ververs de week en controleer de nieuwe versie.';
   if (code === '42501') return 'Je hebt geen toegang tot deze uren of deze actie.';
+  // A refusal from a paid route says so, with the id the office needs to find
+  // that request back in the ledger. Most of these carry an id and no cost —
+  // a held reservation, a budget refusal — and those are exactly the cases
+  // where the id is the only thing to quote.
+  if ((typeof value.requestId === 'string' || typeof value.costCents === 'number')
+    && typeof value.message === 'string') {
+    const parts = [
+      typeof value.costCents === 'number' ? `kosten ${formatAiCreditEuro(value.costCents)}` : null,
+      typeof value.requestId === 'string' ? `kenmerk ${value.requestId}` : null,
+    ].filter(Boolean);
+    return parts.length ? `${value.message} (${parts.join(', ')})` : value.message;
+  }
   if (error instanceof z.ZodError) return 'Het urenoverzicht kon niet betrouwbaar worden gelezen. Ververs de pagina.';
   if (typeof error === 'object' && error !== null && 'message' in error) return String(error.message);
   return 'De uren konden niet worden verwerkt. Probeer het opnieuw.';

@@ -1,3 +1,4 @@
+import { HOURS_READABLE_SCAN_TYPES } from '../../supabase/functions/_shared/hours-scan';
 import type { HoursIssue } from '../../supabase/functions/_shared/hours-calculation';
 import type { WorkbookCell, WorkbookSheet } from '@/lib/hours-workbook';
 
@@ -93,4 +94,9 @@ export async function decodeWorkbook(bytes: ArrayBuffer): Promise<WorkbookDecodi
 export async function countWorkbookSheets(bytes: ArrayBuffer): Promise<number | null> {
   const decoding = await decodeWorkbook(bytes);
   return decoding.ok && decoding.sheets.length ? decoding.sheets.length : null;
+}
+
+/** The one list the endpoint and the database also read; see the scan kernel. */
+export function isReadableScan(contentType: string): boolean {
+  return (HOURS_READABLE_SCAN_TYPES as readonly string[]).includes(contentType);
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   describeSourceReferences, formatSourceSize, hoursSourcePath, hoursSourceTypeError,
+  describeUncertainFields,
   parseWeekSources, proposalChanges, proposalIsBlocked, sourceOriginText, visibleClientProposals,
   HOURS_SOURCE_MAX_BYTES, type HoursSourceProposal,
 } from '@/lib/hours-sources';
@@ -145,7 +146,8 @@ describe('which client deliveries a reviewer sees', () => {
     id, day_id: id, member_id: id, work_date: '2026-09-07', candidate_name: 'A',
     status, minutes: 480, no_hours_reason: null, note: null, source_input: null,
     page_label: null, page_number: null, assignment_uncertain: false,
-    assignment_confirmed_at: null, assignment_note: null, applied_revision_id: null,
+    assignment_confirmed_at: null, assignment_note: null,
+    uncertain_fields: null, values_confirmed_at: null, values_note: null, applied_revision_id: null,
     applied_created_revision: null, resolution_note: null, resolved_at: null,
     created_at: '2026-09-08T08:00:00Z',
   });
@@ -175,7 +177,8 @@ describe('source pages and assignment', () => {
     candidate_name: 'Testmedewerker', status: 'open' as HoursSourceProposal['status'],
     minutes: 480, no_hours_reason: null,
     note: null, source_input: null, page_label: null, page_number: 1, assignment_uncertain: false,
-    assignment_confirmed_at: null, assignment_note: null, applied_revision_id: null,
+    assignment_confirmed_at: null, assignment_note: null,
+    uncertain_fields: null, values_confirmed_at: null, values_note: null, applied_revision_id: null,
     applied_created_revision: null, resolution_note: null, resolved_at: null,
     created_at: '2026-09-08T08:05:00Z', ...overrides,
   });
@@ -229,5 +232,71 @@ describe('source pages and assignment', () => {
   it('names the page a revision came from so the employee can find it back', () => {
     expect(sourceOriginText([{ kind: 'upload', label: 'week36.pdf', reference: 'pagina 2 · tabelregel 4' }]))
       .toBe('week36.pdf · pagina 2 · tabelregel 4');
+  });
+});
+
+describe('a reading that was not sure of itself', () => {
+  const id = (last: string) => `00000000-0000-4000-8000-00000000000${last}`;
+  const proposal = (overrides: Record<string, unknown> = {}) => ({
+    id: id('3'), day_id: id('4'), member_id: id('5'), work_date: '2026-09-07',
+    candidate_name: 'Testmedewerker', status: 'open' as HoursSourceProposal['status'],
+    minutes: 480, no_hours_reason: null, note: null, source_input: null,
+    page_label: 'regel 3', page_number: 1, assignment_uncertain: false,
+    assignment_confirmed_at: null, assignment_note: null,
+    uncertain_fields: null, values_confirmed_at: null, values_note: null, applied_revision_id: null,
+    applied_created_revision: null, resolution_note: null, resolved_at: null,
+    created_at: '2026-09-08T08:05:00Z', ...overrides,
+  });
+  const projection = (overrides: Record<string, unknown> = {}, proposalOverrides: Record<string, unknown> = {}) => ({
+    week_id: id('1'), can_manage: true, open_proposals: 1, undecided_assignments: 0,
+    uncertain_values: 0, client_links: [],
+    sources: [{
+      id: id('2'), file_name: 'week37.jpg', content_type: 'image/jpeg', byte_size: 2048,
+      content_hash: 'b'.repeat(64), storage_path: 'org/week/hash.jpg', created_at: '2026-09-08T08:00:00Z',
+      page_count: 1, client_link_id: null, pages: [], proposals: [proposal(proposalOverrides)],
+    }],
+    ...overrides,
+  });
+
+  it('keeps which fields the reading was unsure of', () => {
+    const parsed = parseWeekSources(projection({ uncertain_values: 1 },
+      { uncertain_fields: ['total', 'break'] }));
+    expect(parsed.sources[0].proposals[0].uncertain_fields).toEqual(['total', 'break']);
+    expect(parsed.uncertain_values).toBe(1);
+  });
+
+  it('refuses a field label the contract does not have', () => {
+    expect(() => parseWeekSources(projection({}, { uncertain_fields: ['handschrift'] }))).toThrow();
+  });
+
+  it('survives a projection that predates this migration', () => {
+    const older = projection();
+    delete (older as Record<string, unknown>).uncertain_values;
+    const parsed = parseWeekSources(older);
+    expect(parsed.uncertain_values).toBe(0);
+    expect(parsed.sources[0].proposals[0].uncertain_fields).toBeNull();
+  });
+
+  it('blocks applying while values read as uncertain are unconfirmed', () => {
+    expect(proposalIsBlocked(proposal({ uncertain_fields: ['total'] }))).toBe(true);
+    expect(proposalIsBlocked(proposal({
+      uncertain_fields: ['total'], values_confirmed_at: '2026-09-08T09:00:00Z',
+    }))).toBe(false);
+    // Both doubts have to be settled, not one of the two.
+    expect(proposalIsBlocked(proposal({
+      uncertain_fields: ['total'], values_confirmed_at: '2026-09-08T09:00:00Z',
+      assignment_uncertain: true,
+    }))).toBe(true);
+    expect(proposalIsBlocked(proposal({
+      status: 'applied' as HoursSourceProposal['status'], uncertain_fields: ['total'],
+    }))).toBe(false);
+  });
+
+  it('says in plain words what a reading was unsure about', () => {
+    expect(describeUncertainFields(['total'])).toBe('het aantal uren');
+    expect(describeUncertainFields(['total', 'break'])).toBe('het aantal uren en de pauze');
+    expect(describeUncertainFields(['shift', 'categories', 'reason']))
+      .toBe('de diensttijd, de urensoorten en de reden');
+    expect(describeUncertainFields(null)).toBe('');
   });
 });
