@@ -6,12 +6,26 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { hoursWorkflowError } from '@/lib/hours-workflow';
 import {
-  HOURS_READING_MAX_ENTRIES, workbookEntryDoubt, type WorkbookCandidate, type WorkbookReading,
+  HOURS_READING_MAX_ENTRIES, workbookEntryDoubt,
+  type WorkbookCandidate, type WorkbookReading, type WorkbookSourceKind,
 } from '@/lib/hours-workbook';
 import type { HoursReadingEntry } from '@/lib/hours-workflow-api';
 import { formatHoursDate } from './presentation';
 
 const duration = (minutes: number): string => `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')} uur`;
+
+/**
+ * A worksheet, a table and a message are the same kind of page, but they are not
+ * the same word. Naming them wrongly makes a reviewer look for a worksheet in an
+ * e-mail, which is the one thing this panel exists to prevent.
+ */
+const WORDS: Record<WorkbookSourceKind, {
+  one: string; many: string; place: (sheet: string, row: number) => string;
+}> = {
+  workbook: { one: 'werkblad', many: 'de werkbladen', place: (sheet, row) => `Blad ${sheet}, rij ${row}` },
+  document: { one: 'tabel', many: 'de tabellen', place: (sheet, row) => `Tabel ${sheet}, rij ${row}` },
+  message: { one: 'het bericht', many: 'het bericht', place: (_sheet, row) => `Regel ${row}` },
+};
 
 export interface HoursWorkbookReadingProps {
   reading: WorkbookReading;
@@ -60,6 +74,7 @@ export function HoursWorkbookReading({
     </div>;
   }
 
+  const words = WORDS[reading.sourceKind] ?? WORDS.workbook;
   const chosen = reading.candidates.filter(candidate => !excluded.has(candidate.dayId));
   const toggle = (dayId: string, include: boolean) => setExcluded(current => {
     const next = new Set(current);
@@ -85,9 +100,12 @@ export function HoursWorkbookReading({
   return <div className="min-w-0 space-y-3 rounded-lg border bg-muted/20 p-3" role="group" aria-label="Uitlezing van deze bron">
     <p className="text-sm font-medium">Wat er in dit bestand staat</p>
     <p className="text-xs text-muted-foreground">
-      Gelezen uit {reading.sheetsRead.length === 1 ? 'werkblad' : 'de werkbladen'}{' '}
-      <span data-no-translate="true">{reading.sheetsRead.join(', ')}</span>. Dit zijn nog geen uren: bewaren
-      maakt er voorstellen van, en toepassen blijft per dag een aparte handeling.
+      {words.one === 'het bericht'
+        ? 'Gelezen uit de nieuwe tekst van dit bericht; geciteerde geschiedenis is niet meegelezen.'
+        : <>Gelezen uit {reading.sheetsRead.length === 1 ? words.one : words.many}{' '}
+          <span data-no-translate="true">{reading.sheetsRead.join(', ')}</span>.</>}
+      {' '}Dit zijn nog geen uren: bewaren maakt er voorstellen van, en toepassen blijft per dag een
+      aparte handeling.
     </p>
 
     {reading.candidates.length === 0
@@ -126,6 +144,10 @@ export function HoursWorkbookReading({
                 {candidate.sourceInput.categories.map(category => `${category.sourceCode} ${duration(category.minutes)}`).join(' · ')}
               </p> : null}
               <p className="text-xs text-muted-foreground" data-no-translate="true">Vindplaats: {candidate.pageLabel}</p>
+              {candidate.correctionOf && <p className="text-xs">
+                Dit is een correctie: eerder in deze aanlevering stond{' '}
+                <span className="font-medium" data-no-translate="true">{candidate.correctionOf}</span> voor deze dag.
+              </p>}
               {candidate.assignmentUncertain && <p className="text-xs">
                 In het bestand staat: <span className="font-medium" data-no-translate="true">{candidate.employeeText}</span>.
                 Bevestig na het bewaren of dit inderdaad {candidate.employeeName} is.
@@ -148,7 +170,9 @@ export function HoursWorkbookReading({
 
     {reading.sheetsIgnored.length > 0 && <Alert><AlertDescription>
       <p className="font-medium">
-        {reading.sheetsIgnored.length === 1 ? 'Dit werkblad is niet gelezen' : 'Deze werkbladen zijn niet gelezen'}:{' '}
+        {reading.sheetsIgnored.length === 1
+          ? `Dit ${words.one} is niet gelezen`
+          : `Deze ${words.one === 'tabel' ? 'tabellen' : 'werkbladen'} zijn niet gelezen`}:{' '}
         <span data-no-translate="true">{reading.sheetsIgnored.join(', ')}</span>.
       </p>
       <p className="mt-1">De indeling is daar niet herkend. Bekijk de bron zelf en leg die uren zo nodig
@@ -159,7 +183,7 @@ export function HoursWorkbookReading({
       <p className="font-medium">Een aangeleverd totaal klopt niet met de dagen eronder.</p>
       <ul className="mt-1 space-y-1 text-sm">
         {reading.rowTotals.map((total, index) => <li key={index} data-no-translate="true">
-          {total.employeeName} (blad {total.sheet}, rij {total.row}): aangeleverd {duration(total.deliveredMinutes)},
+          {total.employeeName} ({words.place(total.sheet, total.row).toLowerCase()}): aangeleverd {duration(total.deliveredMinutes)},
           gelezen {duration(total.readMinutes)}.
           {total.unreadDays.length > 0 && ` Leeg gelaten: ${total.unreadDays.join(', ')}.`}
         </li>)}
@@ -171,7 +195,9 @@ export function HoursWorkbookReading({
       <p className="font-medium">Hier is met opzet niets van gemaakt ({reading.skipped.length}):</p>
       <ul className="mt-1 space-y-1">
         {reading.skipped.map((row, index) => <li key={index}>
-          <span data-no-translate="true">Blad {row.sheet}, rij {row.row}{row.text ? ` — ${row.text}` : ''}</span>: {row.reason}
+          <span data-no-translate="true">
+            {words.place(row.sheet, row.row)}{row.text ? ` — ${row.text}` : ''}
+          </span>: {row.reason}
         </li>)}
       </ul>
     </div>}

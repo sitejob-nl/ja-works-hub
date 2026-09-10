@@ -13,10 +13,10 @@ bevestigde klant-/CAO-matrices inclusief pauze-, afrondings- en samenloopregels 
 het exportvoorbeeld van de payroller met uurcodes en correctieprocedure (T12, T13),
 ontvangers/verantwoordelijken per partij (T8), en de keuze van pilotklanten (T14).
 
-Stand 09-09-2026: **T1, T2, T3, T4 en T6 gebouwd en gedeployed** (migraties `20260909090000`,
-`20260910090000`, `20260911090000`, `20260912090000` en `20260913090000`); alle vijf zijn ook met
-verbonden demo-QA bewezen. T5 en T7 t/m T14 nog niet gestart. T7 (duurzame mailinname) blijft
-geblokkeerd door T5.
+Stand 10-09-2026: **T1 tot en met T6 gebouwd** (migraties `20260909090000`, `20260910090000`,
+`20260911090000`, `20260912090000`, `20260913090000` en `20260915090000`). T7 t/m T14 nog niet gestart.
+Met T5 af is **T7 (duurzame mailinname) niet langer geblokkeerd**; T8 is technisch vrij maar wacht op de
+klantinput over ontvangers en momenten, en T10 was nooit geblokkeerd.
 
 ---
 
@@ -129,13 +129,19 @@ voorstellen. Bij e-mail wordt nieuwe tekst onderscheiden van geciteerde geschied
 doorgestuurde bijlagen; een later antwoord is niet automatisch een nieuwe urenweek maar kan een
 correctie op een bestaande dag zijn.
 
+**Status:** gebouwd op 10 september 2026; zie het
+[innamecontract](urenmodule-intake-contract.md#word--en-e-mailbestanden-als-bron-t5). Word en e-mail
+worden **deterministisch in de browser** gelezen, net als Excel — geen model, geen betaalde aanroep. De
+tabellen van een `.docx` gaan door dezelfde `readHoursWorkbook` als een werkblad, zodat beide door één
+stel regels worden beoordeeld.
+
 **Geblokkeerd door:** T3.
 
-- [ ] DOCX met tabelstructuur levert dezelfde voorstelvorm als Excel
-- [ ] Oud binair DOC is een aantoonbare proef, geen heuristische tekstgok
-- [ ] Een `.eml` met bijlagen levert bron + bijlagen als één ontvangst met behouden samenhang
-- [ ] Geciteerde oude tekst levert geen tweede voorstel voor dezelfde dag
-- [ ] Een correctie in mailtekst (zaterdag 9,5 → 4,75) komt als correctievoorstel op dezelfde dag
+- [x] DOCX met tabelstructuur levert dezelfde voorstelvorm als Excel
+- [x] Oud binair DOC is een aantoonbare proef, geen heuristische tekstgok
+- [x] Een `.eml` met bijlagen levert bron + bijlagen als één ontvangst met behouden samenhang
+- [x] Geciteerde oude tekst levert geen tweede voorstel voor dezelfde dag
+- [x] Een correctie in mailtekst (zaterdag 9,5 → 4,75) komt als correctievoorstel op dezelfde dag
 
 ---
 

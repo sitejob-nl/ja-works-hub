@@ -5696,6 +5696,7 @@ export type Database = {
           id: string
           organization_id: string
           page_count: number | null
+          received_with_source_id: string | null
           storage_path: string
           week_id: string
         }
@@ -5711,6 +5712,7 @@ export type Database = {
           id?: string
           organization_id: string
           page_count?: number | null
+          received_with_source_id?: string | null
           storage_path: string
           week_id: string
         }
@@ -5726,6 +5728,7 @@ export type Database = {
           id?: string
           organization_id?: string
           page_count?: number | null
+          received_with_source_id?: string | null
           storage_path?: string
           week_id?: string
         }
@@ -5757,6 +5760,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_week_sources_receipt_fkey"
+            columns: ["received_with_source_id", "week_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "hours_week_sources"
+            referencedColumns: ["id", "week_id", "organization_id"]
           },
           {
             foreignKeyName: "hours_week_sources_week_id_organization_id_fkey"
@@ -12305,6 +12315,7 @@ export type Database = {
           p_content_type: string
           p_file_name: string
           p_page_count?: number
+          p_received_with?: string
           p_week_id: string
         }
         Returns: Json

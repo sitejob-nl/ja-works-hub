@@ -586,5 +586,118 @@ Wat de bezoeker leest is bovendien beperkt tot de meldingen die deze module zelf
 geschreven (`22023` en `42501`). Een deadlock, een indexnaam of een mislukte uuid-cast is Postgres die
 tegen een ontwikkelaar praat, en hoort niet op een pagina die iedereen met een link kan openen.
 
-Nog niet gebouwd: uitlezers voor Word, PDF-tekst en OCR/Vision, duurzame mailinname, en vrijgave of
-export. Zie [de ticketlijst](urenmodule-tickets.md).
+## Word- en e-mailbestanden als bron (T5)
+
+`.docx`, oud binair `.doc` en `.eml` worden als bron aanvaard. Net als bij Excel is er **geen model en
+geen betaalde aanroep**: alle drie worden deterministisch in de browser gelezen, op het moment dat een
+interne gebruiker erom vraagt.
+
+### Een tabel is de pagina van Word, het bericht de pagina van een e-mail
+
+`page_count` is bij Word het aantal tabellen en bij een bericht altijd `1` — de server forceert dat
+laatste, net als bij een foto. Daardoor gelden **alle paginaregels van T2 ongewijzigd**.
+
+### Word wordt door de Excel-uitlezer gelezen
+
+Een `.docx` is een zip met `word/document.xml`; een tabel daarin is een raster van rijen en cellen, en
+dat is precies wat een werkblad is. `hours-docx.ts` haalt de tabellen eruit en geeft ze aan
+**dezelfde** `readHoursWorkbook`. Een Word-aanlevering en een Excel-aanlevering worden dus door één
+stel regels beoordeeld — dezelfde kopherkenning, dezelfde duurlezing, dezelfde weigering om een naam te
+raden — in plaats van door twee uitlezers die uit elkaar groeien. De vindplaats heet daar `tabel X · rij N`.
+
+- **Een samengevoegde cel schuift geen kolommen op.** `gridSpan` wordt met lege cellen opgevuld in
+  plaats van de tekst te herhalen; herhalen zou een tweede kolom met dezelfde kop verzinnen.
+- **Een tabel in een cel hoort bij de tabel eromheen** en wordt niet nog een keer los aangeboden.
+- **De naam van een tabel is de laatste tekst erboven** ("Week 37", "Kowalski"), anders zijn positie.
+- **Een Word-bestand zonder tabel is een eerlijke blokkade.** Losse tekst wordt daar niet uitgelezen.
+- **Oud binair `.doc` blijft een eerlijke blokkade**, exact zoals `.xls`: het bestand wordt wél als bron
+  bewaard, maar de knop **Uitlezen** verschijnt er niet. Er wordt geen tekstgok op losgelaten.
+- **Het mediatype is geen bewijs.** Windows meldt `application/msword` voor alles wat Word opent, een
+  moderne `.docx` inbegrepen; de eerste bytes beslissen (zip-container of OLE-document).
+
+### Wat een bericht is, en wat het níet is
+
+Een e-mail is niet één tekst. `hours-eml.ts` haalt er vier dingen uit elkaar: de kopregels, wat er nú is
+geschreven, de geciteerde geschiedenis en de bijlagen.
+
+- **Geciteerde geschiedenis wordt weggesneden vóór de uitlezer hem ziet.** Vanaf het eerste teken van
+  citeren telt niets meer mee: een regel die met `>` begint, `-----Oorspronkelijk bericht-----`, de
+  onderstrepingsbalk van Outlook, `Op … schreef …:`, een `Van:`/`Verzonden:`-blok, of de
+  handtekeningscheiding `--`. Daardoor kan de zaterdag van veertien dagen geleden zichzelf niet opnieuw
+  voorstellen.
+- **`quoted-printable` en `base64` worden gedecodeerd**, `=?utf-8?B?…?=` in onderwerp en bestandsnaam ook.
+  Een bericht dat zowel platte tekst als HTML draagt houdt zijn platte tekst; alleen een HTML-bericht
+  wordt tot leesbare tekst teruggebracht.
+- **Er wordt niets opgehaald en niets uitgevoerd.** Afbeeldingen op afstand, links en scripts in een
+  bericht zijn tekst en blijven tekst.
+
+### Regels uit een bericht
+
+`hours-mail-text.ts` leest regel voor regel. Er is geen kop die zegt welke kolom wat is, dus elke regel
+moet zijn eigen bewijs dragen. Alleen een regel die **volledig** te lezen is — één medewerker, één dag,
+één duur — levert een voorstel; elke andere regel die naar een dag reikt wordt bij naam genoemd.
+
+- **Een regel die alleen een naam is, zet de medewerker voor de regels eronder.** Voluit geschreven is
+  dat zeker; een initiaal met achternaam levert `assignment_uncertain`. Het onderwerp mag de medewerker
+  ook noemen, maar dan moet de **hele** naam erin staan — een achternaam alleen zou Piets week aan Jan geven.
+- **Elk getal op de regel telt mee.** Één getal is de duur; meer dan één laat de regel zeggen welk
+  getal blijft staan. Zonder zo'n aanwijzing wordt de regel overgeslagen: "maandag 8 en 9 uur" mag niet
+  stilletjes negen uur worden. Een weeknummer (`week 37`) en de gelezen datum tellen niet als getal.
+- **Een correctie komt op diezelfde dag terecht.** `X → Y`, `geen X maar Y`, `X moet Y zijn`,
+  `Y in plaats van X`, `gewijzigd naar Y` en `Y (was X)` worden herkend, en de volgorde van die regels
+  bepaalt welk getal blijft staan. Het voorstel draagt dan `correctionOf` met wat het vervangt, zodat
+  de beoordelaar beide ziet. **Een later antwoord is dus geen nieuwe urenweek maar kan een correctie op
+  een bestaande dag zijn.**
+- **Dezelfde dag twee keer zónder correctie blokkeert de hele uitlezing**, met beide regelnummers erbij —
+  precies zoals een werkblad dat twee dingen over één dag zegt.
+- **Nul uren vereist een expliciete reden.** Alleen `ziek`, `vrij`, `verlof`, `vakantie`, `afwezig`,
+  `feestdag`, `snipperdag`, `niet gewerkt` en `geen uren` maken van een dagregel een nulmelding; de
+  letterlijke tekst van die regel wordt de reden. Een regel met zowel uren als zo'n woord wordt
+  overgeslagen.
+- **Een datum buiten deze week wordt gemeld**, niet stilzwijgend overgeslagen; en een dag en datum die
+  elkaar tegenspreken leveren geen keuze maar een overgeslagen regel.
+- **Diensttijden worden niet gelezen.** Deze module heeft daar een eigen vorm voor die deze uitlezer
+  niet vult; een regel met begin- en eindtijd draagt meerdere getallen en komt dus op de overgeslagen lijst.
+
+### Eén ontvangst
+
+Een bericht en zijn bijlagen zijn **één ontvangst**. Elke bijlage wordt een bron van zichzelf en noemt
+via `hours_week_sources.received_with_source_id` het bericht waaruit hij komt; het scherm zet ze onder
+elkaar met de badge "Bijlage bij …". Zonder die koppeling zou een platte lijst het verband kwijtraken.
+
+- De samengestelde foreign key `(received_with_source_id, week_id, organization_id)` → `(id, week_id,
+  organization_id)` maakt van "dezelfde week, dezelfde organisatie" een **feit van het schema**, niet een
+  regel die een latere aanroeper kan vergeten. Bronnen zijn append-only, dus dit wordt één keer gezet.
+- **Eén niveau diep**: alleen een `message/rfc822`-bron kan bijlagen dragen, en een bijlage van een
+  bijlage wordt geweigerd (`22023`).
+- Een bijlage waarvan de bytes niet bij het gemelde type passen wordt **bij naam genoemd**, niet bewaard.
+  Mailprogramma's melden `application/octet-stream` voor een werkmap, dus de bestandsnaam en de eerste
+  bytes beslissen samen.
+- Een **afbeelding uit de handtekening** (inline, met `Content-ID`) wordt genoemd en niet als bron bewaard.
+- Een bericht dat al eerder is ontvangen levert `duplicate` en er worden **geen** bijlagen opnieuw bewaard.
+
+### De klantpagina wordt hier niet breder van
+
+`private.hours_source_extension` — het pad van de opdrachtgever — kent Word en e-mail bewust **niet**.
+`hours_add_week_source` heeft zijn eigen lijst. Een opdrachtgever levert een urenbriefje aan, niet de
+mailbox van het kantoor; en de browser biedt daar dus ook geen bestandstype aan dat de server weigert.
+
+### Uitrolvolgorde
+
+`hours_add_week_source` kreeg `p_received_with` **met een default**, en de oude vijf-parameter-versie is
+**gedropt**. Een aanroep die de vijf oude parameters bij naam noemt komt daardoor bij de nieuwe functie
+uit: de migratie kan vóór de frontend live. Waren beide blijven staan, dan zou zo'n aanroep dubbelzinnig
+zijn. Een databasetest bewijst beide kanten.
+
+## Verificatie (T5)
+
+- **251 echte PostgreSQL-tests** (`scripts/hours-word-mail-db-test.py`): de nieuwe Word/mail-gevallen plus
+  de volledige vrijgegeven scan-, klantweek-, werkmap-, pagina-, inname-, classificatie-, modulepoort- en
+  foundationregressies op het nieuwe schema. Alle vijftien migraties worden tweemaal toegepast. De
+  modulepoortproef is uitgebreid met de vier leesfuncties van de scanrelease, die nog geen eigen
+  poortgeval hadden.
+- **Applicatietests**: `src/test/hours-docx.test.ts`, `src/test/hours-eml.test.ts`,
+  `src/test/hours-mail-text.test.ts` en de uitgebreide `src/test/hours-week-sources-ui.test.tsx`.
+
+Nog niet gebouwd: uitlezers voor PDF-tekst, duurzame mailinname vanuit de gekoppelde mailbox, en
+vrijgave of export. Zie [de ticketlijst](urenmodule-tickets.md).

@@ -33,6 +33,12 @@ export interface WorkbookCandidate {
   assignmentUncertain: boolean;
   /** What the sheet literally said about this employee. */
   employeeText: string;
+  /**
+   * What this row supersedes, as the delivery wrote it. A message that corrects
+   * itself ("zaterdag was geen 9,5 maar 4,75") says two things about one day;
+   * the reviewer has to see both, or the correction looks like a plain reading.
+   */
+  correctionOf?: string;
   notices: HoursIssue[];
 }
 
@@ -54,14 +60,25 @@ export interface WorkbookRowTotal {
   unreadDays: string[];
 }
 
+/**
+ * Which kind of delivery a reading came out of. The rules are identical; only
+ * the words a screen uses for "where it stood" differ, and a worksheet, a table
+ * and a message are not the same place.
+ */
+export type WorkbookSourceKind = 'workbook' | 'document' | 'message';
+
 export type WorkbookReading =
   | { ok: false; issues: HoursIssue[] }
   | {
-      ok: true; candidates: WorkbookCandidate[]; skipped: WorkbookSkippedRow[];
+      ok: true; sourceKind: WorkbookSourceKind;
+      candidates: WorkbookCandidate[]; skipped: WorkbookSkippedRow[];
       rowTotals: WorkbookRowTotal[]; sheetsRead: string[];
       /** Worksheets whose layout was not recognised; named so none disappears silently. */
       sheetsIgnored: string[];
     };
+
+/** What a delivery calls the thing a row stands on. */
+export interface WorkbookReadingOptions { sheetNoun?: string; sourceKind?: WorkbookSourceKind }
 
 const fail = (code: string, message: string): WorkbookReading => ({ ok: false, issues: [{ code, message }] });
 
@@ -330,7 +347,7 @@ function readWeekTotal(value: WorkbookCell, readMinutes: number):
 function readWideSheet(
   sheet: WorkbookSheet, sheetIndex: number, header: WideHeader, context: WorkbookContext,
   dayOf: Map<string, string>, candidates: WorkbookCandidate[], skipped: WorkbookSkippedRow[],
-  rowTotals: WorkbookRowTotal[],
+  rowTotals: WorkbookRowTotal[], noun: string,
 ): void {
   for (let index = header.row + 1; index < sheet.rows.length; index += 1) {
     const row = sheet.rows[index] ?? [];
@@ -379,7 +396,7 @@ function readWideSheet(
       candidates.push({
         dayId, memberId: match.member.id, employeeName: match.member.name, workDate: day.workDate,
         minutes, noHoursReason: 'reason' in duration ? duration.reason : null, sourceInput: null,
-        pageNumber: sheetIndex + 1, pageLabel: `blad ${sheet.name} · rij ${rowNumber}`,
+        pageNumber: sheetIndex + 1, pageLabel: `${noun} ${sheet.name} · rij ${rowNumber}`,
         sheetName: sheet.name, row: rowNumber,
         assignmentUncertain: match.uncertain, employeeText: nameText, notices: [],
       });
@@ -414,6 +431,7 @@ function controlNotices(minutes: number, sourceInput: HoursSourceInput | null): 
 function readLongSheet(
   sheet: WorkbookSheet, sheetIndex: number, header: LongHeader, context: WorkbookContext,
   dayOf: Map<string, string>, candidates: WorkbookCandidate[], skipped: WorkbookSkippedRow[],
+  noun: string,
 ): void {
   for (const column of header.setAside) {
     skipped.push({
@@ -461,7 +479,7 @@ function readLongSheet(
       dayId, memberId: match.member.id, employeeName: match.member.name, workDate,
       minutes, noHoursReason: 'reason' in duration ? duration.reason : null,
       sourceInput: breakdown.sourceInput,
-      pageNumber: sheetIndex + 1, pageLabel: `blad ${sheet.name} · rij ${rowNumber}`,
+      pageNumber: sheetIndex + 1, pageLabel: `${noun} ${sheet.name} · rij ${rowNumber}`,
       sheetName: sheet.name, row: rowNumber,
       assignmentUncertain: match.uncertain, employeeText: nameText,
       notices: [...notices, ...controlNotices(minutes, breakdown.sourceInput)],
@@ -469,7 +487,11 @@ function readLongSheet(
   }
 }
 
-export function readHoursWorkbook(sheets: WorkbookSheet[], context: WorkbookContext): WorkbookReading {
+export function readHoursWorkbook(
+  sheets: WorkbookSheet[], context: WorkbookContext, options: WorkbookReadingOptions = {},
+): WorkbookReading {
+  const noun = options.sheetNoun ?? 'blad';
+  const sourceKind = options.sourceKind ?? 'workbook';
   if (!sheets.length) return fail('EMPTY_WORKBOOK', 'Dit bestand bevat geen werkbladen.');
   const candidates: WorkbookCandidate[] = [];
   const skipped: WorkbookSkippedRow[] = [];
@@ -489,7 +511,7 @@ export function readHoursWorkbook(sheets: WorkbookSheet[], context: WorkbookCont
     if (longHeader) {
       const read: WorkbookCandidate[] = [];
       const left: WorkbookSkippedRow[] = [];
-      readLongSheet(sheet, sheetIndex, longHeader, context, dayOf, read, left);
+      readLongSheet(sheet, sheetIndex, longHeader, context, dayOf, read, left, noun);
       if (read.length || !wideHeader) {
         sheetsRead.push(sheet.name);
         candidates.push(...read);
@@ -499,14 +521,18 @@ export function readHoursWorkbook(sheets: WorkbookSheet[], context: WorkbookCont
     }
     if (wideHeader) {
       sheetsRead.push(sheet.name);
-      readWideSheet(sheet, sheetIndex, wideHeader, context, dayOf, candidates, skipped, rowTotals);
+      readWideSheet(sheet, sheetIndex, wideHeader, context, dayOf, candidates, skipped, rowTotals, noun);
       continue;
     }
     if (sheet.rows.some(row => (row ?? []).some(cell => cellText(cell)))) sheetsIgnored.push(sheet.name);
   }
 
   if (!sheetsRead.length) {
-    return fail('NO_LAYOUT', 'Geen enkel werkblad heeft een herkenbare indeling met namen, dagen en uren. Er zijn geen voorstellen gemaakt.');
+    // A worksheet is a "werkblad" in a sentence and a "blad" in a place
+    // reference; a Word table is a "tabel" in both. One word cannot serve both.
+    const named = sourceKind === 'document' ? 'tabel' : 'werkblad';
+    return fail('NO_LAYOUT', `Geen enkel ${named} heeft een herkenbare indeling met namen, dagen en uren. `
+      + 'Er zijn geen voorstellen gemaakt.');
   }
   // One workday can carry only one proposal out of one delivery. A file that
   // says two different things about the same day is ambiguous about that day,
@@ -517,15 +543,15 @@ export function readHoursWorkbook(sheets: WorkbookSheet[], context: WorkbookCont
     const second = repeated[0];
     const first = candidates.find(candidate => candidate.dayId === second.dayId)!;
     const place = (candidate: WorkbookCandidate) => first.sheetName === second.sheetName
-      ? `rij ${candidate.row}` : `blad ${candidate.sheetName}, rij ${candidate.row}`;
+      ? `rij ${candidate.row}` : `${noun} ${candidate.sheetName}, rij ${candidate.row}`;
     const where = first.sheetName === second.sheetName
-      ? `blad ${first.sheetName}, ${place(first)} en ${place(second)}`
+      ? `${noun} ${first.sheetName}, ${place(first)} en ${place(second)}`
       : `${place(first)} en ${place(second)}`;
     return fail('DUPLICATE_DAY',
       `${first.employeeName} staat meer dan één keer op ${first.workDate}: ${where}. `
       + 'Maak in het bestand duidelijk welke regel geldt; er zijn geen voorstellen gemaakt.');
   }
-  return { ok: true, candidates, skipped, rowTotals, sheetsRead, sheetsIgnored };
+  return { ok: true, sourceKind, candidates, skipped, rowTotals, sheetsRead, sheetsIgnored };
 }
 
 /**

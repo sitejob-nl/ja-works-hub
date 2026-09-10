@@ -20,7 +20,7 @@ import {
   type HoursWeekSourceFile, type HoursWeekSources as HoursWeekSourcesData,
 } from '@/lib/hours-sources';
 import type { HoursPageEntry } from '@/lib/hours-workflow-api';
-import { isReadableScan, isReadableWorkbook } from '@/lib/hours-workbook-file';
+import { isBrowserReadable, isMailSource, isReadableScan } from '@/lib/hours-workbook-file';
 import type { WorkbookContext, WorkbookReading } from '@/lib/hours-workbook';
 import { hoursSourceViewUrl, useApplyHoursProposal, useHoursWeekSources } from '@/hooks/useHoursWeekSources';
 import { usePublicUrlForOrg } from '@/hooks/usePublicUrl';
@@ -53,6 +53,26 @@ function dayTargets(week: HoursWeekView): DayTarget[] {
       notes: day.revision.notes, sourceInput: day.revision.sourceInput, revisionId: day.revision.id,
     } : null,
   })));
+}
+
+/**
+ * A delivered message and its attachments are one receipt, so they stand
+ * together: every attachment follows the message it came out of, in the order
+ * they were received. A file that arrived on its own keeps its own place.
+ */
+function orderedSources(sources: HoursWeekSourceFile[]): HoursWeekSourceFile[] {
+  const attachments = new Map<string, HoursWeekSourceFile[]>();
+  for (const source of sources) {
+    if (!source.received_with_source_id) continue;
+    const group = attachments.get(source.received_with_source_id) ?? [];
+    group.push(source);
+    attachments.set(source.received_with_source_id, group);
+  }
+  return sources.flatMap(source => source.received_with_source_id
+    // An attachment whose message is missing from this projection would vanish
+    // altogether, so it keeps its own place rather than none at all.
+    ? (sources.some(other => other.id === source.received_with_source_id) ? [] : [source])
+    : [source, ...(attachments.get(source.id) ?? [])]);
 }
 
 /** What the reader is allowed to recognise: the members and days of this week. */
@@ -717,11 +737,13 @@ export function HoursWeekSources({ organizationId, week, onReload }: HoursWeekSo
   const canManage = (data?.can_manage ?? false) && week.enabled;
 
   /** Reading is deliberately explicit: it never happens as a side effect of uploading. */
-  async function readSource(sourceId: string, path: string) {
+  async function readSource(sourceId: string, path: string, contentType: string) {
     if (readingSource) return;
     setReadingError(null); setNotice(null); setReadingSource(sourceId);
     try {
-      setReading({ sourceId, result: await sources.readWorkbook.mutateAsync({ path, context: workbookContext(week) }) });
+      setReading({ sourceId, result: await sources.readWorkbook.mutateAsync({
+        path, contentType, context: workbookContext(week),
+      }) });
     } catch (failure) {
       setReadingError(hoursWorkflowError(failure));
     } finally {
@@ -754,9 +776,14 @@ export function HoursWeekSources({ organizationId, week, onReload }: HoursWeekSo
     for (const file of Array.from(files)) {
       try {
         const result = await sources.upload.mutateAsync(file);
+        const attachments = result.attachmentsStored === 0 ? ''
+          : ` ${result.attachmentsStored} ${result.attachmentsStored === 1 ? 'bijlage is' : 'bijlagen zijn'}`
+            + ' als bron van diezelfde ontvangst bewaard.';
+        const left = result.attachmentsSkipped.length === 0 ? ''
+          : ` Niet bewaard: ${result.attachmentsSkipped.join(', ')}.`;
         setNotice(result.duplicate
           ? `“${file.name}” was al eerder bij deze week ontvangen. Er is geen tweede bron aangemaakt.`
-          : `“${file.name}” is als bron bewaard.`);
+          : `“${file.name}” is als bron bewaard.${attachments}${left}`);
       } catch (failure) {
         setUploadError(hoursWorkflowError(failure));
         break;
@@ -770,9 +797,10 @@ export function HoursWeekSources({ organizationId, week, onReload }: HoursWeekSo
       <CardTitle className="text-base">Ontvangen bronnen</CardTitle>
       <p className="text-sm text-muted-foreground">
         Bewaar het originele urenbriefje privé bij deze week, leg per pagina vast wie erop staat, en pas een
-        voorstel pas na beoordeling toe als dagversie. PDF, JPG, PNG en Excel worden ondersteund; een Excel- of
-        tabelbestand wordt hier uitgelezen, een scan of foto door de AI-uitlezer. Een bron levert nooit vanzelf
-        uren op.
+        voorstel pas na beoordeling toe als dagversie. PDF, JPG, PNG, Excel, Word en e-mail (.eml) worden
+        ondersteund; een tabel- of Word-bestand en de tekst van een bericht worden hier uitgelezen, een scan
+        of foto door de AI-uitlezer. Bijlagen van een bericht worden als bron van diezelfde ontvangst bewaard.
+        Een bron levert nooit vanzelf uren op.
       </p>
     </CardHeader>
     <CardContent className="space-y-4">
@@ -784,7 +812,7 @@ export function HoursWeekSources({ organizationId, week, onReload }: HoursWeekSo
             <FileUp className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
             {sources.upload.isPending ? 'Bron bewaren…' : 'Urenbriefje uploaden'}
           </Button>
-          <span className="text-xs text-muted-foreground">PDF, JPG, PNG of Excel, maximaal 25 MB per bestand.</span>
+          <span className="text-xs text-muted-foreground">PDF, JPG, PNG, Excel, Word of .eml, maximaal 25 MB per bestand.</span>
         </div>}
         {!week.enabled && <p className="text-sm text-muted-foreground">De urenstroom staat uit voor deze opdrachtgever. Bestaande bronnen blijven zichtbaar.</p>}
         {notice && <p role="status" className="text-sm">{notice}</p>}
@@ -811,7 +839,7 @@ export function HoursWeekSources({ organizationId, week, onReload }: HoursWeekSo
           onDiscard={input => sources.discardProposal.mutateAsync(input)} />}
         {sources.isPending ? <p role="status" className="text-sm text-muted-foreground">Bronnen laden…</p>
           : data?.sources.length === 0 ? <p className="text-sm text-muted-foreground">Er zijn nog geen bronnen bij deze week bewaard.</p>
-          : data?.sources.map(source => <div key={source.id} className="space-y-3 rounded-lg border p-3"
+          : orderedSources(data?.sources ?? []).map(source => <div key={source.id} className="space-y-3 rounded-lg border p-3"
               role="group" aria-label={`Bron ${source.file_name}`}>
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="min-w-0">
@@ -827,12 +855,20 @@ export function HoursWeekSources({ organizationId, week, onReload }: HoursWeekSo
                 {source.client_link_id && <Badge variant="outline" className="mt-1">
                   Meegestuurd door de opdrachtgever
                 </Badge>}
+                {/* Where a file came from decides how it is weighed, and an
+                    attachment out of a message is not an office upload. */}
+                {source.received_with_source_id && <Badge variant="outline" className="mt-1">
+                  Bijlage bij{' '}
+                  <span data-no-translate="true">
+                    {data.sources.find(other => other.id === source.received_with_source_id)?.file_name ?? 'een bericht'}
+                  </span>
+                </Badge>}
               </div>
               <div className="flex flex-wrap gap-2">
                 <ViewSourceButton path={source.storage_path} fileName={source.file_name} />
-                {canManage && isReadableWorkbook(source.content_type) && reading?.sourceId !== source.id &&
+                {canManage && isBrowserReadable(source.content_type) && reading?.sourceId !== source.id &&
                   <Button type="button" size="sm" variant="outline" disabled={busyElsewhere}
-                    onClick={() => void readSource(source.id, source.storage_path)}>
+                    onClick={() => void readSource(source.id, source.storage_path, source.content_type)}>
                     <TableProperties className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
                     {readingSource === source.id ? 'Uitlezen…' : 'Uitlezen'}
                   </Button>}

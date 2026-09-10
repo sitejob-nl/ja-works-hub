@@ -17,7 +17,7 @@ import {
   clientReportNote, prepareClientDelivery,
 } from '../../supabase/functions/_shared/hours-client-entries.ts';
 import {
-  HOURS_SOURCE_ACCEPT, HOURS_SOURCE_BUCKET, hoursSourceDigest, hoursSourceTypeError,
+  HOURS_CLIENT_SOURCE_ACCEPT, HOURS_SOURCE_BUCKET, hoursSourceDigest, hoursSourceTypeError,
   type HoursSourceContentType,
 } from '@/lib/hours-sources';
 import { countPdfPages } from '@/lib/hours-pdf-pages';
@@ -213,7 +213,7 @@ export default function HoursClientWeek() {
     { refused: PageState } | { state: PageState; duplicate: boolean; name: string }, unknown, File
   >({
     mutationFn: async (chosen: File) => {
-      const rejection = hoursSourceTypeError(chosen);
+      const rejection = hoursSourceTypeError(chosen, HOURS_CLIENT_SOURCE_ACCEPT);
       if (rejection) throw new Error(rejection);
       const bytes = await chosen.arrayBuffer();
       // The declared media type is not proof; a workbook has to be one, and is
@@ -411,7 +411,7 @@ export default function HoursClientWeek() {
       <Button type="button" disabled={busy} onClick={submit}>
         {save.isPending ? 'Uren doorgeven…' : 'Uren opslaan'}
       </Button>
-      <input ref={fileInput} type="file" className="sr-only" accept={HOURS_SOURCE_ACCEPT}
+      <input ref={fileInput} type="file" className="sr-only" accept={HOURS_CLIENT_SOURCE_ACCEPT}
         aria-label="Urenbriefje meesturen" disabled={busy}
         onChange={event => {
           const chosen = event.target.files?.[0];

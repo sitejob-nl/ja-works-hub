@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { hoursSourceInputSchema, type HoursSourceInput } from '@/components/hours-workflow/hours-day-source';
-import { HOURS_WORKBOOK_TYPES } from '@/lib/hours-workbook-file';
+import { HOURS_MAIL_TYPES, HOURS_WORD_TYPES, HOURS_WORKBOOK_TYPES } from '@/lib/hours-workbook-file';
 import {
   SCAN_UNCERTAIN_FIELDS, type ScanUncertainField,
 } from '../../supabase/functions/_shared/hours-scan';
@@ -12,9 +12,19 @@ export const HOURS_SOURCE_TYPES = {
   'image/jpeg': { extension: 'jpg', label: 'JPG' },
   'image/png': { extension: 'png', label: 'PNG' },
   ...HOURS_WORKBOOK_TYPES,
+  ...HOURS_WORD_TYPES,
+  ...HOURS_MAIL_TYPES,
 } as const;
 export type HoursSourceContentType = keyof typeof HOURS_SOURCE_TYPES;
 export const HOURS_SOURCE_ACCEPT = Object.keys(HOURS_SOURCE_TYPES).join(',');
+/**
+ * What a client may hand in through their own week page. Deliberately narrower
+ * than the internal list: Word and e-mail arrive over mail and are taken apart
+ * by an internal user, and the client endpoint refuses them. Offering a file
+ * type the server will not take is a refusal disguised as a button.
+ */
+export const HOURS_CLIENT_SOURCE_ACCEPT = Object.keys(HOURS_SOURCE_TYPES)
+  .filter(type => !(type in HOURS_WORD_TYPES) && !(type in HOURS_MAIL_TYPES)).join(',');
 export const HOURS_SOURCE_BUCKET = 'hours-sources';
 
 const uuid = z.string().uuid();
@@ -77,6 +87,7 @@ export const hoursWeekSourcesSchema = z.object({
     content_hash: z.string(), storage_path: z.string(), created_at: z.string(),
     page_count: z.number().int().min(1).nullable(),
     client_link_id: uuid.nullable().default(null),
+    received_with_source_id: uuid.nullable().default(null),
     pages: z.array(hoursSourcePageSchema),
     proposals: z.array(hoursProposalSchema),
   })),
@@ -106,6 +117,8 @@ export interface HoursWeekSourceFile {
   page_count: number | null;
   /** Set when the client delivered this file through its own week page. */
   client_link_id: string | null;
+  /** Set when this file came out of a delivered e-mail; the two are one receipt. */
+  received_with_source_id: string | null;
   pages: HoursSourcePage[];
   proposals: HoursSourceProposal[];
 }
@@ -226,9 +239,19 @@ export function parseWeekSources(value: unknown): HoursWeekSources {
   return hoursWeekSourcesSchema.parse(value) as HoursWeekSources;
 }
 
-export function hoursSourceTypeError(file: { type: string; size: number }): string | null {
-  if (!(file.type in HOURS_SOURCE_TYPES)) {
-    return 'Alleen PDF, JPG, PNG en Excel kunnen op dit moment als bron worden bewaard. Andere bestanden volgen in een latere stap.';
+/**
+ * `accept` is the list this caller may hand in. The client week page is
+ * deliberately narrower than the internal panel, and the server refuses what it
+ * does not take; refusing here first means a plain message instead of a failed
+ * upload.
+ */
+export function hoursSourceTypeError(
+  file: { type: string; size: number }, accept: string = HOURS_SOURCE_ACCEPT,
+): string | null {
+  if (!accept.split(',').includes(file.type)) {
+    return accept === HOURS_SOURCE_ACCEPT
+      ? 'Alleen PDF, JPG, PNG, Excel, Word en e-mailbestanden (.eml) kunnen als bron worden bewaard.'
+      : 'Alleen PDF, JPG, PNG en Excel kunnen hier als bron worden aangeleverd.';
   }
   if (file.size <= 0) return 'Dit bestand is leeg.';
   if (file.size > HOURS_SOURCE_MAX_BYTES) return 'Dit bestand is groter dan 25 MB en kan niet worden bewaard.';
