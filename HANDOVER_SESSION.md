@@ -1,8 +1,124 @@
-# Session handover — 2026-09-09
+# Session handover — 2026-09-16
 
 Overdracht voor wie verdergaat (Codex / Claude Code). Lees [AGENTS.md](AGENTS.md) voor harde repo-conventies +
 commands, [CLAUDE.md](CLAUDE.md) voor de canonieke codebase-diepte, [HANDOVER.md](HANDOVER.md) voor de formele
 projectsamenvatting.
+
+## Duurzame mailinname — 16 september 2026 (`feat/urenmodule-mailinname`)
+
+- Duurzame worktree `/Users/kas/dev/ja-works-hub/.worktrees/urenmodule-mailinname`, branch
+  `feat/urenmodule-mailinname` vanaf `origin/main` (`f6d15bc`, de gemergde T5-release #271). De stale
+  hoofdcheckout en alle overige worktrees zijn ongemoeid gelaten.
+- **T7 uit [docs/urenmodule-tickets.md](docs/urenmodule-tickets.md) is gebouwd** — duurzame mailinname
+  vanuit de gekoppelde Outlook-postbus. Alle vijf acceptatiecriteria zijn afgevinkt. Zie het
+  [mailinnamecontract](docs/urenmodule-mail-intake.md).
+- **De uitvraagreferentie bestond niet en is hier ontworpen.** Het ticket noemt hem alsof hij er is;
+  hij kwam nergens in de code voor. Gekozen is `hours_week_requests`: één rij per uitgaande uitvraag,
+  scope op precies één klantweek, met een korte code (`UR-XXXX-XXXX`) die in het onderwerp meereist.
+  **Bewust géén geheim** — hij zegt alleen bij welke week een antwoord hoort, geeft geen toegang en
+  maakt geen uren. T8 hoeft hem alleen mee te sturen en na verzending drie velden bij te werken
+  (`outbound_message_id`, `conversation_id`, `recipients`); de hele herkenning aan de ontvangstkant
+  staat er al. De afweging tegen de alternatieven staat in het contract.
+- **De grens is ongewijzigd.** Een binnengehaalde mail landt als bron met voorstel, nooit als
+  dagversie. Alleen `hours_apply_source_proposal` schrijft een dagrevisie en neemt het voorstel
+  letterlijk over. Nul writes naar `timesheets`, facturatie of communicatie — na afloop op productie
+  geverifieerd.
+- **Strikt lezend, en nooit betaald.** De enige twee poorten naar Graph zijn `graphJson`/`graphBytes`;
+  er is geen derde en geen methode-parameter. Niets wordt gemarkeerd, verplaatst, gewist of verstuurd,
+  en een absoluut adres dat niet van `graph.microsoft.com` komt krijgt het token niet. Een bijlage
+  wordt **bewaard**, niet uitgelezen: de betaalde scanroute blijft een bewuste handeling van een mens
+  achter dezelfde maandblokkade.
+- **Eén lezer, verhuisd — geen tweede.** `hours-eml.ts` en `hours-mail-text.ts` zijn van `src/lib/`
+  naar `supabase/functions/_shared/` gegaan, met een doorgeefluik op de oude plek, zodat een geüploade
+  `.eml` en een vanzelf binnengekomen bericht door precies dezelfde regels worden gelezen. Idem voor
+  de bijlagesniffer (`hours-attachment-type.ts`) en de twijfelregel (`readingEntryDoubt`).
+- **Live:** migraties `20260916090000_hours_mail_intake.sql`,
+  `20260916100000_hours_mail_intake_review_fixes.sql` en `20260916110000_hours_mail_intake_cron.sql`,
+  plus edge function `hours-mail-intake`. `hours-read-scan` is opnieuw gedeployd omdat de gedeelde
+  begrenzing (`readBounded`) naar `_shared/bounded-read.ts` verhuisde — een openstaand T4-restpunt.
+  JA Werkt UIT, demo AAN — ongewijzigd en na afloop opnieuw geverifieerd.
+- **Productie is gedragsmatig identiek aan de bewezen testcontainer.** De genormaliseerde
+  vingerafdruk van alle 113 `hours_*`-functies en van kolommen/constraints/indexen/policies van alle
+  `hours_*`-tabellen is na elke apply vergeleken; beide zijn identiek. Twee vrijgegeven functies
+  (`hours_create_source_proposals`, `hours_get_source_reading_context`) verschillen alleen in een
+  SQL-**commentaarregel**: die zijn ooit zonder commentaar toegepast. Gedrag identiek.
+- **Zes codereviewrondes vonden achttien echte defecten**, elk gerepareerd met een test die eerst rood
+  stond. De zwaarste:
+  - **Twee vrijgegeven service-role-routes stonden open terwijl de module uit stond.**
+    `hours_claim_source_reading` en `hours_finish_source_reading` schreven met de servicesleutel nog
+    steeds in een gepoorte tabel. Gevonden doordat de poortproef ze voor het eerst met de júiste rol
+    aanriep.
+  - **Een mislukt vastleggen liet de cursor doorlopen**, waardoor precies de berichten die niet
+    waren weggeschreven voorgoed verloren gingen — het tegendeel van wat een duurzame cursor is.
+  - **Een map groter dan één run kon nooit bijlopen.** Een eerste volledige doorloop van een
+    bestaande map is duizenden berichten; die gingen in één te grote schrijfactie, en na de
+    paginalimiet begon de volgende run weer bij pagina één. Nu gaat elke pagina meteen in stukken de
+    wachtrij in en wordt de vervolglink als cursor bewaard.
+  - **Volgen van een map was een omweg om de mailboxrechten.** `hours_mail_set_folder` keek alleen of
+    de postbus van de eigen organisatie was; `mail_account_user_access` is leidend. Een
+    `finance.manage`-gebruiker kon de inname op elke gekoppelde postbus richten, ook een persoonlijke.
+  - **Een lezer schreef in `note`**, het veld dat letterlijk op een dagrevisie wordt toegepast.
+  - **De lijst met te pollen mappen liet alles na de tiende verhongeren** en kon niet om één
+    organisatie vragen, wat een handmatige run nodig heeft.
+  - **Een bericht dat terugkwam in de map werd nooit meer opgepakt.** De postbus meldde het als weg,
+    de rij sloot het met `verdwenen`, en toen het terugkwam deed het vastleggen stil niets meer dan
+    de Graph-id bijwerken. Nu wordt alleen dát hersteld; een besluit van een mens staat.
+  - **De CI-gate viel om waar lokaal niets aan de hand was**: het controlebakscherm trok via de
+    datalaag de Supabase-client mee, en CI heeft geen omgevingsvariabelen. Het woordenboek staat nu
+    in `src/lib/hours-mail.ts`, en de hele suite is bewezen groen mét én zonder `.env`.
+  - **De vierde koppelingsweg uit het contract kon niet vuren.** Het gesprek-id werd wél tegen de
+    uitvraag gematcht, maar het bericht droeg zijn draad nergens: het vastleggen liet hem vallen en
+    de claim gaf hem niet terug. Een gedocumenteerd mechanisme dat niet kan werken is erger dan een
+    dat er niet is.
+  - Verder: een te groot bericht bleef eeuwig herhalen in plaats van zichtbaar te stranden; één
+    kapotte postbus of één kapot bericht nam de hele run mee; een onleesbare datum of een te lange
+    Graph-id liet een hele doorloop vallen; de twijfel van de lezer kon op deze route niet meereizen;
+    en de hele functie was **onbereikbaar vanuit de UI** — er was geen manier om een map te gaan
+    volgen, en handmatig toewijzen bestond alleen in de database.
+- Verificatie: **318 echte PostgreSQL-tests** (`scripts/hours-mail-intake-db-test.py` — nieuwe
+  mailinnamegevallen plus de volledige vrijgegeven Word/mail-, scan-, klantweek-, werkmap-, pagina-,
+  inname-, classificatie-, poort- en foundationregressies; negentien migraties elk tweemaal,
+  poortcontrole van achttien naar **tweeëntwintig** tabellen); **1.902 applicatietests**, ook bewezen
+  groen zónder `.env` zoals CI draait; lint 0 errors, typecheck en productiebuild groen; `deno check`
+  op de nieuwe edge function.
+- **Verbonden demo-QA geslaagd** (`scripts/e2e-hours-mail-demo.spec.ts` +
+  `scripts/playwright.hours-mail.config.ts`, 4,6 s, 69 API-oproepen waarvan 6 echte postbusaanroepen)
+  op een verse fixture `20260916-mail-r1`. Bewezen tegen de echte Microsoft Graph: het bewaarde token
+  wordt ontsleuteld en gebruikt, de delta-vraag antwoordt, de cursor die Graph teruggeeft wordt
+  bewaard én door de tweede doorloop geaccepteerd zonder hersynchronisatie, geen enkele map van een
+  andere organisatie wordt bevraagd, en **alle acht mappen van de postbus hebben na afloop exact
+  hetzelfde aantal items en ongelezen items als ervoor**. Nul dagrevisies, nul werkdagen verbruikt,
+  nul betaalde aanroepen, nul JavaScript-fouten, nul serverfouten. Dev-server op eigen poort 8096 met
+  `PLAYWRIGHT_SKIP_WEBSERVER=1`.
+- **De cronjob draait**: `hours-mail-intake-quarterly`, `*/15 * * * *`, dezelfde vorm als de vier
+  bestaande. Handmatig geverifieerd: juiste `x-cron-secret` → `200 {"mode":"cron",…}`, geraden sleutel
+  → `403`.
+- Advisors na DDL: geen ERROR-bevindingen. De zes nieuwe interne RPC's vallen in dezelfde bewuste
+  WARN-categorie "SECURITY DEFINER uitvoerbaar door authenticated" als alle bestaande urenfuncties;
+  de tien service-role-only functies staan daar juist **niet** in.
+
+### Restpunten
+
+- **Twee QA-berichten staan nog in de demo-postbus** (Postvak IN: "Onbestelbaar: QA uren
+  20260916-mail-r1 …", Verzonden items: hetzelfde onderwerp). Een eerste QA-opzet stuurde een
+  testmail naar het demo-**loginadres** in plaats van naar het postbusadres; die bounceerde. Ze zijn
+  niet weg te halen omdat de demo-postbus bewust op lezen-en-versturen staat: `mail_delete_enabled`
+  is uit, dus zowel verplaatsen als verwijderen wordt geweigerd. **Handmatig weggooien in Outlook.**
+- **Een echt bericht dat tot een voorstel wordt gelezen is niet tegen de echte Graph bewezen**, om
+  precies dezelfde reden: er kan geen bericht in een testmap worden klaargezet zonder in een echte
+  mailbox te schrijven. Die weg is gedekt door 35 handlertests met gefixeerde Graph-antwoorden en
+  door de databaseproef.
+- **Retentie van `hours_mail_messages`.** Van elk bericht in een gevolgde map worden onderwerp en
+  afzender bewaard, ook van mail die niets met uren te maken heeft. Het scherm waarschuwt daarvoor en
+  adviseert een aparte map, maar er is nog geen opruimbaan. Hoort bij dezelfde retentievraag als de
+  opslagrest van T6.
+- `hours_mail_file_message` leest de week uit de bewaarde koppeling van het bericht in plaats van uit
+  zijn eigen parameters. Dat is bewust — een aanroeper kan hem zo niet ergens anders op richten —
+  maar het betekent ook dat vastleggen zonder een voorafgaande match in dezelfde claim op een oudere
+  koppeling zou kunnen leunen. De handler doet dat nooit; een expliciete claim-generatie zou het
+  onmogelijk maken.
+
+## Wat hiervoor kwam
 
 ## Scans en foto's uitlezen — 9 september 2026 (`feat/urenmodule-scanuitlezer`)
 

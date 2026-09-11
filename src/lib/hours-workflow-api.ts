@@ -49,6 +49,14 @@ interface HoursRpcArguments {
   hours_create_source_proposals: Omit<RpcArgs<'hours_create_source_proposals'>, 'p_entries'> & { p_entries: HoursReadingEntry[] };
   hours_issue_client_week_link: RpcArgs<'hours_issue_client_week_link'>;
   hours_revoke_client_week_link: RpcArgs<'hours_revoke_client_week_link'>;
+  hours_issue_week_request: RpcArgs<'hours_issue_week_request'>;
+  hours_revoke_week_request: RpcArgs<'hours_revoke_week_request'>;
+  // The generated signature for an argument-less function is `never`, which no
+  // caller can satisfy; an empty object is what PostgREST actually wants.
+  hours_mail_overview: Record<string, never>;
+  hours_mail_set_folder: RpcArgs<'hours_mail_set_folder'>;
+  hours_mail_dismiss_message: RpcArgs<'hours_mail_dismiss_message'>;
+  hours_mail_assign_message: RpcArgs<'hours_mail_assign_message'>;
 }
 
 export async function hoursWorkflowRpc<K extends keyof HoursRpcArguments>(name: K, args: HoursRpcArguments[K]): Promise<unknown> {
@@ -160,5 +168,24 @@ export async function hoursReadScan(sourceId: string): Promise<HoursScanReadingR
     requestId: String(payload.request_id ?? ''),
     costCents: Number(payload.cost_cents ?? 0), balanceCents: Number(payload.balance_cents ?? 0),
     durationMs: Number(payload.duration_ms ?? 0),
+  };
+}
+
+// The mail-intake vocabulary lives in a module of its own: a screen that only
+// needs the words must not drag the Supabase client into a test that has no
+// environment. This module keeps them reachable from the data layer.
+export {
+  hoursMailFolderSchema, hoursMailAttentionSchema, hoursMailOverviewSchema,
+  parseMailOverview, HOURS_MAIL_REASONS, describeMailReason,
+} from '@/lib/hours-mail';
+export type { HoursMailFollowed, HoursMailAttention, HoursMailOverview } from '@/lib/hours-mail';
+
+/** Fetching the mailbox now, by hand. The unattended run does exactly the same. */
+export async function hoursRunMailIntake(): Promise<{ folders: number; filed: number; attention: number }> {
+  const data = await invokeHoursFunction('hours-mail-intake', {}) as Record<string, unknown>;
+  return {
+    folders: Number(data?.folders ?? 0),
+    filed: Number(data?.filed ?? 0),
+    attention: Number(data?.attention ?? 0),
   };
 }

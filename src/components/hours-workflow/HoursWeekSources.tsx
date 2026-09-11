@@ -26,6 +26,7 @@ import { hoursSourceViewUrl, useApplyHoursProposal, useHoursWeekSources } from '
 import { usePublicUrlForOrg } from '@/hooks/usePublicUrl';
 import { HoursWorkbookReading } from './HoursWorkbookReading';
 import { HoursScanReading } from './HoursScanReading';
+import { HoursWeekRequests } from './HoursWeekRequests';
 import type { HoursScanReadingResult } from '@/lib/hours-workflow-api';
 import { parseHoursToMinutes } from '../../../supabase/functions/_shared/hours-calculation';
 import { compileHoursSourceInput, sourceControlIssues, sourceDraftFromInput, type HoursSourceInput } from './hours-day-source';
@@ -828,6 +829,11 @@ export function HoursWeekSources({ organizationId, week, onReload }: HoursWeekSo
           {data.uncertain_values} {data.uncertain_values === 1 ? 'voorstel is' : 'voorstellen zijn'} onzeker uitgelezen
           en {data.uncertain_values === 1 ? 'blokkeert' : 'blokkeren'} toepassen tot de gelezen gegevens zijn bevestigd.
         </p>}
+        {!sources.isPending && data && <HoursWeekRequests canManage={canManage}
+          requests={data.requests}
+          busy={sources.issueWeekRequest.isPending || sources.revokeWeekRequest.isPending}
+          onIssue={(label, validDays) => sources.issueWeekRequest.mutate({ label, validDays })}
+          onRevoke={(requestId, note) => sources.revokeWeekRequest.mutate({ requestId, note })} />}
         {!sources.isPending && data && <ClientLinksSection organizationId={organizationId}
           links={data.client_links} canManage={canManage}
           targets={targetById} onReload={onReload}

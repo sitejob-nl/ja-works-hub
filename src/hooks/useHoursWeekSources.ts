@@ -307,6 +307,26 @@ export function useHoursWeekSources(organizationId: string, weekId: string | und
     onSuccess: store,
   });
 
+  /**
+   * The reference that ties a reply to this week. Unlike the client link this is
+   * not a secret, so the projection carries it and there is nothing to show once.
+   */
+  const issueWeekRequest = useMutation({
+    mutationFn: async (input: { label: string; validDays: number }) => parseWeekSources(
+      await hoursWorkflowRpc('hours_issue_week_request', {
+        p_week_id: weekId!, p_label: input.label || null, p_valid_days: input.validDays,
+      })),
+    onSuccess: store,
+  });
+
+  const revokeWeekRequest = useMutation({
+    mutationFn: async (input: { requestId: string; note: string | null }) => parseWeekSources(
+      await hoursWorkflowRpc('hours_revoke_week_request', {
+        p_request_id: input.requestId, p_note: input.note,
+      })),
+    onSuccess: store,
+  });
+
   const discardProposal = useMutation({
     mutationFn: async (input: { proposalId: string; note: string | null }) => parseWeekSources(
       await hoursWorkflowRpc('hours_discard_source_proposal', { p_proposal_id: input.proposalId, p_note: input.note })),
@@ -316,6 +336,7 @@ export function useHoursWeekSources(organizationId: string, weekId: string | und
   return {
     ...query, upload, createProposal, discardProposal, setPage, takeOverPage, confirmAssignment,
     confirmValues, readWorkbook, readScan, saveReading, issueClientLink, revokeClientLink,
+    issueWeekRequest, revokeWeekRequest,
   };
 }
 

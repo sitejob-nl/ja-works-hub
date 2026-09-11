@@ -318,6 +318,14 @@ verify_jwt = false
 [functions.hours-read-scan]
 verify_jwt = false
 
+# Duurzame mailinname vanuit de gekoppelde Outlook-mailbox. Twee ingangen, één
+# body: cron valideert x-cron-secret zoals de vier bestaande cronjobs, een interne
+# gebruiker met finance.manage draait dezelfde code over de eigen organisatie.
+# De postbus wordt strikt gelezen — niets gelezen-markeren, verplaatsen, wissen of
+# versturen — en er wordt nooit betaald. Een bericht landt als bron met voorstel.
+[functions.hours-mail-intake]
+verify_jwt = false
+
 # Publieke klantweekpagina (token-based, geen login). Service-role validatie in de
 # database: gehasht token met scope op één klantweek, geldigheidsduur en
 # intrekbaarheid, plus IP-rate-limit via hours_client_link_attempts — zoals

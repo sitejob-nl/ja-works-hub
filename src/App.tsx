@@ -63,6 +63,7 @@ const VacancyEdit = lazyRoute(() => import("@/pages/VacancyEdit"));
 const Timesheets = lazyRoute(() => import("@/pages/Timesheets"));
 const HoursWorkflow = lazyRoute(() => import("@/pages/HoursWorkflow"));
 const HoursMatrices = lazyRoute(() => import("@/pages/HoursMatrices"));
+const HoursMailIntake = lazyRoute(() => import("@/pages/HoursMailIntake"));
 const PortalHoursWorkflow = lazyRoute(() => import("@/pages/portal/PortalHoursWorkflow"));
 const Transport = lazyRoute(() => import("@/pages/Transport"));
 const VehicleNew = lazyRoute(() => import("@/pages/VehicleNew"));
@@ -218,6 +219,7 @@ const App = () => (
                 <Route path="/uren" element={<PermissionRoute permission="finance.view"><Timesheets /></PermissionRoute>} />
                 <Route path="/uren/weken" element={<InternalHoursModuleRoute><PermissionRoute permission="finance.view"><HoursWorkflow /></PermissionRoute></InternalHoursModuleRoute>} />
                 <Route path="/uren/weken/:weekId" element={<InternalHoursModuleRoute><PermissionRoute permission="finance.view"><HoursWorkflow /></PermissionRoute></InternalHoursModuleRoute>} />
+                <Route path="/uren/mailinname" element={<InternalHoursModuleRoute><PermissionRoute permission="finance.view"><HoursMailIntake /></PermissionRoute></InternalHoursModuleRoute>} />
                 <Route path="/uren/matrices" element={<InternalHoursModuleRoute><PermissionRoute permission="finance.view"><HoursMatrices /></PermissionRoute></InternalHoursModuleRoute>} />
                 <Route path="/uren/matrices/:matrixId" element={<InternalHoursModuleRoute><PermissionRoute permission="finance.view"><HoursMatrices /></PermissionRoute></InternalHoursModuleRoute>} />
                 <Route path="/facturatie" element={<PermissionRoute permission="finance.view"><InvoicesPage /></PermissionRoute>} />
