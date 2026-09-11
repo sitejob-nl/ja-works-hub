@@ -1,8 +1,54 @@
-# Session handover — 2026-09-16
+# Session handover — 2026-09-17
 
 Overdracht voor wie verdergaat (Codex / Claude Code). Lees [AGENTS.md](AGENTS.md) voor harde repo-conventies +
 commands, [CLAUDE.md](CLAUDE.md) voor de canonieke codebase-diepte, [HANDOVER.md](HANDOVER.md) voor de formele
 projectsamenvatting.
+
+## Matrixbasis vervangen — 17 september 2026 (`feat/urenmodule-matrixvervanging`)
+
+- Duurzame worktree `/Users/kas/dev/ja-works-hub/.worktrees/urenmodule-matrixvervanging`, branch
+  `feat/urenmodule-matrixvervanging` vanaf `origin/main` (`192e222`, de gemergde T7-release #272). De
+  stale hoofdcheckout en alle overige worktrees zijn ongemoeid gelaten.
+- **T10 uit [docs/urenmodule-tickets.md](docs/urenmodule-tickets.md) is gebouwd** — expliciete
+  vervanging van een vastgelegde matrixbasis. Alle drie acceptatiecriteria zijn afgevinkt. Zie het
+  [vervangingscontract](docs/urenmodule-basis-replacement-contract.md).
+- **De grens is niet opgerekt.** `hours_day_matrix_basis` blijft onherroepelijk. Een vervanging is één
+  append-only schakel in `hours_day_matrix_basis_replacements`; de **werkende** basis is de nieuwste
+  schakel, bepaald op precies één plek (`private.hours_effective_day_basis`). Geen tweede waarheid,
+  geen override, geen reset.
+- **De vervanging rekent niets uit.** Herberekenen blijft `hours-classify-day`. Omdat de identiteit van
+  de vervanging in het selectiemateriaal meereist, krijgt die herberekening een eigen `context_hash` en
+  dus een eigen poging **náást** de oude — de append-only unieke sleutel botst nooit. Elke poging draagt
+  nu `basis_version`.
+- **Vrijgave bestond niet en is hier als register ontworpen, niet als route.** `hours_day_releases` is
+  de enige plek waar een vrijgave mag worden vastgelegd: leeg, zonder schrijfroute voor `anon`,
+  `authenticated` of `service_role`, met RLS, de SaaS-poort en de onveranderlijkheidstrigger.
+  `private.hours_day_released()` is de enige functie die de tabel noemt en blokkeert bij twijfel
+  (`coalesce(..., true)`). **T12 hoeft de blokkade niet aan te zetten** — alleen zijn vrijgave daar te
+  schrijven. Bouwt T12 hem ergens anders, dan valt de geërfde databaseproef om in plaats van dat de
+  blokkade stil ophoudt te werken.
+- **De reden staat in een eigen kolom** en wordt nergens letterlijk toegepast. Bewezen met een test die
+  een merktekst als reden gebruikt en daarna eist dat die tekst in precies één tabel en in geen enkele
+  snapshot voorkomt.
+- **Live:** migratie `20260917090000_hours_matrix_basis_replacement.sql` plus een index-migratie voor de
+  twee tenant-gebonden foreign keys. Er is **geen edge function gewijzigd** — `hours-classify-day` leest
+  de effectieve basis via de bestaande context. JA Werkt UIT, demo AAN, ongewijzigd en na afloop
+  opnieuw geverifieerd.
+- **Bewijs.** `scripts/hours-basis-replacement-db-test.py`: 351 tests groen, inclusief alle eerdere
+  regressies, migraties elk tweemaal toegepast, geïsoleerde container zonder netwerk. Overgeschreven
+  erfenis: poortlijst 22 → **24** tabellen, migratielijst 19 → **20**, functiesignaturen en de
+  gate-voorbereiding. Applicatiesuite 1.924 tests groen, ook zónder `.env` (zoals CI draait); lint 0
+  errors; typecheck, build en `deno check` geslaagd.
+- **Verbonden demo-QA geslaagd** (`scripts/e2e-hours-basis-demo.spec.ts` +
+  `scripts/playwright.hours-basis.config.ts`, eigen poort 8091, `PLAYWRIGHT_SKIP_WEBSERVER=1`): via de
+  echte schermen een klantmatrix en een gekoppelde CAO gepubliceerd, uren opgeslagen, geclassificeerd
+  (basisversie 0, factor 1), basis vervangen met reden, herberekend (basisversie 1, factor 2), en na
+  afloop de vastgelegde basisrij en de eerste uitkomst byte-identiek teruggelezen. Nul writes naar
+  `timesheets`, communicatie of AI-verbruik — op productie nagemeten.
+- **Restpunt van de QA:** de eerste QA-poging liet in de synthetische demo-opdrachtgever
+  `Urenmodule QA t10-202609110835` één halfafgeronde dag achter (basis vervangen, nog niet herberekend).
+  Dat is synthetische demodata in een eigen QA-bedrijf en is bewust blijven staan, net als bij eerdere
+  runs.
 
 ## Duurzame mailinname — 16 september 2026 (`feat/urenmodule-mailinname`)
 

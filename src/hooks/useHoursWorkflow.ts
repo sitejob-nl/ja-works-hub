@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { hoursClassifyDay, hoursWorkflowRpc } from '@/lib/hours-workflow-api';
 import { qk } from '@/lib/query-keys';
 import { hoursClassificationSchema, hoursWeekSchema, hoursWeekListSchema } from '@/lib/hours-workflow';
-import type { HoursClassifyInput, HoursSaveDayInput } from '@/components/hours-workflow/types';
+import type { HoursClassifyInput, HoursReplaceBasisInput, HoursSaveDayInput } from '@/components/hours-workflow/types';
 import { z } from 'zod';
 
 export interface HoursActor { organizationId: string; userId: string; zone: 'internal' | 'portal' }
@@ -30,7 +30,7 @@ export function useHoursWeek(actor: HoursActor, weekId?: string) {
       type: 'confirmAll'; revisions: { dayId: string; expectedRevisionId: string }[]; comment: string | null;
     } | {
       type: 'review'; dayId: string; expectedRevisionId: string; status: 'checked' | 'blocked'; comment: string | null;
-    }) => {
+    } | ({ type: 'replaceBasis' } & HoursReplaceBasisInput)) => {
       const result = action.type === 'save'
         ? await hoursWorkflowRpc('hours_save_day_source', {
           p_day_id: action.dayId, p_expected_revision_id: action.expectedRevisionId,
@@ -43,6 +43,11 @@ export function useHoursWeek(actor: HoursActor, weekId?: string) {
         }) : action.type === 'review' ? await hoursWorkflowRpc('hours_review_day', {
           p_day_id: action.dayId, p_expected_revision_id: action.expectedRevisionId,
           p_status: action.status, p_note: action.comment,
+        // The reason travels in its own argument and never in a field that gets applied.
+        }) : action.type === 'replaceBasis' ? await hoursWorkflowRpc('hours_replace_day_matrix_basis', {
+          p_day_id: action.dayId, p_expected_revision_id: action.expectedRevisionId,
+          p_expected_basis_version: action.expectedBasisVersion,
+          p_matrix_version_id: action.matrixVersionId, p_reason: action.reason,
         }) : await hoursWorkflowRpc('hours_confirm_days', {
           p_week_id: weekId!, p_revisions: action.revisions.map(revision => ({ day_id: revision.dayId, revision_id: revision.expectedRevisionId })), p_note: action.comment,
         });

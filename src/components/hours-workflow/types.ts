@@ -7,6 +7,36 @@ export interface HoursClassificationView {
   id: string; revisionId: string; status: 'classified' | 'blocked' | 'no_hours';
   matrixVersionId: string | null; matrixName: string | null; matrixScope: 'client' | 'cao' | null;
   engineVersion: string; createdAt: string; allocations: HoursAllocation[]; issues: HoursIssue[]; basisPinned: boolean;
+  /** Which basis this outcome used: 0 is the first pinned one, N the Nth replacement. */
+  basisVersion: number | null;
+}
+
+/** One link in the chain of bases a day has stood on. The first has no reason. */
+export interface HoursBasisEntryView {
+  basisVersion: number; matrixId: string; matrixVersionId: string; matrixName: string;
+  scope: 'client' | 'cao'; reason: string | null; revisionId: string; createdBy: string; createdAt: string;
+}
+
+/** The basis in force, with every basis the day has had underneath it. */
+export interface HoursDayBasisView {
+  basisVersion: number; matrixId: string; matrixVersionId: string; matrixName: string;
+  scope: 'client' | 'cao'; entries: HoursBasisEntryView[];
+}
+
+export interface HoursMatrixOptionView {
+  matrixId: string; matrixVersionId: string; matrixName: string; scope: 'client' | 'cao';
+  validFrom: string; validUntil: string | null; isCurrent: boolean;
+}
+
+/** What the server will accept as a new basis for one day, and its release state. */
+export interface HoursMatrixOptionsView {
+  dayId: string; workDate: string; released: boolean; canManage: boolean;
+  basis: HoursDayBasisView | null; options: HoursMatrixOptionView[];
+}
+
+export interface HoursReplaceBasisInput {
+  dayId: string; expectedRevisionId: string; expectedBasisVersion: number;
+  matrixVersionId: string; reason: string;
 }
 
 export interface HoursRevisionView {
@@ -20,6 +50,8 @@ export interface HoursRevisionView {
   createdAt?: string;
   sourceInput?: HoursSourceInput | null;
   classification?: HoursClassificationView | null;
+  /** Earlier outcomes for this same day version, newest first. */
+  previousClassifications?: HoursClassificationView[];
 }
 
 export interface HoursDayView {
@@ -39,6 +71,8 @@ export interface HoursDayView {
   history?: HoursRevisionView[];
   issues?: string[];
   classification?: HoursClassificationView | null;
+  previousClassifications?: HoursClassificationView[];
+  matrixBasis?: HoursDayBasisView | null;
 }
 
 export interface HoursEmployeeView {

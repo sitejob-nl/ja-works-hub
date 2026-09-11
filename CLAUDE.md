@@ -23,8 +23,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > een eigen contract; een geslaagde indeling is nog geen payrollvrijgave. Zie
 > [bouwstand](docs/urenmodule-bouw.md), [weekcontract](docs/urenmodule-db-contract.md),
 > [matrixcontract](docs/urenmodule-matrix-contract.md), [classificatiecontract](docs/urenmodule-classification-contract.md),
-> [innamecontract](docs/urenmodule-intake-contract.md), [uitleescontract](docs/urenmodule-scan-reading.md)
-> en [mailinnamecontract](docs/urenmodule-mail-intake.md).
+> [innamecontract](docs/urenmodule-intake-contract.md), [uitleescontract](docs/urenmodule-scan-reading.md),
+> [mailinnamecontract](docs/urenmodule-mail-intake.md) en
+> [vervangingscontract](docs/urenmodule-basis-replacement-contract.md).
 > De resterende bouw staat als tickets met
 > blokkades in [docs/urenmodule-tickets.md](docs/urenmodule-tickets.md).
 > **Broninname (09-09-, 10-09- en 11-09-migratie):** een geüpload urenbriefje, een paginatoewijzing en het
@@ -72,6 +73,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > gaat **zichtbaar** naar de controlebak op `/uren/mailinname`; er staat dan geen bron en geen voorstel
 > tegenover. Van élk bericht in een gevolgde map worden onderwerp en afzender vastgelegd, dus volg een
 > aparte map en niet Postvak IN. Zie [mailinnamecontract](docs/urenmodule-mail-intake.md).
+> **Matrixbasis vervangen (17-09-migratie):** `hours_day_matrix_basis` blijft **onherroepelijk**. Een
+> dag op een andere matrix zetten gaat via `hours_replace_day_matrix_basis`: één append-only schakel in
+> `hours_day_matrix_basis_replacements` met verplichte reden in een **eigen kolom** (nooit in een veld
+> dat letterlijk wordt toegepast), actor en CAS op zowel dagrevisie als basisversie. De werkende basis
+> is de nieuwste schakel; `private.hours_effective_day_basis()` is de enige plek waar dat wordt
+> bepaald. De vervanging **rekent niets uit** — herberekenen blijft `hours-classify-day`, en omdat de
+> vervangingsidentiteit in het selectiemateriaal meereist krijgt die herberekening een eigen
+> `context_hash` en dus een eigen poging náást de oude. **Vrijgave bestaat nog niet (T12):**
+> `hours_day_releases` is het enige register waarin een vrijgave mag worden vastgelegd, is leeg en
+> heeft geen schrijfroute; `private.hours_day_released()` is de enige functie die het noemt en
+> blokkeert bij twijfel. Zie het [vervangingscontract](docs/urenmodule-basis-replacement-contract.md).
 > Het aparte SaaS-recht `uren-workflow` is opt-in en geldt voor routes, RPC's en directe tabellezing;
 > legacy `uren` of een abonnement geeft dit recht niet. Zie [modulecontract](docs/urenmodule-organization-gate.md).
 > De backend is atomisch uitgerold op 8 september: JA Werkt UIT, geverifieerde demo AAN.

@@ -12,17 +12,24 @@ import { Textarea } from '@/components/ui/textarea';
 import { toFriendlyError } from '@/lib/errorMessages';
 import { parseHoursToMinutes } from '../../../supabase/functions/_shared/hours-calculation';
 import { currentConfirmation, formatHours, formatHoursDate, formatHoursDeadline, isHoursConflict } from './presentation';
-import type { HoursClassifyInput, HoursDayView, HoursReviewInput, HoursRevisionView, HoursSaveDayInput, HoursWeekView } from './types';
+import type {
+  HoursClassifyInput, HoursDayView, HoursMatrixOptionsView, HoursReplaceBasisInput, HoursReviewInput,
+  HoursRevisionView, HoursSaveDayInput, HoursWeekView,
+} from './types';
 import { compileHoursSourceInput, removedSourceSections, sourceControlIssues, sourceDraftFromInput } from './hours-day-source';
 import { HoursSourceEditor } from './HoursSourceEditor';
 import { HoursSourceSummary } from './HoursSourceSummary';
 import { HoursClassificationDetails } from './HoursClassificationDetails';
+import { HoursMatrixBasis } from './HoursMatrixBasis';
 
 export interface HoursWeekWorkspaceProps {
   week: HoursWeekView;
   onSaveDay: (input: HoursSaveDayInput) => Promise<void>;
   onReview?: (input: HoursReviewInput) => Promise<void>;
   onClassify?: (input: HoursClassifyInput) => Promise<void>;
+  /** Which published matrix versions the server accepts as a new basis for one day. */
+  onLoadMatrixOptions?: (dayId: string) => Promise<HoursMatrixOptionsView>;
+  onReplaceBasis?: (input: HoursReplaceBasisInput) => Promise<void>;
   onReload?: () => void;
   readOnly?: boolean;
   /** Rendered under the week summary; the internal intake panel fetches its own data. */
@@ -207,7 +214,7 @@ function DayEditor({ day, onSave, onCancel, onReload }: {
   );
 }
 
-export function HoursWeekWorkspace({ week, onSaveDay, onReview, onClassify, onReload, sourcesSlot, readOnly: permissionReadOnly = false }: HoursWeekWorkspaceProps) {
+export function HoursWeekWorkspace({ week, onSaveDay, onReview, onClassify, onLoadMatrixOptions, onReplaceBasis, onReload, sourcesSlot, readOnly: permissionReadOnly = false }: HoursWeekWorkspaceProps) {
   const readOnly = permissionReadOnly || !week.enabled;
   const [editingDay, setEditingDay] = useState<string | null>(null);
   const [reviewing, setReviewing] = useState<{ dayId: string; status: HoursReviewInput['status'] } | null>(null);
@@ -258,6 +265,8 @@ export function HoursWeekWorkspace({ week, onSaveDay, onReview, onClassify, onRe
           </div>
           <div className="mt-2"><DayDetails day={day} /></div>
           {day.revision && <div className="mt-3"><HoursClassificationDetails classification={day.classification} revisionId={day.revision.id} /></div>}
+          <HoursMatrixBasis day={day} readOnly={readOnly} busy={editingDay !== null || reviewing !== null || classifying !== null}
+            onLoadMatrixOptions={onLoadMatrixOptions} onReplaceBasis={onReplaceBasis} onReload={onReload} />
           {!readOnly && onClassify && day.revision && <div className="mt-3 space-y-2">
             <Button type="button" size="sm" variant="outline" disabled={editingDay !== null || reviewing !== null || classifying !== null || (classificationError?.dayId === day.id && classificationError.revisionId === day.revision.id && classificationError.conflict)} onClick={async () => {
               const revisionId = day.revision.id; setClassifying(day.id); setClassificationError(null);

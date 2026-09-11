@@ -24,7 +24,7 @@ const source = (): HoursSourceInput => ({
 const classification = (overrides: Partial<HoursClassificationView> = {}): HoursClassificationView => ({
   id: 'classification-a', revisionId: 'revision-a', status: 'classified', matrixVersionId: 'matrix-version-a',
   matrixName: 'Bevestigde nachturen', matrixScope: 'client', engineVersion: 'hours-v1',
-  createdAt: '2026-09-08T08:00:00Z', basisPinned: true,
+  createdAt: '2026-09-08T08:00:00Z', basisPinned: true, basisVersion: 0,
   allocations: [{ categoryCode: 'NACHT', factor: '1.250', minutes: 450, ruleId: 'map-ov1', sourceCategory: 'OV1' }],
   issues: [], ...overrides,
 });

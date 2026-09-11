@@ -4749,6 +4749,7 @@ export type Database = {
       hours_day_classifications: {
         Row: {
           allocations: Json
+          basis_version: number | null
           binding_snapshot: Json
           context_hash: string
           context_snapshot: Json
@@ -4771,6 +4772,7 @@ export type Database = {
         }
         Insert: {
           allocations: Json
+          basis_version?: number | null
           binding_snapshot: Json
           context_hash: string
           context_snapshot: Json
@@ -4793,6 +4795,7 @@ export type Database = {
         }
         Update: {
           allocations?: Json
+          basis_version?: number | null
           binding_snapshot?: Json
           context_hash?: string
           context_snapshot?: Json
@@ -4987,6 +4990,179 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      hours_day_matrix_basis_replacements: {
+        Row: {
+          basis_version: number
+          binding_snapshot: Json
+          created_at: string
+          created_by: string
+          day_id: string
+          definition: Json
+          id: string
+          matrix_id: string
+          matrix_name: string
+          matrix_version_id: string
+          organization_id: string
+          original_definition: Json
+          reason: string
+          replaced_matrix_version_id: string
+          revision_id: string
+          scope: string
+          selection_snapshot: Json
+        }
+        Insert: {
+          basis_version: number
+          binding_snapshot: Json
+          created_at?: string
+          created_by: string
+          day_id: string
+          definition: Json
+          id?: string
+          matrix_id: string
+          matrix_name: string
+          matrix_version_id: string
+          organization_id: string
+          original_definition: Json
+          reason: string
+          replaced_matrix_version_id: string
+          revision_id: string
+          scope: string
+          selection_snapshot: Json
+        }
+        Update: {
+          basis_version?: number
+          binding_snapshot?: Json
+          created_at?: string
+          created_by?: string
+          day_id?: string
+          definition?: Json
+          id?: string
+          matrix_id?: string
+          matrix_name?: string
+          matrix_version_id?: string
+          organization_id?: string
+          original_definition?: Json
+          reason?: string
+          replaced_matrix_version_id?: string
+          revision_id?: string
+          scope?: string
+          selection_snapshot?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hours_day_matrix_basis_replac_revision_id_day_id_organizat_fkey"
+            columns: ["revision_id", "day_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "hours_day_revisions"
+            referencedColumns: ["id", "day_id", "organization_id"]
+          },
+          {
+            foreignKeyName: "hours_day_matrix_basis_replacem_replaced_matrix_version_id_fkey"
+            columns: ["replaced_matrix_version_id"]
+            isOneToOne: false
+            referencedRelation: "hours_matrix_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_day_matrix_basis_replaceme_matrix_id_organization_id_fkey"
+            columns: ["matrix_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "hours_matrices"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "hours_day_matrix_basis_replacements_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_day_matrix_basis_replacements_day_id_fkey"
+            columns: ["day_id"]
+            isOneToOne: false
+            referencedRelation: "hours_day_matrix_basis"
+            referencedColumns: ["day_id"]
+          },
+          {
+            foreignKeyName: "hours_day_matrix_basis_replacements_day_id_organization_id_fkey"
+            columns: ["day_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "hours_days"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "hours_day_matrix_basis_replacements_matrix_version_id_fkey"
+            columns: ["matrix_version_id"]
+            isOneToOne: false
+            referencedRelation: "hours_matrix_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_day_matrix_basis_replacements_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hours_day_releases: {
+        Row: {
+          batch_id: string | null
+          day_id: string
+          organization_id: string
+          released_at: string
+          released_by: string
+          revision_id: string
+        }
+        Insert: {
+          batch_id?: string | null
+          day_id: string
+          organization_id: string
+          released_at?: string
+          released_by: string
+          revision_id: string
+        }
+        Update: {
+          batch_id?: string | null
+          day_id?: string
+          organization_id?: string
+          released_at?: string
+          released_by?: string
+          revision_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hours_day_releases_day_id_organization_id_fkey"
+            columns: ["day_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "hours_days"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "hours_day_releases_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_day_releases_released_by_fkey"
+            columns: ["released_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_day_releases_revision_id_day_id_organization_id_fkey"
+            columns: ["revision_id", "day_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "hours_day_revisions"
+            referencedColumns: ["id", "day_id", "organization_id"]
           },
         ]
       }
@@ -12802,6 +12978,10 @@ export type Database = {
         Args: { p_day_id: string; p_expected_revision_id: string }
         Returns: Json
       }
+      hours_get_day_matrix_options: {
+        Args: { p_day_id: string }
+        Returns: Json
+      }
       hours_get_matrix: { Args: { p_matrix_id: string }; Returns: Json }
       hours_get_module_access: { Args: never; Returns: Json }
       hours_get_source_reading_context: {
@@ -12918,6 +13098,16 @@ export type Database = {
           p_confirmed: boolean
           p_expected_revision: number
           p_version_id: string
+        }
+        Returns: Json
+      }
+      hours_replace_day_matrix_basis: {
+        Args: {
+          p_day_id: string
+          p_expected_basis_version: number
+          p_expected_revision_id: string
+          p_matrix_version_id: string
+          p_reason: string
         }
         Returns: Json
       }

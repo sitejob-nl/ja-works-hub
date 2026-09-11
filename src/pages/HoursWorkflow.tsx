@@ -11,7 +11,9 @@ import { useHoursWeek, useHoursWeeks } from '@/hooks/useHoursWorkflow';
 import { qk } from '@/lib/query-keys';
 import { unwrap } from '@/lib/db';
 import { hoursWorkflowRpc } from '@/lib/hours-workflow-api';
-import { hoursWeekSchema, hoursWorkflowError, toHoursWeekView } from '@/lib/hours-workflow';
+import {
+  hoursMatrixOptionsSchema, hoursWeekSchema, hoursWorkflowError, toHoursMatrixOptions, toHoursWeekView,
+} from '@/lib/hours-workflow';
 import PageHeader from '@/components/layout/PageHeader';
 import ErrorState from '@/components/shared/ErrorState';
 import { HoursWeekWorkspace } from '@/components/hours-workflow/HoursWeekWorkspace';
@@ -105,7 +107,9 @@ export default function HoursWorkflow() {
   const week = useHoursWeek(actor, weekId);
   return <div className="space-y-6">
     <PageHeader title="Urenweken" breadcrumbs={[{ label: 'Uren', to: '/uren' }, { label: 'Urenweken', to: weekId ? '/uren/weken' : undefined }, ...(weekId ? [{ label: 'Week controleren' }] : [])]} description="Aanlevering, brongegevens, uursoortencontrole en medewerkerreacties per dagversie." actions={<Button asChild variant="outline"><Link to="/uren/matrices">Urenmatrices</Link></Button>} />
-    {weekId ? week.error ? <ErrorState message={hoursWorkflowError(week.error)} onRetry={() => void week.refetch()} /> : week.data ? <HoursWeekWorkspace key={week.data.id} week={toHoursWeekView(week.data)} readOnly={!canManage || !week.data.can_manage} onSaveDay={async input => { try { await week.mutation.mutateAsync({ type: 'save', ...input }); } catch (error) { throw new Error(hoursWorkflowError(error)); } }} onReview={async input => { try { await week.mutation.mutateAsync({ type: 'review', ...input }); } catch (error) { throw new Error(hoursWorkflowError(error)); } }} onClassify={async input => { await week.classificationMutation.mutateAsync(input); }} onReload={() => void week.refetch()}
+    {weekId ? week.error ? <ErrorState message={hoursWorkflowError(week.error)} onRetry={() => void week.refetch()} /> : week.data ? <HoursWeekWorkspace key={week.data.id} week={toHoursWeekView(week.data)} readOnly={!canManage || !week.data.can_manage} onSaveDay={async input => { try { await week.mutation.mutateAsync({ type: 'save', ...input }); } catch (error) { throw new Error(hoursWorkflowError(error)); } }} onReview={async input => { try { await week.mutation.mutateAsync({ type: 'review', ...input }); } catch (error) { throw new Error(hoursWorkflowError(error)); } }} onClassify={async input => { await week.classificationMutation.mutateAsync(input); }}
+      onLoadMatrixOptions={async dayId => toHoursMatrixOptions(hoursMatrixOptionsSchema.parse(await hoursWorkflowRpc('hours_get_day_matrix_options', { p_day_id: dayId })))}
+      onReplaceBasis={async input => { await week.mutation.mutateAsync({ type: 'replaceBasis', ...input }); }} onReload={() => void week.refetch()}
       sourcesSlot={<HoursWeekSources organizationId={orgId} week={toHoursWeekView(week.data)} onReload={() => void week.refetch()} />} /> : <p role="status">Week laden…</p> : <>
       {canManage && <CompanyWeekSetup orgId={orgId} />}
       {weeks.error ? <ErrorState message={hoursWorkflowError(weeks.error)} onRetry={() => void weeks.refetch()} /> : weeks.isPending ? <p role="status">Weken laden…</p> : weeks.data?.weeks.length === 0 ? <p className="text-sm text-muted-foreground">Er zijn nog geen klantweken voorbereid.</p> : <div className="grid gap-3 md:grid-cols-2">
