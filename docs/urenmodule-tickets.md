@@ -229,7 +229,8 @@ gecontroleerde procedure op een andere basis worden herberekend, met reden, acto
 Zonder die procedure blijft de vastgelegde basis leidend.
 
 **Status:** gebouwd op 17 september 2026; database op productie, frontend na merge (migratie
-`20260917090000`); zie het
+`20260917090000`). Overdracht voor de volgende ontwikkelaar:
+[docs/urenmodule-t10-overdracht.md](urenmodule-t10-overdracht.md). Zie verder het
 [vervangingscontract](urenmodule-basis-replacement-contract.md). De vastgelegde basis blijft
 onveranderlijk: een vervanging is een append-only schakel die de werkende basis vooruitschuift, en de
 herberekening loopt langs de bestaande vertrouwde classificatieroute. **Vrijgave bestond nog niet en is

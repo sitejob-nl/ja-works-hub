@@ -83,7 +83,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > `context_hash` en dus een eigen poging náást de oude. **Vrijgave bestaat nog niet (T12):**
 > `hours_day_releases` is het enige register waarin een vrijgave mag worden vastgelegd, is leeg en
 > heeft geen schrijfroute; `private.hours_day_released()` is de enige functie die het noemt en
-> blokkeert bij twijfel. Zie het [vervangingscontract](docs/urenmodule-basis-replacement-contract.md).
+> blokkeert bij twijfel. Zie het [vervangingscontract](docs/urenmodule-basis-replacement-contract.md)
+> en de [overdracht](docs/urenmodule-t10-overdracht.md).
 > Het aparte SaaS-recht `uren-workflow` is opt-in en geldt voor routes, RPC's en directe tabellezing;
 > legacy `uren` of een abonnement geeft dit recht niet. Zie [modulecontract](docs/urenmodule-organization-gate.md).
 > De backend is atomisch uitgerold op 8 september: JA Werkt UIT, geverifieerde demo AAN.

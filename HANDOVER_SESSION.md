@@ -11,7 +11,8 @@ projectsamenvatting.
   stale hoofdcheckout en alle overige worktrees zijn ongemoeid gelaten.
 - **T10 uit [docs/urenmodule-tickets.md](docs/urenmodule-tickets.md) is gebouwd** — expliciete
   vervanging van een vastgelegde matrixbasis. Alle drie acceptatiecriteria zijn afgevinkt. Zie het
-  [vervangingscontract](docs/urenmodule-basis-replacement-contract.md).
+  [vervangingscontract](docs/urenmodule-basis-replacement-contract.md) en de
+  [overdracht voor de volgende ontwikkelaar](docs/urenmodule-t10-overdracht.md).
 - **De grens is niet opgerekt.** `hours_day_matrix_basis` blijft onherroepelijk. Een vervanging is één
   append-only schakel in `hours_day_matrix_basis_replacements`; de **werkende** basis is de nieuwste
   schakel, bepaald op precies één plek (`private.hours_effective_day_basis`). Geen tweede waarheid,
