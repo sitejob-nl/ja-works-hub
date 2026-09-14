@@ -13,11 +13,11 @@ bevestigde klant-/CAO-matrices inclusief pauze-, afrondings- en samenloopregels 
 het exportvoorbeeld van de payroller met uurcodes en correctieprocedure (T12, T13),
 ontvangers/verantwoordelijken per partij (T8), en de keuze van pilotklanten (T14).
 
-Stand 16-09-2026: **T1 tot en met T7 gebouwd** (migraties `20260909090000`, `20260910090000`,
-`20260911090000`, `20260912090000`, `20260913090000`, `20260915090000` en `20260916090000`).
-T8 t/m T14 nog niet gestart. **T8 is technisch vrij** — de uitvraagreferentie die hij moet meesturen
-staat er, hij hoeft hem alleen in het onderwerp te zetten — maar wacht op de klantinput over
-ontvangers en momenten. T10 was nooit geblokkeerd.
+Stand 17-09-2026: **T1 tot en met T7 en T10 gebouwd** (migraties `20260909090000`, `20260910090000`,
+`20260911090000`, `20260912090000`, `20260913090000`, `20260915090000`, `20260916090000` en
+`20260917090000`). T8, T9 en T11 t/m T14 nog niet gestart. **T8 is technisch vrij** — de
+uitvraagreferentie die hij moet meesturen staat er, hij hoeft hem alleen in het onderwerp te zetten —
+maar wacht op de klantinput over ontvangers en momenten. T9 wacht op bevestigde klantmatrices.
 
 ---
 
@@ -228,11 +228,21 @@ tegenstrijdige regels blijven blokkeren; er wordt geen CAO geraden en geen stand
 gecontroleerde procedure op een andere basis worden herberekend, met reden, actor en volledige historie.
 Zonder die procedure blijft de vastgelegde basis leidend.
 
+**Status:** gebouwd op 17 september 2026; database op productie, frontend na merge (migratie
+`20260917090000`). Overdracht voor de volgende ontwikkelaar:
+[docs/urenmodule-t10-overdracht.md](urenmodule-t10-overdracht.md). Zie verder het
+[vervangingscontract](urenmodule-basis-replacement-contract.md). De vastgelegde basis blijft
+onveranderlijk: een vervanging is een append-only schakel die de werkende basis vooruitschuift, en de
+herberekening loopt langs de bestaande vertrouwde classificatieroute. **Vrijgave bestond nog niet en is
+hier ontworpen als register, niet als route:** `hours_day_releases` is de enige plek waar een vrijgave
+mag worden vastgelegd, is leeg en heeft geen schrijfroute. T12 hoeft de blokkade niet aan te zetten —
+alleen zijn vrijgave daar te schrijven. T13 kan dezelfde rijen als uitgangspunt van een correctie nemen.
+
 **Geblokkeerd door:** niets — kan direct starten.
 
-- [ ] Vervanging vereist expliciete reden en bevoegdheid; de oude basis blijft zichtbaar
-- [ ] De oude classificaties blijven bestaan en worden niet herschreven
-- [ ] Een vervanging op een al vrijgegeven dag is geblokkeerd tot de correctieroute bestaat
+- [x] Vervanging vereist expliciete reden en bevoegdheid; de oude basis blijft zichtbaar
+- [x] De oude classificaties blijven bestaan en worden niet herschreven
+- [x] Een vervanging op een al vrijgegeven dag is geblokkeerd tot de correctieroute bestaat
 
 ---
 
@@ -259,6 +269,11 @@ blokkades en met de benodigde akkoorden kunnen mee. Tweemaal klikken levert geen
 
 **Geblokkeerd door:** T9, T11 — en het exportvoorbeeld van de payroller.
 
+**Al klaargezet door T10:** vrijgave hoort in `hours_day_releases` (één rij per vrijgegeven dagrevisie,
+`batch_id` groepeert de levering). Die tabel bestaat, is leeg en heeft geen schrijfroute; voeg er een
+vertrouwde definer-RPC aan toe. Schrijf vrijgave nergens anders: de blokkade van T10 leest uitsluitend
+dit register, en de databaseproef valt om zodra er een tweede vrijgave-achtige tabel bijkomt.
+
 - [ ] Vrijgave en export in dezelfde transactie op exact dezelfde revisies
 - [ ] Alle uurcodes gemapt; een ontbrekende code blokkeert de hele batch
 - [ ] Een identieke download is reproduceerbaar; de oude batch blijft onveranderlijk
@@ -273,6 +288,10 @@ oude export blijft ongewijzigd en herkenbaar, de correctie krijgt een eigen batc
 zien wat vervangt en wat aanvult.
 
 **Geblokkeerd door:** T12.
+
+**Raakt T10:** zodra een dag in `hours_day_releases` staat, blokkeert `hours_replace_day_matrix_basis`
+hem met `22023`. De correctieroute is de plek waar die blokkade een vervolg krijgt; hef hem niet op in
+de vervangings-RPC zelf.
 
 - [ ] Een correctie op een geëxporteerde dag kan niet stilzwijgend de oude levering aanpassen
 - [ ] Vervanging versus aanvulling volgt de met de payroller afgesproken route

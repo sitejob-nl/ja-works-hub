@@ -50,7 +50,7 @@ Expliciet null via het nieuwe volledige formulier kan broninput verwijderen, met
 
 hours_day_matrix_basis bewaart de eerste expliciet geselecteerde geldige matrix voor een urendag, inclusief register, versie, naam, scope, oorspronkelijke publicatie, effectieve definitie, de gekozen CAO-koppeling en de volledige selectiecontext.
 
-De basis hoort bij de **dag**, en blijft ook gelden voor alle latere correcties van die dag. Een nieuwe publicatie, aangepaste CAO-koppeling of gewijzigde bronrevisie kiest niet automatisch een andere matrix. Herclassificatie met een andere basis heeft een aparte expliciete procedure nodig en valt buiten deze stap. De basisrij is onveranderlijk; er bestaat geen override- of resetactie.
+De basis hoort bij de **dag**, en blijft ook gelden voor alle latere correcties van die dag. Een nieuwe publicatie, aangepaste CAO-koppeling of gewijzigde bronrevisie kiest niet automatisch een andere matrix. De basisrij is onveranderlijk; er bestaat geen override- of resetactie. Herclassificatie op een andere basis loopt sinds T10 via een aparte, expliciete procedure die deze rij niet aanraakt: zie het [vervangingscontract](urenmodule-basis-replacement-contract.md). Wat daar de werkende basis wordt, is de nieuwste schakel in `hours_day_matrix_basis_replacements`; zonder zo'n schakel blijft deze rij leidend.
 
 Bij een toepasselijke klantmatrix gaat die vóór de expliciet gekoppelde CAO. Er wordt geen andere CAO geprobeerd. Alleen gepubliceerde effectieve definities uit het eigen opdrachtgever-/CAO-bereik worden aangeboden aan de serverrekenkern. De oorspronkelijke publicatie blijft aanvullend in het auditspoor staan.
 
@@ -137,7 +137,7 @@ type ClassificationSummary = {
 };
 ~~~
 
-basis_pinned betekent dat er een blijvende basis voor deze dag bestaat. hours_get_week voegt source_input toe aan de actuele revisie en interne revisiehistorie. Iedere dag krijgt classification: ClassificationSummary|null, uitsluitend de laatste poging van de actuele revisie. Een interne historierevisie krijgt de laatste poging die precies bij die revisie hoort. Oude pogingen blijven in de auditopslag bestaan.
+basis_pinned betekent dat er een blijvende basis voor deze dag bestaat; basis_version (toegevoegd door T10) zegt welke schakel van de basisketen deze poging gebruikte. hours_get_week voegt source_input toe aan de actuele revisie en interne revisiehistorie. Iedere dag krijgt classification: ClassificationSummary|null, uitsluitend de laatste poging van de actuele revisie. Een interne historierevisie krijgt de laatste poging die precies bij die revisie hoort. Oude pogingen blijven in de auditopslag bestaan.
 
 Een portaalgebruiker ziet de eigen brongegevens, maar classification is altijd null en interne geschiedenis blijft leeg. Matrixfactoren, definities, koppelingshistorie en interne classificatiebevindingen lekken niet via die projectie of directe tabeltoegang.
 

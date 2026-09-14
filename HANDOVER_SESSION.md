@@ -1,8 +1,94 @@
-# Session handover — 2026-09-16
+# Session handover — 2026-09-17
 
 Overdracht voor wie verdergaat (Codex / Claude Code). Lees [AGENTS.md](AGENTS.md) voor harde repo-conventies +
 commands, [CLAUDE.md](CLAUDE.md) voor de canonieke codebase-diepte, [HANDOVER.md](HANDOVER.md) voor de formele
 projectsamenvatting.
+
+## Matrixbasis vervangen — 17 september 2026 (`feat/urenmodule-matrixvervanging`)
+
+- Duurzame worktree `/Users/kas/dev/ja-works-hub/.worktrees/urenmodule-matrixvervanging`, branch
+  `feat/urenmodule-matrixvervanging` vanaf `origin/main` (`192e222`, de gemergde T7-release #272). De
+  stale hoofdcheckout en alle overige worktrees zijn ongemoeid gelaten.
+- **T10 uit [docs/urenmodule-tickets.md](docs/urenmodule-tickets.md) is gebouwd** — expliciete
+  vervanging van een vastgelegde matrixbasis. Alle drie acceptatiecriteria zijn afgevinkt. Zie het
+  [vervangingscontract](docs/urenmodule-basis-replacement-contract.md) en de
+  [overdracht voor de volgende ontwikkelaar](docs/urenmodule-t10-overdracht.md).
+- **De grens is niet opgerekt.** `hours_day_matrix_basis` blijft onherroepelijk. Een vervanging is één
+  append-only schakel in `hours_day_matrix_basis_replacements`; de **werkende** basis is de nieuwste
+  schakel, bepaald op precies één plek (`private.hours_effective_day_basis`). Geen tweede waarheid,
+  geen override, geen reset.
+- **De vervanging rekent niets uit.** Herberekenen blijft `hours-classify-day`. Omdat de identiteit van
+  de vervanging in het selectiemateriaal meereist, krijgt die herberekening een eigen `context_hash` en
+  dus een eigen poging **náást** de oude — de append-only unieke sleutel botst nooit. Elke poging draagt
+  nu `basis_version`.
+- **Vrijgave bestond niet en is hier als register ontworpen, niet als route.** `hours_day_releases` is
+  de enige plek waar een vrijgave mag worden vastgelegd: leeg, zonder schrijfroute voor `anon`,
+  `authenticated` of `service_role`, met RLS, de SaaS-poort en de onveranderlijkheidstrigger.
+  `private.hours_day_released()` is de enige functie die de tabel noemt en blokkeert bij twijfel
+  (`coalesce(..., true)`). **T12 hoeft de blokkade niet aan te zetten** — alleen zijn vrijgave daar te
+  schrijven. Bouwt T12 hem ergens anders, dan valt de geërfde databaseproef om in plaats van dat de
+  blokkade stil ophoudt te werken.
+- **De reden staat in een eigen kolom** en wordt nergens letterlijk toegepast. Bewezen met een test die
+  een merktekst als reden gebruikt en daarna eist dat die tekst in precies één tabel en in geen enkele
+  snapshot voorkomt.
+- **Live:** migratie `20260917090000_hours_matrix_basis_replacement.sql` plus een index-migratie voor de
+  twee tenant-gebonden foreign keys. Er is **geen edge function gewijzigd** — `hours-classify-day` leest
+  de effectieve basis via de bestaande context. JA Werkt UIT, demo AAN, ongewijzigd en na afloop
+  opnieuw geverifieerd.
+- **Bewijs.** `scripts/hours-basis-replacement-db-test.py`: 351 tests groen, inclusief alle eerdere
+  regressies, migraties elk tweemaal toegepast, geïsoleerde container zonder netwerk. Overgeschreven
+  erfenis: poortlijst 22 → **24** tabellen, migratielijst 19 → **20**, functiesignaturen en de
+  gate-voorbereiding. Applicatiesuite 1.924 tests groen, ook zónder `.env` (zoals CI draait); lint 0
+  errors; typecheck, build en `deno check` geslaagd.
+- **Verbonden demo-QA geslaagd** (`scripts/e2e-hours-basis-demo.spec.ts` +
+  `scripts/playwright.hours-basis.config.ts`, eigen poort 8091, `PLAYWRIGHT_SKIP_WEBSERVER=1`): via de
+  echte schermen een klantmatrix en een gekoppelde CAO gepubliceerd, uren opgeslagen, geclassificeerd
+  (basisversie 0, factor 1), basis vervangen met reden, herberekend (basisversie 1, factor 2), en na
+  afloop de vastgelegde basisrij en de eerste uitkomst byte-identiek teruggelezen. Nul writes naar
+  `timesheets`, communicatie of AI-verbruik — op productie nagemeten.
+- **Reviewronde 1 (vier bevindingen, alle vier gerepareerd met een test die eerst rood stond):**
+  (1) de vervangings-RPC las de werkwijzeschakelaar niet opnieuw nadat hij het opdrachtgeversslot had
+  genomen — een uitschakeling die tussen `hours_lock_day` en de INSERT committe, werd genegeerd; nu
+  dezelfde hercontrole als in de rekencontext, bewezen door in de proef het slot vast te houden en de
+  schakelaar in die transactie om te zetten; (2) na een geslaagde vervanging zat het paneel vast in een
+  bevestiging zonder sluitknop; (3) een uitkomst met `basis_version = null` (pre-migratie, of zonder
+  matrix) werd als "basisversie 0" gelabeld; (4) de contractstatus beweerde meer dan waar was en
+  noemde een index-migratie die in de repo niet bestaat. De functiefix is ook op productie
+  aangebracht (derde MCP-migratie).
+- **Reviewronde 2 (tien bevindingen; alle gerepareerd met een test die eerst rood stond):** het
+  formulier stuurde de *verse* basisversie mee in plaats van de versie waarop het geopend was (server-CAS
+  omzeild bij een gelijktijdige vervanging); de "eerdere basis"-waarschuwing vergeleek op matrix in
+  plaats van op basisversie (A → B → A verborg een verouderde uitkomst); `basis_version` bleef `null`
+  voor een `no_hours`-uitkomst op een dag met basis; de geldigheidsvergelijking liep via
+  `work_date::text` en was dus afhankelijk van `DateStyle` (bewezen: onder `SQL, DMY` bood het scherm
+  niets aan) — nu één datumgetypeerde helper `private.hours_matrix_effective_on`; een lopende vervanging
+  blokkeerde de andere dagacties niet; opties/vervangen gooiden een rauwe `ZodError` in plaats van de
+  leesbare melding — nu `hoursWorkflowFailure()` (melding + code behouden) voor álle
+  dagcallbacks; `previous_classifications` op historierevisies was ongebruikt en kostbaar — weg;
+  de tweede `hours_effective_day_basis`-aanroep in finalize is vervangen door de contextwaarde; en de
+  bestandsversie `20260917090000` stond niet in `schema_migrations` op productie — nu wel.
+- **Reviewronde 3 (acht invalshoeken; de echte defecten gerepareerd, elk met een rode test vooraf):**
+  een geopend formulier bleef verzendbaar terwijl een andere dagactie liep; een optielijst die tegen een
+  inmiddels vervangen basis was opgehaald kon nog gebruikt worden (nu geweigerd mét behoud van de
+  ingetypte reden); een geblokkeerde uitkomst zónder matrix werd niet als verouderd gemarkeerd; een
+  ontbrekende `p_expected_basis_version` gaf `PT409` in plaats van `22023` (een herlaadlus die niets
+  oplost); een pre-migratie-uitkomst mét matrix las als "zonder vastgelegde matrixbasis" — de projectie
+  leest die nu als basis 0; en de geldigheidsregel stond nog los in `hours_validate_classification_result`
+  — die gebruikt nu dezelfde `private.hours_matrix_effective_on`, zodat wat een vervanging mag vastleggen
+  en wat de finalisatie accepteert niet kunnen divergeren. Ook het standaard bewijspad van de e2e-spec
+  wordt nu tegen het script zelf opgelost in plaats van tegen de werkmap.
+- **Bewust niet gedaan:** het ophalen van de matrixopties blijft buiten TanStack Query (eenmalige
+  lees-actie op één klik; de juistheid hangt aan de meegedragen basisversie, niet aan caching) en de
+  per-dag basisprojectie in `hours_get_week` is niet herschreven tot joins — beide staan als afweging in
+  het contract. Verdere efficiëntiesuggesties (slankere snapshots, minder indexen op het lege
+  vrijgaveregister) zijn genoteerd voor T12, die de echte toegangspaden kent.
+- **Productie versus repo:** de eindtoestand op productie is in vijf MCP-migraties aangebracht (basis,
+  indexen, ronde 1, ronde 2, ronde 3) en daarna is `20260917090000` zelf geregistreerd, zoals bij de
+  zustermigraties. De repo heeft één bestand met exact die eindtoestand; `db push` slaat het over.
+- **Restpunt van de QA:** de eerste QA-poging liet in de synthetische demo-opdrachtgever
+  `Urenmodule QA t10-202609110835` één halfafgeronde dag achter (basis vervangen, nog niet herberekend).
+  Dat is synthetische demodata in een eigen QA-bedrijf en is bewust blijven staan, net als bij eerdere
+  runs. De geslaagde run is `Urenmodule QA t10-20260911083830`.
 
 ## Screenshots bekijken, omcirkelen en schoon vastleggen — 14 september 2026
 

@@ -37,6 +37,8 @@ interface HoursRpcArguments {
   hours_confirm_day: RpcArgs<'hours_confirm_day'> & { p_decision: 'confirmed' | 'disputed' };
   hours_confirm_days: Omit<RpcArgs<'hours_confirm_days'>, 'p_revisions'> & { p_revisions: { day_id: string; revision_id: string }[] };
   hours_review_day: RpcArgs<'hours_review_day'> & { p_status: 'checked' | 'blocked' };
+  hours_get_day_matrix_options: RpcArgs<'hours_get_day_matrix_options'>;
+  hours_replace_day_matrix_basis: RpcArgs<'hours_replace_day_matrix_basis'>;
   hours_get_week_sources: RpcArgs<'hours_get_week_sources'>;
   hours_add_week_source: RpcArgs<'hours_add_week_source'>;
   hours_create_source_proposal: Omit<RpcArgs<'hours_create_source_proposal'>, 'p_source_input'> & { p_source_input: HoursSourceInput | null };
