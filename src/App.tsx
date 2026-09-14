@@ -36,6 +36,8 @@ const SuperAdminOrganizations = lazyRoute(() => import("@/pages/superadmin/Super
 const SuperAdminUsers = lazyRoute(() => import("@/pages/superadmin/SuperAdminUsers"));
 const SuperAdminPlans = lazyRoute(() => import("@/pages/superadmin/SuperAdminPlans"));
 const SuperAdminErrors = lazyRoute(() => import("@/pages/superadmin/SuperAdminErrors"));
+const SuperAdminFeedback = lazyRoute(() => import("@/pages/superadmin/SuperAdminFeedback"));
+const MyFeedback = lazyRoute(() => import("@/pages/MyFeedback"));
 const SuperAdminCvBackfill = lazyRoute(() => import("@/pages/superadmin/SuperAdminCvBackfill"));
 const Dashboard = lazyRoute(() => import("@/pages/Dashboard"));
 const NotFound = lazyRoute(() => import("./pages/NotFound"));
@@ -166,6 +168,8 @@ const App = () => (
                 <Route path="abonnementen" element={<SuperAdminPlans />} />
                 <Route path="cv-backfill" element={<SuperAdminCvBackfill />} />
                 <Route path="errors" element={<SuperAdminErrors />} />
+                <Route path="feedback" element={<SuperAdminFeedback />} />
+                <Route path="feedback/:id" element={<SuperAdminFeedback />} />
               </Route>
 
               {/* Normal app routes */}
@@ -189,6 +193,8 @@ const App = () => (
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/workbench" element={<RecruiterWorkbench />} />
                 <Route path="/taken" element={<Tasks />} />
+                <Route path="/feedback" element={<MyFeedback />} />
+                <Route path="/feedback/:id" element={<MyFeedback />} />
                 <Route path="/opdrachtgevers" element={<Companies />} />
                 <Route path="/opdrachtgevers/new" element={<CompanyNew />} />
                 <Route path="/opdrachtgevers/duplicaten" element={<DuplicateCompanies />} />

@@ -20,12 +20,14 @@ import {
   deleteVehicleAssignment,
   formatAssignedBy,
   resolveEmployeeId,
+  syncVehicleStatus,
   returnVehicleAssignment,
   vehicleAssignmentErrorMessage,
 } from '@/lib/assignments';
-import { vehicleFreeOn, vehicleNextReservation, vehiclePeriodConflict } from '@/lib/vehicle-availability';
+import { vehicleFreeOn, vehicleNextReservation, vehiclePeriodConflict, vehicleAssignedOn } from '@/lib/vehicle-availability';
 import { sendRegulationsForAssignment } from '@/lib/regulation-dispatch';
 import RegulationStatus from '@/components/shared/RegulationStatus';
+import { todayISO } from '@/lib/tasks';
 import { formatDate, formatEUR } from '@/lib/format';
 import { toast } from 'sonner';
 
@@ -56,8 +58,9 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
     ),
   });
 
-  const assignment = (assignments as any[]).find((a) => !a.returned_date) ?? null;
-  const pastAssignments = (assignments as any[]).filter((a) => a.returned_date);
+  const todayStr = todayISO();
+  const assignment = (assignments as any[]).find((a) => vehicleAssignedOn([a], todayStr)) ?? null;
+  const pastAssignments = (assignments as any[]).filter((a) => a.id !== assignment?.id);
 
   const [assignOpen, setAssignOpen] = useState(false);
   const [vehicleId, setVehicleId] = useState('');
@@ -84,7 +87,6 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
 
   // Voertuigen die vrij zijn op de toewijsdatum (of vandaag als die nog leeg is).
   // Een toekomstige datum toont voertuigen die tegen die tijd zijn ingeleverd.
-  const todayStr = new Date().toISOString().slice(0, 10);
   const effectiveDate = assignedDate || todayStr;
   const availableVehicles = (eligibleVehicles as any[]).filter((v) => vehicleFreeOn(v, effectiveDate));
 
@@ -117,6 +119,7 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
 
   const assignVehicle = useMutation({
     mutationFn: async () => {
+      if (!selectedVehicle || !assignedDate || assignBlocked) throw new Error(returnDateError || 'Controleer het voertuig en de toewijsperiode.');
       const { data: candidate, error: candErr } = await supabase.from('candidates')
         .select('id, employee_number, employee_status')
         .eq('organization_id', orgId)
@@ -135,22 +138,18 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
         created_by: user?.id ?? null,
       }).select('id').single();
       if (error) throw error;
-      // Punt 17 — een toewijzing die in de toekomst begint is een reservering: het
-      // voertuig blijft tot die datum gewoon beschikbaar. De status 'Gereserveerd'
-      // wordt afgeleid uit de datums (vehicleDisplayStatus), niet opgeslagen.
-      if (assignedDate <= new Date().toISOString().slice(0, 10)) {
-        const { error: vErr } = await supabase.from('vehicles')
-          .update({ status: 'toegewezen' as any })
-          .eq('organization_id', orgId)
-          .eq('id', vehicleId);
-        if (vErr) throw vErr;
-      }
+      await syncVehicleStatus(orgId, vehicleId);
       // Autoregels meesturen (instelbaar per reglement). Non-blocking.
-      await sendRegulationsForAssignment({ candidateId, category: 'voertuig', contextId: inserted?.id });
+      if (!returnDate || returnDate > todayStr) {
+        await sendRegulationsForAssignment({ candidateId, category: 'voertuig', contextId: inserted?.id });
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['vehicle-assignments-candidate', orgId, candidateId] });
       qc.invalidateQueries({ queryKey: ['vehicles'] });
+      qc.invalidateQueries({ queryKey: ['assignable-vehicles', orgId] });
+      qc.invalidateQueries({ queryKey: ['vehicle-assignments', vehicleId] });
+      qc.invalidateQueries({ queryKey: qk.vehicles.detail(vehicleId) });
       toast.success('Voertuig toegewezen');
       setAssignOpen(false);
       setVehicleId(''); setAssignedDate(''); setReturnDate(''); setStartMileage('');
@@ -234,7 +233,7 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
       <div className="bg-card rounded-lg border p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-medium">Huidig voertuig</h3>
-          {canAssignVehicle && !assignment && (
+          {canAssignVehicle && (
             <Button size="sm" onClick={() => setAssignOpen(true)} className="gap-1"><Plus className="h-4 w-4" /> Voertuig toewijzen</Button>
           )}
           {canAssignVehicle && assignment && (
@@ -273,7 +272,7 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
       {/* Punt 6 — eerdere voertuigen */}
       {pastAssignments.length > 0 && (
         <div className="bg-card rounded-lg border p-6">
-          <h3 className="font-medium mb-4">Eerdere voertuigen</h3>
+          <h3 className="font-medium mb-4">Eerdere en geplande voertuigen</h3>
           <Table>
             <TableHeader>
               <TableRow>
@@ -392,14 +391,15 @@ const EmployeeTransportTab = ({ candidateId }: { candidateId: string }) => {
           <SheetHeader><SheetTitle>Voertuig toewijzen</SheetTitle></SheetHeader>
           <div className="space-y-4 mt-6">
             <div>
-              <Label>Toewijsdatum *</Label>
+              <Label htmlFor="employee-assignment-start">Toewijsdatum *</Label>
               <Input
+                id="employee-assignment-start"
                 type="date"
                 value={assignedDate}
                 onChange={(e) => { setAssignedDate(e.target.value); setVehicleId(''); setReturnDate(''); }}
               />
               <p className="text-xs text-muted-foreground mt-1">
-                Standaard nu beschikbaar. Kies een toekomstige datum om voertuigen te tonen die dan vrij zijn.
+                Kies de werkelijke toewijsdatum, ook in het verleden. Je ziet voertuigen die op die datum vrij zijn.
                 {assignedDate > todayStr && ' Het voertuig komt op Gereserveerd te staan en blijft tot die datum beschikbaar.'}
               </p>
             </div>

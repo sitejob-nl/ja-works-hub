@@ -1,6 +1,7 @@
 import React, { Component, ErrorInfo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { captureAppException } from '@/lib/observability';
+import { rememberFeedbackError } from '@/lib/feedback-diagnostics';
 
 interface Props {
   children: React.ReactNode;
@@ -22,7 +23,8 @@ class ErrorBoundary extends Component<Props, State> {
     this.logError(error, info.componentStack ?? undefined);
     // Render-fouten bereiken window.onerror niet, dus apart naar Sentry forwarden
     // (no-op zonder DSN). window-/promise-fouten pakt Sentry's eigen global handler op.
-    captureAppException(error, { componentStack: info.componentStack });
+    const eventId = captureAppException(error, { componentStack: info.componentStack });
+    rememberFeedbackError(error, eventId);
   }
 
   async logError(error: Error, componentStack?: string) {
@@ -99,6 +101,7 @@ export function initGlobalErrorLogging() {
 }
 
 async function logClientError(error: Error) {
+  rememberFeedbackError(error);
   try {
     const { data: { session } } = await supabase.auth.getSession();
     let orgId: string | null = null;

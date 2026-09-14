@@ -1881,6 +1881,7 @@ export type Database = {
           email_from: string | null
           email_message_id: string | null
           email_to: string[] | null
+          feedback_report_id: string | null
           id: string
           match_id: string | null
           media_id: string | null
@@ -1912,6 +1913,7 @@ export type Database = {
           email_from?: string | null
           email_message_id?: string | null
           email_to?: string[] | null
+          feedback_report_id?: string | null
           id?: string
           match_id?: string | null
           media_id?: string | null
@@ -1943,6 +1945,7 @@ export type Database = {
           email_from?: string | null
           email_message_id?: string | null
           email_to?: string[] | null
+          feedback_report_id?: string | null
           id?: string
           match_id?: string | null
           media_id?: string | null
@@ -1979,6 +1982,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "companies"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "communications_feedback_report_fk"
+            columns: ["organization_id", "feedback_report_id"]
+            isOneToOne: false
+            referencedRelation: "feedback_reports"
+            referencedColumns: ["organization_id", "id"]
           },
           {
             foreignKeyName: "communications_match_id_fkey"
@@ -3837,6 +3847,111 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      feedback_reports: {
+        Row: {
+          created_at: string
+          description: string
+          diagnostics: Json
+          email_error_code: string | null
+          email_status: string
+          expected: string
+          has_screenshot: boolean
+          id: string
+          kind: string
+          number: number
+          organization_id: string
+          reporter_email: string
+          reporter_name: string
+          request_hash: string
+          resolution: string
+          resolution_dismissed_at: string | null
+          resolution_read_at: string | null
+          resolution_revision: number
+          resolved_at: string | null
+          resolved_by: string | null
+          screenshot_path: string | null
+          sent_at: string | null
+          status: string
+          steps: string
+          submitted_by: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description: string
+          diagnostics?: Json
+          email_error_code?: string | null
+          email_status?: string
+          expected?: string
+          has_screenshot?: boolean
+          id: string
+          kind: string
+          number?: never
+          organization_id: string
+          reporter_email: string
+          reporter_name: string
+          request_hash: string
+          resolution?: string
+          resolution_dismissed_at?: string | null
+          resolution_read_at?: string | null
+          resolution_revision?: number
+          resolved_at?: string | null
+          resolved_by?: string | null
+          screenshot_path?: string | null
+          sent_at?: string | null
+          status?: string
+          steps?: string
+          submitted_by?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          diagnostics?: Json
+          email_error_code?: string | null
+          email_status?: string
+          expected?: string
+          has_screenshot?: boolean
+          id?: string
+          kind?: string
+          number?: never
+          organization_id?: string
+          reporter_email?: string
+          reporter_name?: string
+          request_hash?: string
+          resolution?: string
+          resolution_dismissed_at?: string | null
+          resolution_read_at?: string | null
+          resolution_revision?: number
+          resolved_at?: string | null
+          resolved_by?: string | null
+          screenshot_path?: string | null
+          sent_at?: string | null
+          status?: string
+          steps?: string
+          submitted_by?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "feedback_reports_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "feedback_reports_submitted_by_fkey"
+            columns: ["submitted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -12551,6 +12666,44 @@ export type Database = {
           new_balance_cents: number
           ok: boolean
         }[]
+      }
+      create_feedback_report: {
+        Args: { p_report: Json }
+        Returns: {
+          created_at: string
+          description: string
+          diagnostics: Json
+          email_error_code: string | null
+          email_status: string
+          expected: string
+          has_screenshot: boolean
+          id: string
+          kind: string
+          number: number
+          organization_id: string
+          reporter_email: string
+          reporter_name: string
+          request_hash: string
+          resolution: string
+          resolution_dismissed_at: string | null
+          resolution_read_at: string | null
+          resolution_revision: number
+          resolved_at: string | null
+          resolved_by: string | null
+          screenshot_path: string | null
+          sent_at: string | null
+          status: string
+          steps: string
+          submitted_by: string | null
+          title: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "feedback_reports"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       create_invoice_transaction: {
         Args: {

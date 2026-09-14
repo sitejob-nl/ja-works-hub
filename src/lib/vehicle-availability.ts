@@ -74,6 +74,19 @@ export function vehiclePeriodConflict<T extends VehicleAssignmentLite>(
   );
 }
 
+/** Historische periodes zijn toegestaan; alleen ontbrekende/omgekeerde datums en overlap blokkeren. */
+export function vehicleAssignmentPeriodIssue(
+  assignments: VehicleAssignmentLite[] | null | undefined,
+  from: string,
+  until?: string | null,
+): string | null {
+  if (!from) return 'Vul een toewijsdatum in.';
+  if (until && until < from) return 'De inleverdatum ligt vóór de toewijsdatum.';
+  const conflict = vehiclePeriodConflict(assignments, from, until);
+  if (conflict) return `Deze periode overlapt een bestaande toewijzing (${conflict.assigned_date ?? 'onbekend'} t/m ${conflict.returned_date ?? 'nog niet ingeleverd'}). Vul een passende inleverdatum in of corrigeer de periode.`;
+  return null;
+}
+
 export type VehicleDisplayStatus = {
   /** Sleutel voor label/badge. 'gereserveerd' is afgeleid, geen databasewaarde. */
   key: 'beschikbaar' | 'toegewezen' | 'gereserveerd' | 'onderhoud' | 'uit_dienst' | string;

@@ -13,6 +13,7 @@ export const CANDIDATE_SOURCES: Option[] = [
   'E-mail',
   'LinkedIn',
   'Referral',
+  'Recruitmentpartner',
   'Indeed',
   'WhatsApp',
   'Meta Ads',

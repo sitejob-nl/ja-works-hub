@@ -23,7 +23,16 @@ test.describe('/transport — sortering en paginagrootte', () => {
     await expect(kenteken).toHaveAttribute('aria-sort', 'ascending');
 
     // Klik op een andere kop → sorteert daarop, kop toont de richting, URL houdt het vast.
-    await page.getByRole('button', { name: 'Bouwjaar' }).click();
+    const [descResponse] = await Promise.all([
+      page.waitForResponse((r) => {
+        const u = new URL(r.url());
+        return u.pathname.endsWith('/rest/v1/vehicles') && u.searchParams.get('order')?.startsWith('year.desc');
+      }),
+      page.getByRole('button', { name: 'Bouwjaar' }).click(),
+    ]);
+    expect(descResponse.ok()).toBe(true);
+    const descPlates = (await descResponse.json()).map((v: { license_plate: string }) => v.license_plate);
+    await expect.poll(() => plates(page)).toEqual(descPlates);
     await expect(page.getByRole('columnheader', { name: 'Bouwjaar' })).toHaveAttribute('aria-sort', 'descending');
     await expect(page).toHaveURL(/sort=year%3Adesc/);
     const jarenDesc = await page.locator('table tbody tr td:nth-child(3)').allInnerTexts();
@@ -38,8 +47,21 @@ test.describe('/transport — sortering en paginagrootte', () => {
     // Sortering geldt over de hele set, niet per pagina: de eerste rij van pagina 2
     // moet ná de laatste rij van pagina 1 komen.
     await page.getByRole('button', { name: 'Bouwjaar' }).click(); // terug naar desc
+    // De URL/kop veranderen vóór de data; React Query kan hier ook de vorige pagina
+    // tonen terwijl de nieuwe query loopt. Vergelijk pas de daadwerkelijk geladen rijen.
+    await expect.poll(() => plates(page)).toEqual(descPlates);
     const laatsteVanPagina1 = (await page.locator('table tbody tr td:nth-child(3)').allInnerTexts()).at(-1);
-    await page.getByLabel('Ga naar de volgende pagina').click();
+    const [nextResponse] = await Promise.all([
+      page.waitForResponse((r) => {
+        const u = new URL(r.url());
+        return u.pathname.endsWith('/rest/v1/vehicles') && u.searchParams.get('offset') === '10'
+          && u.searchParams.get('order')?.startsWith('year.desc');
+      }),
+      page.getByLabel('Ga naar de volgende pagina').click(),
+    ]);
+    expect(nextResponse.ok()).toBe(true);
+    const nextPlates = (await nextResponse.json()).map((v: { license_plate: string }) => v.license_plate);
+    await expect.poll(() => plates(page)).toEqual(nextPlates);
     await expect(page).toHaveURL(/page=2/);
     const eersteVanPagina2 = (await page.locator('table tbody tr td:nth-child(3)').allInnerTexts())[0];
     if (/^\d{4}$/.test(String(laatsteVanPagina1)) && /^\d{4}$/.test(String(eersteVanPagina2))) {

@@ -74,6 +74,36 @@ projectsamenvatting.
   Dat is synthetische demodata in een eigen QA-bedrijf en is bewust blijven staan, net als bij eerdere
   runs. De geslaagde run is `Urenmodule QA t10-20260911083830`.
 
+## Persoonlijke terugkoppeling bij opgeloste bugs — 14 september 2026
+
+- Vervolg op #273, branch `codex/feedback-resolution`, worktree `.worktrees/feedback-resolution`,
+  basis `d3becdd`. Opdracht: melders informeren wanneer hun bug is opgelost.
+- Superadmin kan afronden met toelichting en heropenen. De melder krijgt een persoonlijke notificatie
+  onder het belletje en leest de toelichting op `/feedback/:id`; eigen overzicht op `/feedback`.
+- Status en notificatie zijn één owner-scoped feedbackrij. Revisies beschermen tegen dubbele/stale
+  acties. Bestaande org-brede notificaties krijgen geen privéfeedback. Geen nieuwe mail-/pushsendroute.
+- Migratie `20260914093855_feedback_resolution` live toegepast, types gegenereerd en edge `feedback`
+  opnieuw uitgerold. Geen nieuwe security-advisors voor feedback.
+- QA: 1.960 unit-tests, volledige lint/typecheck/build/Deno-check en vier browserflows groen.
+  Live demo controleert echte persoonlijke API's, mobiel belletje/detail/gelezen en statushelper/DB;
+  de publieke beheeractie geeft voor demo 403. Het geblokkeerde Superadmin-QA-account blijft ongemoeid.
+  Alle fixtures verwijderd; geen mails verstuurd of organisatie-instellingen gewijzigd.
+- Details en reproduceerbare controles: [docs/feedback.md](docs/feedback.md).
+
+## Feedbackmeldingen — releasecontrole 14 september 2026 (PR #273)
+
+- Branch `codex/feedback`, worktree `.worktrees/feedback`. Gebruiker heeft QA en livegang expliciet opgedragen.
+- Bug/verbeteridee melden in de interne bovenbalk, met debugcontext en optionele gecontroleerde/zwartgemaakte
+  screenshot; vaste ontvanger `info@sitejob.nl`. Beheer via `/superadmin/feedback`.
+- Productiemigraties `20260914090151_feedback_reports` en `20260914090236_feedback_communication_index`
+  toegepast; types gegenereerd. Edge `feedback` versie 1 actief met eigen auth (`verify_jwt=false`).
+  Frontenduitrol via PR #273. Volledige technische uitleg en QA-bewijs: [docs/feedback.md](docs/feedback.md).
+- Live backend-QA met demo geslaagd, alle fixtures verwijderd en bestaande verzendinstellingen hersteld.
+  Het bewust geblokkeerde QA-superadminaccount is ongemoeid gelaten. Echte inboxontvangst is niet getest;
+  de mailer is met injecteerbare tests gecontroleerd en live QA respecteert de verzendpauze.
+- De extra browser-QA vond een race bij de beheerlogin; `SuperAdminContext` wacht nu op de rolcontrole
+  voordat de beschermde route wordt beoordeeld. Drie browserflows en de volledige quality-gate zijn groen.
+
 ## Duurzame mailinname — 16 september 2026 (`feat/urenmodule-mailinname`)
 
 - Duurzame worktree `/Users/kas/dev/ja-works-hub/.worktrees/urenmodule-mailinname`, branch
