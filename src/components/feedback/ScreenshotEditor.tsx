@@ -12,7 +12,9 @@ export default function ScreenshotEditor({ source, disabled, onChange, confirmed
   const ref = useRef<HTMLCanvasElement>(null);
   const start = useRef<{ x: number; y: number } | null>(null);
   const before = useRef<ImageData | null>(null);
-  const [redacting, setRedacting] = useState(false);
+  const [tool, setTool] = useState<'none' | 'redact' | 'circle'>('none');
+  const [undo, setUndo] = useState<string | null>(null);
+  const lastOutput = useRef<string | null>(null);
   const [exportError, setExportError] = useState('');
   useEffect(() => {
     const img = new Image();
@@ -21,6 +23,7 @@ export default function ScreenshotEditor({ source, disabled, onChange, confirmed
       if (cancelled || !ref.current) return;
       const canvas = ref.current;
       setExportError('');
+      if (source !== lastOutput.current) setUndo(null);
       canvas.width = img.width; canvas.height = img.height;
       canvas.getContext('2d')!.drawImage(img, 0, 0);
     };
@@ -36,21 +39,35 @@ export default function ScreenshotEditor({ source, disabled, onChange, confirmed
     if (!start.current || !before.current) return;
     const ctx = event.currentTarget.getContext('2d')!, end = point(event);
     ctx.putImageData(before.current, 0, 0);
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(Math.min(start.current.x, end.x), Math.min(start.current.y, end.y), Math.abs(end.x - start.current.x), Math.abs(end.y - start.current.y));
+    const x = Math.min(start.current.x, end.x), y = Math.min(start.current.y, end.y);
+    const width = Math.abs(end.x - start.current.x), height = Math.abs(end.y - start.current.y);
+    if (tool === 'circle') {
+      if (width < 1 || height < 1) return;
+      const lineWidth = Math.max(3, Math.min(event.currentTarget.width, event.currentTarget.height) / 150);
+      ctx.beginPath(); ctx.ellipse(x + width / 2, y + height / 2, width / 2, height / 2, 0, 0, Math.PI * 2);
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = lineWidth + 2; ctx.stroke();
+      ctx.strokeStyle = '#dc2626'; ctx.lineWidth = lineWidth; ctx.stroke();
+    } else {
+      ctx.fillStyle = '#000000'; ctx.fillRect(x, y, width, height);
+    }
   };
   return <div className="space-y-3 rounded-md border p-3">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <p className="text-sm font-medium">Controleer je screenshot</p>
-      <div className="flex gap-2">
-        <Button type="button" size="sm" variant={redacting ? 'default' : 'outline'} disabled={disabled} aria-pressed={redacting} onClick={() => setRedacting(!redacting)}>Zwartmaken</Button>
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" size="sm" variant={tool === 'circle' ? 'default' : 'outline'} disabled={disabled} aria-pressed={tool === 'circle'} onClick={() => setTool(tool === 'circle' ? 'none' : 'circle')}>Omcirkelen</Button>
+        <Button type="button" size="sm" variant={tool === 'redact' ? 'default' : 'outline'} disabled={disabled} aria-pressed={tool === 'redact'} onClick={() => setTool(tool === 'redact' ? 'none' : 'redact')}>Zwartmaken</Button>
+        <Button type="button" size="sm" variant="outline" disabled={disabled || !undo} onClick={() => {
+          if (!undo) return;
+          lastOutput.current = undo; onChange(undo); setUndo(null); onConfirm(false);
+        }}>Ongedaan maken</Button>
         <Button type="button" size="sm" variant="ghost" disabled={disabled} onClick={onRemove}>Verwijderen</Button>
       </div>
     </div>
-    <p className="text-xs text-muted-foreground">{redacting ? 'Sleep een vlak over gegevens die je wilt verbergen.' : 'Controleer op namen, BSN, bankgegevens en andere persoonlijke informatie.'}</p>
-    <canvas ref={ref} role="img" aria-label="Voorbeeld van het screenshot" className={`block h-auto max-h-[35vh] max-w-full border object-contain ${redacting ? 'cursor-crosshair touch-none' : ''}`}
+    <p className="text-xs text-muted-foreground">{tool === 'circle' ? 'Sleep een cirkel om het deel dat je wilt aanwijzen.' : tool === 'redact' ? 'Sleep een vlak over gegevens die je wilt verbergen.' : 'Omcirkel wat je wilt aanwijzen of maak persoonlijke gegevens zwart.'}</p>
+    <canvas ref={ref} role="img" aria-label="Voorbeeld van het screenshot" className={`block h-auto max-h-[35vh] max-w-full border object-contain ${tool !== 'none' ? 'cursor-crosshair touch-none' : ''}`}
       onPointerDown={e => {
-        if (!redacting || disabled) return;
+        if (tool === 'none' || disabled) return;
         start.current = point(e);
         const canvas = e.currentTarget;
         before.current = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height);
@@ -62,7 +79,10 @@ export default function ScreenshotEditor({ source, disabled, onChange, confirmed
         if (!start.current) return;
         draw(e); start.current = null; before.current = null;
         e.currentTarget.releasePointerCapture(e.pointerId);
-        try { onChange(screenshotDataUrl(e.currentTarget)); setExportError(''); }
+        try {
+          const image = screenshotDataUrl(e.currentTarget);
+          lastOutput.current = image; setUndo(source); onChange(image); setExportError('');
+        }
         catch { setExportError('De bewerking kon niet worden opgeslagen. Verwijder dit screenshot en kies een kleinere afbeelding.'); }
       }}
       onPointerCancel={e => {

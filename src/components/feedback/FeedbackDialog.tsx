@@ -103,6 +103,7 @@ export default function FeedbackDialog({ open, onOpenChange, diagnostics, onNewR
               <input ref={upload} type="file" accept="image/png,image/jpeg,image/webp" aria-label="Screenshot uploaden" className="sr-only" onChange={e => { const file = e.target.files?.[0]; if (file) void addImage(file); e.target.value = ''; }} />
             </div>
             <p className="text-xs text-muted-foreground">Je kunt hier ook een screenshot plakken met Ctrl+V of ⌘V.</p>
+            <p className="text-xs text-muted-foreground">Kies bij vastleggen bij voorkeur dit tabblad, zodat alleen de pagina op je screenshot staat.</p>
           </div>
         </fieldset>
         {imageBusy && <p role="status" className="text-sm">Screenshot verwerken…</p>}

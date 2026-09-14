@@ -26,17 +26,26 @@ export function screenshotDataUrl(canvas: HTMLCanvasElement): string {
 
 export async function captureFeedbackScreen(): Promise<string> {
   if (!navigator.mediaDevices?.getDisplayMedia) throw new Error('Deze browser kan het scherm niet vastleggen. Plak of upload een screenshot.');
-  const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+  // Keep this call synchronous with the click so browser user activation is retained.
+  // Prefer the current tab, which excludes native browser/OS picker windows.
+  const options: DisplayMediaStreamOptions & { preferCurrentTab: boolean } = {
+    video: { displaySurface: 'browser' }, audio: false, preferCurrentTab: true,
+  };
+  const stream = await navigator.mediaDevices.getDisplayMedia(options);
   const video = document.createElement('video');
   let timer: ReturnType<typeof setTimeout>;
+  let settleTimer: ReturnType<typeof setTimeout>;
+  let frameId: number | undefined;
   try {
     video.muted = true;
     video.srcObject = stream;
     await Promise.race([
       (async () => {
         await video.play();
-        // Wait for a decoded frame, not merely permission to capture.
-        if ('requestVideoFrameCallback' in video) await new Promise<void>(resolve => video.requestVideoFrameCallback(() => resolve()));
+        // Window/screen capture can initially contain the fading native share picker.
+        // Let that and our closing dialog settle, then request a NEW decoded frame.
+        await new Promise<void>(resolve => { settleTimer = setTimeout(resolve, 1000); });
+        if ('requestVideoFrameCallback' in video) await new Promise<void>(resolve => { frameId = video.requestVideoFrameCallback(() => resolve()); });
         else await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
       })(),
       new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('Scherm vastleggen duurde te lang. Probeer uploaden of plakken.')), 10000); }),
@@ -50,6 +59,8 @@ export async function captureFeedbackScreen(): Promise<string> {
     return screenshotDataUrl(canvas);
   } finally {
     clearTimeout(timer!);
+    clearTimeout(settleTimer!);
+    if (frameId !== undefined) video.cancelVideoFrameCallback(frameId);
     stream.getTracks().forEach(track => track.stop());
     video.pause();
     video.srcObject = null;

@@ -6,6 +6,7 @@ import { loadDefaultOrganizationSender } from '../_shared/outlook-accounts.ts';
 import { isOutboundPaused } from '../_shared/outbound-pause.ts';
 import { sendViaOutlookAccount } from '../_shared/outlook-send.ts';
 import { acknowledgeFeedback, changeFeedbackStatus, MY_FEEDBACK_COLUMNS } from './resolution.ts';
+import { readMyFeedback } from './detail.ts';
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -64,13 +65,12 @@ export async function handleFeedback(req: Request): Promise<Response> {
         if (!isFeedbackUuid(body.id) || !Number.isInteger(body.revision) || Number(body.revision) < 0 || typeof body.dismiss !== 'boolean') return jsonResponse({ error: 'Ongeldige notificatie.' }, 400, cors);
         return jsonResponse(await acknowledgeFeedback(admin, auth.userId, auth.organizationId, body.id, Number(body.revision), body.dismiss), 200, cors);
       }
-      const query = admin.from('feedback_reports').select(MY_FEEDBACK_COLUMNS).eq('submitted_by', auth.userId).eq('organization_id', auth.organizationId);
       if (body.action === 'my-detail') {
         if (!isFeedbackUuid(body.id)) return jsonResponse({ error: 'Ongeldige melding.' }, 400, cors);
-        const { data, error } = await query.eq('id', body.id).maybeSingle();
-        if (error) throw error;
-        return data ? jsonResponse({ report: data }, 200, cors) : jsonResponse({ error: 'Melding niet gevonden.' }, 404, cors);
+        const detail = await readMyFeedback(admin, auth.userId, auth.organizationId, body.id);
+        return detail ? jsonResponse(detail, 200, cors) : jsonResponse({ error: 'Melding niet gevonden.' }, 404, cors);
       }
+      const query = admin.from('feedback_reports').select(MY_FEEDBACK_COLUMNS).eq('submitted_by', auth.userId).eq('organization_id', auth.organizationId);
       if (body.action === 'my-notifications') {
         const { data, error } = await query.eq('status', 'resolved').is('resolution_dismissed_at', null).order('resolved_at', { ascending: false }).limit(50);
         if (error) throw error;
