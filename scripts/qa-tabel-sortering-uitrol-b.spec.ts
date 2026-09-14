@@ -1,4 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
+import { createClient } from '@supabase/supabase-js';
+import { randomUUID } from 'node:crypto';
 import { ensureLoggedIn, kiesPaginagrootte } from './e2e-helpers';
 
 // Browser-QA voor uitrol B van de tabelbesturing (sorteerbare kolomkoppen + paginagrootte,
@@ -281,19 +283,52 @@ test.describe('Tabelbesturing uitrol B — vacatures, plaatsingen, uren, plannin
   });
 
   test('/vacaturebank — de laatste twee lijsten met een vaste paginagrootte, deel 2', async ({ page }) => {
-    await page.goto('/vacaturebank');
-    await expect(rijen(page).first()).toBeVisible();
+    // Deze lijst kan in de demo leeg zijn. Eigen records maken de controle onafhankelijk
+    // van imports, die externe diensten zouden aanroepen.
+    const org = process.env.DEMO_ORG_ID;
+    expect(org).toBe('6dedabe4-f62c-479e-b5fc-ebfcb824d76f');
+    const db = createClient(process.env.VITE_SUPABASE_URL!, process.env.VITE_SUPABASE_PUBLISHABLE_KEY!, { auth: { persistSession: false } });
+    const { data: auth, error: authError } = await db.auth.signInWithPassword({
+      email: process.env.DEMO_ORG_EMAIL!, password: process.env.DEMO_ORG_PASSWORD!,
+    });
+    if (authError) throw authError;
+    const { data: profile, error: profileError } = await db.from('profiles').select('organization_id').eq('id', auth.user!.id).single();
+    if (profileError) throw profileError;
+    expect(profile.organization_id).toBe(org);
+    const marker = 'QA-vacaturebank-' + randomUUID();
+    const failures: unknown[] = [];
+    try {
+      const { error } = await db.from('job_listings').insert(Array.from({ length: 25 }, (_, i) => ({
+        organization_id: org, external_id: marker + '-' + i, organization_name: marker,
+        title: marker + ' functie ' + (25 - i), city: ['Eindhoven', 'Venlo', 'Tilburg'][i % 3],
+        country: 'NL', date_posted: '2026-01-01',
+      })));
+      if (error) throw error;
+      await page.goto('/vacaturebank');
+      await page.getByPlaceholder('Zoek op titel, bedrijf of stad...').fill(marker);
+      await expect(rijen(page)).toHaveCount(20);
+      await kiesPaginagrootte(page, '10');
+      await expect(rijen(page)).toHaveCount(10);
 
-    await expect(kopstatus(page, 'Datum')).toHaveAttribute('aria-sort', 'descending');
+      await expect(kopstatus(page, 'Datum')).toHaveAttribute('aria-sort', 'descending');
 
-    await klikKop(page, 'Titel');
-    await expect(kopstatus(page, 'Titel')).toHaveAttribute('aria-sort', 'ascending');
-    await expect.poll(async () => gesorteerd(await kolom(page, 'Titel'), 'asc')).toBe(true);
+      await klikKop(page, 'Titel');
+      await expect(kopstatus(page, 'Titel')).toHaveAttribute('aria-sort', 'ascending');
+      await expect.poll(async () => gesorteerd(await kolom(page, 'Titel'), 'asc')).toBe(true);
 
-    await klikKop(page, 'Locatie');
-    await expect.poll(async () => gesorteerd(await kolom(page, 'Locatie'), 'asc')).toBe(true);
+      await klikKop(page, 'Locatie');
+      await expect.poll(async () => gesorteerd(await kolom(page, 'Locatie'), 'asc')).toBe(true);
 
-    await kiesPaginagrootte(page, '50');
-    await expect(page).toHaveURL(/per=50/);
+      await kiesPaginagrootte(page, '50');
+      await expect(page).toHaveURL(/per=50/);
+      await expect(rijen(page)).toHaveCount(25);
+    } catch (error) {
+      failures.push(error);
+    } finally {
+      const { error } = await db.from('job_listings').delete().eq('organization_id', org).eq('organization_name', marker);
+      if (error) failures.push(error);
+      await db.auth.signOut({ scope: 'local' });
+    }
+    if (failures.length) throw new AggregateError(failures, 'Vacaturebank-QA of opruimen mislukt');
   });
 });

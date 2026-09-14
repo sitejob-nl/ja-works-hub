@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Car, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { lookupRdw, normalizeRdwFuel, yearFromRdwDate } from '@/lib/rdw';
+import { formatLicensePlate, requireLicensePlate, LICENSE_PLATE_HINT } from '@/lib/license-plate';
 
 const fuelTypes = ['benzine', 'diesel', 'elektrisch', 'hybride', 'lpg'];
 
@@ -32,7 +33,7 @@ const VehicleNew = () => {
     onSuccess: (data) => {
       setForm((f) => ({
         ...f,
-        license_plate: data.license_plate || f.license_plate,
+        license_plate: formatLicensePlate(data.license_plate || f.license_plate) ?? f.license_plate,
         brand: data.brand ?? f.brand,
         model: data.model ?? f.model,
         year: yearFromRdwDate(data.first_registration)?.toString() ?? f.year,
@@ -51,7 +52,7 @@ const VehicleNew = () => {
     mutationFn: async () => {
       const payload = {
         organization_id: orgId,
-        license_plate: form.license_plate.toUpperCase(),
+        license_plate: requireLicensePlate(form.license_plate),
         brand: form.brand || null,
         model: form.model || null,
         year: form.year ? parseInt(form.year) : null,
@@ -91,13 +92,17 @@ const VehicleNew = () => {
       <div className="bg-card rounded-lg border p-6 max-w-3xl">
         <div className="space-y-5">
           <div className="space-y-1.5">
-            <Label>Kenteken *</Label>
+            <Label htmlFor="license-plate">Kenteken *</Label>
             <div className="flex items-center gap-2 max-w-md">
-              <Input value={form.license_plate} onChange={(e) => set('license_plate', e.target.value.toUpperCase())} className="max-w-xs" />
-              <Button type="button" variant="outline" size="sm" disabled={!form.license_plate || rdwLookup.isPending} onClick={() => rdwLookup.mutate(form.license_plate)}>
+              <Input id="license-plate" value={form.license_plate}
+                onChange={(e) => set('license_plate', e.target.value.toUpperCase())}
+                onBlur={() => set('license_plate', formatLicensePlate(form.license_plate) ?? form.license_plate)}
+                placeholder="2-TLH-29" aria-describedby="license-plate-help" className="max-w-xs" />
+              <Button type="button" variant="outline" size="sm" disabled={!formatLicensePlate(form.license_plate) || rdwLookup.isPending} onClick={() => rdwLookup.mutate(form.license_plate)}>
                 <Car className="h-3.5 w-3.5 mr-1" />{rdwLookup.isPending ? 'Ophalen...' : 'RDW Ophalen'}
               </Button>
             </div>
+            <p id="license-plate-help" className="text-xs text-muted-foreground">{LICENSE_PLATE_HINT}</p>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5"><Label>Merk</Label><Input value={form.brand} onChange={(e) => set('brand', e.target.value)} /></div>
@@ -146,7 +151,7 @@ const VehicleNew = () => {
 
           <div className="flex justify-end gap-3 pt-4 border-t">
             <Button variant="ghost" onClick={() => navigate('/transport')}>Annuleren</Button>
-            <Button onClick={() => mutation.mutate()} disabled={!form.license_plate || mutation.isPending}>
+            <Button onClick={() => mutation.mutate()} disabled={!formatLicensePlate(form.license_plate) || mutation.isPending}>
               {mutation.isPending ? 'Opslaan...' : 'Voertuig aanmaken'}
             </Button>
           </div>
