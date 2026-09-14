@@ -22,6 +22,7 @@ async function openFeedback(page: Page) {
 test('bug screenshot is reviewed, redacted and sent with technical context', async ({ page }) => {
   let submitted: any;
   await page.route('**/functions/v1/feedback', async route => {
+    if (route.request().postDataJSON().action === 'my-notifications') { await route.fulfill({ json: { reports: [] } }); return; }
     submitted = route.request().postDataJSON().report;
     await route.fulfill({ json: { id: submitted.id, number: 123, email_status: 'sent', screenshot_path: 'private/test.png', has_screenshot: true } });
   });
@@ -66,6 +67,7 @@ test('mobile idea survives a lost response and retry reuses the identical payloa
   await page.setViewportSize({ width: 390, height: 844 });
   const attempts: any[] = [];
   await page.route('**/functions/v1/feedback', async route => {
+    if (route.request().postDataJSON().action === 'my-notifications') { await route.fulfill({ json: { reports: [] } }); return; }
     attempts.push(route.request().postDataJSON().report);
     if (attempts.length === 1) await route.abort('failed');
     else await route.fulfill({ json: { id: attempts[0].id, number: 124, email_status: 'paused', screenshot_path: null, has_screenshot: false } });

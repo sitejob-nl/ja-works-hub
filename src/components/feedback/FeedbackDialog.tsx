@@ -1,5 +1,6 @@
 import { useRef, useState, type FormEvent } from 'react';
 import { useMutation } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { Camera, Upload, Loader2, CheckCircle2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -69,8 +70,9 @@ export default function FeedbackDialog({ open, onOpenChange, diagnostics, onNewR
     }}>
       <DialogHeader>
         <DialogTitle>Bug of idee melden</DialogTitle>
-        <DialogDescription>Je melding gaat naar SiteJob via info@sitejob.nl. Beschrijf kort wat er speelt.</DialogDescription>
+        <DialogDescription>Je melding gaat naar SiteJob via info@sitejob.nl. Bij afronden krijg je een persoonlijke notificatie in het systeem.</DialogDescription>
       </DialogHeader>
+      <Link to="/feedback" className="text-sm underline" onClick={() => onOpenChange(false)}>Mijn meldingen en terugkoppeling</Link>
       {receipt ? <div className="space-y-4" role="status">
         <CheckCircle2 className="h-8 w-8 text-primary" />
         <p>{feedbackReceiptMessage(receipt)}</p>
