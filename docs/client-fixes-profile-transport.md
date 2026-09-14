@@ -18,8 +18,12 @@ Werkmap: `/Users/kas/dev/ja-works-hub/.worktrees/codex-client-fixes`.
 - Volledige quality-gate: lint (geen errors; bestaande warnings), typecheck, productiebuild en Vitest.
 - Deno-typecheck van `onboarding-submit`.
 - Gerichte componenttests met gemockte data voor historische toewijzing, verwijderen, onboardingantwoorden en boetebevestiging.
-- Live alleen metadata/configuratie gelezen: formulierkoppelingen, documenttype, kolommen en toewijzingstriggers.
-- Geen productiegegevens gewijzigd en geen berichten verzonden. Geen live browser-E2E in deze ronde.
+- Browser-QA op 14 september 2026: negen scenario's met echte tijdelijke records in de demo-organisatie. Kenteken aanmaken/bewerken, historie vanaf beide schermen, verwijderen met annuleren/bevestigen, boetestatus op beide schermen, documenttype, sorteren/pagineren en onboarding inclusief een geweigerde database-write.
+- Vijftien aanvullende tabelscenario's geslaagd voor kandidaten, medewerkers, opdrachtgevers, contacten, vacatures, plaatsingen, uren, planning, talentpools, communicatie, vacaturebank en transport. De transporttest wacht op de geladen rijen; de vacaturebanktest maakt en verwijdert eigen demo-vacatures.
+- De nieuwe `onboarding-submit` draait voor de pre-release-QA lokaal onder Deno tegen de echte database. Browserrequests worden doorgestuurd naar die handler; responses en databasewrites zijn niet gemockt.
+- De tests ruimen hun eigen records op en herstellen de voorafgaande communicatie-instelling. Uitgaande e-mail/WhatsApp staat alleen in de demo-organisatie tijdens de fixturetests op pauze; er worden geen berichten verstuurd.
+- Reproduceerbare suite: `npx playwright test --config=playwright.client-release.config.ts`. Vereist demo-credentials (`DEMO_ORG_*`, daarnaast `TEST_EMAIL`/`TEST_PASSWORD` voor de browserlogin), `VITE_SUPABASE_URL` en `VITE_SUPABASE_PUBLISHABLE_KEY`. `E2E_BASE_URL` kiest de frontend; optioneel `QA_LOCAL_EDGE` kiest de lokale onboardinghandler. Zonder die override gaat onboarding naar de productie-edge.
+- QA-screenshots en een opruimjournaal blijven onder de genegeerde map `scripts/.qa/`; geen credentials of testtokens in git.
 
 ## Release
 
