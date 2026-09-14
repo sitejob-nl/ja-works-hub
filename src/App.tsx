@@ -37,6 +37,7 @@ const SuperAdminUsers = lazyRoute(() => import("@/pages/superadmin/SuperAdminUse
 const SuperAdminPlans = lazyRoute(() => import("@/pages/superadmin/SuperAdminPlans"));
 const SuperAdminErrors = lazyRoute(() => import("@/pages/superadmin/SuperAdminErrors"));
 const SuperAdminFeedback = lazyRoute(() => import("@/pages/superadmin/SuperAdminFeedback"));
+const MyFeedback = lazyRoute(() => import("@/pages/MyFeedback"));
 const SuperAdminCvBackfill = lazyRoute(() => import("@/pages/superadmin/SuperAdminCvBackfill"));
 const Dashboard = lazyRoute(() => import("@/pages/Dashboard"));
 const NotFound = lazyRoute(() => import("./pages/NotFound"));
@@ -192,6 +193,8 @@ const App = () => (
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/workbench" element={<RecruiterWorkbench />} />
                 <Route path="/taken" element={<Tasks />} />
+                <Route path="/feedback" element={<MyFeedback />} />
+                <Route path="/feedback/:id" element={<MyFeedback />} />
                 <Route path="/opdrachtgevers" element={<Companies />} />
                 <Route path="/opdrachtgevers/new" element={<CompanyNew />} />
                 <Route path="/opdrachtgevers/duplicaten" element={<DuplicateCompanies />} />

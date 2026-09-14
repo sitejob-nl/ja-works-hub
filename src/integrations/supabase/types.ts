@@ -3867,8 +3867,15 @@ export type Database = {
           reporter_email: string
           reporter_name: string
           request_hash: string
+          resolution: string
+          resolution_dismissed_at: string | null
+          resolution_read_at: string | null
+          resolution_revision: number
+          resolved_at: string | null
+          resolved_by: string | null
           screenshot_path: string | null
           sent_at: string | null
+          status: string
           steps: string
           submitted_by: string | null
           title: string
@@ -3889,8 +3896,15 @@ export type Database = {
           reporter_email: string
           reporter_name: string
           request_hash: string
+          resolution?: string
+          resolution_dismissed_at?: string | null
+          resolution_read_at?: string | null
+          resolution_revision?: number
+          resolved_at?: string | null
+          resolved_by?: string | null
           screenshot_path?: string | null
           sent_at?: string | null
+          status?: string
           steps?: string
           submitted_by?: string | null
           title: string
@@ -3911,8 +3925,15 @@ export type Database = {
           reporter_email?: string
           reporter_name?: string
           request_hash?: string
+          resolution?: string
+          resolution_dismissed_at?: string | null
+          resolution_read_at?: string | null
+          resolution_revision?: number
+          resolved_at?: string | null
+          resolved_by?: string | null
           screenshot_path?: string | null
           sent_at?: string | null
+          status?: string
           steps?: string
           submitted_by?: string | null
           title?: string
@@ -12663,8 +12684,15 @@ export type Database = {
           reporter_email: string
           reporter_name: string
           request_hash: string
+          resolution: string
+          resolution_dismissed_at: string | null
+          resolution_read_at: string | null
+          resolution_revision: number
+          resolved_at: string | null
+          resolved_by: string | null
           screenshot_path: string | null
           sent_at: string | null
+          status: string
           steps: string
           submitted_by: string | null
           title: string

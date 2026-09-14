@@ -4,6 +4,7 @@ export const MAX_SCREENSHOT_BYTES = 2 * 1024 * 1024;
 export const MAX_SCREENSHOT_EDGE = 2560;
 export const INTERNAL_FEEDBACK_ROLES = ['admin', 'intercedent', 'backoffice', 'finance'] as const;
 export type FeedbackKind = 'bug' | 'idea';
+export type FeedbackStatus = 'open' | 'resolved';
 export type FeedbackEmailStatus = 'pending' | 'preparing' | 'sending' | 'sent' | 'paused' | 'failed' | 'unknown';
 export interface FeedbackError { at: string; name: string; message: string; stack: string; eventId?: string }
 export interface FeedbackDiagnostics {
@@ -23,6 +24,19 @@ export interface FeedbackReport extends FeedbackReceipt {
   reporter_name: string; reporter_email: string; organization_id: string;
   submitted_by: string; created_at: string; diagnostics: FeedbackDiagnostics;
   email_error_code: string | null;
+  status: FeedbackStatus; resolution: string; resolved_at: string | null; resolved_by: string | null;
+  resolution_revision: number; resolution_read_at: string | null; resolution_dismissed_at: string | null;
+}
+
+export type MyFeedbackReport = Pick<FeedbackReport, 'id' | 'number' | 'kind' | 'title' | 'description' | 'steps' | 'expected' | 'created_at' | 'status' | 'resolution' | 'resolved_at' | 'resolution_revision' | 'resolution_read_at' | 'resolution_dismissed_at'>;
+export function feedbackStatusLabel(report: { status?: FeedbackStatus; kind: FeedbackKind }): string {
+  return report.status === 'resolved' ? (report.kind === 'bug' ? 'Opgelost' : 'Doorgevoerd') : 'Open';
+}
+export function validateFeedbackResolution(body: Record<string, unknown>) {
+  if (!isFeedbackUuid(body.id) || !Number.isInteger(body.revision) || Number(body.revision) < 0) throw new Error('Ververs de melding en probeer opnieuw.');
+  if (body.status !== 'open' && body.status !== 'resolved') throw new Error('Ongeldige status.');
+  if (typeof body.resolution !== 'string' || body.resolution.length > 2000) throw new Error('Toelichting: maximaal 2000 tekens.');
+  return { id: body.id, revision: Number(body.revision), status: body.status, resolution: body.status === 'resolved' ? body.resolution.trim() : '' };
 }
 
 export function isFeedbackUuid(value: unknown): value is string {

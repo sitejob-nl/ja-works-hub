@@ -7,6 +7,7 @@ const docker = (...args) => execFileSync('docker', args, { encoding: 'utf8', std
 const bootstrap = `
 create role anon; create role authenticated; create role service_role bypassrls;
 create schema auth; create schema storage;
+create table auth.users (id uuid primary key);
 create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
 grant usage on schema public,auth to authenticated,anon,service_role;
 create table organizations (id uuid primary key);
@@ -24,7 +25,7 @@ insert into profiles values
 ('33333333-3333-4333-8333-333333333333','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','medewerker',true),
 ('44444444-4444-4444-8444-444444444444','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','finance',true);
 `;
-const migration = ['20260914090151_feedback_reports.sql', '20260914090236_feedback_communication_index.sql']
+const migration = ['20260914090151_feedback_reports.sql', '20260914090236_feedback_communication_index.sql', '20260914093855_feedback_resolution.sql']
   .map(name => readFileSync(new URL(`../supabase/migrations/${name}`, import.meta.url), 'utf8')).join('\n');
 const checks = `
 create function pg_temp.assert(ok boolean, label text) returns void language plpgsql as $$ begin if ok is distinct from true then raise exception 'FAIL: %',label; end if; end $$;
@@ -39,6 +40,12 @@ select * from create_feedback_report('{
 "submitted_by":"11111111-1111-4111-8111-111111111111","request_hash":"hash"}');
 reset role;
 select pg_temp.assert((select count(*)=1 from feedback_reports),'idempotent insert');
+update feedback_reports set status='resolved', resolution='Opgelost voor de melder', resolved_at=now(), resolution_revision=1;
+select pg_temp.assert((select count(*)=1 from feedback_reports where status='resolved' and resolution_dismissed_at is null),'resolution is its notification');
+do $$ begin
+  update feedback_reports set status='open';
+  raise exception 'FAIL inconsistent resolution timestamp';
+exception when check_violation then null; end $$;
 do $$ begin
   perform create_feedback_report('{"id":"aaaaaaaa-0000-4000-8000-000000000001","organization_id":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb","submitted_by":"22222222-2222-4222-8222-222222222222","request_hash":"hash"}');
   raise exception 'FAIL cross-tenant ID reuse';

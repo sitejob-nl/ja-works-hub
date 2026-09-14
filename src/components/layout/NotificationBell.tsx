@@ -15,6 +15,10 @@ import {
 } from '@/components/ui/popover';
 import { formatRelativeTime } from '@/lib/format';
 import { toast } from 'sonner';
+import { useFeedbackNotifications } from '@/hooks/useFeedbackNotifications';
+import { useAuth } from '@/contexts/AuthContext';
+import { unwrap, unwrapList } from '@/lib/db';
+import { qk } from '@/lib/query-keys';
 
 const severityConfig: Record<string, { icon: typeof Info; className: string }> = {
   info: { icon: Info, className: 'text-stat-blue bg-stat-blue/10' },
@@ -42,6 +46,7 @@ const typeToCategory: Record<string, string> = {
   verzuim_langdurig: 'overig',
   verjaardag: 'overig',
   overig: 'overig',
+  feedback_resolved: 'overig',
 };
 
 // Map een notificatie naar de detailpagina van de betrokken entiteit.
@@ -64,6 +69,7 @@ function notificationLink(n: {
 }): string | null {
   if (n.type === 'uren_openstaand') return '/uren';
   if (n.reference_table && n.reference_id) {
+    if (n.reference_table === 'feedback_reports') return `/feedback/${n.reference_id}`;
     const entity = REFERENCE_TABLE_TO_ENTITY[n.reference_table];
     if (entity) return entityPath(entity, n.reference_id) || null;
   }
@@ -78,21 +84,32 @@ const NotificationBell = () => {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState('alle');
+  const { user, profile } = useAuth();
+  const notificationKey = qk.notifications.list(profile?.organization_id ?? '', user?.id ?? '');
+  const feedback = useFeedbackNotifications(open);
 
-  const { data: notifications = [] } = useQuery({
-    queryKey: ['notifications'],
-    queryFn: async () => {
-      const { data, error } = await supabase
+  const { data: organizationNotifications = [] } = useQuery({
+    queryKey: notificationKey,
+    enabled: !!user && !!profile?.organization_id,
+    queryFn: () => unwrapList(supabase
         .from('employee_notifications')
         .select('*')
+        .eq('organization_id', profile!.organization_id)
         .eq('is_dismissed', false)
         .order('created_at', { ascending: false })
-        .limit(50);
-      if (error) throw error;
-      return data ?? [];
-    },
+        .limit(50)),
     refetchInterval: 60000,
   });
+  const notifications = [
+    ...organizationNotifications.map(n => ({ ...n, feedback_revision: undefined as number | undefined })),
+    ...feedback.reports.map(report => ({
+      id: report.id, type: 'feedback_resolved', severity: 'info', is_read: !!report.resolution_read_at,
+      title: report.kind === 'bug' ? `Bug #${report.number} is opgelost` : `Verbeteridee #${report.number} is doorgevoerd`,
+      message: `${report.title}${report.resolution ? ` — ${report.resolution}` : ''}`,
+      reference_table: 'feedback_reports', reference_id: report.id, created_at: report.resolved_at!,
+      feedback_revision: report.resolution_revision,
+    })),
+  ].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
 
   const unreadCount = notifications.filter((n) => !n.is_read).length;
 
@@ -101,26 +118,20 @@ const NotificationBell = () => {
     : notifications.filter((n) => typeToCategory[n.type] === filter);
 
   const markRead = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase
+    mutationFn: (id: string) => unwrap(supabase
         .from('employee_notifications')
         .update({ is_read: true, read_at: new Date().toISOString() })
-        .eq('id', id);
-      if (error) throw error;
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
+        .eq('id', id)),
+    onSuccess: () => qc.invalidateQueries({ queryKey: notificationKey }),
   });
 
   const dismiss = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase
+    mutationFn: (id: string) => unwrap(supabase
         .from('employee_notifications')
         .update({ is_dismissed: true })
-        .eq('id', id);
-      if (error) throw error;
-    },
+        .eq('id', id)),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['notifications'] });
+      qc.invalidateQueries({ queryKey: notificationKey });
       toast.success('Notificatie verwijderd');
     },
   });
@@ -128,7 +139,7 @@ const NotificationBell = () => {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button className="relative p-2 rounded-md hover:bg-secondary transition-colors">
+        <button aria-label="Notificaties" className="relative p-2 rounded-md hover:bg-secondary transition-colors">
           <Bell className="h-4 w-4 text-muted-foreground" />
           {unreadCount > 0 && (
             <span className="absolute -top-0.5 -right-0.5 h-4 min-w-[16px] px-1 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center">
@@ -137,7 +148,7 @@ const NotificationBell = () => {
           )}
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-[380px] p-0" align="end">
+      <PopoverContent className="w-[380px] max-w-[calc(100vw-2rem)] p-0" align="end">
         <div className="p-3 border-b">
           <h3 className="font-semibold text-sm">Notificaties</h3>
         </div>
@@ -151,6 +162,7 @@ const NotificationBell = () => {
             ))}
           </TabsList>
         </Tabs>
+        {feedback.error && <p className="px-3 pt-2 text-xs text-destructive" role="alert">Terugkoppelingen laden lukt niet. <button className="underline" onClick={() => void feedback.refetch()}>Opnieuw proberen</button></p>}
 
         <ScrollArea className="h-[350px]">
           {filtered.length === 0 ? (
@@ -163,8 +175,13 @@ const NotificationBell = () => {
                 const sev = severityConfig[n.severity ?? 'info'] ?? severityConfig.info;
                 const SevIcon = sev.icon;
                 const link = notificationLink(n);
+                const acknowledge = (dismissed: boolean) => {
+                  if (n.feedback_revision !== undefined) feedback.acknowledge({ id: n.id, revision: n.feedback_revision, dismiss: dismissed });
+                  else if (dismissed) dismiss.mutate(n.id);
+                  else markRead.mutate(n.id);
+                };
                 const openNotification = () => {
-                  if (!n.is_read) markRead.mutate(n.id);
+                  if (!n.is_read) acknowledge(false);
                   if (link) {
                     setOpen(false);
                     navigate(link);
@@ -200,7 +217,7 @@ const NotificationBell = () => {
                           variant="ghost"
                           size="icon"
                           className="h-6 w-6"
-                          onClick={() => markRead.mutate(n.id)}
+                          onClick={() => acknowledge(false)}
                           title="Markeer als gelezen"
                         >
                           <Check className="h-3 w-3" />
@@ -210,7 +227,7 @@ const NotificationBell = () => {
                         variant="ghost"
                         size="icon"
                         className="h-6 w-6 text-muted-foreground"
-                        onClick={() => dismiss.mutate(n.id)}
+                        onClick={() => acknowledge(true)}
                         title="Verwijderen"
                       >
                         <X className="h-3 w-3" />

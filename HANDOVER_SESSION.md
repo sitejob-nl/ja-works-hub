@@ -4,6 +4,22 @@ Overdracht voor wie verdergaat (Codex / Claude Code). Lees [AGENTS.md](AGENTS.md
 commands, [CLAUDE.md](CLAUDE.md) voor de canonieke codebase-diepte, [HANDOVER.md](HANDOVER.md) voor de formele
 projectsamenvatting.
 
+## Persoonlijke terugkoppeling bij opgeloste bugs — 14 september 2026
+
+- Vervolg op #273, branch `codex/feedback-resolution`, worktree `.worktrees/feedback-resolution`,
+  basis `d3becdd`. Opdracht: melders informeren wanneer hun bug is opgelost.
+- Superadmin kan afronden met toelichting en heropenen. De melder krijgt een persoonlijke notificatie
+  onder het belletje en leest de toelichting op `/feedback/:id`; eigen overzicht op `/feedback`.
+- Status en notificatie zijn één owner-scoped feedbackrij. Revisies beschermen tegen dubbele/stale
+  acties. Bestaande org-brede notificaties krijgen geen privéfeedback. Geen nieuwe mail-/pushsendroute.
+- Migratie `20260914093855_feedback_resolution` live toegepast, types gegenereerd en edge `feedback`
+  opnieuw uitgerold. Geen nieuwe security-advisors voor feedback.
+- QA: 1.960 unit-tests, volledige lint/typecheck/build/Deno-check en vier browserflows groen.
+  Live demo controleert echte persoonlijke API's, mobiel belletje/detail/gelezen en statushelper/DB;
+  de publieke beheeractie geeft voor demo 403. Het geblokkeerde Superadmin-QA-account blijft ongemoeid.
+  Alle fixtures verwijderd; geen mails verstuurd of organisatie-instellingen gewijzigd.
+- Details en reproduceerbare controles: [docs/feedback.md](docs/feedback.md).
+
 ## Feedbackmeldingen — releasecontrole 14 september 2026 (PR #273)
 
 - Branch `codex/feedback`, worktree `.worktrees/feedback`. Gebruiker heeft QA en livegang expliciet opgedragen.

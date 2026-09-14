@@ -8,7 +8,8 @@ import { toFriendlyError } from '@/lib/errorMessages';
 import PageHeader from '@/components/layout/PageHeader';
 import ErrorState from '@/components/shared/ErrorState';
 import { Button } from '@/components/ui/button';
-import { feedbackReceiptMessage, type FeedbackReport, type FeedbackReceipt } from '../../../supabase/functions/_shared/feedback-contract';
+import { feedbackReceiptMessage, feedbackStatusLabel, type FeedbackReport, type FeedbackReceipt } from '../../../supabase/functions/_shared/feedback-contract';
+import FeedbackResolutionEditor from '@/components/feedback/FeedbackResolutionEditor';
 
 const deliveryLabels: Record<string, string> = {
   pending: 'Wacht op verzending', preparing: 'Wordt voorbereid', sending: 'Verzending gestart',
@@ -45,6 +46,7 @@ export default function SuperAdminFeedback() {
     {report && <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-4 space-y-4">
       <div><p className="text-xs text-zinc-400">{report.kind === 'bug' ? 'Bug' : 'Verbeteridee'} · {new Date(report.created_at).toLocaleString('nl-NL')}</p><h2 className="text-xl font-semibold break-words">{report.title}</h2></div>
       <p className="text-sm">{report.reporter_name} · <a className="underline" href={`mailto:${report.reporter_email}`}>{report.reporter_email}</a></p>
+      <FeedbackResolutionEditor key={`${report.id}:${report.resolution_revision}`} report={report} />
       <p className="text-sm">{deliveryLabels[report.email_status]}</p>
       {report.email_error_code && <p className="text-xs text-zinc-400">{report.email_error_code}</p>}
       {['pending', 'failed', 'paused'].includes(report.email_status) && (!report.has_screenshot || report.screenshot_path) &&
@@ -60,6 +62,7 @@ export default function SuperAdminFeedback() {
       <div className="rounded-lg border border-zinc-700 divide-y divide-zinc-700">
         {list.data.reports.map(item => <Link key={item.id} to={`/superadmin/feedback/${item.id}`} className="block p-4 hover:bg-zinc-900 focus-visible:outline focus-visible:outline-2">
           <p className="font-medium break-words">#{item.number} · {item.title}</p>
+          <p className="text-xs mt-1">{feedbackStatusLabel(item)}</p>
           <p className="text-xs text-zinc-400 mt-1">{item.kind === 'bug' ? 'Bug' : 'Verbeteridee'} · {item.reporter_name} · {new Date(item.created_at).toLocaleString('nl-NL')}</p>
           <p className="text-xs mt-1">{deliveryLabels[item.email_status]}</p>
         </Link>)}

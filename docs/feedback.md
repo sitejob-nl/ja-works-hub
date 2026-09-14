@@ -42,8 +42,46 @@ voorbereiding mislukte vóór een mailpoging; opnieuw proberen is veilig. `sendi
 automatisch opnieuw verstuurd: een provider-timeout kan betekenen dat de mail toch verzonden is. SiteJob
 ziet zulke meldingen in **Superadmin → Bugs & ideeën** en kan de mailbox controleren. Een afgebroken
 edge-runtime kan een melding in `preparing` of `sending` achterlaten; inspecteer die handmatig voordat de
-status wordt vrijgegeven. Er is in deze eerste versie geen cron voor automatische mailretries en geen
-workflow voor productstatussen zoals 'in behandeling' of 'opgelost'. Meldingen blijven wel bewaard.
+status wordt vrijgegeven. Er is geen cron voor automatische mailretries. De bezorgstatus van de e-mail
+staat los van de hieronder beschreven behandelstatus; meldingen blijven bewaard.
+
+## Oplossen en de melder informeren
+
+SiteJob kan in **Superadmin → Bugs & ideeën → melding** kiezen voor **Oplossen en melder informeren**
+(bij een idee: **Doorvoeren en melder informeren**), met optioneel een toelichting van maximaal 2.000 tekens.
+De melding krijgt status `resolved`, een datum, de behandelaar en een revisienummer.
+
+De melder krijgt een persoonlijke terugkoppeling onder het notificatiebelletje. Klikken opent
+`/feedback/:id` met de oorspronkelijke melding en de uitleg van SiteJob. Vanuit het meldformulier leidt
+**Mijn meldingen en terugkoppeling** naar `/feedback`. Alleen de actieve interne eigenaar heeft toegang;
+dit breidt de portalrollen niet uit. De bel haalt persoonlijke berichten elke 30 seconden en bij openen op.
+Dit is een melding in de app; er wordt bij oplossen geen e-mail of browser-push verstuurd.
+
+De opgeloste feedbackrij zelf is de notificatie: status en bericht bestaan in één database-write.
+`resolution_read_at` en `resolution_dismissed_at` bewaren gelezen/verwijderd voor deze melder. Er komt geen
+rij in het organisatiebrede `employee_notifications`, zodat collega's geen privéfeedback zien.
+Een herhaalde statusactie verandert geen tijdstip en maakt een gelezen bericht niet opnieuw ongelezen.
+Optimistische revisiecontrole voorkomt dat een oude retry een later heropende melding opnieuw sluit,
+of dat een oud gelezen/verwijderd-verzoek een nieuwere terugkoppeling wegwerkt.
+
+**Melding heropenen** zet de status terug naar `open` en trekt de bijbehorende afgerond-notificatie in.
+Opnieuw afronden geeft een nieuwe revisie en een nieuw ongelezen bericht. Deze compacte workflow bewaart
+de huidige status en laatste toelichting; er is geen aparte behandelgeschiedenis.
+
+Migratie `20260914093855_feedback_resolution.sql` voegt de velden en indexen toe; bestaande RLS en het
+verbod op directe browserwrites blijven gelden. Edge action `set-status` is alleen voor Superadmin.
+`mine`, `my-detail`, `my-notifications` en `acknowledge` gebruiken organisatie en gebruiker uit de geverifieerde
+sessie. Persoonlijke query-caches zijn per organisatie en gebruiker gescheiden.
+
+De regressietest `src/test/feedback-resolution.test.ts` test dubbele acties, ownership, heropenen en stale
+revisies. `scripts/e2e-feedback-resolution.spec.ts` bewijst de beheerknop en mobiele notificatieflow met
+onderschepte beheerreacties. `scripts/test-feedback-resolution-live.mjs` heeft expliciete opt-in via
+`RUN_LIVE_FEEDBACK_QA=1`: hij maakt alleen een tijdelijke eigen demo-melding, test de statushelper met een
+serviceclient tegen de echte DB, en controleert de gedeployde lees-/acknowledgement-routes. Met
+`E2E_BASE_URL` controleert hij ook het echte mobiele belletje en de detailpagina. De publieke beheerroute
+moet voor demo `403` geven. Het bewust geblokkeerde QA-superadminaccount wordt nooit geactiveerd; deze test
+is geen positieve HTTP-login-/autorisatietest voor Superadmin. Er gaat geen mail uit en de fixture wordt
+in `finally` verwijderd.
 
 ## Implementatie en livegang
 

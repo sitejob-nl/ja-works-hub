@@ -16,10 +16,16 @@
  * This is intentionally partial: extend per domain as call sites are migrated.
  */
 export const qk = {
+  notifications: {
+    list: (orgId: string, userId: string) => ['notifications', orgId, userId] as const,
+  },
   feedback: {
     all: (userId: string) => ['feedback', userId] as const,
     list: (userId: string, page: number) => ['feedback', userId, 'list', page] as const,
     detail: (userId: string, id: string) => ['feedback', userId, 'detail', id] as const,
+    mine: (userId: string, page: number) => ['feedback', userId, 'mine', page] as const,
+    myDetail: (userId: string, id: string) => ['feedback', userId, 'my-detail', id] as const,
+    notifications: (userId: string) => ['feedback', userId, 'notifications'] as const,
   },
   hoursModule: {
     all: () => ['hours-module-access'] as const,

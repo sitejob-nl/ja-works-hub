@@ -1,10 +1,11 @@
 import { createAdminClient, jsonResponse, requireInternalProfile } from '../_shared/auth.ts';
-import { decodeFeedbackScreenshot, FEEDBACK_RECIPIENT, isFeedbackUuid, validateFeedbackInput, type FeedbackReport } from '../_shared/feedback-contract.ts';
+import { decodeFeedbackScreenshot, FEEDBACK_RECIPIENT, isFeedbackUuid, validateFeedbackInput, validateFeedbackResolution, type FeedbackReport } from '../_shared/feedback-contract.ts';
 import { deliverFeedback } from './delivery.ts';
 import { loadBrandTheme } from '../_shared/email-layout.ts';
 import { loadDefaultOrganizationSender } from '../_shared/outlook-accounts.ts';
 import { isOutboundPaused } from '../_shared/outbound-pause.ts';
 import { sendViaOutlookAccount } from '../_shared/outlook-send.ts';
+import { acknowledgeFeedback, changeFeedbackStatus, MY_FEEDBACK_COLUMNS } from './resolution.ts';
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -40,7 +41,7 @@ async function requireSuperadmin(req: Request, admin: ReturnType<typeof createAd
   const { data, error } = await admin.auth.getUser(bearer);
   if (error || !data.user) return false;
   const result = await admin.from('superadmins').select('id').eq('user_id', data.user.id).maybeSingle();
-  return !result.error && !!result.data;
+  return !result.error && result.data ? data.user.id : null;
 }
 
 export async function handleFeedback(req: Request): Promise<Response> {
@@ -56,12 +57,46 @@ export async function handleFeedback(req: Request): Promise<Response> {
   const deliveryDeps = { loadBrandTheme, loadDefaultOrganizationSender, isOutboundPaused, sendViaOutlookAccount, appUrl: Deno.env.get('APP_URL') };
 
   try {
-    if (body.action === 'list' || body.action === 'detail' || body.action === 'retry') {
-      if (!await requireSuperadmin(req, admin)) return jsonResponse({ error: 'Alleen toegankelijk voor SiteJob.' }, 403, cors);
+    if (['mine', 'my-detail', 'my-notifications', 'acknowledge'].includes(String(body.action))) {
+      const auth = await requireInternalProfile(req, cors);
+      if (auth instanceof Response) return auth;
+      if (body.action === 'acknowledge') {
+        if (!isFeedbackUuid(body.id) || !Number.isInteger(body.revision) || Number(body.revision) < 0 || typeof body.dismiss !== 'boolean') return jsonResponse({ error: 'Ongeldige notificatie.' }, 400, cors);
+        return jsonResponse(await acknowledgeFeedback(admin, auth.userId, auth.organizationId, body.id, Number(body.revision), body.dismiss), 200, cors);
+      }
+      const query = admin.from('feedback_reports').select(MY_FEEDBACK_COLUMNS).eq('submitted_by', auth.userId).eq('organization_id', auth.organizationId);
+      if (body.action === 'my-detail') {
+        if (!isFeedbackUuid(body.id)) return jsonResponse({ error: 'Ongeldige melding.' }, 400, cors);
+        const { data, error } = await query.eq('id', body.id).maybeSingle();
+        if (error) throw error;
+        return data ? jsonResponse({ report: data }, 200, cors) : jsonResponse({ error: 'Melding niet gevonden.' }, 404, cors);
+      }
+      if (body.action === 'my-notifications') {
+        const { data, error } = await query.eq('status', 'resolved').is('resolution_dismissed_at', null).order('resolved_at', { ascending: false }).limit(50);
+        if (error) throw error;
+        return jsonResponse({ reports: data }, 200, cors);
+      }
+      const page = Number.isInteger(body.page) && Number(body.page) >= 0 ? Math.min(Number(body.page), 10000) : 0;
+      const { data, error } = await query.order('created_at', { ascending: false }).range(page * 50, page * 50 + 49);
+      if (error) throw error;
+      return jsonResponse({ reports: data }, 200, cors);
+    }
+
+    if (body.action === 'list' || body.action === 'detail' || body.action === 'retry' || body.action === 'set-status') {
+      const superadminId = await requireSuperadmin(req, admin);
+      if (!superadminId) return jsonResponse({ error: 'Alleen toegankelijk voor SiteJob.' }, 403, cors);
+      if (body.action === 'set-status') {
+        try { validateFeedbackResolution(body); }
+        catch (error) { return jsonResponse({ error: (error as Error).message }, 400, cors); }
+        const result = await changeFeedbackStatus(admin, superadminId, body);
+        if (!result) return jsonResponse({ error: 'Melding niet gevonden.' }, 404, cors);
+        if ('conflict' in result) return jsonResponse({ error: 'De melding is intussen gewijzigd. Ververs de melding.' }, 409, cors);
+        return jsonResponse({ status: result.report.status, resolution_revision: result.report.resolution_revision, changed: result.changed }, 200, cors);
+      }
       if (body.action === 'list') {
         const page = Number.isInteger(body.page) && Number(body.page) >= 0 ? Math.min(Number(body.page), 10000) : 0;
         const { data, error } = await admin.from('feedback_reports')
-          .select('id,number,kind,title,reporter_name,reporter_email,organization_id,created_at,email_status,has_screenshot')
+          .select('id,number,kind,title,reporter_name,reporter_email,organization_id,created_at,email_status,has_screenshot,status')
           .order('created_at', { ascending: false }).range(page * 50, page * 50 + 49);
         if (error) throw error;
         return jsonResponse({ reports: data }, 200, cors);
