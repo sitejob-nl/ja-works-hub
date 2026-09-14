@@ -39,6 +39,10 @@ De rij draagt daarnaast twee velden die **T8 invult** en T7 alleen leest:
 | `conversation_id` | T8, na verzending | Graph's eigen gesprek-id, als derde vangnet |
 | `recipients` | T8, bij verzending | Aan wie de uitvraag ging; verbreedt wie als afzender wordt herkend |
 
+**Stand 18-09-2026: T8 doet dit.** `hours_outbox_record_sent` vult de drie velden bij het **eerste**
+bericht aan de opdrachtgever en laat ze daarna met rust — `hours_request_guard` bevriest ze immers zodra
+`sent_at` staat. Een latere herinnering verzet het anker dus niet.
+
 T8 hoeft dus alleen: een rij aanmaken (of de bestaande van deze week pakken), de code in het
 onderwerp zetten, en na verzending die drie velden bijwerken. De hele herkenning aan de
 ontvangstkant staat er al.

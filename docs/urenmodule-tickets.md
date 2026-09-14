@@ -13,11 +13,12 @@ bevestigde klant-/CAO-matrices inclusief pauze-, afrondings- en samenloopregels 
 het exportvoorbeeld van de payroller met uurcodes en correctieprocedure (T12, T13),
 ontvangers/verantwoordelijken per partij (T8), en de keuze van pilotklanten (T14).
 
-Stand 17-09-2026: **T1 tot en met T7 en T10 gebouwd** (migraties `20260909090000`, `20260910090000`,
-`20260911090000`, `20260912090000`, `20260913090000`, `20260915090000`, `20260916090000` en
-`20260917090000`). T8, T9 en T11 t/m T14 nog niet gestart. **T8 is technisch vrij** — de
-uitvraagreferentie die hij moet meesturen staat er, hij hoeft hem alleen in het onderwerp te zetten —
-maar wacht op de klantinput over ontvangers en momenten. T9 wacht op bevestigde klantmatrices.
+Stand 18-09-2026: **T1 tot en met T8 en T10 gebouwd** (migraties `20260909090000`, `20260910090000`,
+`20260911090000`, `20260912090000`, `20260913090000`, `20260915090000`, `20260916090000`,
+`20260917090000` en `20260918090000`). T9 en T11 t/m T14 nog niet gestart. **T8 is gebouwd als
+instelbare module en staat leeg**: de klantinput over ontvangers en momenten is nu invoer in het
+scherm `/uren/uitgaand` in plaats van code, en zolang die ontbreekt verstuurt de module niets.
+T9 wacht op bevestigde klantmatrices. **T11 is hiermee vrij.**
 
 ---
 
@@ -196,13 +197,22 @@ welk tijdstip of ten opzichte van welke deadline. Herinneringen gaan alleen naar
 iets ontbreekt. Correctie- en navraagmails blijven concept tot expliciete goedkeuring; een ingestelde
 verzendtijd omzeilt die goedkeuring niet. De bestaande kill-switch voor uitgaande communicatie geldt.
 
+**Status:** gebouwd op 18 september 2026, **nog niet uitgerold**. Zie het
+[outboxcontract](urenmodule-outbox-contract.md). De planner bestond al —
+`_shared/hours-schedule.ts` beslist sinds de eerste release wat er uitgaat en wanneer, maar was nergens
+op aangesloten. Dit ticket bouwt de andere helft: `hours_mail_profiles` (de regelvorm van de planner
+letterlijk bewaard), `hours_mail_templates`, `hours_outbox_messages`, twaalf RPC's en edge function
+`hours-outbox` met een cron elke vijf minuten. **De module gaat leeg live:** zonder ingevuld
+mailprofiel gaat er niets uit, dus de klantinput hieronder is invoer in het scherm en geen code meer.
+Deadlinetaken worden bewust geweigerd — die horen bij T11.
+
 **Geblokkeerd door:** T6.
 
-- [ ] Twee opdrachtgevers met verschillende schema's krijgen hun berichten op de juiste momenten
-- [ ] Een uitgeschakelde berichtsoort verstuurt niets
-- [ ] Een concept wordt pas verzonden na expliciete goedkeuring; gewijzigde bronrevisie ongeldigt het
-- [ ] Een herhaalde cron-run verstuurt niets dubbel; provider-5xx leidt niet tot ongecontroleerde retry
-- [ ] Bij actieve outbound-pauze wordt als concept gelogd, niet stil weggegooid
+- [x] Twee opdrachtgevers met verschillende schema's krijgen hun berichten op de juiste momenten
+- [x] Een uitgeschakelde berichtsoort verstuurt niets
+- [x] Een concept wordt pas verzonden na expliciete goedkeuring; gewijzigde bronrevisie ongeldigt het
+- [x] Een herhaalde cron-run verstuurt niets dubbel; provider-5xx leidt niet tot ongecontroleerde retry
+- [x] Bij actieve outbound-pauze wordt als concept gelogd, niet stil weggegooid
 
 ---
 
@@ -253,7 +263,12 @@ akkoorden, open punten, deadline, verantwoordelijke en status; doorklikken toont
 Filters op actie vereist, wachten op medewerker, klaar voor vrijgave en eigen dossiers. De aantallen
 komen van de server, zodat selectie en vervolgacties de volledige bedoelde set dekken.
 
-**Geblokkeerd door:** T2, T8.
+**Geblokkeerd door:** T2, T8 — beide gebouwd, dus dit ticket kan starten.
+
+**Al klaargezet door T8:** de twee deadlinetaken van de planner (`submission_deadline`,
+`approval_deadline`) zijn bewust **niet** in de outbox opgenomen; `hours_save_mail_profile` weigert ze
+met een melding die naar dit ticket wijst. Een verstreken deadline hoort een taak bij de
+verantwoordelijke te worden, en dat is hier.
 
 - [ ] Server-side aantallen; geen telling over alleen de zichtbare pagina
 - [ ] Een verstreken deadline maakt open punten rood en levert een taak bij de verantwoordelijke

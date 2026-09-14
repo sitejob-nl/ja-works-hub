@@ -24,8 +24,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > [bouwstand](docs/urenmodule-bouw.md), [weekcontract](docs/urenmodule-db-contract.md),
 > [matrixcontract](docs/urenmodule-matrix-contract.md), [classificatiecontract](docs/urenmodule-classification-contract.md),
 > [innamecontract](docs/urenmodule-intake-contract.md), [uitleescontract](docs/urenmodule-scan-reading.md),
-> [mailinnamecontract](docs/urenmodule-mail-intake.md) en
-> [vervangingscontract](docs/urenmodule-basis-replacement-contract.md).
+> [mailinnamecontract](docs/urenmodule-mail-intake.md),
+> [vervangingscontract](docs/urenmodule-basis-replacement-contract.md) en
+> [outboxcontract](docs/urenmodule-outbox-contract.md).
 > De resterende bouw staat als tickets met
 > blokkades in [docs/urenmodule-tickets.md](docs/urenmodule-tickets.md).
 > **Broninname (09-09-, 10-09- en 11-09-migratie):** een geüpload urenbriefje, een paginatoewijzing en het
@@ -85,6 +86,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > heeft geen schrijfroute; `private.hours_day_released()` is de enige functie die het noemt en
 > blokkeert bij twijfel. Zie het [vervangingscontract](docs/urenmodule-basis-replacement-contract.md)
 > en de [overdracht](docs/urenmodule-t10-overdracht.md).
+> **Uitgaande urenmail (18-09-migratie, nog niet uitgerold):** de planner `_shared/hours-schedule.ts`
+> bestond al en beslist wát er uitgaat en wannéér; T8 sluit hem aan. `hours_mail_profiles` bewaart per
+> opdrachtgever **de regelvorm van de planner zelf**, letterlijk, zodat er geen tweede dialect is;
+> `hours_mail_templates` houdt de woorden per taal; `hours_outbox_messages` is de duurzame outbox met
+> de `dedupKey` van de planner als unieke sleutel — dát is het hele verhaal tegen dubbel versturen, plus
+> een trigger die een verzonden rij onveranderlijk maakt. **Een verzendtijd omzeilt nooit een
+> goedkeuring:** `approval_required` kan de CHECK `status <> 'gereed'` niet passeren, en `goedgekeurd` is
+> alleen bereikbaar via `hours_approve_outbox_message`, dat de inhoudsvingerafdruk **én** de bronrevisie
+> meekrijgt die de goedkeurder zag. Verschuift de bronrevisie, dan vervalt de goedkeuring bij de volgende
+> planning. De twee deadlinetaken van de planner worden bewust **geweigerd** — die horen bij T11. De
+> enige uitgang is `_shared/outlook-send.ts`, dus de kill-switch logt een geblokkeerd bericht als concept
+> in `communications` en de outbox geeft de poging terug in plaats van hem op te eten. Die sender heeft
+> er één additieve stand bij: `captureIdentifiers` maakt het bericht eerst aan zodat Graph
+> `internetMessageId` en `conversationId` teruggeeft — nodig om `hours_week_requests` de antwoorddraad te
+> laten leren. Zie het [outboxcontract](docs/urenmodule-outbox-contract.md).
 > Het aparte SaaS-recht `uren-workflow` is opt-in en geldt voor routes, RPC's en directe tabellezing;
 > legacy `uren` of een abonnement geeft dit recht niet. Zie [modulecontract](docs/urenmodule-organization-gate.md).
 > De backend is atomisch uitgerold op 8 september: JA Werkt UIT, geverifieerde demo AAN.
@@ -343,6 +359,7 @@ Canonical in [src/integrations/supabase/types.ts](src/integrations/supabase/type
 | `30 2 * * *` | housing-reminder daily | `housing-reminder-cron` |
 | `45 2 * * *` | vehicle-APK daily | `check-vehicle-apk` |
 | `*/15 * * * *` | urenmail ophalen | `hours-mail-intake` |
+| `*/5 * * * *` | uitgaande urenmail | `hours-outbox` (na uitrol) |
 
 ### Public (verify_jwt = false)
 
@@ -431,6 +448,7 @@ Canonical in [src/integrations/supabase/types.ts](src/integrations/supabase/type
 | `analyze-cv-batch` | **Backfill** voor bestaande kandidaten: select document/CV + notes/context → pseudonimiseer dossier → VPS. Superadmin-auth, throttle 1.5s/dossier |
 | `refresh-talentpool-members` | **Dynamische talentpools**: past `filter_criteria` toe + diff vs huidige leden. Single-mode (user-JWT) of cron-mode (`x-cron-secret`) |
 | `hours-mail-intake` | Haalt antwoorden op de urenuitvraag uit de gekoppelde Outlook-postbus en maakt er bron + voorstel van. Cron (`x-cron-secret`) of handmatig (`finance.manage`). **Strikt lezend** en **nooit betaald**; koppeling via `hours_week_requests`, alles wat niet sluit gaat zichtbaar naar de controlebak |
+| `hours-outbox` | Plant en verstuurt de uitgaande urenmail. Cron (`x-cron-secret`) of handmatig (`finance.manage`). Plannen doet de bestaande pure planner; verzenden loopt zonder uitzondering via `_shared/outlook-send.ts`, dus de kill-switch logt een geblokkeerd bericht als concept. Een ingestelde verzendtijd omzeilt nooit een vereiste goedkeuring |
 | `hours-read-scan` | Leest een gescand of gefotografeerd urenbriefje uit tot invoervoorstellen. Self-auth (`finance.manage`); de browser stuurt alleen een bron-id, de database levert het opslagpad. Eén betaalde Gemini-aanroep via `_shared/ai-accounting.ts` (feature `hours_scan_reading`), met een claim in `hours_source_readings` als single-flight en AVG-spoor. Schrijft geen uren: de uitlezing komt terug ter beoordeling |
 | `validate-timesheets` | AI validation of timesheet entries (6 rules) |
 | `recruiter-priorities` | Calculate recruiter task priorities |

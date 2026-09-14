@@ -12,7 +12,10 @@ CREATE TABLE public.organizations (
 );
 CREATE TABLE public.profiles (
   id uuid PRIMARY KEY, organization_id uuid REFERENCES public.organizations(id),
-  role public.user_role NOT NULL, is_active boolean NOT NULL DEFAULT true
+  role public.user_role NOT NULL, is_active boolean NOT NULL DEFAULT true,
+  -- Nullable here, NOT NULL in production. The outgoing hours mail resolves an
+  -- internal recipient to an address, so the shape has to be present to test it.
+  email text, full_name text
 );
 CREATE TABLE public.superadmins (user_id uuid PRIMARY KEY);
 CREATE TABLE public.user_permission_overrides (
@@ -25,7 +28,10 @@ CREATE TABLE public.candidates (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL REFERENCES public.organizations(id),
   auth_user_id uuid, first_name text NOT NULL DEFAULT 'Synthetic',
-  last_name text NOT NULL DEFAULT 'Worker'
+  last_name text NOT NULL DEFAULT 'Worker',
+  -- Nullable in production too; an employee without an address is simply not a
+  -- recipient, which is exactly what the resolver has to prove.
+  email text
 );
 CREATE TABLE public.companies (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

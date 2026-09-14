@@ -330,6 +330,15 @@ verify_jwt = false
 [functions.hours-mail-intake]
 verify_jwt = false
 
+# Uitgaande urenmail: mailprofielen, deadlines en de outbox met conceptgoedkeuring.
+# Zelfde twee ingangen als de mailinname. Plannen gebeurt met de bestaande pure
+# planner (_shared/hours-schedule.ts); verzenden loopt zonder uitzondering via
+# _shared/outlook-send.ts, zodat de kill-switch een geblokkeerd bericht als
+# concept in communications logt in plaats van het stil weg te gooien. Een
+# ingestelde verzendtijd omzeilt nooit een vereiste goedkeuring.
+[functions.hours-outbox]
+verify_jwt = false
+
 # Publieke klantweekpagina (token-based, geen login). Service-role validatie in de
 # database: gehasht token met scope op één klantweek, geldigheidsduur en
 # intrekbaarheid, plus IP-rate-limit via hours_client_link_attempts — zoals
