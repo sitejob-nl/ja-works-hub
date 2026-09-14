@@ -116,6 +116,15 @@ geweigerd: dat zijn mensen die iemand gekozen heeft, geen verzameling.
 - **Een tekst verzinnen.** Zonder `hours_mail_templates`-rij voor de gekozen `templateId` + taal landt het
   bericht als concept met `ontbrekende_tekst`. Er is geen ingebouwde standaardtekst.
 
+## Een onleesbare regel blijft niet stil
+
+Wat de planner van een regel niet kan lezen komt als `issues` terug. `hours_outbox_sync` schrijft die op
+het profiel (`last_issues`, `last_planned_at`) en het scherm toont ze boven de regels. Dat is nodig omdat
+zo'n regel **nergens anders zichtbaar** wordt: hij levert geen actie op, dus er komt ook geen rij in de
+outbox waar iemand hem zou tegenkomen. Een regel die stilletjes nooit vuurt is de vervelendste soort
+instellingsfout. Opslaan van nieuwe regels wist de lijst — die klachten gingen over regels die er niet
+meer zijn, en ze komen vanzelf terug als ze nog gelden.
+
 ## Publieke RPC's
 
 | RPC | Rol | Resultaat |
@@ -130,6 +139,16 @@ geweigerd: dat zijn mensen die iemand gekozen heeft, geen verzameling.
 Zes verdere RPC's (`hours_outbox_due_weeks`, `_sync`, `_claim`, `_record_sent`, `_record_failure`,
 `_release`) zijn **alleen voor `service_role`** en worden uitsluitend door edge function `hours-outbox`
 aangeroepen. `anon` heeft op geen van de twaalf `EXECUTE`.
+
+## Een begrensde run die niemand overslaat
+
+Een run plant hoogstens vijfentwintig weken en verstuurt hoogstens tien berichten — een cron die nooit
+klaar is, is een cron die nooit draait. Maar een vaste volgorde zou betekenen dat alles voorbij die grens
+**nooit** aan de beurt komt; dat is precies de verhongering die de mailinname bij T7 moest repareren.
+`hours_outbox_due_weeks` sorteert daarom op de opdrachtgever die het langst niet gepland is
+(`hours_mail_profiles.last_planned_at`, lege waarden eerst), en binnen een opdrachtgever op de vroegste
+deadline. Bij het verzenden speelt het niet: een verstuurd bericht verlaat de verzameling, en een bericht
+dat blijft mislukken valt na vijf pogingen uit.
 
 ## Statussen
 

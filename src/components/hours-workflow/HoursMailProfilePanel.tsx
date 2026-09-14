@@ -233,6 +233,15 @@ export function HoursMailProfilePanel({ profile, recipients, onSave, onReload }:
   }
 
   return <section className="space-y-4" aria-label="Mailprofiel">
+    {profile.last_issues.length > 0 && <Alert variant="destructive"><AlertDescription>
+      <p>De laatste planning kon deze instelling niet uitvoeren; zolang dat zo is verstuurt die regel niets:</p>
+      <ul className="mt-2 list-disc pl-5">
+        {profile.last_issues.map(issue => <li key={`${issue.scope}:${issue.code}`}>
+          <span data-no-translate="true">{issue.scope}</span>: {issue.message}
+        </li>)}
+      </ul>
+    </AlertDescription></Alert>}
+
     {parsed.unreadable > 0 && <Alert variant="destructive"><AlertDescription>
       {parsed.unreadable === 1
         ? 'Eén opgeslagen berichtregel is niet leesbaar door dit scherm en wordt bij opslaan verwijderd.'

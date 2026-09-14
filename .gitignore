@@ -61,3 +61,7 @@ scripts/.qa-*.png
 
 # TypeScript incremental build cache
 *.tsbuildinfo
+
+# Python bytecode from the database proofs in scripts/
+__pycache__/
+*.pyc

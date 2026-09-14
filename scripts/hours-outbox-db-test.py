@@ -228,6 +228,33 @@ class OutboxTests(basis.BasisReplacementTests):
         self.assertEqual(weeks[self.company]["config"]["rules"][0]["at"]["weekday"], 1)
         self.assertEqual(weeks[second_company]["config"]["rules"][0]["at"]["weekday"], 3)
 
+    def test_a_bounded_run_rotates_instead_of_starving_the_same_clients(self):
+        """A fixed order would mean everything past the bound is never planned."""
+        first, _ = self.prepared_week()
+        second_company = str(uuid.uuid4())
+        sql(f"""INSERT INTO public.companies(id,organization_id) VALUES
+          ({literal(second_company)},{literal(self.org)});""")
+        candidate = str(uuid.uuid4())
+        sql(f"""INSERT INTO public.candidates(id,organization_id) VALUES
+          ({literal(candidate)},{literal(self.org)});""")
+        self.add_placement(candidate=candidate, company=second_company)
+        current = rpc("hours_get_company_settings", user=self.admin, p_company_id=second_company)
+        rpc("hours_set_company_settings", user=self.admin, p_company_id=second_company,
+            p_expected_version=current["version"], p_enabled=True, p_submission_day_offset=8,
+            p_submission_time="10:00", p_confirmation_day_offset=9, p_confirmation_time="12:00")
+        rpc("hours_create_week", user=self.admin, p_company_id=second_company, p_week_start="2026-09-07")
+        self.profile([rule(recipients=[self.client_contact(company=second_company)])],
+                     company=second_company)
+        seen = set()
+        for _ in range(2):
+            batch = self.due(org=self.org, limit=1)
+            self.assertEqual(len(batch), 1)
+            seen.add(batch[0]["company_id"])
+            # Planning is what marks a client as recently seen.
+            self.sync(batch[0]["week_id"], [])
+        self.assertEqual(seen, {self.company, second_company},
+                         "A second pass has to reach the client the first one could not")
+
     def test_the_payload_resolves_only_recipients_of_this_client_and_this_tenant(self):
         week, contact = self.prepared_week()
         stranger = self.client_contact(company=self.other_company, org=self.other_org)
@@ -392,6 +419,23 @@ class OutboxTests(basis.BasisReplacementTests):
         self.reject("hours_approve_outbox_message", code="22023", user=self.admin, p_id=row["id"],
                     p_expected_content_hash=row["content_hash"],
                     p_expected_source_revision=row["source_revision"])
+
+    def test_what_the_planner_could_not_read_is_written_back_where_people_look(self):
+        """A rule that silently never fires is the worst configuration bug."""
+        week, _ = self.prepared_week()
+        issues = [{"scope": "klant-uitvraag", "code": "missing_template",
+                   "message": "Kies een template en taal voor deze mail."}]
+        rpc("hours_outbox_sync", role="service_role", p_week_id=week["id"],
+            p_actions=[], p_issues=issues)
+        profile = rpc("hours_get_mail_profile", user=self.admin, p_company_id=self.company)
+        self.assertEqual(profile["last_issues"], issues)
+        self.assertIsNotNone(profile["last_planned_at"])
+        # Saving new rules clears complaints about rules that no longer exist.
+        contact = self.client_contact()
+        self.profile([rule(recipients=[contact])])
+        fresh = rpc("hours_get_mail_profile", user=self.admin, p_company_id=self.company)
+        self.assertEqual(fresh["last_issues"], [])
+        self.assertIsNone(fresh["last_planned_at"])
 
     # --- sending -----------------------------------------------------------
 
@@ -650,6 +694,22 @@ class OutboxModuleGateTests(basis.BasisModuleGateTests):
         # dictionary against every public hours_% function and fails when one is
         # missing, which is exactly how a new route cannot slip past the gate.
         placeholder = str(uuid.uuid4())
+        # A real, claimed message. The three RPCs below check the claim before the
+        # module gate - they have to, because a row they cannot find has no
+        # organisation whose gate could be read - so a made-up id would answer
+        # PT409 and prove nothing about the gate at all.
+        rpc("hours_outbox_sync", role="service_role", p_week_id=week_id, p_issues=[], p_actions=[{
+            "dedup_key": f"hours:v1:gate-send:{uuid.uuid4()}", "rule_id": "klant-uitvraag",
+            "mail_type": "hours_request", "party": "customer", "recipient_id": contact,
+            "channel": "email", "scheduled_at": "2026-09-14T07:00:00Z",
+            "effective_at": "2026-09-14T07:00:00Z", "status": "due", "reason": None,
+            "approval_required": False, "subject": "Gate", "body_html": "<p>Gate</p>",
+            "recipients": ["gate-planner@klant.invalid"], "company_contact_id": contact,
+            "candidate_id": None, "content_hash": "gate-send", "request_id": None, "issue": None}])
+        claimed = rpc("hours_outbox_claim", role="service_role", p_limit=1, p_lease_seconds=900,
+                      p_organization_id=self.org)
+        held = claimed["messages"][0]["id"]
+        token = claimed["claim_token"]
         calls["hours_get_mail_profile"] = dict(p_company_id=company)
         calls["hours_save_mail_profile"] = dict(
             p_company_id=company, p_expected_version=1, p_rules=[rule(recipients=[contact])],
@@ -665,11 +725,11 @@ class OutboxModuleGateTests(basis.BasisModuleGateTests):
         calls["hours_outbox_claim"] = dict(
             p_limit=1, p_lease_seconds=300, p_organization_id=self.org)
         calls["hours_outbox_record_sent"] = dict(
-            p_id=placeholder, p_claim_token=placeholder, p_outbound_message_id="<gate@ja.invalid>",
+            p_id=held, p_claim_token=token, p_outbound_message_id="<gate@ja.invalid>",
             p_conversation_id=None, p_recipients=["gate-planner@klant.invalid"])
         calls["hours_outbox_record_failure"] = dict(
-            p_id=placeholder, p_claim_token=placeholder, p_kind="permanent", p_error="gate")
-        calls["hours_outbox_release"] = dict(p_id=placeholder, p_claim_token=placeholder)
+            p_id=held, p_claim_token=token, p_kind="permanent", p_error="gate")
+        calls["hours_outbox_release"] = dict(p_id=held, p_claim_token=token)
         return day, calls
 
     def test_every_workflow_rpc_rejects_both_disabled_and_missing_flag(self):
@@ -811,7 +871,7 @@ def main():
     database = sql("SELECT version();")
     classes = [OutboxTests] if args.new_only else [
         OutboxFoundationRegression, gate.EnabledClassificationRegression,
-        OutboxModuleGateTests, basis.BasisReplacementTests, OutboxTests]
+        OutboxModuleGateTests, OutboxTests]
     suite = unittest.TestSuite(unittest.defaultTestLoader.loadTestsFromTestCase(cls) for cls in classes)
     identifiers = [test.id() for group in suite for test in group]
     started = time.monotonic()

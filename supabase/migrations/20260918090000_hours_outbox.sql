@@ -45,9 +45,19 @@ create table if not exists public.hours_mail_profiles (
     check (late_approval_window_minutes between 1 and 20160),
   rules jsonb not null default '[]'::jsonb
     check (jsonb_typeof(rules) = 'array' and jsonb_array_length(rules) <= 50),
+  -- What the planner could not read, written back by the last run. A rule that
+  -- is invalid simply never fires, and a silent never-fires is the worst kind of
+  -- configuration bug: this is how the office gets to see it.
+  last_issues jsonb not null default '[]'::jsonb
+    check (jsonb_typeof(last_issues) = 'array' and jsonb_array_length(last_issues) <= 50),
+  last_planned_at timestamptz,
   updated_by uuid not null references public.profiles(id),
   updated_at timestamptz not null default clock_timestamp()
 );
+alter table public.hours_mail_profiles
+  add column if not exists last_issues jsonb not null default '[]'::jsonb;
+alter table public.hours_mail_profiles
+  add column if not exists last_planned_at timestamptz;
 
 -- The text of one message, per language. `template_id` is the identifier the
 -- planner's rule already carried; this is where the words finally live.
@@ -375,7 +385,11 @@ begin
         and w.confirmation_deadline_at > v_now - interval '14 days'
         and exists (select 1 from jsonb_array_elements(f.rules) as r
                     where (r.value->>'enabled')::boolean is true)
-      order by w.submission_deadline_at, w.id
+      -- Least recently planned client first. A run is bounded on purpose, and a
+      -- fixed order would mean the clients past that bound are never planned at
+      -- all - the same starvation the mail intake had to be fixed for. Within a
+      -- client the earliest deadline still comes first.
+      order by f.last_planned_at nulls first, w.submission_deadline_at, w.id
       limit p_limit
   loop
     select * into v_profile from public.hours_mail_profiles
@@ -556,6 +570,13 @@ begin
       and not (dedup_key = any(v_keys))
       and claim_token is null;
   get diagnostics v_expired = row_count;
+  -- Put the planner's complaints where a person will find them. They belong to
+  -- the configuration, not to this week, so the newest run simply wins.
+  update public.hours_mail_profiles set
+    last_issues = case when jsonb_typeof(p_issues) = 'array'
+      and jsonb_array_length(p_issues) <= 50 then p_issues else '[]'::jsonb end,
+    last_planned_at = v_now
+    where company_id = v_week.company_id and organization_id = v_week.organization_id;
   return jsonb_build_object('ok', true, 'planned', v_planned, 'expired', v_expired,
     'issues', coalesce(p_issues, '[]'::jsonb));
 end $$;
@@ -616,7 +637,7 @@ declare v_token uuid := gen_random_uuid(); v_rows jsonb; v_now timestamptz := cl
       lease_expires_at = v_now + make_interval(secs => p_lease_seconds),
       attempt_count = o.attempt_count + 1
       from picked where o.id = picked.id
-      returning o.id, o.organization_id, o.company_id, o.week_id, o.subject, o.body_html,
+      returning o.id, o.dedup_key, o.organization_id, o.company_id, o.week_id, o.subject, o.body_html,
         o.recipients, o.company_contact_id, o.candidate_id, o.request_id, o.mail_type, o.party)
   select coalesce(jsonb_agg(to_jsonb(claimed)), '[]'::jsonb) into v_rows from claimed;
   return jsonb_build_object('ok', true, 'claim_token', v_token, 'messages', v_rows);
@@ -805,6 +826,8 @@ declare v_org uuid := private.hours_require_internal(false); v_row public.hours_
     'late_approval_mode', coalesce(v_row.late_approval_mode, 'require_review'),
     'late_approval_window_minutes', coalesce(v_row.late_approval_window_minutes, 60),
     'rules', coalesce(v_row.rules, '[]'::jsonb),
+    'last_issues', coalesce(v_row.last_issues, '[]'::jsonb),
+    'last_planned_at', v_row.last_planned_at,
     'templates', v_templates,
     'can_manage', public.has_role_permission('finance.manage'));
 end $$;
@@ -836,7 +859,10 @@ declare v_org uuid := private.hours_require_internal(true); v_version integer; v
     on conflict (company_id) do update set version = public.hours_mail_profiles.version + 1,
       late_approval_mode = excluded.late_approval_mode,
       late_approval_window_minutes = excluded.late_approval_window_minutes,
-      rules = excluded.rules, updated_by = excluded.updated_by, updated_at = excluded.updated_at;
+      rules = excluded.rules, updated_by = excluded.updated_by, updated_at = excluded.updated_at,
+      -- New rules, so the previous run's complaints are about something that no
+      -- longer exists. They come back by themselves if they still apply.
+      last_issues = '[]'::jsonb, last_planned_at = null;
   return public.hours_get_mail_profile(p_company_id);
 end $$;
 

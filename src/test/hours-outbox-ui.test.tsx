@@ -34,6 +34,7 @@ const profile = (overrides: Partial<HoursMailProfile> = {}): HoursMailProfile =>
   company_id: '33333333-3333-4333-8333-333333333333',
   version: 1, late_approval_mode: 'require_review', late_approval_window_minutes: 60,
   rules: [], templates: [{ template_id: 'uitvraag', language: 'nl', subject: 'Uren', body: 'Hoi' }],
+  last_issues: [], last_planned_at: null,
   can_manage: true, ...overrides,
 });
 
@@ -197,6 +198,15 @@ describe('the mail profile on screen', () => {
     render(<HoursMailProfilePanel profile={profile()} recipients={[]} onSave={onSave} />);
     fireEvent.click(screen.getByRole('button', { name: 'Mailprofiel opslaan' }));
     await waitFor(() => expect(screen.getByText('Kies een taal')).toBeInTheDocument());
+  });
+
+  it('shows what the last planning could not read instead of failing silently', () => {
+    render(<HoursMailProfilePanel recipients={[]} onSave={noop} profile={profile({
+      last_issues: [{ scope: 'klant-uitvraag', code: 'missing_template', message: 'Kies een template en taal voor deze mail.' }],
+      last_planned_at: '2026-09-18T07:00:00Z',
+    })} />);
+    expect(screen.getByText(/verstuurt die regel niets/)).toBeInTheDocument();
+    expect(screen.getByText(/Kies een template en taal/)).toBeInTheDocument();
   });
 
   it('exports the wildcard the server expands per week', () => {

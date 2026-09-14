@@ -109,11 +109,19 @@ export const hoursMailTemplateSchema = z.object({
 });
 export type HoursMailTemplateView = z.infer<typeof hoursMailTemplateSchema>;
 
+/** What the planner could not read the last time it ran, in its own words. */
+export const hoursMailIssueSchema = z.object({
+  scope: z.string(), code: z.string(), message: z.string(),
+});
+export type HoursMailIssue = z.infer<typeof hoursMailIssueSchema>;
+
 export const hoursMailProfileSchema = z.object({
   company_id: z.string().uuid(),
   version: z.number().int().nonnegative(),
   late_approval_mode: z.enum(['require_review', 'send_if_window']),
   late_approval_window_minutes: z.number().int().positive(),
+  last_issues: z.array(hoursMailIssueSchema).default([]),
+  last_planned_at: z.string().nullable().default(null),
   // A rule the screen cannot read must not take the whole profile down; it is
   // reported instead, so it can be replaced rather than silently dropped.
   rules: z.array(z.unknown()),
