@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { feedbackApi } from '@/lib/feedback-api';
 import { qk } from '@/lib/query-keys';
-import { feedbackStatusLabel, INTERNAL_FEEDBACK_ROLES, type MyFeedbackReport } from '../../supabase/functions/_shared/feedback-contract';
+import FeedbackScreenshot from '@/components/feedback/FeedbackScreenshot';
+import { feedbackStatusLabel, INTERNAL_FEEDBACK_ROLES, type MyFeedbackDetail, type MyFeedbackReport } from '../../supabase/functions/_shared/feedback-contract';
 
 export default function MyFeedback() {
   const { id } = useParams<{ id: string }>();
@@ -19,7 +20,7 @@ export default function MyFeedback() {
   const list = useQuery({ queryKey: qk.feedback.mine(scope, page), enabled: allowed && !id,
     queryFn: () => feedbackApi<{ reports: MyFeedbackReport[] }>({ action: 'mine', page }) });
   const detail = useQuery({ queryKey: qk.feedback.myDetail(scope, id ?? ''), enabled: allowed && !!id,
-    queryFn: () => feedbackApi<{ report: MyFeedbackReport }>({ action: 'my-detail', id }), staleTime: 0, gcTime: 0 });
+    queryFn: () => feedbackApi<MyFeedbackDetail>({ action: 'my-detail', id }), staleTime: 0, gcTime: 0 });
   const query = id ? detail : list;
   const report = detail.data?.report;
   return <div className="space-y-5">
@@ -40,6 +41,8 @@ export default function MyFeedback() {
       </section>}
       {([['Je omschrijving', report.description], ['Stappen', report.steps], ['Verwacht resultaat', report.expected]] as const).map(([label, value]) => value &&
         <section key={label}><h3 className="font-medium text-sm mb-1">{label}</h3><p className="text-sm whitespace-pre-wrap break-words">{value}</p></section>)}
+      {report.has_screenshot && <FeedbackScreenshot key={`${report.id}:${detail.dataUpdatedAt}`} number={report.number}
+        url={detail.data.screenshotUrl} onRetry={() => void detail.refetch()} isFetching={detail.isFetching} />}
     </article>}
     {!id && list.data && <>
       <div className="rounded-lg border divide-y bg-card">

@@ -1,3 +1,4 @@
+import { useCanDeleteFine } from '@/hooks/useRecordDeleteAccess';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -62,6 +63,7 @@ const getPerson = (fine: any) => fine.candidates ?? fine.employees?.candidates ?
 
 const TransportFinesTab = () => {
   const orgId = useOrganizationId();
+  const canDelete = useCanDeleteFine();
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('open');
@@ -183,11 +185,12 @@ const TransportFinesTab = () => {
 
   const deleteMutation = useMutation({
     mutationFn: async (fine: any) => {
+      if (!canDelete) throw new Error('Je hebt geen rechten om deze boete te verwijderen.');
       // Eerst de rij, dan pas de foto's: raakt de delete 0 rijen (RLS weigert stil), dan
       // zouden bij de omgekeerde volgorde de foto's weg zijn terwijl de boete blijft staan.
       await unwrapDeleted(
         supabase.from('vehicle_fines').delete().eq('id', fine.id),
-        'Deze boete kon niet worden verwijderd — je hebt hiervoor mogelijk beheerdersrechten nodig.',
+        'Je hebt geen rechten om deze boete te verwijderen.',
       );
       if (fine.photos?.length > 0) {
         await supabase.storage.from('documents').remove(fine.photos);
@@ -426,7 +429,7 @@ const TransportFinesTab = () => {
                         size="sm"
                         variant="ghost"
                         className="h-8 gap-1 text-destructive hover:text-destructive"
-                        onClick={() => setFineToDelete(fine)}
+                        disabled={!canDelete} onClick={() => setFineToDelete(fine)}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                         Verwijderen
