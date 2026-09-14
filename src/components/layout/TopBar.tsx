@@ -157,7 +157,7 @@ const TopBar = ({ onMenuClick }: TopBarProps) => {
           </Button>
         )}
 
-        <FeedbackButton />
+        <FeedbackButton key={`${profile?.organization_id}:${profile?.id}`} />
         {!facility && <NotificationBell />}
 
         <LanguageToggle compact />
