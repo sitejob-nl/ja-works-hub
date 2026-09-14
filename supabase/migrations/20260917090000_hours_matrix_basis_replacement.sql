@@ -205,7 +205,10 @@ returns jsonb language sql stable set search_path = '' as $$
   select jsonb_build_object('id', x.id, 'revision_id', x.revision_id, 'status', x.status,
     'matrix_version_id', x.matrix_version_id, 'matrix_name', x.matrix_name, 'matrix_scope', x.matrix_scope,
     'engine_version', x.engine_version, 'created_at', x.created_at, 'allocations', x.allocations, 'issues', x.issues,
-    'basis_version', x.basis_version,
+    -- Null means "no basis at all". An attempt that named a matrix always pinned
+    -- basis 0 in the same transaction, and replacements did not exist before this
+    -- migration, so a pre-migration row with a matrix reads as 0.
+    'basis_version', coalesce(x.basis_version, case when x.matrix_version_id is not null then 0 end),
     'basis_pinned', exists (select 1 from public.hours_day_matrix_basis b where b.day_id = x.day_id))
   from public.hours_day_classifications x where x.id = p_id
 $$;
@@ -268,6 +271,122 @@ begin
     'total_minutes', v_revision.minutes, 'no_hours_reason', v_revision.no_hours_reason, 'source_input', v_revision.source_input,
     'context_hash', v_hash, 'client_matrices', v_clients, 'cao_matrices', v_caos, 'pinned_matrix', v_pinned,
     'basis_version', v_basis_version, 'binding_snapshot', v_binding, 'matrix_sources', v_sources);
+end $$;
+
+-- Previous definition: 20260908140000_hours_day_sources_and_classification.sql
+-- Body unchanged except that the three copies of the validity window now call
+-- the shared helper, so what a replacement may pin and what the finalizer
+-- accepts can no longer drift apart.
+create or replace function private.hours_validate_classification_result(p_context jsonb, p_result jsonb)
+returns jsonb language plpgsql set search_path = '' as $$
+declare
+  v_source jsonb; v_definition jsonb; v_allocation jsonb; v_issue jsonb;
+  v_status text; v_total integer := 0; v_rule_valid boolean;
+  v_seen text[] := '{}'; v_key text; v_source_minutes integer;
+begin
+  if not private.hours_matrix_exact_object(p_result, array['status','matrix_version_id','allocations','issues'])
+     or pg_column_size(p_result) > 131072 or p_result->>'status' not in ('classified','blocked','no_hours')
+     or jsonb_typeof(p_result->'status') is distinct from 'string'
+     or jsonb_typeof(p_result->'allocations') is distinct from 'array'
+     or jsonb_typeof(p_result->'issues') is distinct from 'array' then
+    raise exception 'Ongeldig classificatieresultaat' using errcode = '22023';
+  end if;
+  v_status := p_result->>'status';
+  if jsonb_array_length(p_result->'allocations') > 512 or jsonb_array_length(p_result->'issues') > 50 then
+    raise exception 'Classificatieresultaat is te groot' using errcode = '22023';
+  end if;
+  if p_result->'matrix_version_id' is distinct from 'null'::jsonb then
+    if jsonb_typeof(p_result->'matrix_version_id') is distinct from 'string'
+       or p_result->>'matrix_version_id' !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
+      raise exception 'Ongeldige matrixverwijzing' using errcode = '22023';
+    end if;
+    select value into v_source from jsonb_array_elements(p_context->'matrix_sources')
+      where value->>'matrix_version_id' = p_result->>'matrix_version_id'
+        and private.hours_matrix_effective_on(value->'definition', (p_context->>'work_date')::date);
+    if v_source is null then raise exception 'Matrix hoort niet bij de vastgelegde context en werkdatum' using errcode = '22023'; end if;
+    if v_source->>'scope' = 'cao' and exists (select 1 from jsonb_array_elements(p_context->'client_matrices') x
+      where private.hours_matrix_effective_on(x, (p_context->>'work_date')::date)) then
+      raise exception 'De toepasselijke klantmatrix gaat vóór de CAO' using errcode = '22023';
+    end if;
+    v_definition := v_source->'definition';
+  end if;
+  for v_issue in select value from jsonb_array_elements(p_result->'issues') loop
+    if jsonb_typeof(v_issue) is distinct from 'object' then raise exception 'Ongeldige controlebevinding' using errcode = '22023'; end if;
+    if v_issue - array['code','message','field','expectedMinutes','actualMinutes'] <> '{}'::jsonb
+       or jsonb_typeof(v_issue->'code') is distinct from 'string'
+       or (v_issue->>'code') !~ '^[A-Z][A-Z0-9_]{0,99}$'
+       or jsonb_typeof(v_issue->'message') is distinct from 'string'
+       or length(btrim(v_issue->>'message')) not between 1 and 2000
+       or (v_issue ? 'field' and (jsonb_typeof(v_issue->'field') is distinct from 'string' or length(v_issue->>'field') > 200))
+       or (v_issue ? 'expectedMinutes' and not private.hours_source_minutes(v_issue->'expectedMinutes', 46080))
+       or (v_issue ? 'actualMinutes' and not private.hours_source_minutes(v_issue->'actualMinutes', 46080)) then
+      raise exception 'Ongeldige controlebevinding' using errcode = '22023';
+    end if;
+  end loop;
+  if v_status = 'no_hours' then
+    if (p_context->>'total_minutes')::integer <> 0 or p_context->'source_input' is distinct from 'null'::jsonb
+       or nullif(private.hours_source_trim(p_context->>'no_hours_reason'), '') is null or v_source is not null
+       or p_result->'allocations' <> '[]'::jsonb or p_result->'issues' <> '[]'::jsonb then
+      raise exception 'Geen uren vereist expliciet nul zonder tegenstrijdige brongegevens' using errcode = '22023';
+    end if;
+    return null;
+  end if;
+  if v_status = 'blocked' then
+    if p_result->'allocations' <> '[]'::jsonb or jsonb_array_length(p_result->'issues') = 0 then
+      raise exception 'Een blokkade vereist bevindingen en mag geen definitieve indeling bevatten' using errcode = '22023';
+    end if;
+    if v_source is null and (p_context->>'total_minutes')::integer > 0 and exists (
+      select 1 from jsonb_array_elements(p_context->'matrix_sources') x
+      where private.hours_matrix_effective_on(x->'definition', (p_context->>'work_date')::date)) then
+      raise exception 'Een toepasselijke matrix moet als controlebasis worden vastgelegd' using errcode = '22023';
+    end if;
+    return v_source;
+  end if;
+  if v_source is null or (p_context->>'total_minutes')::integer <= 0
+     or jsonb_array_length(p_result->'allocations') = 0 or p_result->'issues' <> '[]'::jsonb then
+    raise exception 'Een indeling vereist een matrix, positieve uren en geen blokkades' using errcode = '22023';
+  end if;
+  for v_allocation in select value from jsonb_array_elements(p_result->'allocations') loop
+    if jsonb_typeof(v_allocation) is distinct from 'object' then raise exception 'Ongeldige uurcodeverdeling' using errcode = '22023'; end if;
+    if v_allocation - array['categoryCode','factor','minutes','ruleId','sourceCategory'] <> '{}'::jsonb
+       or not private.hours_matrix_text(v_allocation->'categoryCode')
+       or not private.hours_matrix_text(v_allocation->'ruleId')
+       or jsonb_typeof(v_allocation->'factor') is distinct from 'string'
+       or not private.hours_source_minutes(v_allocation->'minutes')
+       or (v_allocation ? 'sourceCategory' and not private.hours_matrix_text(v_allocation->'sourceCategory')) then
+      raise exception 'Ongeldige uurcodeverdeling' using errcode = '22023';
+    end if;
+    if not exists (select 1 from jsonb_array_elements(v_definition->'categories') c
+      where c->'code' = v_allocation->'categoryCode' and c->'factor' = v_allocation->'factor') then
+      raise exception 'Uurcode of factor wijkt af van de matrixbasis' using errcode = '22023';
+    end if;
+    v_key := jsonb_build_array(v_allocation->>'ruleId', v_allocation->>'sourceCategory')::text;
+    if v_key = any(v_seen) then raise exception 'Dubbele verdeling voor dezelfde bronregel' using errcode = '22023'; end if;
+    v_seen := array_append(v_seen, v_key);
+    if v_allocation ? 'sourceCategory' then
+      select exists (select 1 from jsonb_array_elements(v_definition->'categoryMappings') m
+        where m->'id' = v_allocation->'ruleId' and m->'categoryCode' = v_allocation->'categoryCode'
+          and m->'sourceCode' = v_allocation->'sourceCategory') into v_rule_valid;
+      select sum((c->>'minutes')::integer) into v_source_minutes
+        from jsonb_array_elements(coalesce(p_context->'source_input'->'categories', '[]'::jsonb)) c
+        where c->'sourceCode' = v_allocation->'sourceCategory';
+      if v_source_minutes is null or v_source_minutes <> (v_allocation->>'minutes')::integer then
+        raise exception 'Broncategorie of minuten wijken af van de opgeslagen bron' using errcode = '22023';
+      end if;
+    else
+      if p_context->'source_input' ? 'categories' then raise exception 'Expliciete broncategorieën mogen niet worden weggelaten' using errcode = '22023'; end if;
+      v_rule_valid := case v_definition->'automaticRules'->>'kind'
+        when 'flat' then v_definition->'automaticRules'->'rule'->'id' = v_allocation->'ruleId'
+          and v_definition->'automaticRules'->'rule'->'categoryCode' = v_allocation->'categoryCode'
+        when 'time_windows' then exists (select 1 from jsonb_array_elements(v_definition->'automaticRules'->'rules') r
+          where r->'id' = v_allocation->'ruleId' and r->'categoryCode' = v_allocation->'categoryCode')
+        else false end;
+    end if;
+    if v_rule_valid is not true then raise exception 'Verdeling verwijst niet naar de bevestigde bronregel' using errcode = '22023'; end if;
+    v_total := v_total + (v_allocation->>'minutes')::integer;
+  end loop;
+  if v_total <> (p_context->>'total_minutes')::integer then raise exception 'Som van de uurcodes wijkt af van het dagtotaal' using errcode = '22023'; end if;
+  return v_source;
 end $$;
 
 -- Previous definition: 20260908180000_hours_conflict_http_status.sql
@@ -406,6 +525,9 @@ begin
   if v_current is null then
     raise exception 'Deze dag heeft nog geen vastgelegde matrixbasis; voer eerst de uursoortencontrole uit' using errcode = '22023';
   end if;
+  if p_expected_basis_version is null then
+    raise exception 'Geef de basisversie mee die je op het scherm zag' using errcode = '22023';
+  end if;
   if p_expected_basis_version is distinct from (v_current->>'basis_version')::integer then
     raise exception 'De matrixbasis van deze dag is gewijzigd; laad opnieuw' using errcode = 'PT409';
   end if;
@@ -506,7 +628,8 @@ end $$;
 do $$ declare f regprocedure; begin
   for f in select p.oid::regprocedure from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'private' and p.proname in ('hours_day_released','hours_require_day_not_released',
-      'hours_matrix_effective_on','hours_day_matrix_candidates','hours_effective_day_basis','hours_day_basis_projection') loop
+      'hours_matrix_effective_on','hours_day_matrix_candidates','hours_effective_day_basis',
+      'hours_day_basis_projection','hours_validate_classification_result') loop
     execute format('revoke all on function %s from public, anon, authenticated, service_role', f);
   end loop;
   for f in select p.oid::regprocedure from pg_proc p join pg_namespace n on n.oid = p.pronamespace

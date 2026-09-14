@@ -277,6 +277,45 @@ describe('replacing the basis', () => {
     expect(screen.getByRole('button', { name: 'Handmatig gecontroleerd' })).toBeDisabled();
   });
 
+  it('holds an already open form while another day action is in flight', async () => {
+    const onClassify = vi.fn().mockReturnValue(new Promise<void>(() => {}));
+    mount({ onClassify });
+    await openForm();
+    fireEvent.change(screen.getByLabelText('Nieuwe matrixbasis'), { target: { value: 'version-client' } });
+    fireEvent.change(screen.getByLabelText('Reden van de vervanging'), { target: { value: 'Verkeerde matrix' } });
+    click('Uursoorten controleren');
+    await waitFor(() => expect(onClassify).toHaveBeenCalledOnce());
+    expect(screen.getByRole('button', { name: 'Matrixbasis vervangen' })).toBeDisabled();
+  });
+
+  it('never reuses an option list drawn up against a basis the day no longer has', async () => {
+    const { props, rerender } = mount();
+    await openForm();
+    fireEvent.change(screen.getByLabelText('Reden van de vervanging'), { target: { value: 'Half ingetypte reden' } });
+    const week = weekFixture();
+    week.employees[0].days[0].matrixBasis = basis({ basisVersion: 2, matrixVersionId: 'version-client', matrixName: 'Klantmatrix', scope: 'client' });
+    rerender(<HoursWeekWorkspace {...props} week={week} />);
+    // The typed reason survives, the list is refused, and the panel says why.
+    expect(screen.getByLabelText('Reden van de vervanging')).toHaveValue('Half ingetypte reden');
+    expect(screen.getByText(/Deze dag of de matrixbasis is ondertussen gewijzigd/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Matrixbasis vervangen' })).toBeDisabled();
+    click('Annuleren');
+    click('Andere matrixbasis vastleggen');
+    await waitFor(() => expect(props.onLoadMatrixOptions).toHaveBeenCalledTimes(2));
+  });
+
+  it('also flags a blocked outcome without a matrix that was computed on an earlier basis', () => {
+    const week = weekFixture();
+    const day = week.employees[0].days[0];
+    day.classification = classification({
+      status: 'blocked', matrixVersionId: null, matrixName: null, matrixScope: null, basisVersion: 0, allocations: [],
+      issues: [{ code: 'TOTAL_MISMATCH', message: 'Synthetische blokkade.' }],
+    });
+    day.previousClassifications = [];
+    mount({ week });
+    expect(screen.getByText(/hoort nog bij een eerdere matrixbasis/)).toBeInTheDocument();
+  });
+
   it('blocks a replacement while the day version on screen is being edited', () => {
     mount();
     click('Wijzigen');

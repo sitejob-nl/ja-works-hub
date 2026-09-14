@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /**
  * Connected QA for T10: replacing a pinned matrix basis through the real screens.
@@ -44,7 +45,10 @@ function required(key: string) {
 }
 
 const fixture = JSON.parse(readFileSync(required('HOURS_BASIS_FIXTURE'), 'utf8')) as Fixture;
-const evidence = process.env.HOURS_BASIS_EVIDENCE_DIR ?? resolve('../test-results/hours-basis');
+// Resolved against this file, so the default lands next to Playwright's own
+// outputDir instead of wherever the run happened to be started.
+const evidence = process.env.HOURS_BASIS_EVIDENCE_DIR
+  ?? resolve(dirname(fileURLToPath(import.meta.url)), '../test-results/hours-basis');
 // The day card is labelled with the employee name and the same formatted date the
 // screen renders, so the locator follows the product rather than a row position.
 const dayLabel = new Intl.DateTimeFormat('nl-NL', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })

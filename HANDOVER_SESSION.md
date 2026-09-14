@@ -66,8 +66,23 @@ projectsamenvatting.
   dagcallbacks; `previous_classifications` op historierevisies was ongebruikt en kostbaar — weg;
   de tweede `hours_effective_day_basis`-aanroep in finalize is vervangen door de contextwaarde; en de
   bestandsversie `20260917090000` stond niet in `schema_migrations` op productie — nu wel.
-- **Productie versus repo:** de eindtoestand op productie is in vier MCP-migraties aangebracht (basis,
-  indexen, ronde 1, ronde 2) en daarna is `20260917090000` zelf geregistreerd, zoals bij de
+- **Reviewronde 3 (acht invalshoeken; de echte defecten gerepareerd, elk met een rode test vooraf):**
+  een geopend formulier bleef verzendbaar terwijl een andere dagactie liep; een optielijst die tegen een
+  inmiddels vervangen basis was opgehaald kon nog gebruikt worden (nu geweigerd mét behoud van de
+  ingetypte reden); een geblokkeerde uitkomst zónder matrix werd niet als verouderd gemarkeerd; een
+  ontbrekende `p_expected_basis_version` gaf `PT409` in plaats van `22023` (een herlaadlus die niets
+  oplost); een pre-migratie-uitkomst mét matrix las als "zonder vastgelegde matrixbasis" — de projectie
+  leest die nu als basis 0; en de geldigheidsregel stond nog los in `hours_validate_classification_result`
+  — die gebruikt nu dezelfde `private.hours_matrix_effective_on`, zodat wat een vervanging mag vastleggen
+  en wat de finalisatie accepteert niet kunnen divergeren. Ook het standaard bewijspad van de e2e-spec
+  wordt nu tegen het script zelf opgelost in plaats van tegen de werkmap.
+- **Bewust niet gedaan:** het ophalen van de matrixopties blijft buiten TanStack Query (eenmalige
+  lees-actie op één klik; de juistheid hangt aan de meegedragen basisversie, niet aan caching) en de
+  per-dag basisprojectie in `hours_get_week` is niet herschreven tot joins — beide staan als afweging in
+  het contract. Verdere efficiëntiesuggesties (slankere snapshots, minder indexen op het lege
+  vrijgaveregister) zijn genoteerd voor T12, die de echte toegangspaden kent.
+- **Productie versus repo:** de eindtoestand op productie is in vijf MCP-migraties aangebracht (basis,
+  indexen, ronde 1, ronde 2, ronde 3) en daarna is `20260917090000` zelf geregistreerd, zoals bij de
   zustermigraties. De repo heeft één bestand met exact die eindtoestand; `db push` slaat het over.
 - **Restpunt van de QA:** de eerste QA-poging liet in de synthetische demo-opdrachtgever
   `Urenmodule QA t10-202609110835` één halfafgeronde dag achter (basis vervangen, nog niet herberekend).

@@ -106,14 +106,14 @@ class BasisReplacementTests(mailintake.MailIntakeTests):
     def reason(self, suffix=""):
         return f"{REASON_MARKER}{uuid.uuid4().hex[:8]}{suffix}"
 
-    def replace(self, day, version_id, reason=GENERATE, expected_version=None,
+    def replace(self, day, version_id, reason=GENERATE, expected_version=GENERATE,
                 revision_id=None, user=None, role="authenticated", code=None):
         current = self.latest(day)
         params = dict(
             p_day_id=day["id"],
             p_expected_revision_id=revision_id or current["current_revision"]["id"],
             p_expected_basis_version=(current["matrix_basis"] or {}).get("basis_version", 0)
-            if expected_version is None else expected_version,
+            if expected_version is GENERATE else expected_version,
             p_matrix_version_id=version_id,
             p_reason=self.reason() if reason is GENERATE else reason)
         if code is not None:
@@ -332,6 +332,27 @@ class BasisReplacementTests(mailintake.MailIntakeTests):
         self.save_source(bare, None, minutes=0, reason="Synthetische vrije dag zonder basis")
         self.assertIsNone(self.finalize(self.context(self.latest(bare)))["basis_version"])
 
+    def test_an_outcome_from_before_basis_versions_reads_as_the_first_basis(self):
+        """A classification that named a matrix always pinned basis 0 in the same
+        transaction, and replacements did not exist yet: its null basis_version can
+        only mean the first basis. The projection says so; only a matrix-less
+        outcome without any basis stays null."""
+        day, first, initial = self.pinned()
+        # Model a row recorded before this migration: the owner lifts the
+        # immutability trigger for exactly this synthetic edit.
+        sql(f"""ALTER TABLE public.hours_day_classifications DISABLE TRIGGER hours_history_immutable;
+          UPDATE public.hours_day_classifications SET basis_version=NULL WHERE id={literal(initial['id'])};
+          ALTER TABLE public.hours_day_classifications ENABLE TRIGGER hours_history_immutable;""")
+        self.assertEqual(sql(f"SELECT basis_version IS NULL FROM public.hours_day_classifications WHERE id={literal(initial['id'])};"), "t")
+        self.assertEqual(self.latest(day)["classification"]["basis_version"], 0)
+        second = self.create_matrix(factor="2", scope="cao")
+        self.bind(second["id"])
+        self.replace(day, self.version_of(second))
+        self.finalize(self.context(self.latest(day)))
+        current = self.latest(day)
+        self.assertEqual([entry["basis_version"] for entry in current["previous_classifications"]], [0])
+        self.assertEqual(current["classification"]["basis_version"], 1)
+
     def test_eligibility_does_not_depend_on_the_session_date_style(self):
         """The validity window is compared as dates. A session that renders
         dates as DD/MM/YYYY must offer and accept exactly the same versions."""
@@ -423,6 +444,8 @@ class BasisReplacementTests(mailintake.MailIntakeTests):
         self.bind(second["id"])
         for wrong in [1, 2, -1]:
             self.replace(day, self.version_of(second), expected_version=wrong, code="PT409")
+        # A missing value is invalid input, not a conflict a reload could resolve.
+        self.replace(day, self.version_of(second), expected_version=None, code="22023")
         self.replace(day, self.version_of(second), expected_version=0)
         self.bind(third["id"])
         self.replace(day, self.version_of(third), expected_version=0, code="PT409")

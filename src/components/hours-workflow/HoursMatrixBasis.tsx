@@ -27,10 +27,14 @@ function BasisEntries({ basis }: { basis: HoursDayBasisView }) {
   </details>;
 }
 
-function ReplaceForm({ day, basis, options, onReplaceBasis, onBusyChange, onClose, onReload }: {
+function ReplaceForm({ day, basis, options, held, stale, onReplaceBasis, onBusyChange, onClose, onReload }: {
   day: HoursDayView;
   basis: HoursDayBasisView;
   options: HoursMatrixOptionsView;
+  /** Another action on this day is running; an open form waits for it too. */
+  held: boolean;
+  /** The offered list was drawn up against a basis this day no longer has. */
+  stale: boolean;
   onReplaceBasis: (input: HoursReplaceBasisInput) => Promise<void>;
   onBusyChange?: (busy: boolean) => void;
   onClose: () => void;
@@ -47,7 +51,13 @@ function ReplaceForm({ day, basis, options, onReplaceBasis, onBusyChange, onClos
   const [error, setError] = useState<string | null>(null);
   const [conflict, setConflict] = useState(false);
   const [done, setDone] = useState(false);
-  const changed = conflict || revisionId !== (day.revision?.id ?? '') || basisVersion !== basis.basisVersion;
+  // A stale list is never silently used: the form stays, with what the user
+  // typed, and says why it cannot be sent.
+  const changed = conflict || stale || revisionId !== (day.revision?.id ?? '') || basisVersion !== basis.basisVersion;
+  // Opening the form is free, so the parent's guard has to keep holding once it
+  // is open: a submit next to a running classification is the same self-inflicted
+  // conflict the guard exists to prevent.
+  const waiting = held && !busy;
   const choices = options.options.filter(option => !option.isCurrent);
 
   if (options.released) {
@@ -70,7 +80,7 @@ function ReplaceForm({ day, basis, options, onReplaceBasis, onBusyChange, onClos
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (busy || changed) return;
+    if (busy || changed || waiting) return;
     if (!matrixVersionId) { setError('Kies de matrixversie die voortaan voor deze dag geldt.'); return; }
     if (!reason.trim()) { setError('Leg vast waarom deze dag op een andere matrixbasis komt.'); return; }
     setBusy(true);
@@ -92,7 +102,7 @@ function ReplaceForm({ day, basis, options, onReplaceBasis, onBusyChange, onClos
     <p className="text-xs text-muted-foreground">
       De vastgelegde basis blijft staan en eerdere uitkomsten blijven bewaard. Deze handeling rekent niets uit; daarna volgt de uursoortencontrole opnieuw.
     </p>
-    <fieldset disabled={busy || changed} className="space-y-3">
+    <fieldset disabled={busy || changed || waiting} className="space-y-3">
       <div className="space-y-1.5">
         <Label htmlFor={`basis-matrix-${day.id}`}>Nieuwe matrixbasis</Label>
         <select id={`basis-matrix-${day.id}`} className="flex h-10 w-full rounded-md border bg-background px-3 text-sm"
@@ -116,7 +126,7 @@ function ReplaceForm({ day, basis, options, onReplaceBasis, onBusyChange, onClos
     </AlertDescription></Alert>}
     {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
     <div className="flex flex-wrap gap-2">
-      <Button type="submit" size="sm" disabled={busy || changed}>{busy ? 'Vervangen…' : 'Matrixbasis vervangen'}</Button>
+      <Button type="submit" size="sm" disabled={busy || changed || waiting}>{busy ? 'Vervangen…' : 'Matrixbasis vervangen'}</Button>
       <Button type="button" size="sm" variant="outline" disabled={busy} onClick={onClose}>Annuleren</Button>
     </div>
   </form>;
@@ -139,17 +149,19 @@ export interface HoursMatrixBasisProps {
  * never rewrites what is shown here.
  */
 export function HoursMatrixBasis({ day, readOnly, busy, onLoadMatrixOptions, onReplaceBasis, onBusyChange, onReload }: HoursMatrixBasisProps) {
-  const [options, setOptions] = useState<HoursMatrixOptionsView | null>(null);
+  // What the server offered, and the basis it offered it for. A list that was
+  // drawn up against an older basis is stale, not a choice.
+  const [options, setOptions] = useState<{ loadedFor: number; value: HoursMatrixOptionsView } | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const basis = day.matrixBasis;
   if (!basis) return null;
   const current = basis.entries.find(entry => entry.basisVersion === basis.basisVersion);
   // Compared by basis version, not by matrix: a chain that returns to an earlier
-  // matrix still needs a recalculation on the newer basis. An outcome recorded
-  // before basis versions existed can only have used the first basis.
-  const outdated = day.classification && day.classification.matrixVersionId
-    && (day.classification.basisVersion ?? 0) !== basis.basisVersion;
+  // matrix still needs a recalculation on the newer basis, and a blocked outcome
+  // that never named a matrix was still computed under the basis of its context.
+  const outdated = day.classification && day.classification.basisVersion != null
+    && day.classification.basisVersion !== basis.basisVersion;
   const superseded = day.previousClassifications ?? [];
   const canReplace = !readOnly && !!onReplaceBasis && !!onLoadMatrixOptions && !!day.revision;
 
@@ -175,14 +187,15 @@ export function HoursMatrixBasis({ day, readOnly, busy, onLoadMatrixOptions, onR
       <Button type="button" size="sm" variant="outline" disabled={busy || loading} onClick={async () => {
         setLoading(true);
         setLoadError(null);
-        try { setOptions(await onLoadMatrixOptions(day.id)); }
+        try { setOptions({ loadedFor: basis.basisVersion, value: await onLoadMatrixOptions(day.id) }); }
         catch (failure) { setLoadError(toFriendlyError(failure, 'De beschikbare matrixversies konden niet worden geladen.')); }
         finally { setLoading(false); }
       }}>{loading ? 'Matrixversies laden…' : 'Andere matrixbasis vastleggen'}</Button>
       {loadError && <Alert variant="destructive"><AlertDescription>{loadError}</AlertDescription></Alert>}
     </div>}
-    {canReplace && options !== null && <ReplaceForm day={day} basis={basis} options={options}
-      onReplaceBasis={onReplaceBasis} onBusyChange={onBusyChange} onReload={onReload} onClose={() => setOptions(null)} />}
+    {canReplace && options !== null && <ReplaceForm day={day} basis={basis} options={options.value} held={busy}
+      stale={options.loadedFor !== basis.basisVersion} onReplaceBasis={onReplaceBasis} onBusyChange={onBusyChange}
+      onReload={onReload} onClose={() => setOptions(null)} />}
   </section>;
 }
 
