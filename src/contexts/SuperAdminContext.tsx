@@ -42,6 +42,10 @@ export const SuperAdminProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
+        // Keep protected routes waiting while the new session's role is checked.
+        // Login can finish its own query before this deferred check completes.
+        setLoading(true);
+        setIsSuperAdmin(false);
         setTimeout(async () => {
           const sa = await checkSuperAdmin(session.user.id);
           setIsSuperAdmin(sa);

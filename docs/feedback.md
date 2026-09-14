@@ -49,7 +49,7 @@ workflow voor productstatussen zoals 'in behandeling' of 'opgelost'. Meldingen b
 
 Frontend: `src/components/feedback/`, `src/lib/feedback-*`, `SuperAdminFeedback.tsx`.
 Backend: `supabase/functions/feedback/`, pure grensdefinities in `_shared/feedback-contract.ts`.
-Migratie: `20260914120000_feedback_reports.sql`.
+Migraties: `20260914090151_feedback_reports.sql` en `20260914090236_feedback_communication_index.sql`.
 
 De live kolommen, functie-definities, `chk_comm_target`, afzenderbeschikbaarheid en storagepolicies zijn
 gelezen bij het bouwen. Documentatiedrift: `communications` accepteert vóór deze migratie uitsluitend
@@ -80,3 +80,31 @@ het verzonden screenshot, mobiele layout en identieke retries na een weggevallen
 feedbackrequests worden onderschept; er wordt geen echte melding of e-mail aangemaakt. Geef een preview-
 URL mee via `E2E_BASE_URL`, `PLAYWRIGHT_SKIP_WEBSERVER=1` bij een eigen devserver, en de bestaande
 `DEMO_ORG_EMAIL` / `DEMO_ORG_PASSWORD` via de omgeving. Testmails zijn niet verstuurd.
+
+`scripts/test-feedback-live.mjs` controleert de uitgerolde backend met synthetische demo-meldingen.
+Expliciete opt-in: `RUN_LIVE_FEEDBACK_QA=1`, de bestaande demo-/Supabase-env en de ingelogde Supabase CLI.
+Het script pauzeert demo-verzending, controleert opslag, identiteit, debugfiltering, retries, privéopslag en
+conceptlogging, en verwijdert daarna alleen zijn eigen testgegevens. Het oorspronkelijke pauzebeleid wordt
+hersteld. `FEEDBACK_QA_SKIP_SUPERADMIN=1` slaat de echte beheerlogin over: het opgeslagen QA-superadminaccount
+is bewust geblokkeerd en wordt door deze test nooit geactiveerd. Met een toegelaten QA-account en
+`E2E_BASE_URL` kan dezelfde test ook de echte beheerpagina openen.
+
+### Releasecontrole 14 september 2026 — PR #273
+
+- Beide migraties zijn toegepast met versies die gelijk zijn aan de lokale bestandsnamen; types zijn
+  gegenereerd uit productie. De samengestelde communicatie-index dekt de nieuwe FK.
+- Edge function `feedback` is actief (versie 1, `verify_jwt=false`, eigen gebruikersauthenticatie).
+- Live demo-QA geslaagd: bug en idee opgeslagen; screenshot geüpload en via een tijdelijke URL gelezen;
+  anonieme toegang, directe browserwrites en screenshotdownloads geweigerd; identiteitsvelden niet te
+  spoofen; debuggegevens geschoond; retry idempotent; mail als concept onder de kill-switch.
+  Testmeldingen, communicatielogs en afbeeldingen zijn daarna aantoonbaar verwijderd; instellingen hersteld.
+- 1.915 unit-tests, volledige lint (nul fouten), typecheck, build en Deno-check geslaagd. Beide migraties
+  tweemaal getest op geïsoleerde PostgreSQL, inclusief tenant-/portalafscherming en de meldingslimiet.
+- Drie browserflows geslaagd: screenshotcontrole/zwartmaken, mobiel idee met verbindingsverlies/retry,
+  en detail-link na beheerlogin met onderschepte beheerreacties. De laatste test vond en verifieert de fix
+  voor de race tussen login en de asynchrone controle in `SuperAdminContext`.
+- Geen nieuwe security-advisors voor feedback. De performance-advisor meldt alleen dat de pas aangemaakte
+  feedback-indexen nog niet gebruikt zijn. Bestaande projectmeldingen vallen buiten deze release.
+- Beperking: geen echte Superadmin-login met het bewust geblokkeerde QA-account en geen echte testmail
+  verstuurd. JA Werkt heeft een verbonden standaardmailbox en e-mailverzending staat aan. De provider-
+  verzendtak is met injecteerbare mailer getest; inboxontvangst is niet geverifieerd.

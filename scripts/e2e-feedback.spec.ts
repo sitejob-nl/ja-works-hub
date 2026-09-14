@@ -86,3 +86,31 @@ test('mobile idea survives a lost response and retry reuses the identical payloa
   expect(attempts[0].diagnostics.errors).toEqual([]);
   expect(attempts[0].screenshot).toBeNull();
 });
+
+test('superadmin detail destination survives login and renders its screenshot (mocked admin responses)', async ({ page }) => {
+  // UI/routing coverage only: the real demo account gains no server permissions.
+  // The intentionally blocked QA superadmin is never used or modified.
+  const id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a2ioAAAAASUVORK5CYII=';
+  await page.route('**/rest/v1/superadmins?**', route => route.fulfill({ json: { id: 'qa-ui-only' } }));
+  await page.route('**/functions/v1/feedback', async route => {
+    expect(route.request().postDataJSON()).toEqual({ action: 'detail', id });
+    await route.fulfill({ json: {
+      report: { id, number: 125, kind: 'bug', title: 'QA screenshot bekijken', description: 'Synthetische melding', steps: '', expected: '',
+        reporter_name: 'QA', reporter_email: 'qa@example.invalid', created_at: '2026-09-14T09:00:00Z', email_status: 'paused',
+        has_screenshot: true, screenshot_path: 'private/test.png', diagnostics: {} },
+      screenshotUrl: `data:image/png;base64,${png}`,
+    } });
+  });
+  await page.goto(`/superadmin/feedback/${id}`);
+  await expect(page.getByText('Beheerderspaneel — Alleen bevoegd personeel', { exact: true })).toBeVisible();
+  await page.getByLabel('E-mailadres', { exact: true }).fill(process.env.DEMO_ORG_EMAIL!);
+  await page.getByLabel('Wachtwoord', { exact: true }).fill(process.env.DEMO_ORG_PASSWORD!);
+  await page.getByRole('button', { name: 'Inloggen als Superadmin', exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/superadmin/feedback/${id}$`));
+  await expect(page.getByRole('heading', { name: 'QA screenshot bekijken', exact: true })).toBeVisible();
+  const image = page.getByRole('img', { name: 'Screenshot bij melding #125', exact: true });
+  await expect(image).toBeVisible();
+  await image.evaluate((img: HTMLImageElement) => img.decode());
+  await expect(page.getByRole('button', { name: 'E-mail opnieuw proberen', exact: true })).toBeVisible();
+});

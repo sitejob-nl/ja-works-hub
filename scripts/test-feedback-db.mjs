@@ -24,7 +24,8 @@ insert into profiles values
 ('33333333-3333-4333-8333-333333333333','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','medewerker',true),
 ('44444444-4444-4444-8444-444444444444','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','finance',true);
 `;
-const migration = readFileSync(new URL('../supabase/migrations/20260914120000_feedback_reports.sql', import.meta.url), 'utf8');
+const migration = ['20260914090151_feedback_reports.sql', '20260914090236_feedback_communication_index.sql']
+  .map(name => readFileSync(new URL(`../supabase/migrations/${name}`, import.meta.url), 'utf8')).join('\n');
 const checks = `
 create function pg_temp.assert(ok boolean, label text) returns void language plpgsql as $$ begin if ok is distinct from true then raise exception 'FAIL: %',label; end if; end $$;
 set role service_role;
@@ -96,11 +97,15 @@ select pg_temp.assert((select count(*)=10 from feedback_reports),'per-user throt
 `;
 try {
   docker('run', '--rm', '-d', '--name', container, '--network', 'none', '-e', 'POSTGRES_HOST_AUTH_METHOD=trust', 'postgres:17-alpine');
+  let ready = false;
   for (let i = 0; i < 30; i++) {
-    try { docker('exec', container, 'pg_isready', '-U', 'postgres'); break; }
+    // The image first starts a temporary socket-only server for initialization.
+    // Wait for TCP so that psql cannot race that server's scheduled shutdown.
+    try { docker('exec', container, 'pg_isready', '-h', '127.0.0.1', '-U', 'postgres'); ready = true; break; }
     catch { await new Promise(resolve => setTimeout(resolve, 300)); }
   }
-  execFileSync('docker', ['exec', '-i', container, 'psql', '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-U', 'postgres'], {
+  if (!ready) throw new Error('PostgreSQL did not become ready within nine seconds.');
+  execFileSync('docker', ['exec', '-i', container, 'psql', '-h', '127.0.0.1', '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-U', 'postgres'], {
     input: bootstrap + migration + migration + checks, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
   });
   console.log('PASS: migration applies twice; ownership, tenant/portal isolation, RPC grants, concept logging, idempotency and rate limit verified.');
