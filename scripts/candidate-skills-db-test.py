@@ -18,7 +18,9 @@ OTHER = '00000000-0000-0000-0000-000000000002'
 
 
 def sql(value, check=True):
-    result = subprocess.run(['docker', 'exec', '-i', CONTAINER, 'psql', '-U', 'postgres',
+    # The image briefly starts a socket-only server during initialization. TCP
+    # becomes available only when the final server is ready for the test suite.
+    result = subprocess.run(['docker', 'exec', '-i', CONTAINER, 'psql', '-h', '127.0.0.1', '-U', 'postgres',
                              '-v', 'ON_ERROR_STOP=1', '-At'], input=value, text=True, capture_output=True)
     if check and result.returncode:
         raise RuntimeError(result.stderr)
