@@ -139,7 +139,7 @@ export function initSentry() {
 export function captureAppException(error: unknown, context?: Record<string, unknown>) {
   if (!ENABLED) return;
   try {
-    Sentry.captureException(error, context ? { extra: deepScrub(context) } : undefined);
+    return Sentry.captureException(error, context ? { extra: deepScrub(context) } : undefined);
   } catch {
     /* nooit de bestaande foutafhandeling breken */
   }

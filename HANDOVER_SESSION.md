@@ -4,6 +4,20 @@ Overdracht voor wie verdergaat (Codex / Claude Code). Lees [AGENTS.md](AGENTS.md
 commands, [CLAUDE.md](CLAUDE.md) voor de canonieke codebase-diepte, [HANDOVER.md](HANDOVER.md) voor de formele
 projectsamenvatting.
 
+## Feedbackmeldingen — releasecontrole 14 september 2026 (PR #273)
+
+- Branch `codex/feedback`, worktree `.worktrees/feedback`. Gebruiker heeft QA en livegang expliciet opgedragen.
+- Bug/verbeteridee melden in de interne bovenbalk, met debugcontext en optionele gecontroleerde/zwartgemaakte
+  screenshot; vaste ontvanger `info@sitejob.nl`. Beheer via `/superadmin/feedback`.
+- Productiemigraties `20260914090151_feedback_reports` en `20260914090236_feedback_communication_index`
+  toegepast; types gegenereerd. Edge `feedback` versie 1 actief met eigen auth (`verify_jwt=false`).
+  Frontenduitrol via PR #273. Volledige technische uitleg en QA-bewijs: [docs/feedback.md](docs/feedback.md).
+- Live backend-QA met demo geslaagd, alle fixtures verwijderd en bestaande verzendinstellingen hersteld.
+  Het bewust geblokkeerde QA-superadminaccount is ongemoeid gelaten. Echte inboxontvangst is niet getest;
+  de mailer is met injecteerbare tests gecontroleerd en live QA respecteert de verzendpauze.
+- De extra browser-QA vond een race bij de beheerlogin; `SuperAdminContext` wacht nu op de rolcontrole
+  voordat de beschermde route wordt beoordeeld. Drie browserflows en de volledige quality-gate zijn groen.
+
 ## Duurzame mailinname — 16 september 2026 (`feat/urenmodule-mailinname`)
 
 - Duurzame worktree `/Users/kas/dev/ja-works-hub/.worktrees/urenmodule-mailinname`, branch

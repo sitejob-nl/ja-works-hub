@@ -41,6 +41,8 @@ interface SendViaOutlookAccountParams {
   bcc?: string[];
   subject: string;
   htmlBody: string;
+  /** Server-validated reporter address for support notifications. */
+  replyToEmail?: string;
   attachments?: OutlookAttachment[];
   accountId?: string | null;
   candidateId?: string;
@@ -170,7 +172,9 @@ export async function sendViaOutlookAccount(params: SendViaOutlookAccountParams)
         mailboxEmail: from,
       });
 
-    const replyTo = buildReplyTo(provider.account);
+    const replyTo = params.replyToEmail
+      ? recipientList(params.replyToEmail)
+      : buildReplyTo(provider.account);
     await graphJson(admin, provider, `${mailboxBasePath(provider.account)}/sendMail`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

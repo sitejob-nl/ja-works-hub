@@ -1,6 +1,6 @@
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useSuperAdmin } from '@/contexts/SuperAdminContext';
-import { Shield, Building2, AlertTriangle, Users, LogOut, LayoutDashboard, Package, Brain } from 'lucide-react';
+import { Shield, Building2, AlertTriangle, Users, LogOut, LayoutDashboard, Package, Brain, MessageSquarePlus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
@@ -11,11 +11,13 @@ const navItems = [
   { label: 'Abonnementen', icon: Package, path: '/superadmin/abonnementen' },
   { label: 'AI CV Backfill', icon: Brain, path: '/superadmin/cv-backfill' },
   { label: 'Foutmeldingen', icon: AlertTriangle, path: '/superadmin/errors' },
+  { label: 'Bugs & ideeën', icon: MessageSquarePlus, path: '/superadmin/feedback' },
 ];
 
 const SuperAdminLayout = () => {
   const { isSuperAdmin, loading, signOut, user } = useSuperAdmin();
   const navigate = useNavigate();
+  const location = useLocation();
 
   if (loading) {
     return (
@@ -26,8 +28,7 @@ const SuperAdminLayout = () => {
   }
 
   if (!isSuperAdmin) {
-    navigate('/superadmin/login');
-    return null;
+    return <Navigate to="/superadmin/login" state={{ returnTo: location.pathname }} replace />;
   }
 
   return (

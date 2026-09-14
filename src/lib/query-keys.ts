@@ -16,6 +16,11 @@
  * This is intentionally partial: extend per domain as call sites are migrated.
  */
 export const qk = {
+  feedback: {
+    all: (userId: string) => ['feedback', userId] as const,
+    list: (userId: string, page: number) => ['feedback', userId, 'list', page] as const,
+    detail: (userId: string, id: string) => ['feedback', userId, 'detail', id] as const,
+  },
   hoursModule: {
     all: () => ['hours-module-access'] as const,
     access: (orgId: string, userId: string, zone: string, authRevision = 0) => ['hours-module-access', orgId, userId, zone, authRevision] as const,
