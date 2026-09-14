@@ -6,10 +6,18 @@ De portalzones en de aparte facility-rol vallen in deze eerste versie buiten dez
 verwacht resultaat. Screenshots kunnen worden geplakt, geüpload of via de Screen Capture API vastgelegd.
 
 Een screenshot wordt lokaal naar PNG omgezet (geen oorspronkelijke afbeeldingsmetadata), begrensd op
-2560 pixels per zijde / 2 MB, en kan met zwarte vlakken worden bewerkt. De gebruiker bevestigt expliciet
-het zichtbare voorbeeld. Alleen dat bewerkte beeld wordt verstuurd. Automatische detectie van gevoelige
+2560 pixels per zijde / 2 MB. **Omcirkelen** tekent een rode cirkel met transparant midden; **Zwartmaken**
+bedekt gevoelige gegevens. **Ongedaan maken** herstelt de laatste bewerking. Elke bewerking trekt de
+deelbevestiging in. De gebruiker bevestigt expliciet het zichtbare voorbeeld. Alleen dat bewerkte beeld
+wordt verstuurd. Automatische detectie van gevoelige
 gegevens in afbeeldingen is niet ingebouwd. Browser-schermopname vereist toestemming; upload/plakken
-blijven beschikbaar waar deze API ontbreekt. De opname wordt direct na één frame gestopt.
+blijven beschikbaar waar deze API ontbreekt. De opname stelt het huidige tabblad voor via
+[`preferCurrentTab` en `displaySurface`](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getDisplayMedia);
+de gebruiker blijft zelf de bron kiezen. Het meldformulier is tijdens de opname gesloten. Na toestemming
+en videostart wacht de opname één seconde, gevolgd door een nieuw gedecodeerd videoframe. Zo wordt het
+eerste beeld met het nog wegfadende browserdeelvenster overgeslagen. De videotracks stoppen direct na
+de screenshot, ook bij fouten of timeout. Er is geen browser-API die het sluiten van elk native deelvenster
+bevestigt; de wachttijd en voorkeur voor tabbladopname vangen het gemelde timingprobleem op.
 
 ## Opslag, debuggegevens en bezorging
 
@@ -133,6 +141,13 @@ het verzonden screenshot, mobiele layout en identieke retries na een weggevallen
 feedbackrequests worden onderschept; er wordt geen echte melding of e-mail aangemaakt. Geef een preview-
 URL mee via `E2E_BASE_URL`, `PLAYWRIGHT_SKIP_WEBSERVER=1` bij een eigen devserver, en de bestaande
 `DEMO_ORG_EMAIL` / `DEMO_ORG_PASSWORD` via de omgeving. Testmails zijn niet verstuurd.
+
+`scripts/e2e-feedback-editor.spec.ts` controleert de rode cirkel, transparant midden, ongedaan maken,
+herbevestiging en de combinatie met zwarte vlakken in de daadwerkelijk verzonden PNG. De tweede test
+simuleert een deelvenster dat na 500 ms verdwijnt in een echte videostream: de screenshot moet het latere
+schone beeld bevatten, het meldformulier moet verborgen zijn en alle tracks moeten stoppen. Annuleren
+behoudt de concepttekst en bijlage. Dit is een gecontroleerde browserregressie; native Windows/Edge-
+deelvensters zijn niet bediend op deze macOS-testomgeving.
 
 `scripts/test-feedback-live.mjs` controleert de uitgerolde backend met synthetische demo-meldingen.
 Expliciete opt-in: `RUN_LIVE_FEEDBACK_QA=1`, de bestaande demo-/Supabase-env en de ingelogde Supabase CLI.
