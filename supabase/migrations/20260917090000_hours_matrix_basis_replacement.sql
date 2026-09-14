@@ -408,6 +408,12 @@ begin
   select company_id into v_company from public.hours_weeks where id = v_day.week_id and organization_id = v_day.organization_id;
   perform 1 from public.companies where id = v_company and organization_id = v_day.organization_id for update;
   if not found then raise exception 'Opdrachtgever niet beschikbaar' using errcode = '42501'; end if;
+  -- Settings edits share the company lock; recheck after acquiring it, exactly
+  -- as the calculation context does. hours_lock_day read the switch before the
+  -- row was ours, and a switch-off that committed in between must still win.
+  if not exists (select 1 from public.hours_company_settings where company_id = v_company and organization_id = v_day.organization_id and enabled) then
+    raise exception 'Nieuwe urenwerkwijze staat uit voor deze opdrachtgever' using errcode = '22023';
+  end if;
   v_candidates := private.hours_day_matrix_candidates(v_day.organization_id, v_company, true);
   select value into v_chosen from jsonb_array_elements(v_candidates->'matrix_sources')
     where value->>'matrix_version_id' = p_matrix_version_id::text

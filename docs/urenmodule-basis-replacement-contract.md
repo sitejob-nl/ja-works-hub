@@ -1,8 +1,12 @@
 # Urenmodule: expliciete vervanging van een vastgelegde matrixbasis
 
-**Status: gebouwd en toegepast op productie op 17 september 2026.** Migratie
-`20260917090000_hours_matrix_basis_replacement.sql`, met een opvolgende index-migratie voor de
-tenant-gebonden foreign keys. Dit is ticket T10 uit [de ticketlijst](urenmodule-tickets.md#t10--expliciete-vervanging-van-een-vastgelegde-matrixbasis).
+**Status: gebouwd; de database staat op productie, de frontend wacht op merge.** Het bronbestand is
+`20260917090000_hours_matrix_basis_replacement.sql`; dat ene bestand levert de volledige eindtoestand
+op, inclusief de indexen op de tenant-gebonden foreign keys. Op productie is diezelfde eindtoestand in
+drie stappen via de Supabase-MCP aangebracht (de basismigratie, de twee indexen, en de hercontrole van de
+werkwijzeschakelaar uit reviewronde 1) — dus `schema_migrations` telt daar drie versies waar de repo één
+bestand heeft; de definities zijn identiek. Dit is ticket T10 uit
+[de ticketlijst](urenmodule-tickets.md#t10--expliciete-vervanging-van-een-vastgelegde-matrixbasis).
 Er is op deze route **geen betaalde aanroep**, geen export, geen bericht en geen schrijfactie naar de
 legacy `timesheets`-route.
 
@@ -83,6 +87,14 @@ rekencontext. Daarna gelden twee compare-and-swaps: de actuele dagrevisie moet `
 zijn, en de actuele basisversie moet `p_expected_basis_version` zijn. Beide mismatches geven `PT409`
 (HTTP 409) zonder iets te schrijven. Twee sessies die tegelijk vervangen leveren dus één vervanging en
 één conflict, niet twee schakels.
+
+Vlak vóór de schrijfactie neemt de RPC ook het opdrachtgeversslot (`companies … for update`) — het slot
+dat `hours_set_company_settings` neemt — en leest daarna de werkwijzeschakelaar **opnieuw**.
+`hours_lock_day` las die schakelaar al, maar vóórdat de rij van ons was; een uitschakeling die
+tussendoor committe wint alsnog met `22023`. De databaseproef forceert die tussenkomst door het
+opdrachtgeversslot vast te houden en de schakelaar in diezelfde transactie om te zetten. T12 moet op
+zijn beurt het dagslot (`hours_lock_day`) nemen vóór hij een vrijgave schrijft; dan serialiseert de
+vrijgavecontrole hierboven vanzelf tegen een lopende vervanging.
 
 Het maximum is vijftig vervangingen per dag. Dat begrenst de auditketen en de projectie; de eenenvijftigste
 geeft `22023` met die reden.

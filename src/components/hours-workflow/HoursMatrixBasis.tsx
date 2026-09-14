@@ -53,6 +53,7 @@ function ReplaceForm({ day, basis, options, onReplaceBasis, onClose, onReload }:
   if (done) {
     return <Alert className="mt-3"><AlertDescription>
       De matrixbasis is vervangen. De getoonde uitkomst hoort nog bij de vorige basis. Voer de uursoortencontrole opnieuw uit om de dag op de nieuwe basis in te delen.
+      <div className="mt-2"><Button type="button" variant="outline" size="sm" onClick={onClose}>Sluiten</Button></div>
     </AlertDescription></Alert>;
   }
   if (!choices.length) {
@@ -152,7 +153,9 @@ export function HoursMatrixBasis({ day, readOnly, busy, onLoadMatrixOptions, onR
       <summary className="cursor-pointer text-muted-foreground">Eerdere uitkomsten ({superseded.length})</summary>
       <ol className="mt-2 space-y-2 border-l pl-3">
         {superseded.map(entry => <li key={entry.id} className="space-y-1">
-          <p>Uitkomst op basisversie {entry.basisVersion ?? 0}</p>
+          <p>{entry.basisVersion == null
+            ? 'Uitkomst zonder vastgelegde matrixbasis'
+            : `Uitkomst op basisversie ${entry.basisVersion}`}</p>
           <HoursClassificationDetails classification={entry} revisionId={entry.revisionId} />
         </li>)}
       </ol>

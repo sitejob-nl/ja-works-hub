@@ -584,6 +584,41 @@ class BasisReplacementTests(mailintake.MailIntakeTests):
         self.assertEqual(visible["previous_classifications"], [])
         self.assertNotIn(text, json.dumps(own))
 
+    def test_a_replacement_rechecks_the_switch_after_taking_the_company_lock(self):
+        """hours_lock_day reads the switch before the company row is locked. A
+        settings change that commits in between must still stop the write, so the
+        replacement has to look again once it holds the row — as the rekencontext
+        already does."""
+        day, first, _ = self.pinned()
+        second = self.create_matrix(factor="2", scope="cao")
+        self.bind(second["id"])
+        current = self.latest(day)
+        params = dict(p_day_id=day["id"], p_expected_revision_id=current["current_revision"]["id"],
+                      p_expected_basis_version=0, p_matrix_version_id=self.version_of(second),
+                      p_reason=self.reason())
+        holding = threading.Event()
+
+        def switch_off_while_holding_the_company():
+            # The owner holds the company row the replacement must take, and
+            # flips the switch inside that same transaction before letting go.
+            holding.set()
+            sql(f"""BEGIN;
+              SELECT 1 FROM public.companies WHERE id={literal(self.company)} FOR UPDATE;
+              SELECT pg_sleep(3);
+              UPDATE public.hours_company_settings SET enabled=false, version=version+1
+                WHERE company_id={literal(self.company)};
+              COMMIT;""")
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            holder = executor.submit(switch_off_while_holding_the_company)
+            holding.wait(timeout=5)
+            time.sleep(1)
+            error = sql(rpc_statement("hours_replace_day_matrix_basis", **params),
+                        role="authenticated", user=self.admin, expect_error=True)
+            holder.result(timeout=30)
+        self.assertIn("22023", error)
+        self.assertEqual(self.rows("hours_day_matrix_basis_replacements", day), [])
+
     def test_the_workflow_switch_blocks_a_replacement(self):
         day, first, _ = self.pinned()
         second = self.create_matrix(factor="2", scope="cao")

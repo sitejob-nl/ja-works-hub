@@ -45,10 +45,22 @@ projectsamenvatting.
   (basisversie 0, factor 1), basis vervangen met reden, herberekend (basisversie 1, factor 2), en na
   afloop de vastgelegde basisrij en de eerste uitkomst byte-identiek teruggelezen. Nul writes naar
   `timesheets`, communicatie of AI-verbruik — op productie nagemeten.
+- **Reviewronde 1 (vier bevindingen, alle vier gerepareerd met een test die eerst rood stond):**
+  (1) de vervangings-RPC las de werkwijzeschakelaar niet opnieuw nadat hij het opdrachtgeversslot had
+  genomen — een uitschakeling die tussen `hours_lock_day` en de INSERT committe, werd genegeerd; nu
+  dezelfde hercontrole als in de rekencontext, bewezen door in de proef het slot vast te houden en de
+  schakelaar in die transactie om te zetten; (2) na een geslaagde vervanging zat het paneel vast in een
+  bevestiging zonder sluitknop; (3) een uitkomst met `basis_version = null` (pre-migratie, of zonder
+  matrix) werd als "basisversie 0" gelabeld; (4) de contractstatus beweerde meer dan waar was en
+  noemde een index-migratie die in de repo niet bestaat. De functiefix is ook op productie
+  aangebracht (derde MCP-migratie).
+- **Productie versus repo:** `schema_migrations` op productie telt voor T10 drie versies (basis,
+  indexen, hercontrole); de repo heeft één bestand dat exact dezelfde eindtoestand oplevert. Niet
+  opnieuw `db push`-en zonder dat te weten.
 - **Restpunt van de QA:** de eerste QA-poging liet in de synthetische demo-opdrachtgever
   `Urenmodule QA t10-202609110835` één halfafgeronde dag achter (basis vervangen, nog niet herberekend).
   Dat is synthetische demodata in een eigen QA-bedrijf en is bewust blijven staan, net als bij eerdere
-  runs.
+  runs. De geslaagde run is `Urenmodule QA t10-20260911083830`.
 
 ## Duurzame mailinname — 16 september 2026 (`feat/urenmodule-mailinname`)
 

@@ -83,6 +83,18 @@ describe('the basis a day stands on', () => {
     expect(screen.getByText(/Basisversie 0/)).toHaveTextContent('Klantmatrix');
   });
 
+  it('does not call an outcome without a matrix basis version zero', () => {
+    const week = weekFixture();
+    week.employees[0].days[0].previousClassifications = [classification({
+      id: 'classification-legacy', basisVersion: null, matrixVersionId: null, matrixName: null,
+      matrixScope: null, status: 'no_hours', allocations: [],
+    })];
+    mount({ week });
+    fireEvent.click(screen.getByText(/Eerdere uitkomst/));
+    expect(screen.getByText(/Uitkomst zonder vastgelegde matrixbasis/)).toBeInTheDocument();
+    expect(screen.queryByText(/Uitkomst op basisversie 0/)).not.toBeInTheDocument();
+  });
+
   it('shows the superseded outcome next to the current one', () => {
     mount();
     fireEvent.click(screen.getByText(/Eerdere uitkomst/));
@@ -156,6 +168,18 @@ describe('replacing the basis', () => {
     click('Matrixbasis vervangen');
     await waitFor(() => expect(props.onReplaceBasis).toHaveBeenCalledOnce());
     expect(await screen.findByText(/Voer de uursoortencontrole opnieuw uit/)).toBeInTheDocument();
+  });
+
+  it('lets the confirmation be closed again instead of blocking the panel', async () => {
+    mount();
+    await openForm();
+    fireEvent.change(screen.getByLabelText('Nieuwe matrixbasis'), { target: { value: 'version-client' } });
+    fireEvent.change(screen.getByLabelText('Reden van de vervanging'), { target: { value: 'Verkeerde matrix' } });
+    click('Matrixbasis vervangen');
+    await screen.findByText(/Voer de uursoortencontrole opnieuw uit/);
+    click('Sluiten');
+    expect(screen.queryByText(/Voer de uursoortencontrole opnieuw uit/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Andere matrixbasis vastleggen' })).toBeEnabled();
   });
 
   it('reports a conflict without retrying and offers the current hours instead', async () => {

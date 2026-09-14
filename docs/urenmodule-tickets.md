@@ -228,7 +228,8 @@ tegenstrijdige regels blijven blokkeren; er wordt geen CAO geraden en geen stand
 gecontroleerde procedure op een andere basis worden herberekend, met reden, actor en volledige historie.
 Zonder die procedure blijft de vastgelegde basis leidend.
 
-**Status:** gebouwd en toegepast op productie op 17 september 2026 (migratie `20260917090000`); zie het
+**Status:** gebouwd op 17 september 2026; database op productie, frontend na merge (migratie
+`20260917090000`); zie het
 [vervangingscontract](urenmodule-basis-replacement-contract.md). De vastgelegde basis blijft
 onveranderlijk: een vervanging is een append-only schakel die de werkende basis vooruitschuift, en de
 herberekening loopt langs de bestaande vertrouwde classificatieroute. **Vrijgave bestond nog niet en is
