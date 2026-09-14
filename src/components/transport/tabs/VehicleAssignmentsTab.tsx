@@ -26,9 +26,11 @@ import { todayISO } from '@/lib/tasks';
 import {
   deleteVehicleAssignment,
   resolveEmployeeId,
+  syncVehicleStatus,
   returnVehicleAssignment,
   vehicleAssignmentErrorMessage,
 } from '@/lib/assignments';
+import { vehicleAssignedOn, vehicleAssignmentPeriodIssue } from '@/lib/vehicle-availability';
 import { sendRegulationsForAssignment } from '@/lib/regulation-dispatch';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchFacilityTransportSnapshot, fetchFacilityWorkerDirectory, isFacilityRole, saveFacilityOperationalEntity } from '@/lib/facility';
@@ -72,6 +74,7 @@ const VehicleAssignmentsTab = ({ vehicle }: { vehicle: any }) => {
   const [personSearch, setPersonSearch] = useState('');
   const [selectedPerson, setSelectedPerson] = useState<any>(null);
   const [assignedDate, setAssignedDate] = useState('');
+  const [returnedDate, setReturnedDate] = useState('');
   const [startMileage, setStartMileage] = useState(vehicle.current_mileage?.toString() ?? '');
 
   const [editingAssignment, setEditingAssignment] = useState<any | null>(null);
@@ -148,9 +151,13 @@ const VehicleAssignmentsTab = ({ vehicle }: { vehicle: any }) => {
 
   const resetPicker = () => { setSelectedPerson(null); setPersonSearch(''); setPickerOpen(false); };
 
+  const periodIssue = vehicleAssignmentPeriodIssue(assignments, assignedDate, returnedDate);
+
   const assignMutation = useMutation({
     mutationFn: async () => {
       if (!selectedPerson) throw new Error('Selecteer eerst een medewerker.');
+      if (!assignments) throw new Error('De bestaande toewijzingen worden nog geladen.');
+      if (periodIssue) throw new Error(periodIssue);
       // De DB-trigger check_drivers_license weigert de insert zonder geldig rijbewijs.
       // Hier al stoppen, want resolveEmployeeId() hieronder maakt de employees-koppelrij
       // aan vóór die insert: bij elke geweigerde poging bleef er anders een dienstverband-
@@ -172,22 +179,19 @@ const VehicleAssignmentsTab = ({ vehicle }: { vehicle: any }) => {
         employee_id: employeeId,
         candidate_id: candidateId,
         assigned_date: assignedDate,
+        returned_date: returnedDate || null,
         start_mileage: startMileage ? parseInt(startMileage) : null,
         created_by: user?.id ?? null,
       }).select('id').single();
       if (error) throw error;
-      // Punt 17 — een toewijzing met een toekomstige begindatum is een reservering; het
-      // voertuig blijft tot die datum beschikbaar en de status blijft dus ongemoeid.
-      if (assignedDate <= new Date().toISOString().slice(0, 10)) {
-        if (isFacility) {
-          await saveFacilityOperationalEntity('vehicle', { id: vehicle.id, status: 'toegewezen' });
-        } else {
-          const { error: vErr } = await supabase.from('vehicles').update({ status: 'toegewezen' as any }).eq('id', vehicle.id);
-          if (vErr) throw vErr;
-        }
+      const activeToday = vehicleAssignedOn([{ assigned_date: assignedDate, returned_date: returnedDate || null }], todayISO());
+      if (isFacility) {
+        if (activeToday) await saveFacilityOperationalEntity('vehicle', { id: vehicle.id, status: 'toegewezen' });
+      } else {
+        await syncVehicleStatus(orgId, vehicle.id);
       }
       // Autoregels meesturen (instelbaar per reglement). Non-blocking: de toewijzing staat al.
-      if (candidateId) {
+      if (candidateId && (!returnedDate || returnedDate > todayISO())) {
         await sendRegulationsForAssignment({ candidateId, category: 'voertuig', contextId: inserted?.id });
       }
     },
@@ -196,9 +200,11 @@ const VehicleAssignmentsTab = ({ vehicle }: { vehicle: any }) => {
       qc.invalidateQueries({ queryKey: ['vehicle', vehicle.id] });
       qc.invalidateQueries({ queryKey: ['vehicles'] });
       qc.invalidateQueries({ queryKey: ['facility-transport-snapshot'] });
+      qc.invalidateQueries({ queryKey: ['vehicle-assignments-candidate', orgId] });
+      qc.invalidateQueries({ queryKey: ['assignable-vehicles', orgId] });
       toast.success('Voertuig toegewezen');
       setAssignOpen(false);
-      resetPicker(); setAssignedDate('');
+      resetPicker(); setAssignedDate(''); setReturnedDate('');
     },
     onError: (e: any) => {
       const msg = e?.message || '';
@@ -444,16 +450,22 @@ const VehicleAssignmentsTab = ({ vehicle }: { vehicle: any }) => {
               )}
             </div>
             <div>
-              <Label>Startdatum *</Label>
-              <Input type="date" value={assignedDate} onChange={(e) => setAssignedDate(e.target.value)} />
+              <Label htmlFor="assignment-start">Startdatum *</Label>
+              <Input id="assignment-start" type="date" value={assignedDate} onChange={(e) => setAssignedDate(e.target.value)} />
               {assignedDate > new Date().toISOString().slice(0, 10) && (
                 <p className="text-xs text-muted-foreground mt-1">Toekomstige datum: het voertuig staat tot dan op Gereserveerd en blijft beschikbaar.</p>
               )}
             </div>
+            <div>
+              <Label htmlFor="assignment-end">Inleverdatum (leeg = nog niet bekend)</Label>
+              <Input id="assignment-end" type="date" min={assignedDate || undefined} value={returnedDate} onChange={(e) => setReturnedDate(e.target.value)} />
+              <p className="text-xs text-muted-foreground mt-1">Ook een periode in het verleden is mogelijk. Vul bij een eerdere toewijzing de werkelijke inleverdatum in.</p>
+              {assignedDate && periodIssue && <p role="alert" className="text-xs text-destructive mt-1">{periodIssue}</p>}
+            </div>
             <div><Label>Begin kilometerstand</Label><Input type="number" value={startMileage} onChange={(e) => setStartMileage(e.target.value)} /></div>
             <div className="flex justify-end gap-3 pt-4">
               <Button variant="ghost" onClick={() => setAssignOpen(false)}>Annuleren</Button>
-              <Button onClick={() => assignMutation.mutate()} disabled={!selectedPerson || !assignedDate || assignMutation.isPending}>
+              <Button onClick={() => assignMutation.mutate()} disabled={!selectedPerson || !assignments || !!periodIssue || assignMutation.isPending}>
                 {assignMutation.isPending ? 'Toewijzen...' : 'Toewijzen'}
               </Button>
             </div>

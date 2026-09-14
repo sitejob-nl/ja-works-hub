@@ -19,6 +19,7 @@ import CustomFieldsSection from '@/components/shared/CustomFieldsSection';
 import UnsavedChangesGuard from '@/components/shared/UnsavedChangesGuard';
 import { InlineTextField, InlineSensitiveField, InlineBooleanField, InlineTagsField, InlineSkillsField, InlineLanguagesField, InlineNationalityField } from '@/components/shared/InlineFields';
 import { CandidatePreferencesTab } from '@/components/candidates/tabs/CandidatePreferencesTab';
+import OnboardingResponses from '@/components/onboarding/OnboardingResponses';
 import EmailSendDialog from '@/components/email/EmailSendDialog';
 
 const asObject = (value: unknown): Record<string, any> =>
@@ -353,6 +354,10 @@ const CandidateProfileTab = ({ candidate }: { candidate: any }) => {
 
       <div className="md:col-span-2">
         <CandidatePreferencesTab candidateId={candidate.id} />
+      </div>
+
+      <div className="md:col-span-2">
+        <OnboardingResponses candidateId={candidate.id} />
       </div>
 
       {/* Profile Link Section - spans full width */}

@@ -1,5 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+import { onboardingResult, saveOnboardingProfile } from "../_shared/onboarding-profile.ts";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -169,7 +171,7 @@ Deno.serve(async (req) => {
     // ─── POST: submit onboarding data ───
     if (req.method === "POST") {
       const body = await req.json();
-      const { token, personal_data, documents_accepted, form_id, responses, address_geo } = body;
+      const { token, documents_accepted } = body;
 
       if (!token) return json({ error: "Token required" }, 400);
 
@@ -198,84 +200,7 @@ Deno.serve(async (req) => {
       }
       if (!candidateId) return json({ error: "Kandidaat niet gevonden" }, 404);
 
-      const activeFormId = form_id || tokenData.form_id;
-
-      // ── Dynamic form submission ──
-      if (activeFormId && responses && typeof responses === "object") {
-        // Load field definitions to get mappings
-        const { data: formSteps } = await admin
-          .from("onboarding_form_steps")
-          .select("id")
-          .eq("form_id", activeFormId);
-
-        const stepIds = (formSteps ?? []).map((s: any) => s.id);
-
-        let fieldDefs: any[] = [];
-        if (stepIds.length > 0) {
-          const { data: fData } = await admin
-            .from("onboarding_form_fields")
-            .select("id, maps_to_table, maps_to_column, document_type, field_type")
-            .in("step_id", stepIds);
-          fieldDefs = fData ?? [];
-        }
-
-        // Build candidate updates from mapped fields
-        const candidateUpdates: Record<string, any> = {};
-        const responseInserts: any[] = [];
-
-        for (const [fieldId, value] of Object.entries(responses)) {
-          if (!value || typeof value !== "string") continue;
-
-          const fieldDef = fieldDefs.find((f: any) => f.id === fieldId);
-          if (!fieldDef) continue;
-
-          // Map to candidate table if configured
-          if (fieldDef.maps_to_table === "candidates" && fieldDef.maps_to_column) {
-            candidateUpdates[fieldDef.maps_to_column] = value;
-          }
-
-          // Store in onboarding_responses
-          responseInserts.push({
-            organization_id: tokenData.organization_id,
-            candidate_id: candidateId,
-            form_id: activeFormId,
-            field_id: fieldId,
-            value: value,
-          });
-        }
-
-        if (
-          address_geo &&
-          Number.isFinite(Number(address_geo.address_lat)) &&
-          Number.isFinite(Number(address_geo.address_lng))
-        ) {
-          candidateUpdates.address_lat = Number(address_geo.address_lat);
-          candidateUpdates.address_lng = Number(address_geo.address_lng);
-        }
-
-        // Apply candidate updates
-        if (Object.keys(candidateUpdates).length > 0) {
-          await admin.from("candidates").update(candidateUpdates).eq("id", candidateId);
-        }
-
-        // Store responses
-        if (responseInserts.length > 0) {
-          await admin.from("onboarding_responses").insert(responseInserts);
-        }
-      }
-      // ── Legacy fallback submission ──
-      else if (personal_data) {
-        const allowed = ["bsn", "iban", "date_of_birth", "nationality", "address_street", "address_postal", "address_city", "address_country", "address_lat", "address_lng", "phone", "email"];
-        const updates: Record<string, any> = {};
-        for (const key of allowed) {
-          if (personal_data[key] !== undefined && personal_data[key] !== null && personal_data[key] !== "") {
-            updates[key] = personal_data[key];
-          }
-        }
-        if (Object.keys(updates).length > 0) {
-          await admin.from("candidates").update(updates).eq("id", candidateId);
-        }
-      }
+      await saveOnboardingProfile(admin, tokenData, candidateId, body);
 
       // Upload document files if provided
       const uploadedDocs = body.documents;
@@ -290,43 +215,43 @@ Deno.serve(async (req) => {
             const ext = doc.name.split(".").pop() || "bin";
             const storagePath = `${tokenData.organization_id}/${candidateId}/${crypto.randomUUID()}.${ext}`;
 
-            await admin.storage.from("documents").upload(storagePath, binaryData, {
+            await onboardingResult(admin.storage.from("documents").upload(storagePath, binaryData, {
               contentType: doc.data.split(";")[0]?.split(":")[1] || "application/octet-stream",
-            });
+            }), "Het document kon niet worden geüpload. Probeer het opnieuw.");
 
-            await admin.from("documents").insert({
+            await onboardingResult(admin.from("documents").insert({
               organization_id: tokenData.organization_id,
               candidate_id: candidateId,
               name: doc.name,
               type: doc.type, // id_bewijs, rijbewijs, certificaat
               file_path: storagePath,
               status: "geldig",
-            });
+            }), "Het document kon niet worden opgeslagen. Probeer het opnieuw.");
           } catch (uploadErr) {
-            console.error(`[onboarding-submit] Doc upload failed: ${(uploadErr as Error).message}`);
+            throw new Error("Een document kon niet worden opgeslagen. Probeer het opnieuw.");
           }
         }
       }
 
       // Create reglement document if accepted
       if (documents_accepted) {
-        await admin.from("documents").insert({
+        await onboardingResult(admin.from("documents").insert({
           organization_id: tokenData.organization_id,
           candidate_id: candidateId,
           name: "Reglement akkoord",
           type: "reglement",
           status: "geldig",
-        });
+        }), "Je akkoord kon niet worden opgeslagen. Probeer het opnieuw.");
       }
 
-      // Mark token as used
-      await admin.from("onboarding_tokens").update({ used_at: new Date().toISOString() }).eq("id", tokenData.id);
-
-      // Mark onboarding completed on candidate
-      await admin.from("candidates").update({
+      // Consume the link only after every profile/document write succeeded.
+      await onboardingResult(admin.from("candidates").update({
         onboarding_completed: true,
         onboarding_completed_at: new Date().toISOString(),
-      }).eq("id", candidateId);
+      }).eq("organization_id", tokenData.organization_id).eq("id", candidateId).select("id").single(),
+      "De onboarding kon niet worden afgerond. Probeer het opnieuw.");
+      await onboardingResult(admin.from("onboarding_tokens").update({ used_at: new Date().toISOString() })
+        .eq("id", tokenData.id).select("id").single(), "De onboardinglink kon niet worden afgerond. Probeer het opnieuw.");
 
       return json({ success: true });
     }
