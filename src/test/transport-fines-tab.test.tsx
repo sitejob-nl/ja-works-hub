@@ -22,6 +22,7 @@ const db = vi.hoisted(() => ({
   remove: vi.fn(),
 }));
 
+vi.mock('@/hooks/useRecordDeleteAccess', () => ({ useCanDeleteFine: () => true }));
 vi.mock('@/hooks/useOrganizationId', () => ({ useOrganizationId: () => 'qa-org' }));
 vi.mock('@/lib/audit', () => ({ logAudit: vi.fn() }));
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));

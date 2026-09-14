@@ -2,7 +2,6 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import DeletePlacementDialog, { type DeletePlacementTarget } from '@/components/placements/DeletePlacementDialog';
-import { logAudit } from '@/lib/audit';
 import { toast } from 'sonner';
 
 /**
@@ -14,29 +13,22 @@ import { toast } from 'sonner';
 const state = vi.hoisted(() => ({
   counts: {} as Record<string, number>,
   deleted: [] as string[],
-  deleteResult: { data: [{ id: 'p1' }] as { id: string }[] | null, error: null as unknown },
-  role: 'admin' as string,
+  deleteResult: { data: 'p1' as string | null, error: null as unknown },
+  allowed: true,
 }));
 
 vi.mock('@/integrations/supabase/client', () => ({
   supabase: {
-    from: (table: string) => ({
-      select: () => ({
-        eq: () => Promise.resolve({ count: state.counts[table] ?? 0, data: null, error: null }),
-      }),
-      delete: () => ({
-        eq: (_column: string, id: string) => ({
-          select: () => {
-            state.deleted.push(id);
-            return Promise.resolve(state.deleteResult);
-          },
-        }),
-      }),
-    }),
+    rpc: (name: string, args: { p_placement_id: string }) => {
+      if (name === 'get_placement_delete_impact') {
+        return Promise.resolve({ data: state.counts, error: null });
+      }
+      state.deleted.push(args.p_placement_id);
+      return Promise.resolve(state.deleteResult);
+    },
   },
 }));
-vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ role: state.role }) }));
-vi.mock('@/lib/audit', () => ({ logAudit: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('@/hooks/useRecordDeleteAccess', () => ({ useCanDeletePlacement: () => state.allowed }));
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 
 const target: DeletePlacementTarget = {
@@ -73,8 +65,8 @@ describe('DeletePlacementDialog', () => {
     vi.clearAllMocks();
     state.counts = {};
     state.deleted = [];
-    state.deleteResult = { data: [{ id: 'p1' }], error: null };
-    state.role = 'admin';
+    state.deleteResult = { data: 'p1', error: null };
+    state.allowed = true;
   });
 
   it('noemt kandidaat, opdrachtgever en periode in de bevestiging', async () => {
@@ -86,7 +78,7 @@ describe('DeletePlacementDialog', () => {
     expect(dialog).toHaveTextContent('01-09-2026 t/m 30-09-2026');
   });
 
-  it('verwijdert een lege plaatsing en legt een auditregel vast met de oude waarden', async () => {
+  it('verwijdert een lege plaatsing via de transactionele RPC', async () => {
     const { onOpenChange, onDeleted } = renderDialog();
     const confirm = await screen.findByRole('button', { name: 'Verwijderen' });
     await waitFor(() => expect(confirm).toBeEnabled());
@@ -94,21 +86,13 @@ describe('DeletePlacementDialog', () => {
     fireEvent.click(confirm);
 
     await waitFor(() => expect(state.deleted).toEqual(['p1']));
-    await waitFor(() => expect(logAudit).toHaveBeenCalledTimes(1));
-    const audit = vi.mocked(logAudit).mock.calls[0][0];
-    expect(audit).toMatchObject({ action: 'delete', tableName: 'placements', recordId: 'p1' });
-    expect(audit.oldValues).toMatchObject({ id: 'p1', function_name: 'Lasser', status: 'gepland' });
-    // Gejoinde relaties horen niet in old_values.
-    expect(audit.oldValues).not.toHaveProperty('companies');
-    expect(audit.oldValues).not.toHaveProperty('candidates');
-
     await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
     expect(onDeleted).toHaveBeenCalledTimes(1);
     expect(toast.success).toHaveBeenCalledWith('Plaatsing verwijderd');
   });
 
   it('blokkeert verwijderen en legt uit wat er in de weg staat en dat beëindigen het pad is', async () => {
-    state.counts = { timesheets: 2, invoice_lines: 1 };
+    state.counts = { timesheets: 2, invoiceLines: 1 };
     renderDialog();
 
     const dialog = await screen.findByRole('alertdialog');
@@ -123,7 +107,6 @@ describe('DeletePlacementDialog', () => {
     expect(confirm).toBeDisabled();
     fireEvent.click(confirm);
     expect(state.deleted).toEqual([]);
-    expect(logAudit).not.toHaveBeenCalled();
   });
 
   it('houdt bevestigen geblokkeerd zolang de telling nog niet binnen is', () => {
@@ -132,23 +115,36 @@ describe('DeletePlacementDialog', () => {
     expect(screen.getByRole('button', { name: 'Verwijderen' })).toBeDisabled();
   });
 
-  it('weigert zonder beheerdersrol en laat de dialoog open met een toast', async () => {
-    state.role = 'intercedent';
-    const { onOpenChange } = renderDialog();
-    const confirm = await screen.findByRole('button', { name: 'Verwijderen' });
-    await waitFor(() => expect(confirm).toBeEnabled());
-
+  it('blokkeert zonder verwijderrecht voordat de RPC wordt aangeroepen', async () => {
+    state.allowed = false;
+    renderDialog();
+    expect(screen.getByRole('alertdialog')).toHaveTextContent('geen rechten');
+    const confirm = screen.getByRole('button', { name: 'Verwijderen' });
+    expect(confirm).toBeDisabled();
     fireEvent.click(confirm);
-
-    await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1));
-    expect(vi.mocked(toast.error).mock.calls[0][0]).toContain('beheerder');
     expect(state.deleted).toEqual([]);
-    expect(logAudit).not.toHaveBeenCalled();
+  });
+
+  it('toont gekoppelde urenweken als blokkade', async () => {
+    state.counts = { hoursWeeks: 1 };
+    renderDialog();
+    await waitFor(() => expect(screen.getByRole('alertdialog')).toHaveTextContent('1 urenweek'));
+    expect(screen.getByRole('button', { name: 'Verwijderen' })).toBeDisabled();
+  });
+
+  it('laat de dialoog open als de server een intussen gekoppelde historie vindt', async () => {
+    state.deleteResult = { data: null, error: { message: 'Er zijn inmiddels uren gekoppeld' } };
+    const { onDeleted, onOpenChange } = renderDialog();
+    const confirm = screen.getByRole('button', { name: 'Verwijderen' });
+    await waitFor(() => expect(confirm).toBeEnabled());
+    fireEvent.click(confirm);
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    expect(onDeleted).not.toHaveBeenCalled();
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
   });
 
   it('meldt een stil geweigerde delete (0 rijen) in plaats van succes', async () => {
-    state.deleteResult = { data: [], error: null };
+    state.deleteResult = { data: null, error: null };
     const { onDeleted } = renderDialog();
     const confirm = await screen.findByRole('button', { name: 'Verwijderen' });
     await waitFor(() => expect(confirm).toBeEnabled());
@@ -156,8 +152,7 @@ describe('DeletePlacementDialog', () => {
     fireEvent.click(confirm);
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1));
-    expect(vi.mocked(toast.error).mock.calls[0][0]).toContain('beheerdersrechten');
-    expect(logAudit).not.toHaveBeenCalled();
+    expect(vi.mocked(toast.error).mock.calls[0][0]).toContain('niet worden verwijderd');
     expect(onDeleted).not.toHaveBeenCalled();
   });
 });

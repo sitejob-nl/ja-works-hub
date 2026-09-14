@@ -6,15 +6,16 @@ import { formatDate } from '@/lib/format';
  * De database is de laatste grendel: `timesheets` staat op RESTRICT en
  * `hour_letters` + `sick_reports` op NO ACTION, dus een plaatsing met uren kán
  * niet weg. `invoice_lines` staat op SET NULL — dat lukt technisch wél, maar
- * laat een factuurregel als wees achter; daarom telt die hier óók als blokkade.
- * Deze vooraf-check bestaat zodat de gebruiker een begrijpelijke uitleg krijgt
- * in plaats van een 23503 uit Postgres.
+ * laat een factuurregel als wees achter. De delete-RPC telt daarom alle historie
+ * onder een rijlock, ook wanneer de gebruiker die gegevens via RLS niet mag zien.
+ * Dezelfde telling geeft vooraf een begrijpelijke uitleg in de dialoog.
  */
 export interface PlacementDeleteImpact {
   timesheets: number;
   hourLetters: number;
   sickReports: number;
   invoiceLines: number;
+  hoursWeeks?: number;
 }
 
 export interface PlacementDeleteBlocker {
@@ -29,9 +30,10 @@ const BLOCKER_LABELS: Record<keyof PlacementDeleteImpact, [singular: string, plu
   hourLetters: ['urenbrief', 'urenbrieven'],
   sickReports: ['ziekmelding', 'ziekmeldingen'],
   invoiceLines: ['factuurregel', 'factuurregels'],
+  hoursWeeks: ['urenweek', 'urenweken'],
 };
 
-const BLOCKER_ORDER: (keyof PlacementDeleteImpact)[] = ['timesheets', 'hourLetters', 'sickReports', 'invoiceLines'];
+const BLOCKER_ORDER: (keyof PlacementDeleteImpact)[] = ['timesheets', 'hourLetters', 'sickReports', 'invoiceLines', 'hoursWeeks'];
 
 /** Wat er nog aan de plaatsing hangt, in vaste volgorde en als Nederlandse tekst. */
 export function placementDeleteBlockers(impact: PlacementDeleteImpact | null | undefined): PlacementDeleteBlocker[] {

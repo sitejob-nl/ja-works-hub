@@ -12756,6 +12756,10 @@ export type Database = {
         Args: { p_candidate_id: string; p_reason?: string }
         Returns: Json
       }
+      delete_placement_record: {
+        Args: { p_placement_id: string }
+        Returns: string
+      }
       document_path_matches_candidate: {
         Args: { p_candidate: string; p_org: string; p_path: string }
         Returns: boolean
@@ -12940,6 +12944,10 @@ export type Database = {
           decrypted_bsn: string
           decrypted_iban: string
         }[]
+      }
+      get_placement_delete_impact: {
+        Args: { p_placement_id: string }
+        Returns: Json
       }
       get_portal_org_id: { Args: never; Returns: string }
       get_portal_org_info: {

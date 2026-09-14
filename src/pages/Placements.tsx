@@ -1,3 +1,4 @@
+import { useCanDeletePlacement } from '@/hooks/useRecordDeleteAccess';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -69,9 +70,8 @@ const DEFAULT_SORT: SortState = { column: 'start_date', direction: 'desc' };
 export default function PlacementsPage() {
   const navigate = useNavigate();
   const orgId = useOrganizationId();
-  const { user, role } = useAuth();
-  // Definitief verwijderen is admin-only, gelijk aan de RLS-policy tenant_delete op placements.
-  const canDelete = role === 'admin';
+  const { user } = useAuth();
+  const canDelete = useCanDeletePlacement();
   const [search, setSearch] = useState('');
   const [payrollerFilter, setPayrollerFilter] = useState<string>('all');
   const { data: payrollerOptions } = usePayrollers();

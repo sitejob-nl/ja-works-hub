@@ -1,3 +1,4 @@
+import { useCanDeletePlacement } from '@/hooks/useRecordDeleteAccess';
 import { useState } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -31,7 +32,6 @@ import { useTrackPageVisit } from '@/hooks/useTrackPageVisit';
 import NotesSection from '@/components/shared/NotesSection';
 import TasksSection from '@/components/shared/TasksSection';
 import { useRolePermission } from '@/hooks/usePermissions';
-import { useAuth } from '@/contexts/AuthContext';
 import DeletePlacementDialog from '@/components/placements/DeletePlacementDialog';
 
 type TerminatedByType = Database['public']['Enums']['terminated_by_type'];
@@ -57,9 +57,7 @@ const PlacementDetail = () => {
   const orgId = useOrganizationId();
   const canEditPlacements = useRolePermission('placements.edit');
   const canViewFinance = useRolePermission('finance.view');
-  // Definitief verwijderen is admin-only, gelijk aan de RLS-policy tenant_delete op placements.
-  const { role } = useAuth();
-  const canDeletePlacement = role === 'admin';
+  const canDeletePlacement = useCanDeletePlacement();
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();

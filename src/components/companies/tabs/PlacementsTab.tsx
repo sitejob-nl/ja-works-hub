@@ -1,3 +1,4 @@
+import { useCanDeletePlacement } from '@/hooks/useRecordDeleteAccess';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
@@ -21,9 +22,8 @@ const statusColors: Record<string, string> = {
 
 const PlacementsTab = ({ companyId, companyName }: { companyId: string; companyName?: string }) => {
   const orgId = useOrganizationId();
-  const { user, role } = useAuth();
-  // Definitief verwijderen is admin-only, gelijk aan de RLS-policy tenant_delete op placements.
-  const canDelete = role === 'admin';
+  const { user } = useAuth();
+  const canDelete = useCanDeletePlacement();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<DeletePlacementTarget | null>(null);
 

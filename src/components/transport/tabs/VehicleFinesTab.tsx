@@ -1,3 +1,4 @@
+import { useCanDeleteFine } from '@/hooks/useRecordDeleteAccess';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -51,6 +52,7 @@ const getDueDateBadge = (dueDate: string | null | undefined, paid: boolean) => {
 
 const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
   const orgId = useOrganizationId();
+  const canDelete = useCanDeleteFine();
   const qc = useQueryClient();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -206,11 +208,12 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
 
   const deleteMutation = useMutation({
     mutationFn: async (fine: any) => {
+      if (!canDelete) throw new Error('Je hebt geen rechten om deze boete te verwijderen.');
       // Eerst de rij, dan pas de foto's: raakt de delete 0 rijen (RLS weigert stil), dan
       // zouden bij de oude volgorde de foto's weg zijn terwijl de boete blijft staan.
       await unwrapDeleted(
         supabase.from('vehicle_fines').delete().eq('id', fine.id),
-        'Deze boete kon niet worden verwijderd — je hebt hiervoor mogelijk beheerdersrechten nodig.',
+        'Je hebt geen rechten om deze boete te verwijderen.',
       );
       if (fine.photos?.length > 0) {
         await supabase.storage.from('documents').remove(fine.photos);
@@ -341,7 +344,7 @@ const VehicleFinesTab = ({ vehicle }: { vehicle: any }) => {
                           <Pencil className="h-3.5 w-3.5 mr-2" /> Bewerken
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => setFineToDelete(f)} className="text-destructive">
+                        <DropdownMenuItem onClick={() => setFineToDelete(f)} disabled={!canDelete} className="text-destructive">
                           <Trash2 className="h-3.5 w-3.5 mr-2" /> Verwijderen
                         </DropdownMenuItem>
                       </DropdownMenuContent>
