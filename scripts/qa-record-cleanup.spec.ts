@@ -7,7 +7,7 @@ import { ensureLoggedIn } from './e2e-helpers';
 const org = process.env.DEMO_ORG_ID!;
 const db = createClient(process.env.VITE_SUPABASE_URL!, process.env.VITE_SUPABASE_PUBLISHABLE_KEY!, { auth: { persistSession: false } });
 const marker = 'QA-cleanup-' + randomUUID().slice(0, 8);
-const ids = { companies: [] as string[], placements: [] as string[], fines: [] as string[], candidate: '', vehicle: '', document: '', notes: [] as string[], tasks: [] as string[], paths: [] as string[] };
+const ids = { companies: [] as string[], placements: [] as string[], fines: [] as string[], candidate: '', vehicle: '', document: '', invoice: '', notes: [] as string[], tasks: [] as string[], paths: [] as string[] };
 const checked = async (q: PromiseLike<{ data: any; error: any }>) => {
   const { data, error } = await q;
   if (error) throw new Error(error.message);
@@ -18,8 +18,8 @@ const add = async (table: string, row: Record<string, unknown>) =>
 
 test.beforeAll(async () => {
   expect(org).toBe('6dedabe4-f62c-479e-b5fc-ebfcb824d76f');
-  expect(process.env.TEST_EMAIL).toBe(process.env.DEMO_ORG_EMAIL);
-  await checked(db.auth.signInWithPassword({ email: process.env.TEST_EMAIL!, password: process.env.TEST_PASSWORD! }));
+  // Fixtures use the existing demo admin; the browser uses its own role account.
+  await checked(db.auth.signInWithPassword({ email: process.env.DEMO_ORG_EMAIL!, password: process.env.DEMO_ORG_PASSWORD! }));
   const user = (await db.auth.getUser()).data.user!;
   const profile = await checked(db.from('profiles').select('organization_id,role').eq('id', user.id).single());
   expect(profile).toEqual({ organization_id: org, role: 'admin' });
@@ -27,9 +27,11 @@ test.beforeAll(async () => {
   ids.companies.push(await add('companies', { name: marker, phone: 'QA phone' }));
   const loser = ids.companies[1];
   ids.candidate = await add('candidates', { first_name: 'QA', last_name: marker });
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 5; i++) {
     ids.placements.push(await add('placements', { company_id: loser, candidate_id: ids.candidate, function_name: marker + '-placement-' + i, start_date: '2026-09-14' }));
   }
+  ids.invoice = await add('invoices', { company_id: loser, invoice_number: marker, period_start: '2026-09-14', period_end: '2026-09-20' });
+  await add('invoice_lines', { invoice_id: ids.invoice, placement_id: ids.placements[4], description: marker });
   ids.vehicle = await add('vehicles', { license_plate: 'QA-' + randomUUID().slice(0, 6), brand: marker });
   for (let i = 0; i < 2; i++) {
     const path = `${org}/vehicle-fines/${ids.vehicle}/${randomUUID()}.txt`;
@@ -58,6 +60,7 @@ test.afterAll(async () => {
   if (ids.document) await clean('document', () => checked(db.from('documents').delete().eq('id', ids.document)));
   if (ids.notes.length) await clean('notes', () => checked(db.from('notes').delete().in('id', ids.notes)));
   if (ids.tasks.length) await clean('tasks', () => checked(db.from('recruiter_tasks').delete().in('id', ids.tasks)));
+  if (ids.invoice) await clean('invoice', () => checked(db.from('invoices').delete().eq('id', ids.invoice)));
   if (ids.placements.length) await clean('placements', () => checked(db.from('placements').delete().in('id', ids.placements)));
   if (ids.fines.length) await clean('fines', () => checked(db.from('vehicle_fines').delete().in('id', ids.fines)));
   if (ids.vehicle) await clean('vehicle', () => checked(db.from('vehicles').delete().eq('id', ids.vehicle)));
@@ -67,7 +70,13 @@ test.afterAll(async () => {
   expect(await checked(db.from('companies').select('id').eq('organization_id', org).eq('name', marker))).toEqual([]);
 });
 
-test.beforeEach(async ({ page }) => { await ensureLoggedIn(page); });
+test.beforeEach(async ({ page }) => {
+  await ensureLoggedIn(page);
+  const browserUser = createClient(process.env.VITE_SUPABASE_URL!, process.env.VITE_SUPABASE_PUBLISHABLE_KEY!, { auth: { persistSession: false } });
+  const auth = await checked(browserUser.auth.signInWithPassword({ email: process.env.TEST_EMAIL!, password: process.env.TEST_PASSWORD! }));
+  const profile = await checked(browserUser.from('profiles').select('role,organization_id').eq('id', auth.user.id).single());
+  expect(profile).toEqual({ role: process.env.QA_ROLE || 'admin', organization_id: org });
+});
 
 test('boete verwijderen via Transport verwijdert ook de bijlage', async ({ page }) => {
   await page.goto('/transport');
@@ -117,7 +126,16 @@ for (const [index, entry] of ['company', 'list', 'detail'].entries()) {
   });
 }
 
-test('dubbele opdrachtgevers samenvoegen behoudt het volledige gekoppelde dossier', async ({ page }) => {
+test('plaatsing met factuurhistorie blijft beschermd', async ({ page }) => {
+  await page.goto('/plaatsingen/' + ids.placements[4]);
+  await page.getByRole('button', { name: 'Verwijderen', exact: true }).click();
+  const dialog = page.getByRole('alertdialog');
+  await expect(dialog).toContainText('1 factuurregel');
+  await expect(dialog.getByRole('button', { name: 'Verwijderen', exact: true })).toBeDisabled();
+  expect(await checked(db.from('placements').select('id').eq('id', ids.placements[4]))).toHaveLength(1);
+});
+
+test('opdrachtgevers samenvoegen bewaart het dossier en respecteert financiële rechten', async ({ page }) => {
   const [survivor, loser] = ids.companies;
   await page.goto('/opdrachtgevers');
   await page.getByRole('button', { name: 'Duplicaten', exact: true }).click();
@@ -125,7 +143,18 @@ test('dubbele opdrachtgevers samenvoegen behoudt het volledige gekoppelde dossie
   const card = page.locator('.rounded-lg.border.bg-card').filter({ has: survivorLink });
   await expect(card).toContainText(marker);
   await card.locator('.rounded-md.border.p-3').filter({ has: survivorLink }).click();
+  const mergeResponse = page.waitForResponse(r => r.url().includes('/rpc/merge_company_records'));
   await card.getByRole('button', { name: 'Samenvoegen in geselecteerde', exact: true }).click();
+  const response = await mergeResponse;
+  if (process.env.QA_ROLE && process.env.QA_ROLE !== 'admin') {
+    // Existing finance.manage restrictions still apply to moving an invoice.
+    expect(response.status()).toBe(403);
+    expect((await response.json()).code).toBe('42501');
+    expect(await checked(db.from('companies').select('id').eq('id', loser))).toHaveLength(1);
+    expect((await checked(db.from('notes').select('related_entity_id').in('id', ids.notes))).every((n: any) => n.related_entity_id === loser)).toBe(true);
+    return;
+  }
+  expect(response.ok()).toBe(true);
   await expect.poll(async () => checked(db.from('companies').select('id').eq('id', loser))).toEqual([]);
   expect((await checked(db.from('placements').select('company_id').eq('id', ids.placements[3]).single())).company_id).toBe(survivor);
   expect((await checked(db.from('company_contacts').select('company_id').eq('full_name', marker + '-contact').single())).company_id).toBe(survivor);
