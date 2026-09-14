@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { setObservabilityUser } from '@/lib/observability';
+import { setFeedbackDiagnosticsOwner } from '@/lib/feedback-diagnostics';
 import AppSidebar from './AppSidebar';
 import TopBar from './TopBar';
 import RecentItemsBar from './RecentItemsBar';
@@ -28,6 +29,8 @@ const AppLayout = () => {
   // organization_id, nooit PII. Bij user→null (uitloggen) wist dit de context.
   useEffect(() => {
     setObservabilityUser(user?.id, profile?.organization_id);
+    setFeedbackDiagnosticsOwner(user?.id);
+    return () => setFeedbackDiagnosticsOwner(undefined);
   }, [user?.id, profile?.organization_id]);
 
   // De vertaler gebruikt uitsluitend vaste woordenboeksleutels. Ingevoerde tenantdata

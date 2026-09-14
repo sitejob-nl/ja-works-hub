@@ -12,6 +12,9 @@ export default defineConfig(({ mode }) => {
   const sentryAuthToken = process.env.SENTRY_AUTH_TOKEN;
 
   return {
+  define: {
+    'import.meta.env.VITE_APP_RELEASE': JSON.stringify(process.env.VITE_APP_RELEASE || process.env.VERCEL_GIT_COMMIT_SHA || 'local'),
+  },
   server: {
     host: "::",
     port: 8080,

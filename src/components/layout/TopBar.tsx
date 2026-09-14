@@ -15,6 +15,7 @@ import {
 import NotificationBell from './NotificationBell';
 import { LanguageToggle } from '@/components/translation/LanguageToggle';
 import { isFacilityRole } from '@/lib/facility-access';
+import FeedbackButton from '@/components/feedback/FeedbackButton';
 
 interface TopBarProps {
   onMenuClick?: () => void;
@@ -156,6 +157,7 @@ const TopBar = ({ onMenuClick }: TopBarProps) => {
           </Button>
         )}
 
+        <FeedbackButton />
         {!facility && <NotificationBell />}
 
         <LanguageToggle compact />

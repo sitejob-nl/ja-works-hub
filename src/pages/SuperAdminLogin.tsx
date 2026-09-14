@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,6 +12,7 @@ const SuperAdminLogin = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
+  const location = useLocation();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,7 +41,8 @@ const SuperAdminLogin = () => {
       return;
     }
 
-    navigate('/superadmin');
+    const returnTo = location.state?.returnTo;
+    navigate(typeof returnTo === 'string' && /^\/superadmin(?:\/[a-zA-Z0-9-]+)*$/.test(returnTo) && returnTo !== '/superadmin/login' ? returnTo : '/superadmin');
   };
 
   return (

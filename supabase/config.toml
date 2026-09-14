@@ -1,5 +1,9 @@
 project_id = "noaupcteygfvlyymqtew"
 
+# Authenticated internal feedback + separately authenticated SiteJob triage.
+[functions.feedback]
+verify_jwt = false
+
 # ============================================================
 # PUBLIEKE ENDPOINTS (geen JWT nodig)
 # ============================================================
