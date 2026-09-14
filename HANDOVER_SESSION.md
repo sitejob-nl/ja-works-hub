@@ -4,6 +4,18 @@ Overdracht voor wie verdergaat (Codex / Claude Code). Lees [AGENTS.md](AGENTS.md
 commands, [CLAUDE.md](CLAUDE.md) voor de canonieke codebase-diepte, [HANDOVER.md](HANDOVER.md) voor de formele
 projectsamenvatting.
 
+## Screenshot zichtbaar op eigen feedbackdetail — 14 september 2026
+
+- Branch `codex/feedback-screenshots`, worktree `.worktrees/feedback-screenshots`, basis `c86e902`.
+  Melding #12 had een correct opgeslagen private afbeelding; `my-detail` en de eigen detailpagina
+  stuurden/toonden die nog niet. De oorspronkelijke melding en afbeelding zijn ongemoeid gelaten.
+- De eigenaar krijgt na gebruiker-/organisatiecontrole een signed URL van vijf minuten. De detailpagina
+  toont het beeld met volledige-grootte-link en opnieuw-ladenknop; opslagfouten verbergen de tekst niet.
+- Geen DDL of policywijzigingen. Uitrol vereist edge `feedback` via CLI en frontendmerge via Vercel.
+- QA: 1.968 unit-tests, lint (0 fouten), typecheck/build/Deno en vijf browserflows groen.
+  De verbonden screenshotcontrole en release zijn terug te vinden bij de PR; reproduceerbare instructies
+  staan in [docs/feedback.md](docs/feedback.md).
+
 ## Persoonlijke terugkoppeling bij opgeloste bugs — 14 september 2026
 
 - Vervolg op #273, branch `codex/feedback-resolution`, worktree `.worktrees/feedback-resolution`,

@@ -29,6 +29,10 @@ export interface FeedbackReport extends FeedbackReceipt {
 }
 
 export type MyFeedbackReport = Pick<FeedbackReport, 'id' | 'number' | 'kind' | 'title' | 'description' | 'steps' | 'expected' | 'created_at' | 'status' | 'resolution' | 'resolved_at' | 'resolution_revision' | 'resolution_read_at' | 'resolution_dismissed_at'>;
+export interface MyFeedbackDetail {
+  report: MyFeedbackReport & Pick<FeedbackReport, 'has_screenshot'>;
+  screenshotUrl: string | null;
+}
 export function feedbackStatusLabel(report: { status?: FeedbackStatus; kind: FeedbackKind }): string {
   return report.status === 'resolved' ? (report.kind === 'bug' ? 'Opgelost' : 'Doorgevoerd') : 'Open';
 }

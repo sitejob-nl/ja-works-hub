@@ -23,7 +23,9 @@ blijven beschikbaar waar deze API ontbreekt. De opname wordt direct na één fra
   Vrije tekst kan nog namen bevatten; de gebruiker kan de debugcontext vóór verzending bekijken.
 - Geen console-, netwerkbody-, cookie-, localStorage-, dossier- of formulierdump; geen session replay.
 - `feedback-screenshots` is een private bucket zonder browserpolicies. Alleen de edge function schrijft;
-  een geauthenticeerde superadmin krijgt voor een afbeelding een signed URL van vijf minuten.
+  een geauthenticeerde superadmin of de actieve interne melder krijgt voor een afbeelding een signed URL
+  van vijf minuten. `my-detail` controleert gebruiker én organisatie vóór het ondertekenen van het opgeslagen
+  pad; andere gebruikers krijgen 404. Opslagpaden worden niet meegestuurd in het persoonlijke detailantwoord.
 - De ontvanger staat uitsluitend server-side vast op `info@sitejob.nl`. De organisatie-default Outlook-
   afzender verstuurt via de bestaande merk-wrapper; Reply-To is het accountadres van de melder.
   De mail bevat de beschrijving en geschoonde debugcontext, en linkt naar `/superadmin/feedback/:id`.
@@ -72,6 +74,19 @@ Migratie `20260914093855_feedback_resolution.sql` voegt de velden en indexen toe
 verbod op directe browserwrites blijven gelden. Edge action `set-status` is alleen voor Superadmin.
 `mine`, `my-detail`, `my-notifications` en `acknowledge` gebruiken organisatie en gebruiker uit de geverifieerde
 sessie. Persoonlijke query-caches zijn per organisatie en gebruiker gescheiden.
+
+De detailpagina toont ook de bijgevoegde screenshot, inclusief reeds opgeslagen afbeeldingen. Klikken
+opent het volledige beeld in een nieuw tabblad. **Screenshot opnieuw laden** haalt een verse tijdelijke
+link op. Een ontbrekende upload of opslagstoring laat de melding leesbaar en toont bij de afbeelding een
+herstelknop. Er is geen schemawijziging of bredere storagepolicy nodig voor deze weergave.
+
+`src/test/feedback-detail.test.ts` bewaakt eigenaar-/organisatiegrenzen, private veldselectie en opslagfouten.
+`scripts/e2e-feedback-screenshot.spec.ts` test mobiel tonen, vernieuwen, een verlopen/mislukte afbeeldingslink,
+ontbrekende upload en meldingen zonder screenshot met onderschepte reacties. De opt-in controle
+`scripts/test-feedback-screenshot-live.mjs` gebruikt `RUN_LIVE_FEEDBACK_QA=1`, `E2E_BASE_URL` en de bestaande
+demo-/Supabase-omgeving: tijdelijke demo-PNG opslaan, eigenaar-API en echte mobiele browser controleren,
+anonieme/niet-eigenaar/directe/publieke toegang weigeren en uitsluitend de eigen fixture opruimen.
+Deze controle verstuurt geen mail en verandert geen organisatie-instellingen of bestaande meldingen.
 
 De regressietest `src/test/feedback-resolution.test.ts` test dubbele acties, ownership, heropenen en stale
 revisies. `scripts/e2e-feedback-resolution.spec.ts` bewijst de beheerknop en mobiele notificatieflow met
