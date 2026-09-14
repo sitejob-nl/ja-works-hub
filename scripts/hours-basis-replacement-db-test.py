@@ -317,6 +317,56 @@ class BasisReplacementTests(mailintake.MailIntakeTests):
         recalculated = self.finalize(self.context(self.latest(day)))
         self.assertEqual(recalculated["basis_version"], 1)
 
+    def test_an_outcome_without_a_matrix_still_records_the_basis_that_governed_it(self):
+        """basis_version says which basis built the context, not whether the
+        outcome named a matrix. A no-hours day on a pinned basis was still
+        calculated under that basis; only a day without any basis is null."""
+        day, first, initial = self.pinned()
+        self.assertEqual(initial["basis_version"], 0)
+        self.save_source(self.latest(day), None, minutes=0, reason="Synthetische vrije dag")
+        result = self.finalize(self.context(self.latest(day)))
+        self.assertEqual(result["status"], "no_hours")
+        self.assertEqual(result["basis_version"], 0)
+        # Another day of the same week never had a basis: that one stays null.
+        bare = self.view(day["week_id"])["members"][0]["days"][1] | {"week_id": day["week_id"]}
+        self.save_source(bare, None, minutes=0, reason="Synthetische vrije dag zonder basis")
+        self.assertIsNone(self.finalize(self.context(self.latest(bare)))["basis_version"])
+
+    def test_eligibility_does_not_depend_on_the_session_date_style(self):
+        """The validity window is compared as dates. A session that renders
+        dates as DD/MM/YYYY must offer and accept exactly the same versions."""
+        day, first, _ = self.pinned()
+        second = self.create_matrix(factor="2", scope="cao")
+        self.bind(second["id"])
+        current = self.latest(day)
+        offered = json.loads(sql("SET DateStyle='SQL, DMY'; "
+                                 + rpc_statement("hours_get_day_matrix_options", p_day_id=day["id"]),
+                                 role="authenticated", user=self.admin))
+        self.assertEqual({entry["matrix_version_id"] for entry in offered["options"]},
+                         {self.version_of(first), self.version_of(second)})
+        replaced = json.loads(sql("SET DateStyle='SQL, DMY'; " + rpc_statement(
+            "hours_replace_day_matrix_basis", p_day_id=day["id"],
+            p_expected_revision_id=current["current_revision"]["id"], p_expected_basis_version=0,
+            p_matrix_version_id=self.version_of(second), p_reason=self.reason()),
+            role="authenticated", user=self.admin))
+        self.assertEqual(replaced["id"], day["week_id"])
+        self.assertEqual(self.basis(day)["basis_version"], 1)
+
+    def test_an_older_day_version_carries_its_last_outcome_only(self):
+        """The current version shows its superseded outcomes next to the last one;
+        an older version is a summary and does not repeat that list on every read."""
+        day, first, initial = self.pinned(factor="1.250")
+        second = self.create_matrix(factor="2", scope="cao")
+        self.bind(second["id"])
+        self.replace(day, self.version_of(second))
+        self.finalize(self.context(self.latest(day)))
+        self.save_source(self.latest(day), None, minutes=420)
+        current = self.latest(day)
+        older = next(entry for entry in current["history"] if entry["id"] == initial["revision_id"])
+        self.assertNotIn("previous_classifications", older)
+        self.assertEqual(older["classification"]["basis_version"], 1)
+        self.assertEqual(current["previous_classifications"], [])
+
     # --- the replacement itself decides nothing ----------------------------
 
     def test_a_replacement_alone_does_not_recalculate(self):

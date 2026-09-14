@@ -220,6 +220,10 @@ export function HoursWeekWorkspace({ week, onSaveDay, onReview, onClassify, onLo
   const [reviewing, setReviewing] = useState<{ dayId: string; status: HoursReviewInput['status'] } | null>(null);
   const [saved, setSaved] = useState(false);
   const [classifying, setClassifying] = useState<string | null>(null);
+  const [replacingBasis, setReplacingBasis] = useState<string | null>(null);
+  // One day action at a time, the replacement included: two writes on the same
+  // day would only race each other into a conflict the user did not cause.
+  const dayActionPending = editingDay !== null || reviewing !== null || classifying !== null || replacingBasis !== null;
   const [classificationError, setClassificationError] = useState<{ dayId: string; revisionId: string; message: string; conflict: boolean } | null>(null);
   const days = week.employees.flatMap((employee) => employee.days);
   const received = days.filter((day) => day.revision);
@@ -261,22 +265,23 @@ export function HoursWeekWorkspace({ week, onSaveDay, onReview, onClassify, onLo
                 {day.revision && <span className="text-xs text-muted-foreground">{day.review?.revisionId === day.revision.id ? day.review.status === 'checked' ? 'Handmatig gecontroleerd' : 'Controle geblokkeerd' : 'Intern te controleren'}</span>}
               </div>
             </div>
-            {!readOnly && editingDay !== day.id && <Button variant="outline" size="sm" disabled={editingDay !== null || reviewing !== null || classifying !== null} onClick={() => { setEditingDay(day.id); setSaved(false); }}><Pencil className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />{day.revision ? 'Wijzigen' : 'Invoeren'}</Button>}
+            {!readOnly && editingDay !== day.id && <Button variant="outline" size="sm" disabled={dayActionPending} onClick={() => { setEditingDay(day.id); setSaved(false); }}><Pencil className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />{day.revision ? 'Wijzigen' : 'Invoeren'}</Button>}
           </div>
           <div className="mt-2"><DayDetails day={day} /></div>
           {day.revision && <div className="mt-3"><HoursClassificationDetails classification={day.classification} revisionId={day.revision.id} /></div>}
-          <HoursMatrixBasis day={day} readOnly={readOnly} busy={editingDay !== null || reviewing !== null || classifying !== null}
-            onLoadMatrixOptions={onLoadMatrixOptions} onReplaceBasis={onReplaceBasis} onReload={onReload} />
+          <HoursMatrixBasis day={day} readOnly={readOnly} busy={dayActionPending}
+            onLoadMatrixOptions={onLoadMatrixOptions} onReplaceBasis={onReplaceBasis}
+            onBusyChange={pending => setReplacingBasis(pending ? day.id : null)} onReload={onReload} />
           {!readOnly && onClassify && day.revision && <div className="mt-3 space-y-2">
-            <Button type="button" size="sm" variant="outline" disabled={editingDay !== null || reviewing !== null || classifying !== null || (classificationError?.dayId === day.id && classificationError.revisionId === day.revision.id && classificationError.conflict)} onClick={async () => {
+            <Button type="button" size="sm" variant="outline" disabled={dayActionPending || (classificationError?.dayId === day.id && classificationError.revisionId === day.revision.id && classificationError.conflict)} onClick={async () => {
               const revisionId = day.revision.id; setClassifying(day.id); setClassificationError(null);
               try { await onClassify({ dayId: day.id, expectedRevisionId: revisionId }); } catch (failure) { setClassificationError({ dayId: day.id, revisionId, conflict: isHoursConflict(failure), message: isHoursConflict(failure) ? 'De dagversie of matrixbasis is ondertussen gewijzigd. Laad de actuele uren voordat je opnieuw controleert.' : toFriendlyError(failure, 'De uursoortencontrole is niet gelukt. Probeer het opnieuw.') }); } finally { setClassifying(null); }
             }}>{classifying === day.id ? 'Uursoorten controleren…' : 'Uursoorten controleren'}</Button>
             {classificationError?.dayId === day.id && classificationError.revisionId === day.revision.id && <Alert variant="destructive"><AlertDescription>{classificationError.message}{classificationError.conflict && onReload && <div className="mt-2"><Button type="button" variant="outline" size="sm" onClick={() => { setClassificationError(null); onReload(); }}>Actuele uren laden</Button></div>}</AlertDescription></Alert>}
           </div>}
           {!readOnly && onReview && day.revision && reviewing?.dayId !== day.id && <div className="mt-3 flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" disabled={editingDay !== null || reviewing !== null || classifying !== null} onClick={() => { setReviewing({ dayId: day.id, status: 'checked' }); setSaved(false); }}>Handmatig gecontroleerd</Button>
-            <Button size="sm" variant="outline" disabled={editingDay !== null || reviewing !== null || classifying !== null} onClick={() => { setReviewing({ dayId: day.id, status: 'blocked' }); setSaved(false); }}>Afwijking vastleggen</Button>
+            <Button size="sm" variant="outline" disabled={dayActionPending} onClick={() => { setReviewing({ dayId: day.id, status: 'checked' }); setSaved(false); }}>Handmatig gecontroleerd</Button>
+            <Button size="sm" variant="outline" disabled={dayActionPending} onClick={() => { setReviewing({ dayId: day.id, status: 'blocked' }); setSaved(false); }}>Afwijking vastleggen</Button>
           </div>}
           {!readOnly && onReview && reviewing?.dayId === day.id && <ReviewEditor key={day.id} day={day} status={reviewing.status} onReview={onReview} onReload={onReload} onClose={() => setReviewing(null)} />}
           {editingDay === day.id && !readOnly && <DayEditor key={day.id} day={day} onReload={onReload} onCancel={() => setEditingDay(null)} onSave={async (input) => { await onSaveDay(input); setSaved(true); }} />}

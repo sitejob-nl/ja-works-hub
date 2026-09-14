@@ -110,6 +110,14 @@ returns void language plpgsql stable security definer set search_path = '' as $$
   end if;
 end $$;
 
+-- Whether a published definition covers a work day. Compared as dates, so the
+-- session's DateStyle can never turn a textual comparison into a wrong answer.
+create or replace function private.hours_matrix_effective_on(p_definition jsonb, p_work_date date)
+returns boolean language sql immutable set search_path = '' as $$
+  select (p_definition->>'validFrom')::date <= p_work_date
+    and (p_definition->>'validUntil' is null or p_work_date < (p_definition->>'validUntil')::date)
+$$;
+
 -- One truth for "which matrices could this day have used". The context builder
 -- and the replacement RPC both read it, so the set a replacement may choose
 -- from is exactly the set the calculation accepts.
@@ -313,9 +321,13 @@ begin
             v_source->'definition', v_source->'original_definition', v_source->'binding_snapshot',
             jsonb_build_object('matrix_sources', v_context->'matrix_sources', 'binding_snapshot', v_context->'binding_snapshot'), p_actor_id);
       end if;
-      if v_source is not null then
-        v_basis_version := coalesce((private.hours_effective_day_basis(p_day_id, v_org)->>'basis_version')::integer, 0);
-      end if;
+      -- Which basis governed this attempt's context. The context was built under
+      -- the day lock, so its basis_version is current; a first pinning above
+      -- makes that basis version 0. A day without any basis stays null, also
+      -- for a no-hours or matrix-less outcome that a pinned basis still governed.
+      v_basis_version := case when v_source is not null
+        then coalesce((v_context->>'basis_version')::integer, 0)
+        else (v_context->>'basis_version')::integer end;
       insert into public.hours_day_classifications(organization_id, day_id, revision_id, context_hash, engine_version,
         status, matrix_version_id, matrix_name, matrix_scope, basis_version, input_snapshot, context_snapshot, matrix_snapshot,
         original_matrix_snapshot, binding_snapshot, allocations, issues, result, created_by)
@@ -361,8 +373,7 @@ begin
       'is_current', coalesce(v_basis->>'matrix_version_id' = value->>'matrix_version_id', false))
       order by value->>'scope', value->>'matrix_name', value->'definition'->>'validFrom'), '[]'::jsonb)
     into v_options from jsonb_array_elements(v_candidates->'matrix_sources')
-    where value->'definition'->>'validFrom' <= v_day.work_date::text
-      and (value->'definition'->>'validUntil' is null or v_day.work_date::text < value->'definition'->>'validUntil');
+    where private.hours_matrix_effective_on(value->'definition', v_day.work_date);
   return jsonb_build_object('day_id', v_day.id, 'work_date', v_day.work_date,
     'released', private.hours_day_released(p_day_id, v_org),
     'can_manage', public.has_role_permission('finance.manage'),
@@ -417,8 +428,7 @@ begin
   v_candidates := private.hours_day_matrix_candidates(v_day.organization_id, v_company, true);
   select value into v_chosen from jsonb_array_elements(v_candidates->'matrix_sources')
     where value->>'matrix_version_id' = p_matrix_version_id::text
-      and value->'definition'->>'validFrom' <= v_day.work_date::text
-      and (value->'definition'->>'validUntil' is null or v_day.work_date::text < value->'definition'->>'validUntil');
+      and private.hours_matrix_effective_on(value->'definition', v_day.work_date);
   if v_chosen is null then
     raise exception 'Deze matrixversie is niet gepubliceerd, hoort niet bij deze opdrachtgever of geldt niet op deze werkdatum'
       using errcode = '22023';
@@ -440,7 +450,8 @@ end $$;
 
 -- Previous definition: 20260908160000_hours_workflow_organization_gate.sql
 -- The basis chain and the superseded outcomes of the current day version are
--- added for internal readers; the portal projection is unchanged.
+-- added for internal readers; an older version keeps its last outcome only,
+-- and the portal projection is unchanged.
 create or replace function public.hours_get_week(p_week_id uuid)
 returns jsonb language plpgsql stable security definer set search_path = '' as $$
 declare
@@ -476,8 +487,6 @@ begin
         'id', h.id, 'revision_number', h.revision_number, 'minutes', h.minutes, 'no_hours_reason', h.no_hours_reason,
         'note', h.note, 'source_references', h.source_references, 'source_input', h.source_input, 'created_by', h.created_by, 'created_at', h.created_at,
         'classification', (select private.hours_classification_summary(k.id) from public.hours_day_classifications k where k.revision_id = h.id order by k.created_at desc, k.id desc limit 1),
-        'previous_classifications', (select coalesce(jsonb_agg(private.hours_classification_summary(k.id) order by k.created_at desc, k.id desc), '[]'::jsonb)
-          from (select k2.id, k2.created_at from public.hours_day_classifications k2 where k2.revision_id = h.id order by k2.created_at desc, k2.id desc offset 1) k),
         'confirmations', (select coalesce(jsonb_agg(jsonb_build_object('id', a.id, 'decision', a.decision, 'note', a.note, 'created_at', a.created_at) order by a.created_at, a.id), '[]'::jsonb) from public.hours_day_confirmations a where a.revision_id = h.id),
         'reviews', (select coalesce(jsonb_agg(jsonb_build_object('id', x.id, 'status', x.status, 'note', x.note, 'created_at', x.created_at) order by x.created_at, x.id), '[]'::jsonb) from public.hours_day_reviews x where x.revision_id = h.id)
         ) order by h.revision_number desc), '[]'::jsonb) from public.hours_day_revisions h where h.day_id = d.id) else '[]'::jsonb end
@@ -497,7 +506,7 @@ end $$;
 do $$ declare f regprocedure; begin
   for f in select p.oid::regprocedure from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'private' and p.proname in ('hours_day_released','hours_require_day_not_released',
-      'hours_day_matrix_candidates','hours_effective_day_basis','hours_day_basis_projection') loop
+      'hours_matrix_effective_on','hours_day_matrix_candidates','hours_effective_day_basis','hours_day_basis_projection') loop
     execute format('revoke all on function %s from public, anon, authenticated, service_role', f);
   end loop;
   for f in select p.oid::regprocedure from pg_proc p join pg_namespace n on n.oid = p.pronamespace
@@ -509,6 +518,6 @@ end $$;
 
 comment on table public.hours_day_matrix_basis_replacements is 'Append-only chain of explicit basis replacements for one work day. The pinned basis and every earlier classification stay unchanged; reason is an explanation and is never applied as a value.';
 comment on table public.hours_day_releases is 'The single register a payroll release may be recorded in (T12). Empty until then, with no write route for anon, authenticated or service_role. hours_replace_day_matrix_basis blocks any day that has a row here.';
-comment on column public.hours_day_classifications.basis_version is 'Which matrix basis this attempt used: 0 for the first pinned basis, N for the Nth replacement, null when no matrix applied or for attempts recorded before basis replacement existed.';
+comment on column public.hours_day_classifications.basis_version is 'Which matrix basis governed this attempt''s context: 0 for the first pinned basis, N for the Nth replacement, null when the day had no basis at all or for attempts recorded before basis replacement existed.';
 commit;
 notify pgrst, 'reload schema';

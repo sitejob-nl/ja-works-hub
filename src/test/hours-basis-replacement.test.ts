@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { hoursMatrixOptionsSchema, hoursWeekSchema, toHoursMatrixOptions, toHoursWeekView } from '@/lib/hours-workflow';
+import { z } from 'zod';
+import { isHoursConflict } from '@/components/hours-workflow/presentation';
+import {
+  hoursMatrixOptionsSchema, hoursWeekSchema, hoursWorkflowFailure, toHoursMatrixOptions, toHoursWeekView,
+} from '@/lib/hours-workflow';
 
 const revisionId = '00000000-0000-4000-8000-000000000991';
 const versionId = '00000000-0000-4000-8000-000000000881';
@@ -88,18 +92,16 @@ describe('the basis chain in the week projection', () => {
     expect(day.previousClassifications).toEqual([]);
   });
 
-  it('keeps the superseded outcomes of an older day version on that version', () => {
+  it('carries only the last outcome on an older day version', () => {
     const day = firstDay(weekPayload({
       history: [{
         id: '00000000-0000-4000-8000-000000000992', revision_number: 1, minutes: 420, no_hours_reason: null,
         note: null, source_references: [], created_at: '2026-09-16T07:00:00Z', source_input: null,
         classification: classification({ revision_id: '00000000-0000-4000-8000-000000000992', basis_version: 1 }),
-        previous_classifications: [classification({
-          id: '00000000-0000-4000-8000-0000000000c0', revision_id: '00000000-0000-4000-8000-000000000992',
-        })],
       }],
     }));
-    expect(day.history?.[0].previousClassifications?.map(entry => entry.basisVersion)).toEqual([0]);
+    expect(day.history?.[0].classification?.basisVersion).toBe(1);
+    expect(day.history?.[0]).not.toHaveProperty('previousClassifications');
   });
 
   it('reads a week from a database that has not been migrated yet without inventing a basis', () => {
@@ -139,5 +141,25 @@ describe('what a replacement may choose from', () => {
 
   it('refuses an answer that does not say whether the day has been released', () => {
     expect(() => hoursMatrixOptionsSchema.parse({ ...payload, released: undefined })).toThrow();
+  });
+});
+
+describe('what a screen is told when the data layer refuses', () => {
+  it('turns a parse failure into the readable message and keeps nothing technical', () => {
+    const failure = hoursWorkflowFailure(new z.ZodError([]));
+    expect(failure.message).toBe('Het urenoverzicht kon niet betrouwbaar worden gelezen. Ververs de pagina.');
+    expect(isHoursConflict(failure)).toBe(false);
+  });
+
+  it('keeps the conflict code so the screen still recognises a stale basis or day version', () => {
+    const failure = hoursWorkflowFailure({ code: 'PT409', message: 'De matrixbasis van deze dag is gewijzigd; laad opnieuw' });
+    expect(failure.code).toBe('PT409');
+    expect(isHoursConflict(failure)).toBe(true);
+  });
+
+  it('passes a server refusal through in the words the server chose', () => {
+    const failure = hoursWorkflowFailure({ code: '22023', message: 'Kies een andere matrixversie dan de basis die deze dag al heeft' });
+    expect(failure.message).toBe('Kies een andere matrixversie dan de basis die deze dag al heeft');
+    expect(failure.code).toBe('22023');
   });
 });

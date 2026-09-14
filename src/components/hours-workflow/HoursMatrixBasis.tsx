@@ -27,22 +27,27 @@ function BasisEntries({ basis }: { basis: HoursDayBasisView }) {
   </details>;
 }
 
-function ReplaceForm({ day, basis, options, onReplaceBasis, onClose, onReload }: {
+function ReplaceForm({ day, basis, options, onReplaceBasis, onBusyChange, onClose, onReload }: {
   day: HoursDayView;
   basis: HoursDayBasisView;
   options: HoursMatrixOptionsView;
   onReplaceBasis: (input: HoursReplaceBasisInput) => Promise<void>;
+  onBusyChange?: (busy: boolean) => void;
   onClose: () => void;
   onReload?: () => void;
 }) {
+  // The form keeps the day version and the basis version it was opened on.
+  // Both are sent as-is: a week that refetched meanwhile must not quietly
+  // feed the server a fresher value and defeat its compare-and-swap.
   const [revisionId] = useState(day.revision?.id ?? '');
+  const [basisVersion] = useState(basis.basisVersion);
   const [matrixVersionId, setMatrixVersionId] = useState('');
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [conflict, setConflict] = useState(false);
   const [done, setDone] = useState(false);
-  const changed = conflict || revisionId !== (day.revision?.id ?? '');
+  const changed = conflict || revisionId !== (day.revision?.id ?? '') || basisVersion !== basis.basisVersion;
   const choices = options.options.filter(option => !option.isCurrent);
 
   if (options.released) {
@@ -69,17 +74,18 @@ function ReplaceForm({ day, basis, options, onReplaceBasis, onClose, onReload }:
     if (!matrixVersionId) { setError('Kies de matrixversie die voortaan voor deze dag geldt.'); return; }
     if (!reason.trim()) { setError('Leg vast waarom deze dag op een andere matrixbasis komt.'); return; }
     setBusy(true);
+    onBusyChange?.(true);
     setError(null);
     try {
       await onReplaceBasis({
-        dayId: day.id, expectedRevisionId: revisionId, expectedBasisVersion: basis.basisVersion,
+        dayId: day.id, expectedRevisionId: revisionId, expectedBasisVersion: basisVersion,
         matrixVersionId, reason: reason.trim(),
       });
       setDone(true);
     } catch (failure) {
       if (isHoursConflict(failure)) setConflict(true);
       else setError(toFriendlyError(failure, 'De matrixbasis is niet vervangen. Probeer het opnieuw.'));
-    } finally { setBusy(false); }
+    } finally { setBusy(false); onBusyChange?.(false); }
   }
 
   return <form className="mt-3 space-y-3 rounded-lg border bg-muted/20 p-3" onSubmit={submit} aria-label="Matrixbasis vervangen">
@@ -122,6 +128,8 @@ export interface HoursMatrixBasisProps {
   busy: boolean;
   onLoadMatrixOptions?: (dayId: string) => Promise<HoursMatrixOptionsView>;
   onReplaceBasis?: (input: HoursReplaceBasisInput) => Promise<void>;
+  /** Reports an in-flight replacement, so sibling day actions can hold off. */
+  onBusyChange?: (busy: boolean) => void;
   onReload?: () => void;
 }
 
@@ -130,15 +138,18 @@ export interface HoursMatrixBasisProps {
  * outcomes those bases produced. Replacing is an explicit, reasoned act; it
  * never rewrites what is shown here.
  */
-export function HoursMatrixBasis({ day, readOnly, busy, onLoadMatrixOptions, onReplaceBasis, onReload }: HoursMatrixBasisProps) {
+export function HoursMatrixBasis({ day, readOnly, busy, onLoadMatrixOptions, onReplaceBasis, onBusyChange, onReload }: HoursMatrixBasisProps) {
   const [options, setOptions] = useState<HoursMatrixOptionsView | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const basis = day.matrixBasis;
   if (!basis) return null;
   const current = basis.entries.find(entry => entry.basisVersion === basis.basisVersion);
+  // Compared by basis version, not by matrix: a chain that returns to an earlier
+  // matrix still needs a recalculation on the newer basis. An outcome recorded
+  // before basis versions existed can only have used the first basis.
   const outdated = day.classification && day.classification.matrixVersionId
-    && day.classification.matrixVersionId !== basis.matrixVersionId;
+    && (day.classification.basisVersion ?? 0) !== basis.basisVersion;
   const superseded = day.previousClassifications ?? [];
   const canReplace = !readOnly && !!onReplaceBasis && !!onLoadMatrixOptions && !!day.revision;
 
@@ -171,7 +182,7 @@ export function HoursMatrixBasis({ day, readOnly, busy, onLoadMatrixOptions, onR
       {loadError && <Alert variant="destructive"><AlertDescription>{loadError}</AlertDescription></Alert>}
     </div>}
     {canReplace && options !== null && <ReplaceForm day={day} basis={basis} options={options}
-      onReplaceBasis={onReplaceBasis} onReload={onReload} onClose={() => setOptions(null)} />}
+      onReplaceBasis={onReplaceBasis} onBusyChange={onBusyChange} onReload={onReload} onClose={() => setOptions(null)} />}
   </section>;
 }
 

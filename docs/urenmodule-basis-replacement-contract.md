@@ -3,9 +3,11 @@
 **Status: gebouwd; de database staat op productie, de frontend wacht op merge.** Het bronbestand is
 `20260917090000_hours_matrix_basis_replacement.sql`; dat ene bestand levert de volledige eindtoestand
 op, inclusief de indexen op de tenant-gebonden foreign keys. Op productie is diezelfde eindtoestand in
-drie stappen via de Supabase-MCP aangebracht (de basismigratie, de twee indexen, en de hercontrole van de
-werkwijzeschakelaar uit reviewronde 1) — dus `schema_migrations` telt daar drie versies waar de repo één
-bestand heeft; de definities zijn identiek. Dit is ticket T10 uit
+vier stappen via de Supabase-MCP aangebracht (basismigratie, de twee indexen, de hercontrole van de
+werkwijzeschakelaar uit reviewronde 1, en de datumgetypeerde geldigheidsregel plus het stempelen van
+`basis_version` uit reviewronde 2). Daarna is de bestandsversie `20260917090000` zelf in
+`supabase_migrations.schema_migrations` geregistreerd, zoals bij de zustermigraties, zodat een latere
+`db push` het bestand niet opnieuw uitvoert. De definities zijn identiek. Dit is ticket T10 uit
 [de ticketlijst](urenmodule-tickets.md#t10--expliciete-vervanging-van-een-vastgelegde-matrixbasis).
 Er is op deze route **geen betaalde aanroep**, geen export, geen bericht en geen schrijfactie naar de
 legacy `timesheets`-route.
@@ -39,8 +41,13 @@ herberekening krijgt een eigen `context_hash` en dus een eigen poging. De unieke
 `(revision_id, context_hash, engine_version)` botst daardoor nooit, en de oude poging blijft
 ongewijzigd naast de nieuwe staan. In de weekprojectie staan die oudere pogingen van dezelfde
 dagversie onder `previous_classifications` (nieuwste eerst); de laatste poging blijft `classification`.
-Elke poging draagt sinds deze stap `basis_version`: 0 voor de eerste vastgelegde basis, N voor de
-N-de vervanging, `null` voor een uitkomst zonder matrix en voor pogingen van vóór deze migratie.
+Een **oudere dagversie** in `history` draagt alleen haar laatste poging — dat is een samenvatting, en
+de volledige auditketen blijft in de append-only tabel.
+Elke poging draagt sinds deze stap `basis_version`: welke schakel de rekencontext van die poging
+bepaalde. 0 voor de eerste vastgelegde basis, N voor de N-de vervanging — ook voor een `no_hours`- of
+matrixloze uitkomst op een dag die al een basis had, want die context is onder die basis gebouwd.
+`null` betekent dat de dag op dat moment geen enkele basis had, of dat de poging van vóór deze
+migratie stamt.
 
 **Een vervanging herberekent niet.** De RPC verzet alleen de basis. Herberekenen blijft het werk van
 de bestaande vertrouwde route (`hours-classify-day` → `hours_finalize_day_classification`). Tussen
@@ -71,6 +78,11 @@ het klantregister van de opdrachtgever van deze dag plus het **expliciet gekoppe
 alleen versies waarvan de effectieve periode de werkdatum dekt. `private.hours_day_matrix_candidates()`
 bouwt die verzameling en wordt gedeeld door de rekencontext, de vervangings-RPC en het
 optie-eindpunt — één waarheid, zodat het scherm nooit iets aanbiedt dat de server weigert.
+
+Of een versie op de werkdatum geldt, beslist `private.hours_matrix_effective_on(definition, work_date)`:
+één regel, als **datums** vergeleken, gedeeld door het optie-eindpunt en de vervangings-RPC. Een sessie
+met een andere `DateStyle` kan die vergelijking dus niet omdraaien; de databaseproef draait beide RPC's
+onder `SQL, DMY`.
 
 Geweigerd worden daarom: een concept, een versie uit een ander register, een CAO die niet gekoppeld is,
 een versie die op deze werkdatum niet geldt, en de versie die de dag al als basis heeft. Alle vijf
@@ -168,8 +180,15 @@ type DayMatrixOptions = {
 ```
 
 De weekprojectie krijgt per dag `matrix_basis` (dezelfde vorm als `basis` hierboven) en
-`previous_classifications`; een interne historierevisie krijgt eveneens `previous_classifications`.
-`ClassificationSummary` krijgt `basis_version`. Een portaalgebruiker ziet `matrix_basis: null` en een
+`previous_classifications` voor de actuele dagversie; een interne historierevisie houdt alleen haar
+laatste `classification`. `ClassificationSummary` krijgt `basis_version`.
+
+Het scherm houdt bij het openen van het vervangingsformulier zowel de dagversie als de basisversie vast
+en stuurt precies die mee; een week die ondertussen ververst (een andere gebruiker verving de basis)
+maakt het formulier ongeldig in plaats van stilzwijgend een versere waarde naar de server te sturen.
+De waarschuwing "uitkomst hoort nog bij een eerdere matrixbasis" vergelijkt op `basis_version`, niet op
+matrix: een keten die naar een eerdere matrix terugkeert (A → B → A) vraagt nog steeds om een
+herberekening op de nieuwste schakel. Een portaalgebruiker ziet `matrix_basis: null` en een
 lege lijst, en kan de ketentabellen ook niet direct lezen.
 
 ## Fouten

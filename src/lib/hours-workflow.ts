@@ -23,7 +23,6 @@ const revisionSchema = z.object({
   no_hours_reason: z.string().nullable(), note: z.string().nullable(),
   source_references: z.array(z.unknown()), created_at: z.string(),
   source_input: hoursSourceInputSchema.nullable().optional(), classification: hoursClassificationSchema.nullable().optional(),
-  previous_classifications: z.array(hoursClassificationSchema).default([]),
 });
 const basisEntrySchema = z.object({
   basis_version: z.number().int().nonnegative(), matrix_id: uuid, matrix_version_id: uuid,
@@ -97,7 +96,6 @@ export function toHoursWeekView(week: HoursWeek): HoursWeekView {
     createdAt: revision.created_at,
     sourceInput: revision.source_input as HoursSourceInput | null | undefined,
     classification: revision.classification?.revision_id === revision.id ? toHoursClassificationView(revision.classification) : null,
-    previousClassifications: ownClassifications(revision.previous_classifications, revision.id),
     };
   };
   return {
@@ -155,6 +153,15 @@ export function toHoursMatrixOptions(value: z.infer<typeof hoursMatrixOptionsSch
       scope: option.scope, validFrom: option.valid_from, validUntil: option.valid_until, isCurrent: option.is_current,
     })),
   };
+}
+
+/**
+ * The one shape a screen receives when the data layer refuses: the readable
+ * message, with the server's code kept so a conflict is still recognised.
+ */
+export function hoursWorkflowFailure(error: unknown): Error & { code?: string } {
+  const code = typeof error === 'object' && error !== null && 'code' in error ? String((error as { code: unknown }).code) : undefined;
+  return Object.assign(new Error(hoursWorkflowError(error)), code ? { code } : {});
 }
 
 export function hoursWorkflowError(error: unknown): string {

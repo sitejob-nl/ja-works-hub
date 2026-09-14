@@ -50,8 +50,6 @@ export interface HoursRevisionView {
   createdAt?: string;
   sourceInput?: HoursSourceInput | null;
   classification?: HoursClassificationView | null;
-  /** Earlier outcomes for this same day version, newest first. */
-  previousClassifications?: HoursClassificationView[];
 }
 
 export interface HoursDayView {
@@ -71,6 +69,7 @@ export interface HoursDayView {
   history?: HoursRevisionView[];
   issues?: string[];
   classification?: HoursClassificationView | null;
+  /** Earlier outcomes for the current day version, newest first. */
   previousClassifications?: HoursClassificationView[];
   matrixBasis?: HoursDayBasisView | null;
 }

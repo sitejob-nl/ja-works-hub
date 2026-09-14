@@ -54,9 +54,21 @@ projectsamenvatting.
   matrix) werd als "basisversie 0" gelabeld; (4) de contractstatus beweerde meer dan waar was en
   noemde een index-migratie die in de repo niet bestaat. De functiefix is ook op productie
   aangebracht (derde MCP-migratie).
-- **Productie versus repo:** `schema_migrations` op productie telt voor T10 drie versies (basis,
-  indexen, hercontrole); de repo heeft één bestand dat exact dezelfde eindtoestand oplevert. Niet
-  opnieuw `db push`-en zonder dat te weten.
+- **Reviewronde 2 (tien bevindingen; alle gerepareerd met een test die eerst rood stond):** het
+  formulier stuurde de *verse* basisversie mee in plaats van de versie waarop het geopend was (server-CAS
+  omzeild bij een gelijktijdige vervanging); de "eerdere basis"-waarschuwing vergeleek op matrix in
+  plaats van op basisversie (A → B → A verborg een verouderde uitkomst); `basis_version` bleef `null`
+  voor een `no_hours`-uitkomst op een dag met basis; de geldigheidsvergelijking liep via
+  `work_date::text` en was dus afhankelijk van `DateStyle` (bewezen: onder `SQL, DMY` bood het scherm
+  niets aan) — nu één datumgetypeerde helper `private.hours_matrix_effective_on`; een lopende vervanging
+  blokkeerde de andere dagacties niet; opties/vervangen gooiden een rauwe `ZodError` in plaats van de
+  leesbare melding — nu `hoursWorkflowFailure()` (melding + code behouden) voor álle
+  dagcallbacks; `previous_classifications` op historierevisies was ongebruikt en kostbaar — weg;
+  de tweede `hours_effective_day_basis`-aanroep in finalize is vervangen door de contextwaarde; en de
+  bestandsversie `20260917090000` stond niet in `schema_migrations` op productie — nu wel.
+- **Productie versus repo:** de eindtoestand op productie is in vier MCP-migraties aangebracht (basis,
+  indexen, ronde 1, ronde 2) en daarna is `20260917090000` zelf geregistreerd, zoals bij de
+  zustermigraties. De repo heeft één bestand met exact die eindtoestand; `db push` slaat het over.
 - **Restpunt van de QA:** de eerste QA-poging liet in de synthetische demo-opdrachtgever
   `Urenmodule QA t10-202609110835` één halfafgeronde dag achter (basis vervangen, nog niet herberekend).
   Dat is synthetische demodata in een eigen QA-bedrijf en is bewust blijven staan, net als bij eerdere

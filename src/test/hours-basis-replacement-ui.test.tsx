@@ -63,6 +63,7 @@ function mount(overrides: Partial<HoursWeekWorkspaceProps> = {}) {
     week: weekFixture(), onSaveDay: vi.fn().mockResolvedValue(undefined),
     onLoadMatrixOptions: vi.fn().mockResolvedValue(options()),
     onReplaceBasis: vi.fn().mockResolvedValue(undefined),
+    onReview: vi.fn().mockResolvedValue(undefined), onClassify: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
   return { ...render(<HoursWeekWorkspace {...props} />), props };
@@ -222,6 +223,58 @@ describe('replacing the basis', () => {
     expect(screen.getByText(/Huidige matrixbasis/)).toHaveTextContent('CAO-matrix');
     expect(screen.queryByRole('button', { name: 'Andere matrixbasis vastleggen' })).not.toBeInTheDocument();
     expect(onReplaceBasis).not.toHaveBeenCalled();
+  });
+
+  it('refuses to submit on a basis version that changed under the open form', async () => {
+    const { props, rerender } = mount();
+    await openForm();
+    fireEvent.change(screen.getByLabelText('Nieuwe matrixbasis'), { target: { value: 'version-client' } });
+    fireEvent.change(screen.getByLabelText('Reden van de vervanging'), { target: { value: 'Verkeerde matrix' } });
+    // Another user replaced the basis meanwhile; the week refetched, the day version did not move.
+    const week = weekFixture();
+    week.employees[0].days[0].matrixBasis = basis({ basisVersion: 2, matrixVersionId: 'version-client', matrixName: 'Klantmatrix', scope: 'client' });
+    rerender(<HoursWeekWorkspace {...props} week={week} />);
+    // Two alerts are right here: the form's conflict, and the panel's own
+    // "outcome belongs to an earlier basis" notice for the new basis version.
+    expect(screen.getByText(/Deze dag of de matrixbasis is ondertussen gewijzigd/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Matrixbasis vervangen' })).toBeDisabled();
+    click('Matrixbasis vervangen');
+    expect(props.onReplaceBasis).not.toHaveBeenCalled();
+  });
+
+  it('warns when the outcome was computed on an earlier basis version of the same matrix', () => {
+    // A → B → A: the matrix is the same again, the basis version is not.
+    const week = weekFixture();
+    const day = week.employees[0].days[0];
+    day.matrixBasis = basis({ basisVersion: 2, matrixVersionId: 'version-client', matrixName: 'Klantmatrix', scope: 'client' });
+    day.classification = previous;
+    day.previousClassifications = [];
+    mount({ week });
+    expect(screen.getByText(/hoort nog bij een eerdere matrixbasis/)).toBeInTheDocument();
+  });
+
+  it('does not warn on an outcome from before basis versions existed while the basis is still the first', () => {
+    const week = weekFixture();
+    const day = week.employees[0].days[0];
+    day.matrixBasis = basis({ basisVersion: 0, matrixVersionId: 'version-client', matrixName: 'Klantmatrix', scope: 'client', entries: [basis().entries[0]] });
+    day.classification = classification({ basisVersion: null, matrixVersionId: 'version-client', matrixName: 'Klantmatrix', matrixScope: 'client' });
+    day.previousClassifications = [];
+    mount({ week });
+    expect(screen.queryByText(/hoort nog bij een eerdere matrixbasis/)).not.toBeInTheDocument();
+  });
+
+  it('holds the other day actions while a replacement is in flight', async () => {
+    const onReplaceBasis = vi.fn().mockReturnValue(new Promise<void>(() => {}));
+    const onClassify = vi.fn();
+    mount({ onReplaceBasis, onClassify });
+    await openForm();
+    fireEvent.change(screen.getByLabelText('Nieuwe matrixbasis'), { target: { value: 'version-client' } });
+    fireEvent.change(screen.getByLabelText('Reden van de vervanging'), { target: { value: 'Verkeerde matrix' } });
+    click('Matrixbasis vervangen');
+    await waitFor(() => expect(onReplaceBasis).toHaveBeenCalledOnce());
+    expect(screen.getByRole('button', { name: 'Uursoorten controleren' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Wijzigen' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Handmatig gecontroleerd' })).toBeDisabled();
   });
 
   it('blocks a replacement while the day version on screen is being edited', () => {
