@@ -106,7 +106,20 @@ test.describe('Tabelbesturing uitrol B — vacatures, plaatsingen, uren, plannin
 
     // Over de paginagrens heen: pagina 2 sluit aan op pagina 1.
     const laatsteVanPagina1 = waarden(await kolom(page, 'Opdrachtgever')).at(-1);
-    await page.getByLabel('Ga naar de volgende pagina').click();
+    // URL en kop kunnen nog bij de oude rijen horen terwijl React de nieuwe query
+    // start. Wacht op pagina 2 én op de rij-ID's daarvan voordat we de kolom uitlezen.
+    const [pageResponse] = await Promise.all([
+      page.waitForResponse((r) => {
+        const u = new URL(r.url());
+        return u.pathname.endsWith('/rest/v1/vacancies') && u.searchParams.get('offset') === '10'
+          && u.searchParams.get('order')?.startsWith('companies(name).asc');
+      }),
+      page.getByLabel('Ga naar de volgende pagina').click(),
+    ]);
+    expect(pageResponse.ok()).toBe(true);
+    const nextRows: { id: string }[] = await pageResponse.json();
+    expect(nextRows.length).toBeGreaterThan(0);
+    await expect(page.locator(`table tbody a[href="/vacatures/${nextRows[0].id}"]`)).toBeVisible();
     await expect(page).toHaveURL(/page=2/);
     await expect(rijen(page).first()).toBeVisible();
     await expect(kopstatus(page, 'Opdrachtgever')).toHaveAttribute('aria-sort', 'ascending');

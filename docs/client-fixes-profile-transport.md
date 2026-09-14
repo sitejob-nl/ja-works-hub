@@ -27,7 +27,9 @@ Werkmap: `/Users/kas/dev/ja-works-hub/.worktrees/codex-client-fixes`.
 
 ## Release
 
-Frontend via PR-merge; daarna `supabase functions deploy onboarding-submit --project-ref noaupcteygfvlyymqtew` vanuit deze branch (bundelt de nieuwe gedeelde helper). Geen nieuwe DB-migratie nodig.
+Live op 14 september 2026 via PR #274, productiecommit `bb86474f53a9f1a0a3d17ebbd2f7aa58c0783c6f`. Frontend bevestigd op `https://ja-works-hub.vercel.app`. `onboarding-submit` is via CLI gedeployed als versie 75 (`ACTIVE`, `verify_jwt=false`); beide live bestanden zijn inhoudelijk gelijk aan de geteste index en gedeelde helper. Geen nieuwe DB-migratie nodig.
+
+De 24 browserscenario's zijn ook op productie geslaagd. Eén bestaande vacaturetabeltest las bij de paginawissel tijdens de laadstatus; de QA-vervolgfix wacht op de response en de eerste rij-ID van pagina 2. Alle eigen testrecords zijn daarna afwezig bevonden en de oorspronkelijke communicatie-instelling van de demo-organisatie is exact teruggelezen.
 
 Bestaande kandidaatvelden worden niet achteraf overschreven met oudere formulierantwoorden. De antwoordenkaart maakt eerdere inzendingen zichtbaar. Bij een deels mislukte inzending blijft de link bruikbaar; de opslag is geen nieuwe atomaire transactie. Een retry kan aanvullende antwoord- of documentrijen opleveren, maar de profielkaart toont het nieuwste antwoord per veld.
 
