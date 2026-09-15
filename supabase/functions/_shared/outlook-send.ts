@@ -59,6 +59,13 @@ interface SendViaOutlookAccountParams {
   /** Sla de outbound-pauze (kill-switch) over. Alléén voor gebruiker-geïnitieerde,
    * kritieke auth-mail (bv. wachtwoord-reset) — nooit voor campagnes of automations. */
   bypassOutboundPause?: boolean;
+  /**
+   * Maak het bericht eerst aan en verstuur het daarna, zodat Graph de
+   * `internetMessageId` en `conversationId` teruggeeft. Alleen nodig voor een
+   * afzender die zijn eigen antwoorden later moet herkennen (de urenuitvraag,
+   * T8 → T7). Zonder deze vlag blijft het pad exact zoals het was: één
+   * `sendMail` zonder concept. */
+  captureIdentifiers?: boolean;
 }
 
 export interface SendResult {
@@ -68,6 +75,18 @@ export interface SendResult {
   accountId?: string;
   from?: string | null;
   communicationPaused?: boolean;
+  /**
+   * Het bericht is aangemaakt en de verzendopdracht is misgegaan. Of hij toch is
+   * vertrokken valt niet vast te stellen, dus opnieuw proberen kan een tweede
+   * mail opleveren. Een aanroeper hoort dit naar een mens te brengen.
+   */
+  deliveryUncertain?: boolean;
+  /** Providerstatus als die er was, zodat een aanroeper 5xx van 4xx kan scheiden. */
+  status?: number;
+  retryAfter?: number;
+  /** Alleen gevuld met `captureIdentifiers`; anders geeft Graph ze niet terug. */
+  messageId?: string | null;
+  conversationId?: string | null;
 }
 
 function recipientList(value: string | string[]) {
@@ -175,22 +194,57 @@ export async function sendViaOutlookAccount(params: SendViaOutlookAccountParams)
     const replyTo = params.replyToEmail
       ? recipientList(params.replyToEmail)
       : buildReplyTo(provider.account);
-    await graphJson(admin, provider, `${mailboxBasePath(provider.account)}/sendMail`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        message: {
-          subject: params.subject,
-          body: { contentType: "HTML", content: finalBody },
-          toRecipients,
-          ...(ccRecipients.length ? { ccRecipients } : {}),
-          ...(bccRecipients.length ? { bccRecipients } : {}),
-          ...(replyTo.length ? { replyTo } : {}),
-          ...(graphAttachments.length ? { attachments: graphAttachments } : {}),
-        },
-        saveToSentItems: true,
-      }),
-    });
+    const message = {
+      subject: params.subject,
+      body: { contentType: "HTML", content: finalBody },
+      toRecipients,
+      ...(ccRecipients.length ? { ccRecipients } : {}),
+      ...(bccRecipients.length ? { bccRecipients } : {}),
+      ...(replyTo.length ? { replyTo } : {}),
+      ...(graphAttachments.length ? { attachments: graphAttachments } : {}),
+    };
+    let messageId: string | null = null;
+    let conversationId: string | null = null;
+    if (params.captureIdentifiers === true) {
+      // `sendMail` geeft niets terug, dus een afzender die zijn eigen antwoorden
+      // moet herkennen maakt het bericht eerst aan: Graph antwoordt dan mét
+      // internetMessageId en conversationId. Daarna gaat hetzelfde bericht weg.
+      const created = await graphJson<{ id?: string; internetMessageId?: string; conversationId?: string }>(
+        admin, provider, `${mailboxBasePath(provider.account)}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(message),
+        });
+      if (!created?.id) throw new Error("Outlook gaf geen concept terug");
+      messageId = created.internetMessageId ?? null;
+      conversationId = created.conversationId ?? null;
+      try {
+        await graphJson(admin, provider,
+          `${mailboxBasePath(provider.account)}/messages/${encodeURIComponent(created.id)}/send`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+          });
+      } catch (sendError) {
+        // Het concept staat al klaar. Of Graph hem heeft verstuurd voordat het
+        // antwoord wegviel, weet niemand — dus dit mag NIET opnieuw geprobeerd
+        // worden. Aanmaken is herhaalbaar, versturen niet. De aanroeper krijgt
+        // `deliveryUncertain` en hoort het bericht bij een mens te parkeren,
+        // dezelfde afweging als bij een verlopen lease.
+        const err = sendError as { message?: string; status?: number };
+        return {
+          success: false, method: "outlook", deliveryUncertain: true,
+          error: err?.message || "Outlook verzenden mislukt na het aanmaken van het concept",
+          status: typeof err?.status === "number" ? err.status : undefined,
+          messageId, conversationId,
+        };
+      }
+    } else {
+      await graphJson(admin, provider, `${mailboxBasePath(provider.account)}/sendMail`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message, saveToSentItems: true }),
+      });
+    }
 
     if (params.logCommunication !== false) {
       await admin.from("communications").insert({
@@ -226,7 +280,10 @@ export async function sendViaOutlookAccount(params: SendViaOutlookAccountParams)
       },
     });
 
-    return { success: true, method: "outlook", accountId: provider.account.id, from };
+    return {
+      success: true, method: "outlook", accountId: provider.account.id, from,
+      messageId, conversationId,
+    };
   } catch (error) {
     const err = error as any;
     const missingDefault = err?.code === "outlook_account_not_found";
@@ -234,6 +291,10 @@ export async function sendViaOutlookAccount(params: SendViaOutlookAccountParams)
       success: false,
       method: missingDefault ? "none" : "outlook",
       error: missingDefault ? "Geen standaard Outlook-afzender ingesteld" : err?.message || "Outlook verzenden mislukt",
+      // Zodat een aanroeper een tijdelijke storing van een definitieve weigering
+      // kan onderscheiden in plaats van alles even hard te herhalen.
+      status: typeof err?.status === "number" ? err.status : undefined,
+      retryAfter: typeof err?.retryAfter === "number" ? err.retryAfter : undefined,
     };
   }
 }

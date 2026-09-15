@@ -4,6 +4,7 @@ import type { Database } from '@/integrations/supabase/types';
 import { unwrap } from '@/lib/db';
 import type { HoursSourceInput } from '@/components/hours-workflow/hours-day-source';
 import { HOURS_UNCERTAIN_FIELDS, type HoursPageAssignment, type HoursUncertainField } from '@/lib/hours-sources';
+import type { HoursMailRuleView } from '@/lib/hours-outbox';
 import type { ScanReading } from '../../supabase/functions/_shared/hours-scan';
 
 /** One day of a page take-over; the server reads exactly these fields. */
@@ -38,6 +39,12 @@ interface HoursRpcArguments {
   hours_confirm_days: Omit<RpcArgs<'hours_confirm_days'>, 'p_revisions'> & { p_revisions: { day_id: string; revision_id: string }[] };
   hours_review_day: RpcArgs<'hours_review_day'> & { p_status: 'checked' | 'blocked' };
   hours_get_day_matrix_options: RpcArgs<'hours_get_day_matrix_options'>;
+  hours_get_mail_profile: RpcArgs<'hours_get_mail_profile'>;
+  hours_save_mail_profile: Omit<RpcArgs<'hours_save_mail_profile'>, 'p_rules'> & { p_rules: HoursMailRuleView[] };
+  hours_save_mail_template: RpcArgs<'hours_save_mail_template'>;
+  hours_outbox_overview: RpcArgs<'hours_outbox_overview'>;
+  hours_approve_outbox_message: RpcArgs<'hours_approve_outbox_message'>;
+  hours_withdraw_outbox_message: RpcArgs<'hours_withdraw_outbox_message'>;
   hours_replace_day_matrix_basis: RpcArgs<'hours_replace_day_matrix_basis'>;
   hours_get_week_sources: RpcArgs<'hours_get_week_sources'>;
   hours_add_week_source: RpcArgs<'hours_add_week_source'>;

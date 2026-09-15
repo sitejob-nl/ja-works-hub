@@ -47,6 +47,9 @@ export const qk = {
     settings: (orgId: string, companyId: string) => ['hours-workflow', orgId, 'settings', companyId] as const,
     sources: (orgId: string, weekId: string) => ['hours-workflow', orgId, 'sources', weekId] as const,
     mailIntake: (orgId: string) => ['hours-workflow', orgId, 'mail-intake'] as const,
+    outbox: (orgId: string, weekId: string) => ['hours-workflow', orgId, 'outbox', weekId] as const,
+    mailProfile: (orgId: string, companyId: string) => ['hours-workflow', orgId, 'mail-profile', companyId] as const,
+    mailRecipients: (orgId: string, companyId: string) => ['hours-workflow', orgId, 'mail-recipients', companyId] as const,
   },
   aiSettings: (orgId: string) => ['organization-ai-settings', orgId] as const,
   aiCredits: {

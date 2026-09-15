@@ -12,6 +12,31 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       ai_credit_ledger: {
@@ -5691,6 +5716,115 @@ export type Database = {
           },
         ]
       }
+      hours_mail_profiles: {
+        Row: {
+          company_id: string
+          last_issues: Json
+          last_planned_at: string | null
+          late_approval_mode: string
+          late_approval_window_minutes: number
+          organization_id: string
+          rules: Json
+          updated_at: string
+          updated_by: string
+          version: number
+        }
+        Insert: {
+          company_id: string
+          last_issues?: Json
+          last_planned_at?: string | null
+          late_approval_mode?: string
+          late_approval_window_minutes?: number
+          organization_id: string
+          rules?: Json
+          updated_at?: string
+          updated_by: string
+          version?: number
+        }
+        Update: {
+          company_id?: string
+          last_issues?: Json
+          last_planned_at?: string | null
+          late_approval_mode?: string
+          late_approval_window_minutes?: number
+          organization_id?: string
+          rules?: Json
+          updated_at?: string
+          updated_by?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hours_mail_profiles_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: true
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_mail_profiles_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_mail_profiles_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hours_mail_templates: {
+        Row: {
+          body: string
+          id: string
+          language: string
+          organization_id: string
+          subject: string
+          template_id: string
+          updated_at: string
+          updated_by: string
+        }
+        Insert: {
+          body: string
+          id?: string
+          language: string
+          organization_id: string
+          subject: string
+          template_id: string
+          updated_at?: string
+          updated_by: string
+        }
+        Update: {
+          body?: string
+          id?: string
+          language?: string
+          organization_id?: string
+          subject?: string
+          template_id?: string
+          updated_at?: string
+          updated_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hours_mail_templates_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_mail_templates_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       hours_matrices: {
         Row: {
           company_id: string | null
@@ -5830,6 +5964,176 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      hours_outbox_messages: {
+        Row: {
+          approval_required: boolean
+          approved_at: string | null
+          approved_by: string | null
+          approved_content_hash: string | null
+          approved_source_revision: string | null
+          attempt_count: number
+          block_reason: string | null
+          body_html: string
+          candidate_id: string | null
+          claim_token: string | null
+          claimed_at: string | null
+          company_contact_id: string | null
+          company_id: string
+          content_hash: string
+          conversation_id: string | null
+          created_at: string
+          dedup_key: string
+          effective_at: string
+          id: string
+          last_error: string | null
+          lease_expires_at: string | null
+          mail_type: string
+          next_attempt_at: string | null
+          organization_id: string
+          outbound_message_id: string | null
+          party: string
+          recipient_id: string
+          recipients: Json
+          request_id: string | null
+          rule_id: string
+          scheduled_at: string
+          sent_at: string | null
+          source_revision: string
+          status: string
+          subject: string
+          updated_at: string
+          week_id: string
+        }
+        Insert: {
+          approval_required?: boolean
+          approved_at?: string | null
+          approved_by?: string | null
+          approved_content_hash?: string | null
+          approved_source_revision?: string | null
+          attempt_count?: number
+          block_reason?: string | null
+          body_html?: string
+          candidate_id?: string | null
+          claim_token?: string | null
+          claimed_at?: string | null
+          company_contact_id?: string | null
+          company_id: string
+          content_hash: string
+          conversation_id?: string | null
+          created_at?: string
+          dedup_key: string
+          effective_at: string
+          id?: string
+          last_error?: string | null
+          lease_expires_at?: string | null
+          mail_type: string
+          next_attempt_at?: string | null
+          organization_id: string
+          outbound_message_id?: string | null
+          party: string
+          recipient_id: string
+          recipients?: Json
+          request_id?: string | null
+          rule_id: string
+          scheduled_at: string
+          sent_at?: string | null
+          source_revision: string
+          status: string
+          subject?: string
+          updated_at?: string
+          week_id: string
+        }
+        Update: {
+          approval_required?: boolean
+          approved_at?: string | null
+          approved_by?: string | null
+          approved_content_hash?: string | null
+          approved_source_revision?: string | null
+          attempt_count?: number
+          block_reason?: string | null
+          body_html?: string
+          candidate_id?: string | null
+          claim_token?: string | null
+          claimed_at?: string | null
+          company_contact_id?: string | null
+          company_id?: string
+          content_hash?: string
+          conversation_id?: string | null
+          created_at?: string
+          dedup_key?: string
+          effective_at?: string
+          id?: string
+          last_error?: string | null
+          lease_expires_at?: string | null
+          mail_type?: string
+          next_attempt_at?: string | null
+          organization_id?: string
+          outbound_message_id?: string | null
+          party?: string
+          recipient_id?: string
+          recipients?: Json
+          request_id?: string | null
+          rule_id?: string
+          scheduled_at?: string
+          sent_at?: string | null
+          source_revision?: string
+          status?: string
+          subject?: string
+          updated_at?: string
+          week_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hours_outbox_messages_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_outbox_messages_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_outbox_messages_company_contact_id_fkey"
+            columns: ["company_contact_id"]
+            isOneToOne: false
+            referencedRelation: "company_contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_outbox_messages_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_outbox_messages_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_outbox_messages_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "hours_week_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hours_outbox_messages_week_id_organization_id_fkey"
+            columns: ["week_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "hours_weeks"
+            referencedColumns: ["id", "organization_id"]
           },
         ]
       }
@@ -13006,6 +13310,14 @@ export type Database = {
         Args: { p_expected_revision_id: string; p_proposal_id: string }
         Returns: Json
       }
+      hours_approve_outbox_message: {
+        Args: {
+          p_expected_content_hash: string
+          p_expected_source_revision: string
+          p_id: string
+        }
+        Returns: Json
+      }
       hours_claim_source_reading: {
         Args: { p_actor_id: string; p_source_id: string }
         Returns: Json
@@ -13143,6 +13455,7 @@ export type Database = {
         Args: { p_day_id: string }
         Returns: Json
       }
+      hours_get_mail_profile: { Args: { p_company_id: string }; Returns: Json }
       hours_get_matrix: { Args: { p_matrix_id: string }; Returns: Json }
       hours_get_module_access: { Args: never; Returns: Json }
       hours_get_source_reading_context: {
@@ -13254,6 +13567,55 @@ export type Database = {
         }
         Returns: Json
       }
+      hours_outbox_claim: {
+        Args: {
+          p_lease_seconds?: number
+          p_limit?: number
+          p_organization_id?: string
+        }
+        Returns: Json
+      }
+      hours_outbox_due_weeks: {
+        Args: { p_limit?: number; p_organization_id?: string }
+        Returns: Json
+      }
+      hours_outbox_overview: {
+        Args: { p_company_id?: string; p_limit?: number; p_week_id?: string }
+        Returns: Json
+      }
+      hours_outbox_record_failure: {
+        Args: {
+          p_claim_token: string
+          p_error?: string
+          p_id: string
+          p_kind: string
+        }
+        Returns: Json
+      }
+      hours_outbox_record_sent: {
+        Args: {
+          p_claim_token: string
+          p_conversation_id: string
+          p_id: string
+          p_outbound_message_id: string
+          p_recipients: Json
+        }
+        Returns: Json
+      }
+      hours_outbox_release: {
+        Args: { p_claim_token: string; p_id: string }
+        Returns: Json
+      }
+      hours_outbox_sync: {
+        Args: {
+          p_actions: Json
+          p_issues?: Json
+          p_prune?: boolean
+          p_prune_keys?: Json
+          p_week_id: string
+        }
+        Returns: Json
+      }
       hours_publish_matrix_version: {
         Args: {
           p_confirmed: boolean
@@ -13310,6 +13672,25 @@ export type Database = {
         }
         Returns: Json
       }
+      hours_save_mail_profile: {
+        Args: {
+          p_company_id: string
+          p_expected_version: number
+          p_late_approval_mode?: string
+          p_late_approval_window_minutes?: number
+          p_rules: Json
+        }
+        Returns: Json
+      }
+      hours_save_mail_template: {
+        Args: {
+          p_body: string
+          p_language: string
+          p_subject: string
+          p_template_id: string
+        }
+        Returns: Json
+      }
       hours_save_matrix_draft: {
         Args: {
           p_config: Json
@@ -13348,6 +13729,10 @@ export type Database = {
           p_page_number: number
           p_source_id: string
         }
+        Returns: Json
+      }
+      hours_withdraw_outbox_message: {
+        Args: { p_allow_replan?: boolean; p_id: string; p_note?: string }
         Returns: Json
       }
       is_employee_user: { Args: never; Returns: boolean }
@@ -13790,6 +14175,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       audit_action: [

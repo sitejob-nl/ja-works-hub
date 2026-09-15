@@ -120,9 +120,15 @@ Zie [classificatiecontract](urenmodule-classification-contract.md) voor de vertr
 `_shared/hours-schedule.ts` berekent onafhankelijke aanlever-/akkoorddeadlines en berichten per partij.
 De pure preview houdt rekening met zomer-/wintertijd, late aanlevering, uitgeschakelde berichten,
 actuele revisies en eerdere verzendpogingen. Correctieconcepten vereisen goedkeuring van inhoud én
-bronrevisie. Deze planner is nog niet aangesloten op een duurzame outbox of Outlook; hij verstuurt
-geen berichten. Het huidige opdrachtgeverformulier bewaart de twee deadlines, nog geen volledig
-mailprofiel.
+bronrevisie.
+
+**Sinds 18 september is die planner aangesloten** (T8). `hours_mail_profiles` bewaart per opdrachtgever
+de regelvorm van de planner zelf, `hours_mail_templates` de woorden per taal, en
+`hours_outbox_messages` is de duurzame outbox met de `dedupKey` van de planner als unieke sleutel.
+Verzenden loopt via edge function `hours-outbox` en uitsluitend door `_shared/outlook-send.ts`, dus de
+kill-switch logt een geblokkeerd bericht als concept. Een ingestelde verzendtijd omzeilt nooit een
+vereiste goedkeuring. De module staat leeg: zonder ingevuld mailprofiel gaat er niets uit. Zie het
+[outboxcontract](urenmodule-outbox-contract.md).
 
 ## Interne broninname en invoervoorstellen
 

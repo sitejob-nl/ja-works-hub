@@ -1,8 +1,87 @@
-# Session handover — 2026-09-17
+# Session handover — 2026-09-18
 
 Overdracht voor wie verdergaat (Codex / Claude Code). Lees [AGENTS.md](AGENTS.md) voor harde repo-conventies +
 commands, [CLAUDE.md](CLAUDE.md) voor de canonieke codebase-diepte, [HANDOVER.md](HANDOVER.md) voor de formele
 projectsamenvatting.
+
+## Uitgaande urenmail — 18 september 2026 (`feat/urenmodule-mailprofielen`)
+
+- Duurzame worktree `.worktrees/urenmodule-mailprofielen`, branch `feat/urenmodule-mailprofielen` vanaf
+  `origin/main` (`e6d0f04`, de gemergde T10-release #278). De stale hoofdcheckout en alle overige
+  worktrees zijn ongemoeid gelaten.
+- **T8 uit [docs/urenmodule-tickets.md](docs/urenmodule-tickets.md) is gebouwd** — mailprofielen,
+  deadlines en een outbox met conceptgoedkeuring. Alle vijf acceptatiecriteria zijn afgevinkt. Zie het
+  [outboxcontract](docs/urenmodule-outbox-contract.md).
+- **De helft die telde bestond al, en is niet aangeraakt.** `_shared/hours-schedule.ts` beslist sinds de
+  eerste release wát er uitgaat en wannéér; de bouwstand noteerde zelf dat hij "nog niet aangesloten is
+  op een duurzame outbox of Outlook". T8 bouwt precies die andere helft en verplaatst geen enkele
+  beslissing: het profiel bewaart **de regelvorm van de planner zelf**, letterlijk, zodat er geen tweede
+  dialect ontstaat dat uit de pas kan lopen.
+- **De module gaat leeg live.** Zonder ingevuld mailprofiel komt een week niet eens in de planning, en
+  gaat er dus niets uit. De klantinput over ontvangers en momenten — de blokkade die T8 maandenlang
+  ophield — is daarmee **invoer in het scherm** `/uren/uitgaand` geworden in plaats van code. Er is geen
+  ingebouwde standaardtekst, geen standaardontvanger en geen standaardmoment.
+- **Een verzendtijd omzeilt nooit de goedkeuring.** Drie sloten: de claim geeft alleen `gereed` of
+  `goedgekeurd` terug; `goedgekeurd` is alleen bereikbaar via `hours_approve_outbox_message` met de
+  inhoudsvingerafdruk **én** de bronrevisie die de goedkeurder zag; en een `approval_required`-rij kan de
+  tabel-CHECK `status <> 'gereed'` sowieso niet passeren. Verschuift de bronrevisie, dan vervalt de
+  goedkeuring bij de volgende planning.
+- **Dubbel versturen kan niet.** `unique (organization_id, dedup_key)` op de sleutel die de planner al
+  maakte, plus een trigger die een verzonden rij onveranderlijk maakt. Een 5xx of 429 is `transient` met
+  oplopende wachttijd en stopt bij de vijfde poging als `mislukt`; alles daarbuiten is `permanent` en
+  wordt niet herhaald. Een **pauze is geen mislukking**: de claim gaat terug, de goedkeuring blijft staan
+  en de poging wordt teruggegeven, terwijl de gedeelde sender het concept in `communications` logt.
+- **Eén additieve wijziging in `_shared/outlook-send.ts`:** `captureIdentifiers` maakt het bericht eerst
+  aan zodat Graph `internetMessageId` en `conversationId` teruggeeft — anders kan `hours_week_requests`
+  de antwoorddraad niet leren, en dat is precies de taak die T7 aan T8 overliet. Zonder die vlag is het
+  pad byte voor byte wat het was, dus geen enkele andere afzender verandert. `SendResult` draagt nu ook
+  de providerstatus, zodat een 5xx van een 4xx te onderscheiden is.
+- **Deadlinetaken zijn bewust geweigerd.** De planner kent ze, maar een escalatie hoort een taak bij de
+  verantwoordelijke te zijn en dat is T11. `hours_save_mail_profile` weigert ze met een melding die dat
+  zegt, en de outbox kent de twee soorten niet eens — zo kan er geen bericht worden opgeslagen dat
+  nergens heen kan. **T11 is hiermee vrij.**
+- **Bewijs.** Applicatiesuite **2.041 tests groen** (146 bestanden), ook zónder `.env` zoals CI draait;
+  lint 0 errors; typecheck en `deno check` op `hours-outbox` plus twee bestaande gebruikers van
+  `outlook-send.ts` geslaagd. Databaseproef `scripts/hours-outbox-db-test.py` — zie het restpunt
+  hieronder over waar die is gedraaid. Overgeschreven erfenis: poortlijst 24 → **27** tabellen,
+  migratielijst 20 → **21**, twaalf functiesignaturen en de service-role-lijst.
+- **Wat de proef zelf ving, elk met een test die eerst rood stond:**
+  - `hours_outbox_sync` kon een bestaande, níét goedgekeurde rij op `goedgekeurd` zetten zodra de planner
+    hem `due` noemde. De tabel-CHECK weigerde het — precies waarvoor die er is — maar de RPC hoorde het
+    zelf te weigeren. Nu valt zo'n rij terug op `concept` met `goedkeuring_vereist`, en een vervallen
+    goedkeuring met `goedkeuring_vervallen`.
+  - De erfenis viel om in plaats van de bouw: mijn testhelpers heetten `claim` en `contact`, namen die de
+    vrijgegeven harnassen al gebruiken. Eenendertig geërfde mailinnametests kregen hun eigen helper
+    stilzwijgend vervangen. Hernoemd naar `outbox_claim` en `client_contact`.
+  - Vijf van mijn eigen tests claimden zonder organisatiefilter — wat de cron terecht doet — en pakten
+    daardoor rijen van eerdere tests uit dezelfde database. Elke test scope't nu op de eigen organisatie,
+    en er is een extra test bijgekomen die de ongescopete sweep van de cron juist wél uitoefent en
+    bewijst dat een uitgeschakelde organisatie er niet in zit.
+
+### Restpunten
+
+- **Niets is uitgerold.** De twee migraties, de cronjob en edge function `hours-outbox` staan nog niet op
+  productie. Daardoor kent `src/integrations/supabase/types.ts` de zes nieuwe RPC's nog niet en loopt de
+  frontend via `src/lib/hours-outbox-api.ts`. Dat bestand beschrijft zichzelf en **hoort te verdwijnen**
+  zodra de migratie live is en de types opnieuw gegenereerd zijn; verplaats de zes regels dan naar
+  `HoursRpcArguments` in `hours-workflow-api.ts`.
+- **De databaseproef is niet in de gebruikelijke container gedraaid.** Deze machine heeft geen Docker.
+  De proef is uitgevoerd tegen een lokaal PostgreSQL 18-cluster, met een kleine stand-in voor wat het
+  Supabase-image levert (`auth`-schema, `auth.uid()`/`auth.role()`, de drie rollen). Als ijking is de
+  **geërfde T10-proef daar eerst volledig groen gedraaid (356 tests)**, zodat de omgeving aantoonbaar
+  getrouw is. Draai `python3 scripts/hours-outbox-db-test.py` alsnog in de echte container voordat dit
+  naar productie gaat; het beeld kan op een punt afwijken dat deze stand-in niet modelleert.
+- **Geen browser-QA.** `.env`/`.env.local` staan niet op deze machine, dus
+  `scripts/prepare-hours-pages-demo.mjs` en de Playwright-flows konden niet draaien. De schermen zijn met
+  achttien componenttests gedekt, niet met een echte sessie.
+- **De gedeelde fixture is uitgebreid.** `tests/db/hours-workflow-fixture.sql` had geen `email` op
+  `candidates` en `profiles` en geen `full_name` op `profiles`, terwijl productie die wel heeft en de
+  ontvangerresolutie ze nodig heeft. Toegevoegd als **nullable** kolommen, zodat geen enkele geërfde
+  insert erdoor verandert. De naam van een klantcontact wordt bewust uit `first_name`/`last_name`
+  samengesteld en niet uit het productie-only `full_name`, zodat de resolver door de geërfde proef wordt
+  uitgeoefend.
+- **Er is niets echts verstuurd.** Geen postbus aangeraakt, geen mail de deur uit, geen betaalde aanroep,
+  geen productiewrite. `hours_day_releases` blijft leeg en zonder schrijfroute.
 
 ## Matrixbasis vervangen — 17 september 2026 (`feat/urenmodule-matrixvervanging`)
 
