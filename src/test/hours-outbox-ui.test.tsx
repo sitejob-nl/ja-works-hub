@@ -146,6 +146,19 @@ describe('the outbox on screen', () => {
 });
 
 describe('a message that needs a person always offers a way out', () => {
+  it('does not say the same thing twice about an uncertain send', () => {
+    // De reden en de foutmelding staan onder elkaar. Zeggen ze allebei
+    // hetzelfde, dan leest dat als een stotter en voegt de tweede niets toe.
+    render(<HoursOutboxPanel canManage messages={[message({
+      status: 'mislukt', block_reason: 'verzending_onzeker', approval_required: false,
+      last_error: 'De verzendpoging is nooit afgerond. Controleer de postbus.',
+    })]} onApprove={vi.fn()} onWithdraw={vi.fn()} />);
+    const kaart = screen.getByRole('listitem').textContent ?? '';
+    const keer = kaart.split('nooit afgerond').length - 1;
+    expect(keer).toBe(1);
+  });
+
+
   it('lets a withdrawn message be put back on the list', async () => {
     const onWithdraw = vi.fn().mockResolvedValue(undefined);
     render(<HoursOutboxPanel canManage messages={[message({
