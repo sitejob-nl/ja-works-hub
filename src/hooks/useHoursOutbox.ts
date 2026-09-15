@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { hoursOutboxRpc } from '@/lib/hours-outbox-api';
+import { hoursWorkflowRpc } from '@/lib/hours-workflow-api';
 import { qk } from '@/lib/query-keys';
 import {
   parseMailProfile, parseOutboxOverview, type HoursMailProfile, type HoursMailRuleView,
@@ -21,7 +21,7 @@ export function useHoursOutbox(organizationId: string, weekId?: string, enabled 
     enabled: Boolean(organizationId) && enabled,
     queryFn: async (): Promise<HoursOutboxOverview> => {
       try {
-        return parseOutboxOverview(await hoursOutboxRpc('hours_outbox_overview', {
+        return parseOutboxOverview(await hoursWorkflowRpc('hours_outbox_overview', {
           p_week_id: weekId ?? null, p_company_id: null, p_limit: 100,
         }));
       } catch (error) { throw hoursWorkflowFailure(error); }
@@ -35,7 +35,7 @@ export function useHoursMailProfile(organizationId: string, companyId?: string) 
     enabled: Boolean(organizationId) && Boolean(companyId),
     queryFn: async (): Promise<HoursMailProfile> => {
       try {
-        return parseMailProfile(await hoursOutboxRpc('hours_get_mail_profile',
+        return parseMailProfile(await hoursWorkflowRpc('hours_get_mail_profile',
           { p_company_id: companyId! }));
       } catch (error) { throw hoursWorkflowFailure(error); }
     },
@@ -62,7 +62,7 @@ export function useHoursOutboxActions(organizationId: string, weekId?: string) {
   const saveProfile = useMutation({
     mutationFn: async (input: SaveMailProfileInput) => {
       try {
-        return parseMailProfile(await hoursOutboxRpc('hours_save_mail_profile', {
+        return parseMailProfile(await hoursWorkflowRpc('hours_save_mail_profile', {
           p_company_id: input.companyId, p_expected_version: input.expectedVersion,
           p_rules: input.rules, p_late_approval_mode: input.lateApprovalMode,
           p_late_approval_window_minutes: input.lateApprovalWindowMinutes,
@@ -77,7 +77,7 @@ export function useHoursOutboxActions(organizationId: string, weekId?: string) {
   const saveTemplate = useMutation({
     mutationFn: async (input: SaveMailTemplateInput) => {
       try {
-        await hoursOutboxRpc('hours_save_mail_template', {
+        await hoursWorkflowRpc('hours_save_mail_template', {
           p_template_id: input.templateId, p_language: input.language,
           p_subject: input.subject, p_body: input.body,
         });
@@ -93,7 +93,7 @@ export function useHoursOutboxActions(organizationId: string, weekId?: string) {
     // server turns anything else into a conflict rather than an approval.
     mutationFn: async (input: { id: string; contentHash: string; sourceRevision: string }) => {
       try {
-        return parseOutboxOverview(await hoursOutboxRpc('hours_approve_outbox_message', {
+        return parseOutboxOverview(await hoursWorkflowRpc('hours_approve_outbox_message', {
           p_id: input.id, p_expected_content_hash: input.contentHash,
           p_expected_source_revision: input.sourceRevision,
         }));
@@ -105,7 +105,7 @@ export function useHoursOutboxActions(organizationId: string, weekId?: string) {
   const withdraw = useMutation({
     mutationFn: async (input: { id: string; note: string | null }) => {
       try {
-        return parseOutboxOverview(await hoursOutboxRpc('hours_withdraw_outbox_message',
+        return parseOutboxOverview(await hoursWorkflowRpc('hours_withdraw_outbox_message',
           { p_id: input.id, p_note: input.note }));
       } catch (error) { throw hoursWorkflowFailure(error); }
     },
