@@ -57,7 +57,9 @@ const BLOCK_REASONS: Record<string, string> = {
   definitief_geweigerd: 'Definitief geweigerd door de mailserver',
   niet_meer_gepland: 'Niet meer nodig',
   niet_meer_nodig: 'Niet meer nodig',
-  ingetrokken: 'Ingetrokken',
+  ingetrokken: 'Ingetrokken; gaat ook bij een volgende planning niet uit',
+  opnieuw_plannen: 'Van de lijst gehaald; wordt opnieuw voorgesteld',
+  verzending_onzeker: 'De verzendpoging is nooit afgerond — controleer de postbus',
   already_submitted: 'De week is compleet aangeleverd',
   already_approved: 'Er is al akkoord',
   missing_state: 'Nog niet te beoordelen',
@@ -68,6 +70,10 @@ const BLOCK_REASONS: Record<string, string> = {
   planned: 'Nog niet aan de beurt',
   waiting: 'Wacht op de week',
   requires_review: 'Vraagt een beoordeling',
+  in_progress: 'Wordt nu verstuurd',
+  delivery_uncertain: 'Aflevering onzeker; controleer dit met de hand',
+  invalid_hours_state: 'De urenstand is niet te lezen',
+  already_completed: 'Al afgehandeld',
 };
 
 export const describeMailType = (value: string): string =>

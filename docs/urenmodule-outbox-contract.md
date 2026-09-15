@@ -167,7 +167,7 @@ De databaseproef is `scripts/hours-outbox-db-test.py`. Die erft de volledige
 basisvervangings-, mailinname-, Word/mail-, scan-, klantweek-, werkblad-, pagina-, inname-, modulepoort-,
 classificatie- en funderingsregressies en overschrijft expliciet wat is verschoven: de poortlijst
 (nu **zevenentwintig** tabellen), de functiesignaturen (twaalf erbij), de service-role-lijst en de
-migratielijst (nu **eenentwintig**). De migraties worden elk tweemaal toegepast.
+migratielijst (nu **tweeentwintig**). De migraties worden elk tweemaal toegepast.
 
 De handler heeft zijn eigen suite (`src/test/hours-outbox.test.ts`): de hele run zonder postbus, sessie of
 klok, met elke poort geïnjecteerd. De schermen staan in `src/test/hours-outbox-ui.test.tsx`.

@@ -72,7 +72,16 @@ export interface HoursOutboxPorts {
 /** One run stays small: a cron that never finishes is a cron that never runs. */
 const MAX_WEEKS = 25;
 const MAX_SENDS = 10;
-const LEASE_SECONDS = 300;
+/**
+ * Deliberately longer than the five-minute cron period. With a lease of exactly
+ * one period, a run that is still working when the next one starts has its
+ * messages swept back and re-claimed — and the client gets the same mail twice.
+ */
+const LEASE_SECONDS = 900;
+/** What one `hours_outbox_sync` call accepts; more would abort the transaction. */
+const MAX_ACTIONS = 200;
+/** Leaves room for the request code the subject still has to carry. */
+const MAX_SUBJECT = 300;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -246,7 +255,9 @@ function buildAction(week: DueWeek, action: HoursPlannedAction, theme: BrandThem
   // A customer answers by replying, so the reference has to be in the subject it
   // replies to. The intake side already knows how to read it back.
   const codeSuffix = week.requestCode && action.party === 'customer' ? ` [${week.requestCode}]` : '';
-  const subject = template ? `${fillPlaceholders(template.subject, values).trim()}${codeSuffix}` : '';
+  const subject = template
+    ? `${fillPlaceholders(template.subject, values).trim().slice(0, MAX_SUBJECT)}${codeSuffix}`
+    : '';
   const body = template ? fillPlaceholders(template.body, values) : '';
   const issue = !recipient ? 'onbekende_ontvanger' : !template ? 'ontbrekende_tekst' : null;
   const htmlBody = issue ? '' : renderBody(body, theme, subject);
@@ -316,38 +327,62 @@ export function createHoursOutboxHandler(ports: HoursOutboxPorts, headers: Recor
       const built = buildAction(week, action, theme);
       if (built) actions.push(built);
     }
-    await ports.serviceRpc('hours_outbox_sync', {
-      p_week_id: week.weekId,
-      p_actions: actions,
-      // Visible configuration problems travel with the plan instead of being
-      // swallowed: a rule that cannot be read has to be fixable from the screen.
-      p_issues: preview.issues,
-    });
+    // The store bounds one call at two hundred actions. Cutting the list would
+    // silently drop the latest-scheduled messages *and* let the end-of-call
+    // sweep cancel their existing rows — approvals included. So send every
+    // action, in batches, and only let the last full pass prune: a call that did
+    // not see the whole plan may not decide what is no longer part of it.
+    const batches: SyncAction[][] = [];
+    for (let at = 0; at < actions.length; at += MAX_ACTIONS) {
+      batches.push(actions.slice(at, at + MAX_ACTIONS));
+    }
+    if (!batches.length) batches.push([]);
+    for (const [index, batch] of batches.entries()) {
+      const stored = await ports.serviceRpc('hours_outbox_sync', {
+        p_week_id: week.weekId,
+        p_actions: batch,
+        // Visible configuration problems travel with the plan instead of being
+        // swallowed: a rule that cannot be read has to be fixable from the screen.
+        p_issues: index === 0 ? preview.issues : [],
+        p_prune: batches.length === 1 && index === 0,
+      });
+      // `rpc()` resolves with `{data, error}` and never throws, so an unchecked
+      // call reports success for a write that was refused.
+      if (stored.error) throw new Error('sync_failed');
+    }
     return actions.length;
   }
 
-  async function deliver(message: ClaimedMessage, token: string): Promise<'sent' | 'paused' | 'failed'> {
+  async function deliver(message: ClaimedMessage, token: string): Promise<'sent' | 'paused' | 'failed' | 'unrecorded'> {
     const outcome = await ports.sendMail({
       organizationId: message.organizationId, companyId: message.companyId,
       companyContactId: message.companyContactId, candidateId: message.candidateId,
       to: message.recipients, subject: message.subject, htmlBody: message.bodyHtml,
     });
     if (outcome.ok) {
-      await ports.serviceRpc('hours_outbox_record_sent', {
+      const recorded = await ports.serviceRpc('hours_outbox_record_sent', {
         p_id: message.id, p_claim_token: token,
         p_outbound_message_id: outcome.messageId ?? null,
         p_conversation_id: outcome.conversationId ?? null,
         p_recipients: message.recipients,
       });
+      // The mail is already in somebody's inbox. If the database will not record
+      // that, the row keeps its claim and its lease runs out, which parks it as
+      // `verzending_onzeker` for a person — deliberately, because sending twice
+      // is worse than sending once and asking somebody to check.
+      if (recorded.error) return 'unrecorded';
       return 'sent';
     }
     // The kill-switch already logged the concept in `communications`. The row
     // keeps its approval and its turn; a pause is not a failed attempt.
     const kind = outcome.paused ? 'paused' : isTransient(outcome.status) ? 'transient' : 'permanent';
-    await ports.serviceRpc('hours_outbox_record_failure', {
+    const recorded = await ports.serviceRpc('hours_outbox_record_failure', {
       p_id: message.id, p_claim_token: token, p_kind: kind,
       p_error: (outcome.error ?? '').slice(0, 500),
     });
+    // A failure that cannot be recorded leaves the claim standing; say so rather
+    // than reporting a tidy outcome for a message that is now stuck on a lease.
+    if (recorded.error) return 'unrecorded';
     return kind === 'paused' ? 'paused' : 'failed';
   }
 
@@ -400,7 +435,7 @@ export function createHoursOutboxHandler(ports: HoursOutboxPorts, headers: Recor
         }
         if (!claimed.messages.length) break;
         for (const message of claimed.messages) {
-          let outcome: 'sent' | 'paused' | 'failed';
+          let outcome: 'sent' | 'paused' | 'failed' | 'unrecorded';
           try {
             outcome = await deliver(message, claimed.token);
           } catch {
@@ -411,7 +446,10 @@ export function createHoursOutboxHandler(ports: HoursOutboxPorts, headers: Recor
           }
           if (outcome === 'sent') sent += 1;
           else if (outcome === 'paused') paused += 1;
-          else failed += 1;
+          else {
+            failed += 1;
+            if (outcome === 'unrecorded') errors.push('record_failed');
+          }
         }
       }
       return json({ mode: auth.mode, weeks: weeks.length, planned, sent, paused, failed, errors });

@@ -50,6 +50,8 @@ interface Recorded { rpc: [string, any][]; sent: any[] }
 function ports(options: {
   weeks?: any[]; claim?: any[]; send?: (m: any) => Promise<HoursSendOutcome>; recorded?: Recorded;
   asOf?: string; mode?: 'cron' | 'user'; organizationId?: string;
+  /** Makes one named RPC answer with an error instead of data. */
+  rpcErrors?: Record<string, { code?: string; message?: string }>;
 } = {}) {
   const recorded: Recorded = options.recorded ?? { rpc: [], sent: [] };
   let claimCalls = 0;
@@ -59,6 +61,8 @@ function ports(options: {
       : { mode: 'cron' },
     serviceRpc: async (name, args) => {
       recorded.rpc.push([name, args]);
+      const failure = options.rpcErrors?.[name];
+      if (failure) return { data: null, error: failure };
       switch (name) {
         case 'hours_outbox_due_weeks':
           return { data: options.weeks ?? [week()], error: null };
@@ -231,6 +235,59 @@ describe('sending what was approved', () => {
     await run(p);
     expect(recorded.sent).toHaveLength(0);
     expect(recorded.rpc.some(([name]) => name === 'hours_outbox_record_sent')).toBe(false);
+  });
+
+  it('does not call a send done when the database refused to record it', async () => {
+    // `rpc()` resolves with {data, error} and never throws, so an unchecked call
+    // reports a tidy success for a write that did not happen — and the row stays
+    // claimable, which is how the same mail goes out twice.
+    const { ports: p, recorded } = ports({
+      claim: [claimable()],
+      rpcErrors: { hours_outbox_record_sent: { code: 'PT409', message: 'claim verlopen' } },
+    });
+    const { payload } = await run(p);
+    expect(payload.sent).toBe(0);
+    expect(payload.errors).toContain('record_failed');
+  });
+
+  it('does not count a week as planned when the plan was refused', async () => {
+    const { ports: p, recorded } = ports({
+      rpcErrors: { hours_outbox_sync: { message: 'te veel acties' } },
+    });
+    const { payload } = await run(p);
+    expect(payload.planned).toBe(0);
+    expect(payload.errors).toContain('week_failed');
+  });
+
+  it('says so when a failure could not be recorded either', async () => {
+    const { ports: p } = ports({
+      claim: [claimable()],
+      send: async () => ({ ok: false, status: 503, error: 'graph_503' }),
+      rpcErrors: { hours_outbox_record_failure: { message: 'weg' } },
+    });
+    const { payload } = await run(p);
+    expect(payload.errors).toContain('record_failed');
+  });
+
+  it('holds its lease longer than the cron period so a slow run is not lapped', async () => {
+    const { ports: p, recorded } = ports({ claim: [claimable()] });
+    await run(p);
+    const [, args] = recorded.rpc.find(([name]) => name === 'hours_outbox_claim')!;
+    // The cron runs every five minutes; an equal lease lets the next run sweep
+    // this claim and send the very same message again.
+    expect(args.p_lease_seconds).toBeGreaterThan(300);
+  });
+
+  it('never hands the store more actions or a longer subject than it accepts', async () => {
+    const long = 'x'.repeat(400);
+    const wide = week({
+      templates: { 'uitvraag:nl': { subject: long, body: 'Beste {{ontvanger}}' } },
+    });
+    const { ports: p, recorded } = ports({ weeks: [wide] });
+    await run(p);
+    const action = synced(recorded)[0][1].p_actions[0];
+    expect(action.subject.length).toBeLessThanOrEqual(400);
+    expect(synced(recorded)[0][1].p_actions.length).toBeLessThanOrEqual(200);
   });
 
   it('keeps a manual run inside the caller´s own tenant', async () => {

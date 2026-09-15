@@ -60,9 +60,9 @@ EXPECTED_SIGNATURES = basis.EXPECTED_SIGNATURES + (
     "hours_save_mail_template(text,text,text,text)",
     "hours_outbox_overview(uuid,uuid,integer)",
     "hours_approve_outbox_message(uuid,text,text)",
-    "hours_withdraw_outbox_message(uuid,text)",
+    "hours_withdraw_outbox_message(uuid,text,boolean)",
     "hours_outbox_due_weeks(integer,uuid)",
-    "hours_outbox_sync(uuid,jsonb,jsonb)",
+    "hours_outbox_sync(uuid,jsonb,jsonb,boolean)",
     "hours_outbox_claim(integer,integer,uuid)",
     "hours_outbox_record_sent(uuid,uuid,text,text,jsonb)",
     "hours_outbox_record_failure(uuid,uuid,text,text)",
@@ -121,7 +121,7 @@ class OutboxTests(basis.BasisReplacementTests):
         return {
             "dedup_key": dedup or f"hours:v1:{uuid.uuid4()}",
             "rule_id": rule_id, "mail_type": mail_type, "party": party,
-            "recipient_id": recipient or str(uuid.uuid4()),
+            "recipient_id": recipient or getattr(self, "qa_contact", None) or str(uuid.uuid4()),
             "channel": "email", "scheduled_at": at, "effective_at": at,
             "status": status, "reason": None, "approval_required": approval,
             "subject": subject, "body_html": body,
@@ -156,6 +156,9 @@ class OutboxTests(basis.BasisReplacementTests):
         contact = self.client_contact()
         self.template()
         self.profile([rule(recipients=[contact])])
+        # The claim checks that the recipient still belongs to the rule, so every
+        # action this case builds has to name the contact the profile names.
+        self.qa_contact = contact
         return week, contact
 
     # --- contract ----------------------------------------------------------
@@ -401,6 +404,146 @@ class OutboxTests(basis.BasisReplacementTests):
         self.assertIsNone(row["approved_at"], "The stale approval is dropped, not kept")
         self.assertEqual(len(self.outbox_claim()["messages"]), 1)
 
+    def test_the_reason_the_planner_gives_is_the_reason_approval_lifts(self):
+        """Two vocabularies for one state means the approve button never works.
+
+        The planner says `correction_approval_required`; the approve RPC unblocks
+        `goedkeuring_vereist`. If those are allowed to drift apart, every
+        correction and query message is stuck as a draft forever.
+        """
+        week, _ = self.prepared_week()
+        action = self.action(week, status="requires_review", approval=True,
+                             mail_type="correction_query")
+        action["reason"] = "correction_approval_required"
+        self.sync(week["id"], [action])
+        row = self.outbox_row(action["dedup_key"])
+        self.assertEqual(row["status"], "concept")
+        rpc("hours_approve_outbox_message", user=self.admin, p_id=row["id"],
+            p_expected_content_hash=row["content_hash"],
+            p_expected_source_revision=row["source_revision"])
+        self.assertEqual(self.outbox_row(action["dedup_key"])["status"], "goedgekeurd")
+        self.assertEqual(len(self.outbox_claim()["messages"]), 1)
+
+    def test_a_withdrawal_survives_the_next_planning(self):
+        """A person stopped this message; a replan may not resurrect it."""
+        week, _ = self.prepared_week()
+        action = self.action(week)
+        self.sync(week["id"], [action])
+        row = self.outbox_row(action["dedup_key"])
+        rpc("hours_withdraw_outbox_message", user=self.admin, p_id=row["id"],
+            p_note="met de hand gestopt")
+        self.assertEqual(self.outbox_row(action["dedup_key"])["status"], "vervallen")
+        self.sync(week["id"], [action])
+        after = self.outbox_row(action["dedup_key"])
+        self.assertEqual(after["status"], "vervallen",
+                         "De volgende cron-run mag een besluit van een mens niet terugdraaien")
+        self.assertEqual(self.outbox_claim()["messages"], [])
+
+    def test_switching_a_message_type_off_stops_one_that_was_already_ready(self):
+        """The claim may not lean on a planning run that might never come."""
+        week, contact = self.prepared_week()
+        action = self.action(week)
+        self.sync(week["id"], [action])
+        self.assertEqual(len(self.outbox_claim()["messages"]), 1)
+        sql(f"""UPDATE public.hours_outbox_messages SET claim_token=NULL, claimed_at=NULL,
+          lease_expires_at=NULL, next_attempt_at=NULL
+          WHERE dedup_key={literal(action['dedup_key'])};""")
+        self.profile([rule(recipients=[contact], enabled=False)])
+        self.assertEqual(self.outbox_claim()["messages"], [],
+                         "Een uitgeschakelde berichtsoort mag niets meer versturen")
+
+    def test_taking_a_failed_message_off_the_list_really_lets_it_be_planned_again(self):
+        """The screen promises this; two earlier fixes together made it a lie."""
+        week, _ = self.prepared_week()
+        action = self.action(week)
+        self.sync(week["id"], [action])
+        claimed = self.outbox_claim()
+        rpc("hours_outbox_record_failure", role="service_role", p_id=claimed["messages"][0]["id"],
+            p_claim_token=claimed["claim_token"], p_kind="permanent", p_error="verkeerd adres")
+        row = self.outbox_row(action["dedup_key"])
+        self.assertEqual(row["status"], "mislukt")
+        rpc("hours_withdraw_outbox_message", user=self.admin, p_id=row["id"],
+            p_note="adres hersteld", p_allow_replan=True)
+        self.assertEqual(self.outbox_row(action["dedup_key"])["block_reason"], "opnieuw_plannen")
+        self.sync(week["id"], [action])
+        again = self.outbox_row(action["dedup_key"])
+        self.assertEqual(again["status"], "gereed",
+                         "Van de lijst halen moet het bericht echt opnieuw laten voorstellen")
+        self.assertEqual(again["attempt_count"], 0)
+
+    def test_a_stopped_message_stays_stopped_even_with_the_replan_route_next_to_it(self):
+        week, _ = self.prepared_week()
+        action = self.action(week)
+        self.sync(week["id"], [action])
+        row = self.outbox_row(action["dedup_key"])
+        rpc("hours_withdraw_outbox_message", user=self.admin, p_id=row["id"], p_note="niet versturen")
+        self.sync(week["id"], [action])
+        self.assertEqual(self.outbox_row(action["dedup_key"])["status"], "vervallen")
+        self.assertEqual(self.outbox_row(action["dedup_key"])["block_reason"], "ingetrokken")
+
+    def test_a_lease_that_ran_out_never_sends_the_same_mail_again(self):
+        """Nobody knows whether that mail left. Sending twice is the worse half."""
+        week, _ = self.prepared_week()
+        action = self.action(week)
+        self.sync(week["id"], [action])
+        claimed = self.outbox_claim()
+        self.assertEqual(len(claimed["messages"]), 1)
+        sql(f"""UPDATE public.hours_outbox_messages
+          SET lease_expires_at = clock_timestamp() - interval '1 minute'
+          WHERE dedup_key={literal(action['dedup_key'])};""")
+        self.assertEqual(self.outbox_claim()["messages"], [],
+                         "Een afgelopen lease mag het bericht niet opnieuw aanbieden")
+        row = self.outbox_row(action["dedup_key"])
+        self.assertEqual(row["status"], "mislukt")
+        self.assertEqual(row["block_reason"], "verzending_onzeker")
+
+    def test_a_rule_that_now_names_somebody_else_no_longer_sends_to_the_old_one(self):
+        week, contact = self.prepared_week()
+        action = self.action(week, recipient=contact)
+        self.sync(week["id"], [action])
+        self.assertEqual(len(self.outbox_claim()["messages"]), 1)
+        sql(f"""UPDATE public.hours_outbox_messages SET claim_token=NULL, claimed_at=NULL,
+          lease_expires_at=NULL, next_attempt_at=NULL
+          WHERE dedup_key={literal(action['dedup_key'])};""")
+        self.profile([rule(recipients=[self.client_contact()])])
+        self.assertEqual(self.outbox_claim()["messages"], [],
+                         "De vertrokken contactpersoon mag geen post meer krijgen")
+
+    def test_a_planning_that_did_not_fit_cancels_nothing_it_never_saw(self):
+        week, _ = self.prepared_week()
+        keeper = self.action(week)
+        self.sync(week["id"], [keeper])
+        other = self.action(week)
+        rpc("hours_outbox_sync", role="service_role", p_week_id=week["id"],
+            p_actions=[other], p_issues=[], p_prune=False)
+        self.assertEqual(self.outbox_row(keeper["dedup_key"])["status"], "gereed",
+                         "Een afgekapte planning mag niet opruimen wat hij niet gezien heeft")
+
+    def test_a_failed_message_can_still_be_taken_off_the_list(self):
+        week, _ = self.prepared_week()
+        action = self.action(week)
+        self.sync(week["id"], [action])
+        claimed = self.outbox_claim()
+        rpc("hours_outbox_record_failure", role="service_role", p_id=claimed["messages"][0]["id"],
+            p_claim_token=claimed["claim_token"], p_kind="permanent", p_error="verkeerd adres")
+        row = self.outbox_row(action["dedup_key"])
+        self.assertEqual(row["status"], "mislukt")
+        rpc("hours_withdraw_outbox_message", user=self.admin, p_id=row["id"], p_note="adres hersteld")
+        self.assertEqual(self.outbox_row(action["dedup_key"])["status"], "vervallen")
+
+    def test_the_overview_puts_what_needs_a_person_first(self):
+        week, _ = self.prepared_week()
+        later = self.action(week, at="2027-01-04T09:00:00Z", status="planned")
+        now_due = self.action(week, approval=True, mail_type="correction_query")
+        now_due["reason"] = "correction_approval_required"
+        self.sync(week["id"], [later, now_due])
+        overview = rpc("hours_outbox_overview", user=self.admin, p_week_id=week["id"],
+                       p_company_id=None, p_limit=1)
+        self.assertEqual(len(overview["messages"]), 1)
+        self.assertEqual(overview["messages"][0]["dedup_key"] if "dedup_key" in overview["messages"][0]
+                         else overview["messages"][0]["block_reason"], "goedkeuring_vereist",
+                         "Een pagina vol toekomstige concepten mag niet verbergen wat nu een mens vraagt")
+
     def test_a_message_the_planner_dropped_stops_being_pending_work(self):
         week, _ = self.prepared_week()
         action = self.action(week)
@@ -543,7 +686,12 @@ class OutboxTests(basis.BasisReplacementTests):
                     p_id=claimed["messages"][0]["id"], p_claim_token=wrong, p_kind="permanent")
 
     def test_the_request_reference_learns_the_thread_only_once(self):
-        week, _ = self.prepared_week()
+        week, contact = self.prepared_week()
+        # The claim re-reads the profile, so every rule a message came from has to
+        # still be in it. This case sends a reminder as well as a request.
+        self.profile([rule(recipients=[contact]),
+                      rule(identifier="klant-herinnering", mail_type="submission_reminder",
+                           recipients=[contact], weekday=3)])
         issued = rpc("hours_issue_week_request", user=self.admin, p_week_id=week["id"])
         request_id = issued["request_id"]
         first = self.action(week, request=request_id, recipients=["planner@klant.invalid"])
@@ -819,7 +967,7 @@ def main():
         qa.owned_container()
         subprocess.run(["docker", "rm", "-f", "-v", qa.CONTAINER], check=True)
         return 0
-    # Twenty released migrations plus this ticket's: twenty becomes twenty-one.
+    # Twenty released migrations plus this ticket's three: twenty becomes twenty-two.
     paths = [ROOT / "supabase/migrations" / name for name in (
         "20260908090000_hours_workflow_foundation.sql",
         "20260908120000_hours_matrix_versions.sql",
@@ -842,6 +990,10 @@ def main():
         "20260916130000_hours_mail_message_conversation.sql",
         "20260917090000_hours_matrix_basis_replacement.sql",
         "20260918090000_hours_outbox.sql",
+        # The cron migration is deliberately absent: pg_cron is not in the
+        # disposable container, and scheduling is not what this proves.
+        "20260919090000_hours_outbox_review_fixes.sql",
+        "20260920090000_hours_outbox_round_two.sql",
     )]
     fixtures = [ROOT / "tests/db/hours-workflow-fixture.sql", ROOT / "tests/db/hours-module-gate-fixture.sql",
                 ROOT / "tests/db/hours-intake-fixture.sql", ROOT / "tests/db/hours-mail-intake-fixture.sql"]

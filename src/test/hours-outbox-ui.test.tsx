@@ -39,24 +39,25 @@ const profile = (overrides: Partial<HoursMailProfile> = {}): HoursMailProfile =>
 });
 
 const noop = async () => {};
+const noopWithdraw = async (_input: { id: string; note: string | null; allowReplan: boolean }) => {};
 
 afterEach(cleanup);
 
 describe('the outbox on screen', () => {
   it('says nothing goes out while no profile has been set', () => {
-    render(<HoursOutboxPanel messages={[]} canManage onApprove={noop} onWithdraw={noop} />);
+    render(<HoursOutboxPanel messages={[]} canManage onApprove={noop} onWithdraw={noopWithdraw} />);
     expect(screen.getByText(/Zonder ingesteld mailprofiel gaat er niets uit/)).toBeInTheDocument();
   });
 
   it('names how many messages are waiting for a person', () => {
     render(<HoursOutboxPanel messages={[message(), message({ id: 'b' })]} canManage
-      onApprove={noop} onWithdraw={noop} />);
+      onApprove={noop} onWithdraw={noopWithdraw} />);
     expect(screen.getByText(/2 berichten wachten op goedkeuring/)).toBeInTheDocument();
   });
 
   it('approves exactly the words and the hours that are on screen', async () => {
     const onApprove = vi.fn(async () => {});
-    render(<HoursOutboxPanel messages={[message()]} canManage onApprove={onApprove} onWithdraw={noop} />);
+    render(<HoursOutboxPanel messages={[message()]} canManage onApprove={onApprove} onWithdraw={noopWithdraw} />);
     fireEvent.click(screen.getByRole('button', { name: 'Goedkeuren en versturen' }));
     expect(onApprove).toHaveBeenCalledWith({
       id: '11111111-1111-4111-8111-111111111111',
@@ -66,19 +67,19 @@ describe('the outbox on screen', () => {
 
   it('offers no approval on a message that has no addressee yet', () => {
     render(<HoursOutboxPanel messages={[message({ recipients: [], block_reason: 'onbekende_ontvanger' })]}
-      canManage onApprove={noop} onWithdraw={noop} />);
+      canManage onApprove={noop} onWithdraw={noopWithdraw} />);
     expect(screen.queryByRole('button', { name: 'Goedkeuren en versturen' })).toBeNull();
     expect(screen.getByText('De ingestelde ontvanger heeft geen adres')).toBeInTheDocument();
   });
 
   it('offers nothing at all to someone who may not manage', () => {
-    render(<HoursOutboxPanel messages={[message()]} canManage={false} onApprove={noop} onWithdraw={noop} />);
+    render(<HoursOutboxPanel messages={[message()]} canManage={false} onApprove={noop} onWithdraw={noopWithdraw} />);
     expect(screen.queryByRole('button', { name: 'Goedkeuren en versturen' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Intrekken' })).toBeNull();
   });
 
   it('never offers to change a message that has already been sent', () => {
-    render(<HoursOutboxPanel canManage onApprove={noop} onWithdraw={noop}
+    render(<HoursOutboxPanel canManage onApprove={noop} onWithdraw={noopWithdraw}
       messages={[message({
         status: 'verzonden', block_reason: null, approval_required: false,
         sent_at: '2026-09-14T07:01:00Z', outbound_message_id: '<sent@ja.invalid>',
@@ -88,7 +89,7 @@ describe('the outbox on screen', () => {
   });
 
   it('says a paused send was kept as a concept instead of thrown away', () => {
-    render(<HoursOutboxPanel canManage onApprove={noop} onWithdraw={noop}
+    render(<HoursOutboxPanel canManage onApprove={noop} onWithdraw={noopWithdraw}
       messages={[message({ status: 'goedgekeurd', approval_required: true,
         approved_at: '2026-09-14T06:00:00Z', approved_by: 'someone',
         block_reason: 'uitgaande_pauze' })]} />);
@@ -99,7 +100,7 @@ describe('the outbox on screen', () => {
     const onApprove = vi.fn(async () => { throw Object.assign(new Error('Gewijzigd'), { code: 'PT409' }); });
     const onReload = vi.fn();
     render(<HoursOutboxPanel messages={[message()]} canManage onApprove={onApprove}
-      onWithdraw={noop} onReload={onReload} />);
+      onWithdraw={noopWithdraw} onReload={onReload} />);
     fireEvent.click(screen.getByRole('button', { name: 'Goedkeuren en versturen' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Actuele stand laden' })).toBeInTheDocument());
     expect(onApprove).toHaveBeenCalledTimes(1);
@@ -107,8 +108,36 @@ describe('the outbox on screen', () => {
     expect(onReload).toHaveBeenCalled();
   });
 
+  it('lets a failed message be planned again, and says so truthfully', async () => {
+    const seen: { id: string; note: string | null; allowReplan: boolean }[] = [];
+    render(<HoursOutboxPanel canManage onApprove={noop}
+      onWithdraw={async input => { seen.push(input); }}
+      messages={[message({ status: 'mislukt', block_reason: 'definitief_geweigerd',
+        last_error: 'invalid recipient', approval_required: false })]} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Opnieuw laten plannen' }));
+    await waitFor(() => expect(seen).toHaveLength(1));
+    // Without this flag the message is withdrawn for good, and the promise the
+    // screen makes right next to the button would be a lie.
+    expect(seen[0].allowReplan).toBe(true);
+  });
+
+  it('never offers to withdraw a concept that is simply not due yet', () => {
+    render(<HoursOutboxPanel canManage onApprove={noop} onWithdraw={noopWithdraw}
+      messages={[message({ status: 'concept', block_reason: 'planned',
+        approval_required: false })]} />);
+    // One click would otherwise kill that week's hours request for good.
+    expect(screen.queryByRole('button', { name: 'Intrekken' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Opnieuw laten plannen' })).toBeNull();
+  });
+
+  it('warns that withdrawing is final', () => {
+    render(<HoursOutboxPanel canManage onApprove={noop} onWithdraw={noopWithdraw}
+      messages={[message({ status: 'gereed', block_reason: null, approval_required: false })]} />);
+    expect(screen.getByText(/ook niet bij een volgende planning/)).toBeInTheDocument();
+  });
+
   it('shows why a failed message stopped rather than hiding it', () => {
-    render(<HoursOutboxPanel canManage onApprove={noop} onWithdraw={noop}
+    render(<HoursOutboxPanel canManage onApprove={noop} onWithdraw={noopWithdraw}
       messages={[message({ status: 'mislukt', block_reason: 'te_vaak_geprobeerd',
         last_error: 'graph_503', attempt_count: 5 })]} />);
     expect(screen.getByText('Te vaak geprobeerd; een mens moet hiernaar kijken')).toBeInTheDocument();

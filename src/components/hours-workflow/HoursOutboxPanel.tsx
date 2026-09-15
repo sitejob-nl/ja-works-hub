@@ -42,7 +42,7 @@ export interface HoursOutboxPanelProps {
   messages: HoursOutboxMessage[];
   canManage: boolean;
   onApprove: (input: { id: string; contentHash: string; sourceRevision: string }) => Promise<void>;
-  onWithdraw: (input: { id: string; note: string | null }) => Promise<void>;
+  onWithdraw: (input: { id: string; note: string | null; allowReplan: boolean }) => Promise<void>;
   onReload?: () => void;
 }
 
@@ -59,7 +59,7 @@ function MessageRow({ message, canManage, onApprove, onWithdraw, onReload }: {
   const blocked = describeBlockReason(message.block_reason);
   const pending = isPendingApproval(message);
 
-  async function act(action: 'approve' | 'withdraw') {
+  async function act(action: 'approve' | 'withdraw' | 'replan') {
     if (busy) return;
     setBusy(true);
     setError(null);
@@ -71,12 +71,18 @@ function MessageRow({ message, canManage, onApprove, onWithdraw, onReload }: {
           sourceRevision: message.source_revision,
         });
       } else {
-        await onWithdraw({ id: message.id, note: note.trim() || null });
+        // Two different intentions: stopping a message for good, or clearing a
+        // failed one so the planner may propose it again.
+        await onWithdraw({
+          id: message.id, note: note.trim() || null, allowReplan: action === 'replan',
+        });
       }
     } catch (failure) {
       setError(toFriendlyError(failure, action === 'approve'
         ? 'Het bericht is niet goedgekeurd. Lees de actuele stand opnieuw.'
-        : 'Het bericht is niet ingetrokken. Probeer het opnieuw.'));
+        : action === 'replan'
+          ? 'Het bericht is niet opnieuw ingepland. Probeer het opnieuw.'
+          : 'Het bericht is niet ingetrokken. Probeer het opnieuw.'));
     } finally { setBusy(false); }
   }
 
@@ -134,12 +140,25 @@ function MessageRow({ message, canManage, onApprove, onWithdraw, onReload }: {
         </Button>
       </div>
     </div>}
+    {/* Only where stopping means something. A `concept` that is simply not due
+        yet is healthy: offering to withdraw it would let one click permanently
+        kill a week's hours request with no way back. */}
     {canManage && !pending && (message.status === 'gereed' || message.status === 'goedgekeurd') &&
       <div className="mt-3">
         <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void act('withdraw')}>
           Intrekken
         </Button>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Dit bericht gaat dan niet uit, ook niet bij een volgende planning.
+        </p>
       </div>}
+    {canManage && message.status === 'mislukt' && <div className="mt-3">
+      <Button type="button" size="sm" variant="outline" disabled={busy}
+        onClick={() => void act('replan')}>Opnieuw laten plannen</Button>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Herstel eerst wat er mis ging. De volgende planning stelt dit bericht daarna opnieuw voor.
+      </p>
+    </div>}
   </li>;
 }
 
