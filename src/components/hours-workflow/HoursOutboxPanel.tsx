@@ -6,7 +6,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { toFriendlyError } from '@/lib/errorMessages';
 import { formatHoursDeadline } from './presentation';
 import {
-  describeBlockReason, describeMailType, describeParty, isPendingApproval,
+  canReplan, canWithdraw, describeBlockReason, describeMailType, describeParty, isPendingApproval,
   type HoursOutboxMessage,
 } from '@/lib/hours-outbox';
 
@@ -128,35 +128,31 @@ function MessageRow({ message, canManage, onApprove, onWithdraw, onReload }: {
       </div>}
     </AlertDescription></Alert>}
 
-    {canManage && pending && <div className="mt-3 space-y-2">
+    {canManage && canWithdraw(message) && <div className="mt-3 space-y-2">
       <Textarea rows={2} maxLength={500} value={note} placeholder="Reden van intrekken (optioneel)"
         onChange={event => setNote(event.target.value)} aria-label="Reden van intrekken" />
       <div className="flex flex-wrap gap-2">
-        <Button type="button" size="sm" disabled={busy} onClick={() => void act('approve')}>
+        {pending && <Button type="button" size="sm" disabled={busy} onClick={() => void act('approve')}>
           {busy ? 'Bezig…' : 'Goedkeuren en versturen'}
-        </Button>
+        </Button>}
         <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void act('withdraw')}>
           Intrekken
         </Button>
       </div>
+      <p className="text-xs text-muted-foreground">
+        Dit bericht gaat dan niet uit, ook niet bij een volgende planning.
+      </p>
     </div>}
-    {/* Only where stopping means something. A `concept` that is simply not due
-        yet is healthy: offering to withdraw it would let one click permanently
-        kill a week's hours request with no way back. */}
-    {canManage && !pending && (message.status === 'gereed' || message.status === 'goedgekeurd') &&
-      <div className="mt-3">
-        <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void act('withdraw')}>
-          Intrekken
-        </Button>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Dit bericht gaat dan niet uit, ook niet bij een volgende planning.
-        </p>
-      </div>}
-    {canManage && message.status === 'mislukt' && <div className="mt-3">
+    {/* Every one-way door gets a way back. A failure needs one because the cause
+        was fixed elsewhere; a withdrawal needs one because a decision that
+        stands is still a decision somebody may want to undo. */}
+    {canManage && canReplan(message) && <div className="mt-3">
       <Button type="button" size="sm" variant="outline" disabled={busy}
         onClick={() => void act('replan')}>Opnieuw laten plannen</Button>
       <p className="mt-1 text-xs text-muted-foreground">
-        Herstel eerst wat er mis ging. De volgende planning stelt dit bericht daarna opnieuw voor.
+        {message.status === 'mislukt'
+          ? 'Herstel eerst wat er mis ging. De volgende planning stelt dit bericht daarna opnieuw voor.'
+          : 'De volgende planning stelt dit bericht dan opnieuw voor.'}
       </p>
     </div>}
   </li>;

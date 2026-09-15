@@ -290,6 +290,90 @@ describe('sending what was approved', () => {
     expect(synced(recorded)[0][1].p_actions.length).toBeLessThanOrEqual(200);
   });
 
+  it('prunes against the whole plan, not against the last batch of it', async () => {
+    // More actions than one store call accepts, so the plan travels in batches.
+    // Pruning on the keys of the final batch alone would cancel every message
+    // the earlier batches had just written - approvals included.
+    const many = week({
+      config: {
+        ...week().config,
+        rules: Array.from({ length: 210 }, (_, index) => ({
+          ...RULE_REQUEST, id: `regel-${index}`,
+        })),
+      },
+    });
+    const { ports: p, recorded } = ports({ weeks: [many] });
+    await run(p);
+    const calls = synced(recorded);
+    expect(calls.length).toBeGreaterThan(1);
+    expect(calls.filter(([, args]) => args.p_prune === true)).toHaveLength(1);
+    const pruning = calls.find(([, args]) => args.p_prune === true)![1];
+    expect(pruning.p_prune_keys).toHaveLength(210);
+    expect(pruning.p_prune_keys).toEqual(expect.arrayContaining(calls[0][1].p_actions.map((a: any) => a.dedup_key)));
+  });
+
+  it('reports what the planner could not read on the call that prunes', async () => {
+    const many = week({
+      config: {
+        ...week().config,
+        rules: Array.from({ length: 210 }, (_, index) => ({
+          ...RULE_REQUEST, id: `regel-${index}`,
+        })),
+      },
+    });
+    const { ports: p, recorded } = ports({ weeks: [many] });
+    await run(p);
+    const calls = synced(recorded);
+    // The store overwrites `last_issues` on every call, so the report has to
+    // ride along with the last one or the screen ends up empty.
+    expect(calls[calls.length - 1][1].p_issues).toBeDefined();
+    expect(calls[calls.length - 1][1].p_prune).toBe(true);
+  });
+
+  it('does not retry a send whose outcome nobody knows', async () => {
+    const { ports: p, recorded } = ports({
+      claim: [claimable()],
+      send: async () => ({ ok: false, deliveryUncertain: true, error: 'Graph gaf geen antwoord' }),
+    });
+    await run(p);
+    const failure = recorded.rpc.find(([name]) => name === 'hours_outbox_record_failure');
+    expect(failure?.[1].p_kind).toBe('uncertain');
+  });
+
+  it('still sends what stands when the planning could not be read', async () => {
+    const { ports: p, recorded } = ports({
+      claim: [claimable()], rpcErrors: { hours_outbox_due_weeks: { message: 'stuk' } },
+    });
+    const { response } = await run(p);
+    expect(response.status).toBe(200);
+    expect(recorded.sent).toHaveLength(1);
+  });
+
+  it('keeps the request reference out of a message that is not the client thread', async () => {
+    // The reference is what the client replies on and what the mail intake
+    // recognises. An employee mail carrying it would land in somebody else's
+    // thread, so `{{code}}` stays empty there instead of quietly travelling.
+    const toEmployee = week({
+      config: {
+        ...week().config,
+        rules: [{ ...RULE_REQUEST, id: 'medewerker', party: 'employee',
+          mailType: 'approval_request', recipientIds: ['kandidaat-a'] }],
+      },
+      recipient_states: [{ party: 'employee', recipientId: 'kandidaat-a',
+        submissionComplete: true, approvalComplete: false, hoursRevision: 'rev-1', agreedRevision: null }],
+      recipients: { 'kandidaat-a': { email: 'jan@medewerker.invalid', name: 'Jan Kowalski', kind: 'candidate', candidate_id: 'kandidaat-a' } },
+      templates: { 'uitvraag:nl': { subject: 'Akkoord week {{week}}', body: 'Referentie {{code}} voor {{ontvanger}}.' } },
+    });
+    const { ports: p, recorded } = ports({ weeks: [toEmployee] });
+    await run(p);
+    const actions = synced(recorded).flatMap(([, args]) => args.p_actions);
+    expect(actions.length).toBeGreaterThan(0);
+    for (const action of actions) {
+      expect(action.subject).not.toContain('UR-7K3M-2XQ9');
+      expect(action.body_html).not.toContain('UR-7K3M-2XQ9');
+    }
+  });
+
   it('keeps a manual run inside the caller´s own tenant', async () => {
     const foreign = week({ week_id: 'week-x', organization_id: 'org-2' });
     const { ports: p, recorded } = ports({ weeks: [week(), foreign], mode: 'user', organizationId: 'org-1' });

@@ -61,11 +61,21 @@ actuele dagversies van de week.
 bovendien onveranderlijk: de trigger `hours_outbox_sent_immutable` weigert elke UPDATE en DELETE, ook voor
 de database-eigenaar. Een tweede run ziet de rij als `completed` terugkomen in `existing_actions` en plant
 er niets nieuws voor.
-Een claim telt meteen een poging, dus een run die halverwege omvalt kost één poging en niet het bericht.
-Een 5xx of 429 is `transient`: de claim gaat terug, `next_attempt_at` schuift op (3, 9, 27, 81, 240
-minuten) en bij de vijfde mislukking wordt de rij `mislukt` met `te_vaak_geprobeerd`. Alles wat géén 5xx
-of 429 is, is `permanent` en wordt helemaal niet opnieuw geprobeerd — een verkeerd adres wordt door
-herhalen niet beter.
+Een claim telt meteen een poging. Een 5xx of 429 is `transient`: de claim gaat terug, `next_attempt_at`
+schuift op (3, 9, 27, 81, 240 minuten) en bij de vijfde mislukking wordt de rij `mislukt` met
+`te_vaak_geprobeerd`. Alles wat géén 5xx of 429 is, is `permanent` en wordt helemaal niet opnieuw
+geprobeerd — een verkeerd adres wordt door herhalen niet beter.
+
+**Wat niemand kan vaststellen, gaat naar een mens en nooit terug in de wachtrij.** Er zijn twee van die
+gevallen, en ze eindigen allebei als `mislukt` met `verzending_onzeker`. Het eerste is een run die omvalt
+nadat hij geclaimd heeft: de lease loopt af zonder uitkomst, en niemand weet of die mail vertrok.
+Terugleggen in de wachtrij zou hem een tweede keer kunnen versturen, en dat is erger dan een keer niet
+versturen. Het tweede is `captureIdentifiers`: het bericht wordt eerst aangemaakt en daarna verstuurd, en
+faalt die tweede stap, dan bestaat het concept al. Aanmaken is herhaalbaar, versturen niet.
+Omdat die uitkomst bij de claimveger hoort, blijft **elke rij met een claim-token onaangeroerd** door de
+planner, door goedkeuren en door intrekken — anders blijft het token staan op een rij waar de veger niet
+meer bij kan, en is de rij voorgoed vast. De veger laat het token los, zet de reden, en pas dan kan een
+mens hem opnieuw laten plannen.
 
 **Bij actieve outbound-pauze wordt als concept gelogd, niet stil weggegooid.** De enige uitgang is
 `sendViaOutlookAccount`, en dáár zit `isOutboundPaused()`: bij pauze gaat het bericht als

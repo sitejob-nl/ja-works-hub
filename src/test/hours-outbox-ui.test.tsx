@@ -145,6 +145,42 @@ describe('the outbox on screen', () => {
   });
 });
 
+describe('a message that needs a person always offers a way out', () => {
+  it('lets a withdrawn message be put back on the list', async () => {
+    const onWithdraw = vi.fn().mockResolvedValue(undefined);
+    render(<HoursOutboxPanel canManage messages={[message({
+      status: 'vervallen', block_reason: 'ingetrokken', approval_required: false,
+    })]} onApprove={vi.fn()} onWithdraw={onWithdraw} />);
+    fireEvent.click(screen.getByRole('button', { name: /opnieuw laten plannen/i }));
+    await waitFor(() => expect(onWithdraw).toHaveBeenCalledWith(
+      expect.objectContaining({ allowReplan: true })));
+  });
+
+  it('does not offer that for a message the planner dropped by itself', () => {
+    render(<HoursOutboxPanel canManage messages={[message({
+      status: 'vervallen', block_reason: 'niet_meer_gepland', approval_required: false,
+    })]} onApprove={vi.fn()} onWithdraw={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: /opnieuw laten plannen/i })).toBeNull();
+  });
+
+  it('lets a blocked concept be stopped instead of showing nothing at all', async () => {
+    const onWithdraw = vi.fn().mockResolvedValue(undefined);
+    render(<HoursOutboxPanel canManage messages={[message({
+      status: 'concept', block_reason: 'deadline_passed', approval_required: false, subject: '',
+    })]} onApprove={vi.fn()} onWithdraw={onWithdraw} />);
+    fireEvent.click(screen.getByRole('button', { name: /intrekken/i }));
+    await waitFor(() => expect(onWithdraw).toHaveBeenCalledWith(
+      expect.objectContaining({ allowReplan: false })));
+  });
+
+  it('still offers nothing for a concept that is simply not due yet', () => {
+    render(<HoursOutboxPanel canManage messages={[message({
+      status: 'concept', block_reason: 'planned', approval_required: false,
+    })]} onApprove={vi.fn()} onWithdraw={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: /intrekken/i })).toBeNull();
+  });
+});
+
 describe('the mail profile on screen', () => {
   it('says plainly that an empty profile sends nothing', () => {
     render(<HoursMailProfilePanel profile={profile()} recipients={[]} onSave={noop} />);

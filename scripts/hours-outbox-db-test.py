@@ -62,7 +62,7 @@ EXPECTED_SIGNATURES = basis.EXPECTED_SIGNATURES + (
     "hours_approve_outbox_message(uuid,text,text)",
     "hours_withdraw_outbox_message(uuid,text,boolean)",
     "hours_outbox_due_weeks(integer,uuid)",
-    "hours_outbox_sync(uuid,jsonb,jsonb,boolean)",
+    "hours_outbox_sync(uuid,jsonb,jsonb,boolean,jsonb)",
     "hours_outbox_claim(integer,integer,uuid)",
     "hours_outbox_record_sent(uuid,uuid,text,text,jsonb)",
     "hours_outbox_record_failure(uuid,uuid,text,text)",
@@ -531,6 +531,162 @@ class OutboxTests(basis.BasisReplacementTests):
         rpc("hours_withdraw_outbox_message", user=self.admin, p_id=row["id"], p_note="adres hersteld")
         self.assertEqual(self.outbox_row(action["dedup_key"])["status"], "vervallen")
 
+    def test_a_token_that_outlived_its_lease_is_never_left_behind(self):
+        """De val van ronde twee. Een goedgekeurd bericht wordt geclaimd, de run
+        valt om, en ondertussen wijzigen de uren. De planner zette die rij dan
+        terug op `concept` - buiten het bereik van de veger, mét het token er
+        nog op. Daarna kwam niemand er ooit nog bij: de veger niet, de planner
+        niet, en de mens niet. Een rij met een token blijft daarom van de
+        planner af."""
+        week, _ = self.prepared_week()
+        action = self.action(week, approval=True, mail_type="correction_query")
+        self.sync(week["id"], [action])
+        row = self.outbox_row(action["dedup_key"])
+        rpc("hours_approve_outbox_message", user=self.admin, p_id=row["id"],
+            p_expected_content_hash=row["content_hash"],
+            p_expected_source_revision=row["source_revision"])
+        self.assertEqual(self.outbox_row(action["dedup_key"])["status"], "goedgekeurd")
+        claimed = self.outbox_claim()
+        self.assertEqual(len(claimed["messages"]), 1)
+        sql(f"""UPDATE public.hours_outbox_messages
+          SET lease_expires_at = clock_timestamp() - interval '1 minute'
+          WHERE dedup_key={literal(action['dedup_key'])};""")
+        # De uren wijzigen, dus de goedkeuring vervalt: precies het moment waarop
+        # de planner deze rij uit de verzendbare verzameling zou halen.
+        self.sync(week["id"], [dict(action, content_hash="uren-gewijzigd")])
+        row = self.outbox_row(action["dedup_key"])
+        self.assertIn(row["status"], ("gereed", "goedgekeurd"),
+                      "Een rij met een claim-token mag niet uit het bereik van de veger worden geschreven")
+        self.assertEqual(row["content_hash"], "hash-1",
+                         "De planner hoort deze rij helemaal niet aan te raken")
+        # En de eerstvolgende claim beslecht de onzekerheid alsnog.
+        self.outbox_claim()
+        row = self.outbox_row(action["dedup_key"])
+        self.assertEqual(row["status"], "mislukt")
+        self.assertEqual(row["block_reason"], "verzending_onzeker")
+        self.assertIsNone(row["claim_token"], "Het token hoort hier losgelaten te zijn")
+
+    def test_a_message_in_verzending_is_left_alone_by_both_human_routes(self):
+        """Goedkeuren of intrekken terwijl een token staat, laat dat token
+        achter op een rij waar de veger niet meer bij kan. Dat geldt ook - en
+        juist - wanneer de lease allang verlopen is."""
+        week, _ = self.prepared_week()
+        action = self.action(week, approval=True, mail_type="correction_query")
+        self.sync(week["id"], [action])
+        row = self.outbox_row(action["dedup_key"])
+        rpc("hours_approve_outbox_message", user=self.admin, p_id=row["id"],
+            p_expected_content_hash=row["content_hash"],
+            p_expected_source_revision=row["source_revision"])
+        claimed = self.outbox_claim()
+        identifier = claimed["messages"][0]["id"]
+        sql(f"""UPDATE public.hours_outbox_messages
+          SET lease_expires_at = clock_timestamp() - interval '1 minute'
+          WHERE id={literal(identifier)};""")
+        self.reject("hours_withdraw_outbox_message", code="PT409", user=self.admin,
+                    p_id=identifier, p_note="stop", p_allow_replan=False)
+        self.assertIsNotNone(self.outbox_row(action["dedup_key"])["claim_token"],
+                             "Intrekken mag dit token niet achterlaten")
+        # En goedkeuren evenmin. Daarvoor moet de rij weer een concept zijn dat
+        # op goedkeuring wacht - met het token er nog op.
+        sql(f"""UPDATE public.hours_outbox_messages SET status='concept',
+          block_reason='goedkeuring_vervallen', approved_at=NULL, approved_by=NULL,
+          approved_content_hash=NULL, approved_source_revision=NULL
+          WHERE id={literal(identifier)};""")
+        row = self.outbox_row(action["dedup_key"])
+        self.reject("hours_approve_outbox_message", code="PT409", user=self.admin,
+                    p_id=identifier, p_expected_content_hash=row["content_hash"],
+                    p_expected_source_revision=row["source_revision"])
+        self.assertIsNotNone(self.outbox_row(action["dedup_key"])["claim_token"],
+                             "Goedkeuren mag dit token niet achterlaten")
+
+    def test_every_member_of_the_week_means_who_is_in_it_now(self):
+        """Ronde twee controleerde de ontvanger opnieuw, maar liet `*` altijd
+        door - en `*` is de enige vorm die het scherm voor medewerkers aanbiedt.
+        Wiens plaatsing tussen plannen en versturen eindigde, krijgt geen mail."""
+        week = self.week()
+        self.template()
+        member = sql(f"""SELECT m.candidate_id::text FROM public.hours_week_members m
+          WHERE m.week_id={literal(week['id'])} ORDER BY m.id LIMIT 1;""")
+        self.assertTrue(member, "Deze week hoort een medewerker te hebben")
+        self.profile([rule(party="employee", recipients=["*"], mail_type="approval_request")])
+        # Wie in de week staat, mag post krijgen.
+        current = self.action(week, recipient=member, party="employee",
+                              mail_type="approval_request")
+        self.sync(week["id"], [current])
+        self.assertEqual(len(self.outbox_claim()["messages"]), 1)
+        # Urenhistorie is onveranderlijk, dus een vertrokken medewerker wordt
+        # hier nagebootst door iemand die nooit in deze week stond: voor de
+        # claim is dat exact hetzelfde geval.
+        gone = str(uuid.uuid4())
+        sql(f"""INSERT INTO public.candidates(id,organization_id,first_name,last_name,email)
+          VALUES ({literal(gone)},{literal(self.org)},'Vertrokken','Kracht','weg@medewerker.invalid');""")
+        departed = self.action(week, recipient=gone, party="employee",
+                               mail_type="approval_request")
+        self.sync(week["id"], [current, departed])
+        # De eerste claim losmaken, zodat deze ronde beide berichten kán zien en
+        # het verschil dus echt van de controle komt en niet van een lease.
+        sql(f"""UPDATE public.hours_outbox_messages SET claim_token=NULL, claimed_at=NULL,
+          lease_expires_at=NULL, next_attempt_at=NULL
+          WHERE dedup_key={literal(current['dedup_key'])};""")
+        offered = {m["id"] for m in self.outbox_claim(limit=5)["messages"]}
+        self.assertIn(self.outbox_row(current["dedup_key"])["id"], offered,
+                      "Wie wel in de week staat, hoort zijn bericht te krijgen")
+        self.assertNotIn(self.outbox_row(departed["dedup_key"])["id"], offered,
+                         "Wie niet in de week staat, hoort geen post te krijgen")
+
+    def test_a_configuration_error_is_not_painted_over_by_a_stale_approval(self):
+        """Een ontbrekende tekst is het enige wat die rij nog kan melden. Zegt
+        hij in plaats daarvan 'de uren zijn gewijzigd', dan zoekt de lezer op de
+        verkeerde plek - en het scherm biedt dan geen enkele knop."""
+        week, _ = self.prepared_week()
+        action = self.action(week, approval=True, mail_type="correction_query")
+        self.sync(week["id"], [action])
+        row = self.outbox_row(action["dedup_key"])
+        rpc("hours_approve_outbox_message", user=self.admin, p_id=row["id"],
+            p_expected_content_hash=row["content_hash"],
+            p_expected_source_revision=row["source_revision"])
+        broken = dict(action, content_hash="andere-hash", subject="", body_html="",
+                      issue="ontbrekende_tekst")
+        self.sync(week["id"], [broken])
+        self.assertEqual(self.outbox_row(action["dedup_key"])["block_reason"], "ontbrekende_tekst",
+                         "De onleesbare regel is wat deze rij moet blijven melden")
+
+    def test_pruning_looks_at_the_keys_of_the_whole_plan(self):
+        """Een planning die niet in een aanroep past, ruimt op met de sleutels
+        van het geheel - anders schrapt de laatste batch alle eerdere."""
+        week, _ = self.prepared_week()
+        first = self.action(week)
+        second = self.action(week)
+        rpc("hours_outbox_sync", role="service_role", p_week_id=week["id"],
+            p_actions=[first], p_issues=[], p_prune=False)
+        rpc("hours_outbox_sync", role="service_role", p_week_id=week["id"],
+            p_actions=[second], p_issues=[], p_prune=True,
+            p_prune_keys=[first["dedup_key"], second["dedup_key"]])
+        self.assertEqual(self.outbox_row(first["dedup_key"])["status"], "gereed",
+                         "Een bericht uit een eerdere batch hoort de opruiming te overleven")
+        third = self.action(week)
+        rpc("hours_outbox_sync", role="service_role", p_week_id=week["id"],
+            p_actions=[third], p_issues=[], p_prune=True,
+            p_prune_keys=[third["dedup_key"]])
+        self.assertEqual(self.outbox_row(first["dedup_key"])["status"], "vervallen",
+                         "Wat echt niet meer in de planning zit, hoort wel te vervallen")
+
+    def test_a_send_whose_outcome_is_unknown_goes_to_a_person(self):
+        """Aanmaken is herhaalbaar, versturen niet. Een verzendopdracht die
+        faalde nadat het bericht al bestond, mag niet opnieuw."""
+        week, _ = self.prepared_week()
+        action = self.action(week)
+        self.sync(week["id"], [action])
+        claimed = self.outbox_claim()
+        rpc("hours_outbox_record_failure", role="service_role", p_id=claimed["messages"][0]["id"],
+            p_claim_token=claimed["claim_token"], p_kind="uncertain",
+            p_error="Graph gaf geen antwoord op de verzendopdracht")
+        row = self.outbox_row(action["dedup_key"])
+        self.assertEqual(row["status"], "mislukt")
+        self.assertEqual(row["block_reason"], "verzending_onzeker")
+        self.assertIsNone(row["next_attempt_at"], "Hier hoort geen nieuwe poging te wachten")
+        self.assertEqual(self.outbox_claim()["messages"], [])
+
     def test_the_overview_puts_what_needs_a_person_first(self):
         week, _ = self.prepared_week()
         later = self.action(week, at="2027-01-04T09:00:00Z", status="planned")
@@ -994,6 +1150,7 @@ def main():
         # disposable container, and scheduling is not what this proves.
         "20260919090000_hours_outbox_review_fixes.sql",
         "20260920090000_hours_outbox_round_two.sql",
+        "20260921090000_hours_outbox_round_three.sql",
     )]
     fixtures = [ROOT / "tests/db/hours-workflow-fixture.sql", ROOT / "tests/db/hours-module-gate-fixture.sql",
                 ROOT / "tests/db/hours-intake-fixture.sql", ROOT / "tests/db/hours-mail-intake-fixture.sql"]

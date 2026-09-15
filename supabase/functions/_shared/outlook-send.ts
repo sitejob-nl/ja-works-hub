@@ -75,6 +75,12 @@ export interface SendResult {
   accountId?: string;
   from?: string | null;
   communicationPaused?: boolean;
+  /**
+   * Het bericht is aangemaakt en de verzendopdracht is misgegaan. Of hij toch is
+   * vertrokken valt niet vast te stellen, dus opnieuw proberen kan een tweede
+   * mail opleveren. Een aanroeper hoort dit naar een mens te brengen.
+   */
+  deliveryUncertain?: boolean;
   /** Providerstatus als die er was, zodat een aanroeper 5xx van 4xx kan scheiden. */
   status?: number;
   retryAfter?: number;
@@ -212,11 +218,26 @@ export async function sendViaOutlookAccount(params: SendViaOutlookAccountParams)
       if (!created?.id) throw new Error("Outlook gaf geen concept terug");
       messageId = created.internetMessageId ?? null;
       conversationId = created.conversationId ?? null;
-      await graphJson(admin, provider,
-        `${mailboxBasePath(provider.account)}/messages/${encodeURIComponent(created.id)}/send`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-        });
+      try {
+        await graphJson(admin, provider,
+          `${mailboxBasePath(provider.account)}/messages/${encodeURIComponent(created.id)}/send`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+          });
+      } catch (sendError) {
+        // Het concept staat al klaar. Of Graph hem heeft verstuurd voordat het
+        // antwoord wegviel, weet niemand — dus dit mag NIET opnieuw geprobeerd
+        // worden. Aanmaken is herhaalbaar, versturen niet. De aanroeper krijgt
+        // `deliveryUncertain` en hoort het bericht bij een mens te parkeren,
+        // dezelfde afweging als bij een verlopen lease.
+        const err = sendError as { message?: string; status?: number };
+        return {
+          success: false, method: "outlook", deliveryUncertain: true,
+          error: err?.message || "Outlook verzenden mislukt na het aanmaken van het concept",
+          status: typeof err?.status === "number" ? err.status : undefined,
+          messageId, conversationId,
+        };
+      }
     } else {
       await graphJson(admin, provider, `${mailboxBasePath(provider.account)}/sendMail`, {
         method: "POST",

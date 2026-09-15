@@ -48,8 +48,25 @@ export interface HoursOutboundMessage {
   htmlBody: string;
 }
 
+/**
+ * Wat er mis ging, één regel per gebeurtenis, zonder inhoud van een bericht.
+ *
+ * Deze route draait meestal onbemand op de cron. Zonder dit zou een storing in
+ * één organisatie precies niets achterlaten: de functie antwoordt aan pg_cron,
+ * en dat antwoord leest niemand. Org- en week-id zijn genoeg om het terug te
+ * vinden; onderwerp, tekst en ontvangers horen hier niet.
+ */
+function log(event: string, fields: Record<string, string | number | null | undefined> = {}) {
+  const parts = Object.entries(fields)
+    .filter(([, value]) => value !== undefined && value !== null && value !== '')
+    .map(([key, value]) => `${key}=${String(value).replace(/\s+/g, ' ').slice(0, 200)}`);
+  console.error(['hours-outbox', event, ...parts].join(' '));
+}
+
 export interface HoursSendOutcome {
   ok: boolean;
+  /** Aangemaakt maar de verzendopdracht faalde: niet opnieuw proberen. */
+  deliveryUncertain?: boolean;
   /** The kill-switch blocked it and the concept is logged; this is not a failure. */
   paused?: boolean;
   /** Provider status, when there was one. 5xx and 429 are transient, the rest is not. */
@@ -203,7 +220,8 @@ function readWeeks(value: unknown, auth: HoursOutboxAuth): DueWeek[] {
   return weeks;
 }
 
-function placeholders(week: DueWeek, recipient: Recipient | null): Record<string, string> {
+function placeholders(week: DueWeek, recipient: Recipient | null,
+  party: string): Record<string, string> {
   const missing = Array.isArray(week.facts.missing_members)
     ? (week.facts.missing_members as unknown[]).map(name => text(name)).filter(Boolean) : [];
   return {
@@ -211,7 +229,12 @@ function placeholders(week: DueWeek, recipient: Recipient | null): Record<string
     week: String(isoWeekNumber(week.weekStart)),
     weekstart: week.weekStart,
     ontvanger: recipient?.name ?? '',
-    code: week.requestCode ?? '',
+    // De uitvraagreferentie hoort bij de draad met de opdrachtgever: die
+    // antwoordt erop en de mailinname herkent hem eraan. In de tekst van een
+    // medewerker of van een interne mail heeft hij niets te zoeken, dus daar
+    // blijft `{{code}}` leeg in plaats van stilzwijgend een klantreferentie mee
+    // te sturen.
+    code: party === 'customer' ? week.requestCode ?? '' : '',
     deadline: formatDutchMoment(text(week.facts.submission_deadline_at)),
     akkoorddeadline: formatDutchMoment(text(week.facts.confirmation_deadline_at)),
     ontbrekend: missing.join(', '),
@@ -251,7 +274,7 @@ function buildAction(week: DueWeek, action: HoursPlannedAction, theme: BrandThem
   const recipient = week.recipients[action.recipientId] ?? null;
   const template = action.templateId && action.language
     ? week.templates[`${action.templateId}:${action.language}`] ?? null : null;
-  const values = placeholders(week, recipient);
+  const values = placeholders(week, recipient, action.party);
   // A customer answers by replying, so the reference has to be in the subject it
   // replies to. The intake side already knows how to read it back.
   const codeSuffix = week.requestCode && action.party === 'customer' ? ` [${week.requestCode}]` : '';
@@ -330,8 +353,9 @@ export function createHoursOutboxHandler(ports: HoursOutboxPorts, headers: Recor
     // The store bounds one call at two hundred actions. Cutting the list would
     // silently drop the latest-scheduled messages *and* let the end-of-call
     // sweep cancel their existing rows — approvals included. So send every
-    // action, in batches, and only let the last full pass prune: a call that did
-    // not see the whole plan may not decide what is no longer part of it.
+    // action, in batches, and let the last pass prune against the keys of the
+    // whole plan — not of that one batch, which would cancel everything the
+    // earlier batches had just written.
     const batches: SyncAction[][] = [];
     for (let at = 0; at < actions.length; at += MAX_ACTIONS) {
       batches.push(actions.slice(at, at + MAX_ACTIONS));
@@ -343,8 +367,9 @@ export function createHoursOutboxHandler(ports: HoursOutboxPorts, headers: Recor
         p_actions: batch,
         // Visible configuration problems travel with the plan instead of being
         // swallowed: a rule that cannot be read has to be fixable from the screen.
-        p_issues: index === 0 ? preview.issues : [],
-        p_prune: batches.length === 1 && index === 0,
+        p_issues: index === batches.length - 1 ? preview.issues : [],
+        p_prune: index === batches.length - 1,
+        p_prune_keys: index === batches.length - 1 ? actions.map(a => a.dedup_key) : null,
       });
       // `rpc()` resolves with `{data, error}` and never throws, so an unchecked
       // call reports success for a write that was refused.
@@ -373,9 +398,14 @@ export function createHoursOutboxHandler(ports: HoursOutboxPorts, headers: Recor
       if (recorded.error) return 'unrecorded';
       return 'sent';
     }
-    // The kill-switch already logged the concept in `communications`. The row
-    // keeps its approval and its turn; a pause is not a failed attempt.
-    const kind = outcome.paused ? 'paused' : isTransient(outcome.status) ? 'transient' : 'permanent';
+    // Three different things, three different answers. The kill-switch already
+    // logged the concept in `communications` and the row keeps its approval and
+    // its turn — a pause is not a failed attempt. A send whose outcome nobody
+    // knows is not a transient fault either: retrying it could deliver a second
+    // mail, so it goes to a person, exactly like an expired lease.
+    const kind = outcome.paused ? 'paused'
+      : outcome.deliveryUncertain ? 'uncertain'
+      : isTransient(outcome.status) ? 'transient' : 'permanent';
     const recorded = await ports.serviceRpc('hours_outbox_record_failure', {
       p_id: message.id, p_claim_token: token, p_kind: kind,
       p_error: (outcome.error ?? '').slice(0, 500),
@@ -398,10 +428,10 @@ export function createHoursOutboxHandler(ports: HoursOutboxPorts, headers: Recor
         p_limit: MAX_WEEKS,
         p_organization_id: auth.mode === 'user' ? auth.organizationId ?? null : null,
       });
-      if (due.error) {
-        return json({ error: 'De urenmail is tijdelijk niet beschikbaar.', code: 'outbox_unavailable' }, 503);
-      }
-      const weeks = readWeeks(due.data, auth);
+      // Kan de planning niet worden opgehaald, dan is dat geen reden om ook wat
+      // al klaarstaat te laten liggen: plannen en versturen zijn twee fasen.
+      if (due.error) log('plan_unavailable', { detail: String(due.error?.message ?? due.error) });
+      const weeks = due.error ? [] : readWeeks(due.data, auth);
       const themes = new Map<string, BrandTheme>();
       let planned = 0;
       const errors: string[] = [];
@@ -414,7 +444,13 @@ export function createHoursOutboxHandler(ports: HoursOutboxPorts, headers: Recor
             themes.set(week.organizationId, theme);
           }
           planned += await planWeek(week, theme);
-        } catch { errors.push('week_failed'); }
+        } catch (failure) {
+          errors.push('week_failed');
+          log('week_failed', {
+            organizationId: week.organizationId, weekId: week.weekId,
+            detail: failure instanceof Error ? failure.message : String(failure),
+          });
+        }
       }
 
       let sent = 0;
@@ -438,9 +474,13 @@ export function createHoursOutboxHandler(ports: HoursOutboxPorts, headers: Recor
           let outcome: 'sent' | 'paused' | 'failed' | 'unrecorded';
           try {
             outcome = await deliver(message, claimed.token);
-          } catch {
-            // The lease runs out and the next pass picks it up; the attempt is
-            // already counted, so this can never loop without a bound.
+          } catch (failure) {
+            log('deliver_failed', {
+              organizationId: message.organizationId, messageId: message.id,
+              detail: failure instanceof Error ? failure.message : String(failure),
+            });
+            // The release below hands the message back; if even that fails, the
+            // lease runs out and the claim parks it as uncertain for a person.
             await ports.serviceRpc('hours_outbox_release', { p_id: message.id, p_claim_token: claimed.token });
             outcome = 'failed';
           }

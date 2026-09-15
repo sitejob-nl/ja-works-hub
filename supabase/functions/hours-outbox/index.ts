@@ -26,8 +26,20 @@ const CORS = { ...CORS_HEADERS,
 async function authorize(req: Request): Promise<HoursOutboxAuth | Response> {
   const secret = Deno.env.get('CRON_SECRET');
   const provided = req.headers.get('x-cron-secret');
-  if (secret && provided && provided === secret) return { mode: 'cron' };
-  if (provided) return jsonResponse({ error: 'Onbekende cron-sleutel' }, 403, CORS);
+  if (provided) {
+    // Zonder ingestelde sleutel is elke cron-aanroep onherkenbaar. Stil met 403
+    // antwoorden zou de urenmail maandenlang laten stilstaan zonder dat iemand
+    // het merkt; dit staat in de log en zegt wat er ontbreekt.
+    if (!secret) {
+      console.error('hours-outbox authorize_unconfigured detail=CRON_SECRET ontbreekt');
+      return jsonResponse({
+        error: 'De cron-sleutel is niet ingesteld; de urenmail kan niet onbemand draaien.',
+        code: 'cron_secret_missing',
+      }, 503, CORS);
+    }
+    if (provided === secret) return { mode: 'cron' };
+    return jsonResponse({ error: 'Onbekende cron-sleutel' }, 403, CORS);
+  }
   const auth = await requireRolePermission(req, 'finance.manage', CORS);
   if (auth instanceof Response) return auth;
   return { mode: 'user', organizationId: auth.organizationId };
@@ -57,6 +69,8 @@ Deno.serve(createHoursOutboxHandler({
     return {
       ok: result.success,
       paused: result.communicationPaused === true,
+      // Aangemaakt maar de verzendopdracht faalde: niet opnieuw proberen.
+      deliveryUncertain: result.deliveryUncertain === true,
       status: result.status,
       messageId: result.messageId ?? null,
       conversationId: result.conversationId ?? null,

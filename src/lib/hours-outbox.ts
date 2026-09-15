@@ -186,6 +186,44 @@ export const isPendingApproval = (message: HoursOutboxMessage): boolean =>
   message.status === 'concept' && message.approval_required
   && message.recipients.length > 0 && message.subject.trim().length > 0;
 
+/**
+ * Reasons a message is stuck on something only a person can settle.
+ *
+ * These are not "wait your turn": the deadline went by, the text is missing, the
+ * recipient has no address. A message carrying one of these will never leave on
+ * its own, so the screen has to offer a way to take it off the list — otherwise
+ * it sits there forever with no button at all.
+ */
+const NEEDS_A_PERSON = new Set([
+  'deadline_passed', 'late_approval_requires_review', 'insufficient_approval_window',
+  'ontbrekende_tekst', 'onbekende_ontvanger', 'invalid_hours_state', 'invalid_deadline_order',
+  'requires_review', 'delivery_uncertain',
+]);
+
+/**
+ * May a person stop this message?
+ *
+ * Yes where stopping means something: it is queued, approved, awaiting their
+ * approval, or blocked on something they have to fix. Deliberately not for a
+ * concept that is merely not due yet — one click would kill a week's hours
+ * request for good.
+ */
+export const canWithdraw = (message: HoursOutboxMessage): boolean =>
+  message.status === 'gereed' || message.status === 'goedgekeurd'
+  || isPendingApproval(message)
+  || (message.status === 'concept' && NEEDS_A_PERSON.has(message.block_reason ?? ''));
+
+/**
+ * May the planner be allowed to propose this message again?
+ *
+ * After a failure, and after a withdrawal — a decision that stands is still a
+ * decision somebody may want to undo, and the alternative is a one-click door
+ * that locks behind you.
+ */
+export const canReplan = (message: HoursOutboxMessage): boolean =>
+  message.status === 'mislukt'
+  || (message.status === 'vervallen' && message.block_reason === 'ingetrokken');
+
 /** Sent is terminal; nothing on the screen may offer to change it. */
 export const isTerminal = (message: HoursOutboxMessage): boolean =>
   message.status === 'verzonden' || message.status === 'vervallen';
