@@ -105,15 +105,8 @@ export function useHoursOutboxActions(organizationId: string, weekId?: string) {
   const withdraw = useMutation({
     mutationFn: async (input: { id: string; note: string | null; allowReplan?: boolean }) => {
       try {
-        // `p_allow_replan` arrived with migration 20260920090000. Until that is
-        // applied to production and the types are regenerated, the generated
-        // signature still shows two arguments. Regenerate with
-        //   npx supabase gen types typescript --project-id noaupcteygfvlyymqtew
-        // and this cast goes away; it is the only place the client is not
-        // checked against the database.
         return parseOutboxOverview(await hoursWorkflowRpc('hours_withdraw_outbox_message',
-          { p_id: input.id, p_note: input.note,
-            p_allow_replan: input.allowReplan === true } as never));
+          { p_id: input.id, p_note: input.note, p_allow_replan: input.allowReplan === true }));
       } catch (error) { throw hoursWorkflowFailure(error); }
     },
     onSuccess: storeOverview,

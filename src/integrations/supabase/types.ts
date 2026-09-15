@@ -13607,7 +13607,12 @@ export type Database = {
         Returns: Json
       }
       hours_outbox_sync: {
-        Args: { p_actions: Json; p_issues?: Json; p_week_id: string }
+        Args: {
+          p_actions: Json
+          p_issues?: Json
+          p_prune?: boolean
+          p_week_id: string
+        }
         Returns: Json
       }
       hours_publish_matrix_version: {
@@ -13726,7 +13731,7 @@ export type Database = {
         Returns: Json
       }
       hours_withdraw_outbox_message: {
-        Args: { p_id: string; p_note?: string }
+        Args: { p_allow_replan?: boolean; p_id: string; p_note?: string }
         Returns: Json
       }
       is_employee_user: { Args: never; Returns: boolean }
