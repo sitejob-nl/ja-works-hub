@@ -367,6 +367,10 @@ export function createHoursOutboxHandler(ports: HoursOutboxPorts, headers: Recor
         p_actions: batch,
         // Visible configuration problems travel with the plan instead of being
         // swallowed: a rule that cannot be read has to be fixable from the screen.
+        // Visible configuration problems travel with the plan instead of being
+        // swallowed: a rule that cannot be read has to be fixable from the
+        // screen. The store stamps the week on each one itself, so which week a
+        // report belongs to can never depend on this caller getting it right.
         p_issues: index === batches.length - 1 ? preview.issues : [],
         p_prune: index === batches.length - 1,
         p_prune_keys: index === batches.length - 1 ? actions.map(a => a.dedup_key) : null,

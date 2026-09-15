@@ -58,12 +58,25 @@ function RuleEditor({ rule, recipients, templates, onChange, onRemove }: {
   const week = rule.at.kind === 'week_time' ? rule.at : null;
   const offset = rule.at.kind === 'deadline_offset' ? rule.at : null;
 
+  /**
+   * Moving a rule to another party, from wherever that move came.
+   *
+   * Two controls can do it: the party itself, and a message type that only goes
+   * to one party. Both have to leave the rule in a state the server accepts, so
+   * they share this one place. Recipients belong to the old party and a Polish
+   * client mail is refused by the planner, so neither may be left dangling.
+   */
+  const moveToParty = (party: HoursMailParty, rest: Partial<HoursMailRuleView> = {}) => onChange({
+    ...rule, ...rest, party,
+    language: party === 'customer' && rule.language === 'pl' ? 'nl' : rule.language,
+    recipientIds: party === rule.party ? rule.recipientIds : [],
+  });
+
   const setType = (mailType: HoursMailType) => {
     const allowed = HOURS_MAIL_TYPE_PARTY[mailType];
     // A party that this message type cannot go to would be refused by the
     // server, so the screen moves it rather than letting it be saved.
-    const party = allowed.includes(rule.party) ? rule.party : allowed[0];
-    onChange({ ...rule, mailType, party, recipientIds: party === rule.party ? rule.recipientIds : [] });
+    moveToParty(allowed.includes(rule.party) ? rule.party : allowed[0], { mailType });
   };
 
   return <li className="space-y-3 rounded-lg border p-3">
@@ -90,7 +103,7 @@ function RuleEditor({ rule, recipients, templates, onChange, onRemove }: {
         <Label htmlFor={`rule-party-${rule.id}`}>Partij</Label>
         <select id={`rule-party-${rule.id}`} className="flex h-10 w-full rounded-md border bg-background px-3 text-sm"
           value={rule.party} disabled={parties.length === 1}
-          onChange={event => onChange({ ...rule, party: event.target.value as HoursMailParty, recipientIds: [] })}>
+          onChange={event => moveToParty(event.target.value as HoursMailParty)}>
           {parties.map(party => <option key={party} value={party}>{describeParty(party)}</option>)}
         </select>
       </div>
@@ -195,7 +208,16 @@ function RuleEditor({ rule, recipients, templates, onChange, onRemove }: {
           onChange={event => onChange({ ...rule, language: event.target.value as 'nl' | 'en' | 'pl' })}>
           <option value="nl">Nederlands</option>
           <option value="en">Engels</option>
-          <option value="pl">Pools</option>
+          {/* Precies de grens die de planner trekt: Pools kan niet naar een
+              opdrachtgever. Ruimer aanbieden levert een regel op die zegt dat
+              hij is opgeslagen en daarna nooit iets verstuurt; strenger zou een
+              taal wegnemen die de server wel accepteert. Een al opgeslagen
+              Poolse klantregel komt van voor die grens: die tonen we wel, met
+              zijn bezwaar erbij, want een leeg keuzevak zegt niet wat er mis is. */}
+          {(rule.party !== 'customer' || rule.language === 'pl')
+            && <option value="pl">
+              {rule.party === 'customer' ? 'Pools — kan niet naar een opdrachtgever' : 'Pools'}
+            </option>}
         </select>
       </div>
     </div>
@@ -236,7 +258,10 @@ export function HoursMailProfilePanel({ profile, recipients, onSave, onReload }:
     {profile.last_issues.length > 0 && <Alert variant="destructive"><AlertDescription>
       <p>De laatste planning kon deze instelling niet uitvoeren; zolang dat zo is verstuurt die regel niets:</p>
       <ul className="mt-2 list-disc pl-5">
-        {profile.last_issues.map(issue => <li key={`${issue.scope}:${issue.code}`}>
+        {profile.last_issues.map(issue => <li key={`${issue.weekStart ?? ''}:${issue.scope}:${issue.code}`}>
+          {/* De melding staat per opdrachtgever maar gaat over een week. Zonder
+              die week lezen twee weken als een. */}
+          {issue.weekStart && <>week van <span data-no-translate="true">{issue.weekStart}</span> — </>}
           <span data-no-translate="true">{issue.scope}</span>: {issue.message}
         </li>)}
       </ul>

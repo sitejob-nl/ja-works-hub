@@ -267,6 +267,123 @@ class OutboxTests(basis.BasisReplacementTests):
         self.assertNotIn(stranger, payload["recipients"],
                          "A recipient of another tenant may never resolve to an address")
 
+    def test_a_report_about_one_week_does_not_erase_the_report_about_another(self):
+        """`last_issues` staat per opdrachtgever, maar wordt per week geschreven.
+        Een run plant er vijfentwintig, dus de laatste week overschreef alles wat
+        de eerdere te melden hadden. Een melding draagt nu zijn week, en de
+        planning vervangt alleen de meldingen van diezelfde week."""
+        week, _ = self.prepared_week()
+        elders = {"scope": "klant-uitvraag", "code": "invalid_deadline_order",
+                  "message": "Andere week", "weekStart": "2026-09-14"}
+        sql(f"""UPDATE public.hours_mail_profiles
+          SET last_issues = {literal(json.dumps([elders]))}::jsonb
+          WHERE company_id={literal(self.company)};""")
+        eigen = {"scope": "klant-uitvraag", "code": "invalid_language",
+                 "message": "Deze week", "weekStart": "2026-09-07"}
+        rpc("hours_outbox_sync", role="service_role", p_week_id=week["id"], p_actions=[],
+            p_issues=[eigen], p_prune=True, p_prune_keys=[])
+        messages = {issue["message"] for issue in rpc(
+            "hours_get_mail_profile", user=self.admin, p_company_id=self.company)["last_issues"]}
+        self.assertIn("Deze week", messages)
+        self.assertIn("Andere week", messages,
+                      "De melding over een andere week hoort niet te zijn overschreven")
+        # En een volgende planning van diezelfde week vervangt wel zijn eigen melding.
+        rpc("hours_outbox_sync", role="service_role", p_week_id=week["id"], p_actions=[],
+            p_issues=[], p_prune=True, p_prune_keys=[])
+        messages = {issue["message"] for issue in rpc(
+            "hours_get_mail_profile", user=self.admin, p_company_id=self.company)["last_issues"]}
+        self.assertNotIn("Deze week", messages, "Opgelost is opgelost")
+        self.assertIn("Andere week", messages, "En de andere week blijft staan")
+
+    def test_a_full_report_list_still_makes_room_for_this_week(self):
+        """Het plafond moet de verse melding houden, niet de oudste. Zonder een
+        expliciete volgorde geeft Postgres geen garantie, en dan gooit `limit`
+        precies weg waar deze planning voor liep."""
+        week, _ = self.prepared_week()
+        vol = [{"scope": f"regel-{n}", "code": "invalid_language",
+                "message": f"Oud {n}", "weekStart": "2026-09-14"} for n in range(50)]
+        sql(f"""UPDATE public.hours_mail_profiles
+          SET last_issues = {literal(json.dumps(vol))}::jsonb
+          WHERE company_id={literal(self.company)};""")
+        rpc("hours_outbox_sync", role="service_role", p_week_id=week["id"], p_actions=[],
+            p_issues=[{"scope": "klant-uitvraag", "code": "invalid_language",
+                       "message": "Vers"}],
+            p_prune=True, p_prune_keys=[])
+        issues = rpc("hours_get_mail_profile", user=self.admin,
+                     p_company_id=self.company)["last_issues"]
+        self.assertLessEqual(len(issues), 50, "Het plafond hoort te gelden")
+        self.assertIn("Vers", {issue["message"] for issue in issues},
+                      "De verse melding hoort het plafond te overleven")
+
+    def test_the_store_stamps_the_week_itself_so_the_caller_cannot_get_it_wrong(self):
+        """De aanroeper hoeft de week niet mee te sturen: de opslag weet welke
+        week hij aan het plannen is. Zo kan die stempel niet misgaan."""
+        week, _ = self.prepared_week()
+        rpc("hours_outbox_sync", role="service_role", p_week_id=week["id"], p_actions=[],
+            p_issues=[{"scope": "klant-uitvraag", "code": "invalid_language",
+                       "message": "Zonder week meegestuurd"}],
+            p_prune=True, p_prune_keys=[])
+        issues = rpc("hours_get_mail_profile", user=self.admin,
+                     p_company_id=self.company)["last_issues"]
+        self.assertEqual([issue.get("weekStart") for issue in issues], ["2026-09-07"])
+
+    def test_too_many_reports_are_capped_and_never_lose_the_planning(self):
+        """Een week met veel meldingen mag de hele planning niet laten
+        terugdraaien; het plafond hoort te knippen, niet af te breken."""
+        week, _ = self.prepared_week()
+        action = self.action(week)
+        veel = [{"scope": f"regel-{n}", "code": "missing_template", "message": f"Melding {n}"}
+                for n in range(80)]
+        rpc("hours_outbox_sync", role="service_role", p_week_id=week["id"],
+            p_actions=[action], p_issues=veel, p_prune=True,
+            p_prune_keys=[action["dedup_key"]])
+        self.assertEqual(self.outbox_row(action["dedup_key"])["status"], "gereed",
+                         "De planning zelf hoort gewoon te zijn vastgelegd")
+        issues = rpc("hours_get_mail_profile", user=self.admin,
+                     p_company_id=self.company)["last_issues"]
+        self.assertEqual(len(issues), 50)
+
+    def test_a_switched_off_rule_is_judged_exactly_as_the_planner_judges_it(self):
+        """De planner slaat een uitgeschakelde regel over voordat hij de taal
+        bekijkt. Strenger zijn zou een profiel onopslaanbaar maken door een regel
+        die niets doet."""
+        self.week()
+        contact = self.client_contact()
+        self.template()
+        self.profile([rule(recipients=[contact], party="customer", language="pl", enabled=False)])
+
+    def test_saving_a_profile_does_not_push_that_client_to_the_front_of_the_queue(self):
+        """`due_weeks` sorteert `last_planned_at nulls first`. Wie zijn profiel
+        vaak bewerkt, drong daarmee telkens voor - precies de uithongering die
+        die volgorde moest voorkomen."""
+        week, contact = self.prepared_week()
+        rpc("hours_outbox_sync", role="service_role", p_week_id=week["id"], p_actions=[],
+            p_issues=[], p_prune=True, p_prune_keys=[])
+        planned = rpc("hours_get_mail_profile", user=self.admin,
+                      p_company_id=self.company)["last_planned_at"]
+        self.assertIsNotNone(planned)
+        self.profile([rule(recipients=[contact], time_of_day="10:00")])
+        after = rpc("hours_get_mail_profile", user=self.admin, p_company_id=self.company)
+        self.assertEqual(after["last_planned_at"], planned,
+                         "Opslaan hoort de plek in de wachtrij niet te verzetten")
+        self.assertEqual(after["last_issues"], [],
+                         "De meldingen over de oude regels horen wel te verdwijnen")
+
+    def test_a_client_rule_in_polish_is_refused_instead_of_dying_quietly(self):
+        """De planner weigert Pools voor een klantmail, maar de opslag nam hem
+        aan. Het scherm meldde dan "opgeslagen" en die regel verstuurde nooit
+        iets - zonder dat iemand kon zien waarom. De opslag hoort dezelfde grens
+        te kennen als de planner."""
+        self.week()
+        contact = self.client_contact()
+        self.template()
+        error = self.profile([rule(recipients=[contact], party="customer", language="pl")],
+                             code="22023")
+        self.assertIn("pools", error.lower())
+        # Voor een medewerker is Pools juist het punt van die instelling.
+        self.profile([rule(party="employee", recipients=["*"], mail_type="approval_request",
+                           language="pl")])
+
     def test_a_deadline_task_is_refused_by_the_profile(self):
         self.week()
         contact = self.client_contact()
@@ -727,14 +844,20 @@ class OutboxTests(basis.BasisReplacementTests):
         rpc("hours_outbox_sync", role="service_role", p_week_id=week["id"],
             p_actions=[], p_issues=issues)
         profile = rpc("hours_get_mail_profile", user=self.admin, p_company_id=self.company)
-        self.assertEqual(profile["last_issues"], issues)
+        # De opslag zet de week erbij; de melding zelf komt er ongewijzigd door.
+        self.assertEqual([{k: v for k, v in issue.items() if k != "weekStart"}
+                          for issue in profile["last_issues"]], issues)
+        self.assertEqual([issue["weekStart"] for issue in profile["last_issues"]],
+                         ["2026-09-07"])
         self.assertIsNotNone(profile["last_planned_at"])
         # Saving new rules clears complaints about rules that no longer exist.
         contact = self.client_contact()
         self.profile([rule(recipients=[contact])])
         fresh = rpc("hours_get_mail_profile", user=self.admin, p_company_id=self.company)
         self.assertEqual(fresh["last_issues"], [])
-        self.assertIsNone(fresh["last_planned_at"])
+        # `last_planned_at` blijft staan: dat is de plek in de wachtrij, en die
+        # hoort niet te verspringen omdat iemand zijn profiel bewerkt.
+        self.assertIsNotNone(fresh["last_planned_at"])
 
     # --- sending -----------------------------------------------------------
 
@@ -1151,6 +1274,7 @@ def main():
         "20260919090000_hours_outbox_review_fixes.sql",
         "20260920090000_hours_outbox_round_two.sql",
         "20260921090000_hours_outbox_round_three.sql",
+        "20260922090000_hours_outbox_round_four.sql",
     )]
     fixtures = [ROOT / "tests/db/hours-workflow-fixture.sql", ROOT / "tests/db/hours-module-gate-fixture.sql",
                 ROOT / "tests/db/hours-intake-fixture.sql", ROOT / "tests/db/hours-mail-intake-fixture.sql"]

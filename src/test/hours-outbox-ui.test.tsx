@@ -210,6 +210,79 @@ describe('the mail profile on screen', () => {
     expect(saved[0].rules[0].recipientIds).toEqual(['contact-a', 'contact-b']);
   });
 
+  it('does not offer a language the planner will refuse for that party', () => {
+    // Polish is refused for a client mail, so offering it here would let
+    // somebody save a rule that reports success and then never sends anything.
+    render(<HoursMailProfilePanel recipients={[{ id: 'contact-a', party: 'customer', label: 'Planner A' }]}
+      onSave={noop} profile={profile({ rules: [{
+        id: 'klant-uitvraag', enabled: true, mailType: 'hours_request', party: 'customer',
+        recipientIds: ['contact-a'], at: { kind: 'week_time', weekOffset: 1, weekday: 1, time: '09:00' },
+        templateId: 'uitvraag', language: 'nl',
+      }] })} />);
+    const language = screen.getByLabelText('Taal') as HTMLSelectElement;
+    expect([...language.options].map(option => option.value)).toEqual(['nl', 'en']);
+  });
+
+  it('does offer it for a message to employees, which is what it is for', () => {
+    render(<HoursMailProfilePanel recipients={[{ id: 'candidate-a', party: 'employee', label: 'Jan Kowalski' }]}
+      onSave={noop} profile={profile({ rules: [{
+        id: 'akkoord', enabled: true, mailType: 'approval_request', party: 'employee',
+        recipientIds: ['candidate-a'], at: { kind: 'week_time', weekOffset: 1, weekday: 2, time: '09:00' },
+        templateId: 'uitvraag', language: 'pl',
+      }] })} />);
+    const language = screen.getByLabelText('Taal') as HTMLSelectElement;
+    expect([...language.options].map(option => option.value)).toEqual(['nl', 'en', 'pl']);
+  });
+
+  it('says which week a report is about, so two weeks do not read as one', () => {
+    render(<HoursMailProfilePanel recipients={[]} onSave={noop} profile={profile({ last_issues: [
+      { scope: 'klant-uitvraag', code: 'invalid_language', message: 'Klantmails ondersteunen Nederlands en Engels.', weekStart: '2026-09-07' },
+      { scope: 'week', code: 'invalid_deadline_order', message: 'De akkoorddeadline ligt voor de aanleverdeadline.', weekStart: '2026-09-14' },
+    ] })} />);
+    // Niet op een samengeplakte tekstknoop pinnen: de UI-vertaling zoekt exacte
+    // tekstknopen op, dus vaste tekst en een datum horen los te staan.
+    const shown = screen.getByRole('alert').textContent ?? '';
+    expect(shown).toContain('week van 2026-09-07');
+    expect(shown).toContain('week van 2026-09-14');
+  });
+
+  const polishToEmployee = () => <HoursMailProfilePanel onSave={noop} recipients={[
+    { id: 'candidate-a', party: 'employee', label: 'Jan Kowalski' },
+    { id: 'contact-a', party: 'customer', label: 'Planner A' },
+  ]} profile={profile({ rules: [{
+    id: 'navraag', enabled: true, mailType: 'correction_query', party: 'employee',
+    recipientIds: ['candidate-a'], at: { kind: 'week_time', weekOffset: 1, weekday: 2, time: '09:00' },
+    templateId: 'uitvraag', language: 'pl',
+  }] })} />;
+
+  it('drops a language the new party cannot use instead of leaving it dangling', () => {
+    render(polishToEmployee());
+    fireEvent.change(screen.getByLabelText('Partij'), { target: { value: 'customer' } });
+    expect((screen.getByLabelText('Taal') as HTMLSelectElement).value).toBe('nl');
+  });
+
+  it('does that too when the message type is what moves the party', () => {
+    // Een berichtsoort die alleen naar de opdrachtgever kan, verzet de partij
+    // zelf. Dezelfde regel hoort dan te gelden, anders hangt de taal alsnog.
+    render(polishToEmployee());
+    fireEvent.change(screen.getByLabelText('Berichtsoort'), { target: { value: 'hours_request' } });
+    expect((screen.getByLabelText('Taal') as HTMLSelectElement).value).toBe('nl');
+  });
+
+  it('shows a stored language the party cannot use, rather than a blank box', () => {
+    // Zo'n regel kan alleen van voor deze grens komen. Verbergen zou een leeg
+    // keuzevak opleveren en de lezer geen idee geven wat hij moet herstellen.
+    render(<HoursMailProfilePanel recipients={[{ id: 'contact-a', party: 'customer', label: 'Planner A' }]}
+      onSave={noop} profile={profile({ rules: [{
+        id: 'klant-uitvraag', enabled: true, mailType: 'hours_request', party: 'customer',
+        recipientIds: ['contact-a'], at: { kind: 'week_time', weekOffset: 1, weekday: 1, time: '09:00' },
+        templateId: 'uitvraag', language: 'pl',
+      }] })} />);
+    const language = screen.getByLabelText('Taal') as HTMLSelectElement;
+    expect(language.value).toBe('pl');
+    expect([...language.options].map(option => option.value)).toContain('pl');
+  });
+
   it('refuses to read a stored rule without a single recipient', () => {
     // Neither the schema nor the database can hold one, so showing it as
     // editable would only offer a save the server is bound to refuse.

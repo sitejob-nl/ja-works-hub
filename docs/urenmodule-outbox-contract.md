@@ -77,6 +77,21 @@ planner, door goedkeuren en door intrekken — anders blijft het token staan op 
 meer bij kan, en is de rij voorgoed vast. De veger laat het token los, zet de reden, en pas dan kan een
 mens hem opnieuw laten plannen.
 
+**Een regel die de planner zou weigeren, wordt al bij het opslaan geweigerd.**
+`private.hours_mail_rules_valid` bewaakt dezelfde grenzen als de planner en op hetzelfde moment: een
+uitgeschakelde regel wordt overgeslagen, precies zoals de planner doet. Pools kan daarom niet naar een
+opdrachtgever - dat is de enige taalcombinatie die de planner afwijst, en hij is nu niet meer op te
+slaan. Zonder die spiegel meldde het scherm "opgeslagen" terwijl die regel nooit iets verstuurde.
+
+**Een melding draagt de week waaruit hij komt, en de opslag zet die stempel.** `last_issues` staat per
+opdrachtgever terwijl een run tot vijfentwintig weken plant, dus vervangen zou betekenen dat de laatste
+week alles overschrijft wat de eerdere te melden hadden. `hours_outbox_sync` vervangt daarom alleen de
+meldingen van de week die hij plant, laat de andere staan, en knipt bij vijftig - in wat oud is, nooit in
+wat deze run net meldde. De week wordt **in de database** gestempeld en niet door de aanroeper, zodat die
+toewijzing niet mis kan gaan. Een profiel opslaan wist `last_issues` (die klachten gaan over regels die
+niet meer bestaan) maar laat `last_planned_at` staan: dat is de plek in de wachtrij, en die hoort niet te
+verspringen omdat iemand zijn profiel bewerkt.
+
 **Bij actieve outbound-pauze wordt als concept gelogd, niet stil weggegooid.** De enige uitgang is
 `sendViaOutlookAccount`, en dáár zit `isOutboundPaused()`: bij pauze gaat het bericht als
 `message_type='concept'` in `communications` en komt `communicationPaused: true` terug. De outbox
@@ -177,7 +192,7 @@ De databaseproef is `scripts/hours-outbox-db-test.py`. Die erft de volledige
 basisvervangings-, mailinname-, Word/mail-, scan-, klantweek-, werkblad-, pagina-, inname-, modulepoort-,
 classificatie- en funderingsregressies en overschrijft expliciet wat is verschoven: de poortlijst
 (nu **zevenentwintig** tabellen), de functiesignaturen (twaalf erbij), de service-role-lijst en de
-migratielijst (nu **tweeentwintig**). De migraties worden elk tweemaal toegepast.
+migratielijst (nu **vijfentwintig**). De migraties worden elk tweemaal toegepast.
 
 De handler heeft zijn eigen suite (`src/test/hours-outbox.test.ts`): de hele run zonder postbus, sessie of
 klok, met elke poort geïnjecteerd. De schermen staan in `src/test/hours-outbox-ui.test.tsx`.

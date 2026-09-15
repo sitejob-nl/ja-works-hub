@@ -118,6 +118,8 @@ export type HoursMailTemplateView = z.infer<typeof hoursMailTemplateSchema>;
 /** What the planner could not read the last time it ran, in its own words. */
 export const hoursMailIssueSchema = z.object({
   scope: z.string(), code: z.string(), message: z.string(),
+  /** De week waaruit deze melding komt; ontbreekt bij meldingen van voor ronde vier. */
+  weekStart: z.string().nullish(),
 });
 export type HoursMailIssue = z.infer<typeof hoursMailIssueSchema>;
 
