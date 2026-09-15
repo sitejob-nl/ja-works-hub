@@ -13611,6 +13611,7 @@ export type Database = {
           p_actions: Json
           p_issues?: Json
           p_prune?: boolean
+          p_prune_keys?: Json
           p_week_id: string
         }
         Returns: Json
