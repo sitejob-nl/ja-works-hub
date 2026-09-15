@@ -59,7 +59,9 @@ const BLOCK_REASONS: Record<string, string> = {
   niet_meer_nodig: 'Niet meer nodig',
   ingetrokken: 'Ingetrokken; gaat ook bij een volgende planning niet uit',
   opnieuw_plannen: 'Van de lijst gehaald; wordt opnieuw voorgesteld',
-  verzending_onzeker: 'De verzendpoging is nooit afgerond — controleer de postbus',
+  // Kort: de foutmelding eronder vertelt wat er precies is gebeurd en wat er
+  // moet gebeuren. Allebei die zin zeggen leest als een stotter.
+  verzending_onzeker: 'De uitkomst van deze verzending staat niet vast',
   already_submitted: 'De week is compleet aangeleverd',
   already_approved: 'Er is al akkoord',
   missing_state: 'Nog niet te beoordelen',
